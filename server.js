@@ -35,34 +35,105 @@ app.get('/callback', async (req, res) => {
   }
 });
 
-app.get('/api/clients', async (req, res) => {
+app.get('/api/pipeline', async (req, res) => {
+  const { referrer } = req.query;
   try {
     const response = await axios.post(
       'https://api.getjobber.com/api/graphql',
       { query: `{
-  clients {
-    nodes {
-      id
-      firstName
-      lastName
-      customFields {
-        ... on CustomFieldText {
-          label
-          valueText
+        clients {
+          nodes {
+            id
+            firstName
+            lastName
+            customFields {
+              ... on CustomFieldText {
+                label
+                valueText
+              }
+            }
+            quotes {
+              nodes {
+                id
+                status
+              }
+            }
+            jobs {
+              nodes {
+                id
+                title
+                jobStatus
+                invoices {
+                  nodes {
+                    id
+                    status
+                    total
+                  }
+                }
+              }
+            }
+          }
         }
-      }
-    }
-  }
-}`},
+      }`},
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2025-01-20'
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
         }
       }
     );
-    res.json(response.data);
+
+    const allClients = response.data.data.clients.nodes;
+
+    // Filter clients referred by the logged-in user
+    const referred = allClients.filter(client => {
+      const referredByField = client.customFields.find(f => f.label && f.label.toLowerCase() === 'referred by');
+      return referredByField && referredByField.valueText === referrer;
+    });
+
+    // Map each client to pipeline status
+    const pipeline = referred.map(client => {
+      const jobs = client.jobs.nodes;
+      const quotes = client.quotes.nodes;
+
+      // Check for paid invoice
+      const paidInvoice = jobs.flatMap(j => j.invoices.nodes).find(inv => inv.status === 'paid');
+
+      // Check for any job
+      const hasJob = jobs.length > 0;
+
+      // Check for active (non-archived) quotes
+      const activeQuotes = quotes.filter(q => q.status !== 'archived');
+      const hasActiveQuote = activeQuotes.length > 0;
+
+      // Determine status
+      let status;
+      let payout = null;
+
+      if (hasJob) {
+        status = 'sold';
+        if (paidInvoice) {
+          payout = paidInvoice.total;
+        }
+      } else if (hasActiveQuote) {
+        status = 'inspection';
+      } else if (quotes.length > 0 && activeQuotes.length === 0) {
+        // All quotes archived, no job = not sold
+        status = 'closed';
+      } else {
+        status = 'lead';
+      }
+
+      return {
+        id: client.id,
+        name: `${client.firstName} ${client.lastName}`,
+        status,
+        payout
+      };
+    });
+
+    res.json(pipeline);
   } catch (err) {
     res.status(500).send('API call failed: ' + (err.response ? JSON.stringify(err.response.data) : err.message));
   }
