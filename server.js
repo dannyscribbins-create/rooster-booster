@@ -56,7 +56,7 @@ app.get('/api/clients', async (req, res) => {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2024-11-14'
+          'X-JOBBER-GRAPHQL-VERSION': '2025-01-20'
         }
       }
     );
