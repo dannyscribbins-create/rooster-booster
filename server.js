@@ -37,8 +37,9 @@ app.get('/callback', async (req, res) => {
 
 app.get('/api/clients', async (req, res) => {
   try {
-    const response = await axios.post('https://api.getjobber.com/api/graphql', {
-      query: `{
+    const response = await axios.post(
+      'https://api.getjobber.com/api/graphql',
+      { query: `{
         clients {
           nodes {
             id
@@ -50,19 +51,20 @@ app.get('/api/clients', async (req, res) => {
             }
           }
         }
-      }`
-    }, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+      }`},
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-JOBBER-GRAPHQL-VERSION': '2024-11-14'
+        }
       }
-    });
+    );
     res.json(response.data);
   } catch (err) {
     res.status(500).send('API call failed: ' + err.message);
   }
 });
-
 app.listen(4000, () => {
   console.log('Server running on port 4000');
 });
