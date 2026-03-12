@@ -40,18 +40,20 @@ app.get('/api/clients', async (req, res) => {
     const response = await axios.post(
       'https://api.getjobber.com/api/graphql',
       { query: `{
-        clients {
-          nodes {
-            id
-            firstName
-            lastName
-            customFields {
-              label
-              value
-            }
-          }
+  clients {
+    nodes {
+      id
+      firstName
+      lastName
+      customFields {
+        ... on CustomFieldText {
+          label
+          value
         }
-      }`},
+      }
+    }
+  }
+}`},
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
