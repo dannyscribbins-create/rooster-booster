@@ -8,10 +8,3 @@
     "restartPolicyType": "ON_FAILURE"
   }
 }
-```
-
-Save and close Notepad, then push it to GitHub:
-```
-git add railway.json
-git commit -m "Add Railway config to deploy backend"
-git push
