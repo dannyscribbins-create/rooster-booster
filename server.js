@@ -62,9 +62,4 @@ app.get('/api/clients', async (req, res) => {
     );
     res.json(response.data);
   } catch (err) {
-    res.status(500).send('API call failed: ' + err.message);
-  }
-});
-app.listen(4000, () => {
-  console.log('Server running on port 4000');
-});
+   res.status(500).send('API call failed: ' + (err.response ? JSON.stringify(err.response.data) : err.message));
