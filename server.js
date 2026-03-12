@@ -84,7 +84,11 @@ app.get('/api/pipeline', async (req, res) => {
       }
     );
 
-    const allClients = response.data.data.clients.nodes;
+    console.log('Jobber response:', JSON.stringify(response.data, null, 2));
+if (!response.data.data) {
+  return res.status(500).send('No data returned: ' + JSON.stringify(response.data));
+}
+const allClients = response.data.data.clients.nodes;
 
     // Filter clients referred by the logged-in user
     const referred = allClients.filter(client => {
