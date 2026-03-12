@@ -55,7 +55,7 @@ app.get('/api/pipeline', async (req, res) => {
             quotes {
               nodes {
                 id
-                status
+                quoteStatus
               }
             }
             jobs {
@@ -66,7 +66,7 @@ app.get('/api/pipeline', async (req, res) => {
                 invoices {
                   nodes {
                     id
-                    status
+                    invoiceStatus
                     total
                   }
                 }
@@ -102,13 +102,13 @@ const allClients = response.data.data.clients.nodes;
       const quotes = client.quotes.nodes;
 
       // Check for paid invoice
-      const paidInvoice = jobs.flatMap(j => j.invoices.nodes).find(inv => inv.status === 'paid');
+     const paidInvoice = jobs.flatMap(j => j.invoices.nodes).find(inv => inv.invoiceStatus === 'paid');
 
       // Check for any job
       const hasJob = jobs.length > 0;
 
       // Check for active (non-archived) quotes
-      const activeQuotes = quotes.filter(q => q.status !== 'archived');
+      const activeQuotes = quotes.filter(q => q.quoteStatus !== 'archived');
       const hasActiveQuote = activeQuotes.length > 0;
 
       // Determine status
@@ -118,7 +118,7 @@ const allClients = response.data.data.clients.nodes;
       if (hasJob) {
         status = 'sold';
         if (paidInvoice) {
-          payout = paidInvoice.total;
+         payout = paidInvoice.amounts.total;
         }
       } else if (hasActiveQuote) {
         status = 'inspection';
