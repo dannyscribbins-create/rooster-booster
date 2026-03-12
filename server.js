@@ -48,7 +48,7 @@ app.get('/api/clients', async (req, res) => {
       customFields {
         ... on CustomFieldText {
           label
-          value
+          valueText
         }
       }
     }
