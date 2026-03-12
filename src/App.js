@@ -1,5 +1,29 @@
 import { useState, useEffect } from "react";
 
+// ─── Boost Table (from Rooster Booster concept doc) ───────────────────────────
+const BOOST_TABLE = [
+  { referral: 1,  label: "1st",          base: 500, boost: 0,   total: 500 },
+  { referral: 2,  label: "2nd",          base: 500, boost: 100, total: 600 },
+  { referral: 3,  label: "3rd",          base: 500, boost: 200, total: 700 },
+  { referral: 4,  label: "4th",          base: 500, boost: 250, total: 750 },
+  { referral: 5,  label: "5th",          base: 500, boost: 300, total: 800 },
+  { referral: 6,  label: "6th",          base: 500, boost: 350, total: 850 },
+  { referral: 7,  label: "7th & beyond", base: 500, boost: 400, total: 900 },
+];
+
+// Returns the payout for a given sold count (1-indexed)
+function getPayoutForReferral(soldCountThisYear) {
+  if (soldCountThisYear <= 0) return BOOST_TABLE[0];
+  if (soldCountThisYear >= 7) return BOOST_TABLE[6];
+  return BOOST_TABLE[soldCountThisYear - 1];
+}
+
+// Returns what the NEXT payout will be
+function getNextPayout(soldCountThisYear) {
+  const nextIndex = Math.min(soldCountThisYear, 6);
+  return BOOST_TABLE[nextIndex];
+}
+
 // ─── Mock Data ───────────────────────────────────────────────────────────────
 const MOCK_USER = {
   name: "Marcus Johnson",
@@ -9,42 +33,30 @@ const MOCK_USER = {
   avatar: "MJ",
 };
 
-const TIERS = [
-  { name: "Rookie", min: 0, max: 2, bonus: 250, color: "#cd7f32", bg: "#2a1f0f", accent: "#e8963a" },
-  { name: "Pro",    min: 3, max: 5, bonus: 350, color: "#c0c0c0", bg: "#1a1a22", accent: "#d4d4e8" },
-  { name: "Elite",  min: 6, max: 9, bonus: 500, color: "#ffd700", bg: "#1f1a00", accent: "#ffe566" },
-  { name: "Legend", min: 10, max: Infinity, bonus: 750, color: "#e040fb", bg: "#1a0020", accent: "#f39dff" },
-];
-
 const PIPELINE = [
-  { id: 1, name: "Sandra & Tom Reed", address: "4821 W Mariposa St", status: "lead", date: "Feb 18, 2026", value: null },
+  { id: 1, name: "Sandra & Tom Reed", address: "4821 W Mariposa St", status: "lead",       date: "Feb 18, 2026", value: null },
   { id: 2, name: "Dena Kaufman",       address: "9102 N 43rd Ave",    status: "inspection", date: "Feb 14, 2026", value: null },
-  { id: 3, name: "Roberto Vega",       address: "317 E Campbell Ave", status: "sold",      date: "Jan 29, 2026", value: 350 },
-  { id: 4, name: "Priya Nair",         address: "7756 S Rural Rd",    status: "sold",      date: "Jan 12, 2026", value: 350 },
-  { id: 5, name: "Kevin & Lisa Marsh", address: "2209 E Oak St",      status: "sold",      date: "Dec 4, 2025",  value: 350 },
-  { id: 6, name: "Angela Torres",      address: "511 W Glendale Ave", status: "closed",    date: "Nov 20, 2025", value: null },
+  { id: 3, name: "Roberto Vega",       address: "317 E Campbell Ave", status: "sold",       date: "Jan 29, 2026", value: 700 },
+  { id: 4, name: "Priya Nair",         address: "7756 S Rural Rd",    status: "sold",       date: "Jan 12, 2026", value: 600 },
+  { id: 5, name: "Kevin & Lisa Marsh", address: "2209 E Oak St",      status: "sold",       date: "Dec 4, 2025",  value: 500 },
+  { id: 6, name: "Angela Torres",      address: "511 W Glendale Ave", status: "closed",     date: "Nov 20, 2025", value: null },
 ];
 
 const HISTORY = [
-  { id: 1, date: "Jan 29, 2026", desc: "Referral Bonus — Roberto Vega",  amount: +350 },
-  { id: 2, date: "Jan 12, 2026", desc: "Referral Bonus — Priya Nair",    amount: +350 },
-  { id: 3, date: "Dec 4, 2025",  desc: "Referral Bonus — Kevin & Lisa Marsh", amount: +350 },
-  { id: 4, date: "Oct 15, 2025", desc: "Cash Out — Zelle",               amount: -500 },
-  { id: 5, date: "Sep 3, 2025",  desc: "Referral Bonus — Early Customer",amount: +250 },
+  { id: 1, date: "Jan 29, 2026", desc: "Referral Bonus — Roberto Vega",       amount: +700 },
+  { id: 2, date: "Jan 12, 2026", desc: "Referral Bonus — Priya Nair",         amount: +600 },
+  { id: 3, date: "Dec 4, 2025",  desc: "Referral Bonus — Kevin & Lisa Marsh", amount: +500 },
+  { id: 4, date: "Oct 15, 2025", desc: "Cash Out — Zelle",                    amount: -500 },
 ];
 
-const SOLD_COUNT = PIPELINE.filter(p => p.status === "sold").length; // 3 → Pro tier
-const BALANCE = 1050;
-
-function getTier(soldCount) {
-  return TIERS.find(t => soldCount >= t.min && soldCount <= t.max) || TIERS[0];
-}
+const SOLD_COUNT = PIPELINE.filter(p => p.status === "sold").length; // 3 sold this year
+const BALANCE = 1300; // $700 + $600 + $500 - $500 cashout
 
 const STATUS_CONFIG = {
-  lead:       { label: "Lead Submitted",   color: "#6b7280", dot: "#6b7280" },
-  inspection: { label: "Inspection Set",   color: "#3b82f6", dot: "#3b82f6" },
-  sold:       { label: "Sold ✓",           color: "#22c55e", dot: "#22c55e" },
-  closed:     { label: "Not Sold",         color: "#ef4444", dot: "#ef4444" },
+  lead:       { label: "Lead Submitted", color: "#6b7280", dot: "#6b7280" },
+  inspection: { label: "Inspection Completed", color: "#3b82f6", dot: "#3b82f6" },
+  sold:       { label: "Sold ✓",         color: "#22c55e", dot: "#22c55e" },
+  closed:     { label: "Not Sold",       color: "#ef4444", dot: "#ef4444" },
 };
 
 // ─── Shared Components ────────────────────────────────────────────────────────
@@ -123,7 +135,6 @@ function LoginScreen({ onLogin }) {
         justifyContent: "center", padding: "0 32px",
         background: "radial-gradient(ellipse at 60% 10%, #2a1500 0%, #0a0a0a 60%)",
       }}>
-        {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 48 }}>
           <div style={{
             width: 80, height: 80, borderRadius: 22, background: "#f5a623",
@@ -138,7 +149,6 @@ function LoginScreen({ onLogin }) {
           <p style={{ margin: "6px 0 0", color: "#888", fontSize: 14 }}>Your referral rewards, all in one place.</p>
         </div>
 
-        {/* Form */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <input value={email} onChange={e => setEmail(e.target.value)}
             placeholder="Email address"
@@ -180,15 +190,13 @@ function LoginScreen({ onLogin }) {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function Dashboard({ setTab }) {
-  const tier = getTier(SOLD_COUNT);
-  const nextTier = TIERS[TIERS.indexOf(tier) + 1];
-  const progress = nextTier
-    ? ((SOLD_COUNT - tier.min) / (nextTier.min - tier.min)) * 100
-    : 100;
+  const nextPayout = getNextPayout(SOLD_COUNT);
+  const progressPct = Math.min((SOLD_COUNT / 7) * 100, 100);
 
   return (
     <Screen>
-      <div style={{ background: `radial-gradient(ellipse at 70% 0%, ${tier.bg} 0%, #0a0a0a 55%)` }}>
+      <div style={{ background: "radial-gradient(ellipse at 70% 0%, #2a1500 0%, #0a0a0a 55%)" }}>
+
         {/* Header */}
         <div style={{ padding: "52px 24px 0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -200,7 +208,7 @@ function Dashboard({ setTab }) {
             </div>
             <div style={{
               width: 42, height: 42, borderRadius: "50%",
-              background: tier.color, color: "#000",
+              background: "#f5a623", color: "#000",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 13, fontWeight: 800, fontFamily: "'DM Mono', monospace",
             }}>{MOCK_USER.avatar}</div>
@@ -210,37 +218,30 @@ function Dashboard({ setTab }) {
         {/* Balance Card */}
         <div style={{ padding: "20px 24px 0" }}>
           <div style={{
-            background: `linear-gradient(135deg, #1a1200 0%, #2d1f00 100%)`,
-            border: `1px solid ${tier.color}40`,
+            background: "linear-gradient(135deg, #1a1200 0%, #2d1f00 100%)",
+            border: "1px solid #f5a62340",
             borderRadius: 20, padding: "28px 24px",
             position: "relative", overflow: "hidden",
-            boxShadow: `0 0 60px ${tier.color}15`,
+            boxShadow: "0 0 60px #f5a62315",
           }}>
-            {/* decorative */}
-            <div style={{
-              position: "absolute", top: -30, right: -30, width: 120, height: 120,
-              borderRadius: "50%", background: `${tier.color}12`,
-            }}/>
-            <div style={{
-              position: "absolute", bottom: -20, left: 80, width: 80, height: 80,
-              borderRadius: "50%", background: `${tier.color}08`,
-            }}/>
+            <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, borderRadius: "50%", background: "#f5a62312" }}/>
+            <div style={{ position: "absolute", bottom: -20, left: 80, width: 80, height: 80, borderRadius: "50%", background: "#f5a62308" }}/>
 
             <p style={{ margin: 0, fontSize: 11, color: "#888", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>
               Available Balance
             </p>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 6, margin: "8px 0 4px" }}>
-              <span style={{ fontSize: 11, color: tier.color, fontFamily: "'DM Mono', monospace", marginBottom: 8 }}>$</span>
+              <span style={{ fontSize: 11, color: "#f5a623", fontFamily: "'DM Mono', monospace", marginBottom: 8 }}>$</span>
               <span style={{ fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: "'Sora', sans-serif", color: "#fff", lineHeight: 1 }}>
                 {BALANCE.toLocaleString()}
               </span>
             </div>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "#666" }}>
-              {SOLD_COUNT} sold referrals · Earning ${tier.bonus}/deal
+              {SOLD_COUNT} sold referral{SOLD_COUNT !== 1 ? "s" : ""} this year · Next payout: <span style={{ color: "#f5a623", fontWeight: 700 }}>${nextPayout.total}</span>
             </p>
 
             <button onClick={() => setTab("cashout")} style={{
-              marginTop: 20, background: tier.color, border: "none", borderRadius: 10,
+              marginTop: 20, background: "#f5a623", border: "none", borderRadius: 10,
               padding: "12px 24px", color: "#000", fontSize: 14, fontWeight: 800,
               fontFamily: "'Sora', sans-serif", cursor: "pointer",
               letterSpacing: "-0.02em",
@@ -250,7 +251,7 @@ function Dashboard({ setTab }) {
           </div>
         </div>
 
-        {/* Tier Card */}
+        {/* Boost Progress Card */}
         <div style={{ padding: "16px 24px 0" }}>
           <div style={{
             background: "#111", border: "1px solid #1e1e1e",
@@ -258,56 +259,77 @@ function Dashboard({ setTab }) {
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <div>
-                <p style={{ margin: 0, fontSize: 11, color: "#666", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>Current Tier</p>
-                <p style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, fontFamily: "'Sora', sans-serif", color: tier.color }}>{tier.name}</p>
+                <p style={{ margin: 0, fontSize: 11, color: "#666", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>Your Boost Progress</p>
+                <p style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, fontFamily: "'Sora', sans-serif", color: "#f5a623" }}>
+                  {SOLD_COUNT} of 7 referrals
+                </p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <p style={{ margin: 0, fontSize: 11, color: "#666", fontFamily: "'DM Mono', monospace", textTransform: "uppercase" }}>Bonus per Deal</p>
-                <p style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, fontFamily: "'DM Mono', monospace", color: "#fff" }}>${tier.bonus}</p>
+                <p style={{ margin: 0, fontSize: 11, color: "#666", fontFamily: "'DM Mono', monospace", textTransform: "uppercase" }}>Next Payout</p>
+                <p style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, fontFamily: "'DM Mono', monospace", color: "#fff" }}>${nextPayout.total}</p>
               </div>
             </div>
 
-            {nextTier && (
-              <>
-                <div style={{ background: "#1a1a1a", borderRadius: 999, height: 6, overflow: "hidden" }}>
-                  <div style={{
-                    width: `${progress}%`, height: "100%",
-                    background: `linear-gradient(90deg, ${tier.color}, ${nextTier.color})`,
-                    borderRadius: 999, transition: "width 1s ease",
-                  }}/>
-                </div>
-                <p style={{ margin: "8px 0 0", fontSize: 12, color: "#666" }}>
-                  {nextTier.min - SOLD_COUNT} more sold deal{nextTier.min - SOLD_COUNT !== 1 ? "s" : ""} to reach{" "}
-                  <span style={{ color: nextTier.color, fontWeight: 700 }}>{nextTier.name}</span>
-                  {" "}(${nextTier.bonus}/deal)
-                </p>
-              </>
-            )}
+            <div style={{ background: "#1a1a1a", borderRadius: 999, height: 6, overflow: "hidden" }}>
+              <div style={{
+                width: `${progressPct}%`, height: "100%",
+                background: "linear-gradient(90deg, #f5a623, #ffcc66)",
+                borderRadius: 999, transition: "width 1s ease",
+              }}/>
+            </div>
+            <p style={{ margin: "8px 0 0", fontSize: 12, color: "#666" }}>
+              {SOLD_COUNT < 7
+                ? `${7 - SOLD_COUNT} more sold deal${7 - SOLD_COUNT !== 1 ? "s" : ""} to reach max boost of `
+                : "You've reached "}
+              <span style={{ color: "#f5a623", fontWeight: 700 }}>
+                {SOLD_COUNT < 7 ? "$900/deal" : "max boost — $900/deal! 🎉"}
+              </span>
+            </p>
           </div>
         </div>
 
-        {/* Tier Breakdown */}
+        {/* Boost Reward Table */}
         <div style={{ padding: "16px 24px 0" }}>
           <p style={{ margin: "0 0 10px", fontSize: 11, color: "#555", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            Tier Rewards
+            Reward Schedule
           </p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {TIERS.map(t => (
-              <div key={t.name} style={{
-                background: t.name === tier.name ? `${t.bg}` : "#0f0f0f",
-                border: `1px solid ${t.name === tier.name ? t.color + "60" : "#1a1a1a"}`,
-                borderRadius: 12, padding: "14px 16px",
-                opacity: TIERS.indexOf(t) < TIERS.indexOf(tier) ? 0.5 : 1,
-              }}>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: t.color, fontFamily: "'Sora', sans-serif" }}>{t.name}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#666" }}>
-                  {t.max === Infinity ? `${t.min}+` : `${t.min}–${t.max}`} sold deals
-                </p>
-                <p style={{ margin: "6px 0 0", fontSize: 20, fontWeight: 900, color: "#fff", fontFamily: "'DM Mono', monospace" }}>${t.bonus}</p>
-                <p style={{ margin: 0, fontSize: 10, color: "#555" }}>per referral</p>
-              </div>
-            ))}
+          <div style={{ background: "#0f0f0f", border: "1px solid #1a1a1a", borderRadius: 16, overflow: "hidden" }}>
+            {/* Table header */}
+            <div style={{ display: "flex", padding: "10px 16px", borderBottom: "1px solid #1a1a1a", background: "#151515" }}>
+              <span style={{ flex: 1.2, fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em" }}>Referral</span>
+              <span style={{ flex: 1, fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em", textAlign: "center" }}>Base</span>
+              <span style={{ flex: 1, fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em", textAlign: "center" }}>Boost</span>
+              <span style={{ flex: 1, fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em", textAlign: "right" }}>Total</span>
+            </div>
+            {BOOST_TABLE.map((row, i) => {
+              const isCurrent = (i + 1) === SOLD_COUNT;
+              const isNext = (i + 1) === SOLD_COUNT + 1 || (SOLD_COUNT >= 7 && i === 6);
+              const isPast = (i + 1) < SOLD_COUNT;
+              return (
+                <div key={i} style={{
+                  display: "flex", alignItems: "center",
+                  padding: "12px 16px",
+                  borderBottom: i < BOOST_TABLE.length - 1 ? "1px solid #151515" : "none",
+                  background: isNext ? "#1a1200" : "transparent",
+                  opacity: isPast ? 0.45 : 1,
+                }}>
+                  <span style={{ flex: 1.2, fontSize: 13, fontWeight: 700, color: isCurrent ? "#22c55e" : isNext ? "#f5a623" : "#888", fontFamily: "'DM Mono', monospace" }}>
+                    {row.label}
+                    {isCurrent && <span style={{ fontSize: 10, marginLeft: 4, color: "#22c55e" }}>✓</span>}
+                    {isNext && <span style={{ fontSize: 10, marginLeft: 4, color: "#f5a623" }}>← next</span>}
+                  </span>
+                  <span style={{ flex: 1, fontSize: 13, color: "#888", fontFamily: "'DM Mono', monospace", textAlign: "center" }}>${row.base}</span>
+                  <span style={{ flex: 1, fontSize: 13, color: row.boost > 0 ? "#f5a623" : "#444", fontFamily: "'DM Mono', monospace", textAlign: "center", fontWeight: row.boost > 0 ? 700 : 400 }}>
+                    {row.boost > 0 ? `+$${row.boost}` : "—"}
+                  </span>
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: 900, color: isNext ? "#fff" : "#aaa", fontFamily: "'DM Mono', monospace", textAlign: "right" }}>${row.total}</span>
+                </div>
+              );
+            })}
           </div>
+          <p style={{ margin: "8px 0 0", fontSize: 11, color: "#444", fontFamily: "'DM Mono', monospace", textAlign: "center" }}>
+            * Qualifying roofs must be 28 squares or more. Resets Jan 1 each year.
+          </p>
         </div>
 
         {/* Quick Pipeline Preview */}
@@ -339,6 +361,7 @@ function Dashboard({ setTab }) {
             })}
           </div>
         </div>
+
       </div>
     </Screen>
   );
@@ -348,6 +371,7 @@ function Dashboard({ setTab }) {
 function Pipeline() {
   const [filter, setFilter] = useState("all");
   const filters = ["all", "lead", "inspection", "sold", "closed"];
+  const filterLabels = { all: "All", lead: "Lead Submitted", inspection: "Inspection Completed", sold: "Sold", closed: "Not Sold" };
   const filtered = filter === "all" ? PIPELINE : PIPELINE.filter(p => p.status === filter);
 
   return (
@@ -357,9 +381,9 @@ function Pipeline() {
       {/* Stats row */}
       <div style={{ padding: "0 24px 16px", display: "flex", gap: 10 }}>
         {[
-          { label: "Sent", val: PIPELINE.length, color: "#888" },
+          { label: "Sent",   val: PIPELINE.length, color: "#888" },
           { label: "Active", val: PIPELINE.filter(p => p.status === "lead" || p.status === "inspection").length, color: "#3b82f6" },
-          { label: "Sold", val: SOLD_COUNT, color: "#22c55e" },
+          { label: "Sold",   val: SOLD_COUNT, color: "#22c55e" },
         ].map(s => (
           <div key={s.label} style={{
             flex: 1, background: "#111", border: "1px solid #1e1e1e",
@@ -382,7 +406,7 @@ function Pipeline() {
             fontSize: 12, fontWeight: 700, cursor: "pointer",
             fontFamily: "'DM Mono', monospace", textTransform: "capitalize",
             whiteSpace: "nowrap",
-          }}>{f}</button>
+          }}>{filterLabels[f]}</button>
         ))}
       </div>
 
@@ -427,14 +451,13 @@ function Pipeline() {
 function CashOut() {
   const [method, setMethod] = useState(null);
   const [amount, setAmount] = useState("");
-  const [step, setStep] = useState(1); // 1=select, 2=amount, 3=confirm, 4=done
+  const [step, setStep] = useState(1);
   const [detail, setDetail] = useState("");
-  const tier = getTier(SOLD_COUNT);
 
   const methods = [
-    { id: "zelle",  icon: "💜", label: "Zelle",        sub: "Instant transfer" },
-    { id: "venmo",  icon: "🔵", label: "Venmo",        sub: "Instant transfer" },
-    { id: "paypal", icon: "🅿️", label: "PayPal",       sub: "1–3 business days" },
+    { id: "zelle",  icon: "💜", label: "Zelle",         sub: "Instant transfer" },
+    { id: "venmo",  icon: "🔵", label: "Venmo",         sub: "Instant transfer" },
+    { id: "paypal", icon: "🅿️", label: "PayPal",        sub: "1–3 business days" },
     { id: "check",  icon: "📬", label: "Check by Mail", sub: "5–7 business days" },
   ];
 
@@ -471,8 +494,8 @@ function CashOut() {
       {/* Balance display */}
       <div style={{ padding: "0 24px 20px" }}>
         <div style={{
-          background: `linear-gradient(135deg, #1a1200, #2d1f00)`,
-          border: `1px solid ${tier.color}40`, borderRadius: 16,
+          background: "linear-gradient(135deg, #1a1200, #2d1f00)",
+          border: "1px solid #f5a62340", borderRadius: 16,
           padding: "20px 20px", display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div>
@@ -482,8 +505,8 @@ function CashOut() {
             </p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={{ margin: 0, fontSize: 11, color: "#888", fontFamily: "'DM Mono', monospace", textTransform: "uppercase" }}>Tier</p>
-            <p style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 800, color: tier.color, fontFamily: "'Sora', sans-serif" }}>{tier.name}</p>
+            <p style={{ margin: 0, fontSize: 11, color: "#888", fontFamily: "'DM Mono', monospace", textTransform: "uppercase" }}>Sold This Year</p>
+            <p style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 800, color: "#f5a623", fontFamily: "'Sora', sans-serif" }}>{SOLD_COUNT} deals</p>
           </div>
         </div>
       </div>
@@ -539,7 +562,7 @@ function CashOut() {
               />
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              {[250, 500, BALANCE].map(v => (
+              {[500, 1000, BALANCE].map(v => (
                 <button key={v} onClick={() => setAmount(String(v))} style={{
                   flex: 1, background: "#1a1a1a", border: "1px solid #2a2a2a",
                   borderRadius: 8, padding: "8px", color: "#888", fontSize: 12,
@@ -549,11 +572,10 @@ function CashOut() {
             </div>
           </div>
 
-          {/* Account detail */}
           <div style={{ marginTop: 12 }}>
             <input
               value={detail} onChange={e => setDetail(e.target.value)}
-              placeholder={method === "check" ? "Mailing address" : `Your ${methods.find(m=>m.id===method)?.label} handle / email`}
+              placeholder={method === "check" ? "Mailing address" : `Your ${methods.find(m => m.id === method)?.label} handle / email`}
               style={{
                 width: "100%", background: "#0f0f0f", border: "1px solid #1e1e1e",
                 borderRadius: 12, padding: "14px 16px", color: "#fff", fontSize: 14,
@@ -586,9 +608,9 @@ function CashOut() {
               Confirm your payout
             </p>
             {[
-              ["Amount", `$${parseFloat(amount).toLocaleString()}`],
-              ["Method", methods.find(m => m.id === method)?.label],
-              ["Sent to", detail || "—"],
+              ["Amount",    `$${parseFloat(amount).toLocaleString()}`],
+              ["Method",    methods.find(m => m.id === method)?.label],
+              ["Sent to",   detail || "—"],
               ["Remaining", `$${(BALANCE - parseFloat(amount)).toLocaleString()}`],
             ].map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
@@ -621,16 +643,18 @@ function CashOut() {
 
 // ─── History ──────────────────────────────────────────────────────────────────
 function History() {
+  const totalEarned = HISTORY.filter(h => h.amount > 0).reduce((sum, h) => sum + h.amount, 0);
+  const totalPaidOut = Math.abs(HISTORY.filter(h => h.amount < 0).reduce((sum, h) => sum + h.amount, 0));
+
   return (
     <Screen>
       <PageHeader title="History" subtitle="Earnings & payouts" />
       <div style={{ padding: "0 24px" }}>
 
-        {/* Summary row */}
         <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
           {[
-            { label: "Total Earned", val: "$1,550", color: "#22c55e" },
-            { label: "Total Paid Out", val: "$500",  color: "#f5a623" },
+            { label: "Total Earned",   val: `$${totalEarned.toLocaleString()}`,   color: "#22c55e" },
+            { label: "Total Paid Out", val: `$${totalPaidOut.toLocaleString()}`,  color: "#f5a623" },
           ].map(s => (
             <div key={s.label} style={{
               flex: 1, background: "#0f0f0f", border: "1px solid #1a1a1a",
@@ -667,7 +691,7 @@ function History() {
                 color: item.amount > 0 ? "#22c55e" : "#f5a623",
                 fontFamily: "'DM Mono', monospace",
               }}>
-                {item.amount > 0 ? "+" : ""}${Math.abs(item.amount)}
+                {item.amount > 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString()}
               </span>
             </div>
           ))}
@@ -679,38 +703,37 @@ function History() {
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 function Profile({ onLogout }) {
-  const tier = getTier(SOLD_COUNT);
+  const nextPayout = getNextPayout(SOLD_COUNT);
   return (
     <Screen>
       <PageHeader title="Profile" />
       <div style={{ padding: "0 24px" }}>
 
-        {/* Avatar */}
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24,
           background: "#0f0f0f", border: "1px solid #1a1a1a", borderRadius: 16, padding: "20px" }}>
           <div style={{
             width: 60, height: 60, borderRadius: "50%",
-            background: `linear-gradient(135deg, ${tier.color}, ${tier.color}80)`,
+            background: "linear-gradient(135deg, #f5a623, #f5a62380)",
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 20, fontWeight: 800, color: "#000", fontFamily: "'DM Mono', monospace",
           }}>{MOCK_USER.avatar}</div>
           <div>
             <p style={{ margin: 0, fontSize: 18, fontWeight: 800, fontFamily: "'Sora', sans-serif" }}>{MOCK_USER.name}</p>
             <p style={{ margin: "2px 0 0", fontSize: 13, color: "#666" }}>{MOCK_USER.email}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 11, color: tier.color, fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
-              ● {tier.name} Member
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "#f5a623", fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
+              ● {SOLD_COUNT} sold referral{SOLD_COUNT !== 1 ? "s" : ""} this year
             </p>
           </div>
         </div>
 
-        {/* Info rows */}
         <div style={{ background: "#0f0f0f", border: "1px solid #1a1a1a", borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
           {[
-            ["Phone", MOCK_USER.phone],
-            ["Member Since", MOCK_USER.memberSince],
-            ["Referrals Sent", String(PIPELINE.length)],
-            ["Deals Sold", String(SOLD_COUNT)],
-            ["Balance", `$${BALANCE.toLocaleString()}`],
+            ["Phone",           MOCK_USER.phone],
+            ["Member Since",    MOCK_USER.memberSince],
+            ["Referrals Sent",  String(PIPELINE.length)],
+            ["Deals Sold",      String(SOLD_COUNT)],
+            ["Next Payout",     `$${nextPayout.total} (boost: +$${nextPayout.boost})`],
+            ["Balance",         `$${BALANCE.toLocaleString()}`],
           ].map(([k, v], i, arr) => (
             <div key={k} style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -744,7 +767,6 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [tab, setTab] = useState("dashboard");
 
-  // Load Google Fonts
   useEffect(() => {
     const link = document.createElement("link");
     link.rel = "stylesheet";
