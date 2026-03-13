@@ -94,11 +94,24 @@ function LoginScreen({ onLogin }) {
     if (!email || !pass) return;
     setLoading(true);
     setError("");
-    // For now we accept any login and use the email to look up referrals
-    setTimeout(() => {
-      setLoading(false);
-      onLogin(email);
-    }, 1200);
+    fetch(`${BACKEND_URL}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, pin: pass })
+    })
+      .then(res => res.json())
+      .then(data => {
+        setLoading(false);
+        if (data.error) {
+          setError(data.error);
+        } else {
+          onLogin(data.fullName);
+        }
+      })
+      .catch(() => {
+        setLoading(false);
+        setError("Something went wrong. Please try again.");
+      });
   }
 
   return (
