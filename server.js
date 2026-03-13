@@ -31,6 +31,16 @@ async function initDB() {
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      full_name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      pin TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     accessToken = result.rows[0].access_token;
@@ -172,6 +182,26 @@ app.get('/api/pipeline', async (req, res) => {
     res.json(pipeline);
   } catch (err) {
     res.status(500).send('API call failed: ' + (err.response ? JSON.stringify(err.response.data) : err.message));
+  }
+});
+
+app.post('/api/login', async (req, res) => {
+  const { email, pin } = req.body;
+  try {
+    const result = await pool.query(
+      'SELECT * FROM users WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'No account found with that email' });
+    }
+    const user = result.rows[0];
+    if (user.pin !== pin) {
+      return res.status(401).json({ error: 'Incorrect PIN' });
+    }
+    res.json({ success: true, fullName: user.full_name });
+  } catch (err) {
+    res.status(500).json({ error: 'Login failed: ' + err.message });
   }
 });
 
