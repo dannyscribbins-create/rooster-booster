@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-// ─── Boost Table (from Rooster Booster concept doc) ───────────────────────────
+// ─── Boost Table ──────────────────────────────────────────────────────────────
 const BOOST_TABLE = [
   { referral: 1,  label: "1st",          base: 500, boost: 0,   total: 500 },
   { referral: 2,  label: "2nd",          base: 500, boost: 100, total: 600 },
@@ -11,52 +11,19 @@ const BOOST_TABLE = [
   { referral: 7,  label: "7th & beyond", base: 500, boost: 400, total: 900 },
 ];
 
-// Returns the payout for a given sold count (1-indexed)
-function getPayoutForReferral(soldCountThisYear) {
-  if (soldCountThisYear <= 0) return BOOST_TABLE[0];
-  if (soldCountThisYear >= 7) return BOOST_TABLE[6];
-  return BOOST_TABLE[soldCountThisYear - 1];
-}
-
-// Returns what the NEXT payout will be
-function getNextPayout(soldCountThisYear) {
-  const nextIndex = Math.min(soldCountThisYear, 6);
+function getNextPayout(soldCount) {
+  const nextIndex = Math.min(soldCount, 6);
   return BOOST_TABLE[nextIndex];
 }
 
-// ─── Mock Data ───────────────────────────────────────────────────────────────
-const MOCK_USER = {
-  name: "Marcus Johnson",
-  email: "marcus@example.com",
-  phone: "(602) 555-0192",
-  memberSince: "March 2023",
-  avatar: "MJ",
-};
-
-const PIPELINE = [
-  { id: 1, name: "Sandra & Tom Reed", address: "4821 W Mariposa St", status: "lead",       date: "Feb 18, 2026", value: null },
-  { id: 2, name: "Dena Kaufman",       address: "9102 N 43rd Ave",    status: "inspection", date: "Feb 14, 2026", value: null },
-  { id: 3, name: "Roberto Vega",       address: "317 E Campbell Ave", status: "sold",       date: "Jan 29, 2026", value: 700 },
-  { id: 4, name: "Priya Nair",         address: "7756 S Rural Rd",    status: "sold",       date: "Jan 12, 2026", value: 600 },
-  { id: 5, name: "Kevin & Lisa Marsh", address: "2209 E Oak St",      status: "sold",       date: "Dec 4, 2025",  value: 500 },
-  { id: 6, name: "Angela Torres",      address: "511 W Glendale Ave", status: "closed",     date: "Nov 20, 2025", value: null },
-];
-
-const HISTORY = [
-  { id: 1, date: "Jan 29, 2026", desc: "Referral Bonus — Roberto Vega",       amount: +700 },
-  { id: 2, date: "Jan 12, 2026", desc: "Referral Bonus — Priya Nair",         amount: +600 },
-  { id: 3, date: "Dec 4, 2025",  desc: "Referral Bonus — Kevin & Lisa Marsh", amount: +500 },
-  { id: 4, date: "Oct 15, 2025", desc: "Cash Out — Zelle",                    amount: -500 },
-];
-
-const SOLD_COUNT = PIPELINE.filter(p => p.status === "sold").length; // 3 sold this year
-const BALANCE = 1300; // $700 + $600 + $500 - $500 cashout
+// ─── Config ───────────────────────────────────────────────────────────────────
+const BACKEND_URL = "https://rooster-booster-production.up.railway.app";
 
 const STATUS_CONFIG = {
-  lead:       { label: "Lead Submitted", color: "#6b7280", dot: "#6b7280" },
+  lead:       { label: "Lead Submitted",       color: "#6b7280", dot: "#6b7280" },
   inspection: { label: "Inspection Completed", color: "#3b82f6", dot: "#3b82f6" },
-  sold:       { label: "Sold ✓",         color: "#22c55e", dot: "#22c55e" },
-  closed:     { label: "Not Sold",       color: "#ef4444", dot: "#ef4444" },
+  sold:       { label: "Sold ✓",               color: "#22c55e", dot: "#22c55e" },
+  closed:     { label: "Not Sold",             color: "#ef4444", dot: "#ef4444" },
 };
 
 // ─── Shared Components ────────────────────────────────────────────────────────
@@ -121,11 +88,17 @@ function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   function handleLogin() {
     if (!email || !pass) return;
     setLoading(true);
-    setTimeout(() => { setLoading(false); onLogin(); }, 1200);
+    setError("");
+    // For now we accept any login and use the email to look up referrals
+    setTimeout(() => {
+      setLoading(false);
+      onLogin(email);
+    }, 1200);
   }
 
   return (
@@ -151,7 +124,7 @@ function LoginScreen({ onLogin }) {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <input value={email} onChange={e => setEmail(e.target.value)}
-            placeholder="Email address"
+            placeholder="Your full name (e.g. Daniel Scribbins)"
             style={{
               background: "#151515", border: "1px solid #2a2a2a", borderRadius: 12,
               padding: "16px 18px", color: "#fff", fontSize: 15,
@@ -166,6 +139,7 @@ function LoginScreen({ onLogin }) {
               fontFamily: "'DM Sans', sans-serif", outline: "none",
             }}
           />
+          {error && <p style={{ color: "#ef4444", fontSize: 13, margin: 0 }}>{error}</p>}
           <button onClick={handleLogin} style={{
             background: loading ? "#c47800" : "#f5a623",
             border: "none", borderRadius: 12, padding: "16px",
@@ -189,9 +163,13 @@ function LoginScreen({ onLogin }) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function Dashboard({ setTab }) {
-  const nextPayout = getNextPayout(SOLD_COUNT);
-  const progressPct = Math.min((SOLD_COUNT / 7) * 100, 100);
+function Dashboard({ setTab, pipeline, loading, userName }) {
+  const soldCount = pipeline.filter(p => p.status === "sold").length;
+  const balance = pipeline
+    .filter(p => p.payout)
+    .reduce((sum, p) => sum + p.payout, 0);
+  const nextPayout = getNextPayout(soldCount);
+  const progressPct = Math.min((soldCount / 7) * 100, 100);
 
   return (
     <Screen>
@@ -201,7 +179,7 @@ function Dashboard({ setTab }) {
         <div style={{ padding: "52px 24px 0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <p style={{ margin: 0, fontSize: 13, color: "#888" }}>Hey, {MOCK_USER.name.split(" ")[0]} 👋</p>
+              <p style={{ margin: 0, fontSize: 13, color: "#888" }}>Hey, {userName.split(" ")[0]} 👋</p>
               <h1 style={{ margin: "2px 0 0", fontSize: 24, fontWeight: 900, fontFamily: "'Sora', sans-serif", letterSpacing: "-0.03em" }}>
                 Your Dashboard
               </h1>
@@ -211,7 +189,7 @@ function Dashboard({ setTab }) {
               background: "#f5a623", color: "#000",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 13, fontWeight: 800, fontFamily: "'DM Mono', monospace",
-            }}>{MOCK_USER.avatar}</div>
+            }}>{userName.split(" ").map(n => n[0]).join("")}</div>
           </div>
         </div>
 
@@ -230,15 +208,21 @@ function Dashboard({ setTab }) {
             <p style={{ margin: 0, fontSize: 11, color: "#888", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>
               Available Balance
             </p>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, margin: "8px 0 4px" }}>
-              <span style={{ fontSize: 11, color: "#f5a623", fontFamily: "'DM Mono', monospace", marginBottom: 8 }}>$</span>
-              <span style={{ fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: "'Sora', sans-serif", color: "#fff", lineHeight: 1 }}>
-                {BALANCE.toLocaleString()}
-              </span>
-            </div>
-            <p style={{ margin: "4px 0 0", fontSize: 12, color: "#666" }}>
-              {SOLD_COUNT} sold referral{SOLD_COUNT !== 1 ? "s" : ""} this year · Next payout: <span style={{ color: "#f5a623", fontWeight: 700 }}>${nextPayout.total}</span>
-            </p>
+            {loading ? (
+              <p style={{ fontSize: 24, color: "#555", margin: "8px 0 4px" }}>Loading...</p>
+            ) : (
+              <>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 6, margin: "8px 0 4px" }}>
+                  <span style={{ fontSize: 11, color: "#f5a623", fontFamily: "'DM Mono', monospace", marginBottom: 8 }}>$</span>
+                  <span style={{ fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em", fontFamily: "'Sora', sans-serif", color: "#fff", lineHeight: 1 }}>
+                    {balance.toLocaleString()}
+                  </span>
+                </div>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#666" }}>
+                  {soldCount} sold referral{soldCount !== 1 ? "s" : ""} this year · Next payout: <span style={{ color: "#f5a623", fontWeight: 700 }}>${nextPayout.total}</span>
+                </p>
+              </>
+            )}
 
             <button onClick={() => setTab("cashout")} style={{
               marginTop: 20, background: "#f5a623", border: "none", borderRadius: 10,
@@ -261,7 +245,7 @@ function Dashboard({ setTab }) {
               <div>
                 <p style={{ margin: 0, fontSize: 11, color: "#666", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>Your Boost Progress</p>
                 <p style={{ margin: "2px 0 0", fontSize: 18, fontWeight: 800, fontFamily: "'Sora', sans-serif", color: "#f5a623" }}>
-                  {SOLD_COUNT} of 7 referrals
+                  {soldCount} of 7 referrals
                 </p>
               </div>
               <div style={{ textAlign: "right" }}>
@@ -278,11 +262,11 @@ function Dashboard({ setTab }) {
               }}/>
             </div>
             <p style={{ margin: "8px 0 0", fontSize: 12, color: "#666" }}>
-              {SOLD_COUNT < 7
-                ? `${7 - SOLD_COUNT} more sold deal${7 - SOLD_COUNT !== 1 ? "s" : ""} to reach max boost of `
+              {soldCount < 7
+                ? `${7 - soldCount} more sold deal${7 - soldCount !== 1 ? "s" : ""} to reach max boost of `
                 : "You've reached "}
               <span style={{ color: "#f5a623", fontWeight: 700 }}>
-                {SOLD_COUNT < 7 ? "$900/deal" : "max boost — $900/deal! 🎉"}
+                {soldCount < 7 ? "$900/deal" : "max boost — $900/deal! 🎉"}
               </span>
             </p>
           </div>
@@ -294,7 +278,6 @@ function Dashboard({ setTab }) {
             Reward Schedule
           </p>
           <div style={{ background: "#0f0f0f", border: "1px solid #1a1a1a", borderRadius: 16, overflow: "hidden" }}>
-            {/* Table header */}
             <div style={{ display: "flex", padding: "10px 16px", borderBottom: "1px solid #1a1a1a", background: "#151515" }}>
               <span style={{ flex: 1.2, fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em" }}>Referral</span>
               <span style={{ flex: 1, fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em", textAlign: "center" }}>Base</span>
@@ -302,9 +285,9 @@ function Dashboard({ setTab }) {
               <span style={{ flex: 1, fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em", textAlign: "right" }}>Total</span>
             </div>
             {BOOST_TABLE.map((row, i) => {
-              const isCurrent = (i + 1) === SOLD_COUNT;
-              const isNext = (i + 1) === SOLD_COUNT + 1 || (SOLD_COUNT >= 7 && i === 6);
-              const isPast = (i + 1) < SOLD_COUNT;
+              const isCurrent = (i + 1) === soldCount;
+              const isNext = (i + 1) === soldCount + 1 || (soldCount >= 7 && i === 6);
+              const isPast = (i + 1) < soldCount;
               return (
                 <div key={i} style={{
                   display: "flex", alignItems: "center",
@@ -332,34 +315,37 @@ function Dashboard({ setTab }) {
           </p>
         </div>
 
-        {/* Quick Pipeline Preview */}
+        {/* Recent Referrals */}
         <div style={{ padding: "16px 24px 0" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <p style={{ margin: 0, fontSize: 11, color: "#555", fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", textTransform: "uppercase" }}>Recent Referrals</p>
             <button onClick={() => setTab("pipeline")} style={{ background: "none", border: "none", color: "#f5a623", fontSize: 12, cursor: "pointer", fontFamily: "'DM Mono', monospace" }}>View all →</button>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {PIPELINE.slice(0, 3).map(ref => {
-              const s = STATUS_CONFIG[ref.status];
-              return (
-                <div key={ref.id} style={{
-                  background: "#0f0f0f", border: "1px solid #1a1a1a",
-                  borderRadius: 12, padding: "14px 16px",
-                  display: "flex", justifyContent: "space-between", alignItems: "center",
-                }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#e0e0e0" }}>{ref.name}</p>
-                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#555" }}>{ref.date}</p>
+          {loading ? (
+            <p style={{ color: "#555", fontSize: 13 }}>Loading referrals...</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {pipeline.slice(0, 3).map(ref => {
+                const s = STATUS_CONFIG[ref.status];
+                return (
+                  <div key={ref.id} style={{
+                    background: "#0f0f0f", border: "1px solid #1a1a1a",
+                    borderRadius: 12, padding: "14px 16px",
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                  }}>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#e0e0e0" }}>{ref.name}</p>
+                    </div>
+                    <span style={{
+                      fontSize: 11, padding: "4px 10px", borderRadius: 999,
+                      background: s.dot + "20", color: s.dot,
+                      fontFamily: "'DM Mono', monospace", fontWeight: 600,
+                    }}>{s.label}</span>
                   </div>
-                  <span style={{
-                    fontSize: 11, padding: "4px 10px", borderRadius: 999,
-                    background: s.dot + "20", color: s.dot,
-                    fontFamily: "'DM Mono', monospace", fontWeight: 600,
-                  }}>{s.label}</span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
       </div>
@@ -368,22 +354,21 @@ function Dashboard({ setTab }) {
 }
 
 // ─── Pipeline ─────────────────────────────────────────────────────────────────
-function Pipeline() {
+function Pipeline({ pipeline, loading }) {
   const [filter, setFilter] = useState("all");
   const filters = ["all", "lead", "inspection", "sold", "closed"];
   const filterLabels = { all: "All", lead: "Lead Submitted", inspection: "Inspection Completed", sold: "Sold", closed: "Not Sold" };
-  const filtered = filter === "all" ? PIPELINE : PIPELINE.filter(p => p.status === filter);
+  const filtered = filter === "all" ? pipeline : pipeline.filter(p => p.status === filter);
 
   return (
     <Screen>
-      <PageHeader title="My Pipeline" subtitle={`${PIPELINE.length} total referrals`} />
+      <PageHeader title="My Pipeline" subtitle={`${pipeline.length} total referrals`} />
 
-      {/* Stats row */}
       <div style={{ padding: "0 24px 16px", display: "flex", gap: 10 }}>
         {[
-          { label: "Sent",   val: PIPELINE.length, color: "#888" },
-          { label: "Active", val: PIPELINE.filter(p => p.status === "lead" || p.status === "inspection").length, color: "#3b82f6" },
-          { label: "Sold",   val: SOLD_COUNT, color: "#22c55e" },
+          { label: "Sent",   val: pipeline.length, color: "#888" },
+          { label: "Active", val: pipeline.filter(p => p.status === "lead" || p.status === "inspection").length, color: "#3b82f6" },
+          { label: "Sold",   val: pipeline.filter(p => p.status === "sold").length, color: "#22c55e" },
         ].map(s => (
           <div key={s.label} style={{
             flex: 1, background: "#111", border: "1px solid #1e1e1e",
@@ -395,7 +380,6 @@ function Pipeline() {
         ))}
       </div>
 
-      {/* Filter chips */}
       <div style={{ padding: "0 24px 16px", display: "flex", gap: 8, overflowX: "auto" }}>
         {filters.map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{
@@ -404,55 +388,58 @@ function Pipeline() {
             borderRadius: 999, padding: "7px 16px",
             color: filter === f ? "#000" : "#888",
             fontSize: 12, fontWeight: 700, cursor: "pointer",
-            fontFamily: "'DM Mono', monospace", textTransform: "capitalize",
+            fontFamily: "'DM Mono', monospace",
             whiteSpace: "nowrap",
           }}>{filterLabels[f]}</button>
         ))}
       </div>
 
-      {/* Pipeline list */}
-      <div style={{ padding: "0 24px", display: "flex", flexDirection: "column", gap: 12 }}>
-        {filtered.map(ref => {
-          const s = STATUS_CONFIG[ref.status];
-          return (
-            <div key={ref.id} style={{
-              background: "#0f0f0f", border: "1px solid #1a1a1a",
-              borderRadius: 16, padding: "18px 18px",
-              borderLeft: `3px solid ${s.dot}`,
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#e8e8e8" }}>{ref.name}</p>
-                  <p style={{ margin: "3px 0 0", fontSize: 12, color: "#555" }}>📍 {ref.address}</p>
-                  <p style={{ margin: "3px 0 0", fontSize: 12, color: "#444", fontFamily: "'DM Mono', monospace" }}>{ref.date}</p>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
-                  <span style={{
-                    fontSize: 11, padding: "5px 12px", borderRadius: 999,
-                    background: s.dot + "20", color: s.dot,
-                    fontFamily: "'DM Mono', monospace", fontWeight: 600,
-                  }}>{s.label}</span>
-                  {ref.value && (
-                    <span style={{ fontSize: 14, fontWeight: 900, color: "#22c55e", fontFamily: "'DM Mono', monospace" }}>
-                      +${ref.value}
-                    </span>
-                  )}
+      {loading ? (
+        <p style={{ color: "#555", fontSize: 13, padding: "0 24px" }}>Loading pipeline...</p>
+      ) : (
+        <div style={{ padding: "0 24px", display: "flex", flexDirection: "column", gap: 12 }}>
+          {filtered.map(ref => {
+            const s = STATUS_CONFIG[ref.status];
+            return (
+              <div key={ref.id} style={{
+                background: "#0f0f0f", border: "1px solid #1a1a1a",
+                borderRadius: 16, padding: "18px 18px",
+                borderLeft: `3px solid ${s.dot}`,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#e8e8e8" }}>{ref.name}</p>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+                    <span style={{
+                      fontSize: 11, padding: "5px 12px", borderRadius: 999,
+                      background: s.dot + "20", color: s.dot,
+                      fontFamily: "'DM Mono', monospace", fontWeight: 600,
+                    }}>{s.label}</span>
+                    {ref.payout && (
+                      <span style={{ fontSize: 14, fontWeight: 900, color: "#22c55e", fontFamily: "'DM Mono', monospace" }}>
+                        +${ref.payout}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </Screen>
   );
 }
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
-function CashOut() {
+function CashOut({ pipeline }) {
   const [method, setMethod] = useState(null);
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
   const [detail, setDetail] = useState("");
+
+  const balance = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
 
   const methods = [
     { id: "zelle",  icon: "💜", label: "Zelle",         sub: "Instant transfer" },
@@ -489,9 +476,7 @@ function CashOut() {
 
   return (
     <Screen>
-      <PageHeader title="Cash Out" subtitle={`$${BALANCE.toLocaleString()} available`} />
-
-      {/* Balance display */}
+      <PageHeader title="Cash Out" subtitle={`$${balance.toLocaleString()} available`} />
       <div style={{ padding: "0 24px 20px" }}>
         <div style={{
           background: "linear-gradient(135deg, #1a1200, #2d1f00)",
@@ -501,22 +486,15 @@ function CashOut() {
           <div>
             <p style={{ margin: 0, fontSize: 11, color: "#888", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.1em" }}>Balance</p>
             <p style={{ margin: "4px 0 0", fontSize: 32, fontWeight: 900, fontFamily: "'Sora', sans-serif", color: "#fff" }}>
-              ${BALANCE.toLocaleString()}
+              ${balance.toLocaleString()}
             </p>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <p style={{ margin: 0, fontSize: 11, color: "#888", fontFamily: "'DM Mono', monospace", textTransform: "uppercase" }}>Sold This Year</p>
-            <p style={{ margin: "4px 0 0", fontSize: 16, fontWeight: 800, color: "#f5a623", fontFamily: "'Sora', sans-serif" }}>{SOLD_COUNT} deals</p>
           </div>
         </div>
       </div>
 
-      {/* Step 1: Choose Method */}
       {step >= 1 && (
         <div style={{ padding: "0 24px 20px" }}>
-          <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#aaa", fontFamily: "'Sora', sans-serif" }}>
-            1. Choose payout method
-          </p>
+          <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#aaa", fontFamily: "'Sora', sans-serif" }}>1. Choose payout method</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {methods.map(m => (
               <button key={m.id} onClick={() => { setMethod(m.id); if (step === 1) setStep(2); }} style={{
@@ -525,7 +503,6 @@ function CashOut() {
                 borderRadius: 14, padding: "16px 18px",
                 display: "flex", alignItems: "center", gap: 14,
                 cursor: "pointer", textAlign: "left",
-                transition: "border-color 0.2s",
               }}>
                 <span style={{ fontSize: 24 }}>{m.icon}</span>
                 <div style={{ flex: 1 }}>
@@ -539,99 +516,59 @@ function CashOut() {
         </div>
       )}
 
-      {/* Step 2: Amount */}
       {step >= 2 && method && (
         <div style={{ padding: "0 24px 20px" }}>
-          <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#aaa", fontFamily: "'Sora', sans-serif" }}>
-            2. Enter amount
-          </p>
-          <div style={{
-            background: "#0f0f0f", border: "1px solid #1e1e1e",
-            borderRadius: 14, padding: "18px 18px",
-          }}>
+          <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: "#aaa", fontFamily: "'Sora', sans-serif" }}>2. Enter amount</p>
+          <div style={{ background: "#0f0f0f", border: "1px solid #1e1e1e", borderRadius: 14, padding: "18px 18px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
               <span style={{ fontSize: 24, color: "#f5a623", fontFamily: "'DM Mono', monospace", fontWeight: 900 }}>$</span>
-              <input
-                type="number" value={amount} onChange={e => setAmount(e.target.value)}
-                placeholder="0"
-                style={{
-                  background: "none", border: "none", outline: "none",
-                  fontSize: 32, fontWeight: 900, color: "#fff", width: "100%",
-                  fontFamily: "'Sora', sans-serif",
-                }}
+              <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0"
+                style={{ background: "none", border: "none", outline: "none", fontSize: 32, fontWeight: 900, color: "#fff", width: "100%", fontFamily: "'Sora', sans-serif" }}
               />
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              {[500, 1000, BALANCE].map(v => (
+              {[500, 1000, balance].map(v => (
                 <button key={v} onClick={() => setAmount(String(v))} style={{
                   flex: 1, background: "#1a1a1a", border: "1px solid #2a2a2a",
                   borderRadius: 8, padding: "8px", color: "#888", fontSize: 12,
                   cursor: "pointer", fontFamily: "'DM Mono', monospace",
-                }}>{v === BALANCE ? "Max" : `$${v}`}</button>
+                }}>{v === balance ? "Max" : `$${v}`}</button>
               ))}
             </div>
           </div>
-
           <div style={{ marginTop: 12 }}>
-            <input
-              value={detail} onChange={e => setDetail(e.target.value)}
+            <input value={detail} onChange={e => setDetail(e.target.value)}
               placeholder={method === "check" ? "Mailing address" : `Your ${methods.find(m => m.id === method)?.label} handle / email`}
-              style={{
-                width: "100%", background: "#0f0f0f", border: "1px solid #1e1e1e",
-                borderRadius: 12, padding: "14px 16px", color: "#fff", fontSize: 14,
-                fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box",
-              }}
+              style={{ width: "100%", background: "#0f0f0f", border: "1px solid #1e1e1e", borderRadius: 12, padding: "14px 16px", color: "#fff", fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: "none", boxSizing: "border-box" }}
             />
           </div>
-
-          {amount && parseFloat(amount) > 0 && parseFloat(amount) <= BALANCE && (
-            <button onClick={() => setStep(3)} style={{
-              width: "100%", marginTop: 14, background: "#f5a623",
-              border: "none", borderRadius: 12, padding: "16px",
-              color: "#000", fontSize: 16, fontWeight: 800,
-              fontFamily: "'Sora', sans-serif", cursor: "pointer",
-            }}>
+          {amount && parseFloat(amount) > 0 && parseFloat(amount) <= balance && (
+            <button onClick={() => setStep(3)} style={{ width: "100%", marginTop: 14, background: "#f5a623", border: "none", borderRadius: 12, padding: "16px", color: "#000", fontSize: 16, fontWeight: 800, fontFamily: "'Sora', sans-serif", cursor: "pointer" }}>
               Continue →
             </button>
           )}
         </div>
       )}
 
-      {/* Step 3: Confirm */}
       {step === 3 && (
         <div style={{ padding: "0 24px 20px" }}>
-          <div style={{
-            background: "#0f0f0f", border: "1px solid #2a2a2a",
-            borderRadius: 16, padding: "20px",
-          }}>
-            <p style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 700, color: "#aaa", fontFamily: "'Sora', sans-serif" }}>
-              Confirm your payout
-            </p>
+          <div style={{ background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: 16, padding: "20px" }}>
+            <p style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 700, color: "#aaa", fontFamily: "'Sora', sans-serif" }}>Confirm your payout</p>
             {[
-              ["Amount",    `$${parseFloat(amount).toLocaleString()}`],
-              ["Method",    methods.find(m => m.id === method)?.label],
-              ["Sent to",   detail || "—"],
-              ["Remaining", `$${(BALANCE - parseFloat(amount)).toLocaleString()}`],
+              ["Amount", `$${parseFloat(amount).toLocaleString()}`],
+              ["Method", methods.find(m => m.id === method)?.label],
+              ["Sent to", detail || "—"],
+              ["Remaining", `$${(balance - parseFloat(amount)).toLocaleString()}`],
             ].map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                 <span style={{ fontSize: 13, color: "#666", fontFamily: "'DM Mono', monospace" }}>{k}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: "#e0e0e0" }}>{v}</span>
               </div>
             ))}
-            <button onClick={() => setStep(4)} style={{
-              width: "100%", marginTop: 8, background: "#22c55e",
-              border: "none", borderRadius: 12, padding: "16px",
-              color: "#000", fontSize: 16, fontWeight: 800,
-              fontFamily: "'Sora', sans-serif", cursor: "pointer",
-            }}>
+            <button onClick={() => setStep(4)} style={{ width: "100%", marginTop: 8, background: "#22c55e", border: "none", borderRadius: 12, padding: "16px", color: "#000", fontSize: 16, fontWeight: 800, fontFamily: "'Sora', sans-serif", cursor: "pointer" }}>
               Submit Payout Request
             </button>
-            <button onClick={() => setStep(2)} style={{
-              width: "100%", marginTop: 8, background: "none",
-              border: "1px solid #2a2a2a", borderRadius: 12, padding: "14px",
-              color: "#888", fontSize: 14, cursor: "pointer",
-              fontFamily: "'Sora', sans-serif",
-            }}>
+            <button onClick={() => setStep(2)} style={{ width: "100%", marginTop: 8, background: "none", border: "1px solid #2a2a2a", borderRadius: 12, padding: "14px", color: "#888", fontSize: 14, cursor: "pointer", fontFamily: "'Sora', sans-serif" }}>
               Go Back
             </button>
           </div>
@@ -642,121 +579,89 @@ function CashOut() {
 }
 
 // ─── History ──────────────────────────────────────────────────────────────────
-function History() {
-  const totalEarned = HISTORY.filter(h => h.amount > 0).reduce((sum, h) => sum + h.amount, 0);
-  const totalPaidOut = Math.abs(HISTORY.filter(h => h.amount < 0).reduce((sum, h) => sum + h.amount, 0));
+function History({ pipeline }) {
+  const earned = pipeline.filter(p => p.payout).map(p => ({
+    id: p.id, desc: `Referral Bonus — ${p.name}`, amount: p.payout
+  }));
+  const totalEarned = earned.reduce((sum, h) => sum + h.amount, 0);
 
   return (
     <Screen>
       <PageHeader title="History" subtitle="Earnings & payouts" />
       <div style={{ padding: "0 24px" }}>
-
         <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
           {[
-            { label: "Total Earned",   val: `$${totalEarned.toLocaleString()}`,   color: "#22c55e" },
-            { label: "Total Paid Out", val: `$${totalPaidOut.toLocaleString()}`,  color: "#f5a623" },
+            { label: "Total Earned", val: `$${totalEarned.toLocaleString()}`, color: "#22c55e" },
+            { label: "Total Paid Out", val: "$0", color: "#f5a623" },
           ].map(s => (
-            <div key={s.label} style={{
-              flex: 1, background: "#0f0f0f", border: "1px solid #1a1a1a",
-              borderRadius: 14, padding: "16px",
-            }}>
+            <div key={s.label} style={{ flex: 1, background: "#0f0f0f", border: "1px solid #1a1a1a", borderRadius: 14, padding: "16px" }}>
               <p style={{ margin: 0, fontSize: 11, color: "#555", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.1em" }}>{s.label}</p>
               <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 900, fontFamily: "'Sora', sans-serif", color: s.color }}>{s.val}</p>
             </div>
           ))}
         </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {HISTORY.map(item => (
-            <div key={item.id} style={{
-              background: "#0f0f0f", border: "1px solid #1a1a1a",
-              borderRadius: 14, padding: "16px 18px",
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-            }}>
-              <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: 10,
-                  background: item.amount > 0 ? "#0d2200" : "#2a1500",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
-                }}>
-                  {item.amount > 0 ? "💰" : "📤"}
+        {earned.length === 0 ? (
+          <p style={{ color: "#555", fontSize: 13, textAlign: "center", marginTop: 40 }}>No earnings yet — referrals pay out once the invoice is paid!</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {earned.map(item => (
+              <div key={item.id} style={{ background: "#0f0f0f", border: "1px solid #1a1a1a", borderRadius: 14, padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: "#0d2200", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>💰</div>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e0e0e0" }}>{item.desc}</p>
+                  </div>
                 </div>
-                <div>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e0e0e0" }}>{item.desc}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#555", fontFamily: "'DM Mono', monospace" }}>{item.date}</p>
-                </div>
+                <span style={{ fontSize: 15, fontWeight: 900, color: "#22c55e", fontFamily: "'DM Mono', monospace" }}>
+                  +${item.amount.toLocaleString()}
+                </span>
               </div>
-              <span style={{
-                fontSize: 15, fontWeight: 900,
-                color: item.amount > 0 ? "#22c55e" : "#f5a623",
-                fontFamily: "'DM Mono', monospace",
-              }}>
-                {item.amount > 0 ? "+" : ""}${Math.abs(item.amount).toLocaleString()}
-              </span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </Screen>
   );
 }
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
-function Profile({ onLogout }) {
-  const nextPayout = getNextPayout(SOLD_COUNT);
+function Profile({ onLogout, pipeline, userName }) {
+  const soldCount = pipeline.filter(p => p.status === "sold").length;
+  const balance = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
+  const nextPayout = getNextPayout(soldCount);
+
   return (
     <Screen>
       <PageHeader title="Profile" />
       <div style={{ padding: "0 24px" }}>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24,
-          background: "#0f0f0f", border: "1px solid #1a1a1a", borderRadius: 16, padding: "20px" }}>
-          <div style={{
-            width: 60, height: 60, borderRadius: "50%",
-            background: "linear-gradient(135deg, #f5a623, #f5a62380)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 20, fontWeight: 800, color: "#000", fontFamily: "'DM Mono', monospace",
-          }}>{MOCK_USER.avatar}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, background: "#0f0f0f", border: "1px solid #1a1a1a", borderRadius: 16, padding: "20px" }}>
+          <div style={{ width: 60, height: 60, borderRadius: "50%", background: "linear-gradient(135deg, #f5a623, #f5a62380)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: "#000", fontFamily: "'DM Mono', monospace" }}>
+            {userName.split(" ").map(n => n[0]).join("")}
+          </div>
           <div>
-            <p style={{ margin: 0, fontSize: 18, fontWeight: 800, fontFamily: "'Sora', sans-serif" }}>{MOCK_USER.name}</p>
-            <p style={{ margin: "2px 0 0", fontSize: 13, color: "#666" }}>{MOCK_USER.email}</p>
+            <p style={{ margin: 0, fontSize: 18, fontWeight: 800, fontFamily: "'Sora', sans-serif" }}>{userName}</p>
             <p style={{ margin: "4px 0 0", fontSize: 11, color: "#f5a623", fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>
-              ● {SOLD_COUNT} sold referral{SOLD_COUNT !== 1 ? "s" : ""} this year
+              ● {soldCount} sold referral{soldCount !== 1 ? "s" : ""} this year
             </p>
           </div>
         </div>
 
         <div style={{ background: "#0f0f0f", border: "1px solid #1a1a1a", borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
           {[
-            ["Phone",           MOCK_USER.phone],
-            ["Member Since",    MOCK_USER.memberSince],
-            ["Referrals Sent",  String(PIPELINE.length)],
-            ["Deals Sold",      String(SOLD_COUNT)],
-            ["Next Payout",     `$${nextPayout.total} (boost: +$${nextPayout.boost})`],
-            ["Balance",         `$${BALANCE.toLocaleString()}`],
+            ["Referrals Sent", String(pipeline.length)],
+            ["Deals Sold", String(soldCount)],
+            ["Next Payout", `$${nextPayout.total} (boost: +$${nextPayout.boost})`],
+            ["Balance", `$${balance.toLocaleString()}`],
           ].map(([k, v], i, arr) => (
-            <div key={k} style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "16px 18px",
-              borderBottom: i < arr.length - 1 ? "1px solid #151515" : "none",
-            }}>
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 18px", borderBottom: i < arr.length - 1 ? "1px solid #151515" : "none" }}>
               <span style={{ fontSize: 13, color: "#666", fontFamily: "'DM Mono', monospace" }}>{k}</span>
               <span style={{ fontSize: 14, fontWeight: 600, color: "#e0e0e0" }}>{v}</span>
             </div>
           ))}
         </div>
 
-        <button style={{
-          width: "100%", background: "#0f0f0f", border: "1px solid #2a2a2a",
-          borderRadius: 12, padding: "16px", color: "#888", fontSize: 14,
-          cursor: "pointer", fontFamily: "'Sora', sans-serif", marginBottom: 10,
-        }}>Contact Support</button>
-
-        <button onClick={onLogout} style={{
-          width: "100%", background: "#150808", border: "1px solid #3a1515",
-          borderRadius: 12, padding: "16px", color: "#ef4444", fontSize: 14, fontWeight: 700,
-          cursor: "pointer", fontFamily: "'Sora', sans-serif",
-        }}>Sign Out</button>
+        <button style={{ width: "100%", background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: 12, padding: "16px", color: "#888", fontSize: 14, cursor: "pointer", fontFamily: "'Sora', sans-serif", marginBottom: 10 }}>Contact Support</button>
+        <button onClick={onLogout} style={{ width: "100%", background: "#150808", border: "1px solid #3a1515", borderRadius: 12, padding: "16px", color: "#ef4444", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Sora', sans-serif" }}>Sign Out</button>
       </div>
     </Screen>
   );
@@ -766,6 +671,9 @@ function Profile({ onLogout }) {
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [tab, setTab] = useState("dashboard");
+  const [userName, setUserName] = useState("");
+  const [pipeline, setPipeline] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -776,14 +684,35 @@ export default function App() {
     document.body.style.background = "#050505";
   }, []);
 
-  if (!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)} />;
+  useEffect(() => {
+    if (loggedIn && userName) {
+      setLoading(true);
+      fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`)
+        .then(res => res.json())
+        .then(data => {
+          setPipeline(Array.isArray(data) ? data : []);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error(err);
+          setLoading(false);
+        });
+    }
+  }, [loggedIn, userName]);
+
+  function handleLogin(name) {
+    setUserName(name);
+    setLoggedIn(true);
+  }
+
+  if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
 
   const screens = {
-    dashboard: <Dashboard setTab={setTab} />,
-    pipeline:  <Pipeline />,
-    cashout:   <CashOut />,
-    history:   <History />,
-    profile:   <Profile onLogout={() => setLoggedIn(false)} />,
+    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} />,
+    pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
+    cashout:   <CashOut pipeline={pipeline} />,
+    history:   <History pipeline={pipeline} />,
+    profile:   <Profile onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(""); }} pipeline={pipeline} userName={userName} />,
   };
 
   return (
