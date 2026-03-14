@@ -301,6 +301,18 @@ app.post('/api/admin/users', async (req, res) => {
   }
 });
 
+app.patch('/api/admin/users/:id/pin', async (req, res) => {
+  const { password, pin } = req.body;
+  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  if (!pin || pin.length < 4) return res.status(400).json({ error: 'PIN must be at least 4 digits' });
+  try {
+    await pool.query('UPDATE users SET pin = $1 WHERE id = $2', [pin, req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/admin/users/:id', async (req, res) => {
   const { password } = req.query;
   if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });

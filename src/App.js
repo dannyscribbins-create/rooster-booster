@@ -750,6 +750,28 @@ function AdminPanel() {
       .then(() => loadUsers());
   }
 
+function handleResetPin(id, name) {
+  const newPin = window.prompt(`Enter new PIN for ${name} (4–6 digits):`);
+  if (!newPin) return;
+  if (newPin.length < 4 || newPin.length > 6) {
+    alert('PIN must be between 4 and 6 digits');
+    return;
+  }
+  fetch(`${BACKEND_URL}/api/admin/users/${id}/pin`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password, pin: newPin })
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        alert('Error: ' + data.error);
+      } else {
+        alert(`✓ PIN updated for ${name}`);
+      }
+    });
+}
+
   const inputStyle = {
     background: '#151515', border: '1px solid #2a2a2a', borderRadius: 10,
     padding: '13px 16px', color: '#fff', fontSize: 14,
@@ -845,13 +867,20 @@ function AdminPanel() {
                   <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#e0e0e0' }}>{u.full_name}</p>
                   <p style={{ margin: '2px 0 0', fontSize: 12, color: '#555', fontFamily: "'DM Mono', monospace" }}>{u.email}</p>
                 </div>
-                <button onClick={() => handleRemoveUser(u.id, u.full_name)} style={{
-                  background: '#1a0808', border: '1px solid #3a1515',
-                  borderRadius: 8, padding: '7px 14px',
-                  color: '#ef4444', fontSize: 12, fontWeight: 700,
-                  cursor: 'pointer', fontFamily: "'DM Mono', monospace",
-                }}>Remove</button>
-              </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+  <button onClick={() => handleResetPin(u.id, u.full_name)} style={{
+    background: '#0d1a2a', border: '1px solid #1a3a5a',
+    borderRadius: 8, padding: '7px 14px',
+    color: '#3b82f6', fontSize: 12, fontWeight: 700,
+    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
+  }}>Reset PIN</button>
+  <button onClick={() => handleRemoveUser(u.id, u.full_name)} style={{
+    background: '#1a0808', border: '1px solid #3a1515',
+    borderRadius: 8, padding: '7px 14px',
+    color: '#ef4444', fontSize: 12, fontWeight: 700,
+    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
+  }}>Remove</button>
+</div>
             ))}
           </div>
         )}
