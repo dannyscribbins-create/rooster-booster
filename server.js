@@ -85,8 +85,8 @@ async function refreshTokenIfNeeded() {
 
     const newAccessToken = response.data.access_token;
     const newRefreshToken = response.data.refresh_token;
-    const expiresIn = response.data.expires_in; // seconds until expiry
-    const newExpiresAt = new Date(Date.now() + expiresIn * 1000);
+    const expiresIn = parseInt(response.data.expires_in) || 3600; // default to 1 hour if missing
+const newExpiresAt = new Date(Date.now() + expiresIn * 1000);
 
     // Save the new token to database
     await pool.query(`
@@ -119,8 +119,8 @@ app.get('/callback', async (req, res) => {
 
     accessToken = response.data.access_token;
     const refreshToken = response.data.refresh_token;
-    const expiresIn = response.data.expires_in; // seconds until expiry
-    const expiresAt = new Date(Date.now() + expiresIn * 1000);
+    const expiresIn = parseInt(response.data.expires_in) || 3600; // default to 1 hour if missing
+const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
     // Save token + expiry time to database
     await pool.query(`
