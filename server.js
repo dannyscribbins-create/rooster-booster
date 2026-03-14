@@ -28,6 +28,7 @@ async function initDB() {
       id INTEGER PRIMARY KEY,
       access_token TEXT,
       refresh_token TEXT,
+      expires_at TIMESTAMP,
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
@@ -41,6 +42,11 @@ async function initDB() {
     )
   `);
 
+  // Add expires_at column if it doesn't exist yet (for existing databases)
+  await pool.query(`
+    ALTER TABLE tokens ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP
+  `);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     accessToken = result.rows[0].access_token;
@@ -51,6 +57,49 @@ async function initDB() {
 }
 
 initDB();
+
+// ── TOKEN AUTO-REFRESH ────────────────────────────────────────────────────────
+// This function runs before every Jobber API call.
+// If the token expires within the next 5 minutes, it automatically gets a new one.
+async function refreshTokenIfNeeded() {
+  const result = await pool.query('SELECT * FROM tokens WHERE id = 1');
+  if (result.rows.length === 0) {
+    throw new Error('No token in database - visit /auth/jobber to authorize');
+  }
+
+  const { refresh_token, expires_at } = result.rows[0];
+
+  // Check if token expires within the next 5 minutes
+  const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
+  const tokenExpiresAt = new Date(expires_at);
+
+  if (!expires_at || tokenExpiresAt < fiveMinutesFromNow) {
+    console.log('Token expiring soon or unknown - refreshing now...');
+
+    const response = await axios.post('https://api.getjobber.com/api/oauth/token', {
+      grant_type: 'refresh_token',
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      refresh_token
+    });
+
+    const newAccessToken = response.data.access_token;
+    const newRefreshToken = response.data.refresh_token;
+    const expiresIn = response.data.expires_in; // seconds until expiry
+    const newExpiresAt = new Date(Date.now() + expiresIn * 1000);
+
+    // Save the new token to database
+    await pool.query(`
+      UPDATE tokens
+      SET access_token = $1, refresh_token = $2, expires_at = $3, updated_at = NOW()
+      WHERE id = 1
+    `, [newAccessToken, newRefreshToken, newExpiresAt]);
+
+    accessToken = newAccessToken;
+    console.log('Token refreshed successfully - expires at:', newExpiresAt);
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.get('/auth/jobber', (req, res) => {
   const authUrl = `https://api.getjobber.com/api/oauth/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}`;
@@ -67,18 +116,21 @@ app.get('/callback', async (req, res) => {
       redirect_uri: REDIRECT_URI,
       code
     });
+
     accessToken = response.data.access_token;
     const refreshToken = response.data.refresh_token;
+    const expiresIn = response.data.expires_in; // seconds until expiry
+    const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
-    // Save token to database so it survives server restarts
+    // Save token + expiry time to database
     await pool.query(`
-      INSERT INTO tokens (id, access_token, refresh_token, updated_at)
-      VALUES (1, $1, $2, NOW())
+      INSERT INTO tokens (id, access_token, refresh_token, expires_at, updated_at)
+      VALUES (1, $1, $2, $3, NOW())
       ON CONFLICT (id) DO UPDATE
-        SET access_token = $1, refresh_token = $2, updated_at = NOW()
-    `, [accessToken, refreshToken]);
+        SET access_token = $1, refresh_token = $2, expires_at = $3, updated_at = NOW()
+    `, [accessToken, refreshToken, expiresAt]);
 
-    console.log('Token saved to database');
+    console.log('Token saved to database - expires at:', expiresAt);
     res.send('Authorization successful! You can close this tab.');
   } catch (err) {
     res.status(500).send('Authorization failed: ' + err.message);
@@ -88,6 +140,9 @@ app.get('/callback', async (req, res) => {
 app.get('/api/pipeline', async (req, res) => {
   const { referrer } = req.query;
   try {
+    // Auto-refresh token if it's about to expire before calling Jobber
+    await refreshTokenIfNeeded();
+
     const response = await axios.post(
       'https://api.getjobber.com/api/graphql',
      { query: `{
