@@ -751,16 +751,16 @@ function AdminPanel() {
   }
 
 function handleResetPin(id, name) {
-  const newPin = window.prompt(`Enter new PIN for ${name} (4–6 digits):`);
-  if (!newPin) return;
-  if (newPin.length < 4 || newPin.length > 6) {
+  const resetPin = window.prompt(`Enter new PIN for ${name} (4–6 digits):`);
+  if (!resetPin) return;
+  if (resetPin.length < 4 || resetPin.length > 6) {
     alert('PIN must be between 4 and 6 digits');
     return;
   }
   fetch(`${BACKEND_URL}/api/admin/users/${id}/pin`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password, pin: newPin })
+    body: JSON.stringify({ password, pin: resetPin })
   })
     .then(res => res.json())
     .then(data => {
@@ -771,7 +771,6 @@ function handleResetPin(id, name) {
       }
     });
 }
-
   const inputStyle = {
     background: '#151515', border: '1px solid #2a2a2a', borderRadius: 10,
     padding: '13px 16px', color: '#fff', fontSize: 14,
