@@ -176,11 +176,8 @@ function LoginScreen({ onLogin }) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function Dashboard({ setTab, pipeline, loading, userName }) {
-  const soldCount = pipeline.filter(p => p.status === "sold").length;
-  const balance = pipeline
-    .filter(p => p.payout)
-    .reduce((sum, p) => sum + p.payout, 0);
+function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) {
+  const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
   const progressPct = Math.min((soldCount / 7) * 100, 100);
 
@@ -895,10 +892,12 @@ function handleResetPin(id, name) {
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
-  const [tab, setTab] = useState("dashboard");
-  const [userName, setUserName] = useState("");
-  const [pipeline, setPipeline] = useState([]);
-  const [loading, setLoading] = useState(false);
+    const [tab, setTab] = useState("dashboard");
+    const [userName, setUserName] = useState("");
+    const [pipeline, setPipeline] = useState([]);
+    const [balance, setBalance] = useState(0);
+    const [paidCount, setPaidCount] = useState(0);
+    const [loading, setLoading] = useState(false);
 
   const isAdmin = window.location.search.includes('admin=true');
 
@@ -917,9 +916,11 @@ export default function App() {
       fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`)
         .then(res => res.json())
         .then(data => {
-          setPipeline(Array.isArray(data) ? data : []);
-          setLoading(false);
-        })
+        setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
+        setBalance(data.balance || 0);
+        setPaidCount(data.paidCount || 0);
+        setLoading(false);
+      })
         .catch(err => {
           console.error(err);
           setLoading(false);
@@ -937,7 +938,7 @@ export default function App() {
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
 
   const screens = {
-    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} />,
+    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} />,
     pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
     cashout:   <CashOut pipeline={pipeline} />,
     history:   <History pipeline={pipeline} />,
