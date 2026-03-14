@@ -680,8 +680,194 @@ function Profile({ onLogout, pipeline, userName }) {
   );
 }
 
+// ─── Admin Panel ──────────────────────────────────────────────────────────────
+function AdminPanel() {
+  const [authed, setAuthed]     = useState(false);
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [users, setUsers]       = useState([]);
+  const [loading, setLoading]   = useState(false);
+  const [newName, setNewName]   = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPin, setNewPin]     = useState('');
+  const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
+
+  function handleAdminLogin() {
+    fetch(`${BACKEND_URL}/api/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          setAuthError('Incorrect password');
+        } else {
+          setAuthed(true);
+          loadUsers();
+        }
+      });
+  }
+
+  function loadUsers() {
+    setLoading(true);
+    fetch(`${BACKEND_URL}/api/admin/users?password=${encodeURIComponent(password)}`)
+      .then(res => res.json())
+      .then(data => { setUsers(data); setLoading(false); });
+  }
+
+  function handleAddUser() {
+    setFormError('');
+    setFormSuccess('');
+    if (!newName || !newEmail || !newPin) {
+      setFormError('All fields are required');
+      return;
+    }
+    fetch(`${BACKEND_URL}/api/admin/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, full_name: newName, email: newEmail, pin: newPin })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) {
+          setFormError(data.error);
+        } else {
+          setFormSuccess(`✓ ${newName} added successfully!`);
+          setNewName(''); setNewEmail(''); setNewPin('');
+          loadUsers();
+        }
+      });
+  }
+
+  function handleRemoveUser(id, name) {
+    if (!window.confirm(`Remove ${name}? This cannot be undone.`)) return;
+    fetch(`${BACKEND_URL}/api/admin/users/${id}?password=${encodeURIComponent(password)}`, {
+      method: 'DELETE'
+    })
+      .then(res => res.json())
+      .then(() => loadUsers());
+  }
+
+  const inputStyle = {
+    background: '#151515', border: '1px solid #2a2a2a', borderRadius: 10,
+    padding: '13px 16px', color: '#fff', fontSize: 14,
+    fontFamily: "'DM Sans', sans-serif", outline: 'none', width: '100%',
+    boxSizing: 'border-box',
+  };
+
+  const btnStyle = {
+    background: '#f5a623', border: 'none', borderRadius: 10,
+    padding: '13px 20px', color: '#000', fontSize: 14, fontWeight: 800,
+    fontFamily: "'Sora', sans-serif", cursor: 'pointer', width: '100%',
+  };
+
+  if (!authed) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: '#0a0a0a', padding: '0 32px',
+      }}>
+        <div style={{ width: '100%', maxWidth: 400 }}>
+          <div style={{ textAlign: 'center', marginBottom: 36 }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 18, background: '#1a1a1a',
+              border: '1px solid #2a2a2a', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 32, margin: '0 auto 16px',
+            }}>🔐</div>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900, fontFamily: "'Sora', sans-serif", color: '#fff' }}>Admin Panel</h1>
+            <p style={{ margin: '6px 0 0', color: '#555', fontSize: 13 }}>Rooster Booster · Accent Roofing</p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input
+              type="password"
+              placeholder="Admin password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
+              style={inputStyle}
+            />
+            {authError && <p style={{ color: '#ef4444', fontSize: 13, margin: 0 }}>{authError}</p>}
+            <button onClick={handleAdminLogin} style={btnStyle}>Enter Admin Panel</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh', background: '#0a0a0a', color: '#f0f0f0',
+      fontFamily: "'DM Sans', sans-serif", padding: '40px 24px',
+      maxWidth: 600, margin: '0 auto',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
+        <span style={{ fontSize: 28 }}>🐓</span>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, fontFamily: "'Sora', sans-serif" }}>Admin Panel</h1>
+          <p style={{ margin: 0, fontSize: 12, color: '#555', fontFamily: "'DM Mono', monospace" }}>Rooster Booster · Accent Roofing</p>
+        </div>
+      </div>
+
+      {/* Add User Form */}
+      <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 16, padding: '24px', marginBottom: 24 }}>
+        <p style={{ margin: '0 0 16px', fontSize: 11, color: '#f5a623', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase' }}>Add New Referrer</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input placeholder="Full name (must match Jobber exactly)" value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle} />
+          <input placeholder="Email address" value={newEmail} onChange={e => setNewEmail(e.target.value)} style={inputStyle} />
+          <input placeholder="PIN (4–6 digits)" value={newPin} onChange={e => setNewPin(e.target.value)} style={inputStyle} />
+          {formError && <p style={{ color: '#ef4444', fontSize: 13, margin: 0 }}>{formError}</p>}
+          {formSuccess && <p style={{ color: '#22c55e', fontSize: 13, margin: 0 }}>{formSuccess}</p>}
+          <button onClick={handleAddUser} style={btnStyle}>Add Referrer</button>
+        </div>
+      </div>
+
+      {/* User List */}
+      <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 16, padding: '24px' }}>
+        <p style={{ margin: '0 0 16px', fontSize: 11, color: '#f5a623', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+          All Referrers ({users.length})
+        </p>
+        {loading ? (
+          <p style={{ color: '#555', fontSize: 13 }}>Loading...</p>
+        ) : users.length === 0 ? (
+          <p style={{ color: '#555', fontSize: 13 }}>No referrers yet — add one above.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {users.map(u => (
+              <div key={u.id} style={{
+                background: '#0f0f0f', border: '1px solid #1a1a1a',
+                borderRadius: 12, padding: '14px 16px',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#e0e0e0' }}>{u.full_name}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: '#555', fontFamily: "'DM Mono', monospace" }}>{u.email}</p>
+                </div>
+                <button onClick={() => handleRemoveUser(u.id, u.full_name)} style={{
+                  background: '#1a0808', border: '1px solid #3a1515',
+                  borderRadius: 8, padding: '7px 14px',
+                  color: '#ef4444', fontSize: 12, fontWeight: 700,
+                  cursor: 'pointer', fontFamily: "'DM Mono', monospace",
+                }}>Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App() {
+  // Show admin panel if ?admin=true is in the URL
+  if (window.location.search.includes('admin=true')) {
+    return <AdminPanel />;
+  }
+
   const [loggedIn, setLoggedIn] = useState(false);
   const [tab, setTab] = useState("dashboard");
   const [userName, setUserName] = useState("");

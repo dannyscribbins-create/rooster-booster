@@ -260,6 +260,59 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// ── ADMIN ENDPOINTS ───────────────────────────────────────────────────────────
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
+
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ error: 'Incorrect admin password' });
+  }
+});
+
+app.get('/api/admin/users', async (req, res) => {
+  const { password } = req.query;
+  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const result = await pool.query('SELECT id, full_name, email, created_at FROM users ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/users', async (req, res) => {
+  const { password, full_name, email, pin } = req.body;
+  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO users (full_name, email, pin) VALUES ($1, $2, $3) RETURNING id, full_name, email, created_at',
+      [full_name, email, pin]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      res.status(400).json({ error: 'A user with that email already exists' });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
+
+app.delete('/api/admin/users/:id', async (req, res) => {
+  const { password } = req.query;
+  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.listen(4000, () => {
   console.log('Server running on port 4000');
 });
