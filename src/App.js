@@ -863,16 +863,13 @@ function AdminPanel() {
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  // Show admin panel if ?admin=true is in the URL
-  if (window.location.search.includes('admin=true')) {
-    return <AdminPanel />;
-  }
-
   const [loggedIn, setLoggedIn] = useState(false);
   const [tab, setTab] = useState("dashboard");
   const [userName, setUserName] = useState("");
   const [pipeline, setPipeline] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  const isAdmin = window.location.search.includes('admin=true');
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -903,6 +900,8 @@ export default function App() {
     setUserName(name);
     setLoggedIn(true);
   }
+
+  if (isAdmin) return <AdminPanel />;
 
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
 
