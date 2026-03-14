@@ -867,19 +867,22 @@ function handleResetPin(id, name) {
                   <p style={{ margin: '2px 0 0', fontSize: 12, color: '#555', fontFamily: "'DM Mono', monospace" }}>{u.email}</p>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-  <button onClick={() => handleResetPin(u.id, u.full_name)} style={{
-    background: '#0d1a2a', border: '1px solid #1a3a5a',
-    borderRadius: 8, padding: '7px 14px',
-    color: '#3b82f6', fontSize: 12, fontWeight: 700,
-    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
-  }}>Reset PIN</button>
-  <button onClick={() => handleRemoveUser(u.id, u.full_name)} style={{
-    background: '#1a0808', border: '1px solid #3a1515',
-    borderRadius: 8, padding: '7px 14px',
-    color: '#ef4444', fontSize: 12, fontWeight: 700,
-    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
-  }}>Remove</button>
-</div>
+                  <button onClick={() => handleResetPin(u.id, u.full_name)} style={{
+                    background: '#0d1a2a', border: '1px solid #1a3a5a',
+                    borderRadius: 8, padding: '7px 14px',
+                    color: '#3b82f6', fontSize: 12, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
+                  }}>Reset PIN</button>
+                  <button onClick={() => handleRemoveUser(u.id, u.full_name)} style={{
+                    background: '#1a0808', border: '1px solid #3a1515',
+                    borderRadius: 8, padding: '7px 14px',
+                    color: '#ef4444', fontSize: 12, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
+                  }}>Remove</button>
+                </div>
+              </div>
+
+
             ))}
           </div>
         )}
