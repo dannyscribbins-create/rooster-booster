@@ -211,12 +211,12 @@ app.get('/api/pipeline', async (req, res) => {
       const hasActiveQuote = activeQuotes.length > 0;
 
       let status;
-      let payout = null;
+      let bonusEarned = false;
 
       if (hasJob) {
         status = 'sold';
         if (paidInvoice) {
-          payout = paidInvoice.amounts.total;
+          bonusEarned = true;
         }
       } else if (hasActiveQuote) {
         status = 'inspection';
@@ -230,11 +230,28 @@ app.get('/api/pipeline', async (req, res) => {
         id: client.id,
         name: `${client.firstName} ${client.lastName}`,
         status,
-        payout
+        bonusEarned
       };
     });
 
-    res.json(pipeline);
+    // Calculate referral bonuses based on reward structure
+    const boostSchedule = [0, 100, 200, 250, 300, 350, 400];
+    let paidCount = 0;
+    let totalBalance = 0;
+
+    const result = pipeline.map(client => {
+      let payout = null;
+      if (client.bonusEarned) {
+        const boost = boostSchedule[Math.min(paidCount, boostSchedule.length - 1)];
+        payout = 500 + boost;
+        totalBalance += payout;
+        paidCount++;
+      }
+      return { ...client, payout };
+    });
+
+    res.json({ pipeline: result, balance: totalBalance, paidCount });
+
   } catch (err) {
     res.status(500).send('API call failed: ' + (err.response ? JSON.stringify(err.response.data) : err.message));
   }
