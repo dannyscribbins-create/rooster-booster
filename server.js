@@ -32,6 +32,19 @@ async function initDB() {
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS cashout_requests (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    full_name TEXT,
+    email TEXT,
+    amount NUMERIC,
+    status TEXT DEFAULT 'pending',
+    requested_at TIMESTAMP DEFAULT NOW()
+  )
+`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
