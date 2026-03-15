@@ -5,6 +5,7 @@ const { Pool } = require('pg');
 require('dotenv').config();
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
+const bcrypt = require('bcrypt');
 
 const app = express();
 app.use(cors());
@@ -283,7 +284,8 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'No account found with that email' });
     }
     const user = result.rows[0];
-    if (user.pin !== pin) {
+    const pinMatch = await bcrypt.compare(String(pin), user.pin);
+    if (!pinMatch) {
       return res.status(401).json({ error: 'Incorrect PIN' });
     }
     res.json({ success: true, fullName: user.full_name });
@@ -319,9 +321,10 @@ app.post('/api/admin/users', async (req, res) => {
   const { password, full_name, email, pin } = req.body;
   if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
   try {
+    const hashedPin = await bcrypt.hash(String(pin), 10);
     const result = await pool.query(
       'INSERT INTO users (full_name, email, pin) VALUES ($1, $2, $3) RETURNING id, full_name, email, created_at',
-      [full_name, email, pin]
+      [full_name, email, hashedPin]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -338,7 +341,8 @@ app.patch('/api/admin/users/:id/pin', async (req, res) => {
   if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
   if (!pin || pin.length < 4) return res.status(400).json({ error: 'PIN must be at least 4 digits' });
   try {
-    await pool.query('UPDATE users SET pin = $1 WHERE id = $2', [pin, req.params.id]);
+    const hashedPin = await bcrypt.hash(String(pin), 10);
+    await pool.query('UPDATE users SET pin = $1 WHERE id = $2', [hashedPin, req.params.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
