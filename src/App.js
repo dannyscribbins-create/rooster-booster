@@ -443,8 +443,7 @@ function Pipeline({ pipeline, loading }) {
 }
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
-function CashOut({ pipeline, userName }) {  const [method, setMethod] = useState(null);
-  const [amount, setAmount] = useState("");
+function CashOut({ pipeline, userName, userEmail }) {  const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
   const [detail, setDetail] = useState("");
 const [submitting, setSubmitting] = useState(false);
@@ -956,7 +955,7 @@ export default function App() {
   const screens = {
     dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} />,
     pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
-    cashout: <CashOut pipeline={pipeline} userName={userName} />,
+    cashout: <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
     history:   <History pipeline={pipeline} />,
     profile:   <Profile onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(""); }} pipeline={pipeline} userName={userName} />,
   };
