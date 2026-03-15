@@ -448,6 +448,8 @@ function CashOut({ pipeline }) {
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
   const [detail, setDetail] = useState("");
+const [submitting, setSubmitting] = useState(false);
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:4000";
 
   const balance = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
 
@@ -575,9 +577,22 @@ function CashOut({ pipeline }) {
                 <span style={{ fontSize: 13, fontWeight: 700, color: "#e0e0e0" }}>{v}</span>
               </div>
             ))}
-            <button onClick={() => setStep(4)} style={{ width: "100%", marginTop: 8, background: "#22c55e", border: "none", borderRadius: 12, padding: "16px", color: "#000", fontSize: 16, fontWeight: 800, fontFamily: "'Sora', sans-serif", cursor: "pointer" }}>
-              Submit Payout Request
-            </button>
+<button onClick={async () => {
+  setSubmitting(true);
+  try {
+    await fetch(`${BACKEND_URL}/api/cashout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: null, full_name: "", email: "", amount: parseFloat(amount) })
+    });
+  } catch(err) {
+    console.error("Cash out error:", err);
+  }
+  setSubmitting(false);
+  setStep(4);
+}} style={{ width: "100%", marginTop: 8, background: "#22c55e", border: "none", borderRadius: 12, padding: "16px", color: "#000", fontSize: 16, fontWeight: 800, fontFamily: "'Sora', sans-serif", cursor: "pointer" }}>
+  {submitting ? "Submitting..." : "Submit Payout Request"}
+</button>
             <button onClick={() => setStep(2)} style={{ width: "100%", marginTop: 8, background: "none", border: "1px solid #2a2a2a", borderRadius: 12, padding: "14px", color: "#888", fontSize: 14, cursor: "pointer", fontFamily: "'Sora', sans-serif" }}>
               Go Back
             </button>
