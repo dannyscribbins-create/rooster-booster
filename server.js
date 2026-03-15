@@ -3,6 +3,8 @@ const axios = require('axios');
 const cors = require('cors');
 const { Pool } = require('pg');
 require('dotenv').config();
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const app = express();
 app.use(cors());
@@ -363,6 +365,19 @@ app.post('/api/cashout', async (req, res) => {
        VALUES ($1, $2, $3, $4, 'pending', NOW())`,
       [user_id, full_name, email, amount]
     );
+    await resend.emails.send({
+      from: 'onboarding@resend.dev',
+      to: 'dannyscribbins@gmail.com',
+      subject: '💰 New Cash Out Request - Rooster Booster',
+      html: `
+        <h2>New Cash Out Request</h2>
+        <p><strong>Name:</strong> ${full_name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Amount Requested:</strong> $${amount}</p>
+        <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>
+        <p>Log in to the admin panel to approve or deny this request.</p>
+      `
+    });
     res.json({ success: true, message: 'Cash out request submitted!' });
   } catch (err) {
     console.error('Cash out error:', err);
