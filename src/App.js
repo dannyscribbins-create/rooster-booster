@@ -443,13 +443,13 @@ function Pipeline({ pipeline, loading }) {
 }
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
-function CashOut({ pipeline }) {
-  const [method, setMethod] = useState(null);
+function CashOut({ pipeline, userName }) {  const [method, setMethod] = useState(null);
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
   const [detail, setDetail] = useState("");
 const [submitting, setSubmitting] = useState(false);
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:4000";
+const userEmail = userName || "";
 
   const balance = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
 
@@ -583,7 +583,7 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:4000"
     await fetch(`${BACKEND_URL}/api/cashout`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: null, full_name: "", email: "", amount: parseFloat(amount) })
+      body: JSON.stringify({ user_id: null, full_name: userName, email: userEmail, amount: parseFloat(amount) })
     });
   } catch(err) {
     console.error("Cash out error:", err);
@@ -955,7 +955,7 @@ export default function App() {
   const screens = {
     dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} />,
     pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
-    cashout:   <CashOut pipeline={pipeline} />,
+    cashout: <CashOut pipeline={pipeline} userName={userName} />,
     history:   <History pipeline={pipeline} />,
     profile:   <Profile onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(""); }} pipeline={pipeline} userName={userName} />,
   };
