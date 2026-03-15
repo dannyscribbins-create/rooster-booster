@@ -353,6 +353,23 @@ app.delete('/api/admin/users/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Cash out request endpoint
+app.post('/api/cashout', async (req, res) => {
+  const { user_id, full_name, email, amount } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO cashout_requests (user_id, full_name, email, amount, status, requested_at)
+       VALUES ($1, $2, $3, $4, 'pending', NOW())`,
+      [user_id, full_name, email, amount]
+    );
+    res.json({ success: true, message: 'Cash out request submitted!' });
+  } catch (err) {
+    console.error('Cash out error:', err);
+    res.status(500).json({ error: 'Failed to save cash out request' });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.listen(4000, () => {
