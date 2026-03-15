@@ -443,7 +443,9 @@ function Pipeline({ pipeline, loading }) {
 }
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
-function CashOut({ pipeline, userName, userEmail }) {  const [amount, setAmount] = useState("");
+function CashOut({ pipeline, userName, userEmail }) {
+  const [method, setMethod] = useState(null);
+  const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
   const [detail, setDetail] = useState("");
 const [submitting, setSubmitting] = useState(false);
