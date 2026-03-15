@@ -105,7 +105,7 @@ function LoginScreen({ onLogin }) {
         if (data.error) {
           setError(data.error);
         } else {
-          onLogin(data.fullName);
+          onLogin(data.fullName, data.email);
         }
       })
       .catch(() => {
@@ -449,7 +449,6 @@ function CashOut({ pipeline, userName }) {  const [method, setMethod] = useState
   const [detail, setDetail] = useState("");
 const [submitting, setSubmitting] = useState(false);
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:4000";
-const userEmail = userName || "";
 
   const balance = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
 
@@ -906,9 +905,10 @@ function handleResetPin(id, name) {
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
+    const [loggedIn, setLoggedIn] = useState(false);
     const [tab, setTab] = useState("dashboard");
     const [userName, setUserName] = useState("");
+    const [userEmail, setUserEmail] = useState("");
     const [pipeline, setPipeline] = useState([]);
     const [balance, setBalance] = useState(0);
     const [paidCount, setPaidCount] = useState(0);
@@ -943,8 +943,9 @@ export default function App() {
     }
   }, [loggedIn, userName]);
 
-  function handleLogin(name) {
+  function handleLogin(name, email) {
     setUserName(name);
+    setUserEmail(email);
     setLoggedIn(true);
   }
 

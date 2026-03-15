@@ -288,7 +288,7 @@ app.post('/api/login', async (req, res) => {
     if (!pinMatch) {
       return res.status(401).json({ error: 'Incorrect PIN' });
     }
-    res.json({ success: true, fullName: user.full_name });
+    res.json({ success: true, fullName: user.full_name, email: user.email });
   } catch (err) {
     res.status(500).json({ error: 'Login failed: ' + err.message });
   }
