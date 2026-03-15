@@ -17,7 +17,7 @@ function getNextPayout(soldCount) {
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const BACKEND_URL = "https://rooster-booster-production.up.railway.app";
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:4000";
 
 const STATUS_CONFIG = {
   lead:       { label: "Lead Submitted",       color: "#6b7280", dot: "#6b7280" },
@@ -137,7 +137,7 @@ function LoginScreen({ onLogin }) {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <input value={email} onChange={e => setEmail(e.target.value)}
-            placeholder="Your full name (e.g. Daniel Scribbins)"
+            placeholder="Email address"
             style={{
               background: "#151515", border: "1px solid #2a2a2a", borderRadius: 12,
               padding: "16px 18px", color: "#fff", fontSize: 15,
@@ -145,7 +145,7 @@ function LoginScreen({ onLogin }) {
             }}
           />
           <input value={pass} onChange={e => setPass(e.target.value)}
-            type="password" placeholder="Password"
+            type="password" placeholder="PIN"
             style={{
               background: "#151515", border: "1px solid #2a2a2a", borderRadius: 12,
               padding: "16px 18px", color: "#fff", fontSize: 15,
@@ -448,14 +448,13 @@ function CashOut({ pipeline, userName, userEmail }) {
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
   const [detail, setDetail] = useState("");
-const [submitting, setSubmitting] = useState(false);
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:4000";
+  const [submitting, setSubmitting] = useState(false);
 
   const balance = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
 
   const methods = [
-    { id: "zelle",  icon: "💜", label: "Zelle",         sub: "Instant transfer" },
-    { id: "venmo",  icon: "🔵", label: "Venmo",         sub: "Instant transfer" },
+    { id: "zelle",  icon: "💜", label: "Zelle",         sub: "Sent within 24 hrs" },
+    { id: "venmo",  icon: "🔵", label: "Venmo",         sub: "Sent within 24 hrs" },
     { id: "paypal", icon: "🅿️", label: "PayPal",        sub: "1–3 business days" },
     { id: "check",  icon: "📬", label: "Check by Mail", sub: "5–7 business days" },
   ];
@@ -577,22 +576,28 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:4000"
                 <span style={{ fontSize: 13, fontWeight: 700, color: "#e0e0e0" }}>{v}</span>
               </div>
             ))}
-<button onClick={async () => {
-  setSubmitting(true);
-  try {
-    await fetch(`${BACKEND_URL}/api/cashout`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: null, full_name: userName, email: userEmail, amount: parseFloat(amount) })
-    });
-  } catch(err) {
-    console.error("Cash out error:", err);
-  }
-  setSubmitting(false);
-  setStep(4);
-}} style={{ width: "100%", marginTop: 8, background: "#22c55e", border: "none", borderRadius: 12, padding: "16px", color: "#000", fontSize: 16, fontWeight: 800, fontFamily: "'Sora', sans-serif", cursor: "pointer" }}>
-  {submitting ? "Submitting..." : "Submit Payout Request"}
-</button>
+            <button onClick={async () => {
+              setSubmitting(true);
+              try {
+                await fetch(`${BACKEND_URL}/api/cashout`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    user_id: null,
+                    full_name: userName,
+                    email: userEmail,
+                    amount: parseFloat(amount),
+                    method: method
+                  })
+                });
+              } catch(err) {
+                console.error("Cash out error:", err);
+              }
+              setSubmitting(false);
+              setStep(4);
+            }} style={{ width: "100%", marginTop: 8, background: "#22c55e", border: "none", borderRadius: 12, padding: "16px", color: "#000", fontSize: 16, fontWeight: 800, fontFamily: "'Sora', sans-serif", cursor: "pointer" }}>
+              {submitting ? "Submitting..." : "Submit Payout Request"}
+            </button>
             <button onClick={() => setStep(2)} style={{ width: "100%", marginTop: 8, background: "none", border: "1px solid #2a2a2a", borderRadius: 12, padding: "14px", color: "#888", fontSize: 14, cursor: "pointer", fontFamily: "'Sora', sans-serif" }}>
               Go Back
             </button>
@@ -694,17 +699,34 @@ function Profile({ onLogout, pipeline, userName }) {
 
 // ─── Admin Panel ──────────────────────────────────────────────────────────────
 function AdminPanel() {
-  const [authed, setAuthed]     = useState(false);
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [users, setUsers]       = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [newName, setNewName]   = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newPin, setNewPin]     = useState('');
-  const [formError, setFormError] = useState('');
+  const [authed, setAuthed]         = useState(false);
+  const [password, setPassword]     = useState('');
+  const [authError, setAuthError]   = useState('');
+  const [activeTab, setActiveTab]   = useState('referrers');
+
+  // Referrers tab state
+  const [users, setUsers]           = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [newName, setNewName]       = useState('');
+  const [newEmail, setNewEmail]     = useState('');
+  const [newPin, setNewPin]         = useState('');
+  const [formError, setFormError]   = useState('');
   const [formSuccess, setFormSuccess] = useState('');
 
+  // Referrer detail drawer state
+  const [selectedReferrer, setSelectedReferrer] = useState(null);
+  const [referrerDetail, setReferrerDetail]     = useState(null);
+  const [detailLoading, setDetailLoading]       = useState(false);
+
+  // Cash outs tab state
+  const [cashouts, setCashouts]     = useState([]);
+  const [cashoutsLoading, setCashoutsLoading] = useState(false);
+
+  // Activity log tab state
+  const [activity, setActivity]     = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
   function handleAdminLogin() {
     fetch(`${BACKEND_URL}/api/admin/login`, {
       method: 'POST',
@@ -722,20 +744,52 @@ function AdminPanel() {
       });
   }
 
+  // ── Data loaders ──────────────────────────────────────────────────────────
   function loadUsers() {
-    setLoading(true);
+    setUsersLoading(true);
     fetch(`${BACKEND_URL}/api/admin/users?password=${encodeURIComponent(password)}`)
       .then(res => res.json())
-      .then(data => { setUsers(data); setLoading(false); });
+      .then(data => { setUsers(Array.isArray(data) ? data : []); setUsersLoading(false); });
   }
 
+  function loadCashouts() {
+    setCashoutsLoading(true);
+    fetch(`${BACKEND_URL}/api/admin/cashouts?password=${encodeURIComponent(password)}`)
+      .then(res => res.json())
+      .then(data => { setCashouts(Array.isArray(data) ? data : []); setCashoutsLoading(false); });
+  }
+
+  function loadActivity() {
+    setActivityLoading(true);
+    fetch(`${BACKEND_URL}/api/admin/activity?password=${encodeURIComponent(password)}`)
+      .then(res => res.json())
+      .then(data => { setActivity(Array.isArray(data) ? data : []); setActivityLoading(false); });
+  }
+
+  function openReferrerDetail(user) {
+    setSelectedReferrer(user);
+    setReferrerDetail(null);
+    setDetailLoading(true);
+    fetch(`${BACKEND_URL}/api/admin/referrer/${encodeURIComponent(user.full_name)}?password=${encodeURIComponent(password)}`)
+      .then(res => res.json())
+      .then(data => { setReferrerDetail(data); setDetailLoading(false); })
+      .catch(() => setDetailLoading(false));
+  }
+
+  // ── Tab switching loads the right data ───────────────────────────────────
+  function switchTab(tab) {
+    setActiveTab(tab);
+    setSelectedReferrer(null);
+    if (tab === 'referrers') loadUsers();
+    if (tab === 'cashouts') loadCashouts();
+    if (tab === 'activity') loadActivity();
+  }
+
+  // ── User management ───────────────────────────────────────────────────────
   function handleAddUser() {
     setFormError('');
     setFormSuccess('');
-    if (!newName || !newEmail || !newPin) {
-      setFormError('All fields are required');
-      return;
-    }
+    if (!newName || !newEmail || !newPin) { setFormError('All fields are required'); return; }
     fetch(`${BACKEND_URL}/api/admin/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -743,100 +797,157 @@ function AdminPanel() {
     })
       .then(res => res.json())
       .then(data => {
-        if (data.error) {
-          setFormError(data.error);
-        } else {
-          setFormSuccess(`✓ ${newName} added successfully!`);
-          setNewName(''); setNewEmail(''); setNewPin('');
-          loadUsers();
-        }
+        if (data.error) { setFormError(data.error); }
+        else { setFormSuccess(`✓ ${newName} added successfully!`); setNewName(''); setNewEmail(''); setNewPin(''); loadUsers(); }
       });
   }
 
   function handleRemoveUser(id, name) {
     if (!window.confirm(`Remove ${name}? This cannot be undone.`)) return;
-    fetch(`${BACKEND_URL}/api/admin/users/${id}?password=${encodeURIComponent(password)}`, {
-      method: 'DELETE'
-    })
-      .then(res => res.json())
+    fetch(`${BACKEND_URL}/api/admin/users/${id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' })
       .then(() => loadUsers());
   }
 
-function handleResetPin(id, name) {
-  const resetPin = window.prompt(`Enter new PIN for ${name} (4–6 digits):`);
-  if (!resetPin) return;
-  if (resetPin.length < 4 || resetPin.length > 6) {
-    alert('PIN must be between 4 and 6 digits');
-    return;
+  function handleResetPin(id, name) {
+    const resetPin = window.prompt(`Enter new PIN for ${name} (4–6 digits):`);
+    if (!resetPin) return;
+    if (resetPin.length < 4 || resetPin.length > 6) { alert('PIN must be between 4 and 6 digits'); return; }
+    fetch(`${BACKEND_URL}/api/admin/users/${id}/pin`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, pin: resetPin })
+    })
+      .then(res => res.json())
+      .then(data => { if (data.error) alert('Error: ' + data.error); else alert(`✓ PIN updated for ${name}`); });
   }
-  fetch(`${BACKEND_URL}/api/admin/users/${id}/pin`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password, pin: resetPin })
-  })
-    .then(res => res.json())
-    .then(data => {
-      if (data.error) {
-        alert('Error: ' + data.error);
-      } else {
-        alert(`✓ PIN updated for ${name}`);
-      }
-    });
-}
+
+  // ── Cash out management ───────────────────────────────────────────────────
+  function handleCashoutAction(id, status) {
+    const label = status === 'approved' ? 'approve' : 'deny';
+    if (!window.confirm(`Are you sure you want to ${label} this request?`)) return;
+    fetch(`${BACKEND_URL}/api/admin/cashouts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, status })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.error) { alert('Error: ' + data.error); }
+        else { loadCashouts(); }
+      });
+  }
+
+  // ── Styles ────────────────────────────────────────────────────────────────
   const inputStyle = {
     background: '#151515', border: '1px solid #2a2a2a', borderRadius: 10,
     padding: '13px 16px', color: '#fff', fontSize: 14,
     fontFamily: "'DM Sans', sans-serif", outline: 'none', width: '100%',
     boxSizing: 'border-box',
   };
-
-  const btnStyle = {
+  const btnPrimary = {
     background: '#f5a623', border: 'none', borderRadius: 10,
     padding: '13px 20px', color: '#000', fontSize: 14, fontWeight: 800,
     fontFamily: "'Sora', sans-serif", cursor: 'pointer', width: '100%',
   };
 
+  // ── Status helpers ────────────────────────────────────────────────────────
+  const cashoutStatusStyle = {
+    pending:  { bg: '#1a1500', color: '#f5a623', border: '#f5a62340', label: 'Pending' },
+    approved: { bg: '#0d2200', color: '#22c55e', border: '#22c55e40', label: 'Approved' },
+    denied:   { bg: '#1a0808', color: '#ef4444', border: '#ef444440', label: 'Denied'  },
+  };
+
+  const activityIcon = { login: '🔐', cashout: '💰', admin: '⚙️' };
+  const activityColor = { login: '#3b82f6', cashout: '#22c55e', admin: '#f5a623' };
+
+  // ── Login screen ──────────────────────────────────────────────────────────
   if (!authed) {
     return (
-      <div style={{
-        minHeight: '100vh', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        background: '#0a0a0a', padding: '0 32px',
-      }}>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a', padding: '0 32px' }}>
         <div style={{ width: '100%', maxWidth: 400 }}>
           <div style={{ textAlign: 'center', marginBottom: 36 }}>
-            <div style={{
-              width: 64, height: 64, borderRadius: 18, background: '#1a1a1a',
-              border: '1px solid #2a2a2a', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', fontSize: 32, margin: '0 auto 16px',
-            }}>🔐</div>
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: '#1a1a1a', border: '1px solid #2a2a2a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, margin: '0 auto 16px' }}>🔐</div>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900, fontFamily: "'Sora', sans-serif", color: '#fff' }}>Admin Panel</h1>
             <p style={{ margin: '6px 0 0', color: '#555', fontSize: 13 }}>Rooster Booster · Accent Roofing</p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <input
-              type="password"
-              placeholder="Admin password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAdminLogin()}
-              style={inputStyle}
-            />
+            <input type="password" placeholder="Admin password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdminLogin()} style={inputStyle} />
             {authError && <p style={{ color: '#ef4444', fontSize: 13, margin: 0 }}>{authError}</p>}
-            <button onClick={handleAdminLogin} style={btnStyle}>Enter Admin Panel</button>
+            <button onClick={handleAdminLogin} style={btnPrimary}>Enter Admin Panel</button>
           </div>
         </div>
       </div>
     );
   }
 
+  // ── Referrer detail drawer ────────────────────────────────────────────────
+  if (selectedReferrer) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif", padding: '40px 24px', maxWidth: 700, margin: '0 auto' }}>
+        <button onClick={() => setSelectedReferrer(null)} style={{ background: 'none', border: '1px solid #2a2a2a', borderRadius: 8, padding: '8px 16px', color: '#888', fontSize: 13, cursor: 'pointer', marginBottom: 24, fontFamily: "'DM Mono', monospace" }}>
+          ← Back to Referrers
+        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28, background: '#111', border: '1px solid #1e1e1e', borderRadius: 16, padding: '20px' }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#f5a623', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800, fontFamily: "'DM Mono', monospace" }}>
+            {selectedReferrer.full_name.split(' ').map(n => n[0]).join('')}
+          </div>
+          <div>
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 800, fontFamily: "'Sora', sans-serif" }}>{selectedReferrer.full_name}</p>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#555', fontFamily: "'DM Mono', monospace" }}>{selectedReferrer.email}</p>
+          </div>
+        </div>
+
+        {detailLoading ? (
+          <p style={{ color: '#555', fontSize: 13, textAlign: 'center', padding: '40px 0' }}>Loading Jobber data...</p>
+        ) : referrerDetail ? (
+          <>
+            {/* Stats row */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
+              {[
+                { label: 'Total Referrals', val: referrerDetail.pipeline.length, color: '#888' },
+                { label: 'Sold',            val: referrerDetail.paidCount,        color: '#22c55e' },
+                { label: 'Balance',         val: `$${referrerDetail.balance.toLocaleString()}`, color: '#f5a623' },
+              ].map(s => (
+                <div key={s.label} style={{ flex: 1, background: '#111', border: '1px solid #1e1e1e', borderRadius: 12, padding: '16px 12px', textAlign: 'center' }}>
+                  <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: s.color, fontFamily: "'Sora', sans-serif" }}>{s.val}</p>
+                  <p style={{ margin: 0, fontSize: 10, color: '#555', fontFamily: "'DM Mono', monospace", textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Pipeline list */}
+            <p style={{ margin: '0 0 12px', fontSize: 11, color: '#555', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase' }}>Pipeline</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
+              {referrerDetail.pipeline.length === 0 ? (
+                <p style={{ color: '#555', fontSize: 13 }}>No referred clients found in Jobber.</p>
+              ) : referrerDetail.pipeline.map(ref => {
+                const s = STATUS_CONFIG[ref.status];
+                return (
+                  <div key={ref.id} style={{ background: '#0f0f0f', border: '1px solid #1a1a1a', borderRadius: 12, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `3px solid ${s.dot}` }}>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#e0e0e0' }}>{ref.name}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      {ref.payout && <span style={{ fontSize: 13, fontWeight: 900, color: '#22c55e', fontFamily: "'DM Mono', monospace" }}>+${ref.payout}</span>}
+                      <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 999, background: s.dot + '20', color: s.dot, fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>{s.label}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <p style={{ color: '#ef4444', fontSize: 13 }}>Failed to load Jobber data for this referrer.</p>
+        )}
+      </div>
+    );
+  }
+
+  // ── Main admin panel ──────────────────────────────────────────────────────
   return (
-    <div style={{
-      minHeight: '100vh', background: '#0a0a0a', color: '#f0f0f0',
-      fontFamily: "'DM Sans', sans-serif", padding: '40px 24px',
-      maxWidth: 600, margin: '0 auto',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32 }}>
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#f0f0f0', fontFamily: "'DM Sans', sans-serif", padding: '40px 24px', maxWidth: 700, margin: '0 auto' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
         <span style={{ fontSize: 28 }}>🐓</span>
         <div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, fontFamily: "'Sora', sans-serif" }}>Admin Panel</h1>
@@ -844,76 +955,188 @@ function handleResetPin(id, name) {
         </div>
       </div>
 
-      {/* Add User Form */}
-      <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 16, padding: '24px', marginBottom: 24 }}>
-        <p style={{ margin: '0 0 16px', fontSize: 11, color: '#f5a623', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase' }}>Add New Referrer</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input placeholder="Full name (must match Jobber exactly)" value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle} />
-          <input placeholder="Email address" value={newEmail} onChange={e => setNewEmail(e.target.value)} style={inputStyle} />
-          <input placeholder="PIN (4–6 digits)" value={newPin} onChange={e => setNewPin(e.target.value)} style={inputStyle} />
-          {formError && <p style={{ color: '#ef4444', fontSize: 13, margin: 0 }}>{formError}</p>}
-          {formSuccess && <p style={{ color: '#22c55e', fontSize: 13, margin: 0 }}>{formSuccess}</p>}
-          <button onClick={handleAddUser} style={btnStyle}>Add Referrer</button>
-        </div>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 28, background: '#111', border: '1px solid #1e1e1e', borderRadius: 12, padding: 4 }}>
+        {[
+          { id: 'referrers', label: '👥 Referrers' },
+          { id: 'cashouts',  label: '💰 Cash Outs' },
+          { id: 'activity',  label: '📋 Activity' },
+        ].map(t => (
+          <button key={t.id} onClick={() => switchTab(t.id)} style={{
+            flex: 1, background: activeTab === t.id ? '#1e1e1e' : 'none',
+            border: activeTab === t.id ? '1px solid #2a2a2a' : '1px solid transparent',
+            borderRadius: 8, padding: '10px 8px',
+            color: activeTab === t.id ? '#f5a623' : '#555',
+            fontSize: 13, fontWeight: activeTab === t.id ? 700 : 400,
+            cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+            transition: 'all 0.15s',
+          }}>{t.label}</button>
+        ))}
       </div>
 
-      {/* User List */}
-      <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 16, padding: '24px' }}>
-        <p style={{ margin: '0 0 16px', fontSize: 11, color: '#f5a623', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-          All Referrers ({users.length})
-        </p>
-        {loading ? (
-          <p style={{ color: '#555', fontSize: 13 }}>Loading...</p>
-        ) : users.length === 0 ? (
-          <p style={{ color: '#555', fontSize: 13 }}>No referrers yet — add one above.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {users.map(u => (
-              <div key={u.id} style={{
-                background: '#0f0f0f', border: '1px solid #1a1a1a',
-                borderRadius: 12, padding: '14px 16px',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#e0e0e0' }}>{u.full_name}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: 12, color: '#555', fontFamily: "'DM Mono', monospace" }}>{u.email}</p>
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => handleResetPin(u.id, u.full_name)} style={{
-                    background: '#0d1a2a', border: '1px solid #1a3a5a',
-                    borderRadius: 8, padding: '7px 14px',
-                    color: '#3b82f6', fontSize: 12, fontWeight: 700,
-                    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
-                  }}>Reset PIN</button>
-                  <button onClick={() => handleRemoveUser(u.id, u.full_name)} style={{
-                    background: '#1a0808', border: '1px solid #3a1515',
-                    borderRadius: 8, padding: '7px 14px',
-                    color: '#ef4444', fontSize: 12, fontWeight: 700,
-                    cursor: 'pointer', fontFamily: "'DM Mono', monospace",
-                  }}>Remove</button>
-                </div>
-              </div>
-
-
-            ))}
+      {/* ── REFERRERS TAB ─────────────────────────────────────────────────── */}
+      {activeTab === 'referrers' && (
+        <>
+          {/* Add user form */}
+          <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 16, padding: '24px', marginBottom: 20 }}>
+            <p style={{ margin: '0 0 16px', fontSize: 11, color: '#f5a623', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase' }}>Add New Referrer</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <input placeholder="Full name (must match Jobber exactly)" value={newName} onChange={e => setNewName(e.target.value)} style={inputStyle} />
+              <input placeholder="Email address" value={newEmail} onChange={e => setNewEmail(e.target.value)} style={inputStyle} />
+              <input placeholder="PIN (4–6 digits)" value={newPin} onChange={e => setNewPin(e.target.value)} style={inputStyle} />
+              {formError && <p style={{ color: '#ef4444', fontSize: 13, margin: 0 }}>{formError}</p>}
+              {formSuccess && <p style={{ color: '#22c55e', fontSize: 13, margin: 0 }}>{formSuccess}</p>}
+              <button onClick={handleAddUser} style={btnPrimary}>Add Referrer</button>
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* User list */}
+          <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 16, padding: '24px' }}>
+            <p style={{ margin: '0 0 16px', fontSize: 11, color: '#f5a623', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              All Referrers ({users.length})
+            </p>
+            {usersLoading ? (
+              <p style={{ color: '#555', fontSize: 13 }}>Loading...</p>
+            ) : users.length === 0 ? (
+              <p style={{ color: '#555', fontSize: 13 }}>No referrers yet — add one above.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {users.map(u => (
+                  <div key={u.id} style={{ background: '#0f0f0f', border: '1px solid #1a1a1a', borderRadius: 12, padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#e0e0e0' }}>{u.full_name}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#555', fontFamily: "'DM Mono', monospace" }}>{u.email}</p>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 10 }}>
+                        <button onClick={() => openReferrerDetail(u)} style={{ background: '#0d1a0d', border: '1px solid #1a3a1a', borderRadius: 8, padding: '7px 12px', color: '#22c55e', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>View</button>
+                        <button onClick={() => handleResetPin(u.id, u.full_name)} style={{ background: '#0d1a2a', border: '1px solid #1a3a5a', borderRadius: 8, padding: '7px 12px', color: '#3b82f6', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>PIN</button>
+                        <button onClick={() => handleRemoveUser(u.id, u.full_name)} style={{ background: '#1a0808', border: '1px solid #3a1515', borderRadius: 8, padding: '7px 12px', color: '#ef4444', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>Remove</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── CASH OUTS TAB ─────────────────────────────────────────────────── */}
+      {activeTab === 'cashouts' && (
+        <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 16, padding: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <p style={{ margin: 0, fontSize: 11, color: '#f5a623', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              Cash Out Requests
+            </p>
+            <span style={{ fontSize: 11, color: '#555', fontFamily: "'DM Mono', monospace" }}>
+              {cashouts.filter(c => c.status === 'pending').length} pending
+            </span>
+          </div>
+
+          {cashoutsLoading ? (
+            <p style={{ color: '#555', fontSize: 13 }}>Loading...</p>
+          ) : cashouts.length === 0 ? (
+            <p style={{ color: '#555', fontSize: 13 }}>No cash out requests yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {cashouts.map(c => {
+                const s = cashoutStatusStyle[c.status] || cashoutStatusStyle.pending;
+                const isPending = c.status === 'pending';
+                return (
+                  <div key={c.id} style={{ background: '#0f0f0f', border: '1px solid #1a1a1a', borderRadius: 14, padding: '16px 18px' }}>
+                    {/* Top row: name + status badge */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#e0e0e0' }}>{c.full_name}</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#555', fontFamily: "'DM Mono', monospace" }}>{c.email}</p>
+                      </div>
+                      <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 999, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: "'DM Mono', monospace", fontWeight: 600, flexShrink: 0, marginLeft: 10 }}>
+                        {s.label}
+                      </span>
+                    </div>
+
+                    {/* Detail row: amount + method + date */}
+                    <div style={{ display: 'flex', gap: 16, marginBottom: isPending ? 14 : 0 }}>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, color: '#555', fontFamily: "'DM Mono', monospace", textTransform: 'uppercase' }}>Amount</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 18, fontWeight: 900, color: '#fff', fontFamily: "'DM Mono', monospace" }}>${parseFloat(c.amount).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, color: '#555', fontFamily: "'DM Mono', monospace", textTransform: 'uppercase' }}>Method</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 600, color: '#aaa', textTransform: 'capitalize' }}>{c.method || '—'}</p>
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 11, color: '#555', fontFamily: "'DM Mono', monospace", textTransform: 'uppercase' }}>Submitted</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#666' }}>{new Date(c.requested_at).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+
+                    {/* Action buttons — only show for pending */}
+                    {isPending && (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => handleCashoutAction(c.id, 'approved')} style={{ flex: 1, background: '#0d2200', border: '1px solid #22c55e40', borderRadius: 8, padding: '10px', color: '#22c55e', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>
+                          ✓ Approve
+                        </button>
+                        <button onClick={() => handleCashoutAction(c.id, 'denied')} style={{ flex: 1, background: '#1a0808', border: '1px solid #ef444440', borderRadius: 8, padding: '10px', color: '#ef4444', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>
+                          ✕ Deny
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ACTIVITY LOG TAB ──────────────────────────────────────────────── */}
+      {activeTab === 'activity' && (
+        <div style={{ background: '#111', border: '1px solid #1e1e1e', borderRadius: 16, padding: '24px' }}>
+          <p style={{ margin: '0 0 16px', fontSize: 11, color: '#f5a623', fontFamily: "'DM Mono', monospace", letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            Activity Log
+          </p>
+          {activityLoading ? (
+            <p style={{ color: '#555', fontSize: 13 }}>Loading...</p>
+          ) : activity.length === 0 ? (
+            <p style={{ color: '#555', fontSize: 13 }}>No activity yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {activity.map(item => (
+                <div key={item.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', padding: '12px 0', borderBottom: '1px solid #151515' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+                    {activityIcon[item.event_type] || '📌'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#e0e0e0' }}>{item.full_name}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: '#444', fontFamily: "'DM Mono', monospace", flexShrink: 0, marginLeft: 8 }}>
+                        {new Date(item.created_at).toLocaleDateString()} {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: activityColor[item.event_type] || '#888' }}>{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App() {
-    const [loggedIn, setLoggedIn] = useState(false);
-    const [tab, setTab] = useState("dashboard");
-    const [userName, setUserName] = useState("");
-    const [userEmail, setUserEmail] = useState("");
-    const [pipeline, setPipeline] = useState([]);
-    const [balance, setBalance] = useState(0);
-    const [paidCount, setPaidCount] = useState(0);
-    const [loading, setLoading] = useState(false);
+  const [loggedIn, setLoggedIn]   = useState(false);
+  const [tab, setTab]             = useState("dashboard");
+  const [userName, setUserName]   = useState("");
+  const [userEmail, setUserEmail] = useState("");
+  const [pipeline, setPipeline]   = useState([]);
+  const [balance, setBalance]     = useState(0);
+  const [paidCount, setPaidCount] = useState(0);
+  const [loading, setLoading]     = useState(false);
 
   const isAdmin = window.location.search.includes('admin=true');
 
@@ -932,15 +1155,12 @@ export default function App() {
       fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`)
         .then(res => res.json())
         .then(data => {
-        setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
-        setBalance(data.balance || 0);
-        setPaidCount(data.paidCount || 0);
-        setLoading(false);
-      })
-        .catch(err => {
-          console.error(err);
+          setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
+          setBalance(data.balance || 0);
+          setPaidCount(data.paidCount || 0);
           setLoading(false);
-        });
+        })
+        .catch(err => { console.error(err); setLoading(false); });
     }
   }, [loggedIn, userName]);
 
@@ -951,13 +1171,12 @@ export default function App() {
   }
 
   if (isAdmin) return <AdminPanel />;
-
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
 
   const screens = {
     dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} />,
     pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
-    cashout: <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
+    cashout:   <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
     history:   <History pipeline={pipeline} />,
     profile:   <Profile onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(""); }} pipeline={pipeline} userName={userName} />,
   };
