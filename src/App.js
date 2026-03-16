@@ -830,6 +830,7 @@ function AdminDashboard({ password, setPage }) {
       .catch(() => { setError('Failed to load stats'); setLoading(false); });
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadStats(); }, []);
 
   const cachedAgo = stats?.cachedAt
@@ -975,6 +976,7 @@ function AdminReferrers({ password }) {
       .then(r => r.json())
       .then(data => { setUsers(Array.isArray(data) ? data : []); setLoading(false); });
   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadUsers(); }, []);
 
   function openDetail(user) {
@@ -1144,6 +1146,7 @@ function AdminCashOuts({ password }) {
       .then(r => r.json())
       .then(data => { setCashouts(Array.isArray(data) ? data : []); setLoading(false); });
   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
 
   function handleAction(id, status) {
@@ -1238,8 +1241,8 @@ function AdminActivity({ password }) {
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/admin/activity?password=${encodeURIComponent(password)}`)
       .then(r => r.json())
       .then(data => { setActivity(Array.isArray(data) ? data : []); setLoading(false); });
   }, []);
