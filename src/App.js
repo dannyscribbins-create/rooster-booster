@@ -1241,12 +1241,11 @@ function AdminActivity({ password }) {
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/admin/activity?password=${encodeURIComponent(password)}`)
       .then(r => r.json())
       .then(data => { setActivity(Array.isArray(data) ? data : []); setLoading(false); });
-  }, []);
+  }, [password]);
 
   const icons  = { login: '🔐', cashout: '💰', admin: '⚙️' };
   const colors = { login: A.blue, cashout: A.green, admin: A.amber };
