@@ -57,6 +57,13 @@ async function initDB() {
   await pool.query(`CREATE TABLE IF NOT EXISTS admin_cache (
     id INTEGER PRIMARY KEY DEFAULT 1, stats JSONB, cached_at TIMESTAMP DEFAULT NOW()
   )`);
+await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL
+  )`);
   await pool.query(`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP`);
   await pool.query(`ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS method TEXT`);
 
@@ -167,6 +174,13 @@ app.get('/callback', async (req, res) => {
 // ── REFERRER: PIPELINE ────────────────────────────────────────────────────────
 app.get('/api/pipeline', async (req, res) => {
   try {
+    const token = req.headers['authorization']?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Not authorized' });
+    const sessionResult = await pool.query(
+      'SELECT * FROM sessions WHERE token=$1 AND expires_at > NOW()',
+      [token]
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     const data = await fetchPipelineForReferrer(req.query.referrer);
     res.json(data);
   } catch (err) {
@@ -178,20 +192,34 @@ app.get('/api/pipeline', async (req, res) => {
 app.post('/api/login', referrerLoginLimiter, async (req, res) => {
   const { email, pin } = req.body;
   try {
-    const result = await pool.query('SELECT * FROM users WHERE LOWER(email)=LOWER($1)', [email]);
-    if (result.rows.length === 0) return res.status(401).json({ error: 'No account found with that email' });
+    const result = await pool.query('SELECT * FROM users WHERE email=$1', [email]);
+    if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid email or PIN' });
     const user = result.rows[0];
-    if (!await bcrypt.compare(String(pin), user.pin)) return res.status(401).json({ error: 'Incorrect PIN' });
+    const match = await bcrypt.compare(String(pin), user.pin);
+    if (!match) return res.status(401).json({ error: 'Invalid email or PIN' });
+    const token = require('crypto').randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await pool.query(
-      `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('login',$1,$2,'User logged in')`,
-      [user.full_name, user.email]
+      'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1,$2,$3)',
+      [user.id, token, expiresAt]
     );
-    res.json({ success: true, fullName: user.full_name, email: user.email });
+    await pool.query(
+      `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('login',$1,$2,$3)`,
+      [user.full_name, user.email, 'Logged in']
+    );
+    res.json({ success: true, fullName: user.full_name, email: user.email, token });
   } catch (err) { res.status(500).json({ error: 'Login failed: ' + err.message }); }
 });
 
 // ── REFERRER: CASH OUT ────────────────────────────────────────────────────────
 app.post('/api/cashout', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  const sessionResult = await pool.query(
+    'SELECT * FROM sessions WHERE token=$1 AND expires_at > NOW()',
+    [token]
+  );
+  if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
   const { user_id, full_name, email, amount, method } = req.body;
   try {
     await pool.query(

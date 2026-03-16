@@ -105,7 +105,7 @@ function LoginScreen({ onLogin }) {
         if (data.error) {
           setError(data.error);
         } else {
-          onLogin(data.fullName, data.email);
+          onLogin(data.fullName, data.email, data.token);
         }
       })
       .catch(() => {
@@ -580,16 +580,19 @@ function CashOut({ pipeline, userName, userEmail }) {
               setSubmitting(true);
               try {
                 await fetch(`${BACKEND_URL}/api/cashout`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    user_id: null,
-                    full_name: userName,
-                    email: userEmail,
-                    amount: parseFloat(amount),
-                    method: method
-                  })
-                });
+              method: "POST",
+              headers: { 
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${sessionStorage.getItem('rb_token')}`
+              },
+              body: JSON.stringify({
+                user_id: null,
+                full_name: userName,
+                email: userEmail,
+                amount: parseFloat(amount),
+                method: method
+              })
+            });
               } catch(err) {
                 console.error("Cash out error:", err);
               }
@@ -1385,7 +1388,10 @@ export default function App() {
   useEffect(() => {
     if (loggedIn && userName) {
       setLoading(true);
-      fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`)
+      const token = sessionStorage.getItem('rb_token');
+      fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
         .then(res => res.json())
         .then(data => {
           setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
@@ -1397,9 +1403,10 @@ export default function App() {
     }
   }, [loggedIn, userName]);
 
-  function handleLogin(name, email) {
+  function handleLogin(name, email, token) {
     setUserName(name);
     setUserEmail(email);
+    sessionStorage.setItem('rb_token', token);
     setLoggedIn(true);
   }
 
