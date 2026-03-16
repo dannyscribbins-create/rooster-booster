@@ -1243,6 +1243,7 @@ function AdminActivity({ password }) {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    fetch(`${BACKEND_URL}/api/admin/activity?password=${encodeURIComponent(password)}`)
       .then(r => r.json())
       .then(data => { setActivity(Array.isArray(data) ? data : []); setLoading(false); });
   }, []);
