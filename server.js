@@ -6,6 +6,19 @@ require('dotenv').config();
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const bcrypt = require('bcrypt');
+const rateLimit = require('express-rate-limit');
+
+const referrerLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' }
+});
+
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' }
+});
 
 const app = express();
 app.use(cors());
@@ -162,7 +175,7 @@ app.get('/api/pipeline', async (req, res) => {
 });
 
 // ── REFERRER: LOGIN ───────────────────────────────────────────────────────────
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', referrerLoginLimiter, async (req, res) => {
   const { email, pin } = req.body;
   try {
     const result = await pool.query('SELECT * FROM users WHERE LOWER(email)=LOWER($1)', [email]);
@@ -206,7 +219,7 @@ app.post('/api/cashout', async (req, res) => {
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
 function checkAdminPassword(p) { return p === ADMIN_PASSWORD; }
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
   checkAdminPassword(req.body.password) ? res.json({ success: true }) : res.status(401).json({ error: 'Incorrect password' });
 });
 
