@@ -116,30 +116,6 @@ function Screen({ children, style = {} }) {
   );
 }
 
-function PageHeader({ title, subtitle, light = false }) {
-  return (
-    <div style={{ padding: "52px 24px 20px" }}>
-      <p style={{
-        margin: 0, fontSize: 10, color: R.red,
-        fontFamily: R.fontMono, letterSpacing: "0.14em",
-        textTransform: "uppercase", marginBottom: 4, fontWeight: 600,
-      }}>
-        ROOSTER BOOSTER
-      </p>
-      <h1 style={{
-        margin: 0, fontSize: 26, fontWeight: 800,
-        letterSpacing: "-0.02em", fontFamily: R.fontSans,
-        color: light ? R.textOnDark : R.navy,
-      }}>{title}</h1>
-      {subtitle && (
-        <p style={{ margin: "4px 0 0", fontSize: 13, color: light ? "rgba(255,255,255,0.65)" : R.textSecondary }}>
-          {subtitle}
-        </p>
-      )}
-    </div>
-  );
-}
-
 // Animated card wrapper
 function AnimCard({ children, delay = 0, style = {} }) {
   const visible = useEntrance(delay);
