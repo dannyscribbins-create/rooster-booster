@@ -105,7 +105,7 @@ function LoginScreen({ onLogin }) {
         if (data.error) {
           setError(data.error);
         } else {
-          onLogin(data.fullName, data.email, data.token);
+          onLogin(data.fullName, data.email);
         }
       })
       .catch(() => {
@@ -580,19 +580,16 @@ function CashOut({ pipeline, userName, userEmail }) {
               setSubmitting(true);
               try {
                 await fetch(`${BACKEND_URL}/api/cashout`, {
-              method: "POST",
-              headers: { 
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${sessionStorage.getItem('rb_token')}`
-              },
-              body: JSON.stringify({
-                user_id: null,
-                full_name: userName,
-                email: userEmail,
-                amount: parseFloat(amount),
-                method: method
-              })
-            });
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    user_id: null,
+                    full_name: userName,
+                    email: userEmail,
+                    amount: parseFloat(amount),
+                    method: method
+                  })
+                });
               } catch(err) {
                 console.error("Cash out error:", err);
               }
@@ -700,71 +697,126 @@ function Profile({ onLogout, pipeline, userName }) {
   );
 }
 
-// ─── Admin Panel ──────────────────────────────────────────────────────────────
+// ─── Admin Panel — Accent Roofing Design System ──────────────────────────────
 
-// Design tokens for admin — deep slate, distinct from the referrer app
-const A = {
-  bg:       '#0b0f19',
-  surface:  '#111827',
-  border:   '#1f2937',
-  borderHi: '#374151',
-  text:     '#f9fafb',
-  muted:    '#6b7280',
-  subtle:   '#374151',
-  amber:    '#f5a623',
-  green:    '#22c55e',
-  red:      '#ef4444',
-  blue:     '#3b82f6',
-  amberBg:  '#1c1400',
-  greenBg:  '#0a1f0a',
-  redBg:    '#1a0808',
-  blueBg:   '#0d1a2a',
+// Inject Google Fonts + Phosphor Icons for admin
+function useAdminFonts() {
+  useEffect(() => {
+    const fonts = document.createElement('link');
+    fonts.rel = 'stylesheet';
+    fonts.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap';
+    document.head.appendChild(fonts);
+    const icons = document.createElement('script');
+    icons.src = 'https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js';
+    document.head.appendChild(icons);
+  }, []);
+}
+
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const AD = {
+  // Backgrounds — keeping dark theme, but warmer
+  bgPage:     '#12161f',
+  bgSurface:  '#1a1f2e',
+  bgCard:     '#1f2638',
+  bgCardTint: '#242b3d',
+  bgSidebar:  'linear-gradient(160deg, #1a3a6b 0%, #012854 50%, #020f1f 100%)',
+  bgActive:   'rgba(255,255,255,0.08)',
+
+  // Accent Roofing brand colors adapted for dark
+  navy:       '#012854',
+  red:        '#CC0000',
+  redDark:    '#8C0000',
+  blueLight:  '#D3E3F0',
+
+  // Text
+  textPrimary:   '#f0ede8',
+  textSecondary: 'rgba(240,237,232,0.55)',
+  textTertiary:  'rgba(240,237,232,0.3)',
+  textInverse:   '#ffffff',
+
+  // Status colors (slightly warmer than pure digital)
+  green:      '#2D8B5F',
+  greenBg:    'rgba(45,139,95,0.15)',
+  greenText:  '#7dd3aa',
+  amber:      '#D97706',
+  amberBg:    'rgba(217,119,6,0.15)',
+  amberText:  '#fbbf24',
+  red2:       '#DC2626',
+  red2Bg:     'rgba(220,38,38,0.12)',
+  red2Text:   '#f87171',
+  blue:       '#2563EB',
+  blueBg:     'rgba(37,99,235,0.12)',
+  blueText:   '#93c5fd',
+
+  // Borders & shadows
+  border:     'rgba(255,255,255,0.07)',
+  borderStrong: 'rgba(255,255,255,0.12)',
+  shadowSm:   '0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2)',
+  shadowMd:   '0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2)',
+  shadowLg:   '0 8px 32px rgba(0,0,0,0.5)',
+
+  // Radii
+  radiusSm:  '6px',
+  radiusMd:  '10px',
+  radiusLg:  '16px',
+  radiusPill:'9999px',
+
+  // Fonts
+  fontSans:    "'DM Sans', sans-serif",
+  fontDisplay: "'DM Serif Display', serif",
 };
 
-const NAV_ITEMS = [
-  { id: 'dashboard', icon: '⚡', label: 'Dashboard' },
-  { id: 'referrers', icon: '👥', label: 'Referrers'  },
-  { id: 'cashouts',  icon: '💰', label: 'Cash Outs'  },
-  { id: 'activity',  icon: '📋', label: 'Activity'   },
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+const ADMIN_NAV = [
+  { id: 'dashboard', icon: 'ph-squares-four',    label: 'Dashboard'  },
+  { id: 'referrers', icon: 'ph-users',            label: 'Referrers'  },
+  { id: 'cashouts',  icon: 'ph-money',            label: 'Cash Outs'  },
+  { id: 'activity',  icon: 'ph-clock-clockwise',  label: 'Activity'   },
 ];
 
 function AdminSidebar({ page, setPage, pendingCount }) {
   return (
     <div style={{
-      width: 220, minHeight: '100vh', background: A.surface,
-      borderRight: `1px solid ${A.border}`,
-      display: 'flex', flexDirection: 'column',
-      position: 'fixed', top: 0, left: 0, zIndex: 50,
+      position: 'fixed', top: 0, left: 0, width: 230, height: '100vh',
+      background: AD.bgSidebar, display: 'flex', flexDirection: 'column',
+      zIndex: 100, fontFamily: AD.fontSans,
     }}>
       {/* Logo */}
-      <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${A.border}` }}>
+      <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: A.amber, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🐓</div>
+          <div style={{ width: 34, height: 34, borderRadius: 8, background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🐓</div>
           <div>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: A.text, fontFamily: "'Sora', sans-serif" }}>Rooster Booster</p>
-            <p style={{ margin: 0, fontSize: 10, color: A.muted, fontFamily: "'DM Mono', monospace", letterSpacing: '0.05em' }}>ADMIN</p>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', letterSpacing: '0.01em', lineHeight: 1.3 }}>Rooster Booster</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>Accent Roofing · Admin</div>
           </div>
         </div>
       </div>
 
-      {/* Nav */}
-      <nav style={{ padding: '12px 10px', flex: 1 }}>
-        {NAV_ITEMS.map(item => {
+      {/* Section label */}
+      <div style={{ fontSize: 10, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 20px 6px' }}>Main Menu</div>
+
+      {/* Nav items */}
+      <nav style={{ padding: '0 10px', flex: 1 }}>
+        {ADMIN_NAV.map(item => {
           const active = page === item.id;
           return (
             <button key={item.id} onClick={() => setPage(item.id)} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 12px', borderRadius: 8, marginBottom: 2,
-              background: active ? A.amberBg : 'transparent',
-              border: active ? `1px solid ${A.amber}30` : '1px solid transparent',
-              cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+              padding: '9px 14px', margin: '1px 0', borderRadius: 10,
+              background: active ? AD.bgActive : 'transparent',
+              border: 'none', cursor: 'pointer', textAlign: 'left',
+              color: active ? '#fff' : 'rgba(255,255,255,0.55)',
+              fontSize: 13.5, fontWeight: active ? 500 : 400,
+              fontFamily: AD.fontSans, transition: 'all 0.15s',
+              position: 'relative',
             }}>
-              <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>{item.icon}</span>
-              <span style={{ fontSize: 13, fontWeight: active ? 700 : 400, color: active ? A.amber : A.muted, fontFamily: "'DM Sans', sans-serif" }}>
-                {item.label}
-              </span>
+              {active && (
+                <div style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: AD.blueLight, borderRadius: 99 }} />
+              )}
+              <i className={`ph ${item.icon}`} style={{ fontSize: 17, opacity: 0.85, flexShrink: 0 }} />
+              <span>{item.label}</span>
               {item.id === 'cashouts' && pendingCount > 0 && (
-                <span style={{ marginLeft: 'auto', background: A.amber, color: '#000', fontSize: 10, fontWeight: 800, borderRadius: 999, padding: '2px 7px', fontFamily: "'DM Mono', monospace" }}>
+                <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>
                   {pendingCount}
                 </span>
               )}
@@ -774,161 +826,255 @@ function AdminSidebar({ page, setPage, pendingCount }) {
       </nav>
 
       {/* Footer */}
-      <div style={{ padding: '16px 20px', borderTop: `1px solid ${A.border}` }}>
-        <p style={{ margin: 0, fontSize: 10, color: A.subtle, fontFamily: "'DM Mono', monospace", letterSpacing: '0.05em' }}>ACCENT ROOFING</p>
+      <div style={{ padding: '16px 20px', borderTop: `1px solid ${AD.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0 }}>DS</div>
+          <div>
+            <div style={{ fontSize: 12.5, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>Danny Scribbins</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Administrator</div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
+// ── Shell ─────────────────────────────────────────────────────────────────────
 function AdminShell({ children, page, setPage, pendingCount }) {
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: A.bg, fontFamily: "'DM Sans', sans-serif", color: A.text }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
       <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} />
-      <main style={{ marginLeft: 220, flex: 1, padding: '32px 36px', minHeight: '100vh' }}>
+      <main style={{ marginLeft: 230, flex: 1, padding: '36px 40px', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)' }}>
         {children}
       </main>
     </div>
   );
 }
 
+// ── Shared admin components ───────────────────────────────────────────────────
 function AdminPageHeader({ title, subtitle, action }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, flexWrap: 'wrap', gap: 12 }}>
       <div>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900, fontFamily: "'Sora', sans-serif", letterSpacing: '-0.03em' }}>{title}</h1>
-        {subtitle && <p style={{ margin: '4px 0 0', fontSize: 13, color: A.muted }}>{subtitle}</p>}
+        {subtitle && <p style={{ fontSize: 13, color: AD.textSecondary, marginBottom: 2, fontFamily: AD.fontSans }}>{subtitle}</p>}
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary, lineHeight: 1.2 }}>{title}</h1>
       </div>
-      {action}
+      {action && <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{action}</div>}
     </div>
   );
 }
 
-function StatCard({ label, value, sub, color, icon }) {
+function StatCard({ label, value, sub, icon, accent, animDelay = 0 }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const t = setTimeout(() => setVisible(true), animDelay);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
-    <div style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 14, padding: '20px 22px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-        <p style={{ margin: 0, fontSize: 11, color: A.muted, fontFamily: "'DM Mono', monospace", letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</p>
-        <span style={{ fontSize: 18 }}>{icon}</span>
+    <div style={{
+      background: AD.bgCard, borderRadius: 16, padding: '20px 22px',
+      border: `1px solid ${AD.border}`, boxShadow: AD.shadowSm,
+      transition: 'transform 0.2s ease, box-shadow 0.2s ease, opacity 0.4s ease, translate 0.4s ease',
+      opacity: visible ? 1 : 0,
+      translate: visible ? '0 0' : '0 12px',
+      cursor: 'default',
+      position: 'relative', overflow: 'hidden',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = AD.shadowMd; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = AD.shadowSm; }}
+    >
+      {/* Subtle corner glow */}
+      {accent && <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: accent, opacity: 0.08, pointerEvents: 'none' }} />}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 500, color: AD.textSecondary, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</span>
+        <div style={{ width: 34, height: 34, borderRadius: 8, background: accent ? `${accent}20` : AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: accent || AD.textSecondary }}>
+          {icon}
+        </div>
       </div>
-      <p style={{ margin: 0, fontSize: 28, fontWeight: 900, color: color || A.text, fontFamily: "'Sora', sans-serif", letterSpacing: '-0.03em' }}>{value}</p>
-      {sub && <p style={{ margin: '4px 0 0', fontSize: 12, color: A.muted }}>{sub}</p>}
+      <div style={{ fontSize: 28, fontWeight: 600, color: AD.textPrimary, lineHeight: 1.1, letterSpacing: '-0.02em', fontFamily: AD.fontSans }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: AD.textSecondary, marginTop: 5 }}>{sub}</div>}
     </div>
   );
 }
 
-// ── Admin Dashboard Page ──────────────────────────────────────────────────────
+function Badge({ type, children }) {
+  const styles = {
+    success: { background: AD.greenBg,  color: AD.greenText,  dot: AD.green  },
+    warning: { background: AD.amberBg,  color: AD.amberText,  dot: AD.amber  },
+    danger:  { background: AD.red2Bg,   color: AD.red2Text,   dot: AD.red2   },
+    info:    { background: AD.blueBg,   color: AD.blueText,   dot: AD.blue   },
+    neutral: { background: 'rgba(255,255,255,0.06)', color: AD.textSecondary, dot: 'rgba(255,255,255,0.3)' },
+  };
+  const s = styles[type] || styles.neutral;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 99, fontSize: 11.5, fontWeight: 500, background: s.background, color: s.color, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.dot, flexShrink: 0 }} />
+      {children}
+    </span>
+  );
+}
+
+function Btn({ onClick, children, variant = 'primary', size = 'md', style: extraStyle = {} }) {
+  const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', cursor: 'pointer', fontFamily: AD.fontSans, fontWeight: 500, transition: 'all 0.15s', borderRadius: 10, whiteSpace: 'nowrap', lineHeight: 1 };
+  const sizes = { sm: { padding: '6px 12px', fontSize: 12 }, md: { padding: '9px 18px', fontSize: 13.5 }, lg: { padding: '13px 28px', fontSize: 15 } };
+  const variants = {
+    primary: { background: AD.navy,  color: '#fff' },
+    accent:  { background: AD.red,   color: '#fff' },
+    outline: { background: 'transparent', color: AD.textPrimary, border: `1px solid ${AD.borderStrong}` },
+    ghost:   { background: 'transparent', color: AD.textSecondary },
+    success: { background: AD.greenBg, color: AD.greenText, border: `1px solid ${AD.green}30` },
+    danger:  { background: AD.red2Bg,  color: AD.red2Text,  border: `1px solid ${AD.red2}30`  },
+  };
+  return (
+    <button onClick={onClick} style={{ ...base, ...sizes[size], ...variants[variant], ...extraStyle }}
+      onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+      onMouseLeave={e => { e.currentTarget.style.opacity = '1';    e.currentTarget.style.transform = 'translateY(0)'; }}
+    >{children}</button>
+  );
+}
+
+function AdminInput({ value, onChange, placeholder, type = 'text', label }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {label && <label style={{ display: 'block', fontSize: 12.5, fontWeight: 500, color: AD.textSecondary, marginBottom: 6 }}>{label}</label>}
+      <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={{
+        width: '100%', padding: '10px 14px', background: AD.bgSurface,
+        border: `1px solid ${AD.borderStrong}`, borderRadius: 10,
+        fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary,
+        outline: 'none', boxSizing: 'border-box',
+        transition: 'border-color 0.15s',
+      }}
+        onFocus={e => e.target.style.borderColor = AD.blueLight}
+        onBlur={e => e.target.style.borderColor = AD.borderStrong}
+      />
+    </div>
+  );
+}
+
+// ── Dashboard Page ────────────────────────────────────────────────────────────
 function AdminDashboard({ password, setPage }) {
   const [stats, setStats]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState('');
 
   function loadStats(forceRefresh = false) {
-    setLoading(true);
-    setError('');
-    const url = `${BACKEND_URL}/api/admin/stats?password=${encodeURIComponent(password)}${forceRefresh ? '&refresh=true' : ''}`;
-    fetch(url)
+    setLoading(true); setError('');
+    fetch(`${BACKEND_URL}/api/admin/stats?password=${encodeURIComponent(password)}${forceRefresh ? '&refresh=true' : ''}`)
       .then(r => r.json())
-      .then(data => { if (data.error) setError(data.error); else setStats(data); setLoading(false); })
+      .then(d => { if (d.error) setError(d.error); else setStats(d); setLoading(false); })
       .catch(() => { setError('Failed to load stats'); setLoading(false); });
   }
-
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadStats(); }, []);
 
-  const cachedAgo = stats?.cachedAt
-    ? Math.round((Date.now() - new Date(stats.cachedAt).getTime()) / 60000)
-    : null;
+  const cachedAgo = stats?.cachedAt ? Math.round((Date.now() - new Date(stats.cachedAt).getTime()) / 60000) : null;
+
+  const pipelineTotal = stats ? stats.totalLeads + stats.totalInspections + stats.totalSold + stats.totalNotSold : 0;
+  const pct = (val) => pipelineTotal > 0 ? Math.round((val / pipelineTotal) * 100) : 0;
 
   return (
     <>
       <AdminPageHeader
-        title="Dashboard"
-        subtitle="Accent Roofing referral program overview"
+        title="Good morning, Danny."
+        subtitle="Rooster Booster · Accent Roofing"
         action={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {stats && (
-              <p style={{ margin: 0, fontSize: 11, color: A.muted, fontFamily: "'DM Mono', monospace" }}>
+              <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: "'DM Mono', monospace" }}>
                 {stats.fromCache ? `Cached ${cachedAgo}m ago` : 'Live data'}
-              </p>
+              </span>
             )}
-            <button onClick={() => loadStats(true)} style={{
-              background: A.surface, border: `1px solid ${A.border}`, borderRadius: 8,
-              padding: '8px 14px', color: A.muted, fontSize: 12, cursor: 'pointer',
-              fontFamily: "'DM Mono', monospace", transition: 'color 0.15s',
-            }}>↻ Refresh</button>
+            <Btn onClick={() => loadStats(true)} variant="outline" size="sm">
+              <i className="ph ph-arrows-clockwise" /> Refresh
+            </Btn>
           </div>
         }
       />
 
-      {/* Pending cashout alert */}
+      {/* Pending alert */}
       {stats?.pendingCashouts > 0 && (
         <div onClick={() => setPage('cashouts')} style={{
-          background: A.amberBg, border: `1px solid ${A.amber}40`,
-          borderRadius: 12, padding: '14px 18px', marginBottom: 24,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          cursor: 'pointer',
+          background: AD.amberBg, border: `1px solid ${AD.amber}40`,
+          borderRadius: 12, padding: '14px 20px', marginBottom: 28, cursor: 'pointer',
+          transition: 'opacity 0.15s',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 18 }}>💰</span>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: A.amber }}>
-              {stats.pendingCashouts} cash out request{stats.pendingCashouts !== 1 ? 's' : ''} awaiting review
-            </p>
+            <i className="ph ph-warning" style={{ fontSize: 18, color: AD.amberText }} />
+            <span style={{ fontSize: 13.5, fontWeight: 500, color: AD.amberText }}>
+              {stats.pendingCashouts} cash out request{stats.pendingCashouts !== 1 ? 's' : ''} awaiting your review
+            </span>
           </div>
-          <span style={{ color: A.amber, fontSize: 13 }}>Review →</span>
+          <span style={{ fontSize: 12, color: AD.amberText, display: 'flex', alignItems: 'center', gap: 4 }}>
+            Review <i className="ph ph-arrow-right" />
+          </span>
         </div>
       )}
 
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 14 }}>
           {[...Array(6)].map((_, i) => (
-            <div key={i} style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 14, padding: '20px 22px', height: 90, opacity: 0.4 }} />
+            <div key={i} style={{ background: AD.bgCard, borderRadius: 16, height: 108, border: `1px solid ${AD.border}`, opacity: 0.4 }} />
           ))}
         </div>
       ) : error ? (
-        <div style={{ background: A.redBg, border: `1px solid ${A.red}30`, borderRadius: 12, padding: '16px 20px' }}>
-          <p style={{ margin: 0, color: A.red, fontSize: 13 }}>{error}</p>
+        <div style={{ background: AD.red2Bg, border: `1px solid ${AD.red2}30`, borderRadius: 12, padding: '16px 20px' }}>
+          <span style={{ color: AD.red2Text, fontSize: 13 }}>{error}</span>
         </div>
       ) : stats && (
         <>
-          {/* Top stat row */}
+          {/* Row 1 — money stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 14 }}>
-            <StatCard label="Active Referrers"   value={stats.activeReferrers}  sub={`of ${stats.totalReferrers} total`}        color={A.amber} icon="👥" />
-            <StatCard label="Total Balance Owed" value={`$${stats.totalBalance.toLocaleString()}`}  sub="across all referrers"  color={A.amber} icon="⚖️" />
-            <StatCard label="Total Paid Out"     value={`$${stats.totalPaidOut.toLocaleString()}`}  sub="approved payouts"      color={A.green} icon="✅" />
+            <StatCard label="Active Referrers"   value={stats.activeReferrers}  sub={`of ${stats.totalReferrers} enrolled`} icon="👥" accent={AD.blueLight}   animDelay={0}   />
+            <StatCard label="Total Balance Owed" value={`$${stats.totalBalance.toLocaleString()}`}   sub="across all referrers"   icon="⚖️" accent={AD.amberText}  animDelay={80}  />
+            <StatCard label="Total Paid Out"     value={`$${stats.totalPaidOut.toLocaleString()}`}   sub="approved payouts"       icon="✅" accent={AD.greenText}  animDelay={160} />
           </div>
 
-          {/* Pipeline breakdown row */}
+          {/* Row 2 — pipeline stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
-            <StatCard label="Total Referrals"    value={stats.totalReferrals}    color={A.text}  icon="📋" />
-            <StatCard label="Leads"              value={stats.totalLeads}        color={A.muted} icon="🔵" />
-            <StatCard label="Inspections"        value={stats.totalInspections}  color={A.blue}  icon="🔍" />
-            <StatCard label="Sold"               value={stats.totalSold}         color={A.green} icon="🏆" />
+            <StatCard label="Total Referrals" value={stats.totalReferrals}    icon="📋" animDelay={240} />
+            <StatCard label="Leads"           value={stats.totalLeads}        icon="🔵" accent={AD.textSecondary} animDelay={300} />
+            <StatCard label="Inspections"     value={stats.totalInspections}  icon="🔍" accent={AD.blueText}      animDelay={360} />
+            <StatCard label="Sold"            value={stats.totalSold}         icon="🏆" accent={AD.greenText}     animDelay={420} />
           </div>
 
-          {/* Pipeline health bar */}
-          <div style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 14, padding: '20px 24px', marginBottom: 28 }}>
-            <p style={{ margin: '0 0 14px', fontSize: 11, color: A.muted, fontFamily: "'DM Mono', monospace", letterSpacing: '0.08em', textTransform: 'uppercase' }}>Pipeline Breakdown</p>
-            <div style={{ display: 'flex', height: 10, borderRadius: 999, overflow: 'hidden', gap: 2, marginBottom: 14 }}>
-              {stats.totalReferrals > 0 && [
-                { val: stats.totalLeads,       color: A.muted },
-                { val: stats.totalInspections, color: A.blue  },
-                { val: stats.totalSold,        color: A.green },
-                { val: stats.totalNotSold,     color: A.red   },
-              ].map((s, i) => s.val > 0 && (
-                <div key={i} style={{ flex: s.val, background: s.color, borderRadius: 2 }} />
+          {/* Pipeline health card */}
+          <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '22px 24px', marginBottom: 28, boxShadow: AD.shadowSm }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>Pipeline Health</p>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary }}>{pipelineTotal} total referrals across all active referrers</p>
+              </div>
+            </div>
+
+            {/* Segmented bar */}
+            <div style={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', gap: 2, marginBottom: 14 }}>
+              {[
+                { val: stats.totalLeads,        color: 'rgba(255,255,255,0.2)' },
+                { val: stats.totalInspections,  color: AD.blue                 },
+                { val: stats.totalSold,         color: AD.green                },
+                { val: stats.totalNotSold,      color: AD.red2                 },
+              ].filter(s => s.val > 0).map((s, i) => (
+                <div key={i} style={{ flex: s.val, background: s.color, borderRadius: 2, transition: 'flex 0.6s ease' }} />
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 20 }}>
+
+            {/* Legend with percentages */}
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
               {[
-                { label: 'Lead',        val: stats.totalLeads,       color: A.muted },
-                { label: 'Inspection',  val: stats.totalInspections, color: A.blue  },
-                { label: 'Sold',        val: stats.totalSold,        color: A.green },
-                { label: 'Not Sold',    val: stats.totalNotSold,     color: A.red   },
+                { label: 'Lead',        val: stats.totalLeads,       color: 'rgba(255,255,255,0.4)' },
+                { label: 'Inspection',  val: stats.totalInspections, color: AD.blueText              },
+                { label: 'Sold',        val: stats.totalSold,        color: AD.greenText             },
+                { label: 'Not Sold',    val: stats.totalNotSold,     color: AD.red2Text              },
               ].map(s => (
-                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.color }} />
-                  <span style={{ fontSize: 12, color: A.muted, fontFamily: "'DM Mono', monospace" }}>{s.label}: {s.val}</span>
+                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: AD.textSecondary }}>{s.label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: AD.textPrimary }}>{s.val}</span>
+                  <span style={{ fontSize: 11, color: AD.textTertiary }}>({pct(s.val)}%)</span>
                 </div>
               ))}
             </div>
@@ -937,17 +1083,20 @@ function AdminDashboard({ password, setPage }) {
           {/* Quick nav cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
             {[
-              { label: 'Manage Referrers', sub: `${stats.totalReferrers} accounts`, icon: '👥', page: 'referrers', color: A.amber },
-              { label: 'Review Cash Outs', sub: stats.pendingCashouts > 0 ? `${stats.pendingCashouts} pending` : 'None pending', icon: '💰', page: 'cashouts', color: stats.pendingCashouts > 0 ? A.amber : A.muted },
-              { label: 'Activity Log',     sub: 'Logins & actions',     icon: '📋', page: 'activity',  color: A.blue  },
+              { label: 'Manage Referrers', sub: `${stats.totalReferrers} accounts enrolled`,     icon: 'ph-users',            page: 'referrers', color: AD.blueText  },
+              { label: 'Review Cash Outs', sub: stats.pendingCashouts > 0 ? `${stats.pendingCashouts} pending review` : 'All caught up', icon: 'ph-money', page: 'cashouts', color: stats.pendingCashouts > 0 ? AD.amberText : AD.textSecondary },
+              { label: 'Activity Log',     sub: 'Logins, payouts & admin actions',               icon: 'ph-clock-clockwise',  page: 'activity',  color: AD.greenText },
             ].map(c => (
               <button key={c.page} onClick={() => setPage(c.page)} style={{
-                background: A.surface, border: `1px solid ${A.border}`, borderRadius: 14,
-                padding: '18px 20px', textAlign: 'left', cursor: 'pointer',
-                transition: 'border-color 0.15s',
-              }}>
-                <span style={{ fontSize: 22 }}>{c.icon}</span>
-                <p style={{ margin: '10px 0 2px', fontSize: 13, fontWeight: 700, color: A.text, fontFamily: "'Sora', sans-serif" }}>{c.label}</p>
+                background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16,
+                padding: '20px 22px', textAlign: 'left', cursor: 'pointer',
+                boxShadow: AD.shadowSm, fontFamily: AD.fontSans, transition: 'all 0.15s',
+              }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = AD.shadowMd; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = AD.shadowSm; }}
+              >
+                <i className={`ph ${c.icon}`} style={{ fontSize: 22, color: c.color, display: 'block', marginBottom: 10 }} />
+                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>{c.label}</p>
                 <p style={{ margin: 0, fontSize: 12, color: c.color }}>{c.sub}</p>
               </button>
             ))}
@@ -958,17 +1107,17 @@ function AdminDashboard({ password, setPage }) {
   );
 }
 
-// ── Admin Referrers Page ──────────────────────────────────────────────────────
+// ── Referrers Page ────────────────────────────────────────────────────────────
 function AdminReferrers({ password }) {
   const [users, setUsers]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [search, setSearch]         = useState('');
+  const [showAdd, setShowAdd]       = useState(false);
   const [newName, setNewName]       = useState('');
   const [newEmail, setNewEmail]     = useState('');
   const [newPin, setNewPin]         = useState('');
   const [formError, setFormError]   = useState('');
   const [formSuccess, setFormSuccess] = useState('');
-  const [showAdd, setShowAdd]       = useState(false);
   const [selected, setSelected]     = useState(null);
   const [detail, setDetail]         = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -976,8 +1125,7 @@ function AdminReferrers({ password }) {
   function loadUsers() {
     setLoading(true);
     fetch(`${BACKEND_URL}/api/admin/users?password=${encodeURIComponent(password)}`)
-      .then(r => r.json())
-      .then(data => { setUsers(Array.isArray(data) ? data : []); setLoading(false); });
+      .then(r => r.json()).then(d => { setUsers(Array.isArray(d) ? d : []); setLoading(false); });
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadUsers(); }, []);
@@ -985,8 +1133,7 @@ function AdminReferrers({ password }) {
   function openDetail(user) {
     setSelected(user); setDetail(null); setDetailLoading(true);
     fetch(`${BACKEND_URL}/api/admin/referrer/${encodeURIComponent(user.full_name)}?password=${encodeURIComponent(password)}`)
-      .then(r => r.json())
-      .then(data => { setDetail(data); setDetailLoading(false); })
+      .then(r => r.json()).then(d => { setDetail(d); setDetailLoading(false); })
       .catch(() => setDetailLoading(false));
   }
 
@@ -996,16 +1143,15 @@ function AdminReferrers({ password }) {
     fetch(`${BACKEND_URL}/api/admin/users`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password, full_name: newName, email: newEmail, pin: newPin })
-    }).then(r => r.json()).then(data => {
-      if (data.error) setFormError(data.error);
+    }).then(r => r.json()).then(d => {
+      if (d.error) setFormError(d.error);
       else { setFormSuccess(`✓ ${newName} added`); setNewName(''); setNewEmail(''); setNewPin(''); setShowAdd(false); loadUsers(); }
     });
   }
 
   function handleRemove(id, name) {
     if (!window.confirm(`Remove ${name}?`)) return;
-    fetch(`${BACKEND_URL}/api/admin/users/${id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' })
-      .then(() => loadUsers());
+    fetch(`${BACKEND_URL}/api/admin/users/${id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' }).then(() => loadUsers());
   }
 
   function handleResetPin(id, name) {
@@ -1015,53 +1161,73 @@ function AdminReferrers({ password }) {
     fetch(`${BACKEND_URL}/api/admin/users/${id}/pin`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password, pin: p })
-    }).then(r => r.json()).then(d => { if (d.error) alert(d.error); else alert(`✓ PIN updated`); });
+    }).then(r => r.json()).then(d => { if (d.error) alert(d.error); else alert('✓ PIN updated'); });
   }
 
-  const inputStyle = { background: A.bg, border: `1px solid ${A.border}`, borderRadius: 8, padding: '11px 14px', color: A.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none', width: '100%', boxSizing: 'border-box' };
-
-  const filtered = users.filter(u => u.full_name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()));
+  const filtered = users.filter(u =>
+    u.full_name.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase())
+  );
 
   // Detail view
   if (selected) {
     return (
       <>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-          <button onClick={() => setSelected(null)} style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 8, padding: '8px 14px', color: A.muted, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>← Back</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
+          <Btn onClick={() => setSelected(null)} variant="outline" size="sm">
+            <i className="ph ph-arrow-left" /> Back to Referrers
+          </Btn>
+        </div>
+
+        {/* Referrer hero card */}
+        <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px', marginBottom: 20, boxShadow: AD.shadowSm, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 600, flexShrink: 0 }}>
+            {selected.full_name.split(' ').map(n => n[0]).join('')}
+          </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, fontFamily: "'Sora', sans-serif" }}>{selected.full_name}</h1>
-            <p style={{ margin: 0, fontSize: 12, color: A.muted, fontFamily: "'DM Mono', monospace" }}>{selected.email}</p>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>{selected.full_name}</h2>
+            <p style={{ margin: '3px 0 0', fontSize: 13, color: AD.textSecondary, fontFamily: "'DM Mono', monospace" }}>{selected.email}</p>
           </div>
         </div>
 
         {detailLoading ? (
-          <p style={{ color: A.muted, fontSize: 13 }}>Loading Jobber data...</p>
+          <p style={{ color: AD.textSecondary, fontSize: 13, padding: '20px 0' }}>Loading Jobber data...</p>
         ) : detail ? (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
-              <StatCard label="Total Referrals" value={detail.pipeline.length} icon="📋" />
-              <StatCard label="Sold"            value={detail.paidCount}        color={A.green} icon="🏆" />
-              <StatCard label="Balance"         value={`$${detail.balance.toLocaleString()}`} color={A.amber} icon="💰" />
+              <StatCard label="Total Referrals" value={detail.pipeline.length} icon="📋" animDelay={0}   />
+              <StatCard label="Sold"            value={detail.paidCount}        icon="🏆" accent={AD.greenText} animDelay={80}  />
+              <StatCard label="Balance"         value={`$${detail.balance.toLocaleString()}`} icon="💰" accent={AD.amberText} animDelay={160} />
             </div>
-            <p style={{ margin: '0 0 12px', fontSize: 11, color: A.muted, fontFamily: "'DM Mono', monospace", letterSpacing: '0.08em', textTransform: 'uppercase' }}>Pipeline</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+            <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
+              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${AD.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>Pipeline</p>
+                <span style={{ fontSize: 12, color: AD.textSecondary }}>{detail.pipeline.length} referred clients</span>
+              </div>
               {detail.pipeline.length === 0 ? (
-                <p style={{ color: A.muted, fontSize: 13 }}>No referred clients in Jobber.</p>
-              ) : detail.pipeline.map(ref => {
+                <p style={{ color: AD.textSecondary, fontSize: 13, padding: '20px' }}>No referred clients found in Jobber.</p>
+              ) : detail.pipeline.map((ref, i) => {
                 const s = STATUS_CONFIG[ref.status];
+                const badgeType = { lead: 'neutral', inspection: 'info', sold: 'success', closed: 'danger' }[ref.status];
                 return (
-                  <div key={ref.id} style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 10, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `3px solid ${s.dot}` }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: A.text }}>{ref.name}</p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {ref.payout && <span style={{ fontSize: 13, fontWeight: 800, color: A.green, fontFamily: "'DM Mono', monospace" }}>+${ref.payout}</span>}
-                      <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 999, background: s.dot + '20', color: s.dot, fontFamily: "'DM Mono', monospace" }}>{s.label}</span>
+                  <div key={ref.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: i < detail.pipeline.length - 1 ? `1px solid ${AD.border}` : 'none', borderLeft: `3px solid ${s.dot}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: AD.textSecondary }}>
+                        {ref.name.split(' ').map(n => n[0]).join('')}
+                      </div>
+                      <span style={{ fontSize: 13.5, fontWeight: 500, color: AD.textPrimary }}>{ref.name}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {ref.payout && <span style={{ fontSize: 13, fontWeight: 700, color: AD.greenText, fontFamily: "'DM Mono', monospace" }}>+${ref.payout}</span>}
+                      <Badge type={badgeType}>{s.label}</Badge>
                     </div>
                   </div>
                 );
               })}
             </div>
           </>
-        ) : <p style={{ color: A.red, fontSize: 13 }}>Failed to load Jobber data.</p>}
+        ) : <p style={{ color: AD.red2Text, fontSize: 13 }}>Failed to load Jobber data for this referrer.</p>}
       </>
     );
   }
@@ -1070,74 +1236,84 @@ function AdminReferrers({ password }) {
     <>
       <AdminPageHeader
         title="Referrers"
-        subtitle={`${users.length} account${users.length !== 1 ? 's' : ''}`}
+        subtitle={`${users.length} account${users.length !== 1 ? 's' : ''} enrolled`}
         action={
-          <button onClick={() => setShowAdd(!showAdd)} style={{ background: A.amber, border: 'none', borderRadius: 8, padding: '10px 18px', color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora', sans-serif" }}>
-            + Add Referrer
-          </button>
+          <Btn onClick={() => setShowAdd(!showAdd)} variant="accent" size="md">
+            <i className={`ph ph-${showAdd ? 'x' : 'plus'}`} /> {showAdd ? 'Cancel' : 'Add Referrer'}
+          </Btn>
         }
       />
 
       {/* Add form */}
       {showAdd && (
-        <div style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 14, padding: '20px 24px', marginBottom: 20 }}>
-          <p style={{ margin: '0 0 14px', fontSize: 11, color: A.amber, fontFamily: "'DM Mono', monospace", letterSpacing: '0.08em', textTransform: 'uppercase' }}>New Referrer</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10, alignItems: 'flex-end' }}>
-            <div>
-              <p style={{ margin: '0 0 6px', fontSize: 11, color: A.muted, fontFamily: "'DM Mono', monospace" }}>FULL NAME (match Jobber exactly)</p>
-              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Daniel Scribbins" style={inputStyle} />
+        <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '22px 24px', marginBottom: 20, boxShadow: AD.shadowSm }}>
+          <p style={{ margin: '0 0 16px', fontSize: 11, color: AD.blueText, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}>New Referrer Account</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 160px auto', gap: 12, alignItems: 'flex-end' }}>
+            <AdminInput value={newName}  onChange={e => setNewName(e.target.value)}  placeholder="Daniel Scribbins" label="Full name (match Jobber exactly)" />
+            <AdminInput value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="email@example.com" label="Email address" />
+            <AdminInput value={newPin}   onChange={e => setNewPin(e.target.value)}   placeholder="1234" label="PIN (4–6 digits)" />
+            <div style={{ paddingBottom: 14 }}>
+              <Btn onClick={handleAdd} variant="accent">Add</Btn>
             </div>
-            <div>
-              <p style={{ margin: '0 0 6px', fontSize: 11, color: A.muted, fontFamily: "'DM Mono', monospace" }}>EMAIL</p>
-              <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="email@example.com" style={inputStyle} />
-            </div>
-            <div>
-              <p style={{ margin: '0 0 6px', fontSize: 11, color: A.muted, fontFamily: "'DM Mono', monospace" }}>PIN (4–6 digits)</p>
-              <input value={newPin} onChange={e => setNewPin(e.target.value)} placeholder="1234" style={inputStyle} />
-            </div>
-            <button onClick={handleAdd} style={{ background: A.amber, border: 'none', borderRadius: 8, padding: '11px 18px', color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Sora', sans-serif", whiteSpace: 'nowrap' }}>Add</button>
           </div>
-          {formError && <p style={{ color: A.red, fontSize: 12, margin: '8px 0 0' }}>{formError}</p>}
-          {formSuccess && <p style={{ color: A.green, fontSize: 12, margin: '8px 0 0' }}>{formSuccess}</p>}
+          {formError   && <p style={{ color: AD.red2Text,  fontSize: 12, margin: '4px 0 0' }}>{formError}</p>}
+          {formSuccess  && <p style={{ color: AD.greenText, fontSize: 12, margin: '4px 0 0' }}>{formSuccess}</p>}
         </div>
       )}
 
       {/* Search */}
-      <div style={{ marginBottom: 16 }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ ...inputStyle, background: A.surface, maxWidth: 320 }} />
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 99, padding: '8px 16px', maxWidth: 320, boxShadow: AD.shadowSm }}>
+        <i className="ph ph-magnifying-glass" style={{ color: AD.textTertiary, fontSize: 16 }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ border: 'none', background: 'transparent', fontFamily: AD.fontSans, fontSize: 13.5, color: AD.textPrimary, outline: 'none', flex: 1 }} />
       </div>
 
       {/* Table */}
-      <div style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr auto', padding: '10px 20px', borderBottom: `1px solid ${A.border}`, background: A.bg }}>
-          {['Name', 'Email', 'Actions'].map(h => (
-            <span key={h} style={{ fontSize: 10, color: A.muted, fontFamily: "'DM Mono', monospace", letterSpacing: '0.08em', textTransform: 'uppercase' }}>{h}</span>
-          ))}
-        </div>
-        {loading ? (
-          <p style={{ color: A.muted, fontSize: 13, padding: '20px' }}>Loading...</p>
-        ) : filtered.length === 0 ? (
-          <p style={{ color: A.muted, fontSize: 13, padding: '20px' }}>{search ? 'No results.' : 'No referrers yet.'}</p>
-        ) : filtered.map((u, i) => (
-          <div key={u.id} style={{ display: 'grid', gridTemplateColumns: '2fr 2fr auto', padding: '14px 20px', borderBottom: i < filtered.length - 1 ? `1px solid ${A.border}` : 'none', alignItems: 'center' }}>
-            <div>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: A.text }}>{u.full_name}</p>
-              <p style={{ margin: '2px 0 0', fontSize: 11, color: A.muted, fontFamily: "'DM Mono', monospace" }}>Added {new Date(u.created_at).toLocaleDateString()}</p>
-            </div>
-            <p style={{ margin: 0, fontSize: 13, color: A.muted, fontFamily: "'DM Mono', monospace" }}>{u.email}</p>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => openDetail(u)} style={{ background: A.greenBg, border: `1px solid ${A.green}30`, borderRadius: 6, padding: '6px 12px', color: A.green, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>View</button>
-              <button onClick={() => handleResetPin(u.id, u.full_name)} style={{ background: A.blueBg, border: `1px solid ${A.blue}30`, borderRadius: 6, padding: '6px 12px', color: A.blue, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>PIN</button>
-              <button onClick={() => handleRemove(u.id, u.full_name)} style={{ background: A.redBg, border: `1px solid ${A.red}30`, borderRadius: 6, padding: '6px 12px', color: A.red, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>Remove</button>
-            </div>
-          </div>
-        ))}
+      <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: AD.fontSans, fontSize: 13.5 }}>
+          <thead>
+            <tr style={{ background: AD.bgCardTint, borderBottom: `1px solid ${AD.border}` }}>
+              {['Referrer', 'Email', 'Added', 'Actions'].map(h => (
+                <th key={h} style={{ padding: '11px 20px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: AD.textSecondary, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={4} style={{ padding: '20px', color: AD.textSecondary, fontSize: 13 }}>Loading...</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={4} style={{ padding: '20px', color: AD.textSecondary, fontSize: 13 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
+            ) : filtered.map((u, i) => (
+              <tr key={u.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${AD.border}` : 'none', transition: 'background 0.12s' }}
+                onMouseEnter={e => e.currentTarget.style.background = AD.bgCardTint}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <td style={{ padding: '14px 20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                      {u.full_name.split(' ').map(n => n[0]).join('')}
+                    </div>
+                    <span style={{ fontWeight: 500, color: AD.textPrimary }}>{u.full_name}</span>
+                  </div>
+                </td>
+                <td style={{ padding: '14px 20px', color: AD.textSecondary, fontFamily: "'DM Mono', monospace", fontSize: 12.5 }}>{u.email}</td>
+                <td style={{ padding: '14px 20px', color: AD.textSecondary, fontSize: 12.5 }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                <td style={{ padding: '14px 20px' }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <Btn onClick={() => openDetail(u)} variant="outline" size="sm"><i className="ph ph-eye" /> View</Btn>
+                    <Btn onClick={() => handleResetPin(u.id, u.full_name)} variant="outline" size="sm"><i className="ph ph-key" /> PIN</Btn>
+                    <Btn onClick={() => handleRemove(u.id, u.full_name)} variant="danger" size="sm"><i className="ph ph-trash" /></Btn>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </>
   );
 }
 
-// ── Admin Cash Outs Page ──────────────────────────────────────────────────────
+// ── Cash Outs Page ────────────────────────────────────────────────────────────
 function AdminCashOuts({ password }) {
   const [cashouts, setCashouts] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -1146,8 +1322,7 @@ function AdminCashOuts({ password }) {
   function load() {
     setLoading(true);
     fetch(`${BACKEND_URL}/api/admin/cashouts?password=${encodeURIComponent(password)}`)
-      .then(r => r.json())
-      .then(data => { setCashouts(Array.isArray(data) ? data : []); setLoading(false); });
+      .then(r => r.json()).then(d => { setCashouts(Array.isArray(d) ? d : []); setLoading(false); });
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
@@ -1160,32 +1335,28 @@ function AdminCashOuts({ password }) {
     }).then(r => r.json()).then(d => { if (d.error) alert(d.error); else load(); });
   }
 
-  const statusStyle = {
-    pending:  { bg: '#1c1400', color: A.amber, border: `${A.amber}40` },
-    approved: { bg: A.greenBg, color: A.green, border: `${A.green}40` },
-    denied:   { bg: A.redBg,   color: A.red,   border: `${A.red}40`   },
-  };
-
   const filtered = filter === 'all' ? cashouts : cashouts.filter(c => c.status === filter);
   const pendingCount = cashouts.filter(c => c.status === 'pending').length;
+
+  const badgeType = { pending: 'warning', approved: 'success', denied: 'danger' };
 
   return (
     <>
       <AdminPageHeader
         title="Cash Outs"
-        subtitle={pendingCount > 0 ? `${pendingCount} pending review` : 'All caught up'}
+        subtitle={pendingCount > 0 ? `${pendingCount} pending review` : 'All requests reviewed'}
       />
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 4, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, padding: 3, marginBottom: 20, width: 'fit-content', boxShadow: AD.shadowSm }}>
         {['all', 'pending', 'approved', 'denied'].map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{
-            background: filter === f ? A.surface : 'transparent',
-            border: `1px solid ${filter === f ? A.borderHi : 'transparent'}`,
-            borderRadius: 8, padding: '7px 14px',
-            color: filter === f ? A.text : A.muted,
-            fontSize: 12, fontWeight: filter === f ? 700 : 400,
-            cursor: 'pointer', fontFamily: "'DM Mono', monospace',", textTransform: 'capitalize',
+            padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: filter === f ? AD.bgSurface : 'transparent',
+            color: filter === f ? AD.textPrimary : AD.textSecondary,
+            fontSize: 12.5, fontWeight: filter === f ? 600 : 400,
+            fontFamily: AD.fontSans, textTransform: 'capitalize',
+            boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'all 0.15s',
           }}>
             {f}{f === 'pending' && pendingCount > 0 ? ` (${pendingCount})` : ''}
           </button>
@@ -1193,102 +1364,112 @@ function AdminCashOuts({ password }) {
       </div>
 
       {loading ? (
-        <p style={{ color: A.muted, fontSize: 13 }}>Loading...</p>
+        <p style={{ color: AD.textSecondary, fontSize: 13 }}>Loading...</p>
       ) : filtered.length === 0 ? (
-        <p style={{ color: A.muted, fontSize: 13 }}>No {filter === 'all' ? '' : filter} requests.</p>
+        <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '32px', textAlign: 'center' }}>
+          <i className="ph ph-check-circle" style={{ fontSize: 32, color: AD.greenText, display: 'block', marginBottom: 8 }} />
+          <p style={{ color: AD.textSecondary, fontSize: 13, margin: 0 }}>No {filter === 'all' ? '' : filter} requests.</p>
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {filtered.map(c => {
-            const s = statusStyle[c.status] || statusStyle.pending;
-            return (
-              <div key={c.id} style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 14, padding: '18px 20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+          {filtered.map(c => (
+            <div key={c.id} style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '20px 22px', boxShadow: AD.shadowSm }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                    {c.full_name.split(' ').map(n => n[0]).join('')}
+                  </div>
                   <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: A.text }}>{c.full_name}</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 12, color: A.muted, fontFamily: "'DM Mono', monospace" }}>{c.email}</p>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>{c.full_name}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: "'DM Mono', monospace" }}>{c.email}</p>
                   </div>
-                  <span style={{ fontSize: 11, padding: '4px 10px', borderRadius: 999, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>
-                    {c.status}
-                  </span>
                 </div>
-                <div style={{ display: 'flex', gap: 24, marginBottom: c.status === 'pending' ? 14 : 0 }}>
-                  {[
-                    ['Amount',    `$${parseFloat(c.amount).toLocaleString()}`],
-                    ['Method',    c.method || '—'],
-                    ['Submitted', new Date(c.requested_at).toLocaleDateString()],
-                  ].map(([k, v]) => (
-                    <div key={k}>
-                      <p style={{ margin: 0, fontSize: 10, color: A.muted, fontFamily: "'DM Mono', monospace", textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k}</p>
-                      <p style={{ margin: '3px 0 0', fontSize: 14, fontWeight: k === 'Amount' ? 800 : 500, color: k === 'Amount' ? A.text : A.muted, fontFamily: k === 'Amount' ? "'DM Mono', monospace" : 'inherit' }}>{v}</p>
-                    </div>
-                  ))}
-                </div>
-                {c.status === 'pending' && (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => handleAction(c.id, 'approved')} style={{ flex: 1, background: A.greenBg, border: `1px solid ${A.green}40`, borderRadius: 8, padding: '10px', color: A.green, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>✓ Approve</button>
-                    <button onClick={() => handleAction(c.id, 'denied')}   style={{ flex: 1, background: A.redBg,   border: `1px solid ${A.red}40`,   borderRadius: 8, padding: '10px', color: A.red,   fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Mono', monospace" }}>✕ Deny</button>
-                  </div>
-                )}
+                <Badge type={badgeType[c.status] || 'neutral'}>{c.status}</Badge>
               </div>
-            );
-          })}
+
+              <div style={{ display: 'flex', gap: 28, marginBottom: c.status === 'pending' ? 16 : 0 }}>
+                {[
+                  { label: 'Amount',    val: `$${parseFloat(c.amount).toLocaleString()}`, mono: true, big: true },
+                  { label: 'Method',    val: c.method || '—' },
+                  { label: 'Submitted', val: new Date(c.requested_at).toLocaleDateString() },
+                ].map(({ label, val, mono, big }) => (
+                  <div key={label}>
+                    <p style={{ margin: 0, fontSize: 10, color: AD.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>{label}</p>
+                    <p style={{ margin: '3px 0 0', fontSize: big ? 18 : 14, fontWeight: big ? 700 : 500, color: AD.textPrimary, fontFamily: mono ? "'DM Mono', monospace" : AD.fontSans }}>{val}</p>
+                  </div>
+                ))}
+              </div>
+
+              {c.status === 'pending' && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn onClick={() => handleAction(c.id, 'approved')} variant="success"><i className="ph ph-check" /> Approve</Btn>
+                  <Btn onClick={() => handleAction(c.id, 'denied')}   variant="danger"><i className="ph ph-x" /> Deny</Btn>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </>
   );
 }
 
-// ── Admin Activity Page ───────────────────────────────────────────────────────
+// ── Activity Log Page ─────────────────────────────────────────────────────────
 function AdminActivity({ password }) {
   const [activity, setActivity] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/admin/activity?password=${encodeURIComponent(password)}`)
-      .then(r => r.json())
-      .then(data => { setActivity(Array.isArray(data) ? data : []); setLoading(false); });
-  }, [password]);
+      .then(r => r.json()).then(d => { setActivity(Array.isArray(d) ? d : []); setLoading(false); });
+  }, []);
 
-  const icons  = { login: '🔐', cashout: '💰', admin: '⚙️' };
-  const colors = { login: A.blue, cashout: A.green, admin: A.amber };
+  const iconMap  = { login: 'ph-sign-in', cashout: 'ph-money', admin: 'ph-gear' };
+  const colorMap = { login: AD.blueText, cashout: AD.greenText, admin: AD.amberText };
+  const badgeMap = { login: 'info', cashout: 'success', admin: 'warning' };
   const filtered = filter === 'all' ? activity : activity.filter(a => a.event_type === filter);
 
   return (
     <>
       <AdminPageHeader title="Activity Log" subtitle="Last 100 events" />
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 4, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, padding: 3, marginBottom: 20, width: 'fit-content', boxShadow: AD.shadowSm }}>
         {['all', 'login', 'cashout', 'admin'].map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{
-            background: filter === f ? A.surface : 'transparent',
-            border: `1px solid ${filter === f ? A.borderHi : 'transparent'}`,
-            borderRadius: 8, padding: '7px 14px',
-            color: filter === f ? A.text : A.muted,
-            fontSize: 12, fontWeight: filter === f ? 700 : 400,
-            cursor: 'pointer', fontFamily: "'DM Mono', monospace", textTransform: 'capitalize',
+            padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            background: filter === f ? AD.bgSurface : 'transparent',
+            color: filter === f ? AD.textPrimary : AD.textSecondary,
+            fontSize: 12.5, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans,
+            textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'all 0.15s',
           }}>{f}</button>
         ))}
       </div>
 
-      <div style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 14, overflow: 'hidden' }}>
+      <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
         {loading ? (
-          <p style={{ color: A.muted, fontSize: 13, padding: 20 }}>Loading...</p>
+          <p style={{ color: AD.textSecondary, fontSize: 13, padding: 20 }}>Loading...</p>
         ) : filtered.length === 0 ? (
-          <p style={{ color: A.muted, fontSize: 13, padding: 20 }}>No activity yet.</p>
+          <p style={{ color: AD.textSecondary, fontSize: 13, padding: 20 }}>No activity yet.</p>
         ) : filtered.map((item, i) => (
-          <div key={item.id} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', padding: '14px 20px', borderBottom: i < filtered.length - 1 ? `1px solid ${A.border}` : 'none' }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: A.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>
-              {icons[item.event_type] || '📌'}
+          <div key={item.id} style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '14px 20px', borderBottom: i < filtered.length - 1 ? `1px solid ${AD.border}` : 'none', transition: 'background 0.12s' }}
+            onMouseEnter={e => e.currentTarget.style.background = AD.bgCardTint}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <i className={`ph ${iconMap[item.event_type] || 'ph-activity'}`} style={{ fontSize: 17, color: colorMap[item.event_type] || AD.textSecondary }} />
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: A.text }}>{item.full_name}</p>
-                <p style={{ margin: 0, fontSize: 11, color: A.subtle, fontFamily: "'DM Mono', monospace" }}>
-                  {new Date(item.created_at).toLocaleDateString()} {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 500, color: AD.textPrimary }}>{item.full_name}</span>
+                <Badge type={badgeMap[item.event_type] || 'neutral'}>{item.event_type}</Badge>
               </div>
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: colors[item.event_type] || A.muted }}>{item.detail}</p>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: colorMap[item.event_type] || AD.textSecondary }}>{item.detail}</p>
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <p style={{ margin: 0, fontSize: 12, color: AD.textSecondary }}>{new Date(item.created_at).toLocaleDateString()}</p>
+              <p style={{ margin: '1px 0 0', fontSize: 11, color: AD.textTertiary }}>{new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
             </div>
           </div>
         ))}
@@ -1297,57 +1478,64 @@ function AdminActivity({ password }) {
   );
 }
 
-// ── Admin Panel Root ──────────────────────────────────────────────────────────
-function AdminPanel() {
-  const [authed, setAuthed]     = useState(false);
+// ── Admin Login Screen ────────────────────────────────────────────────────────
+function AdminLogin({ onLogin }) {
   const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [page, setPage]         = useState('dashboard');
-  const [pendingCount, setPendingCount] = useState(0);
-
-  // Keep pending badge count fresh
-  function refreshPending(pw) {
-    fetch(`${BACKEND_URL}/api/admin/cashouts?password=${encodeURIComponent(pw)}`)
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data)) setPendingCount(data.filter(c => c.status === 'pending').length);
-      });
-  }
+  const [error, setError]       = useState('');
 
   function handleLogin() {
     fetch(`${BACKEND_URL}/api/admin/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password })
-    }).then(r => r.json()).then(data => {
-      if (data.error) setAuthError('Incorrect password');
-      else { setAuthed(true); refreshPending(password); }
+    }).then(r => r.json()).then(d => {
+      if (d.error) setError('Incorrect password');
+      else onLogin(password);
     });
   }
 
-  if (!authed) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: A.bg, fontFamily: "'DM Sans', sans-serif" }}>
-        <div style={{ width: '100%', maxWidth: 360, padding: '0 24px' }}>
-          <div style={{ textAlign: 'center', marginBottom: 32 }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, background: A.amber, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, margin: '0 auto 16px' }}>🐓</div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, fontFamily: "'Sora', sans-serif", color: A.text }}>Admin Panel</h1>
-            <p style={{ margin: '4px 0 0', color: A.muted, fontSize: 13 }}>Rooster Booster · Accent Roofing</p>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <input type="password" placeholder="Admin password" value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 10, padding: '13px 16px', color: A.text, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none' }}
-            />
-            {authError && <p style={{ color: A.red, fontSize: 13, margin: 0 }}>{authError}</p>}
-            <button onClick={handleLogin} style={{ background: A.amber, border: 'none', borderRadius: 10, padding: '13px', color: '#000', fontSize: 14, fontWeight: 800, fontFamily: "'Sora', sans-serif", cursor: 'pointer' }}>
-              Sign In
-            </button>
-          </div>
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: AD.bgPage, fontFamily: AD.fontSans }}>
+      <div style={{ width: '100%', maxWidth: 380, padding: '0 24px' }}>
+        {/* Logo card */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{ width: 60, height: 60, borderRadius: 16, background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, margin: '0 auto 16px', boxShadow: `0 0 40px ${AD.red}40` }}>🐓</div>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>Rooster Booster</h1>
+          <p style={{ margin: '4px 0 0', color: AD.textSecondary, fontSize: 13 }}>Admin · Accent Roofing</p>
+        </div>
+
+        <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '28px', boxShadow: AD.shadowLg }}>
+          <AdminInput
+            type="password" value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="Enter admin password" label="Admin Password"
+          />
+          {error && <p style={{ color: AD.red2Text, fontSize: 13, margin: '-8px 0 12px' }}>{error}</p>}
+          <Btn onClick={handleLogin} variant="accent" style={{ width: '100%', padding: '12px' }}>
+            Sign In
+          </Btn>
         </div>
       </div>
-    );
+    </div>
+  );
+}
+
+// ── Admin Panel Root ──────────────────────────────────────────────────────────
+function AdminPanel() {
+  const [authed, setAuthed]         = useState(false);
+  const [password, setPassword]     = useState('');
+  const [page, setPage]             = useState('dashboard');
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useAdminFonts();
+
+  function handleLogin(pw) {
+    setPassword(pw); setAuthed(true);
+    fetch(`${BACKEND_URL}/api/admin/cashouts?password=${encodeURIComponent(pw)}`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setPendingCount(d.filter(c => c.status === 'pending').length); });
   }
+
+  if (!authed) return <AdminLogin onLogin={handleLogin} />;
 
   const pages = {
     dashboard: <AdminDashboard password={password} setPage={setPage} />,
@@ -1388,10 +1576,7 @@ export default function App() {
   useEffect(() => {
     if (loggedIn && userName) {
       setLoading(true);
-      const token = sessionStorage.getItem('rb_token');
-      fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`)
         .then(res => res.json())
         .then(data => {
           setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
@@ -1403,10 +1588,9 @@ export default function App() {
     }
   }, [loggedIn, userName]);
 
-  function handleLogin(name, email, token) {
+  function handleLogin(name, email) {
     setUserName(name);
     setUserEmail(email);
-    sessionStorage.setItem('rb_token', token);
     setLoggedIn(true);
   }
 
