@@ -867,10 +867,9 @@ function AdminPageHeader({ title, subtitle, action }) {
 function StatCard({ label, value, sub, icon, accent, animDelay = 0 }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     const t = setTimeout(() => setVisible(true), animDelay);
     return () => clearTimeout(t);
-  }, []);
+  }, [animDelay]);
 
   return (
     <div style={{
@@ -1420,11 +1419,10 @@ function AdminActivity({ password }) {
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/admin/activity?password=${encodeURIComponent(password)}`)
       .then(r => r.json()).then(d => { setActivity(Array.isArray(d) ? d : []); setLoading(false); });
-  }, []);
+  }, [password]);
 
   const iconMap  = { login: 'ph-sign-in', cashout: 'ph-money', admin: 'ph-gear' };
   const colorMap = { login: AD.blueText, cashout: AD.greenText, admin: AD.amberText };
