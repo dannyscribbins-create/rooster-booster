@@ -101,13 +101,13 @@ function LoginScreen({ onLogin }) {
     })
       .then(res => res.json())
       .then(data => {
-        setLoading(false);
-        if (data.error) {
-          setError(data.error);
-        } else {
-          onLogin(data.fullName, data.email);
-        }
-      })
+  setLoading(false);
+  if (data.error) {
+    setError(data.error);
+  } else {
+    onLogin(data.fullName, data.email, data.token);
+  }
+})
       .catch(() => {
         setLoading(false);
         setError("Something went wrong. Please try again.");
@@ -1605,8 +1605,10 @@ export default function App() {
   useEffect(() => {
     if (loggedIn && userName) {
       setLoading(true);
-      fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`)
-        .then(res => res.json())
+     fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`, {
+  headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_token')}` }
+})
+  .then(res => res.json())
         .then(data => {
           setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
           setBalance(data.balance || 0);
@@ -1617,11 +1619,12 @@ export default function App() {
     }
   }, [loggedIn, userName]);
 
-  function handleLogin(name, email) {
-    setUserName(name);
-    setUserEmail(email);
-    setLoggedIn(true);
-  }
+  function handleLogin(name, email, token) {
+  setUserName(name);
+  setUserEmail(email);
+  sessionStorage.setItem('rb_token', token);
+  setLoggedIn(true);
+}
 
   if (isAdmin) return <AdminPanel />;
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;

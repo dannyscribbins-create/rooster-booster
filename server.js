@@ -192,7 +192,7 @@ app.get('/api/pipeline', async (req, res) => {
 app.post('/api/login', referrerLoginLimiter, async (req, res) => {
   const { email, pin } = req.body;
   try {
-    const result = await pool.query('SELECT * FROM users WHERE email=$1', [email]);
+    const result = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
     if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid email or PIN' });
     const user = result.rows[0];
     const match = await bcrypt.compare(String(pin), user.pin);
