@@ -884,9 +884,6 @@ function StatCard({ label, value, sub, icon, accent, animDelay = 0 }) {
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = AD.shadowMd; }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = AD.shadowSm; }}
     >
-      {/* Subtle corner glow */}
-      {accent && <div style={{ position: 'absolute', top: -20, right: -20, width: 80, height: 80, borderRadius: '50%', background: accent, opacity: 0.08, pointerEvents: 'none' }} />}
-
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <span style={{ fontSize: 11.5, fontWeight: 500, color: AD.textSecondary, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</span>
         <div style={{ width: 34, height: 34, borderRadius: 8, background: accent ? `${accent}20` : AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: accent || AD.textSecondary }}>
@@ -949,6 +946,41 @@ function AdminInput({ value, onChange, placeholder, type = 'text', label }) {
         onFocus={e => e.target.style.borderColor = AD.blueLight}
         onBlur={e => e.target.style.borderColor = AD.borderStrong}
       />
+    </div>
+  );
+}
+
+// ── Pipeline Bar (animated left-to-right fill) ───────────────────────────────
+function PipelineBar({ segments, total }) {
+  const [animated, setAnimated] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setAnimated(true), 200);
+    return () => clearTimeout(t);
+  }, [total]);
+
+  const active = segments.filter(s => s.val > 0);
+  // Build a CSS gradient string from segments
+  let gradientStops = [];
+  let cursor = 0;
+  active.forEach(s => {
+    const pct = (s.val / total) * 100;
+    gradientStops.push(`${s.color} ${cursor.toFixed(1)}%`);
+    gradientStops.push(`${s.color} ${(cursor + pct).toFixed(1)}%`);
+    cursor += pct;
+  });
+  const gradient = active.length > 0
+    ? `linear-gradient(to right, ${gradientStops.join(', ')})`
+    : 'rgba(255,255,255,0.1)';
+
+  return (
+    <div style={{ height: 8, borderRadius: 99, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', marginBottom: 14, position: 'relative' }}>
+      <div style={{
+        position: 'absolute', top: 0, left: 0, height: '100%',
+        width: animated ? '100%' : '0%',
+        background: gradient,
+        borderRadius: 99,
+        transition: 'width 1.1s cubic-bezier(0.4, 0, 0.2, 1)',
+      }} />
     </div>
   );
 }
@@ -1049,17 +1081,16 @@ function AdminDashboard({ password, setPage }) {
               </div>
             </div>
 
-            {/* Segmented bar */}
-            <div style={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', gap: 2, marginBottom: 14 }}>
-              {[
-                { val: stats.totalLeads,        color: 'rgba(255,255,255,0.2)' },
-                { val: stats.totalInspections,  color: AD.blue                 },
-                { val: stats.totalSold,         color: AD.green                },
-                { val: stats.totalNotSold,      color: AD.red2                 },
-              ].filter(s => s.val > 0).map((s, i) => (
-                <div key={i} style={{ flex: s.val, background: s.color, borderRadius: 2, transition: 'flex 0.6s ease' }} />
-              ))}
-            </div>
+            {/* Segmented bar — animates left to right on load */}
+            <PipelineBar
+              segments={[
+                { val: stats.totalLeads,       color: 'rgba(255,255,255,0.25)' },
+                { val: stats.totalInspections, color: AD.blue  },
+                { val: stats.totalSold,        color: AD.green },
+                { val: stats.totalNotSold,     color: AD.red2  },
+              ]}
+              total={pipelineTotal}
+            />
 
             {/* Legend with percentages */}
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
