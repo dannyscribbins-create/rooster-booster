@@ -147,6 +147,91 @@ function StatusBadge({ status }) {
   );
 }
 
+// Contact Modal
+function ContactModal({ isOpen, onClose }) {
+  if (!isOpen) return null;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 24,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#FFFFFF", borderRadius: 20, padding: 28,
+          width: "100%", maxWidth: 340,
+          boxShadow: R.shadowLg,
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <p style={{ margin: 0, fontSize: 20, fontWeight: 700, fontFamily: R.fontSans, color: R.navy }}>
+            Get in Touch
+          </p>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: 4, lineHeight: 1,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <i className="ph ph-x" style={{ fontSize: 20, color: R.textMuted }} />
+          </button>
+        </div>
+
+        {/* Divider */}
+        <div style={{ borderTop: `1px solid ${R.border}`, marginBottom: 16 }} />
+
+        {/* Phone */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <i className="ph ph-phone" style={{ fontSize: 20, color: R.navy, flexShrink: 0 }} />
+          <a
+            href="tel:7702774869"
+            style={{ color: R.navy, fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
+            onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
+            onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
+          >
+            770-277-4869
+          </a>
+        </div>
+
+        {/* Email */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14 }}>
+          <i className="ph ph-envelope" style={{ fontSize: 20, color: R.navy, flexShrink: 0 }} />
+          <a
+            href="mailto:contact@leaksmith.com"
+            style={{ color: R.navy, fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
+            onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
+            onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
+          >
+            contact@leaksmith.com
+          </a>
+        </div>
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: 24, width: "100%", background: "none",
+            border: `1.5px solid ${R.border}`, borderRadius: 12,
+            padding: 13, color: R.textSecondary, fontSize: 14,
+            cursor: "pointer", fontFamily: R.fontBody,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
 function BottomNav({ tab, setTab }) {
   const tabs = [
@@ -211,6 +296,7 @@ function LoginScreen({ onLogin }) {
   const [error, setError] = useState("");
   const [focused, setFocused] = useState(null);
   const cardVisible = useEntrance(80);
+  const [showContact, setShowContact] = useState(false);
 
   function handleLogin() {
     if (!email || !pass) return;
@@ -295,6 +381,12 @@ function LoginScreen({ onLogin }) {
         </p>
 
         {/* Email field */}
+        <label style={{
+          display: "block", fontSize: 12, fontWeight: 500,
+          color: R.textSecondary, marginBottom: 6, fontFamily: R.fontBody,
+        }}>
+          Email address
+        </label>
         <div style={{ position: "relative", marginBottom: 14 }}>
           <i className="ph ph-envelope" style={{
             position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
@@ -311,6 +403,12 @@ function LoginScreen({ onLogin }) {
         </div>
 
         {/* PIN field */}
+        <label style={{
+          display: "block", fontSize: 12, fontWeight: 500,
+          color: R.textSecondary, marginBottom: 6, fontFamily: R.fontBody,
+        }}>
+          PIN
+        </label>
         <div style={{ position: "relative", marginBottom: 6 }}>
           <i className="ph ph-lock" style={{
             position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
@@ -358,9 +456,16 @@ function LoginScreen({ onLogin }) {
 
         <p style={{ textAlign: "center", marginTop: 20, color: R.textMuted, fontSize: 13 }}>
           Don't have an account?{" "}
-          <span style={{ color: R.navy, fontWeight: 600, cursor: "pointer" }}>
+          <button
+            onClick={() => setShowContact(true)}
+            style={{
+              background: "none", border: "none", padding: 0, margin: 0,
+              font: "inherit", cursor: "pointer",
+              color: R.navy, fontWeight: 600,
+            }}
+          >
             Contact your rep
-          </span>
+          </button>
         </p>
       </div>
 
@@ -372,6 +477,7 @@ function LoginScreen({ onLogin }) {
         ACCENT ROOFING SERVICE · EST. 1989
       </p>
 
+      <ContactModal isOpen={showContact} onClose={() => setShowContact(false)} />
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
@@ -823,6 +929,7 @@ function CashOut({ pipeline, userName, userEmail }) {
   const [step, setStep] = useState(1);
   const [detail, setDetail] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const balance = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
 
@@ -1004,6 +1111,13 @@ function CashOut({ pipeline, userName, userEmail }) {
                 ))}
               </div>
             </div>
+            <label style={{
+              display: "block", fontSize: 12, fontWeight: 500,
+              color: R.textSecondary, marginBottom: 6, fontFamily: R.fontBody,
+            }}>
+              {{ zelle: "Zelle phone or email", venmo: "Venmo username",
+                 paypal: "PayPal email", check: "Mailing address" }[method]}
+            </label>
             <div style={{ marginTop: 12 }}>
               <input
                 value={detail} onChange={e => setDetail(e.target.value)}
@@ -1060,10 +1174,21 @@ function CashOut({ pipeline, userName, userEmail }) {
                   <span style={{ fontSize: 14, fontWeight: 700, color: R.textPrimary }}>{v}</span>
                 </div>
               ))}
+              {submitError && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  background: "#fee2e2", borderRadius: 8, padding: "10px 14px",
+                  marginBottom: 14,
+                }}>
+                  <i className="ph ph-warning-circle" style={{ color: "#dc2626", fontSize: 16, flexShrink: 0 }} />
+                  <p style={{ color: "#dc2626", fontSize: 13, margin: 0 }}>{submitError}</p>
+                </div>
+              )}
               <button onClick={async () => {
                 setSubmitting(true);
+                setSubmitError("");
                 try {
-                  await fetch(`${BACKEND_URL}/api/cashout`, {
+                  const res = await fetch(`${BACKEND_URL}/api/cashout`, {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",
@@ -1074,9 +1199,19 @@ function CashOut({ pipeline, userName, userEmail }) {
                       email: userEmail, amount: parseFloat(amount), method,
                     }),
                   });
-                } catch (err) { console.error("Cash out error:", err); }
-                setSubmitting(false);
-                setStep(4);
+                  const data = await res.json();
+                  if (!res.ok || data.error) {
+                    setSubmitError(data.error || "Something went wrong. Please try again.");
+                    setSubmitting(false);
+                    return;
+                  }
+                  setSubmitting(false);
+                  setStep(4);
+                } catch (err) {
+                  console.error("Cash out error:", err);
+                  setSubmitError("Connection error. Please check your connection and try again.");
+                  setSubmitting(false);
+                }
               }} style={{
                 width: "100%", marginTop: 4,
                 background: `linear-gradient(135deg, ${R.green} 0%, #15803d 100%)`,
@@ -1091,7 +1226,7 @@ function CashOut({ pipeline, userName, userEmail }) {
                   : <><i className="ph ph-check-circle" style={{ fontSize: 17 }} /> Submit Payout Request</>
                 }
               </button>
-              <button onClick={() => setStep(2)} style={{
+              <button onClick={() => { setStep(2); setSubmitError(""); }} style={{
                 width: "100%", marginTop: 10, background: "none",
                 border: `1.5px solid ${R.border}`, borderRadius: 12,
                 padding: "13px", color: R.textSecondary, fontSize: 14,
@@ -1214,6 +1349,7 @@ function Profile({ onLogout, pipeline, userName }) {
   const soldCount = pipeline.filter(p => p.status === "sold").length;
   const balance   = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
   const nextPayout = getNextPayout(soldCount);
+  const [showContact, setShowContact] = useState(false);
 
   return (
     <Screen>
@@ -1277,7 +1413,7 @@ function Profile({ onLogout, pipeline, userName }) {
         </AnimCard>
 
         <AnimCard delay={160}>
-          <button style={{
+          <button onClick={() => setShowContact(true)} style={{
             width: "100%", background: R.bgCard,
             border: `1.5px solid ${R.border}`, borderRadius: 12,
             padding: "15px", color: R.navy, fontSize: 14, fontWeight: 600,
@@ -1310,6 +1446,7 @@ function Profile({ onLogout, pipeline, userName }) {
           </button>
         </AnimCard>
       </div>
+      <ContactModal isOpen={showContact} onClose={() => setShowContact(false)} />
     </Screen>
   );
 }
