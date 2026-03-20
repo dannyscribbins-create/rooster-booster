@@ -2169,15 +2169,17 @@ function AdminLogin({ onLogin }) {
 
 function AdminPanel() {
   const [authed, setAuthed]         = useState(false);
-  const [password, setPassword]     = useState('');
   const [page, setPage]             = useState('dashboard');
   const [pendingCount, setPendingCount] = useState(0);
 
   useAdminFonts();
 
-  function handleLogin(pw) {
-    setPassword(pw); setAuthed(true);
-    fetch(`${BACKEND_URL}/api/admin/cashouts?password=${encodeURIComponent(pw)}`)
+  function handleLogin() {
+    setAuthed(true);
+    const token = sessionStorage.getItem('rb_admin_token');
+    fetch(`${BACKEND_URL}/api/admin/cashouts`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setPendingCount(d.filter(c => c.status === 'pending').length); });
   }
@@ -2185,10 +2187,10 @@ function AdminPanel() {
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
 
   const pages = {
-    dashboard: <AdminDashboard password={password} setPage={setPage} />,
-    referrers: <AdminReferrers password={password} />,
-    cashouts:  <AdminCashOuts  password={password} />,
-    activity:  <AdminActivity  password={password} />,
+    dashboard: <AdminDashboard setLoggedIn={setAuthed} setPage={setPage} />,
+    referrers: <AdminReferrers setLoggedIn={setAuthed} />,
+    cashouts:  <AdminCashOuts  setLoggedIn={setAuthed} />,
+    activity:  <AdminActivity  setLoggedIn={setAuthed} />,
   };
 
   return (
