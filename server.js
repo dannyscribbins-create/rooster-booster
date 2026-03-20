@@ -284,15 +284,15 @@ app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
 
 // ── ADMIN: REFERRERS ──────────────────────────────────────────────────────────
 app.get('/api/admin/users', async (req, res) => {
-  if (!checkAdminPassword(req.query.password)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query('SELECT id,full_name,email,created_at FROM users ORDER BY created_at DESC');
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.post('/api/admin/users', async (req, res) => {
-  const { password, full_name, email, pin } = req.body;
-  if (!checkAdminPassword(password)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await verifyAdminSession(req, res)) return;
+  const { full_name, email, pin } = req.body;
   try {
     const hashedPin = await bcrypt.hash(String(pin), 10);
     const result = await pool.query(
@@ -305,8 +305,8 @@ app.post('/api/admin/users', async (req, res) => {
   }
 });
 app.patch('/api/admin/users/:id/pin', async (req, res) => {
-  const { password, pin } = req.body;
-  if (!checkAdminPassword(password)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await verifyAdminSession(req, res)) return;
+  const { pin } = req.body;
   if (!pin || pin.length < 4) return res.status(400).json({ error: 'PIN must be at least 4 digits' });
   try {
     await pool.query('UPDATE users SET pin=$1 WHERE id=$2', [await bcrypt.hash(String(pin), 10), req.params.id]);
@@ -314,7 +314,7 @@ app.patch('/api/admin/users/:id/pin', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.delete('/api/admin/users/:id', async (req, res) => {
-  if (!checkAdminPassword(req.query.password)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await verifyAdminSession(req, res)) return;
   try {
     await pool.query('DELETE FROM users WHERE id=$1', [req.params.id]);
     res.json({ success: true });
@@ -323,7 +323,7 @@ app.delete('/api/admin/users/:id', async (req, res) => {
 
 // ── ADMIN: REFERRER DETAIL ────────────────────────────────────────────────────
 app.get('/api/admin/referrer/:name', async (req, res) => {
-  if (!checkAdminPassword(req.query.password)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await verifyAdminSession(req, res)) return;
   try {
     const data = await fetchPipelineForReferrer(decodeURIComponent(req.params.name));
     res.json(data);
@@ -332,15 +332,15 @@ app.get('/api/admin/referrer/:name', async (req, res) => {
 
 // ── ADMIN: CASH OUTS ──────────────────────────────────────────────────────────
 app.get('/api/admin/cashouts', async (req, res) => {
-  if (!checkAdminPassword(req.query.password)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query('SELECT * FROM cashout_requests ORDER BY requested_at DESC');
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 app.patch('/api/admin/cashouts/:id', async (req, res) => {
-  const { password, status } = req.body;
-  if (!checkAdminPassword(password)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await verifyAdminSession(req, res)) return;
+  const { status } = req.body;
   if (!['approved','denied'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
   try {
     const result = await pool.query('UPDATE cashout_requests SET status=$1 WHERE id=$2 RETURNING *', [status, req.params.id]);
@@ -356,7 +356,7 @@ app.patch('/api/admin/cashouts/:id', async (req, res) => {
 
 // ── ADMIN: ACTIVITY LOG ───────────────────────────────────────────────────────
 app.get('/api/admin/activity', async (req, res) => {
-  if (!checkAdminPassword(req.query.password)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 100');
     res.json(result.rows);
@@ -365,8 +365,8 @@ app.get('/api/admin/activity', async (req, res) => {
 
 // ── ADMIN: DASHBOARD STATS (cached 15 min) ────────────────────────────────────
 app.get('/api/admin/stats', async (req, res) => {
-  const { password, refresh } = req.query;
-  if (!checkAdminPassword(password)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!await verifyAdminSession(req, res)) return;
+  const { refresh } = req.query;
   try {
     if (refresh !== 'true') {
       const cached = await pool.query('SELECT * FROM admin_cache WHERE id=1');
