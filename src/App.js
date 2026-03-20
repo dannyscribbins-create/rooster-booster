@@ -1700,16 +1700,21 @@ function PipelineBar({ segments, total }) {
   );
 }
 
-function AdminDashboard({ password, setPage }) {
+function AdminDashboard({ setLoggedIn, setPage }) {
   const [stats, setStats]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
 
   function loadStats(forceRefresh = false) {
     setLoading(true); setError('');
-    fetch(`${BACKEND_URL}/api/admin/stats?password=${encodeURIComponent(password)}${forceRefresh ? '&refresh=true' : ''}`)
-      .then(r => r.json())
-      .then(d => { if (d.error) setError(d.error); else setStats(d); setLoading(false); })
+    fetch(`${BACKEND_URL}/api/admin/stats${forceRefresh ? '?refresh=true' : ''}`, {
+      headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+    })
+      .then(r => {
+        if (r.status === 401) { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); return null; }
+        return r.json();
+      })
+      .then(d => { if (!d) return; if (d.error) setError(d.error); else setStats(d); setLoading(false); })
       .catch(() => { setError('Failed to load stats'); setLoading(false); });
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
