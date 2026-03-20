@@ -2113,6 +2113,7 @@ function AdminActivity({ setLoggedIn }) {
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/admin/activity`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
