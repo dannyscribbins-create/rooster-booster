@@ -250,23 +250,36 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
 async function verifyAdminSession(req, res) {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   if (!token) { res.status(401).json({ error: 'Not authorized' }); return false; }
-  const result = await pool.query(
-    'SELECT * FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-    [token, 'admin']
-  );
-  if (!result.rows.length) { res.status(401).json({ error: 'Session expired. Please log in again.' }); return false; }
-  return true;
+  try {
+    const result = await pool.query(
+      'SELECT id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'admin']
+    );
+    if (!result.rows.length) {
+      res.status(401).json({ error: 'Session expired. Please log in again.' });
+      return false;
+    }
+    return true;
+  } catch (err) {
+    res.status(500).json({ error: 'Auth check failed' });
+    return false;
+  }
 }
 
 app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
-  if (req.body.password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Incorrect password' });
-  const token = require('crypto').randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  await pool.query(
-    'INSERT INTO sessions (user_id, token, expires_at, role) VALUES (NULL,$1,$2,$3)',
-    [token, expiresAt, 'admin']
-  );
-  res.json({ success: true, token });
+  if (req.body.password !== ADMIN_PASSWORD)
+    return res.status(401).json({ error: 'Incorrect password' });
+  try {
+    const token = require('crypto').randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await pool.query(
+      'INSERT INTO sessions (user_id, token, expires_at, role) VALUES (NULL,$1,$2,$3)',
+      [token, expiresAt, 'admin']
+    );
+    res.json({ success: true, token });
+  } catch (err) {
+    res.status(500).json({ error: 'Login failed: ' + err.message });
+  }
 });
 
 // ── ADMIN: REFERRERS ──────────────────────────────────────────────────────────
