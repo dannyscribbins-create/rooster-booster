@@ -2118,6 +2118,7 @@ function AdminActivity({ setLoggedIn }) {
     fetch(`${BACKEND_URL}/api/admin/activity`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
       .then(d => { if (!d) return; setActivity(Array.isArray(d) ? d : []); setLoading(false); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const iconMap  = { login: 'ph-sign-in', cashout: 'ph-money', admin: 'ph-gear' };
