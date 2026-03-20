@@ -2142,7 +2142,10 @@ function AdminLogin({ onLogin }) {
       body: JSON.stringify({ password }),
     }).then(r => r.json()).then(d => {
       if (d.error) setError('Incorrect password');
-      else onLogin(password);
+      else {
+        sessionStorage.setItem('rb_admin_token', d.token);
+        onLogin();
+      }
     });
   }
 
