@@ -178,8 +178,8 @@ app.get('/api/pipeline', async (req, res) => {
     const token = req.headers['authorization']?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Not authorized' });
     const sessionResult = await pool.query(
-      'SELECT * FROM sessions WHERE token=$1 AND expires_at > NOW()',
-      [token]
+      'SELECT * FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
     );
     if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     const data = await fetchPipelineForReferrer(req.query.referrer);
@@ -217,8 +217,8 @@ app.post('/api/cashout', async (req, res) => {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Not authorized' });
   const sessionResult = await pool.query(
-    'SELECT * FROM sessions WHERE token=$1 AND expires_at > NOW()',
-    [token]
+    'SELECT * FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+    [token, 'referrer']
   );
   if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
   const { user_id, full_name, email, amount, method } = req.body;
