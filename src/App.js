@@ -67,7 +67,7 @@ const R = {
   // Fonts
   fontSans:    "'Montserrat', 'DM Sans', sans-serif",
   fontBody:    "'DM Sans', sans-serif",
-  fontMono:    "'DM Mono', monospace",
+  fontMono:    "'Roboto Mono', monospace",
 };
 
 const STATUS_CONFIG = {
@@ -92,7 +92,7 @@ function useReferrerFonts() {
   useEffect(() => {
     const fonts = document.createElement("link");
     fonts.rel = "stylesheet";
-    fonts.href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;600&display=swap";
+    fonts.href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;600&display=swap";
     document.head.appendChild(fonts);
     const icons = document.createElement("script");
     icons.src = "https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js";
@@ -1724,7 +1724,7 @@ function AdminDashboard({ password, setPage }) {
       <AdminPageHeader title="Good morning, Danny." subtitle="Rooster Booster · Accent Roofing"
         action={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {stats && <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: "'DM Mono', monospace" }}>{stats.fromCache ? `Cached ${cachedAgo}m ago` : 'Live data'}</span>}
+            {stats && <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>{stats.fromCache ? `Cached ${cachedAgo}m ago` : 'Live data'}</span>}
             <Btn onClick={() => loadStats(true)} variant="outline" size="sm"><i className="ph ph-arrows-clockwise" /> Refresh</Btn>
           </div>
         }
@@ -1883,7 +1883,7 @@ function AdminReferrers({ password }) {
           </div>
           <div>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>{selected.full_name}</h2>
-            <p style={{ margin: '3px 0 0', fontSize: 13, color: AD.textSecondary, fontFamily: "'DM Mono', monospace" }}>{selected.email}</p>
+            <p style={{ margin: '3px 0 0', fontSize: 13, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{selected.email}</p>
           </div>
         </div>
         {detailLoading ? (
@@ -1914,7 +1914,7 @@ function AdminReferrers({ password }) {
                       <span style={{ fontSize: 13.5, fontWeight: 500, color: AD.textPrimary }}>{ref.name}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      {ref.payout && <span style={{ fontSize: 13, fontWeight: 700, color: AD.greenText, fontFamily: "'DM Mono', monospace" }}>+${ref.payout}</span>}
+                      {ref.payout && <span style={{ fontSize: 13, fontWeight: 700, color: AD.greenText, fontFamily: "'Roboto Mono', monospace" }}>+${ref.payout}</span>}
                       <Badge type={badgeType}>{s.label}</Badge>
                     </div>
                   </div>
@@ -1976,7 +1976,7 @@ function AdminReferrers({ password }) {
                     <span style={{ fontWeight: 500, color: AD.textPrimary }}>{u.full_name}</span>
                   </div>
                 </td>
-                <td style={{ padding: '14px 20px', color: AD.textSecondary, fontFamily: "'DM Mono', monospace", fontSize: 12.5 }}>{u.email}</td>
+                <td style={{ padding: '14px 20px', color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace", fontSize: 12.5 }}>{u.email}</td>
                 <td style={{ padding: '14px 20px', color: AD.textSecondary, fontSize: 12.5 }}>{new Date(u.created_at).toLocaleDateString()}</td>
                 <td style={{ padding: '14px 20px' }}>
                   <div style={{ display: 'flex', gap: 6 }}>
@@ -2047,7 +2047,7 @@ function AdminCashOuts({ password }) {
                   </div>
                   <div>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>{c.full_name}</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: "'DM Mono', monospace" }}>{c.email}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{c.email}</p>
                   </div>
                 </div>
                 <Badge type={badgeType[c.status] || 'neutral'}>{c.status}</Badge>
@@ -2060,7 +2060,7 @@ function AdminCashOuts({ password }) {
                 ].map(({ label, val, mono, big }) => (
                   <div key={label}>
                     <p style={{ margin: 0, fontSize: 10, color: AD.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>{label}</p>
-                    <p style={{ margin: '3px 0 0', fontSize: big ? 18 : 14, fontWeight: big ? 700 : 500, color: AD.textPrimary, fontFamily: mono ? "'DM Mono', monospace" : AD.fontSans }}>{val}</p>
+                    <p style={{ margin: '3px 0 0', fontSize: big ? 18 : 14, fontWeight: big ? 700 : 500, color: AD.textPrimary, fontFamily: mono ? "'Roboto Mono', monospace" : AD.fontSans }}>{val}</p>
                   </div>
                 ))}
               </div>
