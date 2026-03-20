@@ -1815,7 +1815,9 @@ function AdminDashboard({ setLoggedIn, setPage }) {
   );
 }
 
-function AdminReferrers({ password }) {
+function AdminReferrers({ setLoggedIn }) {
+  const adminToken = () => sessionStorage.getItem('rb_admin_token');
+  const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
   const [users, setUsers]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [search, setSearch]         = useState('');
@@ -1831,16 +1833,20 @@ function AdminReferrers({ password }) {
 
   function loadUsers() {
     setLoading(true);
-    fetch(`${BACKEND_URL}/api/admin/users?password=${encodeURIComponent(password)}`)
-      .then(r => r.json()).then(d => { setUsers(Array.isArray(d) ? d : []); setLoading(false); });
+    fetch(`${BACKEND_URL}/api/admin/users`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
+      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
+      .then(d => { if (!d) return; setUsers(Array.isArray(d) ? d : []); setLoading(false); });
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadUsers(); }, []);
 
   function openDetail(user) {
     setSelected(user); setDetail(null); setDetailLoading(true);
-    fetch(`${BACKEND_URL}/api/admin/referrer/${encodeURIComponent(user.full_name)}?password=${encodeURIComponent(password)}`)
-      .then(r => r.json()).then(d => { setDetail(d); setDetailLoading(false); })
+    fetch(`${BACKEND_URL}/api/admin/referrer/${encodeURIComponent(user.full_name)}`, {
+      headers: { 'Authorization': `Bearer ${adminToken()}` },
+    })
+      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
+      .then(d => { if (!d) return; setDetail(d); setDetailLoading(false); })
       .catch(() => setDetailLoading(false));
   }
 
@@ -1848,17 +1854,24 @@ function AdminReferrers({ password }) {
     setFormError(''); setFormSuccess('');
     if (!newName || !newEmail || !newPin) { setFormError('All fields required'); return; }
     fetch(`${BACKEND_URL}/api/admin/users`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password, full_name: newName, email: newEmail, pin: newPin }),
-    }).then(r => r.json()).then(d => {
-      if (d.error) setFormError(d.error);
-      else { setFormSuccess(`✓ ${newName} added`); setNewName(''); setNewEmail(''); setNewPin(''); setShowAdd(false); loadUsers(); }
-    });
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+      body: JSON.stringify({ full_name: newName, email: newEmail, pin: newPin }),
+    })
+      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
+      .then(d => { if (!d) return;
+        if (d.error) setFormError(d.error);
+        else { setFormSuccess(`✓ ${newName} added`); setNewName(''); setNewEmail(''); setNewPin(''); setShowAdd(false); loadUsers(); }
+      });
   }
 
   function handleRemove(id, name) {
     if (!window.confirm(`Remove ${name}?`)) return;
-    fetch(`${BACKEND_URL}/api/admin/users/${id}?password=${encodeURIComponent(password)}`, { method: 'DELETE' }).then(() => loadUsers());
+    fetch(`${BACKEND_URL}/api/admin/users/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${adminToken()}` },
+    })
+      .then(r => { if (r.status === 401) { on401(); return; } loadUsers(); });
   }
 
   function handleResetPin(id, name) {
@@ -1866,8 +1879,9 @@ function AdminReferrers({ password }) {
     if (!p) return;
     if (p.length < 4 || p.length > 6) { alert('PIN must be 4–6 digits'); return; }
     fetch(`${BACKEND_URL}/api/admin/users/${id}/pin`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password, pin: p }),
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+      body: JSON.stringify({ pin: p }),
     }).then(r => r.json()).then(d => { if (d.error) alert(d.error); else alert('✓ PIN updated'); });
   }
 
