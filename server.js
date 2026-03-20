@@ -246,10 +246,27 @@ app.post('/api/cashout', async (req, res) => {
 
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
-function checkAdminPassword(p) { return p === ADMIN_PASSWORD; }
 
-app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
-  checkAdminPassword(req.body.password) ? res.json({ success: true }) : res.status(401).json({ error: 'Incorrect password' });
+async function verifyAdminSession(req, res) {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) { res.status(401).json({ error: 'Not authorized' }); return false; }
+  const result = await pool.query(
+    'SELECT * FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+    [token, 'admin']
+  );
+  if (!result.rows.length) { res.status(401).json({ error: 'Session expired. Please log in again.' }); return false; }
+  return true;
+}
+
+app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
+  if (req.body.password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Incorrect password' });
+  const token = require('crypto').randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await pool.query(
+    'INSERT INTO sessions (user_id, token, expires_at, role) VALUES (NULL,$1,$2,$3)',
+    [token, expiresAt, 'admin']
+  );
+  res.json({ success: true, token });
 });
 
 // ── ADMIN: REFERRERS ──────────────────────────────────────────────────────────
