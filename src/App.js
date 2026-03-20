@@ -2013,15 +2013,18 @@ function AdminReferrers({ setLoggedIn }) {
   );
 }
 
-function AdminCashOuts({ password }) {
+function AdminCashOuts({ setLoggedIn }) {
+  const adminToken = () => sessionStorage.getItem('rb_admin_token');
+  const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
   const [cashouts, setCashouts] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');
 
   function load() {
     setLoading(true);
-    fetch(`${BACKEND_URL}/api/admin/cashouts?password=${encodeURIComponent(password)}`)
-      .then(r => r.json()).then(d => { setCashouts(Array.isArray(d) ? d : []); setLoading(false); });
+    fetch(`${BACKEND_URL}/api/admin/cashouts`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
+      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
+      .then(d => { if (!d) return; setCashouts(Array.isArray(d) ? d : []); setLoading(false); });
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
@@ -2029,9 +2032,12 @@ function AdminCashOuts({ password }) {
   function handleAction(id, status) {
     if (!window.confirm(`${status === 'approved' ? 'Approve' : 'Deny'} this request?`)) return;
     fetch(`${BACKEND_URL}/api/admin/cashouts/${id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password, status }),
-    }).then(r => r.json()).then(d => { if (d.error) alert(d.error); else load(); });
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+      body: JSON.stringify({ status }),
+    })
+      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
+      .then(d => { if (!d) return; if (d.error) alert(d.error); else load(); });
   }
 
   const filtered = filter === 'all' ? cashouts : cashouts.filter(c => c.status === filter);
