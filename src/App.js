@@ -631,11 +631,13 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
             {/* Animated progress bar */}
             <div style={{ background: R.bgBlueLight, borderRadius: 999, height: 8, overflow: "hidden" }}>
               <div style={{
-                width: barAnimated ? `${progressPct}%` : "0%",
+                width: "100%",
                 height: "100%",
                 background: `linear-gradient(90deg, ${R.red} 0%, ${R.navy} 100%)`,
                 borderRadius: 999,
-                transition: "width 1.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                transform: barAnimated ? `scaleX(${progressPct / 100})` : "scaleX(0)",
+                transformOrigin: "left",
+                transition: "transform 1.3s cubic-bezier(0.4, 0, 0.2, 1)",
               }} />
             </div>
             <p style={{ margin: "8px 0 0", fontSize: 12, color: R.textSecondary }}>
@@ -1689,8 +1691,10 @@ function PipelineBar({ segments, total }) {
     <div style={{ height: 8, borderRadius: 99, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', marginBottom: 14, position: 'relative' }}>
       <div style={{
         position: 'absolute', top: 0, left: 0, height: '100%',
-        width: animated ? '100%' : '0%', background: gradient, borderRadius: 99,
-        transition: 'width 1.1s cubic-bezier(0.4, 0, 0.2, 1)',
+        width: '100%', background: gradient, borderRadius: 99,
+        transform: animated ? 'scaleX(1)' : 'scaleX(0)',
+        transformOrigin: 'left',
+        transition: 'transform 1.1s cubic-bezier(0.4, 0, 0.2, 1)',
       }} />
     </div>
   );
