@@ -2103,15 +2103,18 @@ function AdminCashOuts({ setLoggedIn }) {
   );
 }
 
-function AdminActivity({ password }) {
+function AdminActivity({ setLoggedIn }) {
+  const adminToken = () => sessionStorage.getItem('rb_admin_token');
+  const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
   const [activity, setActivity] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');
 
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/admin/activity?password=${encodeURIComponent(password)}`)
-      .then(r => r.json()).then(d => { setActivity(Array.isArray(d) ? d : []); setLoading(false); });
-  }, [password]);
+    fetch(`${BACKEND_URL}/api/admin/activity`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
+      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
+      .then(d => { if (!d) return; setActivity(Array.isArray(d) ? d : []); setLoading(false); });
+  }, []);
 
   const iconMap  = { login: 'ph-sign-in', cashout: 'ph-money', admin: 'ph-gear' };
   const colorMap = { login: AD.blueText, cashout: AD.greenText, admin: AD.amberText };
