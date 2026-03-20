@@ -1882,7 +1882,10 @@ function AdminReferrers({ setLoggedIn }) {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
       body: JSON.stringify({ pin: p }),
-    }).then(r => r.json()).then(d => { if (d.error) alert(d.error); else alert('✓ PIN updated'); });
+    }).then(r => {
+      if (r.status === 401) { on401(); return null; }
+      return r.json();
+    }).then(d => { if (!d) return; if (d.error) alert(d.error); else alert('✓ PIN updated'); });
   }
 
   const filtered = users.filter(u =>
