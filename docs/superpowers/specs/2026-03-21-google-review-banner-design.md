@@ -11,7 +11,7 @@ Add a Google Review banner card to the bottom of the Dashboard screen in the ref
 
 ## Config Object
 
-Add `CONTRACTOR_CONFIG` to `src/App.js` immediately after `STATUS_CONFIG` (~line 80), following the existing module-level const pattern:
+Add `CONTRACTOR_CONFIG` to `src/App.js` immediately after `STATUS_CONFIG` (after line 78, before the Animation Hook comment), following the existing module-level const pattern:
 
 ```js
 // ─── Contractor Config (white-label) ──────────────────────────────────────────
@@ -33,7 +33,7 @@ No other component reads from `CONTRACTOR_CONFIG` in this change. The object is 
 
 ## Placement
 
-Inside `Dashboard`'s return, after the closing `</AnimCard></div>` of the Recent Referrals section (currently line 794) and before the `<style>` tag (line 796).
+Inside `Dashboard`'s return, after the closing `</div>` of the Recent Referrals section wrapper (currently line 794) and before the `<style>` tag (line 796).
 
 ---
 
@@ -43,8 +43,8 @@ Inline JSX inside `Dashboard` — no separate function component. Follows the id
 
 ```jsx
 {/* Google Review Banner */}
-<div style={{ padding: "16px 20px 8px" }}>
-  <AnimCard delay={500}>
+<div style={{ padding: "16px 20px 0" }}>
+  <AnimCard delay={600}>
     <div style={{
       background: R.bgCard,
       border: `1px solid ${R.border}`,
@@ -104,11 +104,12 @@ Inline JSX inside `Dashboard` — no separate function component. Follows the id
 ```
 
 **Design details:**
-- Wrapper: `padding: "16px 20px 8px"` — matches sibling sections except bottom padding is 8px (last card before bottom nav safe area)
-- `AnimCard delay={500}` — enters after the referral cards (which animate at 400–580ms)
+- Wrapper: `padding: "16px 20px 0"` — identical to all sibling sections; `Screen` component's `paddingBottom: 88` already provides safe-area clearance for the bottom nav
+- `AnimCard delay={600}` — enters after all three referral cards (which animate at 400ms, 460ms, 520ms)
 - Star icon: Phosphor `ph-star-fill`, amber `#f59e0b`, 28px — visually distinct from the brand red/navy without conflicting
 - Message text: 13px, `R.textPrimary`, `R.fontBody` (DM Sans) — readable, not competing with section headers
-- Button: identical gradient, shadow, hover lift, and font as the "Cash Out Now" button in the balance card
+- Button: same gradient, shadow, hover lift, and font as "Cash Out Now"; intentionally smaller (`padding: "10px 18px"`, `fontSize: 13`) because this is a secondary CTA — not the primary action on the screen
+- Button renders at inline width (no `width: "100%"`) — appropriate for a secondary action in a flex row context
 - Button icon: `ph-star` (outline) at 14px — paired with filled star in the card icon for visual consistency
 - `window.open` uses `noopener,noreferrer` for security
 
