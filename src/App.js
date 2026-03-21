@@ -818,7 +818,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
               color: R.amber,
               flexShrink: 0,
             }} />
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
               <p style={{
                 margin: "0 0 10px",
                 fontSize: 13,
