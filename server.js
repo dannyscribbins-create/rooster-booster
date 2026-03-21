@@ -122,7 +122,7 @@ async function fetchPipelineForReferrer(referrerName) {
   const allClients = response.data.data.clients.nodes;
   const referred = allClients.filter(c => {
     const f = c.customFields.find(f => f.label && f.label.toLowerCase() === 'referred by');
-    return f && f.valueText === referrerName;
+    return f && f.valueText?.trim().toLowerCase() === referrerName.trim().toLowerCase();
   });
   const pipeline = referred.map(client => {
     const jobs = client.jobs.nodes;
