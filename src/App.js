@@ -111,6 +111,9 @@ function useReferrerFonts() {
     const icons = document.createElement("script");
     icons.src = "https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js";
     document.head.appendChild(icons);
+    const focusStyle = document.createElement("style");
+    focusStyle.textContent = "button:focus-visible,a:focus-visible{outline:2px solid #012854;outline-offset:2px;border-radius:inherit;}";
+    document.head.appendChild(focusStyle);
     document.body.style.margin = "0";
     document.body.style.background = R.bgPage;
   }, []);
@@ -150,8 +153,8 @@ function StatusBadge({ status }) {
   const s = STATUS_CONFIG[status];
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", gap: 5,
-      fontSize: 11, padding: "4px 10px", borderRadius: 999,
+      display: "inline-flex", alignItems: "center", gap: 4,
+      fontSize: 12, padding: "4px 10px", borderRadius: 999,
       background: s.bg, color: s.color,
       fontFamily: R.fontMono, fontWeight: 600, whiteSpace: "nowrap",
     }}>
@@ -184,7 +187,7 @@ function ContactModal({ isOpen, onClose }) {
       >
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <p style={{ margin: 0, fontSize: 20, fontWeight: 700, fontFamily: R.fontSans, color: R.navy }}>
+          <p style={{ margin: 0, fontSize: 22, fontWeight: 700, fontFamily: R.fontSans, color: R.navy }}>
             Get in Touch
           </p>
           <button
@@ -195,7 +198,7 @@ function ContactModal({ isOpen, onClose }) {
               display: "inline-flex", alignItems: "center", justifyContent: "center",
             }}
           >
-            <i className="ph ph-x" style={{ fontSize: 20, color: R.textMuted }} />
+            <i className="ph ph-x" style={{ fontSize: 22, color: R.textMuted }} />
           </button>
         </div>
 
@@ -204,7 +207,7 @@ function ContactModal({ isOpen, onClose }) {
 
         {/* Phone */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <i className="ph ph-phone" style={{ fontSize: 20, color: R.navy, flexShrink: 0 }} />
+          <i className="ph ph-phone" style={{ fontSize: 22, color: R.navy, flexShrink: 0 }} />
           <a
             href="tel:7702774869"
             style={{ color: R.navy, fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
@@ -216,8 +219,8 @@ function ContactModal({ isOpen, onClose }) {
         </div>
 
         {/* Email */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14 }}>
-          <i className="ph ph-envelope" style={{ fontSize: 20, color: R.navy, flexShrink: 0 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+          <i className="ph ph-envelope" style={{ fontSize: 22, color: R.navy, flexShrink: 0 }} />
           <a
             href="mailto:contact@leaksmith.com"
             style={{ color: R.navy, fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
@@ -234,9 +237,9 @@ function ContactModal({ isOpen, onClose }) {
           style={{
             marginTop: 24, width: "100%", background: "none",
             border: `1.5px solid ${R.border}`, borderRadius: 12,
-            padding: 13, color: R.textSecondary, fontSize: 14,
+            padding: 12, color: R.textSecondary, fontSize: 15,
             cursor: "pointer", fontFamily: R.fontBody,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}
         >
           Close
@@ -270,8 +273,8 @@ function BottomNav({ tab, setTab }) {
         return (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             flex: 1, background: "none", border: "none", cursor: "pointer",
-            padding: "10px 4px 6px", display: "flex", flexDirection: "column",
-            alignItems: "center", gap: 3,
+            padding: "8px 4px 8px", display: "flex", flexDirection: "column",
+            alignItems: "center", gap: 4,
             color: active ? R.navy : R.textMuted,
             transition: "color 0.2s, transform 0.1s",
             transform: "scale(1)",
@@ -292,7 +295,7 @@ function BottomNav({ tab, setTab }) {
             <i className={`ph ${active ? t.icon + "-fill" : t.icon}`}
               style={{ fontSize: 22, lineHeight: 1 }} />
             <span style={{
-              fontSize: 9.5, fontFamily: R.fontMono, letterSpacing: "0.06em",
+              fontSize: 12, fontFamily: R.fontMono, letterSpacing: "0.06em",
               textTransform: "uppercase", fontWeight: active ? 600 : 400,
             }}>{t.label}</span>
           </button>
@@ -339,7 +342,7 @@ function LoginScreen({ onLogin }) {
   const inputStyle = (field) => ({
     width: "100%", background: R.bgPage,
     border: `1.5px solid ${focused === field ? R.navy : R.border}`,
-    borderRadius: 10, padding: "14px 16px 14px 44px",
+    borderRadius: 10, padding: "16px 16px 16px 48px",
     color: R.textPrimary, fontSize: 15,
     fontFamily: R.fontBody, outline: "none",
     boxSizing: "border-box",
@@ -350,7 +353,7 @@ function LoginScreen({ onLogin }) {
     <div style={{
       minHeight: "100vh", display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "center",
-      background: `linear-gradient(160deg, ${R.navy} 0%, #1a4a8a 40%, ${R.blueLight} 100%)`,
+      background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
       padding: "32px 24px", fontFamily: R.fontBody,
     }}>
       {/* Top brand mark */}
@@ -358,7 +361,7 @@ function LoginScreen({ onLogin }) {
         opacity: cardVisible ? 1 : 0,
         transform: cardVisible ? "translateY(0)" : "translateY(-12px)",
         transition: "opacity 0.5s ease, transform 0.5s ease",
-        textAlign: "center", marginBottom: 28,
+        textAlign: "center", marginBottom: 24,
       }}>
         <div style={{
           width: 72, height: 72, borderRadius: 20,
@@ -368,11 +371,11 @@ function LoginScreen({ onLogin }) {
           boxShadow: `0 0 0 6px rgba(204,0,0,0.2), 0 8px 32px rgba(0,0,0,0.3)`,
         }}>🐓</div>
         <h1 style={{
-          margin: 0, fontSize: 28, fontWeight: 800,
+          margin: 0, fontSize: 32, fontWeight: 800,
           fontFamily: R.fontSans, color: "#fff",
           letterSpacing: "-0.02em",
         }}>Rooster Booster</h1>
-        <p style={{ margin: "6px 0 0", color: "rgba(255,255,255,0.65)", fontSize: 14 }}>
+        <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.65)", fontSize: 15 }}>
           Accent Roofing · Referral Rewards
         </p>
       </div>
@@ -387,24 +390,24 @@ function LoginScreen({ onLogin }) {
         transition: "opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s",
       }}>
         <h2 style={{
-          margin: "0 0 6px", fontSize: 20, fontWeight: 700,
+          margin: "0 0 8px", fontSize: 22, fontWeight: 700,
           fontFamily: R.fontSans, color: R.navy,
         }}>Welcome back</h2>
-        <p style={{ margin: "0 0 24px", fontSize: 13, color: R.textSecondary }}>
+        <p style={{ margin: "0 0 24px", fontSize: 15, color: R.textSecondary }}>
           Sign in to view your referral rewards
         </p>
 
         {/* Email field */}
         <label style={{
           display: "block", fontSize: 12, fontWeight: 500,
-          color: R.textSecondary, marginBottom: 6, fontFamily: R.fontBody,
+          color: R.textSecondary, marginBottom: 8, fontFamily: R.fontBody,
         }}>
           Email address
         </label>
-        <div style={{ position: "relative", marginBottom: 14 }}>
+        <div style={{ position: "relative", marginBottom: 16 }}>
           <i className="ph ph-envelope" style={{
             position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-            fontSize: 18, color: focused === "email" ? R.navy : R.textMuted,
+            fontSize: 16, color: focused === "email" ? R.navy : R.textMuted,
             transition: "color 0.2s", pointerEvents: "none",
           }} />
           <input
@@ -419,14 +422,14 @@ function LoginScreen({ onLogin }) {
         {/* PIN field */}
         <label style={{
           display: "block", fontSize: 12, fontWeight: 500,
-          color: R.textSecondary, marginBottom: 6, fontFamily: R.fontBody,
+          color: R.textSecondary, marginBottom: 8, fontFamily: R.fontBody,
         }}>
           PIN
         </label>
-        <div style={{ position: "relative", marginBottom: 6 }}>
+        <div style={{ position: "relative", marginBottom: 8 }}>
           <i className="ph ph-lock" style={{
             position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-            fontSize: 18, color: focused === "pin" ? R.navy : R.textMuted,
+            fontSize: 16, color: focused === "pin" ? R.navy : R.textMuted,
             transition: "color 0.2s", pointerEvents: "none",
           }} />
           <input
@@ -441,20 +444,20 @@ function LoginScreen({ onLogin }) {
         {error && (
           <div style={{
             display: "flex", alignItems: "center", gap: 8,
-            background: "#fee2e2", borderRadius: 8, padding: "10px 14px",
-            marginBottom: 14, marginTop: 8,
+            background: "#fee2e2", borderRadius: 8, padding: "8px 12px",
+            marginBottom: 16, marginTop: 8,
           }}>
             <i className="ph ph-warning-circle" style={{ color: "#dc2626", fontSize: 16, flexShrink: 0 }} />
-            <p style={{ color: "#dc2626", fontSize: 13, margin: 0 }}>{error}</p>
+            <p style={{ color: "#dc2626", fontSize: 15, margin: 0 }}>{error}</p>
           </div>
         )}
 
         <button onClick={handleLogin} style={{
-          width: "100%", marginTop: 14,
+          width: "100%", marginTop: 16,
           background: loading
             ? R.redDark
             : `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
-          border: "none", borderRadius: 10, padding: "15px",
+          border: "none", borderRadius: 10, padding: "16px",
           color: "#fff", fontSize: 15, fontWeight: 700,
           fontFamily: R.fontSans, cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -468,7 +471,7 @@ function LoginScreen({ onLogin }) {
           }
         </button>
 
-        <p style={{ textAlign: "center", marginTop: 20, color: R.textMuted, fontSize: 13 }}>
+        <p style={{ textAlign: "center", marginTop: 24, color: R.textMuted, fontSize: 15 }}>
           Don't have an account?{" "}
           <button
             onClick={() => setShowContact(true)}
@@ -484,7 +487,7 @@ function LoginScreen({ onLogin }) {
       </div>
 
       <p style={{
-        marginTop: 24, color: "rgba(255,255,255,0.4)", fontSize: 11,
+        marginTop: 24, color: "rgba(255,255,255,0.4)", fontSize: 12,
         fontFamily: R.fontMono, letterSpacing: "0.06em",
         opacity: cardVisible ? 1 : 0, transition: "opacity 0.5s ease 0.3s",
       }}>
@@ -517,7 +520,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
     <Screen>
       {/* Hero header — navy gradient with brand feel */}
       <div style={{
-        background: `linear-gradient(145deg, ${R.navy} 0%, #1a4a8a 60%, #2a6aaa 100%)`,
+        background: `linear-gradient(145deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
         padding: "52px 24px 32px",
         position: "relative", overflow: "hidden",
       }}>
@@ -540,11 +543,11 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", position: "relative" }}>
           <div>
-            <p style={{ margin: 0, fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
+            <p style={{ margin: 0, fontSize: 15, color: "rgba(255,255,255,0.65)" }}>
               Hey, {userName.split(" ")[0]} 👋
             </p>
             <h1 style={{
-              margin: "2px 0 0", fontSize: 26, fontWeight: 800,
+              margin: "4px 0 0", fontSize: 22, fontWeight: 800,
               fontFamily: R.fontSans, color: "#fff",
               letterSpacing: "-0.02em",
             }}>Your Dashboard</h1>
@@ -553,7 +556,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
             width: 44, height: 44, borderRadius: "50%",
             background: R.red, color: "#fff",
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 14, fontWeight: 700, fontFamily: R.fontMono,
+            fontSize: 15, fontWeight: 700, fontFamily: R.fontMono,
             boxShadow: "0 0 0 3px rgba(255,255,255,0.2)",
           }}>
             {userName.split(" ").map(n => n[0]).join("")}
@@ -561,26 +564,26 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
         </div>
 
         {/* Balance card — floats on the hero */}
-        <AnimCard delay={100} screenKey="dashboard" style={{ marginTop: 20 }}>
+        <AnimCard delay={100} screenKey="dashboard" style={{ marginTop: 24 }}>
           <div style={{
             background: R.bgCard, borderRadius: 18,
-            padding: "22px 22px 18px",
+            padding: "24px 24px 16px",
             boxShadow: R.shadowLg,
           }}>
             <p style={{
-              margin: 0, fontSize: 10, color: R.textMuted,
+              margin: 0, fontSize: 12, color: R.textMuted,
               fontFamily: R.fontMono, letterSpacing: "0.12em", textTransform: "uppercase",
             }}>Available Balance</p>
 
             {loading ? (
               <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 6px" }}>
-                <i className="ph ph-circle-notch" style={{ fontSize: 20, color: R.textMuted, animation: "spin 0.8s linear infinite" }} />
+                <i className="ph ph-circle-notch" style={{ fontSize: 22, color: R.textMuted, animation: "spin 0.8s linear infinite" }} />
                 <span style={{ color: R.textMuted, fontSize: 15 }}>Loading...</span>
               </div>
             ) : (
               <>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 4, margin: "6px 0 4px" }}>
-                  <span style={{ fontSize: 28, color: R.red, fontFamily: R.fontMono, fontWeight: 700, lineHeight: 1 }}>$</span>
+                  <span style={{ fontSize: 32, color: R.red, fontFamily: R.fontMono, fontWeight: 700, lineHeight: 1 }}>$</span>
                   <span style={{
                     fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em",
                     fontFamily: R.fontSans, color: R.navy, lineHeight: 1,
@@ -588,7 +591,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
                     {balance.toLocaleString()}
                   </span>
                 </div>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: R.textSecondary }}>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: R.textSecondary }}>
                   {soldCount} sold referral{soldCount !== 1 ? "s" : ""} this year ·{" "}
                   Next: <span style={{ color: R.red, fontWeight: 700 }}>${nextPayout.total}</span>
                 </p>
@@ -599,7 +602,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
               marginTop: 16, width: "100%",
               background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
               border: "none", borderRadius: 10, padding: "13px 24px",
-              color: "#fff", fontSize: 14, fontWeight: 700,
+              color: "#fff", fontSize: 15, fontWeight: 700,
               fontFamily: R.fontSans, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               boxShadow: "0 4px 14px rgba(204,0,0,0.3)",
@@ -623,22 +626,22 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
             borderRadius: 16, padding: "18px 20px",
             boxShadow: R.shadow,
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <div>
                 <p style={{
-                  margin: 0, fontSize: 10, color: R.textMuted,
+                  margin: 0, fontSize: 12, color: R.textMuted,
                   fontFamily: R.fontMono, letterSpacing: "0.1em", textTransform: "uppercase",
                 }}>Boost Progress</p>
                 <p style={{
-                  margin: "2px 0 0", fontSize: 18, fontWeight: 800,
+                  margin: "4px 0 0", fontSize: 16, fontWeight: 800,
                   fontFamily: R.fontSans, color: R.navy,
                 }}>
-                  {soldCount} <span style={{ color: R.textSecondary, fontWeight: 400, fontSize: 14 }}>of 7 referrals</span>
+                  {soldCount} <span style={{ color: R.textSecondary, fontWeight: 400, fontSize: 15 }}>of 7 referrals</span>
                 </p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <p style={{ margin: 0, fontSize: 10, color: R.textMuted, fontFamily: R.fontMono, textTransform: "uppercase" }}>Next Payout</p>
-                <p style={{ margin: "2px 0 0", fontSize: 20, fontWeight: 800, fontFamily: R.fontMono, color: R.red }}>${nextPayout.total}</p>
+                <p style={{ margin: 0, fontSize: 12, color: R.textMuted, fontFamily: R.fontMono, textTransform: "uppercase" }}>Next Payout</p>
+                <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800, fontFamily: R.fontMono, color: R.red }}>${nextPayout.total}</p>
               </div>
             </div>
 
@@ -670,7 +673,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
       <div style={{ padding: "16px 20px 0" }}>
         <AnimCard delay={280} screenKey="dashboard">
           <p style={{
-            margin: "0 0 10px", fontSize: 10, color: R.textMuted,
+            margin: "0 0 10px", fontSize: 12, color: R.textMuted,
             fontFamily: R.fontMono, letterSpacing: "0.1em", textTransform: "uppercase",
           }}>Reward Schedule</p>
           <div style={{
@@ -679,13 +682,13 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
           }}>
             {/* Header row */}
             <div style={{
-              display: "flex", padding: "10px 16px",
+              display: "flex", padding: "8px 16px",
               borderBottom: `1px solid ${R.border}`,
               background: R.bgCardTint,
             }}>
               {["Referral", "Base", "Boost", "Total"].map((h, i) => (
                 <span key={h} style={{
-                  flex: i === 0 ? 1.2 : 1, fontSize: 10, color: R.textMuted,
+                  flex: i === 0 ? 1.2 : 1, fontSize: 12, color: R.textMuted,
                   fontFamily: R.fontMono, textTransform: "uppercase",
                   letterSpacing: "0.08em",
                   textAlign: i === 3 ? "right" : i === 0 ? "left" : "center",
@@ -707,25 +710,25 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
                   transition: "background 0.2s",
                 }}>
                   <span style={{
-                    flex: 1.2, fontSize: 13, fontWeight: 700,
+                    flex: 1.2, fontSize: 15, fontWeight: 700,
                     color: isCurrent ? R.green : isNext ? R.red : R.textSecondary,
                     fontFamily: R.fontMono,
-                    display: "flex", alignItems: "center", gap: 6,
+                    display: "flex", alignItems: "center", gap: 8,
                   }}>
                     {row.label}
-                    {isCurrent && <span style={{ fontSize: 9, color: R.green, background: R.greenBg, padding: "2px 6px", borderRadius: 99 }}>✓ done</span>}
-                    {isNext && <span style={{ fontSize: 9, color: R.red, background: "#fee2e2", padding: "2px 6px", borderRadius: 99 }}>next</span>}
+                    {isCurrent && <span style={{ fontSize: 12, color: R.green, background: R.greenBg, padding: "2px 6px", borderRadius: 99 }}>✓ done</span>}
+                    {isNext && <span style={{ fontSize: 12, color: R.red, background: "#fee2e2", padding: "2px 6px", borderRadius: 99 }}>next</span>}
                   </span>
-                  <span style={{ flex: 1, fontSize: 13, color: R.textSecondary, fontFamily: R.fontMono, textAlign: "center" }}>${row.base}</span>
+                  <span style={{ flex: 1, fontSize: 15, color: R.textSecondary, fontFamily: R.fontMono, textAlign: "center" }}>${row.base}</span>
                   <span style={{
-                    flex: 1, fontSize: 13, textAlign: "center",
+                    flex: 1, fontSize: 15, textAlign: "center",
                     color: row.boost > 0 ? R.red : R.textMuted,
                     fontFamily: R.fontMono, fontWeight: row.boost > 0 ? 700 : 400,
                   }}>
                     {row.boost > 0 ? `+$${row.boost}` : "—"}
                   </span>
                   <span style={{
-                    flex: 1, fontSize: 14, fontWeight: 900, textAlign: "right",
+                    flex: 1, fontSize: 15, fontWeight: 900, textAlign: "right",
                     color: isNext ? R.navy : R.textSecondary,
                     fontFamily: R.fontMono,
                   }}>${row.total}</span>
@@ -734,7 +737,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
             })}
           </div>
           <p style={{
-            margin: "8px 0 0", fontSize: 11, color: R.textMuted,
+            margin: "8px 0 0", fontSize: 12, color: R.textMuted,
             fontFamily: R.fontMono, textAlign: "center",
           }}>
             * Qualifying roofs must be 28 squares or more. Resets Jan 1 each year.
@@ -747,7 +750,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
         <AnimCard delay={360} screenKey="dashboard">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <p style={{
-              margin: 0, fontSize: 10, color: R.textMuted,
+              margin: 0, fontSize: 12, color: R.textMuted,
               fontFamily: R.fontMono, letterSpacing: "0.1em", textTransform: "uppercase",
             }}>Recent Referrals</p>
             <button onClick={() => setTab("pipeline")} style={{
@@ -755,12 +758,12 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
               color: R.navy, fontSize: 12, fontFamily: R.fontMono, fontWeight: 600,
               display: "flex", alignItems: "center", gap: 4,
             }}>
-              View all <i className="ph ph-arrow-right" style={{ fontSize: 13 }} />
+              View all <i className="ph ph-arrow-right" style={{ fontSize: 15 }} />
             </button>
           </div>
 
           {loading ? (
-            <p style={{ color: R.textMuted, fontSize: 13 }}>Loading referrals...</p>
+            <p style={{ color: R.textMuted, fontSize: 15 }}>Loading referrals...</p>
           ) : pipeline.length === 0 ? (
             <div style={{
               background: R.bgCard, border: `1px solid ${R.border}`,
@@ -768,7 +771,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
               boxShadow: R.shadow,
             }}>
               <i className="ph ph-users" style={{ fontSize: 32, color: R.blueLight, display: "block", marginBottom: 8 }} />
-              <p style={{ margin: 0, color: R.textSecondary, fontSize: 13 }}>
+              <p style={{ margin: 0, color: R.textSecondary, fontSize: 15 }}>
                 No referrals yet — start sending names to earn rewards!
               </p>
             </div>
@@ -785,16 +788,16 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
                     onMouseEnter={e => e.currentTarget.style.boxShadow = R.shadowMd}
                     onMouseLeave={e => e.currentTarget.style.boxShadow = R.shadow}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{
                         width: 34, height: 34, borderRadius: "50%",
                         background: R.bgBlueLight, color: R.navy,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 11, fontWeight: 700, fontFamily: R.fontMono, flexShrink: 0,
+                        fontSize: 12, fontWeight: 700, fontFamily: R.fontMono, flexShrink: 0,
                       }}>
                         {ref.name.split(" ").map(n => n[0]).join("")}
                       </div>
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: R.textPrimary }}>
+                      <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: R.textPrimary }}>
                         {ref.name}
                       </p>
                     </div>
@@ -818,17 +821,17 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
             boxShadow: R.shadow,
             display: "flex",
             alignItems: "center",
-            gap: 14,
+            gap: 16,
           }}>
             <i className="ph ph-star-fill" aria-hidden="true" style={{
-              fontSize: 28,
+              fontSize: 32,
               color: R.amber,
               flexShrink: 0,
             }} />
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
               <p style={{
                 margin: "0 0 10px",
-                fontSize: 13,
+                fontSize: 15,
                 color: R.textPrimary,
                 fontFamily: R.fontBody,
                 lineHeight: 1.4,
@@ -841,22 +844,22 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
                   background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
                   border: "none",
                   borderRadius: 10,
-                  padding: "10px 18px",
+                  padding: "8px 16px",
                   color: "#fff",
-                  fontSize: 13,
+                  fontSize: 15,
                   fontWeight: 700,
                   fontFamily: R.fontBody,
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: 8,
                   boxShadow: "0 4px 14px rgba(204,0,0,0.3)",
                   transition: "transform 0.2s",
                 }}
                 onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
                 onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
               >
-                <i className="ph ph-star" aria-hidden="true" style={{ fontSize: 14 }} />
+                <i className="ph ph-star" aria-hidden="true" style={{ fontSize: 15 }} />
                 {CONTRACTOR_CONFIG.reviewButtonText}
               </button>
             </div>
@@ -882,21 +885,21 @@ function Pipeline({ pipeline, loading }) {
     <Screen>
       {/* Header with navy band */}
       <div style={{
-        background: `linear-gradient(145deg, ${R.navy} 0%, #1a4a8a 100%)`,
+        background: `linear-gradient(145deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
         padding: "52px 24px 24px",
       }}>
-        <p style={{ margin: "0 0 4px", fontSize: 10, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+        <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>
           ROOSTER BOOSTER
         </p>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>
           My Pipeline
         </h1>
-        <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+        <p style={{ margin: "4px 0 0", fontSize: 15, color: "rgba(255,255,255,0.6)" }}>
           {pipeline.length} total referral{pipeline.length !== 1 ? "s" : ""}
         </p>
 
         {/* Stat chips */}
-        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
           {[
             { label: "Sent",   val: pipeline.length, color: "rgba(255,255,255,0.9)", bg: "rgba(255,255,255,0.12)" },
             { label: "Active", val: pipeline.filter(p => p.status === "lead" || p.status === "inspection").length, color: "#93c5fd", bg: "rgba(147,197,253,0.15)" },
@@ -909,7 +912,7 @@ function Pipeline({ pipeline, loading }) {
                 border: "1px solid rgba(255,255,255,0.1)",
               }}>
                 <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: s.color, fontFamily: R.fontSans }}>{s.val}</p>
-                <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.55)", fontFamily: R.fontMono, textTransform: "uppercase", letterSpacing: "0.08em" }}>{s.label}</p>
+                <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.55)", fontFamily: R.fontMono, textTransform: "uppercase", letterSpacing: "0.08em" }}>{s.label}</p>
               </div>
             </AnimCard>
           ))}
@@ -939,16 +942,16 @@ function Pipeline({ pipeline, loading }) {
       {/* Cards */}
       {loading ? (
         <div style={{ padding: "32px 20px", textAlign: "center" }}>
-          <i className="ph ph-circle-notch" style={{ fontSize: 28, color: R.textMuted, animation: "spin 0.8s linear infinite" }} />
-          <p style={{ color: R.textMuted, fontSize: 13, marginTop: 10 }}>Loading pipeline...</p>
+          <i className="ph ph-circle-notch" style={{ fontSize: 32, color: R.textMuted, animation: "spin 0.8s linear infinite" }} />
+          <p style={{ color: R.textMuted, fontSize: 15, marginTop: 10 }}>Loading pipeline...</p>
         </div>
       ) : filtered.length === 0 ? (
         <div style={{ padding: "40px 20px", textAlign: "center" }}>
           <i className="ph ph-funnel" style={{ fontSize: 36, color: R.blueLight, display: "block", marginBottom: 10 }} />
-          <p style={{ color: R.textSecondary, fontSize: 13 }}>No referrals in this category yet.</p>
+          <p style={{ color: R.textSecondary, fontSize: 15 }}>No referrals in this category yet.</p>
         </div>
       ) : (
-        <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 8 }}>
           {filtered.map((ref, idx) => {
             const s = STATUS_CONFIG[ref.status];
             return (
@@ -964,21 +967,21 @@ function Pipeline({ pipeline, loading }) {
                   onMouseLeave={e => { e.currentTarget.style.boxShadow = R.shadow; e.currentTarget.style.transform = "translateX(0)"; }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: "50%",
                         background: s.bg, color: s.color,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 11, fontWeight: 700, fontFamily: R.fontMono, flexShrink: 0,
+                        fontSize: 12, fontWeight: 700, fontFamily: R.fontMono, flexShrink: 0,
                       }}>
                         {ref.name.split(" ").map(n => n[0]).join("")}
                       </div>
                       <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: R.textPrimary }}>{ref.name}</p>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
                       <StatusBadge status={ref.status} />
                       {ref.payout && (
-                        <span style={{ fontSize: 13, fontWeight: 800, color: R.green, fontFamily: R.fontMono }}>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: R.green, fontFamily: R.fontMono }}>
                           +${ref.payout}
                         </span>
                       )}
@@ -1022,7 +1025,7 @@ function CashOut({ pipeline, userName, userEmail }) {
         <div style={{
           minHeight: "100vh", display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center", padding: "0 32px",
-          background: `linear-gradient(160deg, ${R.navy} 0%, #1a4a8a 50%, ${R.blueLight} 100%)`,
+          background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
         }}>
           <AnimCard delay={0}>
             <div style={{
@@ -1030,17 +1033,17 @@ function CashOut({ pipeline, userName, userEmail }) {
               textAlign: "center", boxShadow: R.shadowLg,
             }}>
               <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
-              <h2 style={{ margin: "0 0 8px", fontSize: 24, fontWeight: 800, fontFamily: R.fontSans, color: R.navy }}>
+              <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: R.navy }}>
                 Request Submitted!
               </h2>
-              <p style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 800, color: R.green, fontFamily: R.fontMono }}>
+              <p style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: R.green, fontFamily: R.fontMono }}>
                 ${parseFloat(amount).toLocaleString()} via {methods.find(m => m.id === method)?.label}
               </p>
-              <p style={{ color: R.textSecondary, fontSize: 14, lineHeight: 1.6, marginTop: 12 }}>
+              <p style={{ color: R.textSecondary, fontSize: 15, lineHeight: 1.6, marginTop: 12 }}>
                 Our team will process your payout within 1–2 business days. You'll get a confirmation when it's on its way!
               </p>
               <button onClick={() => { setStep(1); setMethod(null); setAmount(""); setDetail(""); }} style={{
-                marginTop: 28, background: `linear-gradient(135deg, ${R.navy} 0%, #1a4a8a 100%)`,
+                marginTop: 28, background: `linear-gradient(135deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
                 border: "none", borderRadius: 12, padding: "14px 36px",
                 color: "#fff", fontSize: 15, fontWeight: 700,
                 fontFamily: R.fontSans, cursor: "pointer",
@@ -1057,12 +1060,12 @@ function CashOut({ pipeline, userName, userEmail }) {
     <Screen>
       {/* Header */}
       <div style={{
-        background: `linear-gradient(145deg, ${R.navy} 0%, #1a4a8a 100%)`,
+        background: `linear-gradient(145deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
         padding: "52px 24px 24px",
       }}>
-        <p style={{ margin: "0 0 4px", fontSize: 10, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>Cash Out</h1>
-        <p style={{ margin: "4px 0 16px", fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+        <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>Cash Out</h1>
+        <p style={{ margin: "4px 0 16px", fontSize: 15, color: "rgba(255,255,255,0.6)" }}>
           ${balance.toLocaleString()} available
         </p>
 
@@ -1080,14 +1083,14 @@ function CashOut({ pipeline, userName, userEmail }) {
                   transition: "background 0.3s, border-color 0.3s",
                 }}>
                   {i + 1 < step
-                    ? <i className="ph ph-check" style={{ fontSize: 13 }} />
+                    ? <i className="ph ph-check" style={{ fontSize: 15 }} />
                     : i + 1}
                 </div>
-                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", fontFamily: R.fontMono, marginTop: 3, textTransform: "uppercase" }}>{s}</span>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", fontFamily: R.fontMono, marginTop: 3, textTransform: "uppercase" }}>{s}</span>
               </div>
               {i < steps.length - 1 && (
                 <div style={{
-                  flex: 1, height: 2, marginBottom: 14, marginLeft: 4, marginRight: 4,
+                  flex: 1, height: 2, marginBottom: 16, marginLeft: 4, marginRight: 4,
                   background: i + 1 < step ? R.red : "rgba(255,255,255,0.2)",
                   transition: "background 0.3s",
                 }} />
@@ -1102,16 +1105,16 @@ function CashOut({ pipeline, userName, userEmail }) {
         {/* Step 1 — Method */}
         {step >= 1 && (
           <AnimCard delay={80}>
-            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: R.navy, fontFamily: R.fontSans }}>
+            <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: R.navy, fontFamily: R.fontSans }}>
               1. Choose payout method
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {methods.map(m => (
                 <button key={m.id} onClick={() => { setMethod(m.id); if (step === 1) setStep(2); }} style={{
                   background: method === m.id ? "#fff7f7" : R.bgCard,
                   border: `1.5px solid ${method === m.id ? R.red : R.border}`,
                   borderRadius: 14, padding: "14px 16px",
-                  display: "flex", alignItems: "center", gap: 14,
+                  display: "flex", alignItems: "center", gap: 16,
                   cursor: "pointer", textAlign: "left",
                   boxShadow: method === m.id ? "0 4px 14px rgba(204,0,0,0.12)" : R.shadow,
                   transition: "border-color 0.2s, box-shadow 0.2s, background 0.2s",
@@ -1125,7 +1128,7 @@ function CashOut({ pipeline, userName, userEmail }) {
                     display: "flex", alignItems: "center", justifyContent: "center",
                     flexShrink: 0,
                   }}>
-                    <i className={`ph ${m.icon}`} style={{ fontSize: 20, color: method === m.id ? R.red : R.navy }} />
+                    <i className={`ph ${m.icon}`} style={{ fontSize: 22, color: method === m.id ? R.red : R.navy }} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: R.textPrimary, fontFamily: R.fontSans }}>{m.label}</p>
@@ -1136,7 +1139,7 @@ function CashOut({ pipeline, userName, userEmail }) {
                       width: 22, height: 22, borderRadius: "50%",
                       background: R.red, display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
-                      <i className="ph ph-check" style={{ fontSize: 13, color: "#fff" }} />
+                      <i className="ph ph-check" style={{ fontSize: 15, color: "#fff" }} />
                     </div>
                   )}
                 </button>
@@ -1147,16 +1150,16 @@ function CashOut({ pipeline, userName, userEmail }) {
 
         {/* Step 2 — Amount */}
         {step >= 2 && method && (
-          <AnimCard delay={0} style={{ marginTop: 20 }}>
-            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 700, color: R.navy, fontFamily: R.fontSans }}>
+          <AnimCard delay={0} style={{ marginTop: 24 }}>
+            <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: R.navy, fontFamily: R.fontSans }}>
               2. Enter amount
             </p>
             <div style={{
               background: R.bgCard, border: `1.5px solid ${R.border}`,
               borderRadius: 14, padding: "18px 18px", boxShadow: R.shadow,
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                <span style={{ fontSize: 28, color: R.red, fontFamily: R.fontMono, fontWeight: 800 }}>$</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                <span style={{ fontSize: 32, color: R.red, fontFamily: R.fontMono, fontWeight: 800 }}>$</span>
                 <input
                   type="number" value={amount}
                   onChange={e => setAmount(e.target.value)}
@@ -1186,7 +1189,7 @@ function CashOut({ pipeline, userName, userEmail }) {
             </div>
             <label style={{
               display: "block", fontSize: 12, fontWeight: 500,
-              color: R.textSecondary, marginBottom: 6, fontFamily: R.fontBody,
+              color: R.textSecondary, marginBottom: 8, fontFamily: R.fontBody,
             }}>
               {{ zelle: "Zelle phone or email", venmo: "Venmo username",
                  paypal: "PayPal email", check: "Mailing address" }[method]}
@@ -1198,7 +1201,7 @@ function CashOut({ pipeline, userName, userEmail }) {
                 style={{
                   width: "100%", background: R.bgCard,
                   border: `1.5px solid ${R.border}`, borderRadius: 12,
-                  padding: "14px 16px", color: R.textPrimary, fontSize: 14,
+                  padding: "14px 16px", color: R.textPrimary, fontSize: 15,
                   fontFamily: R.fontBody, outline: "none", boxSizing: "border-box",
                   transition: "border-color 0.2s",
                 }}
@@ -1208,9 +1211,9 @@ function CashOut({ pipeline, userName, userEmail }) {
             </div>
             {amount && parseFloat(amount) > 0 && parseFloat(amount) <= balance && (
               <button onClick={() => setStep(3)} style={{
-                width: "100%", marginTop: 14,
+                width: "100%", marginTop: 16,
                 background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
-                border: "none", borderRadius: 12, padding: "15px",
+                border: "none", borderRadius: 12, padding: "16px",
                 color: "#fff", fontSize: 15, fontWeight: 700,
                 fontFamily: R.fontSans, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -1224,12 +1227,12 @@ function CashOut({ pipeline, userName, userEmail }) {
 
         {/* Step 3 — Confirm */}
         {step === 3 && (
-          <AnimCard delay={0} style={{ marginTop: 20 }}>
+          <AnimCard delay={0} style={{ marginTop: 24 }}>
             <div style={{
               background: R.bgCard, border: `1.5px solid ${R.border}`,
               borderRadius: 16, padding: "20px", boxShadow: R.shadow,
             }}>
-              <p style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 700, color: R.navy, fontFamily: R.fontSans }}>
+              <p style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: R.navy, fontFamily: R.fontSans }}>
                 Confirm your payout
               </p>
               {[
@@ -1240,21 +1243,21 @@ function CashOut({ pipeline, userName, userEmail }) {
               ].map(([k, v]) => (
                 <div key={k} style={{
                   display: "flex", justifyContent: "space-between",
-                  alignItems: "center", marginBottom: 14,
-                  paddingBottom: 14, borderBottom: `1px solid ${R.border}`,
+                  alignItems: "center", marginBottom: 16,
+                  paddingBottom: 16, borderBottom: `1px solid ${R.border}`,
                 }}>
-                  <span style={{ fontSize: 13, color: R.textSecondary, fontFamily: R.fontMono }}>{k}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: R.textPrimary }}>{v}</span>
+                  <span style={{ fontSize: 15, color: R.textSecondary, fontFamily: R.fontMono }}>{k}</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: R.textPrimary }}>{v}</span>
                 </div>
               ))}
               {submitError && (
                 <div style={{
                   display: "flex", alignItems: "center", gap: 8,
-                  background: "#fee2e2", borderRadius: 8, padding: "10px 14px",
-                  marginBottom: 14,
+                  background: "#fee2e2", borderRadius: 8, padding: "8px 12px",
+                  marginBottom: 16,
                 }}>
                   <i className="ph ph-warning-circle" style={{ color: "#dc2626", fontSize: 16, flexShrink: 0 }} />
-                  <p style={{ color: "#dc2626", fontSize: 13, margin: 0 }}>{submitError}</p>
+                  <p style={{ color: "#dc2626", fontSize: 15, margin: 0 }}>{submitError}</p>
                 </div>
               )}
               <button onClick={async () => {
@@ -1288,7 +1291,7 @@ function CashOut({ pipeline, userName, userEmail }) {
               }} style={{
                 width: "100%", marginTop: 4,
                 background: `linear-gradient(135deg, ${R.green} 0%, #15803d 100%)`,
-                border: "none", borderRadius: 12, padding: "15px",
+                border: "none", borderRadius: 12, padding: "16px",
                 color: "#fff", fontSize: 15, fontWeight: 700,
                 fontFamily: R.fontSans, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -1302,9 +1305,9 @@ function CashOut({ pipeline, userName, userEmail }) {
               <button onClick={() => { setStep(2); setSubmitError(""); }} style={{
                 width: "100%", marginTop: 10, background: "none",
                 border: `1.5px solid ${R.border}`, borderRadius: 12,
-                padding: "13px", color: R.textSecondary, fontSize: 14,
+                padding: "12px", color: R.textSecondary, fontSize: 15,
                 cursor: "pointer", fontFamily: R.fontBody,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               }}>
                 <i className="ph ph-arrow-left" style={{ fontSize: 15 }} /> Go Back
               </button>
@@ -1328,12 +1331,12 @@ function History({ pipeline }) {
     <Screen>
       {/* Navy header band */}
       <div style={{
-        background: `linear-gradient(145deg, ${R.navy} 0%, #1a4a8a 100%)`,
+        background: `linear-gradient(145deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
         padding: "52px 24px 28px",
       }}>
-        <p style={{ margin: "0 0 4px", fontSize: 10, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>History</h1>
-        <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(255,255,255,0.6)" }}>Earnings & payouts</p>
+        <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>History</h1>
+        <p style={{ margin: "4px 0 0", fontSize: 15, color: "rgba(255,255,255,0.6)" }}>Earnings & payouts</p>
       </div>
 
       <div style={{ padding: "16px 20px 0" }}>
@@ -1354,9 +1357,9 @@ function History({ pipeline }) {
                   background: s.bg, display: "flex", alignItems: "center",
                   justifyContent: "center", marginBottom: 10,
                 }}>
-                  <i className={`ph ${s.icon}`} style={{ fontSize: 17, color: s.color }} />
+                  <i className={`ph ${s.icon}`} style={{ fontSize: 16, color: s.color }} />
                 </div>
-                <p style={{ margin: 0, fontSize: 10, color: R.textMuted, fontFamily: R.fontMono, textTransform: "uppercase", letterSpacing: "0.1em" }}>{s.label}</p>
+                <p style={{ margin: 0, fontSize: 12, color: R.textMuted, fontFamily: R.fontMono, textTransform: "uppercase", letterSpacing: "0.1em" }}>{s.label}</p>
                 <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 900, fontFamily: R.fontSans, color: s.color }}>{s.val}</p>
               </div>
             </AnimCard>
@@ -1372,13 +1375,13 @@ function History({ pipeline }) {
               boxShadow: R.shadow,
             }}>
               <i className="ph ph-coins" style={{ fontSize: 36, color: R.blueLight, display: "block", marginBottom: 10 }} />
-              <p style={{ margin: 0, color: R.textSecondary, fontSize: 13, lineHeight: 1.6 }}>
+              <p style={{ margin: 0, color: R.textSecondary, fontSize: 15, lineHeight: 1.6 }}>
                 No earnings yet — referrals pay out once the invoice is paid!
               </p>
             </div>
           </AnimCard>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {earned.map((item, idx) => (
               <AnimCard key={item.id} delay={160 + idx * 60}>
                 <div style={{
@@ -1397,11 +1400,11 @@ function History({ pipeline }) {
                       background: R.greenBg, display: "flex",
                       alignItems: "center", justifyContent: "center",
                     }}>
-                      <i className="ph ph-money" style={{ fontSize: 20, color: R.green }} />
+                      <i className="ph ph-money" style={{ fontSize: 22, color: R.green }} />
                     </div>
                     <div>
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: R.textPrimary }}>{item.desc}</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 11, color: R.textMuted }}>Paid referral bonus</p>
+                      <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: R.textPrimary }}>{item.desc}</p>
+                      <p style={{ margin: "4px 0 0", fontSize: 12, color: R.textMuted }}>Paid referral bonus</p>
                     </div>
                   </div>
                   <span style={{ fontSize: 15, fontWeight: 900, color: R.green, fontFamily: R.fontMono }}>
@@ -1428,12 +1431,12 @@ function Profile({ onLogout, pipeline, userName }) {
     <Screen>
       {/* Navy header */}
       <div style={{
-        background: `linear-gradient(145deg, ${R.navy} 0%, #1a4a8a 100%)`,
+        background: `linear-gradient(145deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
         padding: "52px 24px 36px",
         position: "relative", overflow: "hidden",
       }}>
         <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(211,227,240,0.08)" }} />
-        <p style={{ margin: "0 0 20px", fontSize: 10, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
+        <p style={{ margin: "0 0 20px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
 
         {/* Avatar + name */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -1449,7 +1452,7 @@ function Profile({ onLogout, pipeline, userName }) {
           <div>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: "#fff" }}>{userName}</h1>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgba(255,255,255,0.6)", display: "flex", alignItems: "center", gap: 4 }}>
-              <i className="ph ph-star-fill" style={{ fontSize: 13, color: "#fbbf24" }} />
+              <i className="ph ph-star-fill" style={{ fontSize: 15, color: "#fbbf24" }} />
               {soldCount} sold referral{soldCount !== 1 ? "s" : ""} this year
             </p>
           </div>
@@ -1472,14 +1475,14 @@ function Profile({ onLogout, pipeline, userName }) {
             ].map((item, i, arr) => (
               <div key={item.label} style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "15px 18px",
+                padding: "16px 16px",
                 borderBottom: i < arr.length - 1 ? `1px solid ${R.border}` : "none",
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <i className={`ph ${item.icon}`} style={{ fontSize: 17, color: R.navy }} />
-                  <span style={{ fontSize: 13, color: R.textSecondary, fontFamily: R.fontBody }}>{item.label}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <i className={`ph ${item.icon}`} style={{ fontSize: 16, color: R.navy }} />
+                  <span style={{ fontSize: 15, color: R.textSecondary, fontFamily: R.fontBody }}>{item.label}</span>
                 </div>
-                <span style={{ fontSize: 14, fontWeight: 700, color: R.textPrimary }}>{item.val}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: R.textPrimary }}>{item.val}</span>
               </div>
             ))}
           </div>
@@ -1489,7 +1492,7 @@ function Profile({ onLogout, pipeline, userName }) {
           <button onClick={() => setShowContact(true)} style={{
             width: "100%", background: R.bgCard,
             border: `1.5px solid ${R.border}`, borderRadius: 12,
-            padding: "15px", color: R.navy, fontSize: 14, fontWeight: 600,
+            padding: "16px", color: R.navy, fontSize: 15, fontWeight: 600,
             cursor: "pointer", fontFamily: R.fontBody, marginBottom: 10,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             transition: "background 0.2s",
@@ -1506,7 +1509,7 @@ function Profile({ onLogout, pipeline, userName }) {
           <button onClick={onLogout} style={{
             width: "100%", background: "#fff5f5",
             border: "1.5px solid #fecaca", borderRadius: 12,
-            padding: "15px", color: "#dc2626", fontSize: 14, fontWeight: 700,
+            padding: "16px", color: "#dc2626", fontSize: 15, fontWeight: 700,
             cursor: "pointer", fontFamily: R.fontBody,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             transition: "background 0.2s",
@@ -1535,6 +1538,9 @@ function useAdminFonts() {
     const icons = document.createElement('script');
     icons.src = 'https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js';
     document.head.appendChild(icons);
+    const focusStyle = document.createElement("style");
+    focusStyle.textContent = "button:focus-visible,a:focus-visible{outline:2px solid #012854;outline-offset:2px;border-radius:inherit;}";
+    document.head.appendChild(focusStyle);
   }, []);
 }
 
@@ -1543,9 +1549,10 @@ const AD = {
   bgSurface:  '#1a1f2e',
   bgCard:     '#1f2638',
   bgCardTint: '#242b3d',
-  bgSidebar:  'linear-gradient(160deg, #1a3a6b 0%, #012854 50%, #020f1f 100%)',
+  bgSidebar:  'linear-gradient(160deg, #012854 0%, #041D3E 100%)',
   bgActive:   'rgba(255,255,255,0.08)',
   navy:       '#012854',
+  navyDark:   '#041D3E',
   red:        '#CC0000',
   redDark:    '#8C0000',
   blueLight:  '#D3E3F0',
@@ -1593,45 +1600,45 @@ function AdminSidebar({ page, setPage, pendingCount }) {
       zIndex: 100, fontFamily: AD.fontSans,
     }}>
       <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 8, background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🐓</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 8, background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🐓</div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', letterSpacing: '0.01em', lineHeight: 1.3 }}>Rooster Booster</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>Accent Roofing · Admin</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', letterSpacing: '0.01em', lineHeight: 1.3 }}>Rooster Booster</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>Accent Roofing · Admin</div>
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 10, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 20px 6px' }}>Main Menu</div>
+      <div style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 16px 8px' }}>Main Menu</div>
       <nav style={{ padding: '0 10px', flex: 1 }}>
         {ADMIN_NAV.map(item => {
           const active = page === item.id;
           return (
             <button key={item.id} onClick={() => setPage(item.id)} style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 14px', margin: '1px 0', borderRadius: 10,
+              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', margin: 0, borderRadius: 10,
               background: active ? AD.bgActive : 'transparent',
               border: 'none', cursor: 'pointer', textAlign: 'left',
               color: active ? '#fff' : 'rgba(255,255,255,0.55)',
-              fontSize: 13.5, fontWeight: active ? 500 : 400,
+              fontSize: 15, fontWeight: active ? 500 : 400,
               fontFamily: AD.fontSans, transition: 'background 0.15s, color 0.15s',
               position: 'relative',
             }}>
               {active && <div style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: AD.blueLight, borderRadius: 99 }} />}
-              <i className={`ph ${item.icon}`} style={{ fontSize: 17, opacity: 0.85, flexShrink: 0 }} />
+              <i className={`ph ${item.icon}`} style={{ fontSize: 16, opacity: 0.85, flexShrink: 0 }} />
               <span>{item.label}</span>
               {item.id === 'cashouts' && pendingCount > 0 && (
-                <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{pendingCount}</span>
+                <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{pendingCount}</span>
               )}
             </button>
           );
         })}
       </nav>
       <div style={{ padding: '16px 20px', borderTop: `1px solid ${AD.border}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0 }}>DS</div>
           <div>
-            <div style={{ fontSize: 12.5, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>Danny Scribbins</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Administrator</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>Danny Scribbins</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Administrator</div>
           </div>
         </div>
       </div>
@@ -1654,8 +1661,8 @@ function AdminPageHeader({ title, subtitle, action }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 32, flexWrap: 'wrap', gap: 12 }}>
       <div>
-        {subtitle && <p style={{ fontSize: 13, color: AD.textSecondary, marginBottom: 2, fontFamily: AD.fontSans }}>{subtitle}</p>}
-        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary, lineHeight: 1.2 }}>{title}</h1>
+        {subtitle && <p style={{ fontSize: 15, color: AD.textSecondary, marginBottom: 2, fontFamily: AD.fontSans }}>{subtitle}</p>}
+        <h1 style={{ margin: 0, fontSize: 32, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary, lineHeight: 1.2 }}>{title}</h1>
       </div>
       {action && <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{action}</div>}
     </div>
@@ -1680,12 +1687,12 @@ function StatCard({ label, value, sub, icon = '', accent, animDelay = 0 }) {
       onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = AD.shadowSm; }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <span style={{ fontSize: 11.5, fontWeight: 500, color: AD.textSecondary, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</span>
+        <span style={{ fontSize: 12, fontWeight: 500, color: AD.textSecondary, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</span>
         <div style={{ width: 34, height: 34, borderRadius: 8, background: accent ? `${accent}20` : AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', color: accent || AD.textSecondary }}>
           <i className={`ph ${icon}`} style={{ fontSize: 16 }} aria-hidden="true" />
         </div>
       </div>
-      <div style={{ fontSize: 28, fontWeight: 600, color: AD.textPrimary, lineHeight: 1.1, letterSpacing: '-0.02em', fontFamily: AD.fontSans }}>{value}</div>
+      <div style={{ fontSize: 32, fontWeight: 600, color: AD.textPrimary, lineHeight: 1.1, letterSpacing: '-0.02em', fontFamily: AD.fontSans }}>{value}</div>
       {sub && <div style={{ fontSize: 12, color: AD.textSecondary, marginTop: 5 }}>{sub}</div>}
     </div>
   );
@@ -1701,7 +1708,7 @@ function Badge({ type, children }) {
   };
   const s = styles[type] || styles.neutral;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 99, fontSize: 11.5, fontWeight: 500, background: s.background, color: s.color, whiteSpace: 'nowrap' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 99, fontSize: 12, fontWeight: 500, background: s.background, color: s.color, whiteSpace: 'nowrap' }}>
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
       {children}
     </span>
@@ -1709,8 +1716,8 @@ function Badge({ type, children }) {
 }
 
 function Btn({ onClick, children, variant = 'primary', size = 'md', style: extraStyle = {} }) {
-  const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', cursor: 'pointer', fontFamily: AD.fontSans, fontWeight: 500, transition: 'background 0.15s, opacity 0.15s, transform 0.15s', borderRadius: 10, whiteSpace: 'nowrap', lineHeight: 1 };
-  const sizes = { sm: { padding: '6px 12px', fontSize: 12 }, md: { padding: '9px 18px', fontSize: 13.5 }, lg: { padding: '13px 28px', fontSize: 15 } };
+  const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: 'none', cursor: 'pointer', fontFamily: AD.fontSans, fontWeight: 500, transition: 'background 0.15s, opacity 0.15s, transform 0.15s', borderRadius: 10, whiteSpace: 'nowrap', lineHeight: 1 };
+  const sizes = { sm: { padding: '6px 12px', fontSize: 12 }, md: { padding: '8px 16px', fontSize: 15 }, lg: { padding: '13px 28px', fontSize: 15 } };
   const variants = {
     primary: { background: AD.navy,  color: '#fff' },
     accent:  { background: AD.red,   color: '#fff' },
@@ -1729,12 +1736,12 @@ function Btn({ onClick, children, variant = 'primary', size = 'md', style: extra
 
 function AdminInput({ value, onChange, placeholder, type = 'text', label }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      {label && <label style={{ display: 'block', fontSize: 12.5, fontWeight: 500, color: AD.textSecondary, marginBottom: 6 }}>{label}</label>}
+    <div style={{ marginBottom: 16 }}>
+      {label && <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: AD.textSecondary, marginBottom: 8 }}>{label}</label>}
       <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={{
-        width: '100%', padding: '10px 14px', background: AD.bgSurface,
+        width: '100%', padding: '8px 12px', background: AD.bgSurface,
         border: `1px solid ${AD.borderStrong}`, borderRadius: 10,
-        fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary,
+        fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary,
         outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s',
       }}
         onFocus={e => e.target.style.borderColor = AD.blueLight}
@@ -1761,7 +1768,7 @@ function PipelineBar({ segments, total }) {
   });
   const gradient = active.length > 0 ? `linear-gradient(to right, ${gradientStops.join(', ')})` : 'rgba(255,255,255,0.1)';
   return (
-    <div style={{ height: 8, borderRadius: 99, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', marginBottom: 14, position: 'relative' }}>
+    <div style={{ height: 8, borderRadius: 99, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', marginBottom: 16, position: 'relative' }}>
       <div style={{
         position: 'absolute', top: 0, left: 0, height: '100%',
         width: '100%', background: gradient, borderRadius: 99,
@@ -1804,46 +1811,46 @@ function AdminDashboard({ setLoggedIn, setPage }) {
     <>
       <AdminPageHeader title={`${greeting}, Danny.`} subtitle="Rooster Booster · Accent Roofing"
         action={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {stats && <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>{stats.fromCache ? `Cached ${cachedAgo}m ago` : 'Live data'}</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {stats && <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>{stats.fromCache ? `Cached ${cachedAgo}m ago` : 'Live data'}</span>}
             <Btn onClick={() => loadStats(true)} variant="outline" size="sm"><i className="ph ph-arrows-clockwise" /> Refresh</Btn>
           </div>
         }
       />
       {stats?.pendingCashouts > 0 && (
-        <div onClick={() => setPage('cashouts')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: AD.amberBg, border: `1px solid ${AD.amber}40`, borderRadius: 12, padding: '14px 20px', marginBottom: 28, cursor: 'pointer' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <i className="ph ph-warning" style={{ fontSize: 18, color: AD.amberText }} />
-            <span style={{ fontSize: 13.5, fontWeight: 500, color: AD.amberText }}>{stats.pendingCashouts} cash out request{stats.pendingCashouts !== 1 ? 's' : ''} awaiting your review</span>
+        <div onClick={() => setPage('cashouts')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: AD.amberBg, border: `1px solid ${AD.amber}40`, borderRadius: 12, padding: '16px 24px', marginBottom: 24, cursor: 'pointer' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <i className="ph ph-warning" style={{ fontSize: 16, color: AD.amberText }} />
+            <span style={{ fontSize: 15, fontWeight: 500, color: AD.amberText }}>{stats.pendingCashouts} cash out request{stats.pendingCashouts !== 1 ? 's' : ''} awaiting your review</span>
           </div>
           <span style={{ fontSize: 12, color: AD.amberText, display: 'flex', alignItems: 'center', gap: 4 }}>Review <i className="ph ph-arrow-right" /></span>
         </div>
       )}
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
           {[...Array(6)].map((_, i) => <div key={i} style={{ background: AD.bgCard, borderRadius: 16, height: 108, border: `1px solid ${AD.border}`, opacity: 0.4 }} />)}
         </div>
       ) : error ? (
         <div style={{ background: AD.red2Bg, border: `1px solid ${AD.red2}30`, borderRadius: 12, padding: '16px 20px' }}>
-          <span style={{ color: AD.red2Text, fontSize: 13 }}>{error}</span>
+          <span style={{ color: AD.red2Text, fontSize: 15 }}>{error}</span>
         </div>
       ) : stats && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
             <StatCard label="Active Referrers"   value={stats.activeReferrers}  sub={`of ${stats.totalReferrers} enrolled`} icon="ph-users" accent={AD.blueLight}  animDelay={0}   />
             <StatCard label="Total Balance Owed" value={`$${stats.totalBalance.toLocaleString()}`}  sub="across all referrers"  icon="ph-scales" accent={AD.amberText} animDelay={80}  />
             <StatCard label="Total Paid Out"     value={`$${stats.totalPaidOut.toLocaleString()}`}  sub="approved payouts"      icon="ph-check-circle" accent={AD.greenText} animDelay={160} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
             <StatCard label="Total Referrals" value={stats.totalReferrals}   icon="ph-clipboard-text" animDelay={240} />
             <StatCard label="Leads"           value={stats.totalLeads}       icon="ph-funnel" accent={AD.textSecondary} animDelay={300} />
             <StatCard label="Inspections"     value={stats.totalInspections} icon="ph-magnifying-glass" accent={AD.blueText}      animDelay={360} />
             <StatCard label="Sold"            value={stats.totalSold}        icon="ph-trophy" accent={AD.greenText}     animDelay={420} />
           </div>
-          <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '22px 24px', marginBottom: 28, boxShadow: AD.shadowSm }}>
+          <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px 24px', marginBottom: 24, boxShadow: AD.shadowSm }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>Pipeline Health</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary }}>Pipeline Health</p>
                 <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary }}>{pipelineTotal} total referrals across all active referrers</p>
               </div>
             </div>
@@ -1864,12 +1871,12 @@ function AdminDashboard({ setLoggedIn, setPage }) {
                   <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 12, color: AD.textSecondary }}>{s.label}</span>
                   <span style={{ fontSize: 12, fontWeight: 600, color: AD.textPrimary }}>{s.val}</span>
-                  <span style={{ fontSize: 11, color: AD.textTertiary }}>({pct(s.val)}%)</span>
+                  <span style={{ fontSize: 12, color: AD.textTertiary }}>({pct(s.val)}%)</span>
                 </div>
               ))}
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {[
               { label: 'Manage Referrers', sub: `${stats.totalReferrers} accounts enrolled`, icon: 'ph-users', page: 'referrers', color: AD.blueText },
               { label: 'Review Cash Outs', sub: stats.pendingCashouts > 0 ? `${stats.pendingCashouts} pending review` : 'All caught up', icon: 'ph-money', page: 'cashouts', color: stats.pendingCashouts > 0 ? AD.amberText : AD.textSecondary },
@@ -1880,7 +1887,7 @@ function AdminDashboard({ setLoggedIn, setPage }) {
                 onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = AD.shadowSm; }}
               >
                 <i className={`ph ${c.icon}`} style={{ fontSize: 22, color: c.color, display: 'block', marginBottom: 10 }} />
-                <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>{c.label}</p>
+                <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 600, color: AD.textPrimary }}>{c.label}</p>
                 <p style={{ margin: 0, fontSize: 12, color: c.color }}>{c.sub}</p>
               </button>
             ))}
@@ -1972,47 +1979,47 @@ function AdminReferrers({ setLoggedIn }) {
   if (selected) {
     return (
       <>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
           <Btn onClick={() => setSelected(null)} variant="outline" size="sm"><i className="ph ph-arrow-left" /> Back to Referrers</Btn>
         </div>
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px', marginBottom: 20, boxShadow: AD.shadowSm, display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 600, flexShrink: 0 }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 600, flexShrink: 0 }}>
             {selected.full_name.split(' ').map(n => n[0]).join('')}
           </div>
           <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>{selected.full_name}</h2>
-            <p style={{ margin: '3px 0 0', fontSize: 13, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{selected.email}</p>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>{selected.full_name}</h2>
+            <p style={{ margin: '3px 0 0', fontSize: 15, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{selected.email}</p>
           </div>
         </div>
         {detailLoading ? (
-          <p style={{ color: AD.textSecondary, fontSize: 13, padding: '20px 0' }}>Loading Jobber data...</p>
+          <p style={{ color: AD.textSecondary, fontSize: 15, padding: '20px 0' }}>Loading Jobber data...</p>
         ) : detail ? (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
               <StatCard label="Total Referrals" value={detail.pipeline.length}                        icon="ph-clipboard-text" animDelay={0}   />
               <StatCard label="Sold"            value={detail.paidCount}                              icon="ph-trophy" accent={AD.greenText} animDelay={80}  />
               <StatCard label="Balance"         value={`$${detail.balance.toLocaleString()}`}         icon="ph-currency-dollar" accent={AD.amberText} animDelay={160} />
             </div>
             <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
               <div style={{ padding: '16px 20px', borderBottom: `1px solid ${AD.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>Pipeline</p>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary }}>Pipeline</p>
                 <span style={{ fontSize: 12, color: AD.textSecondary }}>{detail.pipeline.length} referred clients</span>
               </div>
               {detail.pipeline.length === 0 ? (
-                <p style={{ color: AD.textSecondary, fontSize: 13, padding: '20px' }}>No referred clients found in Jobber.</p>
+                <p style={{ color: AD.textSecondary, fontSize: 15, padding: '20px' }}>No referred clients found in Jobber.</p>
               ) : detail.pipeline.map((ref, i) => {
                 const s = STATUS_CONFIG[ref.status];
                 const badgeType = { lead: 'neutral', inspection: 'info', sold: 'success', closed: 'danger' }[ref.status];
                 return (
-                  <div key={ref.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: i < detail.pipeline.length - 1 ? `1px solid ${AD.border}` : 'none', borderLeft: `3px solid ${s.dot}` }}>
+                  <div key={ref.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: i < detail.pipeline.length - 1 ? `1px solid ${AD.border}` : 'none', borderLeft: `3px solid ${s.dot}` }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: AD.textSecondary }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: AD.textSecondary }}>
                         {ref.name.split(' ').map(n => n[0]).join('')}
                       </div>
-                      <span style={{ fontSize: 13.5, fontWeight: 500, color: AD.textPrimary }}>{ref.name}</span>
+                      <span style={{ fontSize: 15, fontWeight: 500, color: AD.textPrimary }}>{ref.name}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      {ref.payout && <span style={{ fontSize: 13, fontWeight: 700, color: AD.greenText, fontFamily: "'Roboto Mono', monospace" }}>+${ref.payout}</span>}
+                      {ref.payout && <span style={{ fontSize: 15, fontWeight: 700, color: AD.greenText, fontFamily: "'Roboto Mono', monospace" }}>+${ref.payout}</span>}
                       <Badge type={badgeType}>{s.label}</Badge>
                     </div>
                   </div>
@@ -2020,7 +2027,7 @@ function AdminReferrers({ setLoggedIn }) {
               })}
             </div>
           </>
-        ) : <p style={{ color: AD.red2Text, fontSize: 13 }}>Failed to load Jobber data for this referrer.</p>}
+        ) : <p style={{ color: AD.red2Text, fontSize: 15 }}>Failed to load Jobber data for this referrer.</p>}
       </>
     );
   }
@@ -2031,13 +2038,13 @@ function AdminReferrers({ setLoggedIn }) {
         action={<Btn onClick={() => setShowAdd(!showAdd)} variant="accent" size="md"><i className={`ph ph-${showAdd ? 'x' : 'plus'}`} /> {showAdd ? 'Cancel' : 'Add Referrer'}</Btn>}
       />
       {showAdd && (
-        <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '22px 24px', marginBottom: 20, boxShadow: AD.shadowSm }}>
-          <p style={{ margin: '0 0 16px', fontSize: 11, color: AD.blueText, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}>New Referrer Account</p>
+        <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px 24px', marginBottom: 20, boxShadow: AD.shadowSm }}>
+          <p style={{ margin: '0 0 16px', fontSize: 12, color: AD.blueText, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}>New Referrer Account</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 160px auto', gap: 12, alignItems: 'flex-end' }}>
             <AdminInput value={newName}  onChange={e => setNewName(e.target.value)}  placeholder="Daniel Scribbins" label="Full name (match Jobber exactly)" />
             <AdminInput value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="email@example.com" label="Email address" />
             <AdminInput value={newPin}   onChange={e => setNewPin(e.target.value)}   placeholder="1234" label="PIN (4–6 digits)" />
-            <div style={{ paddingBottom: 14 }}><Btn onClick={handleAdd} variant="accent">Add</Btn></div>
+            <div style={{ paddingBottom: 16 }}><Btn onClick={handleAdd} variant="accent">Add</Btn></div>
           </div>
           {formError   && <p style={{ color: AD.red2Text,  fontSize: 12, margin: '4px 0 0' }}>{formError}</p>}
           {formSuccess  && <p style={{ color: AD.greenText, fontSize: 12, margin: '4px 0 0' }}>{formSuccess}</p>}
@@ -2045,39 +2052,39 @@ function AdminReferrers({ setLoggedIn }) {
       )}
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 99, padding: '8px 16px', maxWidth: 320, boxShadow: AD.shadowSm }}>
         <i className="ph ph-magnifying-glass" style={{ color: AD.textTertiary, fontSize: 16 }} />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ border: 'none', background: 'transparent', fontFamily: AD.fontSans, fontSize: 13.5, color: AD.textPrimary, outline: 'none', flex: 1 }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ border: 'none', background: 'transparent', fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary, outline: 'none', flex: 1 }} />
       </div>
       <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: AD.fontSans, fontSize: 13.5 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: AD.fontSans, fontSize: 15 }}>
           <thead>
             <tr style={{ background: AD.bgCardTint, borderBottom: `1px solid ${AD.border}` }}>
               {['Referrer', 'Email', 'Added', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '11px 20px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: AD.textSecondary, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                <th key={h} style={{ padding: '11px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: AD.textSecondary, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} style={{ padding: '20px', color: AD.textSecondary, fontSize: 13 }}>Loading...</td></tr>
+              <tr><td colSpan={4} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>Loading...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={4} style={{ padding: '20px', color: AD.textSecondary, fontSize: 13 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
+              <tr><td colSpan={4} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
             ) : filtered.map((u, i) => (
               <tr key={u.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${AD.border}` : 'none', transition: 'background 0.12s' }}
                 onMouseEnter={e => e.currentTarget.style.background = AD.bgCardTint}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
-                <td style={{ padding: '14px 20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                <td style={{ padding: '16px 24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
                       {u.full_name.split(' ').map(n => n[0]).join('')}
                     </div>
                     <span style={{ fontWeight: 500, color: AD.textPrimary }}>{u.full_name}</span>
                   </div>
                 </td>
-                <td style={{ padding: '14px 20px', color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace", fontSize: 12.5 }}>{u.email}</td>
-                <td style={{ padding: '14px 20px', color: AD.textSecondary, fontSize: 12.5 }}>{new Date(u.created_at).toLocaleDateString()}</td>
-                <td style={{ padding: '14px 20px' }}>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                <td style={{ padding: '16px 24px', color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace", fontSize: 12.5 }}>{u.email}</td>
+                <td style={{ padding: '16px 24px', color: AD.textSecondary, fontSize: 12.5 }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                <td style={{ padding: '16px 24px' }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
                     <Btn onClick={() => openDetail(u)} variant="outline" size="sm"><i className="ph ph-eye" /> View</Btn>
                     <Btn onClick={() => handleResetPin(u.id, u.full_name)} variant="outline" size="sm"><i className="ph ph-key" /> PIN</Btn>
                     <Btn onClick={() => handleRemove(u.id, u.full_name)} variant="danger" size="sm"><i className="ph ph-trash" /></Btn>
@@ -2128,20 +2135,20 @@ function AdminCashOuts({ setLoggedIn }) {
       <AdminPageHeader title="Cash Outs" subtitle={pendingCount > 0 ? `${pendingCount} pending review` : 'All requests reviewed'} />
       <div style={{ display: 'flex', gap: 4, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, padding: 3, marginBottom: 20, width: 'fit-content', boxShadow: AD.shadowSm }}>
         {['all', 'pending', 'approved', 'denied'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: filter === f ? AD.bgSurface : 'transparent', color: filter === f ? AD.textPrimary : AD.textSecondary, fontSize: 12.5, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans, textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'background 0.15s, color 0.15s, box-shadow 0.15s' }}>
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: filter === f ? AD.bgSurface : 'transparent', color: filter === f ? AD.textPrimary : AD.textSecondary, fontSize: 12, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans, textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'background 0.15s, color 0.15s, box-shadow 0.15s' }}>
             {f}{f === 'pending' && pendingCount > 0 ? ` (${pendingCount})` : ''}
           </button>
         ))}
       </div>
       {loading ? (
-        <p style={{ color: AD.textSecondary, fontSize: 13 }}>Loading...</p>
+        <p style={{ color: AD.textSecondary, fontSize: 15 }}>Loading...</p>
       ) : filtered.length === 0 ? (
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '32px', textAlign: 'center' }}>
           <i className="ph ph-check-circle" style={{ fontSize: 32, color: AD.greenText, display: 'block', marginBottom: 8 }} />
-          <p style={{ color: AD.textSecondary, fontSize: 13, margin: 0 }}>No {filter === 'all' ? '' : filter} requests.</p>
+          <p style={{ color: AD.textSecondary, fontSize: 15, margin: 0 }}>No {filter === 'all' ? '' : filter} requests.</p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {filtered.map(c => (
             <div key={c.id} style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '20px 22px', boxShadow: AD.shadowSm }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -2150,7 +2157,7 @@ function AdminCashOuts({ setLoggedIn }) {
                     {c.full_name.split(' ').map(n => n[0]).join('')}
                   </div>
                   <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>{c.full_name}</p>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary }}>{c.full_name}</p>
                     <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{c.email}</p>
                   </div>
                 </div>
@@ -2163,8 +2170,8 @@ function AdminCashOuts({ setLoggedIn }) {
                   { label: 'Submitted', val: new Date(c.requested_at).toLocaleDateString() },
                 ].map(({ label, val, mono, big }) => (
                   <div key={label}>
-                    <p style={{ margin: 0, fontSize: 10, color: AD.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>{label}</p>
-                    <p style={{ margin: '3px 0 0', fontSize: big ? 18 : 14, fontWeight: big ? 700 : 500, color: AD.textPrimary, fontFamily: mono ? "'Roboto Mono', monospace" : AD.fontSans }}>{val}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 500 }}>{label}</p>
+                    <p style={{ margin: '3px 0 0', fontSize: big ? 16 : 15, fontWeight: big ? 700 : 500, color: AD.textPrimary, fontFamily: mono ? "'Roboto Mono', monospace" : AD.fontSans }}>{val}</p>
                   </div>
                 ))}
               </div>
@@ -2207,32 +2214,32 @@ function AdminActivity({ setLoggedIn }) {
       <AdminPageHeader title="Activity Log" subtitle="Last 100 events" />
       <div style={{ display: 'flex', gap: 4, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, padding: 3, marginBottom: 20, width: 'fit-content', boxShadow: AD.shadowSm }}>
         {['all', 'login', 'cashout', 'admin'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: filter === f ? AD.bgSurface : 'transparent', color: filter === f ? AD.textPrimary : AD.textSecondary, fontSize: 12.5, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans, textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'background 0.15s, color 0.15s, box-shadow 0.15s' }}>{f}</button>
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: filter === f ? AD.bgSurface : 'transparent', color: filter === f ? AD.textPrimary : AD.textSecondary, fontSize: 12, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans, textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'background 0.15s, color 0.15s, box-shadow 0.15s' }}>{f}</button>
         ))}
       </div>
       <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
         {loading ? (
-          <p style={{ color: AD.textSecondary, fontSize: 13, padding: 20 }}>Loading...</p>
+          <p style={{ color: AD.textSecondary, fontSize: 15, padding: 20 }}>Loading...</p>
         ) : filtered.length === 0 ? (
-          <p style={{ color: AD.textSecondary, fontSize: 13, padding: 20 }}>No activity yet.</p>
+          <p style={{ color: AD.textSecondary, fontSize: 15, padding: 20 }}>No activity yet.</p>
         ) : filtered.map((item, i) => (
-          <div key={item.id} style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '14px 20px', borderBottom: i < filtered.length - 1 ? `1px solid ${AD.border}` : 'none', transition: 'background 0.12s' }}
+          <div key={item.id} style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '16px 24px', borderBottom: i < filtered.length - 1 ? `1px solid ${AD.border}` : 'none', transition: 'background 0.12s' }}
             onMouseEnter={e => e.currentTarget.style.background = AD.bgCardTint}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
           >
             <div style={{ width: 36, height: 36, borderRadius: 10, background: AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <i className={`ph ${iconMap[item.event_type] || 'ph-activity'}`} style={{ fontSize: 17, color: colorMap[item.event_type] || AD.textSecondary }} />
+              <i className={`ph ${iconMap[item.event_type] || 'ph-activity'}`} style={{ fontSize: 16, color: colorMap[item.event_type] || AD.textSecondary }} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 500, color: AD.textPrimary }}>{item.full_name}</span>
+                <span style={{ fontSize: 15, fontWeight: 500, color: AD.textPrimary }}>{item.full_name}</span>
                 <Badge type={badgeMap[item.event_type] || 'neutral'}>{item.event_type}</Badge>
               </div>
               <p style={{ margin: '2px 0 0', fontSize: 12, color: colorMap[item.event_type] || AD.textSecondary }}>{item.detail}</p>
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
               <p style={{ margin: 0, fontSize: 12, color: AD.textSecondary }}>{new Date(item.created_at).toLocaleDateString()}</p>
-              <p style={{ margin: '1px 0 0', fontSize: 11, color: AD.textTertiary }}>{new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+              <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary }}>{new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
             </div>
           </div>
         ))}
@@ -2263,12 +2270,12 @@ function AdminLogin({ onLogin }) {
       <div style={{ width: '100%', maxWidth: 380, padding: '0 24px' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ width: 60, height: 60, borderRadius: 16, background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, margin: '0 auto 16px', boxShadow: `0 0 40px ${AD.red}40` }}>🐓</div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>Rooster Booster</h1>
-          <p style={{ margin: '4px 0 0', color: AD.textSecondary, fontSize: 13 }}>Admin · Accent Roofing</p>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>Rooster Booster</h1>
+          <p style={{ margin: '4px 0 0', color: AD.textSecondary, fontSize: 15 }}>Admin · Accent Roofing</p>
         </div>
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '28px', boxShadow: AD.shadowLg }}>
           <AdminInput type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter admin password" label="Admin Password" />
-          {error && <p style={{ color: AD.red2Text, fontSize: 13, margin: '-8px 0 12px' }}>{error}</p>}
+          {error && <p style={{ color: AD.red2Text, fontSize: 15, margin: '-8px 0 12px' }}>{error}</p>}
           <Btn onClick={handleLogin} variant="accent" style={{ width: '100%', padding: '12px' }}>Sign In</Btn>
         </div>
       </div>
