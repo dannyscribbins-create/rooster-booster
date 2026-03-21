@@ -128,7 +128,7 @@ Changes:
   1. Two lines added + one attribute changed in `AdminDashboard` (Fix 1)
   2. One `<span>` style updated in `Dashboard` (Fix 2)
   3. `StatCard` icon container updated (Fix 3A)
-  4. Seven `icon` prop values updated across `AdminDashboard` and `AdminReferrers` (Fix 3B)
+  4. Ten `icon` prop values updated across `AdminDashboard` and `AdminReferrers` (Fix 3B)
 
 ---
 
