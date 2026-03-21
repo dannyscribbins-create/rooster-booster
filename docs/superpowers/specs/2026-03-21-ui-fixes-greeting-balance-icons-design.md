@@ -105,8 +105,11 @@ Changes:
 | Line | Component | Current | Replacement |
 |------|-----------|---------|-------------|
 | ~1821 | AdminDashboard StatCard | `"👥"` | `"ph-users"` |
+| ~1822 | AdminDashboard StatCard | `"⚖️"` | `"ph-scales"` |
 | ~1823 | AdminDashboard StatCard | `"✅"` | `"ph-check-circle"` |
 | ~1826 | AdminDashboard StatCard | `"📋"` | `"ph-clipboard-text"` |
+| ~1827 | AdminDashboard StatCard | `"🔵"` | `"ph-circle"` |
+| ~1828 | AdminDashboard StatCard | `"🔍"` | `"ph-magnifying-glass"` |
 | ~1829 | AdminDashboard StatCard | `"🏆"` | `"ph-trophy"` |
 | ~1980 | AdminReferrers detail StatCard | `"📋"` | `"ph-clipboard-text"` |
 | ~1981 | AdminReferrers detail StatCard | `"🏆"` | `"ph-trophy"` |
