@@ -85,12 +85,19 @@ const CONTRACTOR_CONFIG = {
 };
 
 // ─── Animation Hook ───────────────────────────────────────────────────────────
-function useEntrance(delay = 0) {
-  const [visible, setVisible] = useState(false);
+function useEntrance(delay = 0, screenKey = '') {
+  const [visible, setVisible] = useState(() =>
+    screenKey ? !!sessionStorage.getItem(`rb_seen_${screenKey}`) : false
+  );
   useEffect(() => {
-    const t = setTimeout(() => setVisible(true), delay);
+    if (visible) return;
+    const t = setTimeout(() => {
+      setVisible(true);
+      if (screenKey) sessionStorage.setItem(`rb_seen_${screenKey}`, '1');
+    }, delay);
     return () => clearTimeout(t);
-  }, [delay]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return visible;
 }
 
@@ -124,8 +131,8 @@ function Screen({ children, style = {} }) {
 }
 
 // Animated card wrapper
-function AnimCard({ children, delay = 0, style = {} }) {
-  const visible = useEntrance(delay);
+function AnimCard({ children, delay = 0, screenKey = '', style = {} }) {
+  const visible = useEntrance(delay, screenKey);
   return (
     <div style={{
       opacity: visible ? 1 : 0,
@@ -350,7 +357,7 @@ function LoginScreen({ onLogin }) {
       <div style={{
         opacity: cardVisible ? 1 : 0,
         transform: cardVisible ? "translateY(0)" : "translateY(-12px)",
-        transition: "all 0.5s ease",
+        transition: "opacity 0.5s ease, transform 0.5s ease",
         textAlign: "center", marginBottom: 28,
       }}>
         <div style={{
@@ -377,7 +384,7 @@ function LoginScreen({ onLogin }) {
         padding: "32px 28px", boxShadow: R.shadowLg,
         opacity: cardVisible ? 1 : 0,
         transform: cardVisible ? "translateY(0)" : "translateY(20px)",
-        transition: "all 0.5s ease 0.1s",
+        transition: "opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s",
       }}>
         <h2 style={{
           margin: "0 0 6px", fontSize: 20, fontWeight: 700,
@@ -451,7 +458,7 @@ function LoginScreen({ onLogin }) {
           color: "#fff", fontSize: 15, fontWeight: 700,
           fontFamily: R.fontSans, cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          transition: "all 0.2s",
+          transition: "transform 0.2s, box-shadow 0.2s, background 0.2s",
           transform: loading ? "scale(0.98)" : "scale(1)",
           boxShadow: loading ? "none" : "0 4px 14px rgba(204,0,0,0.35)",
         }}>
@@ -554,7 +561,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
         </div>
 
         {/* Balance card — floats on the hero */}
-        <AnimCard delay={100} style={{ marginTop: 20 }}>
+        <AnimCard delay={100} screenKey="dashboard" style={{ marginTop: 20 }}>
           <div style={{
             background: R.bgCard, borderRadius: 18,
             padding: "22px 22px 18px",
@@ -596,7 +603,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
               fontFamily: R.fontSans, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               boxShadow: "0 4px 14px rgba(204,0,0,0.3)",
-              transition: "all 0.2s",
+              transition: "transform 0.2s, box-shadow 0.2s",
             }}
               onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
               onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
@@ -610,7 +617,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
 
       {/* Boost Progress Card */}
       <div style={{ padding: "16px 20px 0" }}>
-        <AnimCard delay={200}>
+        <AnimCard delay={200} screenKey="dashboard">
           <div style={{
             background: R.bgCard, border: `1px solid ${R.border}`,
             borderRadius: 16, padding: "18px 20px",
@@ -661,7 +668,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
 
       {/* Reward Schedule Table */}
       <div style={{ padding: "16px 20px 0" }}>
-        <AnimCard delay={280}>
+        <AnimCard delay={280} screenKey="dashboard">
           <p style={{
             margin: "0 0 10px", fontSize: 10, color: R.textMuted,
             fontFamily: R.fontMono, letterSpacing: "0.1em", textTransform: "uppercase",
@@ -737,7 +744,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
 
       {/* Recent Referrals */}
       <div style={{ padding: "16px 20px 0" }}>
-        <AnimCard delay={360}>
+        <AnimCard delay={360} screenKey="dashboard">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <p style={{
               margin: 0, fontSize: 10, color: R.textMuted,
@@ -802,7 +809,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
 
       {/* Google Review Banner */}
       <div style={{ padding: "16px 20px 0" }}>
-        <AnimCard delay={600}>
+        <AnimCard delay={600} screenKey="dashboard">
           <div style={{
             background: R.bgCard,
             border: `1px solid ${R.border}`,
@@ -844,7 +851,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
                   alignItems: "center",
                   gap: 6,
                   boxShadow: "0 4px 14px rgba(204,0,0,0.3)",
-                  transition: "all 0.2s",
+                  transition: "transform 0.2s",
                 }}
                 onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
                 onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
@@ -895,7 +902,7 @@ function Pipeline({ pipeline, loading }) {
             { label: "Active", val: pipeline.filter(p => p.status === "lead" || p.status === "inspection").length, color: "#93c5fd", bg: "rgba(147,197,253,0.15)" },
             { label: "Sold",   val: pipeline.filter(p => p.status === "sold").length, color: "#86efac", bg: "rgba(134,239,172,0.15)" },
           ].map((s, i) => (
-            <AnimCard key={s.label} delay={i * 60} style={{ flex: 1 }}>
+            <AnimCard key={s.label} delay={i * 60} screenKey="pipeline" style={{ flex: 1 }}>
               <div style={{
                 background: s.bg, borderRadius: 12,
                 padding: "12px 10px", textAlign: "center",
@@ -924,7 +931,7 @@ function Pipeline({ pipeline, loading }) {
             color: filter === f ? "#fff" : R.textSecondary,
             fontSize: 12, fontWeight: filter === f ? 700 : 500,
             cursor: "pointer", fontFamily: R.fontBody,
-            whiteSpace: "nowrap", transition: "all 0.2s",
+            whiteSpace: "nowrap", transition: "background 0.2s, border-color 0.2s, color 0.2s",
           }}>{filterLabels[f]}</button>
         ))}
       </div>
@@ -1070,7 +1077,7 @@ function CashOut({ pipeline, userName, userEmail }) {
                   color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 12, fontWeight: 700, fontFamily: R.fontMono,
                   border: i + 1 === step ? "2px solid #fff" : "none",
-                  transition: "all 0.3s",
+                  transition: "background 0.3s, border-color 0.3s",
                 }}>
                   {i + 1 < step
                     ? <i className="ph ph-check" style={{ fontSize: 13 }} />
@@ -1107,7 +1114,7 @@ function CashOut({ pipeline, userName, userEmail }) {
                   display: "flex", alignItems: "center", gap: 14,
                   cursor: "pointer", textAlign: "left",
                   boxShadow: method === m.id ? "0 4px 14px rgba(204,0,0,0.12)" : R.shadow,
-                  transition: "all 0.2s",
+                  transition: "border-color 0.2s, box-shadow 0.2s, background 0.2s",
                 }}
                   onMouseEnter={e => { if (method !== m.id) e.currentTarget.style.borderColor = R.borderMed; }}
                   onMouseLeave={e => { if (method !== m.id) e.currentTarget.style.borderColor = R.border; }}
@@ -1167,7 +1174,7 @@ function CashOut({ pipeline, userName, userEmail }) {
                     flex: 1, background: R.bgPage, border: `1px solid ${R.border}`,
                     borderRadius: 8, padding: "8px", color: R.navy,
                     fontSize: 12, cursor: "pointer", fontFamily: R.fontMono, fontWeight: 600,
-                    transition: "all 0.15s",
+                    transition: "background 0.15s, border-color 0.15s",
                   }}
                     onMouseEnter={e => { e.currentTarget.style.background = R.bgBlueLight; e.currentTarget.style.borderColor = R.navy; }}
                     onMouseLeave={e => { e.currentTarget.style.background = R.bgPage; e.currentTarget.style.borderColor = R.border; }}
@@ -1336,7 +1343,7 @@ function History({ pipeline }) {
             { label: "Total Earned",   val: `$${totalEarned.toLocaleString()}`, color: R.green,    bg: R.greenBg,  icon: "ph-trend-up" },
             { label: "Total Paid Out", val: "$0",                               color: R.navy,     bg: R.bgBlueLight, icon: "ph-check-circle" },
           ].map((s, i) => (
-            <AnimCard key={s.label} delay={i * 80} style={{ flex: 1 }}>
+            <AnimCard key={s.label} delay={i * 80} screenKey="history" style={{ flex: 1 }}>
               <div style={{
                 background: R.bgCard, border: `1px solid ${R.border}`,
                 borderRadius: 14, padding: "16px",
@@ -1358,7 +1365,7 @@ function History({ pipeline }) {
 
         {/* Earnings list */}
         {earned.length === 0 ? (
-          <AnimCard delay={160}>
+          <AnimCard delay={160} screenKey="history">
             <div style={{
               background: R.bgCard, border: `1px solid ${R.border}`,
               borderRadius: 14, padding: "36px 20px", textAlign: "center",
@@ -1452,7 +1459,7 @@ function Profile({ onLogout, pipeline, userName }) {
       <div style={{ padding: "16px 20px 0" }}>
 
         {/* Stats */}
-        <AnimCard delay={80}>
+        <AnimCard delay={80} screenKey="profile">
           <div style={{
             background: R.bgCard, border: `1px solid ${R.border}`,
             borderRadius: 16, overflow: "hidden", boxShadow: R.shadow, marginBottom: 16,
@@ -1478,14 +1485,14 @@ function Profile({ onLogout, pipeline, userName }) {
           </div>
         </AnimCard>
 
-        <AnimCard delay={160}>
+        <AnimCard delay={160} screenKey="profile">
           <button onClick={() => setShowContact(true)} style={{
             width: "100%", background: R.bgCard,
             border: `1.5px solid ${R.border}`, borderRadius: 12,
             padding: "15px", color: R.navy, fontSize: 14, fontWeight: 600,
             cursor: "pointer", fontFamily: R.fontBody, marginBottom: 10,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            transition: "all 0.2s",
+            transition: "background 0.2s",
           }}
             onMouseEnter={e => e.currentTarget.style.background = R.bgBlueLight}
             onMouseLeave={e => e.currentTarget.style.background = R.bgCard}
@@ -1495,14 +1502,14 @@ function Profile({ onLogout, pipeline, userName }) {
           </button>
         </AnimCard>
 
-        <AnimCard delay={220}>
+        <AnimCard delay={220} screenKey="profile">
           <button onClick={onLogout} style={{
             width: "100%", background: "#fff5f5",
             border: "1.5px solid #fecaca", borderRadius: 12,
             padding: "15px", color: "#dc2626", fontSize: 14, fontWeight: 700,
             cursor: "pointer", fontFamily: R.fontBody,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            transition: "all 0.2s",
+            transition: "background 0.2s",
           }}
             onMouseEnter={e => e.currentTarget.style.background = "#fee2e2"}
             onMouseLeave={e => e.currentTarget.style.background = "#fff5f5"}
@@ -1606,7 +1613,7 @@ function AdminSidebar({ page, setPage, pendingCount }) {
               border: 'none', cursor: 'pointer', textAlign: 'left',
               color: active ? '#fff' : 'rgba(255,255,255,0.55)',
               fontSize: 13.5, fontWeight: active ? 500 : 400,
-              fontFamily: AD.fontSans, transition: 'all 0.15s',
+              fontFamily: AD.fontSans, transition: 'background 0.15s, color 0.15s',
               position: 'relative',
             }}>
               {active && <div style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: AD.blueLight, borderRadius: 99 }} />}
@@ -1702,7 +1709,7 @@ function Badge({ type, children }) {
 }
 
 function Btn({ onClick, children, variant = 'primary', size = 'md', style: extraStyle = {} }) {
-  const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', cursor: 'pointer', fontFamily: AD.fontSans, fontWeight: 500, transition: 'all 0.15s', borderRadius: 10, whiteSpace: 'nowrap', lineHeight: 1 };
+  const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', cursor: 'pointer', fontFamily: AD.fontSans, fontWeight: 500, transition: 'background 0.15s, opacity 0.15s, transform 0.15s', borderRadius: 10, whiteSpace: 'nowrap', lineHeight: 1 };
   const sizes = { sm: { padding: '6px 12px', fontSize: 12 }, md: { padding: '9px 18px', fontSize: 13.5 }, lg: { padding: '13px 28px', fontSize: 15 } };
   const variants = {
     primary: { background: AD.navy,  color: '#fff' },
@@ -1868,7 +1875,7 @@ function AdminDashboard({ setLoggedIn, setPage }) {
               { label: 'Review Cash Outs', sub: stats.pendingCashouts > 0 ? `${stats.pendingCashouts} pending review` : 'All caught up', icon: 'ph-money', page: 'cashouts', color: stats.pendingCashouts > 0 ? AD.amberText : AD.textSecondary },
               { label: 'Activity Log',     sub: 'Logins, payouts & admin actions', icon: 'ph-clock-clockwise', page: 'activity', color: AD.greenText },
             ].map(c => (
-              <button key={c.page} onClick={() => setPage(c.page)} style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '20px 22px', textAlign: 'left', cursor: 'pointer', boxShadow: AD.shadowSm, fontFamily: AD.fontSans, transition: 'all 0.15s' }}
+              <button key={c.page} onClick={() => setPage(c.page)} style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '20px 22px', textAlign: 'left', cursor: 'pointer', boxShadow: AD.shadowSm, fontFamily: AD.fontSans, transition: 'transform 0.15s, box-shadow 0.15s' }}
                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = AD.shadowMd; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = AD.shadowSm; }}
               >
@@ -2121,7 +2128,7 @@ function AdminCashOuts({ setLoggedIn }) {
       <AdminPageHeader title="Cash Outs" subtitle={pendingCount > 0 ? `${pendingCount} pending review` : 'All requests reviewed'} />
       <div style={{ display: 'flex', gap: 4, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, padding: 3, marginBottom: 20, width: 'fit-content', boxShadow: AD.shadowSm }}>
         {['all', 'pending', 'approved', 'denied'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: filter === f ? AD.bgSurface : 'transparent', color: filter === f ? AD.textPrimary : AD.textSecondary, fontSize: 12.5, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans, textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'all 0.15s' }}>
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: filter === f ? AD.bgSurface : 'transparent', color: filter === f ? AD.textPrimary : AD.textSecondary, fontSize: 12.5, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans, textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'background 0.15s, color 0.15s, box-shadow 0.15s' }}>
             {f}{f === 'pending' && pendingCount > 0 ? ` (${pendingCount})` : ''}
           </button>
         ))}
@@ -2200,7 +2207,7 @@ function AdminActivity({ setLoggedIn }) {
       <AdminPageHeader title="Activity Log" subtitle="Last 100 events" />
       <div style={{ display: 'flex', gap: 4, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, padding: 3, marginBottom: 20, width: 'fit-content', boxShadow: AD.shadowSm }}>
         {['all', 'login', 'cashout', 'admin'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: filter === f ? AD.bgSurface : 'transparent', color: filter === f ? AD.textPrimary : AD.textSecondary, fontSize: 12.5, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans, textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'all 0.15s' }}>{f}</button>
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: filter === f ? AD.bgSurface : 'transparent', color: filter === f ? AD.textPrimary : AD.textSecondary, fontSize: 12.5, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans, textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'background 0.15s, color 0.15s, box-shadow 0.15s' }}>{f}</button>
         ))}
       </div>
       <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
