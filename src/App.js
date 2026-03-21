@@ -573,7 +573,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
             ) : (
               <>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 4, margin: "6px 0 4px" }}>
-                  <span style={{ fontSize: 28, color: R.red, fontFamily: R.fontMono, fontWeight: 700 }}>$</span>
+                  <span style={{ fontSize: 28, color: R.red, fontFamily: R.fontMono, fontWeight: 700, lineHeight: 1 }}>$</span>
                   <span style={{
                     fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em",
                     fontFamily: R.fontSans, color: R.navy, lineHeight: 1,
@@ -1655,7 +1655,7 @@ function AdminPageHeader({ title, subtitle, action }) {
   );
 }
 
-function StatCard({ label, value, sub, icon, accent, animDelay = 0 }) {
+function StatCard({ label, value, sub, icon = '', accent, animDelay = 0 }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), animDelay);
@@ -1829,7 +1829,7 @@ function AdminDashboard({ setLoggedIn, setPage }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
             <StatCard label="Total Referrals" value={stats.totalReferrals}   icon="ph-clipboard-text" animDelay={240} />
-            <StatCard label="Leads"           value={stats.totalLeads}       icon="ph-circle" accent={AD.textSecondary} animDelay={300} />
+            <StatCard label="Leads"           value={stats.totalLeads}       icon="ph-funnel" accent={AD.textSecondary} animDelay={300} />
             <StatCard label="Inspections"     value={stats.totalInspections} icon="ph-magnifying-glass" accent={AD.blueText}      animDelay={360} />
             <StatCard label="Sold"            value={stats.totalSold}        icon="ph-trophy" accent={AD.greenText}     animDelay={420} />
           </div>
