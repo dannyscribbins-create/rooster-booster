@@ -13,7 +13,7 @@
 Four design system inconsistencies have accumulated that this spec addresses together:
 
 1. Spacing values that fall off the 8pt grid
-2. Font sizes that exceed the 5-size brand type scale
+2. Font sizes that exceed the brand's 6-slot type scale
 3. Gradient color stops using intermediate blues not in the brand token set
 4. Interactive elements with no visible focus ring (WCAG 2.4.7 failure)
 
@@ -38,34 +38,46 @@ Valid spacing values: **4, 8, 12, 16, 24, 32, 48, 64px**
 
 ### Rounding Rule
 
-Round to the nearest grid value. For ties (e.g. 20px is equidistant between 16 and 24), use context: tight/compact UI elements round down; spacious section-level layouts round up.
+Round to the nearest grid value. For ties (e.g. 20px is equidistant between 16 and 24), use context: tight/compact UI elements round down; spacious section-level layouts round up. Where the same value appears in mixed contexts, apply the rounding that best serves the majority of occurrences and note the choice.
 
 ### Change Table
 
-| Current value | Replacement | Context |
+| Current value | Replacement | Context / rounding rationale |
 |---|---|---|
 | `gap: 3` | `gap: 4` | Nav tab buttons, status badges |
 | `gap: 5` | `gap: 4` | Status badge dot + label, admin pending badge |
 | `gap: 6` | `gap: 8` | Dashboard stats row, progress row |
+| `gap: 10` | `gap: 8` | Compact flex rows in sidebar, cards, list items (~14 instances) — tie rounds down (compact UI) |
+| `gap: 14` | `gap: 16` | Icon + text list item rows (~9 instances) — tie rounds up (list items need breathing room) |
+| `margin: "1px 0 0"` | `margin: "0"` | Timestamp sub-label (negligible visual gap, round to 0) |
 | `margin: "2px 0 0"` | `margin: "4px 0 0"` | Sub-labels below stats (~8 instances) |
+| `margin: "3px 0 0"` | `margin: "4px 0 0"` | Admin detail name sub-label |
 | `margin: "6px 0 0"` | `margin: "8px 0 0"` | Login subtitle, several UI labels |
 | `margin: "0 0 6px"` | `margin: "0 0 8px"` | Label above login fields |
 | `marginBottom: 6` | `marginBottom: 8` | Form field spacing |
 | `marginBottom: 14` | `marginBottom: 16` | Multiple instances |
 | `marginTop: 14` | `marginTop: 16` | Multiple instances |
-| `marginTop: 20` | `marginTop: 24` | Spacious footer/link area |
-| `marginBottom: 28` | `marginBottom: 24` | Admin pending-cashouts alert banner |
+| `marginTop: 18` | `marginTop: 16` | Stats section in pipeline/history headers |
+| `marginTop: 20` | `marginTop: 24` | Spacious footer/link area — tie rounds up (section-level gap) |
+| `marginBottom: 28` | `marginBottom: 24` | All 5 instances — tie rounds down (24 applied uniformly for consistency) |
 | `padding: "10px 14px"` | `padding: "8px 12px"` | Error banners |
 | `padding: "10px 4px 6px"` | `padding: "8px 4px 8px"` | Bottom nav tab buttons |
+| `padding: "10px 16px"` | `padding: "8px 16px"` | Boost table modal header row (10 → 8) |
+| `padding: "10px 18px"` | `padding: "8px 16px"` | Dashboard referral card row |
 | `padding: 13` | `padding: 12` | Modal close button |
+| `padding: "14px 20px"` | `padding: "16px 24px"` | Admin table rows, list item rows (~10 instances) — 14→16 (nearest), 20→24 (tie rounds up for spacious admin layout) |
+| `padding: "15px"` | `padding: "16px"` | Primary CTA buttons in referrer app (~6 instances) |
+| `padding: "15px 18px"` | `padding: "16px 16px"` | Profile action button |
 | `padding: '9px 14px'` | `padding: '8px 12px'` | Admin sidebar nav items |
 | `padding: '9px 18px'` | `padding: '8px 16px'` | `Btn` component `md` size |
 | `padding: '6px 14px'` | `padding: '8px 16px'` | Filter tab buttons (cashouts, activity) |
 | `padding: '3px 10px'` | `padding: '4px 8px'` | Admin status badge |
 | `padding: '12px 20px 6px'` | `padding: '12px 16px 8px'` | Admin sidebar section header |
 | `padding: "14px 16px 14px 44px"` | `padding: "16px 16px 16px 48px"` | Login/cashout input fields |
+| `padding: "22px 22px 18px"` | `padding: "24px 24px 16px"` | Dashboard balance card — 22→24, 18→16 |
+| `padding: "22px 24px"` | `padding: "24px 24px"` | Admin stats card, form card — 22→24 |
 
-Estimated total: ~35–40 individual value replacements.
+Estimated total: ~55–65 individual value replacements.
 
 ---
 
@@ -129,7 +141,17 @@ Estimated total: ~80–100 `fontSize` occurrences affected.
 
 ### Scope
 
-Audit and correct all `linear-gradient` values in `App.js`. Every color stop must use a value from the `R` or `AD` design token objects (or a value already present in those objects).
+Audit and correct all `linear-gradient` values in `App.js`. Every color stop must use a value from the `R` or `AD` design token objects (or a value present in those objects).
+
+### Token Addition Required
+
+The `AD` object does not currently have a `navyDark` key. Add it as part of this fix:
+
+```js
+navyDark: '#041D3E',   // add after AD.navy
+```
+
+This mirrors `R.navyDark` and provides a semantic name for the admin sidebar gradient endpoint.
 
 ### Off-Brand Stops Found
 
@@ -144,21 +166,23 @@ Audit and correct all `linear-gradient` values in `App.js`. Every color stop mus
 
 | Location | Current gradient | Replacement |
 |---|---|---|
-| Login screen background | `navy → #1a4a8a 40% → blueLight` | `navy → blueLight` (2 stops, direct) |
-| Dashboard hero header | `navy → #1a4a8a 60% → #2a6aaa` | `navy → navyDark` |
-| Profile screen header | `navy → #1a4a8a` | `navy → navyDark` |
-| Pipeline screen header | `navy → #1a4a8a` | `navy → navyDark` |
-| Cash Out screen header | `navy → #1a4a8a` | `navy → navyDark` |
-| Cash Out confirmation card | `navy → #1a4a8a` | `navy → navyDark` |
-| History screen header | `navy → #1a4a8a` | `navy → navyDark` |
-| Cash Out header (profile step) | `navy → #1a4a8a` | `navy → navyDark` |
-| Admin sidebar | `#1a3a6b → navy → #020f1f` | `AD.navy → AD.navyDark` |
+| Login screen background | `navy → #1a4a8a 40% → blueLight` | `R.navy → R.blueLight` (2 stops, direct) |
+| Dashboard hero header | `navy → #1a4a8a 60% → #2a6aaa` | `R.navy → R.navyDark` |
+| Profile screen header | `navy → #1a4a8a` | `R.navy → R.navyDark` |
+| Pipeline screen header | `navy → #1a4a8a` | `R.navy → R.navyDark` |
+| Cash Out screen header | `navy → #1a4a8a` | `R.navy → R.navyDark` |
+| Cash Out confirmation card | `navy → #1a4a8a` | `R.navy → R.navyDark` |
+| History screen header | `navy → #1a4a8a` | `R.navy → R.navyDark` |
+| Cash Out header (profile step) | `navy → #1a4a8a` | `R.navy → R.navyDark` |
+| Admin sidebar (`AD.bgSidebar`) | `#1a3a6b → #012854 → #020f1f` | `AD.navy → AD.navyDark` |
 
 **Gradient direction and angle are preserved.** Only color stop values change.
 
-**Gradient `line 650` (`red → navy`) and `line 1290` (`green → greenText`) are already using brand token values — no change.**
+**Gradients already using brand token values (no change):**
+- Line ~650: `red → navy` progress bar — already on-brand
+- Line ~1290: `green → greenText` success button — both values exist in `R`
 
-Estimated total: 9 gradient instances.
+Estimated total: 9 gradient instances + 1 token addition to `AD`.
 
 ---
 
@@ -170,7 +194,11 @@ Add a visible keyboard focus indicator to all interactive elements (`<button>`, 
 
 ### Implementation
 
-Add a single global `<style>` rule injected in the `useReferrerFonts` hook (which already handles global DOM setup for fonts, icons, and body background):
+Inject a global `<style>` rule in **both** font hooks:
+- `useReferrerFonts` (line ~105) — serves the referrer app entry point
+- `useAdminFonts` (line ~1529) — serves the admin panel entry point
+
+Both hooks already append elements to `document.head`, making them the correct insertion points for each app branch.
 
 ```css
 button:focus-visible,
@@ -214,11 +242,12 @@ This single rule covers:
 
 ## Acceptance Criteria
 
-- [ ] No `padding`, `margin`, or `gap` value in `App.js` falls outside the 8pt grid (4, 8, 12, 16, 24, 32, 48, 64px)
+- [ ] Every `padding`, `margin`, and `gap` value listed in the Fix 1 change table has been updated to its specified replacement
 - [ ] No `fontSize` value appears outside the six defined slots (12, 15, 16, 22, 32px + display exceptions at 36, 52, 64px)
-- [ ] Every `linear-gradient` in `App.js` uses only values from the `R` or `AD` token objects
-- [ ] Every `<button>` and `<a>` in both the referrer app and admin panel shows a 2px navy outline on keyboard focus
+- [ ] Every `linear-gradient` in `App.js` uses only values from the `R` or `AD` token objects; `AD.navyDark` has been added to the `AD` object
+- [ ] Every `<button>` and `<a>` in both the referrer app and admin panel shows a 2px navy outline on keyboard `:focus-visible`
+- [ ] The focus ring CSS is injected in both `useReferrerFonts` and `useAdminFonts`
 - [ ] Input `focus` behavior is unchanged
 - [ ] No visual regressions on the referrer app's five main screens
 - [ ] No visual regressions on the admin panel's four sections
-- [ ] All changes are in `src/App.js` only — no other files modified
+- [ ] All changes are in `src/App.js` only (except the `AD.navyDark` token addition, which is also in `src/App.js`)
