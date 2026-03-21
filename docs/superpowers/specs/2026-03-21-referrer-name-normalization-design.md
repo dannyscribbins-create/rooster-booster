@@ -37,10 +37,10 @@ return f && f.valueText === referrerName;
 
 After:
 ```js
-return f && f.valueText.trim().toLowerCase() === referrerName.trim().toLowerCase();
+return f && f.valueText?.trim().toLowerCase() === referrerName.trim().toLowerCase();
 ```
 
-Trim and lowercase both sides at comparison time. No other changes.
+Trim and lowercase both sides at comparison time. Optional chaining on `f.valueText` guards against `null` (Jobber may return `null` for a custom field that exists but has no value entered — the original `===` check would have silently returned `false`; without the guard the new `.trim()` call would throw). No other changes.
 
 ---
 
@@ -48,6 +48,7 @@ Trim and lowercase both sides at comparison time. No other changes.
 
 - One line changed in one file.
 - No schema changes, no data migration, no call-site changes.
+- `fetchPipelineForReferrer` has three call sites: `server.js:185` (referrer pipeline route), `server.js:328` (admin referrer detail route), and `server.js:383` (admin stats cache). All three pass a value ultimately sourced from `user.full_name`; the fix at line 125 covers all of them.
 - `full_name` values in the DB and in Jobber remain unchanged — normalization happens only during comparison.
 - The label lookup on line 124 already uses `.toLowerCase()` for `'referred by'`; this change makes `valueText` consistent with that existing pattern.
 
