@@ -849,7 +849,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
                 onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
                 onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
               >
-                <i className="ph ph-star" style={{ fontSize: 14 }} />
+                <i className="ph ph-star" aria-hidden="true" style={{ fontSize: 14 }} />
                 {CONTRACTOR_CONFIG.reviewButtonText}
               </button>
             </div>
