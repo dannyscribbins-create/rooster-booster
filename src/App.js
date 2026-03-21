@@ -573,7 +573,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
             ) : (
               <>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 4, margin: "6px 0 4px" }}>
-                  <span style={{ fontSize: 13, color: R.red, fontFamily: R.fontMono, fontWeight: 700, marginBottom: 8 }}>$</span>
+                  <span style={{ fontSize: 28, color: R.red, fontFamily: R.fontMono, fontWeight: 700 }}>$</span>
                   <span style={{
                     fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em",
                     fontFamily: R.fontSans, color: R.navy, lineHeight: 1,
@@ -1674,7 +1674,9 @@ function StatCard({ label, value, sub, icon, accent, animDelay = 0 }) {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <span style={{ fontSize: 11.5, fontWeight: 500, color: AD.textSecondary, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</span>
-        <div style={{ width: 34, height: 34, borderRadius: 8, background: accent ? `${accent}20` : AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: accent || AD.textSecondary }}>{icon}</div>
+        <div style={{ width: 34, height: 34, borderRadius: 8, background: accent ? `${accent}20` : AD.bgCardTint, display: 'flex', alignItems: 'center', justifyContent: 'center', color: accent || AD.textSecondary }}>
+          <i className={`ph ${icon}`} style={{ fontSize: 16 }} aria-hidden="true" />
+        </div>
       </div>
       <div style={{ fontSize: 28, fontWeight: 600, color: AD.textPrimary, lineHeight: 1.1, letterSpacing: '-0.02em', fontFamily: AD.fontSans }}>{value}</div>
       {sub && <div style={{ fontSize: 12, color: AD.textSecondary, marginTop: 5 }}>{sub}</div>}
@@ -1788,9 +1790,12 @@ function AdminDashboard({ setLoggedIn, setPage }) {
   const pipelineTotal = stats ? stats.totalLeads + stats.totalInspections + stats.totalSold + stats.totalNotSold : 0;
   const pct = (val) => pipelineTotal > 0 ? Math.round((val / pipelineTotal) * 100) : 0;
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
   return (
     <>
-      <AdminPageHeader title="Good morning, Danny." subtitle="Rooster Booster · Accent Roofing"
+      <AdminPageHeader title={`${greeting}, Danny.`} subtitle="Rooster Booster · Accent Roofing"
         action={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {stats && <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>{stats.fromCache ? `Cached ${cachedAgo}m ago` : 'Live data'}</span>}
@@ -1818,15 +1823,15 @@ function AdminDashboard({ setLoggedIn, setPage }) {
       ) : stats && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 14 }}>
-            <StatCard label="Active Referrers"   value={stats.activeReferrers}  sub={`of ${stats.totalReferrers} enrolled`} icon="👥" accent={AD.blueLight}  animDelay={0}   />
-            <StatCard label="Total Balance Owed" value={`$${stats.totalBalance.toLocaleString()}`}  sub="across all referrers"  icon="⚖️" accent={AD.amberText} animDelay={80}  />
-            <StatCard label="Total Paid Out"     value={`$${stats.totalPaidOut.toLocaleString()}`}  sub="approved payouts"      icon="✅" accent={AD.greenText} animDelay={160} />
+            <StatCard label="Active Referrers"   value={stats.activeReferrers}  sub={`of ${stats.totalReferrers} enrolled`} icon="ph-users" accent={AD.blueLight}  animDelay={0}   />
+            <StatCard label="Total Balance Owed" value={`$${stats.totalBalance.toLocaleString()}`}  sub="across all referrers"  icon="ph-scales" accent={AD.amberText} animDelay={80}  />
+            <StatCard label="Total Paid Out"     value={`$${stats.totalPaidOut.toLocaleString()}`}  sub="approved payouts"      icon="ph-check-circle" accent={AD.greenText} animDelay={160} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
-            <StatCard label="Total Referrals" value={stats.totalReferrals}   icon="📋" animDelay={240} />
-            <StatCard label="Leads"           value={stats.totalLeads}       icon="🔵" accent={AD.textSecondary} animDelay={300} />
-            <StatCard label="Inspections"     value={stats.totalInspections} icon="🔍" accent={AD.blueText}      animDelay={360} />
-            <StatCard label="Sold"            value={stats.totalSold}        icon="🏆" accent={AD.greenText}     animDelay={420} />
+            <StatCard label="Total Referrals" value={stats.totalReferrals}   icon="ph-clipboard-text" animDelay={240} />
+            <StatCard label="Leads"           value={stats.totalLeads}       icon="ph-circle" accent={AD.textSecondary} animDelay={300} />
+            <StatCard label="Inspections"     value={stats.totalInspections} icon="ph-magnifying-glass" accent={AD.blueText}      animDelay={360} />
+            <StatCard label="Sold"            value={stats.totalSold}        icon="ph-trophy" accent={AD.greenText}     animDelay={420} />
           </div>
           <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '22px 24px', marginBottom: 28, boxShadow: AD.shadowSm }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -1977,9 +1982,9 @@ function AdminReferrers({ setLoggedIn }) {
         ) : detail ? (
           <>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
-              <StatCard label="Total Referrals" value={detail.pipeline.length}                        icon="📋" animDelay={0}   />
-              <StatCard label="Sold"            value={detail.paidCount}                              icon="🏆" accent={AD.greenText} animDelay={80}  />
-              <StatCard label="Balance"         value={`$${detail.balance.toLocaleString()}`}         icon="💰" accent={AD.amberText} animDelay={160} />
+              <StatCard label="Total Referrals" value={detail.pipeline.length}                        icon="ph-clipboard-text" animDelay={0}   />
+              <StatCard label="Sold"            value={detail.paidCount}                              icon="ph-trophy" accent={AD.greenText} animDelay={80}  />
+              <StatCard label="Balance"         value={`$${detail.balance.toLocaleString()}`}         icon="ph-currency-dollar" accent={AD.amberText} animDelay={160} />
             </div>
             <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
               <div style={{ padding: '16px 20px', borderBottom: `1px solid ${AD.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
