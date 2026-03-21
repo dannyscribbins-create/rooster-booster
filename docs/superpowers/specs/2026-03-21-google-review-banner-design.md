@@ -58,7 +58,7 @@ Inline JSX inside `Dashboard` — no separate function component. Follows the id
       {/* Star icon */}
       <i className="ph ph-star-fill" style={{
         fontSize: 28,
-        color: "#f59e0b",
+        color: R.amber,
         flexShrink: 0,
       }} />
 
@@ -106,7 +106,7 @@ Inline JSX inside `Dashboard` — no separate function component. Follows the id
 **Design details:**
 - Wrapper: `padding: "16px 20px 0"` — identical to all sibling sections; `Screen` component's `paddingBottom: 88` already provides safe-area clearance for the bottom nav
 - `AnimCard delay={600}` — enters after all three referral cards (which animate at 400ms, 460ms, 520ms)
-- Star icon: Phosphor `ph-star-fill`, amber `#f59e0b`, 28px — visually distinct from the brand red/navy without conflicting
+- Star icon: Phosphor `ph-star-fill`, `R.amber` (`#d97706`), 28px, `aria-hidden="true"` — visually distinct from the brand red/navy without conflicting; decorative so screen readers skip it
 - Message text: 13px, `R.textPrimary`, `R.fontBody` (DM Sans) — readable, not competing with section headers
 - Button: same gradient, shadow, hover lift, and font as "Cash Out Now"; intentionally smaller (`padding: "10px 18px"`, `fontSize: 13`) because this is a secondary CTA — not the primary action on the screen
 - Button renders at inline width (no `width: "100%"`) — appropriate for a secondary action in a flex row context

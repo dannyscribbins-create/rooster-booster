@@ -813,9 +813,9 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
             alignItems: "center",
             gap: 14,
           }}>
-            <i className="ph ph-star-fill" style={{
+            <i className="ph ph-star-fill" aria-hidden="true" style={{
               fontSize: 28,
-              color: "#f59e0b",
+              color: R.amber,
               flexShrink: 0,
             }} />
             <div style={{ flex: 1 }}>
@@ -838,7 +838,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
                   color: "#fff",
                   fontSize: 13,
                   fontWeight: 700,
-                  fontFamily: R.fontSans,
+                  fontFamily: R.fontBody,
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
