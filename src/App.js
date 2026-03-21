@@ -77,6 +77,13 @@ const STATUS_CONFIG = {
   closed:     { label: "Not Sold",             color: "#b91c1c",   dot: "#ef4444",   bg: "#fee2e2" },
 };
 
+// ─── Contractor Config (white-label) ──────────────────────────────────────────
+const CONTRACTOR_CONFIG = {
+  reviewUrl:        'https://g.page/r/CbtYNjHgUCwhEBM/review',
+  reviewButtonText: 'Leave a Review',
+  reviewMessage:    'Enjoying the rewards? Leave us a quick Google review!',
+};
+
 // ─── Animation Hook ───────────────────────────────────────────────────────────
 function useEntrance(delay = 0) {
   const [visible, setVisible] = useState(false);
@@ -790,6 +797,63 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
               ))}
             </div>
           )}
+        </AnimCard>
+      </div>
+
+      {/* Google Review Banner */}
+      <div style={{ padding: "16px 20px 0" }}>
+        <AnimCard delay={600}>
+          <div style={{
+            background: R.bgCard,
+            border: `1px solid ${R.border}`,
+            borderRadius: 16,
+            padding: "18px 20px",
+            boxShadow: R.shadow,
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+          }}>
+            <i className="ph ph-star-fill" style={{
+              fontSize: 28,
+              color: "#f59e0b",
+              flexShrink: 0,
+            }} />
+            <div style={{ flex: 1 }}>
+              <p style={{
+                margin: "0 0 10px",
+                fontSize: 13,
+                color: R.textPrimary,
+                fontFamily: R.fontBody,
+                lineHeight: 1.4,
+              }}>
+                {CONTRACTOR_CONFIG.reviewMessage}
+              </p>
+              <button
+                onClick={() => window.open(CONTRACTOR_CONFIG.reviewUrl, '_blank', 'noopener,noreferrer')}
+                style={{
+                  background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "10px 18px",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: R.fontSans,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 4px 14px rgba(204,0,0,0.3)",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
+                onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
+              >
+                <i className="ph ph-star" style={{ fontSize: 14 }} />
+                {CONTRACTOR_CONFIG.reviewButtonText}
+              </button>
+            </div>
+          </div>
         </AnimCard>
       </div>
 
