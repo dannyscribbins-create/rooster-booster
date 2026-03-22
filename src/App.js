@@ -1589,9 +1589,8 @@ function AdminSidebar({ page, setPage, pendingCount }) {
       zIndex: 100, fontFamily: AD.fontSans,
     }}>
       <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <img src={rbLogoWordmark} alt="Rooster Booster" style={{ width: 160, height: 'auto', display: 'block' }} />
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>Accent Roofing · Admin</div>
+        <div>
+          <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
         </div>
       </div>
       <div style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 16px 8px' }}>Main Menu</div>
