@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import rbLogoWordmark from './assets/images/rb logo w wordmark 400x120px transparent background horizontal.png';
+import rbLogoIcon from './assets/images/rb logo 1024px transparent background.png';
+import rbLogoSquareWordmark from './assets/images/rb logo w wordmark 2000px transparent background.png';
 
 // ─── Boost Table ──────────────────────────────────────────────────────────────
 const BOOST_TABLE = [
@@ -361,23 +364,9 @@ function LoginScreen({ onLogin }) {
         opacity: cardVisible ? 1 : 0,
         transform: cardVisible ? "translateY(0)" : "translateY(-12px)",
         transition: "opacity 0.5s ease, transform 0.5s ease",
-        textAlign: "center", marginBottom: 24,
+        textAlign: "center", marginBottom: 8,
       }}>
-        <div style={{
-          width: 72, height: 72, borderRadius: 20,
-          background: R.red, display: "flex",
-          alignItems: "center", justifyContent: "center",
-          fontSize: 36, margin: "0 auto 12px",
-          boxShadow: `0 0 0 6px rgba(204,0,0,0.2), 0 8px 32px rgba(0,0,0,0.3)`,
-        }}>🐓</div>
-        <h1 style={{
-          margin: 0, fontSize: 32, fontWeight: 800,
-          fontFamily: R.fontSans, color: "#fff",
-          letterSpacing: "-0.02em",
-        }}>Rooster Booster</h1>
-        <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.65)", fontSize: 15 }}>
-          Accent Roofing · Referral Rewards
-        </p>
+        <img src={rbLogoSquareWordmark} alt="Rooster Booster" style={{ width: 200, height: 'auto', margin: '0 auto', display: 'block', marginBottom: 8 }} />
       </div>
 
       {/* Login card */}
@@ -1600,12 +1589,9 @@ function AdminSidebar({ page, setPage, pendingCount }) {
       zIndex: 100, fontFamily: AD.fontSans,
     }}>
       <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 8, background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🐓</div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#fff', letterSpacing: '0.01em', lineHeight: 1.3 }}>Rooster Booster</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>Accent Roofing · Admin</div>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <img src={rbLogoWordmark} alt="Rooster Booster" style={{ width: 160, height: 'auto', display: 'block' }} />
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>Accent Roofing · Admin</div>
         </div>
       </div>
       <div style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 16px 8px' }}>Main Menu</div>
@@ -2268,16 +2254,15 @@ function AdminLogin({ onLogin }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: AD.bgPage, fontFamily: AD.fontSans }}>
       <div style={{ width: '100%', maxWidth: 380, padding: '0 24px' }}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ width: 60, height: 60, borderRadius: 16, background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, margin: '0 auto 16px', boxShadow: `0 0 40px ${AD.red}40` }}>🐓</div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>Rooster Booster</h1>
-          <p style={{ margin: '4px 0 0', color: AD.textSecondary, fontSize: 15 }}>Admin · Accent Roofing</p>
+        <div style={{ textAlign: 'center', marginBottom: 8 }}>
+          <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 200, height: 'auto', margin: '0 auto 16px', display: 'block' }} />
         </div>
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '28px', boxShadow: AD.shadowLg }}>
           <AdminInput type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter admin password" label="Admin Password" />
           {error && <p style={{ color: AD.red2Text, fontSize: 15, margin: '-8px 0 12px' }}>{error}</p>}
           <Btn onClick={handleLogin} variant="accent" style={{ width: '100%', padding: '12px' }}>Sign In</Btn>
         </div>
+        <p style={{ margin: '16px 0 0', textAlign: 'center', color: AD.textSecondary, fontSize: 15 }}>Accent Roofing</p>
       </div>
     </div>
   );
