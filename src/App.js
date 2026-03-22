@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import rbLogoWordmark from './assets/images/rb logo w wordmark 400x120px transparent background horizontal.png';
 import rbLogoIcon from './assets/images/rb logo 1024px transparent background.png';
 import rbLogoSquareWordmark from './assets/images/rb logo w wordmark 2000px transparent background.png';
 
