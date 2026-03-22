@@ -1587,7 +1587,7 @@ function AdminSidebar({ page, setPage, pendingCount }) {
       background: AD.bgSidebar, display: 'flex', flexDirection: 'column',
       zIndex: 100, fontFamily: AD.fontSans,
     }}>
-      <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8 }}>
+      <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
           <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
         </div>
