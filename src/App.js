@@ -265,52 +265,106 @@ function BottomNav({ tab, setTab }) {
 
   return (
     <nav style={{
-      position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
-      width: "min(430px, 100vw)", background: R.bgCard,
-      borderTop: `1px solid ${R.border}`,
-      display: "flex", zIndex: 100,
-      paddingBottom: "env(safe-area-inset-bottom, 10px)",
-      boxShadow: "0 -4px 20px rgba(1,40,84,0.08)",
+      position: "fixed",
+      bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+      left: "50%",
+      transform: "translateX(-50%)",
+      width: "min(390px, calc(100vw - 32px))",
+      background: R.bgCard,
+      borderRadius: 24,
+      display: "flex",
+      zIndex: 100,
+      height: 68,
+      boxShadow: "0 8px 32px rgba(1,40,84,0.15), 0 2px 8px rgba(1,40,84,0.06)",
+      overflow: "visible",
     }}>
-      {/* Sliding pill */}
+      {/* Sliding circle */}
       <div style={{
         position: "absolute",
-        top: 4,
-        left: `calc(${activeIndex * 20 + 10}% - 30px)`,
-        width: 60,
-        height: 50,
-        borderRadius: 9999,
-        background: "rgba(1, 40, 84, 0.10)",
-        transition: "left 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+        bottom: 12,
+        left: `calc(${activeIndex * 20 + 10}% - 24px)`,
+        width: 48,
+        height: 48,
+        borderRadius: "50%",
+        background: "rgba(1, 40, 84, 0.35)",
+        transform: "translateY(-8px)",
+        transition: "left 300ms ease-in-out",
         pointerEvents: "none",
         zIndex: 0,
       }} />
       {tabs.map(t => {
         const active = tab === t.id;
         return (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex: 1, background: "none", border: "none", cursor: "pointer",
-            padding: "8px 4px 8px", display: "flex", flexDirection: "column",
-            alignItems: "center", gap: 4,
-            color: active ? R.navy : R.textMuted,
-            transition: "color 0.2s, transform 0.1s",
-            transform: "scale(1)",
-            position: "relative",
-            zIndex: 1,
-          }}
-            onMouseDown={e => e.currentTarget.style.transform = "scale(0.9)"}
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              flex: 1,
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              paddingBottom: 12,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              position: "relative",
+              zIndex: 1,
+              overflow: "visible",
+            }}
+            onMouseDown={e => e.currentTarget.style.transform = "scale(0.92)"}
             onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
-            onTouchStart={e => e.currentTarget.style.transform = "scale(0.9)"}
+            onTouchStart={e => e.currentTarget.style.transform = "scale(0.92)"}
             onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
           >
-            <i className={`ph ${active ? t.icon + "-fill" : t.icon}`}
-              style={{ fontSize: 22, lineHeight: 1 }} />
-            <span style={{
-              fontSize: 12, fontFamily: R.fontMono, letterSpacing: "0.06em",
-              textTransform: "uppercase", fontWeight: active ? 600 : 400,
-              opacity: active ? 1 : 0.6,
-              transition: "opacity 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-            }}>{t.label}</span>
+            {/* Label + icon move together on activation */}
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
+              transform: active ? "translateY(-8px)" : "translateY(0)",
+              transition: "transform 300ms ease-in-out",
+              position: "relative",
+            }}>
+              {/* Label fades in above circle when active */}
+              <span style={{
+                position: "absolute",
+                bottom: "calc(100% + 4px)",
+                left: "50%",
+                transform: "translateX(-50%)",
+                fontSize: 11,
+                fontFamily: R.fontMono,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+                fontWeight: 600,
+                color: R.navy,
+                whiteSpace: "nowrap",
+                opacity: active ? 1 : 0,
+                transition: "opacity 200ms ease",
+                pointerEvents: "none",
+              }}>{t.label}</span>
+              {/* Icon */}
+              <div style={{
+                width: 48,
+                height: 48,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <i
+                  className={`ph ${active ? t.icon + "-fill" : t.icon}`}
+                  style={{
+                    fontSize: 24,
+                    lineHeight: 1,
+                    color: active ? "#ffffff" : R.navy,
+                    opacity: active ? 1 : 0.4,
+                    transition: "color 200ms ease, opacity 200ms ease",
+                  }}
+                />
+              </div>
+            </div>
           </button>
         );
       })}
