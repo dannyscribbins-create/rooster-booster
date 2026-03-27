@@ -282,7 +282,7 @@ function BottomNav({ tab, setTab }) {
       {/* Sliding underline indicator */}
       <div style={{
         position: "absolute",
-        top: 42,
+        top: 62,
         left: `calc(${activeIndex * 20 + 10}% - 12px)`,
         width: 24,
         height: 3,
