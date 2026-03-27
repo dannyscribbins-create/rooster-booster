@@ -323,7 +323,7 @@ function BottomNav({ tab, setTab }) {
               alignItems: "center",
               gap: 4,
               position: "relative",
-              zIndex: 1,
+              zIndex: 2,
             }}>
               {/* Label fades in above circle when active */}
               <span style={{
@@ -349,6 +349,8 @@ function BottomNav({ tab, setTab }) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                position: "relative",
+                zIndex: 2,
               }}>
                 <i
                   className={`ph ${active ? t.icon + "-fill" : t.icon}`}
