@@ -279,7 +279,20 @@ function BottomNav({ tab, setTab }) {
       boxShadow: "0 -4px 20px rgba(1,40,84,0.08)",
       overflow: "hidden",
     }}>
-      {/* Tap targets — rendered first so circle paints on top via DOM order */}
+      {/* Sliding underline indicator */}
+      <div style={{
+        position: "absolute",
+        top: 42,
+        left: `calc(${activeIndex * 20 + 10}% - 12px)`,
+        width: 24,
+        height: 3,
+        borderRadius: 9999,
+        background: "#012854",
+        transition: "left 300ms ease-in-out",
+        pointerEvents: "none",
+      }} />
+
+      {/* Tab buttons */}
       {tabs.map(t => {
         const active = tab === t.id;
         return (
@@ -292,10 +305,11 @@ function BottomNav({ tab, setTab }) {
               border: "none",
               cursor: "pointer",
               padding: 0,
-              height: 48,
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
+              gap: 4,
               position: "relative",
             }}
             onMouseDown={e => e.currentTarget.style.transform = "scale(0.92)"}
@@ -303,62 +317,30 @@ function BottomNav({ tab, setTab }) {
             onTouchStart={e => e.currentTarget.style.transform = "scale(0.92)"}
             onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
           >
-            {/* Label fades in above button when active */}
+            <i
+              className={`ph ${active ? t.icon + "-fill" : t.icon}`}
+              style={{
+                fontSize: 22,
+                lineHeight: 1,
+                color: "#012854",
+                opacity: active ? 1 : 0.4,
+                transition: "opacity 200ms ease",
+              }}
+            />
             <span style={{
-              position: "absolute",
-              bottom: "calc(100% + 2px)",
-              left: "50%",
-              transform: "translateX(-50%)",
               fontSize: 11,
               fontFamily: R.fontMono,
               letterSpacing: "0.05em",
               textTransform: "uppercase",
               fontWeight: 600,
-              color: R.navy,
+              color: "#012854",
               whiteSpace: "nowrap",
               opacity: active ? 1 : 0,
               transition: "opacity 200ms ease",
-              pointerEvents: "none",
             }}>{t.label}</span>
-            {/* Inactive icon — fades out as circle arrives */}
-            <i
-              className={`ph ${t.icon}`}
-              style={{
-                fontSize: 24,
-                lineHeight: 1,
-                color: R.navy,
-                opacity: active ? 0 : 0.4,
-                transition: "opacity 200ms ease",
-              }}
-            />
           </button>
         );
       })}
-
-      {/* Sliding circle — last in DOM, paints on top naturally, icon lives inside */}
-      <div style={{
-        position: "absolute",
-        top: 18,
-        left: `calc(${activeIndex * 20 + 10}% - 24px)`,
-        width: 48,
-        height: 48,
-        borderRadius: "50%",
-        background: "#012854",
-        transition: "left 300ms ease-in-out",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        pointerEvents: "none",
-      }}>
-        <i
-          className={`ph ${tabs[activeIndex].icon}-fill`}
-          style={{
-            fontSize: 24,
-            lineHeight: 1,
-            color: "#ffffff",
-          }}
-        />
-      </div>
     </nav>
   );
 }
