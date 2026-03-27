@@ -802,8 +802,10 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
       <div style={{ padding: "16px 20px 0" }}>
         <AnimCard delay={600} screenKey="dashboard">
           <div style={{
-            background: R.bgCard,
-            border: `1px solid ${R.border}`,
+            background: "#1a3a6b",
+            border: "1px solid #041D3E",
+            outline: "2px solid #ffffff",
+            outlineOffset: "-4px",
             borderRadius: 16,
             padding: "18px 20px",
             boxShadow: R.shadow,
@@ -813,14 +815,14 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
           }}>
             <i className="ph ph-star-fill" aria-hidden="true" style={{
               fontSize: 32,
-              color: R.amber,
+              color: "#ffffff",
               flexShrink: 0,
             }} />
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
               <p style={{
                 margin: "0 0 10px",
                 fontSize: 15,
-                color: R.textPrimary,
+                color: "#D3E3F0",
                 fontFamily: R.fontBody,
                 lineHeight: 1.4,
               }}>
