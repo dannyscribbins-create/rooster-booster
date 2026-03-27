@@ -297,7 +297,7 @@ function BottomNav({ tab, setTab }) {
         return (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => { setTab(t.id); window.scrollTo(0, 0); }}
             style={{
               flex: 1,
               background: "none",
@@ -323,6 +323,7 @@ function BottomNav({ tab, setTab }) {
               alignItems: "center",
               gap: 4,
               position: "relative",
+              zIndex: 1,
             }}>
               {/* Label fades in above circle when active */}
               <span style={{
