@@ -67,8 +67,8 @@ const R = {
   shadowLg:  "0 8px 32px rgba(1,40,84,0.13)",
 
   // Fonts
-  fontSans:    "'Montserrat', 'DM Sans', sans-serif",
-  fontBody:    "'DM Sans', sans-serif",
+  fontSans:    "'Montserrat', 'Roboto', sans-serif",
+  fontBody:    "'Roboto', sans-serif",
   fontMono:    "'Roboto Mono', monospace",
 };
 
@@ -108,7 +108,7 @@ function useReferrerFonts() {
   useEffect(() => {
     const fonts = document.createElement("link");
     fonts.rel = "stylesheet";
-    fonts.href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=DM+Sans:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;600&display=swap";
+    fonts.href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;600&display=swap";
     document.head.appendChild(fonts);
     const icons = document.createElement("script");
     icons.src = "https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js";
@@ -532,7 +532,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", position: "relative" }}>
           <div>
             <p style={{ margin: 0, fontSize: 15, color: "rgba(255,255,255,0.65)" }}>
-              Hey, {userName.split(" ")[0]} 👋
+              Hey, {userName.split(" ")[0]}! 👋
             </p>
             <h1 style={{
               margin: "4px 0 0", fontSize: 22, fontWeight: 800,
@@ -1521,7 +1521,7 @@ function useAdminFonts() {
   useEffect(() => {
     const fonts = document.createElement('link');
     fonts.rel = 'stylesheet';
-    fonts.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap';
+    fonts.href = 'https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=DM+Serif+Display&display=swap';
     document.head.appendChild(fonts);
     const icons = document.createElement('script');
     icons.src = 'https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js';
@@ -1569,7 +1569,7 @@ const AD = {
   radiusMd:  '10px',
   radiusLg:  '16px',
   radiusPill:'9999px',
-  fontSans:    "'DM Sans', sans-serif",
+  fontSans:    "'Roboto', sans-serif",
   fontDisplay: "'DM Serif Display', serif",
 };
 
