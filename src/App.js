@@ -266,28 +266,28 @@ function BottomNav({ tab, setTab }) {
   return (
     <nav style={{
       position: "fixed",
-      bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+      bottom: 0,
       left: "50%",
       transform: "translateX(-50%)",
-      width: "min(390px, calc(100vw - 32px))",
+      width: "min(430px, 100vw)",
       background: R.bgCard,
       borderRadius: 24,
       display: "flex",
       zIndex: 100,
-      height: 68,
-      boxShadow: "0 8px 32px rgba(1,40,84,0.15), 0 2px 8px rgba(1,40,84,0.06)",
-      overflow: "visible",
+      paddingTop: 18,
+      paddingBottom: "calc(18px + env(safe-area-inset-bottom, 0px))",
+      boxShadow: "0 -4px 20px rgba(1,40,84,0.08)",
+      overflow: "hidden",
     }}>
       {/* Sliding circle */}
       <div style={{
         position: "absolute",
-        bottom: 12,
+        top: 18,
         left: `calc(${activeIndex * 20 + 10}% - 24px)`,
         width: 48,
         height: 48,
         borderRadius: "50%",
-        background: "rgba(1, 40, 84, 0.35)",
-        transform: "translateY(-8px)",
+        background: "#012854",
         transition: "left 300ms ease-in-out",
         pointerEvents: "none",
         zIndex: 0,
@@ -304,34 +304,30 @@ function BottomNav({ tab, setTab }) {
               border: "none",
               cursor: "pointer",
               padding: 0,
-              paddingBottom: 12,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              justifyContent: "flex-end",
+              justifyContent: "center",
               position: "relative",
               zIndex: 1,
-              overflow: "visible",
             }}
             onMouseDown={e => e.currentTarget.style.transform = "scale(0.92)"}
             onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
             onTouchStart={e => e.currentTarget.style.transform = "scale(0.92)"}
             onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
           >
-            {/* Label + icon move together on activation */}
+            {/* Label + icon group */}
             <div style={{
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               gap: 4,
-              transform: active ? "translateY(-8px)" : "translateY(0)",
-              transition: "transform 300ms ease-in-out",
               position: "relative",
             }}>
               {/* Label fades in above circle when active */}
               <span style={{
                 position: "absolute",
-                bottom: "calc(100% + 4px)",
+                bottom: "calc(100% + 2px)",
                 left: "50%",
                 transform: "translateX(-50%)",
                 fontSize: 11,
