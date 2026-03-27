@@ -261,6 +261,8 @@ function BottomNav({ tab, setTab }) {
     { id: "profile",   icon: "ph-user-circle",     label: "Profile"  },
   ];
 
+  const activeIndex = tabs.findIndex(t => t.id === tab);
+
   return (
     <nav style={{
       position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
@@ -270,6 +272,19 @@ function BottomNav({ tab, setTab }) {
       paddingBottom: "env(safe-area-inset-bottom, 10px)",
       boxShadow: "0 -4px 20px rgba(1,40,84,0.08)",
     }}>
+      {/* Sliding pill */}
+      <div style={{
+        position: "absolute",
+        top: 4,
+        left: `calc(${activeIndex * 20 + 10}% - 30px)`,
+        width: 60,
+        height: 50,
+        borderRadius: 9999,
+        background: "rgba(1, 40, 84, 0.10)",
+        transition: "left 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+        pointerEvents: "none",
+        zIndex: 0,
+      }} />
       {tabs.map(t => {
         const active = tab === t.id;
         return (
@@ -281,24 +296,20 @@ function BottomNav({ tab, setTab }) {
             transition: "color 0.2s, transform 0.1s",
             transform: "scale(1)",
             position: "relative",
+            zIndex: 1,
           }}
             onMouseDown={e => e.currentTarget.style.transform = "scale(0.9)"}
             onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}
             onTouchStart={e => e.currentTarget.style.transform = "scale(0.9)"}
             onTouchEnd={e => e.currentTarget.style.transform = "scale(1)"}
           >
-            {active && (
-              <span style={{
-                position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
-                width: 24, height: 3, borderRadius: "0 0 3px 3px",
-                background: R.red,
-              }} />
-            )}
             <i className={`ph ${active ? t.icon + "-fill" : t.icon}`}
               style={{ fontSize: 22, lineHeight: 1 }} />
             <span style={{
               fontSize: 12, fontFamily: R.fontMono, letterSpacing: "0.06em",
               textTransform: "uppercase", fontWeight: active ? 600 : 400,
+              opacity: active ? 1 : 0.6,
+              transition: "opacity 300ms cubic-bezier(0.4, 0, 0.2, 1)",
             }}>{t.label}</span>
           </button>
         );
