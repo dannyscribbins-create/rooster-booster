@@ -401,6 +401,27 @@ function LoginScreen({ onLogin }) {
   const [focused, setFocused] = useState(null);
   const cardVisible = useEntrance(80);
   const [showContact, setShowContact] = useState(false);
+  const [showForgotPin, setShowForgotPin] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotStatus, setForgotStatus] = useState("idle"); // idle | loading | sent | error
+  const [forgotError, setForgotError] = useState("");
+
+  function handleForgotPin() {
+    if (!forgotEmail) return;
+    setForgotStatus("loading");
+    setForgotError("");
+    fetch(`${BACKEND_URL}/api/forgot-pin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: forgotEmail }),
+    })
+      .then(res => res.json())
+      .then(() => { setForgotStatus("sent"); })
+      .catch(() => {
+        setForgotError("Something went wrong. Please try again.");
+        setForgotStatus("error");
+      });
+  }
 
   function handleLogin() {
     if (!email || !pass) return;
@@ -497,29 +518,94 @@ function LoginScreen({ onLogin }) {
           />
         </div>
 
-        {/* PIN field */}
-        <label style={{
-          display: "block", fontSize: 12, fontWeight: 500,
-          color: R.textSecondary, marginBottom: 8, fontFamily: R.fontBody,
-        }}>
-          PIN
-        </label>
-        <div style={{ position: "relative", marginBottom: 8 }}>
-          <i className="ph ph-lock" style={{
-            position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-            fontSize: 16, color: focused === "pin" ? R.navy : R.textMuted,
-            transition: "color 0.2s", pointerEvents: "none",
-          }} />
-          <input
-            value={pass} onChange={e => setPass(e.target.value)}
-            onFocus={() => setFocused("pin")} onBlur={() => setFocused(null)}
-            type="password" placeholder="PIN"
-            style={inputStyle("pin")}
-            onKeyDown={e => e.key === "Enter" && handleLogin()}
-          />
-        </div>
+        {showForgotPin ? (
+          /* ── Forgot PIN sub-form ─────────────────────────────── */
+          forgotStatus === "sent" ? (
+            <div style={{
+              background: "#eff6ff", borderRadius: 10, padding: "16px",
+              marginBottom: 16, fontSize: 15, color: "#1d4ed8", lineHeight: 1.5,
+            }}>
+              Check your email — if that address is registered, a reset link is on its way.
+            </div>
+          ) : (
+            <>
+              <label style={{
+                display: "block", fontSize: 12, fontWeight: 500,
+                color: R.textSecondary, marginBottom: 8, fontFamily: R.fontBody,
+              }}>
+                Email address
+              </label>
+              <div style={{ position: "relative", marginBottom: 8 }}>
+                <i className="ph ph-envelope" style={{
+                  position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
+                  fontSize: 16, color: focused === "forgotEmail" ? R.navy : R.textMuted,
+                  transition: "color 0.2s", pointerEvents: "none",
+                }} />
+                <input
+                  value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)}
+                  onFocus={() => setFocused("forgotEmail")}
+                  onBlur={() => setFocused(null)}
+                  placeholder="Email address"
+                  style={inputStyle("forgotEmail")}
+                  onKeyDown={e => e.key === "Enter" && handleForgotPin()}
+                />
+              </div>
+              {forgotStatus === "error" && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  background: "#fee2e2", borderRadius: 8, padding: "8px 12px",
+                  marginBottom: 8, marginTop: 4,
+                }}>
+                  <i className="ph ph-warning-circle" style={{ color: "#dc2626", fontSize: 16, flexShrink: 0 }} />
+                  <p style={{ color: "#dc2626", fontSize: 15, margin: 0 }}>{forgotError}</p>
+                </div>
+              )}
+            </>
+          )
+        ) : (
+          /* ── Normal PIN field ────────────────────────────────── */
+          <>
+            <label style={{
+              display: "block", fontSize: 12, fontWeight: 500,
+              color: R.textSecondary, marginBottom: 8, fontFamily: R.fontBody,
+            }}>
+              PIN
+            </label>
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <i className="ph ph-lock" style={{
+                position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
+                fontSize: 16, color: focused === "pin" ? R.navy : R.textMuted,
+                transition: "color 0.2s", pointerEvents: "none",
+              }} />
+              <input
+                value={pass} onChange={e => setPass(e.target.value)}
+                onFocus={() => setFocused("pin")} onBlur={() => setFocused(null)}
+                type="password" placeholder="PIN"
+                style={inputStyle("pin")}
+                onKeyDown={e => e.key === "Enter" && handleLogin()}
+              />
+            </div>
+          </>
+        )}
 
-        {error && (
+        {/* "Forgot PIN?" link — only shown in normal PIN mode */}
+        {!showForgotPin && (
+          <div style={{ textAlign: "right", marginBottom: 8 }}>
+            <button
+              onClick={() => { setShowForgotPin(true); setForgotEmail(email); }}
+              style={{
+                background: "none", border: "none", padding: 0, margin: 0,
+                font: "inherit", cursor: "pointer",
+                color: R.navy, fontWeight: 600, fontSize: 13,
+              }}
+            >
+              Forgot PIN?
+            </button>
+          </div>
+        )}
+
+        {!showForgotPin && error && (
           <div style={{
             display: "flex", alignItems: "center", gap: 8,
             background: "#fee2e2", borderRadius: 8, padding: "8px 12px",
@@ -530,24 +616,60 @@ function LoginScreen({ onLogin }) {
           </div>
         )}
 
-        <button onClick={handleLogin} style={{
-          width: "100%", marginTop: 16,
-          background: loading
-            ? R.redDark
-            : `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
-          border: "none", borderRadius: 10, padding: "16px",
-          color: "#fff", fontSize: 15, fontWeight: 700,
-          fontFamily: R.fontSans, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          transition: "transform 0.2s, box-shadow 0.2s, background 0.2s",
-          transform: loading ? "scale(0.98)" : "scale(1)",
-          boxShadow: loading ? "none" : "0 4px 14px rgba(204,0,0,0.35)",
-        }}>
-          {loading
-            ? <><i className="ph ph-circle-notch" style={{ fontSize: 16, animation: "spin 0.8s linear infinite" }} /> Signing in...</>
-            : <><i className="ph ph-sign-in" style={{ fontSize: 16 }} /> Sign In</>
-          }
-        </button>
+        {showForgotPin ? (
+          <>
+            {forgotStatus !== "sent" && (
+              <button onClick={handleForgotPin} disabled={forgotStatus === "loading"} style={{
+                width: "100%", marginTop: 16,
+                background: forgotStatus === "loading"
+                  ? R.redDark
+                  : `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
+                border: "none", borderRadius: 10, padding: "16px",
+                color: "#fff", fontSize: 15, fontWeight: 700,
+                fontFamily: R.fontSans, cursor: forgotStatus === "loading" ? "default" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                transition: "transform 0.2s, box-shadow 0.2s",
+                transform: forgotStatus === "loading" ? "scale(0.98)" : "scale(1)",
+                boxShadow: forgotStatus === "loading" ? "none" : "0 4px 14px rgba(204,0,0,0.35)",
+              }}>
+                {forgotStatus === "loading"
+                  ? <><i className="ph ph-circle-notch" style={{ fontSize: 16, animation: "spin 0.8s linear infinite" }} /> Sending…</>
+                  : <><i className="ph ph-paper-plane-tilt" style={{ fontSize: 16 }} /> Send Reset Link</>
+                }
+              </button>
+            )}
+            <button
+              onClick={() => { setShowForgotPin(false); setForgotStatus("idle"); setForgotError(""); }}
+              style={{
+                background: "none", border: "none", padding: "12px 0 0",
+                width: "100%", textAlign: "center",
+                font: "inherit", cursor: "pointer",
+                color: R.navy, fontWeight: 600, fontSize: 14,
+              }}
+            >
+              ← Back to sign in
+            </button>
+          </>
+        ) : (
+          <button onClick={handleLogin} style={{
+            width: "100%", marginTop: 16,
+            background: loading
+              ? R.redDark
+              : `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
+            border: "none", borderRadius: 10, padding: "16px",
+            color: "#fff", fontSize: 15, fontWeight: 700,
+            fontFamily: R.fontSans, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            transition: "transform 0.2s, box-shadow 0.2s, background 0.2s",
+            transform: loading ? "scale(0.98)" : "scale(1)",
+            boxShadow: loading ? "none" : "0 4px 14px rgba(204,0,0,0.35)",
+          }}>
+            {loading
+              ? <><i className="ph ph-circle-notch" style={{ fontSize: 16, animation: "spin 0.8s linear infinite" }} /> Signing in...</>
+              : <><i className="ph ph-sign-in" style={{ fontSize: 16 }} /> Sign In</>
+            }
+          </button>
+        )}
 
         <p style={{ textAlign: "center", marginTop: 24, color: R.textMuted, fontSize: 15 }}>
           Don't have an account?{" "}
