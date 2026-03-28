@@ -249,13 +249,13 @@ app.post('/api/cashout', async (req, res) => {
 app.get('/api/profile/photo', async (req, res) => {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Not authorized' });
-  const sessionResult = await pool.query(
-    'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-    [token, 'referrer']
-  );
-  if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-  const userId = sessionResult.rows[0].user_id;
   try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
     const result = await pool.query('SELECT profile_photo FROM users WHERE id=$1', [userId]);
     res.json({ photo: result.rows[0]?.profile_photo || null });
   } catch (err) { res.status(500).json({ error: 'Failed to fetch photo' }); }
@@ -265,15 +265,18 @@ app.get('/api/profile/photo', async (req, res) => {
 app.post('/api/profile/photo', async (req, res) => {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Not authorized' });
-  const sessionResult = await pool.query(
-    'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-    [token, 'referrer']
-  );
-  if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-  const { photo } = req.body;
-  if (!photo) return res.status(400).json({ error: 'No photo provided' });
-  const userId = sessionResult.rows[0].user_id;
   try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const { photo } = req.body;
+    if (!photo) return res.status(400).json({ error: 'No photo provided' });
+    if (typeof photo !== 'string' || !photo.startsWith('data:image/') || photo.length > 3 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Invalid photo' });
+    }
+    const userId = sessionResult.rows[0].user_id;
     await pool.query('UPDATE users SET profile_photo=$1 WHERE id=$2', [photo, userId]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: 'Failed to save photo' }); }
