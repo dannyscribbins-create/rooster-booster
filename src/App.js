@@ -1092,6 +1092,7 @@ function CashOut({ pipeline, userName, userEmail }) {
           alignItems: "center", justifyContent: "center", padding: "0 32px",
           background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
         }}>
+          <style>{`@keyframes cardDrop { 0%{transform:translateY(-60px) scale(0.96);opacity:0} 60%{transform:translateY(8px) scale(1.01);opacity:1} 80%{transform:translateY(-4px) scale(0.995)} 100%{transform:translateY(0) scale(1);opacity:1} }`}</style>
           <div style={{
             background: R.bgCard, borderRadius: 24, padding: "40px 32px",
             textAlign: "center", boxShadow: R.shadowLg,
