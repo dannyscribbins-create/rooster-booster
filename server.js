@@ -245,6 +245,22 @@ app.post('/api/cashout', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Failed to save cash out request' }); }
 });
 
+// ── REFERRER: GET PROFILE PHOTO ───────────────────────────────────────────────
+app.get('/api/profile/photo', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  const sessionResult = await pool.query(
+    'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+    [token, 'referrer']
+  );
+  if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+  const userId = sessionResult.rows[0].user_id;
+  try {
+    const result = await pool.query('SELECT profile_photo FROM users WHERE id=$1', [userId]);
+    res.json({ photo: result.rows[0]?.profile_photo || null });
+  } catch (err) { res.status(500).json({ error: 'Failed to fetch photo' }); }
+});
+
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
 
