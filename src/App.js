@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import rbLogoIcon from './assets/images/rb logo 1024px transparent background.png';
 import rbLogoSquareWordmark from './assets/images/rb logo w wordmark 2000px transparent background.png';
-import accentRoofingLogo from './assets/images/Copy of AccentRoofing-Logo.png';
+import accentRoofingLogo from './assets/images/AccentRoofing-Logo.png';
 
 // ─── Boost Table ──────────────────────────────────────────────────────────────
 const BOOST_TABLE = [
