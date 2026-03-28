@@ -1031,7 +1031,14 @@ function CashOut({ pipeline, userName, userEmail }) {
   const [method, setMethod] = useState(null);
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
+  const [popping, setPopping] = useState(null);
   const [detail, setDetail] = useState("");
+
+  const advanceStep = (n) => {
+    setStep(n);
+    setPopping(n);
+    setTimeout(() => setPopping(null), 300);
+  };
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
@@ -1098,6 +1105,7 @@ function CashOut({ pipeline, userName, userEmail }) {
         </p>
 
         {/* Step indicator */}
+        <style>{`@keyframes nodePop { 0%{transform:scale(1)} 50%{transform:scale(1.22)} 100%{transform:scale(1)} }`}</style>
         <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
           {steps.map((s, i) => (
             <div key={s} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : "none" }}>
@@ -1109,6 +1117,7 @@ function CashOut({ pipeline, userName, userEmail }) {
                   fontSize: 12, fontWeight: 700, fontFamily: R.fontMono,
                   border: i + 1 === step ? "2px solid #fff" : "none",
                   transition: "background 0.3s, border-color 0.3s",
+                  animation: popping === i + 1 ? "nodePop 300ms ease-out" : "none",
                 }}>
                   {i + 1 < step
                     ? <i className="ph ph-check" style={{ fontSize: 15 }} />
@@ -1119,9 +1128,15 @@ function CashOut({ pipeline, userName, userEmail }) {
               {i < steps.length - 1 && (
                 <div style={{
                   flex: 1, height: 2, marginBottom: 16, marginLeft: 4, marginRight: 4,
-                  background: i + 1 < step ? R.red : "rgba(255,255,255,0.2)",
-                  transition: "background 0.3s",
-                }} />
+                  background: "rgba(255,255,255,0.2)", position: "relative", overflow: "hidden",
+                }}>
+                  <div style={{
+                    position: "absolute", left: 0, top: 0, bottom: 0,
+                    width: i + 1 < step ? "100%" : "0%",
+                    background: R.red,
+                    transition: "width 450ms ease-in-out",
+                  }} />
+                </div>
               )}
             </div>
           ))}
@@ -1138,7 +1153,7 @@ function CashOut({ pipeline, userName, userEmail }) {
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {methods.map(m => (
-                <button key={m.id} onClick={() => { setMethod(m.id); if (step === 1) setStep(2); }} style={{
+                <button key={m.id} onClick={() => { setMethod(m.id); if (step === 1) advanceStep(2); }} style={{
                   background: method === m.id ? "#fff7f7" : R.bgCard,
                   border: `1.5px solid ${method === m.id ? R.red : R.border}`,
                   borderRadius: 14, padding: "14px 16px",
@@ -1238,7 +1253,7 @@ function CashOut({ pipeline, userName, userEmail }) {
               />
             </div>
             {amount && parseFloat(amount) > 0 && parseFloat(amount) <= balance && (
-              <button onClick={() => setStep(3)} style={{
+              <button onClick={() => advanceStep(3)} style={{
                 width: "100%", marginTop: 16,
                 background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
                 border: "none", borderRadius: 12, padding: "16px",
