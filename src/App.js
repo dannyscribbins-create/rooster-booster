@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import rbLogoIcon from './assets/images/rb logo 1024px transparent background.png';
 import rbLogoSquareWordmark from './assets/images/rb logo w wordmark 2000px transparent background.png';
+import accentRoofingLogo from './assets/images/Copy of AccentRoofing-Logo.png';
 
 // ─── Boost Table ──────────────────────────────────────────────────────────────
 const BOOST_TABLE = [
@@ -1033,12 +1034,41 @@ function CashOut({ pipeline, userName, userEmail }) {
   const [step, setStep] = useState(1);
   const [popping, setPopping] = useState(null);
   const [detail, setDetail] = useState("");
+  const [displayAmount, setDisplayAmount] = useState(0);
+  const [amountPunching, setAmountPunching] = useState(false);
+  const [cardVisible, setCardVisible] = useState(false);
+  const [logosVisible, setLogosVisible] = useState(false);
 
   const advanceStep = (n) => {
     setStep(n);
     setPopping(n);
     setTimeout(() => setPopping(null), 300);
   };
+
+  useEffect(() => {
+    if (step !== 4) return;
+    setDisplayAmount(0); setCardVisible(false); setLogosVisible(false); setAmountPunching(false);
+    setTimeout(() => setCardVisible(true), 50);
+    const target = parseFloat(amount);
+    const countStart = 650;
+    const countDuration = 600;
+    const startTime = Date.now() + countStart;
+    const tick = () => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 0) { requestAnimationFrame(tick); return; }
+      const progress = Math.min(elapsed / countDuration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayAmount(Math.round(eased * target));
+      if (progress < 1) { requestAnimationFrame(tick); }
+      else {
+        setAmountPunching(true);
+        setTimeout(() => setAmountPunching(false), 250);
+        setTimeout(() => setLogosVisible(true), 300);
+      }
+    };
+    requestAnimationFrame(tick);
+  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
@@ -1062,30 +1092,52 @@ function CashOut({ pipeline, userName, userEmail }) {
           alignItems: "center", justifyContent: "center", padding: "0 32px",
           background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
         }}>
-          <AnimCard delay={0}>
-            <div style={{
-              background: R.bgCard, borderRadius: 24, padding: "40px 32px",
-              textAlign: "center", boxShadow: R.shadowLg,
+          <div style={{
+            background: R.bgCard, borderRadius: 24, padding: "40px 32px",
+            textAlign: "center", boxShadow: R.shadowLg,
+            opacity: 0,
+            animation: cardVisible ? "cardDrop 400ms ease-out forwards" : "none",
+          }}>
+            <h2 style={{ margin: "0 0 20px", fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: R.navy }}>
+              Request Submitted!
+            </h2>
+            <p style={{
+              margin: "0 0 4px", fontSize: 42, fontWeight: 900, color: R.green, fontFamily: R.fontMono,
+              display: "inline-block",
+              transform: amountPunching ? "scale(1.15)" : "scale(1)",
+              transition: amountPunching ? "transform 150ms ease-out" : "transform 100ms ease-in",
             }}>
-              <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
-              <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: R.navy }}>
-                Request Submitted!
-              </h2>
-              <p style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: R.green, fontFamily: R.fontMono }}>
-                ${parseFloat(amount).toLocaleString()} via {methods.find(m => m.id === method)?.label}
-              </p>
-              <p style={{ color: R.textSecondary, fontSize: 15, lineHeight: 1.6, marginTop: 12 }}>
-                Our team will process your payout within 1–2 business days. You'll get a confirmation when it's on its way!
-              </p>
-              <button onClick={() => { setStep(1); setMethod(null); setAmount(""); setDetail(""); }} style={{
-                marginTop: 28, background: `linear-gradient(135deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
-                border: "none", borderRadius: 12, padding: "14px 36px",
-                color: "#fff", fontSize: 15, fontWeight: 700,
-                fontFamily: R.fontSans, cursor: "pointer",
-                boxShadow: R.shadowMd,
-              }}>Done</button>
+              ${displayAmount.toLocaleString()}
+            </p>
+            <p style={{ margin: "0 0 16px", fontSize: 14, color: R.textSecondary, fontFamily: R.fontSans }}>
+              via {methods.find(m => m.id === method)?.label}
+            </p>
+
+            {/* Logo lockup */}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              gap: 16, marginBottom: 20, marginTop: 8,
+              opacity: logosVisible ? 1 : 0,
+              transition: "opacity 300ms ease-in-out",
+            }}>
+              <img src={accentRoofingLogo} alt="Accent Roofing Service"
+                style={{ height: 36, width: "auto", objectFit: "contain" }} />
+              <div style={{ width: 1, height: 28, background: R.border }} />
+              <img src={rbLogoIcon} alt="Rooster Booster"
+                style={{ height: 28, width: "auto", objectFit: "contain" }} />
             </div>
-          </AnimCard>
+
+            <p style={{ color: R.textSecondary, fontSize: 15, lineHeight: 1.6, margin: "0 0 24px" }}>
+              Our team will process your payout within 1–2 business days. You'll get a confirmation when it's on its way!
+            </p>
+            <button onClick={() => { setStep(1); setMethod(null); setAmount(""); setDetail(""); }} style={{
+              background: `linear-gradient(135deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
+              border: "none", borderRadius: 12, padding: "14px 36px",
+              color: "#fff", fontSize: 15, fontWeight: 700,
+              fontFamily: R.fontSans, cursor: "pointer",
+              boxShadow: R.shadowMd,
+            }}>Done</button>
+          </div>
         </div>
       </Screen>
     );
@@ -1105,7 +1157,7 @@ function CashOut({ pipeline, userName, userEmail }) {
         </p>
 
         {/* Step indicator */}
-        <style>{`@keyframes nodePop { 0%{transform:scale(1)} 50%{transform:scale(1.22)} 100%{transform:scale(1)} }`}</style>
+        <style>{`@keyframes nodePop { 0%{transform:scale(1)} 50%{transform:scale(1.22)} 100%{transform:scale(1)} } @keyframes cardDrop { 0%{transform:translateY(-60px) scale(0.96);opacity:0} 60%{transform:translateY(8px) scale(1.01);opacity:1} 80%{transform:translateY(-4px) scale(0.995)} 100%{transform:translateY(0) scale(1);opacity:1} }`}</style>
         <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
           {steps.map((s, i) => (
             <div key={s} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : "none" }}>
