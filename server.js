@@ -374,6 +374,48 @@ app.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
   }
 });
 
+// ── REFERRER: RESET PIN ────────────────────────────────────────────────────────
+app.post('/api/reset-pin', async (req, res) => {
+  const { token, pin } = req.body;
+
+  if (!/^\d{4}$/.test(String(pin))) {
+    return res.status(400).json({ error: 'PIN must be exactly 4 digits.' });
+  }
+
+  try {
+    const tokenResult = await pool.query(
+      `SELECT prt.id, prt.user_id, u.full_name, u.email
+       FROM pin_reset_tokens prt
+       JOIN users u ON u.id = prt.user_id
+       WHERE prt.token = $1 AND prt.used_at IS NULL AND prt.expires_at > NOW()`,
+      [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Reset link is invalid or has expired.' });
+    }
+
+    const { user_id, full_name, email } = tokenResult.rows[0];
+    const hashedPin = await bcrypt.hash(String(pin), 10);
+
+    await pool.query('UPDATE users SET pin=$1 WHERE id=$2', [hashedPin, user_id]);
+    await pool.query('UPDATE pin_reset_tokens SET used_at=NOW() WHERE token=$1', [token]);
+    try {
+      await pool.query(
+        `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ($1, $2, $3, $4)`,
+        ['pin_reset', full_name, email, 'PIN reset via email link']
+      );
+    } catch (logErr) {
+      console.error('Activity log error (reset-pin):', logErr);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('reset-pin error:', err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
 
