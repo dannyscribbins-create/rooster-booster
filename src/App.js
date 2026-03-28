@@ -415,7 +415,10 @@ function LoginScreen({ onLogin }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: forgotEmail }),
     })
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(res.status);
+        return res.json();
+      })
       .then(() => { setForgotStatus("sent"); })
       .catch(() => {
         setForgotError("Something went wrong. Please try again.");
@@ -639,7 +642,7 @@ function LoginScreen({ onLogin }) {
               </button>
             )}
             <button
-              onClick={() => { setShowForgotPin(false); setForgotStatus("idle"); setForgotError(""); }}
+              onClick={() => { setShowForgotPin(false); setForgotStatus("idle"); setForgotError(""); setForgotEmail(""); }}
               style={{
                 background: "none", border: "none", padding: "12px 0 0",
                 width: "100%", textAlign: "center",
