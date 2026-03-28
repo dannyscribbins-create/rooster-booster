@@ -27,6 +27,12 @@ const forgotPinLimiter = rateLimit({
   message: { error: 'Too many reset requests. Please try again in 15 minutes.' }
 });
 
+const resetPinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many attempts. Please request a new reset link.' }
+});
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
@@ -375,16 +381,20 @@ app.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
 });
 
 // ── REFERRER: RESET PIN ────────────────────────────────────────────────────────
-app.post('/api/reset-pin', async (req, res) => {
+app.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
   const { token, pin } = req.body;
 
   if (!/^\d{4}$/.test(String(pin))) {
     return res.status(400).json({ error: 'PIN must be exactly 4 digits.' });
   }
 
+  if (!token || typeof token !== 'string' || token.trim() === '') {
+    return res.status(400).json({ error: 'Reset token is required.' });
+  }
+
   try {
     const tokenResult = await pool.query(
-      `SELECT prt.id, prt.user_id, u.full_name, u.email
+      `SELECT prt.user_id, u.full_name, u.email
        FROM pin_reset_tokens prt
        JOIN users u ON u.id = prt.user_id
        WHERE prt.token = $1 AND prt.used_at IS NULL AND prt.expires_at > NOW()`,
@@ -398,8 +408,18 @@ app.post('/api/reset-pin', async (req, res) => {
     const { user_id, full_name, email } = tokenResult.rows[0];
     const hashedPin = await bcrypt.hash(String(pin), 10);
 
-    await pool.query('UPDATE users SET pin=$1 WHERE id=$2', [hashedPin, user_id]);
-    await pool.query('UPDATE pin_reset_tokens SET used_at=NOW() WHERE token=$1', [token]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE users SET pin=$1 WHERE id=$2', [hashedPin, user_id]);
+      await client.query('UPDATE pin_reset_tokens SET used_at=NOW() WHERE token=$1', [token]);
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
     try {
       await pool.query(
         `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ($1, $2, $3, $4)`,
