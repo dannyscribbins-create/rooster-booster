@@ -1571,6 +1571,7 @@ function Profile({ onLogout, pipeline, userName, profilePhoto, setProfilePhoto }
 
   function handlePhotoSelect(e) {
     const file = e.target.files[0];
+    e.target.value = "";
     if (!file) return;
     setUploadError("");
     if (file.size > 2 * 1024 * 1024) {
@@ -1595,6 +1596,7 @@ function Profile({ onLogout, pipeline, userName, profilePhoto, setProfilePhoto }
         })
         .catch(() => setUploadError("Upload failed. Please try again."));
     };
+    reader.onerror = () => setUploadError("Could not read the file. Please try again.");
     reader.readAsDataURL(file);
   }
 
