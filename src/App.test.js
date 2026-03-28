@@ -3,6 +3,6 @@ import App from './App';
 
 test('renders app login screen', () => {
   render(<App />);
-  const heading = screen.getByText(/rooster booster/i);
-  expect(heading).toBeInTheDocument();
+  const logo = screen.getByAltText(/rooster booster/i);
+  expect(logo).toBeInTheDocument();
 });
