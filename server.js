@@ -68,6 +68,14 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS method TEXT`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'referrer'`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS pin_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP
+  )`);
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
