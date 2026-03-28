@@ -20,6 +20,12 @@ const adminLoginLimiter = rateLimit({
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' }
 });
 
+const forgotPinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many reset requests. Please try again in 15 minutes.' }
+});
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
