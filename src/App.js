@@ -2461,6 +2461,7 @@ export default function App() {
   const [balance, setBalance]     = useState(0);
   const [paidCount, setPaidCount] = useState(0);
   const [loading, setLoading]     = useState(false);
+  const [profilePhoto, setProfilePhoto] = useState(null);
 
   const isAdmin = window.location.search.includes("admin=true");
 
@@ -2480,6 +2481,12 @@ export default function App() {
           setLoading(false);
         })
         .catch(err => { console.error(err); setLoading(false); });
+      fetch(`${BACKEND_URL}/api/profile/photo`, {
+        headers: { "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}` },
+      })
+        .then(res => res.json())
+        .then(data => { if (data.photo) setProfilePhoto(data.photo); })
+        .catch(() => {}); // non-critical — silently fail
     }
   }, [loggedIn, userName]);
 
@@ -2494,11 +2501,11 @@ export default function App() {
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
 
   const screens = {
-    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} />,
+    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} />,
     pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
     cashout:   <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
     history:   <History pipeline={pipeline} />,
-    profile:   <Profile onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(""); sessionStorage.removeItem("rb_token"); }} pipeline={pipeline} userName={userName} />,
+    profile:   <Profile onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(""); setProfilePhoto(null); sessionStorage.removeItem("rb_token"); }} pipeline={pipeline} userName={userName} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} />,
   };
 
   return (
