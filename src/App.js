@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import rbLogoIcon from './assets/images/rb logo 1024px transparent background.png';
 import rbLogoSquareWordmark from './assets/images/rb logo w wordmark 2000px transparent background.png';
 import accentRoofingLogo from './assets/images/AccentRoofing-Logo.png';
@@ -352,7 +352,9 @@ function AvatarCircle({ userName, profilePhoto, size, shadow, onClick, showCamer
   return (
     <div
       onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(e); } : undefined}
       role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
       style={{ position: "relative", width: size, height: size, flexShrink: 0, cursor: onClick ? "pointer" : "default" }}
     >
       {profilePhoto ? (
@@ -1559,11 +1561,42 @@ function History({ pipeline }) {
 }
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
-function Profile({ onLogout, pipeline, userName }) {
+function Profile({ onLogout, pipeline, userName, profilePhoto, setProfilePhoto }) {
   const soldCount = pipeline.filter(p => p.status === "sold").length;
   const balance   = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
   const nextPayout = getNextPayout(soldCount);
   const [showContact, setShowContact] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef(null);
+
+  function handlePhotoSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadError("");
+    if (file.size > 2 * 1024 * 1024) {
+      setUploadError("Photo must be under 2MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result;
+      fetch(`${BACKEND_URL}/api/profile/photo`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}`,
+        },
+        body: JSON.stringify({ photo: base64 }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) setProfilePhoto(base64);
+          else setUploadError("Upload failed. Please try again.");
+        })
+        .catch(() => setUploadError("Upload failed. Please try again."));
+    };
+    reader.readAsDataURL(file);
+  }
 
   return (
     <Screen>
@@ -1578,15 +1611,21 @@ function Profile({ onLogout, pipeline, userName }) {
 
         {/* Avatar + name */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{
-            width: 64, height: 64, borderRadius: "50%",
-            background: R.red, color: "#fff",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 22, fontWeight: 700, fontFamily: R.fontMono,
-            boxShadow: "0 0 0 4px rgba(255,255,255,0.2)",
-          }}>
-            {userName.split(" ").map(n => n[0]).join("")}
-          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handlePhotoSelect}
+          />
+          <AvatarCircle
+            userName={userName}
+            profilePhoto={profilePhoto}
+            size={64}
+            shadow="0 0 0 4px rgba(255,255,255,0.2)"
+            onClick={() => fileInputRef.current.click()}
+            showCameraHint={true}
+          />
           <div>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: "#fff" }}>{userName}</h1>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "rgba(255,255,255,0.6)", display: "flex", alignItems: "center", gap: 4 }}>
@@ -1595,6 +1634,9 @@ function Profile({ onLogout, pipeline, userName }) {
             </p>
           </div>
         </div>
+        {uploadError && (
+          <p style={{ margin: "8px 0 0", fontSize: 13, color: "#fca5a5" }}>{uploadError}</p>
+        )}
       </div>
 
       <div style={{ padding: "16px 20px 0" }}>
