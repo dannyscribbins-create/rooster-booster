@@ -296,6 +296,79 @@ app.post('/api/profile/photo', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Failed to save photo' }); }
 });
 
+// ── REFERRER: FORGOT PIN ───────────────────────────────────────────────────────
+const crypto = require('crypto');
+
+app.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
+  const { email } = req.body;
+  const genericResponse = { message: "If that email is registered, you'll receive a reset link shortly." };
+
+  try {
+    const userResult = await pool.query(
+      'SELECT id, full_name, email FROM users WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
+
+    if (userResult.rows.length > 0) {
+      const user = userResult.rows[0];
+      const token = crypto.randomBytes(32).toString('hex');
+
+      await pool.query(
+        `INSERT INTO pin_reset_tokens (user_id, token, expires_at)
+         VALUES ($1, $2, NOW() + interval '1 hour')`,
+        [user.id, token]
+      );
+
+      const resetUrl = `${process.env.FRONTEND_URL}/?reset=${token}`;
+
+      try {
+        await resend.emails.send({
+          from: 'onboarding@resend.dev',
+          to: user.email,
+          subject: 'Reset your Rooster Booster PIN',
+          html: `
+            <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+              <p style="font-size: 20px; font-weight: 700; color: #012854; margin: 0 0 8px;">Accent Roofing Service</p>
+              <h1 style="font-size: 24px; color: #012854; margin: 0 0 16px;">Reset your PIN</h1>
+              <p style="font-size: 15px; color: #444; margin: 0 0 24px;">
+                Someone requested a PIN reset for your Rooster Booster referral account.
+                Click the button below to set a new PIN. This link expires in 1 hour.
+              </p>
+              <a href="${resetUrl}" style="
+                display: inline-block;
+                background: #CC0000;
+                color: #fff;
+                text-decoration: none;
+                padding: 14px 28px;
+                border-radius: 8px;
+                font-weight: 700;
+                font-size: 15px;
+                margin-bottom: 24px;
+              ">Set New PIN</a>
+              <p style="font-size: 13px; color: #888; margin: 0;">
+                If you didn't request this, you can safely ignore this email. Your PIN has not been changed.
+              </p>
+            </div>
+          `,
+        });
+      } catch (emailErr) {
+        console.error('Resend error (forgot-pin):', emailErr);
+        // swallow — do not reveal whether email exists
+      }
+
+      await pool.query(
+        `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ($1, $2, $3, $4)`,
+        ['pin_reset_request', user.full_name, user.email, 'Reset link sent']
+      );
+    }
+
+    res.json(genericResponse);
+  } catch (err) {
+    console.error('forgot-pin error:', err);
+    res.json(genericResponse); // always return generic even on DB error
+  }
+});
+
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
 
