@@ -462,6 +462,11 @@ function LoginScreen({ onLogin }) {
         transform: cardVisible ? "translateY(0)" : "translateY(20px)",
         transition: "opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s",
       }}>
+        <img
+          src={accentRoofingLogo}
+          alt="Accent Roofing Service"
+          style={{ width: 120, height: "auto", display: "block", margin: "0 auto 20px" }}
+        />
         <h2 style={{
           margin: "0 0 8px", fontSize: 22, fontWeight: 700,
           fontFamily: R.fontSans, color: R.navy,
