@@ -2693,6 +2693,7 @@ export default function App() {
   const [profilePhoto, setProfilePhoto] = useState(null);
 
   const isAdmin = window.location.search.includes("admin=true");
+  const resetToken = new URLSearchParams(window.location.search).get('reset');
 
   useReferrerFonts();
 
@@ -2727,6 +2728,7 @@ export default function App() {
   }
 
   if (isAdmin) return <AdminPanel />;
+  if (resetToken) return <ResetPinScreen token={resetToken} />;
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
 
   const screens = {
