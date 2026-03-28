@@ -574,7 +574,7 @@ function LoginScreen({ onLogin }) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) {
+function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, profilePhoto }) {
   const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
   const progressPct = Math.min((soldCount / 7) * 100, 100);
@@ -623,15 +623,13 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount }) 
               letterSpacing: "-0.02em",
             }}>Your Dashboard</h1>
           </div>
-          <div style={{
-            width: 44, height: 44, borderRadius: "50%",
-            background: R.red, color: "#fff",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 15, fontWeight: 700, fontFamily: R.fontMono,
-            boxShadow: "0 0 0 3px rgba(255,255,255,0.2)",
-          }}>
-            {userName.split(" ").map(n => n[0]).join("")}
-          </div>
+          <AvatarCircle
+            userName={userName}
+            profilePhoto={profilePhoto}
+            size={44}
+            shadow="0 0 0 3px rgba(255,255,255,0.2)"
+            showCameraHint={false}
+          />
         </div>
 
         {/* Balance card — floats on the hero */}
