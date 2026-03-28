@@ -7,6 +7,7 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
 
 const referrerLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -213,7 +214,7 @@ app.post('/api/login', referrerLoginLimiter, async (req, res) => {
     const user = result.rows[0];
     const match = await bcrypt.compare(String(pin), user.pin);
     if (!match) return res.status(401).json({ error: 'Invalid email or PIN' });
-    const token = require('crypto').randomBytes(32).toString('hex');
+    const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await pool.query(
       'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1,$2,$3)',
@@ -297,8 +298,6 @@ app.post('/api/profile/photo', async (req, res) => {
 });
 
 // ── REFERRER: FORGOT PIN ───────────────────────────────────────────────────────
-const crypto = require('crypto');
-
 app.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
   const { email } = req.body;
   const genericResponse = { message: "If that email is registered, you'll receive a reset link shortly." };
@@ -319,7 +318,9 @@ app.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
         [user.id, token]
       );
 
-      const resetUrl = `${process.env.FRONTEND_URL}/?reset=${token}`;
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      if (!frontendUrl) console.warn('WARNING: FRONTEND_URL is not set — reset links will be broken');
+      const resetUrl = `${frontendUrl}/?reset=${token}`;
 
       try {
         await resend.emails.send({
@@ -356,10 +357,14 @@ app.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
         // swallow — do not reveal whether email exists
       }
 
-      await pool.query(
-        `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ($1, $2, $3, $4)`,
-        ['pin_reset_request', user.full_name, user.email, 'Reset link sent']
-      );
+      try {
+        await pool.query(
+          `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ($1, $2, $3, $4)`,
+          ['pin_reset_request', user.full_name, user.email, 'Reset link sent']
+        );
+      } catch (logErr) {
+        console.error('Activity log error (forgot-pin):', logErr);
+      }
     }
 
     res.json(genericResponse);
@@ -395,7 +400,7 @@ app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
   if (req.body.password !== ADMIN_PASSWORD)
     return res.status(401).json({ error: 'Incorrect password' });
   try {
-    const token = require('crypto').randomBytes(32).toString('hex');
+    const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await pool.query(
       'INSERT INTO sessions (user_id, token, expires_at, role) VALUES (NULL,$1,$2,$3)',
