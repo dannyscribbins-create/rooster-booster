@@ -586,6 +586,8 @@ function ResetPinScreen({ token }) {
   const [confirmPin, setConfirmPin] = useState("");
   const [status, setStatus] = useState("idle"); // idle | loading | success | error
   const [error, setError] = useState("");
+  const [pinFocused, setPinFocused] = useState(false);
+  const [confirmFocused, setConfirmFocused] = useState(false);
   const cardVisible = useEntrance(80);
 
   function handleSubmit() {
@@ -631,9 +633,6 @@ function ResetPinScreen({ token }) {
     fontFamily: R.fontBody, outline: "none",
     boxSizing: "border-box", transition: "border-color 0.2s",
   });
-
-  const [pinFocused, setPinFocused] = useState(false);
-  const [confirmFocused, setConfirmFocused] = useState(false);
 
   return (
     <div style={{
