@@ -635,8 +635,10 @@ app.patch('/api/admin/cashouts/:id', async (req, res) => {
     if (status === 'approved') {
       await pool.query(
         `INSERT INTO payout_announcements (cashout_request_id, user_id)
-         SELECT $1, user_id FROM cashout_requests
-         WHERE id = $1
+         SELECT $1, COALESCE(cr.user_id, u.id)
+         FROM cashout_requests cr
+         LEFT JOIN users u ON u.full_name = cr.full_name
+         WHERE cr.id = $1
            AND NOT EXISTS (
              SELECT 1 FROM payout_announcements WHERE cashout_request_id = $1
            )`,
