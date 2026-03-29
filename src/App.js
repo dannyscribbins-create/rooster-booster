@@ -441,7 +441,7 @@ function LoginScreen({ onLogin }) {
         if (data.error) {
           setError(data.error);
         } else {
-          onLogin(data.fullName, data.email, data.token);
+          onLogin(data.fullName, data.email, data.token, data.showReviewCard ?? true, data.announcement ?? null, data.announcementSettings ?? null);
         }
       })
       .catch(() => {
@@ -2816,6 +2816,11 @@ export default function App() {
   const [paidCount, setPaidCount] = useState(0);
   const [loading, setLoading]     = useState(false);
   const [profilePhoto, setProfilePhoto] = useState(null);
+  const [showReviewCard, setShowReviewCard] = useState(true);
+  const [announcement, setAnnouncement] = useState(null);
+  const [announcementSettings, setAnnouncementSettings] = useState(null);
+  const [showAnnouncement, setShowAnnouncement] = useState(false);
+  const [announcementShown, setAnnouncementShown] = useState(false);
 
   const isAdmin = window.location.search.includes("admin=true");
   const resetToken = new URLSearchParams(window.location.search).get('reset');
@@ -2845,10 +2850,14 @@ export default function App() {
     }
   }, [loggedIn, userName]);
 
-  function handleLogin(name, email, token) {
+  function handleLogin(name, email, token, reviewCard, announcementData, settingsData) {
     setUserName(name);
     setUserEmail(email);
     sessionStorage.setItem("rb_token", token);
+    setShowReviewCard(reviewCard ?? true);
+    setAnnouncement(announcementData ?? null);
+    setAnnouncementSettings(settingsData ?? null);
+    setAnnouncementShown(false);
     setLoggedIn(true);
   }
 
