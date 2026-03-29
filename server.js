@@ -241,6 +241,7 @@ app.post('/api/login', referrerLoginLimiter, async (req, res) => {
     const user = result.rows[0];
     const match = await bcrypt.compare(String(pin), user.pin);
     if (!match) return res.status(401).json({ error: 'Invalid email or PIN' });
+
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await pool.query(
@@ -251,7 +252,33 @@ app.post('/api/login', referrerLoginLimiter, async (req, res) => {
       `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('login',$1,$2,$3)`,
       [user.full_name, user.email, 'Logged in']
     );
-    res.json({ success: true, fullName: user.full_name, email: user.email, token });
+
+    // Increment login_count
+    await pool.query('UPDATE users SET login_count = login_count + 1 WHERE id = $1', [user.id]);
+    const updatedUser = await pool.query('SELECT login_count, review_dismissed_login FROM users WHERE id = $1', [user.id]);
+    const { login_count, review_dismissed_login } = updatedUser.rows[0];
+
+    // showReviewCard: true if never dismissed OR 5+ logins since dismissal
+    const showReviewCard = review_dismissed_login === null || (login_count - review_dismissed_login) >= 5;
+
+    // Check for unseen payout announcement
+    const announcementResult = await pool.query(
+      `SELECT pa.id, cr.amount, cr.full_name as referred_name
+       FROM payout_announcements pa
+       JOIN cashout_requests cr ON cr.id = pa.cashout_request_id
+       WHERE pa.user_id = $1 AND pa.seen_at IS NULL
+       LIMIT 1`,
+      [user.id]
+    );
+    const announcement = announcementResult.rows.length > 0
+      ? { id: announcementResult.rows[0].id, amount: announcementResult.rows[0].amount, referredName: announcementResult.rows[0].referred_name }
+      : null;
+
+    // Fetch announcement settings for popup rendering
+    const settingsResult = await pool.query('SELECT * FROM announcement_settings WHERE id = 1');
+    const announcementSettings = settingsResult.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null };
+
+    res.json({ success: true, fullName: user.full_name, email: user.email, token, showReviewCard, announcement, announcementSettings });
   } catch (err) { res.status(500).json({ error: 'Login failed: ' + err.message }); }
 });
 
