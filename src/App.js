@@ -2,90 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import rbLogoIcon from './assets/images/rb logo 1024px transparent background.png';
 import rbLogoSquareWordmark from './assets/images/rb logo w wordmark 2000px transparent background.png';
 import accentRoofingLogo from './assets/images/AccentRoofing-Logo.png';
-
-// ─── Boost Table ──────────────────────────────────────────────────────────────
-const BOOST_TABLE = [
-  { referral: 1,  label: "1st",          base: 500, boost: 0,   total: 500 },
-  { referral: 2,  label: "2nd",          base: 500, boost: 100, total: 600 },
-  { referral: 3,  label: "3rd",          base: 500, boost: 200, total: 700 },
-  { referral: 4,  label: "4th",          base: 500, boost: 250, total: 750 },
-  { referral: 5,  label: "5th",          base: 500, boost: 300, total: 800 },
-  { referral: 6,  label: "6th",          base: 500, boost: 350, total: 850 },
-  { referral: 7,  label: "7th & beyond", base: 500, boost: 400, total: 900 },
-];
-
-function getNextPayout(soldCount) {
-  const nextIndex = Math.min(soldCount, 6);
-  return BOOST_TABLE[nextIndex];
-}
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:4000";
-
-// ─── Brand Design Tokens ──────────────────────────────────────────────────────
-const R = {
-  // Backgrounds
-  bgPage:     "#EEF2F7",
-  bgSurface:  "#FAFAF8",
-  bgCard:     "#FFFFFF",
-  bgCardTint: "#F5F3EE",
-  bgNavy:     "#012854",
-  bgNavyDark: "#041D3E",
-  bgBlueLight:"#D3E3F0",
-
-  // Brand
-  red:        "#CC0000",
-  redDark:    "#8C0000",
-  navy:       "#012854",
-  navyDark:   "#041D3E",
-  blueLight:  "#D3E3F0",
-
-  // Text
-  textPrimary:   "#1A1A1A",
-  textSecondary: "#6B6B6B",
-  textMuted:     "#A0A0A0",
-  textNavy:      "#012854",
-  textOnDark:    "#FFFFFF",
-
-  // Status
-  green:     "#16a34a",
-  greenBg:   "#dcfce7",
-  greenText: "#15803d",
-  amber:     "#d97706",
-  amberBg:   "#fef3c7",
-  amberText: "#b45309",
-  blue:      "#2563eb",
-  blueBg:    "#dbeafe",
-  blueText:  "#1d4ed8",
-  grayBg:    "#f3f4f6",
-  grayText:  "#6b7280",
-
-  // Borders & Shadows
-  border:    "rgba(0,0,0,0.08)",
-  borderMed: "rgba(0,0,0,0.13)",
-  shadow:    "0 1px 4px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)",
-  shadowMd:  "0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.05)",
-  shadowLg:  "0 8px 32px rgba(1,40,84,0.13)",
-
-  // Fonts
-  fontSans:    "'Montserrat', 'Roboto', sans-serif",
-  fontBody:    "'Roboto', sans-serif",
-  fontMono:    "'Roboto Mono', monospace",
-};
-
-const STATUS_CONFIG = {
-  lead:       { label: "Lead Submitted",       color: R.grayText,  dot: R.grayText,  bg: R.grayBg  },
-  inspection: { label: "Inspection Completed", color: R.blueText,  dot: R.blue,      bg: R.blueBg  },
-  sold:       { label: "Sold ✓",               color: R.greenText, dot: R.green,     bg: R.greenBg },
-  closed:     { label: "Not Sold",             color: "#b91c1c",   dot: "#ef4444",   bg: "#fee2e2" },
-};
-
-// ─── Contractor Config (white-label) ──────────────────────────────────────────
-const CONTRACTOR_CONFIG = {
-  reviewUrl:        'https://g.page/r/CbtYNjHgUCwhEBM/review',
-  reviewButtonText: 'Leave a Review',
-  reviewMessage:    'Enjoying the rewards? Leave us a quick Google review!',
-};
+import { R, STATUS_CONFIG } from './constants/theme';
+import { AD } from './constants/adminTheme';
+import { CONTRACTOR_CONFIG, BACKEND_URL } from './config/contractor';
+import { BOOST_TABLE, getNextPayout } from './constants/boostSchedule';
 
 // ─── Animation Hook ───────────────────────────────────────────────────────────
 function useEntrance(delay = 0, screenKey = '') {
@@ -2170,47 +2090,6 @@ function useAdminFonts() {
     document.head.appendChild(focusStyle);
   }, []);
 }
-
-const AD = {
-  bgPage:     '#12161f',
-  bgSurface:  '#1a1f2e',
-  bgCard:     '#1f2638',
-  bgCardTint: '#242b3d',
-  bgSidebar:  'linear-gradient(160deg, #012854 0%, #041D3E 100%)',
-  bgActive:   'rgba(255,255,255,0.08)',
-  navy:       '#012854',
-  navyDark:   '#041D3E',
-  red:        '#CC0000',
-  redDark:    '#8C0000',
-  blueLight:  '#D3E3F0',
-  textPrimary:   '#f0ede8',
-  textSecondary: 'rgba(240,237,232,0.55)',
-  textTertiary:  'rgba(240,237,232,0.3)',
-  textInverse:   '#ffffff',
-  green:      '#2D8B5F',
-  greenBg:    'rgba(45,139,95,0.15)',
-  greenText:  '#7dd3aa',
-  amber:      '#D97706',
-  amberBg:    'rgba(217,119,6,0.15)',
-  amberText:  '#fbbf24',
-  red2:       '#DC2626',
-  red2Bg:     'rgba(220,38,38,0.12)',
-  red2Text:   '#f87171',
-  blue:       '#2563EB',
-  blueBg:     'rgba(37,99,235,0.12)',
-  blueText:   '#93c5fd',
-  border:     'rgba(255,255,255,0.07)',
-  borderStrong: 'rgba(255,255,255,0.12)',
-  shadowSm:   '0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2)',
-  shadowMd:   '0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2)',
-  shadowLg:   '0 8px 32px rgba(0,0,0,0.5)',
-  radiusSm:  '6px',
-  radiusMd:  '10px',
-  radiusLg:  '16px',
-  radiusPill:'9999px',
-  fontSans:    "'Roboto', sans-serif",
-  fontDisplay: "'DM Serif Display', serif",
-};
 
 const ADMIN_NAV = [
   { id: 'dashboard', icon: 'ph-squares-four',    label: 'Dashboard'    },
