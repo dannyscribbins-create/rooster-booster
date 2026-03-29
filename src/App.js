@@ -2983,6 +2983,17 @@ export default function App() {
     }
   }, [loggedIn, userName]);
 
+  useEffect(() => {
+    if (tab === 'dashboard' && announcement && !announcementShown) {
+      const t = setTimeout(() => {
+        setShowAnnouncement(true);
+        setAnnouncementShown(true);
+      }, 900);
+      return () => clearTimeout(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, announcement]);
+
   function handleLogin(name, email, token, reviewCard, announcementData, settingsData) {
     setUserName(name);
     setUserEmail(email);
@@ -3002,6 +3013,21 @@ export default function App() {
     }).catch(() => {}); // fire-and-forget
   }
 
+  function handleDismissAnnouncement() {
+    if (announcement) {
+      fetch(`${BACKEND_URL}/api/announcement/seen`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('rb_token')}`,
+        },
+        body: JSON.stringify({ announcementId: announcement.id }),
+      }).catch(() => {});
+    }
+    setShowAnnouncement(false);
+    setAnnouncement(null);
+  }
+
   if (isAdmin) return <AdminPanel />;
   if (resetToken) return <ResetPinScreen token={resetToken} />;
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
@@ -3018,6 +3044,14 @@ export default function App() {
     <div style={{ background: R.bgPage, minHeight: "100vh" }}>
       {screens[tab]}
       <BottomNav tab={tab} setTab={setTab} />
+      {showAnnouncement && announcement && announcementSettings?.enabled && (
+        <AnnouncementPopup
+          announcement={announcement}
+          referrerFirstName={userName.split(' ')[0]}
+          onDismiss={handleDismissAnnouncement}
+          settings={announcementSettings}
+        />
+      )}
     </div>
   );
 }
