@@ -81,6 +81,27 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS method TEXT`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'referrer'`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS login_count INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS review_dismissed_login INTEGER`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS payout_announcements (
+    id SERIAL PRIMARY KEY,
+    cashout_request_id INTEGER REFERENCES cashout_requests(id),
+    user_id INTEGER REFERENCES users(id),
+    seen_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_payout_announcements_user_unseen
+    ON payout_announcements(user_id, seen_at)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS announcement_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    enabled BOOLEAN DEFAULT true,
+    mode TEXT DEFAULT 'preset_1',
+    custom_message TEXT,
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+  await pool.query(`INSERT INTO announcement_settings (id, enabled, mode)
+    VALUES (1, true, 'preset_1')
+    ON CONFLICT (id) DO NOTHING`);
   await pool.query(`CREATE TABLE IF NOT EXISTS pin_reset_tokens (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
