@@ -1,0 +1,340 @@
+const express = require('express');
+const router = express.Router();
+const { pool } = require('../db');
+const { fetchPipelineForReferrer } = require('../crm/jobber');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
+
+const referrerLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' }
+});
+
+const forgotPinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many reset requests. Please try again in 15 minutes.' }
+});
+
+const resetPinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many attempts. Please request a new reset link.' }
+});
+
+// ── REFERRER: PIPELINE ────────────────────────────────────────────────────────
+router.get('/api/pipeline', async (req, res) => {
+  try {
+    const token = req.headers['authorization']?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Not authorized' });
+    const sessionResult = await pool.query(
+      'SELECT * FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const data = await fetchPipelineForReferrer(req.query.referrer);
+    res.json(data);
+  } catch (err) {
+    res.status(500).send('API call failed: ' + (err.response ? JSON.stringify(err.response.data) : err.message));
+  }
+});
+
+// ── REFERRER: LOGIN ───────────────────────────────────────────────────────────
+router.post('/api/login', referrerLoginLimiter, async (req, res) => {
+  const { email, pin } = req.body;
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+    if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid email or PIN' });
+    const user = result.rows[0];
+    const match = await bcrypt.compare(String(pin), user.pin);
+    if (!match) return res.status(401).json({ error: 'Invalid email or PIN' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await pool.query(
+      'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1,$2,$3)',
+      [user.id, token, expiresAt]
+    );
+    await pool.query(
+      `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('login',$1,$2,$3)`,
+      [user.full_name, user.email, 'Logged in']
+    );
+
+    // Increment login_count and read back updated values in one round-trip
+    const updatedUser = await pool.query(
+      'UPDATE users SET login_count = login_count + 1 WHERE id = $1 RETURNING login_count, review_dismissed_login',
+      [user.id]
+    );
+    const { login_count, review_dismissed_login } = updatedUser.rows[0];
+
+    // showReviewCard: true if never dismissed OR 5+ logins since dismissal
+    const showReviewCard = review_dismissed_login === null || (login_count - review_dismissed_login) >= 5;
+
+    // Check for unseen payout announcement
+    const announcementResult = await pool.query(
+      `SELECT pa.id, cr.amount, cr.full_name as referred_name
+       FROM payout_announcements pa
+       JOIN cashout_requests cr ON cr.id = pa.cashout_request_id
+       WHERE pa.user_id = $1 AND pa.seen_at IS NULL
+       LIMIT 1`,
+      [user.id]
+    );
+    const announcement = announcementResult.rows.length > 0
+      ? { id: announcementResult.rows[0].id, amount: announcementResult.rows[0].amount, referredName: announcementResult.rows[0].referred_name }
+      : null;
+
+    // Fetch announcement settings for popup rendering
+    const settingsResult = await pool.query('SELECT enabled, mode, custom_message FROM announcement_settings WHERE id = 1');
+    const announcementSettings = settingsResult.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null };
+
+    res.json({ success: true, fullName: user.full_name, email: user.email, token, showReviewCard, announcement, announcementSettings });
+  } catch (err) { res.status(500).json({ error: 'Login failed: ' + err.message }); }
+});
+
+// ── REFERRER: CASH OUT ────────────────────────────────────────────────────────
+router.post('/api/cashout', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  const sessionResult = await pool.query(
+    'SELECT * FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+    [token, 'referrer']
+  );
+  if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+  const { user_id, full_name, email, amount, method } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO cashout_requests (user_id,full_name,email,amount,method,status,requested_at)
+       VALUES ($1,$2,$3,$4,$5,'pending',NOW())`,
+      [user_id, full_name, email, amount, method || null]
+    );
+    await pool.query(
+      `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('cashout',$1,$2,$3)`,
+      [full_name, email, `Requested $${amount} via ${method || 'unknown'}`]
+    );
+    await resend.emails.send({
+      from: 'onboarding@resend.dev', to: 'dannyscribbins@gmail.com',
+      subject: 'New Cash Out Request - Rooster Booster',
+      html: `<h2>New Cash Out Request</h2><p><strong>Name:</strong> ${full_name}</p>
+             <p><strong>Email:</strong> ${email}</p><p><strong>Amount:</strong> $${amount}</p>
+             <p><strong>Method:</strong> ${method || 'Not specified'}</p>
+             <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`
+    });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Failed to save cash out request' }); }
+});
+
+// ── REFERRER: GET PROFILE PHOTO ───────────────────────────────────────────────
+router.get('/api/profile/photo', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+    const result = await pool.query('SELECT profile_photo FROM users WHERE id=$1', [userId]);
+    res.json({ photo: result.rows[0]?.profile_photo || null });
+  } catch (err) { res.status(500).json({ error: 'Failed to fetch photo' }); }
+});
+
+// ── REFERRER: SAVE PROFILE PHOTO ──────────────────────────────────────────────
+router.post('/api/profile/photo', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const { photo } = req.body;
+    if (!photo) return res.status(400).json({ error: 'No photo provided' });
+    if (typeof photo !== 'string' || !photo.startsWith('data:image/') || photo.length > 3 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Invalid photo' });
+    }
+    const userId = sessionResult.rows[0].user_id;
+    await pool.query('UPDATE users SET profile_photo=$1 WHERE id=$2', [photo, userId]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: 'Failed to save photo' }); }
+});
+
+// ── REFERRER: FORGOT PIN ───────────────────────────────────────────────────────
+router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
+  const { email } = req.body;
+  const genericResponse = { message: "If that email is registered, you'll receive a reset link shortly." };
+
+  try {
+    const userResult = await pool.query(
+      'SELECT id, full_name, email FROM users WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
+
+    if (userResult.rows.length > 0) {
+      const user = userResult.rows[0];
+      const token = crypto.randomBytes(32).toString('hex');
+
+      await pool.query(
+        `INSERT INTO pin_reset_tokens (user_id, token, expires_at)
+         VALUES ($1, $2, NOW() + interval '1 hour')`,
+        [user.id, token]
+      );
+
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      if (!frontendUrl) console.warn('WARNING: FRONTEND_URL is not set — reset links will be broken');
+      const resetUrl = `${frontendUrl}/?reset=${token}`;
+
+      try {
+        await resend.emails.send({
+          from: 'onboarding@resend.dev',
+          to: user.email,
+          subject: 'Reset your Rooster Booster PIN',
+          html: `
+            <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+              <p style="font-size: 20px; font-weight: 700; color: #012854; margin: 0 0 8px;">Accent Roofing Service</p>
+              <h1 style="font-size: 24px; color: #012854; margin: 0 0 16px;">Reset your PIN</h1>
+              <p style="font-size: 15px; color: #444; margin: 0 0 24px;">
+                Someone requested a PIN reset for your Rooster Booster referral account.
+                Click the button below to set a new PIN. This link expires in 1 hour.
+              </p>
+              <a href="${resetUrl}" style="
+                display: inline-block;
+                background: #CC0000;
+                color: #fff;
+                text-decoration: none;
+                padding: 14px 28px;
+                border-radius: 8px;
+                font-weight: 700;
+                font-size: 15px;
+                margin-bottom: 24px;
+              ">Set New PIN</a>
+              <p style="font-size: 13px; color: #888; margin: 0;">
+                If you didn't request this, you can safely ignore this email. Your PIN has not been changed.
+              </p>
+            </div>
+          `,
+        });
+      } catch (emailErr) {
+        console.error('Resend error (forgot-pin):', emailErr);
+        // swallow — do not reveal whether email exists
+      }
+
+      try {
+        await pool.query(
+          `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ($1, $2, $3, $4)`,
+          ['pin_reset_request', user.full_name, user.email, 'Reset link sent']
+        );
+      } catch (logErr) {
+        console.error('Activity log error (forgot-pin):', logErr);
+      }
+    }
+
+    res.json(genericResponse);
+  } catch (err) {
+    console.error('forgot-pin error:', err);
+    res.json(genericResponse); // always return generic even on DB error
+  }
+});
+
+// ── REFERRER: RESET PIN ────────────────────────────────────────────────────────
+router.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
+  const { token, pin } = req.body;
+
+  if (!/^\d{4}$/.test(String(pin))) {
+    return res.status(400).json({ error: 'PIN must be exactly 4 digits.' });
+  }
+
+  if (!token || typeof token !== 'string' || token.trim() === '') {
+    return res.status(400).json({ error: 'Reset token is required.' });
+  }
+
+  try {
+    const tokenResult = await pool.query(
+      `SELECT prt.user_id, u.full_name, u.email
+       FROM pin_reset_tokens prt
+       JOIN users u ON u.id = prt.user_id
+       WHERE prt.token = $1 AND prt.used_at IS NULL AND prt.expires_at > NOW()`,
+      [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Reset link is invalid or has expired.' });
+    }
+
+    const { user_id, full_name, email } = tokenResult.rows[0];
+    const hashedPin = await bcrypt.hash(String(pin), 10);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE users SET pin=$1 WHERE id=$2', [hashedPin, user_id]);
+      await client.query('UPDATE pin_reset_tokens SET used_at=NOW() WHERE token=$1', [token]);
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+    try {
+      await pool.query(
+        `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ($1, $2, $3, $4)`,
+        ['pin_reset', full_name, email, 'PIN reset via email link']
+      );
+    } catch (logErr) {
+      console.error('Activity log error (reset-pin):', logErr);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('reset-pin error:', err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  }
+});
+
+// ── REFERRER: DISMISS REVIEW CARD ─────────────────────────────────────────────
+router.post('/api/review/dismiss', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+    await pool.query(
+      'UPDATE users SET review_dismissed_login = login_count WHERE id = $1',
+      [userId]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── REFERRER: MARK ANNOUNCEMENT SEEN ──────────────────────────────────────────
+router.post('/api/announcement/seen', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+    const { announcementId } = req.body;
+    if (!announcementId) return res.status(400).json({ error: 'announcementId is required' });
+    await pool.query(
+      'UPDATE payout_announcements SET seen_at = NOW() WHERE id = $1 AND user_id = $2',
+      [announcementId, userId]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+module.exports = router;
