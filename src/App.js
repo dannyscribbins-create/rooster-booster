@@ -2883,7 +2883,7 @@ function AdminAnnouncementSettings({ setLoggedIn }) {
   const [customMessage, setCustomMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // '' | 'saved' | 'error'
-  const [previewNameIdx, setPreviewNameIdx] = useState(0);
+  const [previewNameIdx, setPreviewNameIdx] = useState(PREVIEW_NAMES.length - 1);
   const [showPreview, setShowPreview] = useState(false);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
