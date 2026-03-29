@@ -253,9 +253,11 @@ app.post('/api/login', referrerLoginLimiter, async (req, res) => {
       [user.full_name, user.email, 'Logged in']
     );
 
-    // Increment login_count
-    await pool.query('UPDATE users SET login_count = login_count + 1 WHERE id = $1', [user.id]);
-    const updatedUser = await pool.query('SELECT login_count, review_dismissed_login FROM users WHERE id = $1', [user.id]);
+    // Increment login_count and read back updated values in one round-trip
+    const updatedUser = await pool.query(
+      'UPDATE users SET login_count = login_count + 1 WHERE id = $1 RETURNING login_count, review_dismissed_login',
+      [user.id]
+    );
     const { login_count, review_dismissed_login } = updatedUser.rows[0];
 
     // showReviewCard: true if never dismissed OR 5+ logins since dismissal
@@ -275,7 +277,7 @@ app.post('/api/login', referrerLoginLimiter, async (req, res) => {
       : null;
 
     // Fetch announcement settings for popup rendering
-    const settingsResult = await pool.query('SELECT * FROM announcement_settings WHERE id = 1');
+    const settingsResult = await pool.query('SELECT enabled, mode, custom_message FROM announcement_settings WHERE id = 1');
     const announcementSettings = settingsResult.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null };
 
     res.json({ success: true, fullName: user.full_name, email: user.email, token, showReviewCard, announcement, announcementSettings });
