@@ -43,7 +43,7 @@ const CLIENT_ID = process.env.JOBBER_CLIENT_ID;
 const CLIENT_SECRET = process.env.JOBBER_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 
-initDB();
+initDB().then(token => { if (token) setAccessToken(token); });
 
 // ── JOBBER OAUTH ──────────────────────────────────────────────────────────────
 app.get('/auth/jobber', (req, res) => {
