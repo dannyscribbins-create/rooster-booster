@@ -2984,7 +2984,7 @@ export default function App() {
   }, [loggedIn, userName]);
 
   useEffect(() => {
-    if (tab === 'dashboard' && announcement && !announcementShown) {
+    if (tab === 'dashboard' && announcement && !announcementShown && announcementSettings?.enabled) {
       const t = setTimeout(() => {
         setShowAnnouncement(true);
         setAnnouncementShown(true);
@@ -2992,7 +2992,7 @@ export default function App() {
       return () => clearTimeout(t);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, announcement]);
+  }, [tab, announcement, announcementSettings]);
 
   function handleLogin(name, email, token, reviewCard, announcementData, settingsData) {
     setUserName(name);
