@@ -888,7 +888,7 @@ function ResetPinScreen({ token }) {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, profilePhoto }) {
+function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview }) {
   const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
   const progressPct = Math.min((soldCount / 7) * 100, 100);
@@ -1194,63 +1194,80 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, pr
       </div>
 
       {/* Google Review Banner */}
-      <div style={{ padding: "16px 20px 0" }}>
-        <AnimCard delay={600} screenKey="dashboard">
-          <div style={{
-            background: "#1a3a6b",
-            border: "1px solid #041D3E",
-            outline: "2px solid #ffffff",
-            outlineOffset: "-4px",
-            borderRadius: 16,
-            padding: "18px 20px",
-            boxShadow: R.shadow,
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-          }}>
-            <i className="ph ph-star-fill" aria-hidden="true" style={{
-              fontSize: 32,
-              color: "#ffffff",
-              flexShrink: 0,
-            }} />
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
-              <p style={{
-                margin: "0 0 10px",
-                fontSize: 15,
-                color: "#D3E3F0",
-                fontFamily: R.fontBody,
-                lineHeight: 1.4,
-              }}>
-                {CONTRACTOR_CONFIG.reviewMessage}
-              </p>
+      {showReviewCard && (
+        <div style={{ padding: "16px 20px 0" }}>
+          <AnimCard delay={600} screenKey="dashboard">
+            <div style={{
+              background: "#1a3a6b",
+              border: "1px solid #041D3E",
+              outline: "2px solid #ffffff",
+              outlineOffset: "-4px",
+              borderRadius: 16,
+              padding: "18px 20px",
+              boxShadow: R.shadow,
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              position: "relative",
+            }}>
+              {/* Dismiss X */}
               <button
-                onClick={() => window.open(CONTRACTOR_CONFIG.reviewUrl, '_blank', 'noopener,noreferrer')}
+                onClick={onDismissReview}
+                aria-label="Dismiss"
                 style={{
-                  background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
-                  border: "none",
-                  borderRadius: 10,
-                  padding: "8px 16px",
-                  color: "#fff",
-                  fontSize: 15,
-                  fontWeight: 700,
-                  fontFamily: R.fontBody,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  boxShadow: "0 4px 14px rgba(204,0,0,0.3)",
-                  transition: "transform 0.2s",
+                  position: "absolute", top: 10, right: 10,
+                  background: "rgba(255,255,255,0.12)", border: "none",
+                  borderRadius: "50%", width: 26, height: 26,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", padding: 0,
                 }}
-                onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
-                onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
               >
-                <i className="ph ph-star" aria-hidden="true" style={{ fontSize: 15 }} />
-                {CONTRACTOR_CONFIG.reviewButtonText}
+                <i className="ph ph-x" style={{ fontSize: 14, color: "#fff" }} />
               </button>
+              <i className="ph ph-star-fill" aria-hidden="true" style={{
+                fontSize: 32,
+                color: "#ffffff",
+                flexShrink: 0,
+              }} />
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+                <p style={{
+                  margin: "0 0 10px",
+                  fontSize: 15,
+                  color: "#D3E3F0",
+                  fontFamily: R.fontBody,
+                  lineHeight: 1.4,
+                }}>
+                  {CONTRACTOR_CONFIG.reviewMessage}
+                </p>
+                <button
+                  onClick={() => window.open(CONTRACTOR_CONFIG.reviewUrl, '_blank', 'noopener,noreferrer')}
+                  style={{
+                    background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "8px 16px",
+                    color: "#fff",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    fontFamily: R.fontBody,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    boxShadow: "0 4px 14px rgba(204,0,0,0.3)",
+                    transition: "transform 0.2s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
+                  onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
+                >
+                  <i className="ph ph-star" aria-hidden="true" style={{ fontSize: 15 }} />
+                  {CONTRACTOR_CONFIG.reviewButtonText}
+                </button>
+              </div>
             </div>
-          </div>
-        </AnimCard>
-      </div>
+          </AnimCard>
+        </div>
+      )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </Screen>
@@ -2861,12 +2878,20 @@ export default function App() {
     setLoggedIn(true);
   }
 
+  function handleDismissReview() {
+    setShowReviewCard(false);
+    fetch(`${BACKEND_URL}/api/review/dismiss`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_token')}` },
+    }).catch(() => {}); // fire-and-forget
+  }
+
   if (isAdmin) return <AdminPanel />;
   if (resetToken) return <ResetPinScreen token={resetToken} />;
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
 
   const screens = {
-    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} />,
+    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={handleDismissReview} />,
     pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
     cashout:   <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
     history:   <History pipeline={pipeline} />,
