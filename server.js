@@ -517,6 +517,7 @@ app.post('/api/announcement/seen', async (req, res) => {
     if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     const userId = sessionResult.rows[0].user_id;
     const { announcementId } = req.body;
+    if (!announcementId) return res.status(400).json({ error: 'announcementId is required' });
     await pool.query(
       'UPDATE payout_announcements SET seen_at = NOW() WHERE id = $1 AND user_id = $2',
       [announcementId, userId]
