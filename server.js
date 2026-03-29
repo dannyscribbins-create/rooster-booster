@@ -632,6 +632,13 @@ app.patch('/api/admin/cashouts/:id', async (req, res) => {
       [result.rows[0].full_name, result.rows[0].email,
        `Cash out request #${req.params.id} ${status} ($${result.rows[0].amount})`]
     );
+    if (status === 'approved') {
+      await pool.query(
+        `INSERT INTO payout_announcements (cashout_request_id, user_id)
+         SELECT $1, user_id FROM cashout_requests WHERE id = $1`,
+        [req.params.id]
+      );
+    }
     res.json(result.rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -688,6 +695,29 @@ app.get('/api/admin/stats', async (req, res) => {
     );
     res.json({ ...stats, cachedAt: new Date(), fromCache: false });
   } catch (err) { res.status(500).json({ error: 'Stats failed: ' + err.message }); }
+});
+
+// ── ADMIN: ANNOUNCEMENT SETTINGS ──────────────────────────────────────────────
+app.get('/api/admin/announcement-settings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const result = await pool.query('SELECT enabled, mode, custom_message FROM announcement_settings WHERE id = 1');
+    res.json(result.rows[0] || { id: 1, enabled: true, mode: 'preset_1', custom_message: null });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/announcement-settings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { enabled, mode, customMessage } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO announcement_settings (id, enabled, mode, custom_message, updated_at)
+       VALUES (1, $1, $2, $3, NOW())
+       ON CONFLICT (id) DO UPDATE SET enabled=$1, mode=$2, custom_message=$3, updated_at=NOW()`,
+      [enabled, mode, customMessage || null]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
