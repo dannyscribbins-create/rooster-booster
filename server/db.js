@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 require('dotenv').config();
+const { setAccessToken } = require('./crm/jobber');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -72,7 +73,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
-    accessToken = result.rows[0].access_token;
+    setAccessToken(result.rows[0].access_token);
     console.log('Token loaded from database');
   } else {
     console.log('No token found - visit /auth/jobber to authorize');
