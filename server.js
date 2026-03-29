@@ -635,7 +635,11 @@ app.patch('/api/admin/cashouts/:id', async (req, res) => {
     if (status === 'approved') {
       await pool.query(
         `INSERT INTO payout_announcements (cashout_request_id, user_id)
-         SELECT $1, user_id FROM cashout_requests WHERE id = $1`,
+         SELECT $1, user_id FROM cashout_requests
+         WHERE id = $1
+           AND NOT EXISTS (
+             SELECT 1 FROM payout_announcements WHERE cashout_request_id = $1
+           )`,
         [req.params.id]
       );
     }
@@ -702,13 +706,16 @@ app.get('/api/admin/announcement-settings', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query('SELECT enabled, mode, custom_message FROM announcement_settings WHERE id = 1');
-    res.json(result.rows[0] || { id: 1, enabled: true, mode: 'preset_1', custom_message: null });
+    res.json(result.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/admin/announcement-settings', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { enabled, mode, customMessage } = req.body;
+  const VALID_MODES = ['preset_1', 'preset_2', 'custom'];
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+  if (!VALID_MODES.includes(mode)) return res.status(400).json({ error: 'Invalid mode' });
   try {
     await pool.query(
       `INSERT INTO announcement_settings (id, enabled, mode, custom_message, updated_at)
