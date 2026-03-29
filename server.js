@@ -4,6 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 const { pool, initDB } = require('./server/db');
 const { setAccessToken, refreshTokenIfNeeded, fetchPipelineForReferrer } = require('./server/crm/jobber');
+const { verifyAdminSession } = require('./server/middleware/auth');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const bcrypt = require('bcrypt');
@@ -380,24 +381,6 @@ app.post('/api/announcement/seen', async (req, res) => {
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
 
-async function verifyAdminSession(req, res) {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) { res.status(401).json({ error: 'Not authorized' }); return false; }
-  try {
-    const result = await pool.query(
-      'SELECT id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'admin']
-    );
-    if (!result.rows.length) {
-      res.status(401).json({ error: 'Session expired. Please log in again.' });
-      return false;
-    }
-    return true;
-  } catch (err) {
-    res.status(500).json({ error: 'Auth check failed' });
-    return false;
-  }
-}
 
 app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
   if (req.body.password !== ADMIN_PASSWORD)
