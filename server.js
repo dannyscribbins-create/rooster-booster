@@ -486,6 +486,45 @@ app.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
   }
 });
 
+// ── REFERRER: DISMISS REVIEW CARD ─────────────────────────────────────────────
+app.post('/api/review/dismiss', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+    await pool.query(
+      'UPDATE users SET review_dismissed_login = login_count WHERE id = $1',
+      [userId]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── REFERRER: MARK ANNOUNCEMENT SEEN ──────────────────────────────────────────
+app.post('/api/announcement/seen', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+    const { announcementId } = req.body;
+    await pool.query(
+      'UPDATE payout_announcements SET seen_at = NOW() WHERE id = $1 AND user_id = $2',
+      [announcementId, userId]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
 
