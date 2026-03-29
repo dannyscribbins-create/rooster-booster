@@ -1222,7 +1222,7 @@ function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, pr
                   cursor: "pointer", padding: 0,
                 }}
               >
-                <i className="ph ph-x" style={{ fontSize: 14, color: "#fff" }} />
+                <i className="ph ph-x" aria-hidden="true" style={{ fontSize: 14, color: "#fff" }} />
               </button>
               <i className="ph ph-star-fill" aria-hidden="true" style={{
                 fontSize: 32,
