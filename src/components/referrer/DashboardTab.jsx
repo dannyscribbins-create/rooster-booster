@@ -465,6 +465,9 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
               width: '100%', background: '#fff',
               borderRadius: '20px 20px 0 0',
               padding: 24,
+              paddingBottom: 40,
+              maxHeight: '85vh',
+              overflowY: 'auto',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
             }}
           >

@@ -4,6 +4,7 @@ import Pipeline from './PipelineTab';
 import CashOut from './CashOutTab';
 import History from './HistoryTab';
 import Profile from './ProfileTab';
+import ReferAFriendTab from './ReferAFriendTab';
 import AnnouncementPopup from './AnnouncementPopup';
 
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
@@ -13,10 +14,13 @@ function BottomNav({ tab, setTab }) {
     { id: "pipeline",  icon: "ph-chart-bar",       label: "Pipeline" },
     { id: "cashout",   icon: "ph-money",           label: "Cash Out" },
     { id: "history",   icon: "ph-clock-clockwise", label: "History"  },
+    { id: "refer",     icon: "ph-share-network",   label: "Refer"    },
     { id: "profile",   icon: "ph-user-circle",     label: "Profile"  },
   ];
 
   const activeIndex = tabs.findIndex(t => t.id === tab);
+  const isReferActive = tab === "refer";
+  const activeColor = isReferActive ? R.red : "#012854";
 
   return (
     <nav style={{
@@ -38,18 +42,19 @@ function BottomNav({ tab, setTab }) {
       <div style={{
         position: "absolute",
         top: 62,
-        left: `calc(${activeIndex * 20 + 10}% - 12px)`,
+        left: `calc(${(activeIndex + 0.5) / tabs.length * 100}% - 12px)`,
         width: 24,
         height: 3,
         borderRadius: 9999,
-        background: "#012854",
-        transition: "left 300ms ease-in-out",
+        background: activeColor,
+        transition: "left 300ms ease-in-out, background 200ms ease",
         pointerEvents: "none",
       }} />
 
       {/* Tab buttons */}
       {tabs.map(t => {
         const active = tab === t.id;
+        const color = active && t.id === "refer" ? R.red : "#012854";
         return (
           <button
             key={t.id}
@@ -77,7 +82,7 @@ function BottomNav({ tab, setTab }) {
               style={{
                 fontSize: 22,
                 lineHeight: 1,
-                color: "#012854",
+                color,
                 opacity: active ? 1 : 0.4,
                 transition: "opacity 200ms ease",
               }}
@@ -88,7 +93,7 @@ function BottomNav({ tab, setTab }) {
               letterSpacing: "0.05em",
               textTransform: "uppercase",
               fontWeight: 600,
-              color: "#012854",
+              color,
               whiteSpace: "nowrap",
               opacity: active ? 1 : 0,
               transition: "opacity 200ms ease",
@@ -117,6 +122,7 @@ export default function ReferrerApp({
     pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
     cashout:   <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
     history:   <History pipeline={pipeline} />,
+    refer:     <ReferAFriendTab userName={userName} token={sessionStorage.getItem('rb_token')} />,
     profile:   <Profile onLogout={onLogout} pipeline={pipeline} userName={userName} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} />,
   };
 
