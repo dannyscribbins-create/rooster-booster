@@ -7,4 +7,6 @@ export const CONTRACTOR_CONFIG = {
   reviewUrl:        'https://g.page/r/CbtYNjHgUCwhEBM/review',
   reviewButtonText: 'Leave a Review',
   reviewMessage:    'Enjoying the rewards? Leave us a quick Google review!',
+  phone:            '770-277-4869',
+  email:            'contact@leaksmith.com',
 };
