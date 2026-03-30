@@ -6,7 +6,32 @@
       "Bash(node:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(ls /c/Users/stacy/rooster-booster/*.toml /c/Users/stacy/rooster-booster/*.json)"
+      "Bash(ls /c/Users/stacy/rooster-booster/*.toml /c/Users/stacy/rooster-booster/*.json)",
+      "Bash(grep:*)",
+      "Bash(grep -n 'padding: \"\"\"\"14px 20px\"\"\"\"' src/App.js)",
+      "Bash(grep -n 'padding: \"\"\"\"10px 14px\"\"\"\"' src/App.js)",
+      "Bash(grep -n \"margin: ''''1px 0 0''''\" src/App.js)",
+      "Bash(CI=true npm test)",
+      "Bash(git checkout:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(gh pr:*)",
+      "Bash(git merge:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(SKIP_PREFLIGHT_CHECK=true npm run build)",
+      "Bash(pkill -f \"react-scripts\")",
+      "Bash(xargs -r kill -9)",
+      "Bash(curl -s http://localhost:3000/?reset=abc123)",
+      "Bash(curl -s http://localhost:3001/?reset=abc123)",
+      "Bash(pkill:*)",
+      "Bash(npm test:*)",
+      "Skill(update-config)",
+      "Bash(curl:*)",
+      "Bash(npm run:*)",
+      "Bash(railway logs:*)",
+      "Bash(railway status:*)",
+      "Bash(railway service:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

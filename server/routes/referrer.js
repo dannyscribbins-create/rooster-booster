@@ -7,6 +7,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const QRCode = require('qrcode');
 
 const referrerLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -314,6 +315,23 @@ router.post('/api/review/dismiss', async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── REFERRER: QR CODE ─────────────────────────────────────────────────────────
+router.get('/api/referrer/qr-code', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+    const referralUrl = `https://leaksmith.com/refer?ref=${userId}&contractor=accent-roofing`;
+    const qrCodeDataUrl = await QRCode.toDataURL(referralUrl);
+    res.json({ qrCodeDataUrl });
+  } catch (err) { res.status(500).json({ error: 'Failed to generate QR code' }); }
 });
 
 // ── REFERRER: MARK ANNOUNCEMENT SEEN ──────────────────────────────────────────

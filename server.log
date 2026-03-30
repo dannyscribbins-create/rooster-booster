@@ -1,0 +1,17 @@
+[dotenv@17.3.1] injecting env (6) from .env -- tip: ⚙️  override existing env vars with { override: true }
+Server running on port 4000
+C:\Users\stacy\rooster-booster\node_modules\pg-pool\index.js:45
+    Error.captureStackTrace(err)
+          ^
+
+Error: getaddrinfo ENOTFOUND postgres.railway.internal
+    at C:\Users\stacy\rooster-booster\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async initDB (C:\Users\stacy\rooster-booster\server.js:47:3) {
+  errno: -3008,
+  code: 'ENOTFOUND',
+  syscall: 'getaddrinfo',
+  hostname: 'postgres.railway.internal'
+}
+
+Node.js v24.14.0
