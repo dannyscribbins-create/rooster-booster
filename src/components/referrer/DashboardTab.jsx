@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { ShareNetwork, X, Lock, DownloadSimple } from '@phosphor-icons/react';
 import { R } from '../../constants/theme';
 import { BOOST_TABLE, getNextPayout } from '../../constants/boostSchedule';
-import { CONTRACTOR_CONFIG } from '../../config/contractor';
+import { CONTRACTOR_CONFIG, BACKEND_URL } from '../../config/contractor';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import StatusBadge from '../shared/StatusBadge';
@@ -14,12 +15,51 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
   const progressPct = Math.min((soldCount / 7) * 100, 100);
   const [barAnimated, setBarAnimated] = useState(false);
 
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrError, setQrError] = useState(false);
+  const [shareLinkTapped, setShareLinkTapped] = useState(false);
+
   useEffect(() => {
     if (!loading) {
       const t = setTimeout(() => setBarAnimated(true), 400);
       return () => clearTimeout(t);
     }
   }, [loading]);
+
+  useEffect(() => {
+    if (!showQRModal) return;
+    setQrLoading(true);
+    setQrError(false);
+    fetch(`${BACKEND_URL}/api/referrer/qr-code`, {
+      headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.qrCodeDataUrl) {
+          setQrCodeDataUrl(data.qrCodeDataUrl);
+        } else {
+          setQrError(true);
+        }
+      })
+      .catch(() => setQrError(true))
+      .finally(() => setQrLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showQRModal]);
+
+  const handleSaveQr = () => {
+    if (!qrCodeDataUrl) return;
+    const a = document.createElement('a');
+    a.href = qrCodeDataUrl;
+    a.download = 'my-referral-qr.png';
+    a.click();
+  };
+
+  const closeModal = () => {
+    setShowQRModal(false);
+    setShareLinkTapped(false);
+  };
 
   return (
     <Screen>
@@ -118,6 +158,22 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
               Cash Out Now
             </button>
           </div>
+        </AnimCard>
+
+        {/* Refer a Friend button */}
+        <AnimCard delay={180} screenKey="dashboard" style={{ marginTop: 12 }}>
+          <button
+            onClick={() => setShowQRModal(true)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 8, background: R.red, border: 'none', borderRadius: 12,
+              padding: 16, color: '#fff', fontSize: 16, fontWeight: 700,
+              fontFamily: R.fontSans, cursor: 'pointer',
+            }}
+          >
+            <ShareNetwork size={20} weight="fill" />
+            Refer a Friend
+          </button>
         </AnimCard>
       </div>
 
@@ -390,6 +446,137 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
       )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+
+      {/* QR Code Modal */}
+      {showQRModal && (
+        <div
+          onClick={closeModal}
+          style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            minHeight: '100vh',
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'flex-end',
+            zIndex: 100,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '100%', background: '#fff',
+              borderRadius: '20px 20px 0 0',
+              padding: 24,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+            }}
+          >
+            {/* Top row */}
+            <div style={{
+              width: '100%', display: 'flex',
+              justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: 4,
+            }}>
+              <span style={{
+                fontFamily: R.fontSans, fontSize: 18, fontWeight: 700, color: R.navy,
+              }}>
+                Your Referral QR Code
+              </span>
+              <button
+                onClick={closeModal}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: 4, display: 'flex', alignItems: 'center',
+                }}
+              >
+                <X size={22} color={R.navy} weight="bold" />
+              </button>
+            </div>
+
+            {/* Spinner */}
+            {qrLoading && (
+              <div style={{
+                width: 180, height: 180,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  border: `3px solid ${R.navy}`, borderTopColor: 'transparent',
+                  animation: 'spin 0.8s linear infinite',
+                }} />
+              </div>
+            )}
+
+            {/* Error */}
+            {!qrLoading && qrError && (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <p style={{ fontFamily: R.fontBody, fontSize: 14, color: R.red, margin: '0 0 12px' }}>
+                  Could not load your QR code. Please try again.
+                </p>
+                <button
+                  onClick={() => { setQrError(false); setShowQRModal(false); setTimeout(() => setShowQRModal(true), 50); }}
+                  style={{
+                    background: R.navy, color: '#fff', border: 'none', borderRadius: 8,
+                    padding: '10px 20px', fontFamily: R.fontSans, fontWeight: 600,
+                    fontSize: 14, cursor: 'pointer',
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* QR image + buttons */}
+            {!qrLoading && !qrError && qrCodeDataUrl && (
+              <>
+                <img
+                  src={qrCodeDataUrl}
+                  alt="Your personal referral QR code"
+                  style={{ width: 180, height: 180, display: 'block' }}
+                />
+                <p style={{
+                  fontFamily: R.fontBody, fontSize: 12, color: R.textMuted,
+                  margin: 0, textAlign: 'center',
+                }}>
+                  Scan to refer a friend
+                </p>
+                <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+                  <button
+                    onClick={() => setShareLinkTapped(true)}
+                    disabled
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      gap: 6, background: R.red, opacity: 0.5, color: '#fff',
+                      border: 'none', borderRadius: 10, padding: '12px 0',
+                      fontFamily: R.fontSans, fontWeight: 600, fontSize: 14, cursor: 'not-allowed',
+                    }}
+                  >
+                    <Lock size={16} weight="bold" />
+                    Share Link
+                  </button>
+                  <button
+                    onClick={handleSaveQr}
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      gap: 6, background: R.navy, color: '#fff',
+                      border: 'none', borderRadius: 10, padding: '12px 0',
+                      fontFamily: R.fontSans, fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                    }}
+                  >
+                    <DownloadSimple size={16} weight="bold" />
+                    Save QR
+                  </button>
+                </div>
+                {shareLinkTapped && (
+                  <p style={{
+                    fontFamily: R.fontBody, fontSize: 13, color: R.textSecondary,
+                    margin: 0, textAlign: 'center',
+                  }}>
+                    Share link coming soon!
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </Screen>
   );
 }
