@@ -20,7 +20,7 @@ router.get('/callback', async (req, res) => {
     await pool.query(
       `INSERT INTO tokens (id,access_token,refresh_token,expires_at,updated_at) VALUES (1,$1,$2,$3,NOW())
        ON CONFLICT (id) DO UPDATE SET access_token=$1, refresh_token=$2, expires_at=$3, updated_at=NOW()`,
-      [accessToken, response.data.refresh_token, expiresAt]
+      [response.data.access_token, response.data.refresh_token, expiresAt]
     );
     res.send('Authorization successful! You can close this tab.');
   } catch (err) { res.status(500).send('Authorization failed: ' + err.message); }
