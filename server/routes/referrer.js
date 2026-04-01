@@ -344,6 +344,7 @@ router.get('/api/referrer/about', async (req, res) => {
       [token, 'referrer']
     );
     if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
 
     const aboutResult = await pool.query(
       "SELECT * FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1"
@@ -388,7 +389,26 @@ router.get('/api/referrer/about', async (req, res) => {
       }
     }
 
-    res.json({ ...about, google_rating, google_review_count });
+    const userResult = await pool.query('SELECT about_modal_seen FROM users WHERE id = $1', [userId]);
+    const about_modal_seen = userResult.rows[0]?.about_modal_seen ?? false;
+
+    res.json({ ...about, google_rating, google_review_count, about_modal_seen });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── REFERRER: MARK ABOUT MODAL SEEN ───────────────────────────────────────────
+router.patch('/api/referrer/about/seen', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+    await pool.query('UPDATE users SET about_modal_seen = true WHERE id = $1', [userId]);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

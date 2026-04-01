@@ -7,13 +7,33 @@ import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import StatusBadge from '../shared/StatusBadge';
 import AvatarCircle from '../shared/AvatarCircle';
+import ContractorAboutModal from './ContractorAboutModal';
+import BookingFormModal from './BookingFormModal';
+
+const CERT_LABELS = {
+  gaf_master_elite:  'GAF Master Elite',
+  gaf_certified:     'GAF Certified Contractor',
+  owens_corning:     'Owens Corning Preferred',
+  certainteed:       'CertainTeed SELECT ShingleMaster',
+  bbb:               'BBB Accredited Business',
+  angi:              'Angi Super Service Award',
+  homeadvisor:       'HomeAdvisor Elite Service',
+  haag:              'HAAG Certified Inspector',
+  nrca:              'NRCA Member',
+  licensed_insured:  'Licensed & Insured',
+};
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-export default function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview }) {
+export default function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken }) {
   const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
   const progressPct = Math.min((soldCount / 7) * 100, 100);
   const [barAnimated, setBarAnimated] = useState(false);
+
+  const [aboutData, setAboutData]           = useState(null);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [bookingSubmitted, setBookingSubmitted] = useState(false);
 
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState(null);
@@ -27,6 +47,48 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
       return () => clearTimeout(t);
     }
   }, [loading]);
+
+  // Fetch About Us data on mount
+  useEffect(() => {
+    if (!sessionToken) return;
+    fetch(`${BACKEND_URL}/api/referrer/about`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (!d || !d.enabled) { setAboutData(null); return; }
+        setAboutData(d);
+      })
+      .catch(() => setAboutData(null));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-show About Us modal on first visit
+  useEffect(() => {
+    if (aboutData && !aboutData.about_modal_seen) {
+      setShowAboutModal(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aboutData]);
+
+  function markAboutModalSeen() {
+    if (!sessionToken) return;
+    fetch(`${BACKEND_URL}/api/referrer/about/seen`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    }).catch(() => {});
+  }
+
+  function handleAboutContinue() {
+    markAboutModalSeen();
+    setShowAboutModal(false);
+  }
+
+  function handleAboutBook() {
+    markAboutModalSeen();
+    setShowAboutModal(false);
+    setShowBookingModal(true);
+  }
 
   useEffect(() => {
     if (!showQRModal) return;
@@ -176,6 +238,83 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
           </button>
         </AnimCard>
       </div>
+
+      {/* Booking Banner */}
+      {aboutData?.booking_enabled && !bookingSubmitted && (
+        <div style={{ padding: "16px 20px 0" }}>
+          <AnimCard delay={200} screenKey="dashboard">
+            <div style={{
+              background: R.navy, borderRadius: 16, padding: '18px 20px',
+              boxShadow: R.shadowLg,
+            }}>
+              <p style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: '#fff', fontFamily: R.fontSans }}>
+                Book Your Free Inspection
+              </p>
+              <p style={{ margin: '0 0 14px', fontSize: 13, color: 'rgba(211,227,240,0.75)', fontFamily: R.fontBody, lineHeight: 1.5 }}>
+                Schedule your free roof inspection with {CONTRACTOR_CONFIG.name || 'us'} today.
+              </p>
+              <button
+                onClick={() => setShowBookingModal(true)}
+                style={{
+                  background: R.red, border: 'none', borderRadius: 10, padding: '11px 20px',
+                  color: '#fff', fontSize: 14, fontWeight: 700,
+                  fontFamily: R.fontSans, cursor: 'pointer',
+                }}
+              >
+                Book Now
+              </button>
+            </div>
+          </AnimCard>
+        </div>
+      )}
+
+      {/* About Us Card */}
+      {aboutData && (
+        <div style={{ padding: "16px 20px 0" }}>
+          <AnimCard delay={220} screenKey="dashboard">
+            <div
+              onClick={() => setShowAboutModal(true)}
+              style={{
+                background: R.bgCard, border: `1px solid ${R.border}`,
+                borderRadius: 16, padding: '16px 20px',
+                boxShadow: R.shadow, cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.boxShadow = R.shadowMd}
+              onMouseLeave={e => e.currentTarget.style.boxShadow = R.shadow}
+            >
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: R.textMuted, fontFamily: R.fontMono, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                About {CONTRACTOR_CONFIG.name || 'Your Contractor'}
+              </p>
+              {aboutData.google_rating != null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}>
+                  <i className="ph ph-star-fill" style={{ color: '#F5A623', fontSize: 14 }} />
+                  <span style={{ fontSize: 14, fontWeight: 700, color: R.navy, fontFamily: R.fontMono }}>
+                    {aboutData.google_rating}
+                  </span>
+                  <span style={{ fontSize: 12, color: R.textSecondary }}>on Google</span>
+                </div>
+              )}
+              {aboutData.certifications?.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {aboutData.certifications.slice(0, 2).map(key => (
+                    <span key={key} style={{
+                      padding: '3px 8px', borderRadius: 99,
+                      background: R.bgBlueLight, color: R.navy,
+                      fontSize: 11, fontFamily: R.fontBody,
+                    }}>
+                      {CERT_LABELS[key] || key}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 13, color: R.navy, fontWeight: 600, fontFamily: R.fontBody }}>Learn more</span>
+                <i className="ph ph-arrow-right" style={{ fontSize: 13, color: R.navy }} />
+              </div>
+            </div>
+          </AnimCard>
+        </div>
+      )}
 
       {/* Boost Progress Card */}
       <div style={{ padding: "16px 20px 0" }}>
@@ -446,6 +585,22 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
       )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+
+      {/* About Us Modal */}
+      <ContractorAboutModal
+        visible={showAboutModal}
+        onContinue={handleAboutContinue}
+        onBook={handleAboutBook}
+        aboutData={aboutData}
+      />
+
+      {/* Booking Form Modal */}
+      <BookingFormModal
+        visible={showBookingModal}
+        onClose={() => setShowBookingModal(false)}
+        onBookingSuccess={() => setBookingSubmitted(true)}
+        sessionToken={sessionToken}
+      />
 
       {/* QR Code Modal */}
       {showQRModal && (

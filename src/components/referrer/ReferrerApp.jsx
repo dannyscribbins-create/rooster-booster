@@ -118,7 +118,7 @@ export default function ReferrerApp({
   onLogout,
 }) {
   const screens = {
-    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} />,
+    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} />,
     pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
     cashout:   <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
     history:   <History pipeline={pipeline} />,
