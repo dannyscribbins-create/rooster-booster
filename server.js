@@ -9,6 +9,7 @@ const adminRoutes = require('./server/routes/admin');
 const stripeRoutes = require('./server/routes/stripe');
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 
