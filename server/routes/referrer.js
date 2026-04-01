@@ -117,7 +117,7 @@ router.post('/api/cashout', async (req, res) => {
       [full_name, email, `Requested $${amount} via ${method || 'unknown'}`]
     );
     await resend.emails.send({
-      from: 'onboarding@resend.dev', to: process.env.RESEND_TO_EMAIL,
+      from: 'Rooster Booster <noreply@roofmiles.com>', to: process.env.RESEND_TO_EMAIL,
       subject: 'New Cash Out Request - Rooster Booster',
       html: `<h2>New Cash Out Request</h2><p><strong>Name:</strong> ${full_name}</p>
              <p><strong>Email:</strong> ${email}</p><p><strong>Amount:</strong> $${amount}</p>
@@ -192,7 +192,7 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
 
       try {
         await resend.emails.send({
-          from: 'onboarding@resend.dev',
+          from: 'Rooster Booster <noreply@roofmiles.com>',
           to: user.email,
           subject: 'Reset your Rooster Booster PIN',
           html: `
@@ -435,7 +435,7 @@ router.post('/api/referrer/booking', async (req, res) => {
     const toEmail = aboutResult.rows[0]?.booking_email || process.env.RESEND_TO_EMAIL;
 
     await resend.emails.send({
-      from: 'onboarding@resend.dev',
+      from: 'Rooster Booster <noreply@roofmiles.com>',
       to: toEmail,
       subject: `New Inspection Booking Request — ${name}`,
       html: `<h2>New Inspection Booking Request</h2>
