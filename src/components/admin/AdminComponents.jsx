@@ -7,7 +7,8 @@ export const ADMIN_NAV = [
   { id: 'referrers', icon: 'ph-users',            label: 'Referrers'    },
   { id: 'cashouts',  icon: 'ph-money',            label: 'Cash Outs'    },
   { id: 'activity',  icon: 'ph-clock-clockwise',  label: 'Activity'     },
-  { id: 'settings',  icon: 'ph-megaphone',        label: 'Announcements'},
+  { id: 'settings',  icon: 'ph-megaphone',             label: 'Announcements'      },
+  { id: 'about',    icon: 'ph-identification-card',  label: 'About Us & Booking' },
 ];
 
 export function AdminSidebar({ page, setPage, pendingCount }) {
