@@ -117,7 +117,7 @@ router.post('/api/cashout', async (req, res) => {
       [full_name, email, `Requested $${amount} via ${method || 'unknown'}`]
     );
     await resend.emails.send({
-      from: 'onboarding@resend.dev', to: 'dannyscribbins@gmail.com',
+      from: 'onboarding@resend.dev', to: process.env.RESEND_TO_EMAIL,
       subject: 'New Cash Out Request - Rooster Booster',
       html: `<h2>New Cash Out Request</h2><p><strong>Name:</strong> ${full_name}</p>
              <p><strong>Email:</strong> ${email}</p><p><strong>Amount:</strong> $${amount}</p>
