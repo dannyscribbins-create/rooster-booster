@@ -171,6 +171,47 @@ router.get('/api/admin/stats', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Stats failed: ' + err.message }); }
 });
 
+// ── ADMIN: ABOUT ──────────────────────────────────────────────────────────────
+router.get('/api/admin/about', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const result = await pool.query(
+      "SELECT * FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1"
+    );
+    if (result.rows.length === 0) {
+      return res.json({
+        contractor_id: 'accent-roofing',
+        enabled: false,
+        booking_enabled: false,
+        bio: null,
+        years_in_business: null,
+        service_area: null,
+        google_place_id: null,
+        certifications: [],
+        booking_email: null,
+        updated_at: null
+      });
+    }
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/api/admin/about', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, certifications, booking_email } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO contractor_about (contractor_id, enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, certifications, booking_email, updated_at)
+       VALUES ('accent-roofing', $1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       ON CONFLICT (contractor_id) DO UPDATE SET
+         enabled=$1, booking_enabled=$2, bio=$3, years_in_business=$4, service_area=$5,
+         google_place_id=$6, certifications=$7, booking_email=$8, updated_at=NOW()`,
+      [enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, certifications || [], booking_email]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── ADMIN: ANNOUNCEMENT SETTINGS ──────────────────────────────────────────────
 router.get('/api/admin/announcement-settings', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;

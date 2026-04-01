@@ -69,6 +69,24 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     used_at TIMESTAMP
   )`);
   await pool.query(`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS contractor_id TEXT DEFAULT 'accent-roofing'`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS contractor_about (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL DEFAULT 'accent-roofing',
+    enabled BOOLEAN DEFAULT false,
+    booking_enabled BOOLEAN DEFAULT false,
+    bio TEXT,
+    years_in_business TEXT,
+    service_area TEXT,
+    google_place_id TEXT,
+    certifications TEXT[] DEFAULT '{}',
+    booking_email TEXT,
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contractor_about_contractor_id ON contractor_about(contractor_id)`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS about_modal_seen BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS booking_submitted BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE admin_cache ADD COLUMN IF NOT EXISTS cache_key TEXT`);
+  await pool.query(`ALTER TABLE admin_cache ADD COLUMN IF NOT EXISTS data JSONB`);
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {

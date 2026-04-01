@@ -334,6 +334,103 @@ router.get('/api/referrer/qr-code', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Failed to generate QR code' }); }
 });
 
+// ── REFERRER: ABOUT ───────────────────────────────────────────────────────────
+router.get('/api/referrer/about', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+
+    const aboutResult = await pool.query(
+      "SELECT * FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1"
+    );
+    const about = aboutResult.rows[0];
+    if (!about || !about.enabled) return res.json({ enabled: false });
+
+    let google_rating = null;
+    let google_review_count = null;
+
+    if (about.google_place_id && process.env.GOOGLE_PLACES_API_KEY) {
+      try {
+        const cached = await pool.query(
+          "SELECT data, cached_at FROM admin_cache WHERE cache_key = 'google_rating_accent-roofing' AND cached_at > NOW() - INTERVAL '86400 seconds'"
+        );
+        if (cached.rows.length > 0) {
+          google_rating = cached.rows[0].data.rating ?? null;
+          google_review_count = cached.rows[0].data.userRatingCount ?? null;
+        } else {
+          const googleRes = await fetch(
+            `https://places.googleapis.com/v1/places/${encodeURIComponent(about.google_place_id)}`,
+            {
+              headers: {
+                'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
+                'X-Goog-FieldMask': 'places.rating,places.userRatingCount'
+              }
+            }
+          );
+          if (googleRes.ok) {
+            const googleData = await googleRes.json();
+            google_rating = googleData.rating ?? null;
+            google_review_count = googleData.userRatingCount ?? null;
+            await pool.query(
+              `INSERT INTO admin_cache (id, cache_key, data, cached_at) VALUES (2, 'google_rating_accent-roofing', $1, NOW())
+               ON CONFLICT (id) DO UPDATE SET cache_key='google_rating_accent-roofing', data=$1, cached_at=NOW()`,
+              [JSON.stringify({ rating: google_rating, userRatingCount: google_review_count })]
+            );
+          }
+        }
+      } catch (e) {
+        console.error('Google Places API error:', e.message);
+      }
+    }
+
+    res.json({ ...about, google_rating, google_review_count });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── REFERRER: BOOKING ─────────────────────────────────────────────────────────
+router.post('/api/referrer/booking', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    const { name, phone, email, address, notes } = req.body;
+    if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required' });
+
+    await pool.query('UPDATE users SET booking_submitted = true WHERE id = $1', [userId]);
+
+    const aboutResult = await pool.query(
+      "SELECT booking_email FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1"
+    );
+    const toEmail = aboutResult.rows[0]?.booking_email || process.env.RESEND_TO_EMAIL;
+
+    await resend.emails.send({
+      from: 'onboarding@resend.dev',
+      to: toEmail,
+      subject: `New Inspection Booking Request — ${name}`,
+      html: `<h2>New Inspection Booking Request</h2>
+             <p><strong>Name:</strong> ${name}</p>
+             <p><strong>Phone:</strong> ${phone}</p>
+             ${email ? `<p><strong>Email:</strong> ${email}</p>` : ''}
+             ${address ? `<p><strong>Address:</strong> ${address}</p>` : ''}
+             ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
+             <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`
+    });
+
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── REFERRER: MARK ANNOUNCEMENT SEEN ──────────────────────────────────────────
 router.post('/api/announcement/seen', async (req, res) => {
   const token = req.headers['authorization']?.replace('Bearer ', '');
