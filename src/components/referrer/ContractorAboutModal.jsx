@@ -26,25 +26,27 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
         background: 'rgba(0,0,0,0.6)',
-        display: 'flex', alignItems: 'flex-start',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 1000,
+        padding: '0 20px',
         animation: 'aboutOverlayFadeIn 300ms ease-out forwards',
       }}
     >
       <style>{`
         @keyframes aboutOverlayFadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes aboutPanelDropDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+        @keyframes aboutPanelFloat { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
       <div
         onClick={e => e.stopPropagation()}
         style={{
           width: '100%',
+          maxWidth: 380,
           background: R.navy,
-          borderRadius: '0 0 20px 20px',
-          maxHeight: '85vh',
+          borderRadius: 16,
+          maxHeight: '80vh',
           overflowY: 'auto',
           display: 'flex', flexDirection: 'column',
-          animation: 'aboutPanelDropDown 400ms ease-out forwards',
+          animation: 'aboutPanelFloat 350ms ease-out forwards',
         }}
       >
         {/* Scrollable content */}
@@ -145,8 +147,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
 
         {/* Sticky buttons */}
         <div style={{
-          padding: '16px 24px',
-          paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+          padding: '16px 24px 20px',
           display: 'flex', flexDirection: 'column', gap: 8,
           background: R.navy,
           borderTop: '1px solid rgba(211,227,240,0.1)',

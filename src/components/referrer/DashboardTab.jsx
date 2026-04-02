@@ -58,6 +58,7 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
       .then(d => {
         if (!d || !d.enabled) { setAboutData(null); return; }
         setAboutData(d);
+        if (d.booking_submitted) setBookingSubmitted(true);
       })
       .catch(() => setAboutData(null));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -434,9 +435,24 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
                   ))}
                 </div>
               )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontSize: 13, color: R.navy, fontWeight: 600, fontFamily: R.fontBody }}>Learn more</span>
-                <i className="ph ph-arrow-right" style={{ fontSize: 13, color: R.navy }} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 13, color: R.navy, fontWeight: 600, fontFamily: R.fontBody }}>Learn more</span>
+                  <i className="ph ph-arrow-right" style={{ fontSize: 13, color: R.navy }} />
+                </div>
+                {!bookingSubmitted && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setShowBookingModal(true); }}
+                    style={{
+                      background: R.red, border: 'none', borderRadius: 8,
+                      padding: '6px 14px', color: '#fff',
+                      fontSize: 12, fontWeight: 700,
+                      fontFamily: R.fontSans, cursor: 'pointer',
+                    }}
+                  >
+                    Book Now
+                  </button>
+                )}
               </div>
             </div>
           </AnimCard>
