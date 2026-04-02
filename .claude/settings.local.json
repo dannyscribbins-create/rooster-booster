@@ -31,7 +31,9 @@
       "Bash(railway logs:*)",
       "Bash(railway status:*)",
       "Bash(railway service:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(railway --version)",
+      "Bash(ls .env*)"
     ]
   }
 }

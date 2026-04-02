@@ -4,18 +4,23 @@ import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import { X, CheckCircle } from '@phosphor-icons/react';
 
 export default function BookingFormModal({ visible, onClose, onBookingSuccess, sessionToken }) {
-  const [name, setName]       = useState('');
-  const [phone, setPhone]     = useState('');
-  const [email, setEmail]     = useState('');
-  const [address, setAddress] = useState('');
-  const [notes, setNotes]     = useState('');
+  const [name, setName]                   = useState('');
+  const [phone, setPhone]                 = useState('');
+  const [email, setEmail]                 = useState('');
+  const [streetAddress, setStreetAddress] = useState('');
+  const [city, setCity]                   = useState('');
+  const [state, setState]                 = useState('');
+  const [zipCode, setZipCode]             = useState('');
+  const [notes, setNotes]                 = useState('');
   const [status, setStatus]   = useState('idle'); // 'idle' | 'submitting' | 'success' | 'error'
   const [fieldError, setFieldError] = useState('');
 
   // Reset form each time modal opens
   useEffect(() => {
     if (visible) {
-      setName(''); setPhone(''); setEmail(''); setAddress(''); setNotes('');
+      setName(''); setPhone(''); setEmail('');
+      setStreetAddress(''); setCity(''); setState(''); setZipCode('');
+      setNotes('');
       setStatus('idle'); setFieldError('');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -36,7 +41,7 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${sessionToken}`,
       },
-      body: JSON.stringify({ name, phone, email, address, notes }),
+      body: JSON.stringify({ name, phone, email, address: `${streetAddress}, ${city}, ${state} ${zipCode}`.trim(), notes }),
     })
       .then(r => r.json())
       .then(d => {
@@ -158,19 +163,48 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
                 onFocus={focusHandler}
                 onBlur={blurHandler}
               />
-              <div>
-                <p style={{ margin: '0 0 6px', fontSize: 12, color: 'rgba(211,227,240,0.6)', fontFamily: R.fontBody }}>Full Address</p>
+              <input
+                type="text"
+                placeholder="Street Address"
+                value={streetAddress}
+                onChange={e => setStreetAddress(e.target.value)}
+                disabled={status === 'submitting'}
+                style={inputStyle}
+                onFocus={focusHandler}
+                onBlur={blurHandler}
+              />
+              <div style={{ display: 'flex', gap: 10 }}>
                 <input
                   type="text"
-                  placeholder="Street address, city, state, zip"
-                  value={address}
-                  onChange={e => setAddress(e.target.value)}
+                  placeholder="City"
+                  value={city}
+                  onChange={e => setCity(e.target.value)}
                   disabled={status === 'submitting'}
-                  style={inputStyle}
+                  style={{ ...inputStyle, flex: 2 }}
+                  onFocus={focusHandler}
+                  onBlur={blurHandler}
+                />
+                <input
+                  type="text"
+                  placeholder="State"
+                  value={state}
+                  onChange={e => setState(e.target.value)}
+                  disabled={status === 'submitting'}
+                  style={{ ...inputStyle, flex: 1 }}
                   onFocus={focusHandler}
                   onBlur={blurHandler}
                 />
               </div>
+              <input
+                type="text"
+                placeholder="Zip Code"
+                value={zipCode}
+                onChange={e => setZipCode(e.target.value)}
+                disabled={status === 'submitting'}
+                style={inputStyle}
+                onFocus={focusHandler}
+                onBlur={blurHandler}
+              />
               <textarea
                 placeholder="Anything we should know?"
                 value={notes}
