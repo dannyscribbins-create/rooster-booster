@@ -356,7 +356,6 @@ router.get('/api/referrer/about', async (req, res) => {
     let google_review_count = null;
 
     if (about.google_place_id && process.env.GOOGLE_PLACES_API_KEY) {
-      console.log('Google Place ID:', about.google_place_id);
       try {
         const cached = await pool.query(
           "SELECT data, cached_at FROM admin_cache WHERE cache_key = 'google_rating_accent-roofing' AND cached_at > NOW() - INTERVAL '86400 seconds'"
@@ -370,13 +369,12 @@ router.get('/api/referrer/about', async (req, res) => {
             {
               headers: {
                 'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
-                'X-Goog-FieldMask': 'places.rating,places.userRatingCount'
+                'X-Goog-FieldMask': 'rating,userRatingCount'
               }
             }
           );
-          const googleData = await googleRes.json();
-          console.log('Google API response:', JSON.stringify(googleData));
           if (googleRes.ok) {
+            const googleData = await googleRes.json();
             google_rating = googleData.rating ?? null;
             google_review_count = googleData.userRatingCount ?? null;
             await pool.query(
@@ -387,7 +385,6 @@ router.get('/api/referrer/about', async (req, res) => {
           }
         }
       } catch (e) {
-        console.log('Google API error:', e.message);
         console.error('Google Places API error:', e.message);
       }
     }
