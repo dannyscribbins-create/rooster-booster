@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
-import { BACKEND_URL } from '../../config/contractor';
+import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import { X, CheckCircle } from '@phosphor-icons/react';
 
 export default function BookingFormModal({ visible, onClose, onBookingSuccess, sessionToken }) {
@@ -91,6 +91,17 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             textAlign: 'center', gap: 12,
           }}>
+            {CONTRACTOR_CONFIG.logoUrl ? (
+              <img
+                src={CONTRACTOR_CONFIG.logoUrl}
+                alt={CONTRACTOR_CONFIG.name}
+                style={{ maxWidth: 160, width: '100%', height: 'auto', objectFit: 'contain', display: 'block' }}
+              />
+            ) : (
+              <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#fff', fontFamily: R.fontSans }}>
+                {CONTRACTOR_CONFIG.name}
+              </p>
+            )}
             <CheckCircle size={64} weight="fill" color="#22C55E" />
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff', fontFamily: R.fontSans }}>
               You're all set!
@@ -147,16 +158,19 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
                 onFocus={focusHandler}
                 onBlur={blurHandler}
               />
-              <input
-                type="text"
-                placeholder="Street Address"
-                value={address}
-                onChange={e => setAddress(e.target.value)}
-                disabled={status === 'submitting'}
-                style={inputStyle}
-                onFocus={focusHandler}
-                onBlur={blurHandler}
-              />
+              <div>
+                <p style={{ margin: '0 0 6px', fontSize: 12, color: 'rgba(211,227,240,0.6)', fontFamily: R.fontBody }}>Full Address</p>
+                <input
+                  type="text"
+                  placeholder="Street address, city, state, zip"
+                  value={address}
+                  onChange={e => setAddress(e.target.value)}
+                  disabled={status === 'submitting'}
+                  style={inputStyle}
+                  onFocus={focusHandler}
+                  onBlur={blurHandler}
+                />
+              </div>
               <textarea
                 placeholder="Anything we should know?"
                 value={notes}

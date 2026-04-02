@@ -268,54 +268,6 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
         </div>
       )}
 
-      {/* About Us Card */}
-      {aboutData && (
-        <div style={{ padding: "16px 20px 0" }}>
-          <AnimCard delay={220} screenKey="dashboard">
-            <div
-              onClick={() => setShowAboutModal(true)}
-              style={{
-                background: R.bgCard, border: `1px solid ${R.border}`,
-                borderRadius: 16, padding: '16px 20px',
-                boxShadow: R.shadow, cursor: 'pointer',
-              }}
-              onMouseEnter={e => e.currentTarget.style.boxShadow = R.shadowMd}
-              onMouseLeave={e => e.currentTarget.style.boxShadow = R.shadow}
-            >
-              <p style={{ margin: '0 0 8px', fontSize: 12, color: R.textMuted, fontFamily: R.fontMono, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                About {CONTRACTOR_CONFIG.name || 'Your Contractor'}
-              </p>
-              {aboutData.google_rating != null && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}>
-                  <i className="ph ph-star-fill" style={{ color: '#F5A623', fontSize: 14 }} />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: R.navy, fontFamily: R.fontMono }}>
-                    {aboutData.google_rating}
-                  </span>
-                  <span style={{ fontSize: 12, color: R.textSecondary }}>on Google</span>
-                </div>
-              )}
-              {aboutData.certifications?.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                  {aboutData.certifications.slice(0, 2).map(key => (
-                    <span key={key} style={{
-                      padding: '3px 8px', borderRadius: 99,
-                      background: R.bgBlueLight, color: R.navy,
-                      fontSize: 11, fontFamily: R.fontBody,
-                    }}>
-                      {CERT_LABELS[key] || key}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontSize: 13, color: R.navy, fontWeight: 600, fontFamily: R.fontBody }}>Learn more</span>
-                <i className="ph ph-arrow-right" style={{ fontSize: 13, color: R.navy }} />
-              </div>
-            </div>
-          </AnimCard>
-        </div>
-      )}
-
       {/* Boost Progress Card */}
       <div style={{ padding: "16px 20px 0" }}>
         <AnimCard delay={200} screenKey="dashboard">
@@ -442,6 +394,54 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
           </p>
         </AnimCard>
       </div>
+
+      {/* About Us Card */}
+      {aboutData && (
+        <div style={{ padding: "16px 20px 0" }}>
+          <AnimCard delay={220} screenKey="dashboard">
+            <div
+              onClick={() => setShowAboutModal(true)}
+              style={{
+                background: R.bgCard, border: `1px solid ${R.border}`,
+                borderRadius: 16, padding: '16px 20px',
+                boxShadow: R.shadow, cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.boxShadow = R.shadowMd}
+              onMouseLeave={e => e.currentTarget.style.boxShadow = R.shadow}
+            >
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: R.textMuted, fontFamily: R.fontMono, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                About {CONTRACTOR_CONFIG.name || 'Your Contractor'}
+              </p>
+              {aboutData.google_rating != null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}>
+                  <i className="ph ph-star-fill" style={{ color: '#F5A623', fontSize: 14 }} />
+                  <span style={{ fontSize: 14, fontWeight: 700, color: R.navy, fontFamily: R.fontMono }}>
+                    {aboutData.google_rating}
+                  </span>
+                  <span style={{ fontSize: 12, color: R.textSecondary }}>on Google</span>
+                </div>
+              )}
+              {aboutData.certifications?.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {aboutData.certifications.slice(0, 2).map(key => (
+                    <span key={key} style={{
+                      padding: '3px 8px', borderRadius: 99,
+                      background: R.bgBlueLight, color: R.navy,
+                      fontSize: 11, fontFamily: R.fontBody,
+                    }}>
+                      {CERT_LABELS[key] || key}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 13, color: R.navy, fontWeight: 600, fontFamily: R.fontBody }}>Learn more</span>
+                <i className="ph ph-arrow-right" style={{ fontSize: 13, color: R.navy }} />
+              </div>
+            </div>
+          </AnimCard>
+        </div>
+      )}
 
       {/* Recent Referrals */}
       <div style={{ padding: "16px 20px 0" }}>

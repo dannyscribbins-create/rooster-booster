@@ -26,19 +26,25 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
         background: 'rgba(0,0,0,0.6)',
-        display: 'flex', alignItems: 'flex-end',
+        display: 'flex', alignItems: 'flex-start',
         zIndex: 1000,
+        animation: 'aboutOverlayFadeIn 300ms ease-out forwards',
       }}
     >
+      <style>{`
+        @keyframes aboutOverlayFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes aboutPanelDropDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+      `}</style>
       <div
         onClick={e => e.stopPropagation()}
         style={{
           width: '100%',
           background: R.navy,
-          borderRadius: '20px 20px 0 0',
+          borderRadius: '0 0 20px 20px',
           maxHeight: '85vh',
           overflowY: 'auto',
           display: 'flex', flexDirection: 'column',
+          animation: 'aboutPanelDropDown 400ms ease-out forwards',
         }}
       >
         {/* Scrollable content */}
