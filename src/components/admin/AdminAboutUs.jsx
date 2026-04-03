@@ -70,7 +70,11 @@ export default function AdminAboutUs({ setLoggedIn }) {
         setYearsInBusiness(d.years_in_business || '');
         setServiceArea(d.service_area || '');
         setGooglePlaceId(d.google_place_id || '');
-        const saved = d.certifications || [];
+        const normalize = (raw) => {
+          if (!Array.isArray(raw)) return [];
+          return raw.map(item => typeof item === 'string' ? { id: item, enabled: true, years: [] } : item);
+        };
+        const saved = normalize(d.certifications);
         setCertifications(ALL_AWARDS.map(award => {
           const found = saved.find(s => s.id === award.id);
           return found ? { id: award.id, enabled: true, years: found.years || [] }

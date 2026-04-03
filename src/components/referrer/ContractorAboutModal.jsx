@@ -133,13 +133,20 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
           )}
 
           {/* Certifications & Awards */}
-          {aboutData.certifications?.some(c => c.enabled) && (
+          {(() => {
+            const normalize = (raw) => {
+              if (!Array.isArray(raw)) return [];
+              return raw.map(item => typeof item === 'string' ? { id: item, enabled: true, years: [] } : item);
+            };
+            const certs = normalize(aboutData.certifications).filter(c => c.enabled);
+            if (certs.length === 0) return null;
+            return (
             <div style={{ marginBottom: 28 }}>
               <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(211,227,240,0.5)' }}>
                 Certifications &amp; Awards
               </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {aboutData.certifications.filter(c => c.enabled).map(cert => {
+                {certs.map(cert => {
                   const label = AWARD_LABELS[cert.id] || cert.id;
                   const allYears = cert.years || [];
                   const hasMore = allYears.length > 3;
@@ -173,7 +180,8 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
                 })}
               </div>
             </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Sticky buttons */}
