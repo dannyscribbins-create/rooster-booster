@@ -192,7 +192,9 @@ router.get('/api/admin/about', async (req, res) => {
         updated_at: null
       });
     }
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+    const certs = typeof row.certifications === 'string' ? JSON.parse(row.certifications) : (row.certifications || []);
+    res.json({ ...row, certifications: certs });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -206,7 +208,7 @@ router.post('/api/admin/about', async (req, res) => {
        ON CONFLICT (contractor_id) DO UPDATE SET
          enabled=$1, booking_enabled=$2, bio=$3, years_in_business=$4, service_area=$5,
          google_place_id=$6, certifications=$7, booking_email=$8, updated_at=NOW()`,
-      [enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, certifications || [], booking_email]
+      [enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, JSON.stringify(certifications || []), booking_email]
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

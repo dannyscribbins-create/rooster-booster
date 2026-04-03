@@ -393,7 +393,8 @@ router.get('/api/referrer/about', async (req, res) => {
     const about_modal_seen   = userResult.rows[0]?.about_modal_seen   ?? false;
     const booking_submitted  = userResult.rows[0]?.booking_submitted  ?? false;
 
-    res.json({ ...about, google_rating, google_review_count, about_modal_seen, booking_submitted });
+    const certs = typeof about.certifications === 'string' ? JSON.parse(about.certifications) : (about.certifications || []);
+    res.json({ ...about, certifications: certs, google_rating, google_review_count, about_modal_seen, booking_submitted });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
