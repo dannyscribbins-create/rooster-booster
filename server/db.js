@@ -78,11 +78,30 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     years_in_business TEXT,
     service_area TEXT,
     google_place_id TEXT,
-    certifications TEXT[] DEFAULT '{}',
+    certifications JSONB DEFAULT '[]',
     booking_email TEXT,
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_contractor_about_contractor_id ON contractor_about(contractor_id)`);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'contractor_about'
+        AND column_name = 'certifications'
+        AND data_type = 'ARRAY'
+      ) THEN
+        ALTER TABLE contractor_about
+          ALTER COLUMN certifications TYPE JSONB
+          USING CASE
+            WHEN certifications IS NULL THEN '[]'::jsonb
+            ELSE to_jsonb(certifications)
+          END;
+      END IF;
+    END
+    $$;
+  `);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS about_modal_seen BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS booking_submitted BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE admin_cache ADD COLUMN IF NOT EXISTS cache_key TEXT`);
