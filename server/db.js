@@ -93,11 +93,15 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
         AND data_type = 'ARRAY'
       ) THEN
         ALTER TABLE contractor_about
+          ALTER COLUMN certifications DROP DEFAULT;
+        ALTER TABLE contractor_about
           ALTER COLUMN certifications TYPE JSONB
           USING CASE
             WHEN certifications IS NULL THEN '[]'::jsonb
             ELSE to_jsonb(certifications)
           END;
+        ALTER TABLE contractor_about
+          ALTER COLUMN certifications SET DEFAULT '[]'::jsonb;
       END IF;
     END
     $$;
