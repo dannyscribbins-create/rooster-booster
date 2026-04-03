@@ -211,7 +211,10 @@ router.post('/api/admin/about', async (req, res) => {
       [enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, certifications || [], booking_email]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    console.error('POST /api/admin/about error:', err.message, err.stack);
+    res.status(500).json({ error: 'Save failed', detail: err.message });
+  }
 });
 
 // ── ADMIN: ANNOUNCEMENT SETTINGS ──────────────────────────────────────────────
