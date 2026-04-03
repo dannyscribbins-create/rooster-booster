@@ -2,17 +2,25 @@ import { R } from '../../constants/theme';
 import { CONTRACTOR_CONFIG } from '../../config/contractor';
 import { Clock, MapPin, Star } from '@phosphor-icons/react';
 
-const CERT_LABELS = {
-  gaf_master_elite:  'GAF Master Elite',
-  gaf_certified:     'GAF Certified Contractor',
-  owens_corning:     'Owens Corning Preferred',
-  certainteed:       'CertainTeed SELECT ShingleMaster',
-  bbb:               'BBB Accredited Business',
-  angi:              'Angi Super Service Award',
-  homeadvisor:       'HomeAdvisor Elite Service',
-  haag:              'HAAG Certified Inspector',
-  nrca:              'NRCA Member',
-  licensed_insured:  'Licensed & Insured',
+const AWARD_LABELS = {
+  gaf_master_elite:        'GAF Master Elite',
+  gaf_presidents_club:     "GAF President's Club",
+  gaf_triple_excellence:   'GAF Triple Excellence Award',
+  certainteed_select:      'CertainTeed SELECT ShingleMaster',
+  certainteed_premier:     'CertainTeed Premier',
+  owens_corning_preferred: 'Owens Corning Preferred',
+  bbb_a_plus:              'BBB A+ Accredited Business',
+  ga_rca:                  'GA RCA Licensed',
+  nrca_member:             'NRCA Member',
+  nrcia_member:            'NRCIA Member',
+  haag_certified:          'HAAG Certified Inspector',
+  fortified_home:          'Fortified Home',
+  best_of_gwinnett:        'Best of Gwinnett',
+  best_of_georgia:         'Best of Georgia',
+  angi_super_service:      'Angi Super Service Award',
+  nextdoor_faves:          'NextDoor Neighborhood Faves',
+  guildmaster:             'Guildmaster Award for Service Excellence',
+  homeadvisor_best_of:     'Best of HomeAdvisor',
 };
 
 export default function ContractorAboutModal({ visible, onContinue, onBook, aboutData }) {
@@ -124,22 +132,45 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
             </div>
           )}
 
-          {/* Certifications */}
-          {aboutData.certifications?.length > 0 && (
+          {/* Certifications & Awards */}
+          {aboutData.certifications?.some(c => c.enabled) && (
             <div style={{ marginBottom: 28 }}>
               <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(211,227,240,0.5)' }}>
-                Certifications &amp; Credentials
+                Certifications &amp; Awards
               </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {aboutData.certifications.map(key => (
-                  <span key={key} style={{
-                    padding: '5px 11px', borderRadius: 99,
-                    border: '1px solid rgba(211,227,240,0.3)',
-                    color: R.blueLight, fontSize: 12, fontFamily: R.fontBody,
-                  }}>
-                    {CERT_LABELS[key] || key}
-                  </span>
-                ))}
+                {aboutData.certifications.filter(c => c.enabled).map(cert => {
+                  const label = AWARD_LABELS[cert.id] || cert.id;
+                  const allYears = cert.years || [];
+                  const hasMore = allYears.length > 3;
+                  // Slice 3 most recent (stored descending), reverse to ascending for display
+                  const displayYears = [...allYears.slice(0, 3)].reverse();
+                  return (
+                    <div key={cert.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '5px 11px', borderRadius: 99,
+                        border: '1px solid rgba(211,227,240,0.3)',
+                      }}>
+                        <img
+                          src={`/badges/${cert.id}.png`}
+                          alt=""
+                          height={28}
+                          style={{ objectFit: 'contain' }}
+                          onError={e => { e.target.style.display = 'none'; }}
+                        />
+                        <span style={{ color: R.blueLight, fontSize: 12, fontFamily: R.fontBody }}>
+                          {label}
+                        </span>
+                      </div>
+                      {displayYears.length > 0 && (
+                        <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(211,227,240,0.45)', fontFamily: R.fontBody }}>
+                          {displayYears.join(' · ')}{hasMore ? ' +' : ''}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

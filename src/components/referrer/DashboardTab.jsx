@@ -10,19 +10,6 @@ import AvatarCircle from '../shared/AvatarCircle';
 import ContractorAboutModal from './ContractorAboutModal';
 import BookingFormModal from './BookingFormModal';
 
-const CERT_LABELS = {
-  gaf_master_elite:  'GAF Master Elite',
-  gaf_certified:     'GAF Certified Contractor',
-  owens_corning:     'Owens Corning Preferred',
-  certainteed:       'CertainTeed SELECT ShingleMaster',
-  bbb:               'BBB Accredited Business',
-  angi:              'Angi Super Service Award',
-  homeadvisor:       'HomeAdvisor Elite Service',
-  haag:              'HAAG Certified Inspector',
-  nrca:              'NRCA Member',
-  licensed_insured:  'Licensed & Insured',
-};
-
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export default function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken }) {
   const soldCount = paidCount;
@@ -420,19 +407,6 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
                     {aboutData.google_rating}
                   </span>
                   <span style={{ fontSize: 12, color: R.textSecondary }}>star rating on Google</span>
-                </div>
-              )}
-              {aboutData.certifications?.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                  {aboutData.certifications.slice(0, 2).map(key => (
-                    <span key={key} style={{
-                      padding: '3px 8px', borderRadius: 99,
-                      background: R.bgBlueLight, color: R.navy,
-                      fontSize: 11, fontFamily: R.fontBody,
-                    }}>
-                      {CERT_LABELS[key] || key}
-                    </span>
-                  ))}
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
