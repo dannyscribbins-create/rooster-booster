@@ -419,7 +419,7 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
                   <span style={{ fontSize: 14, fontWeight: 700, color: R.navy, fontFamily: R.fontMono }}>
                     {aboutData.google_rating}
                   </span>
-                  <span style={{ fontSize: 12, color: R.textSecondary }}>on Google</span>
+                  <span style={{ fontSize: 12, color: R.textSecondary }}>star rating on Google</span>
                 </div>
               )}
               {aboutData.certifications?.length > 0 && (
