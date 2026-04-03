@@ -208,7 +208,7 @@ router.post('/api/admin/about', async (req, res) => {
        ON CONFLICT (contractor_id) DO UPDATE SET
          enabled=$1, booking_enabled=$2, bio=$3, years_in_business=$4, service_area=$5,
          google_place_id=$6, certifications=$7, booking_email=$8, updated_at=NOW()`,
-      [enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, certifications || [], booking_email]
+      [enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, JSON.stringify(certifications || []), booking_email]
     );
     res.json({ success: true });
   } catch (err) {
