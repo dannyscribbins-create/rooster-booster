@@ -1,6 +1,7 @@
 import { R } from '../../constants/theme';
 import Dashboard from './DashboardTab';
 import CashOut from './CashOutTab';
+import Rankings from './RankingsTab';
 import Profile from './ProfileTab';
 import ReferAFriendTab from './ReferAFriendTab';
 import AnnouncementPopup from './AnnouncementPopup';
@@ -9,8 +10,9 @@ import AnnouncementPopup from './AnnouncementPopup';
 function BottomNav({ tab, setTab }) {
   const tabs = [
     { id: "dashboard", icon: "ph-house",         label: "Home"     },
-    { id: "cashout",   icon: "ph-money",          label: "Cash Out" },
     { id: "refer",     icon: "ph-share-network",  label: "Refer"    },
+    { id: "rankings",  icon: "ph-chart-bar",      label: "Rankings" },
+    { id: "cashout",   icon: "ph-money",          label: "Cash Out" },
     { id: "profile",   icon: "ph-user-circle",    label: "Profile"  },
   ];
 
@@ -117,6 +119,7 @@ export default function ReferrerApp({
     dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} />,
     cashout:   <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
     refer:     <ReferAFriendTab userName={userName} token={sessionStorage.getItem('rb_token')} />,
+    rankings:  <Rankings token={sessionStorage.getItem('rb_token')} />,
     profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} />,
   };
 

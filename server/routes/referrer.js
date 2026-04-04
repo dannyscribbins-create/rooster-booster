@@ -557,7 +557,8 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
 
     const settingsResult = await pool.query(
       `SELECT leaderboard_enabled, year_start_month, quarter_1_start,
-              quarter_2_start, quarter_3_start, quarter_4_start
+              quarter_2_start, quarter_3_start, quarter_4_start,
+              quarterly_prizes, yearly_prizes
        FROM engagement_settings WHERE contractor_id=$1`,
       ['accent-roofing']
     );
@@ -642,7 +643,13 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
       };
     }
 
-    res.json({ top10, userRank, leaderboard_enabled });
+    res.json({
+      top10,
+      userRank,
+      leaderboard_enabled,
+      quarterly_prizes: settings.quarterly_prizes ?? [],
+      yearly_prizes: settings.yearly_prizes ?? [],
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
