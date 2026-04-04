@@ -21,6 +21,21 @@ No lint script is configured. `.npmrc` sets `legacy-peer-deps=true` to handle de
 
 ## Architecture
 
+## Architectural Principles
+
+Every decision in this codebase must pass two filters before implementation:
+
+1. **Will this produce healthy, efficient code that is unlikely to break?**
+2. **Will this work at large scale — many contractors, many referrers?**
+
+If a shortcut is taken for MVP speed, it must be flagged with a code comment in the exact location where the shortcut lives, explaining: (a) what the limitation is, (b) what the scalable version looks like, and (c) when to build it.
+
+### Known MVP shortcuts to address later
+
+- **paid_count on users table** — updated only when a referrer loads their pipeline. Stale if a referral converts in Jobber between app visits. At FORA scale, replace with a background cron job that syncs all referrers' pipeline data from their CRM on a scheduled interval (e.g. every 24 hours). The column stays — the cron job is additive, not a rewrite. Flagged in code with comment: `// MVP: update this to cron-based sync at scale`
+
+---
+
 **Rooster Booster** is a referral rewards platform for Accent Roofing Service — a full-stack app with a Node.js/Express backend and a React SPA frontend split across organized component files.
 
 ### Backend — Folder Structure
@@ -69,7 +84,7 @@ server/
 - **Admin dashboard stats** — cached in `admin_cache` table with 15-minute TTL
 - **Rate limiting** — 10 attempts/15min referrer login, 5 admin login, 3 forgot-pin, 10 reset-pin
 
-**Database tables**: `tokens`, `users`, `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`
+**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings`, `user_badges`
 
 ---
 
