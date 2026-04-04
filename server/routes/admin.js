@@ -244,18 +244,86 @@ router.post('/api/admin/announcement-settings', async (req, res) => {
 });
 
 // ── ADMIN: LEADERBOARD ────────────────────────────────────────────────────────
+
+// SCALABLE: period boundaries driven by contractor engagement_settings, not hardcoded
+function getPeriodDateRange(period, settings) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  if (!period || period === 'alltime') return { start: null, end: null };
+  if (period === 'monthly') {
+    return {
+      start: new Date(currentYear, now.getMonth(), 1),
+      end: new Date(currentYear, now.getMonth() + 1, 1),
+    };
+  }
+  if (period === 'yearly') {
+    const ysm = settings.year_start_month || 1;
+    const startYear = currentMonth >= ysm ? currentYear : currentYear - 1;
+    return {
+      start: new Date(startYear, ysm - 1, 1),
+      end: new Date(startYear + 1, ysm - 1, 1),
+    };
+  }
+  if (period === 'quarterly') {
+    const q = [
+      settings.quarter_1_start || 1,
+      settings.quarter_2_start || 4,
+      settings.quarter_3_start || 7,
+      settings.quarter_4_start || 10,
+    ];
+    let qIdx = 0;
+    for (let i = q.length - 1; i >= 0; i--) {
+      if (currentMonth >= q[i]) { qIdx = i; break; }
+    }
+    const qStartMonth = q[qIdx];
+    const qEndMonth = q[(qIdx + 1) % 4];
+    const endYear = qEndMonth <= qStartMonth ? currentYear + 1 : currentYear;
+    return {
+      start: new Date(currentYear, qStartMonth - 1, 1),
+      end: new Date(endYear, qEndMonth - 1, 1),
+    };
+  }
+  return { start: null, end: null };
+}
+
 router.get('/api/admin/leaderboard', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
-  // period param accepted but all periods return same all-time paid_count for MVP
-  // (date-range filtering deferred until pipeline caching is built)
   try {
-    const result = await pool.query(
-      `SELECT full_name, email, paid_count
-       FROM users
-       WHERE paid_count > 0
-       ORDER BY paid_count DESC
-       LIMIT 50`
+    const settingsResult = await pool.query(
+      `SELECT year_start_month, quarter_1_start, quarter_2_start,
+              quarter_3_start, quarter_4_start
+       FROM engagement_settings WHERE contractor_id=$1`,
+      ['accent-roofing']
     );
+    const settings = settingsResult.rows[0] || {};
+    const period = req.query.period || 'alltime';
+    const { start, end } = getPeriodDateRange(period, settings);
+
+    let result;
+    if (!start) {
+      result = await pool.query(
+        `SELECT u.id, u.full_name, u.email, COUNT(rc.id) as converted_count
+         FROM users u
+         LEFT JOIN referral_conversions rc ON rc.user_id = u.id AND rc.contractor_id = 'accent-roofing'
+         GROUP BY u.id, u.full_name, u.email
+         ORDER BY converted_count DESC
+         LIMIT 50`
+      );
+    } else {
+      result = await pool.query(
+        `SELECT u.id, u.full_name, u.email, COUNT(rc.id) as converted_count
+         FROM users u
+         LEFT JOIN referral_conversions rc ON rc.user_id = u.id
+           AND rc.contractor_id = 'accent-roofing'
+           AND rc.converted_at >= $1 AND rc.converted_at < $2
+         GROUP BY u.id, u.full_name, u.email
+         ORDER BY converted_count DESC
+         LIMIT 50`,
+        [start, end]
+      );
+    }
+
     const rows = result.rows.map((row, i) => {
       const parts = row.full_name.trim().split(' ');
       return {
@@ -263,8 +331,8 @@ router.get('/api/admin/leaderboard', async (req, res) => {
         first_name: parts[0] || '',
         last_name: parts.slice(1).join(' ') || '',
         email: row.email,
-        converted_count: row.paid_count,
-        period: req.query.period || 'alltime'
+        converted_count: parseInt(row.converted_count) || 0,
+        period,
       };
     });
     res.json(rows);
@@ -276,19 +344,39 @@ router.get('/api/admin/engagement-settings', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query(
-      'SELECT leaderboard_enabled, quarterly_prizes, yearly_prizes FROM engagement_settings WHERE contractor_id = $1',
+      `SELECT leaderboard_enabled, quarterly_prizes, yearly_prizes,
+              year_start_month, quarter_1_start, quarter_2_start,
+              quarter_3_start, quarter_4_start
+       FROM engagement_settings WHERE contractor_id = $1`,
       ['accent-roofing']
     );
     if (result.rows.length === 0) {
-      return res.json({ leaderboard_enabled: true, quarterly_prizes: [], yearly_prizes: [] });
+      return res.json({
+        leaderboard_enabled: true, quarterly_prizes: [], yearly_prizes: [],
+        year_start_month: 1, quarter_1_start: 1, quarter_2_start: 4,
+        quarter_3_start: 7, quarter_4_start: 10,
+      });
     }
-    res.json(result.rows[0]);
+    const row = result.rows[0];
+    res.json({
+      leaderboard_enabled: row.leaderboard_enabled,
+      quarterly_prizes: row.quarterly_prizes,
+      yearly_prizes: row.yearly_prizes,
+      year_start_month: row.year_start_month ?? 1,
+      quarter_1_start: row.quarter_1_start ?? 1,
+      quarter_2_start: row.quarter_2_start ?? 4,
+      quarter_3_start: row.quarter_3_start ?? 7,
+      quarter_4_start: row.quarter_4_start ?? 10,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.post('/api/admin/engagement-settings', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
-  const { leaderboard_enabled, quarterly_prizes, yearly_prizes } = req.body;
+  const {
+    leaderboard_enabled, quarterly_prizes, yearly_prizes,
+    year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
+  } = req.body;
   if (typeof leaderboard_enabled !== 'boolean') {
     return res.status(400).json({ error: 'leaderboard_enabled must be a boolean' });
   }
@@ -298,14 +386,31 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
   if (!Array.isArray(yearly_prizes) || yearly_prizes.length > 3) {
     return res.status(400).json({ error: 'yearly_prizes must be an array of max 3 items' });
   }
+  const monthFields = { year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start };
+  for (const [field, val] of Object.entries(monthFields)) {
+    const n = parseInt(val);
+    if (!Number.isInteger(n) || n < 1 || n > 12) {
+      return res.status(400).json({ error: `${field} must be an integer between 1 and 12` });
+    }
+    monthFields[field] = n;
+  }
   try {
-    const result = await pool.query(
-      `INSERT INTO engagement_settings (contractor_id, leaderboard_enabled, quarterly_prizes, yearly_prizes, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
+    await pool.query(
+      `INSERT INTO engagement_settings (
+         contractor_id, leaderboard_enabled, quarterly_prizes, yearly_prizes,
+         year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
+         updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
        ON CONFLICT (contractor_id) DO UPDATE
-         SET leaderboard_enabled=$2, quarterly_prizes=$3, yearly_prizes=$4, updated_at=NOW()
-       RETURNING leaderboard_enabled, quarterly_prizes, yearly_prizes`,
-      ['accent-roofing', leaderboard_enabled, JSON.stringify(quarterly_prizes), JSON.stringify(yearly_prizes)]
+         SET leaderboard_enabled=$2, quarterly_prizes=$3, yearly_prizes=$4,
+             year_start_month=$5, quarter_1_start=$6, quarter_2_start=$7,
+             quarter_3_start=$8, quarter_4_start=$9, updated_at=NOW()`,
+      [
+        'accent-roofing', leaderboard_enabled,
+        JSON.stringify(quarterly_prizes), JSON.stringify(yearly_prizes),
+        monthFields.year_start_month, monthFields.quarter_1_start, monthFields.quarter_2_start,
+        monthFields.quarter_3_start, monthFields.quarter_4_start,
+      ]
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

@@ -128,6 +128,23 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     UNIQUE(user_id, badge_id)
   )`);
 
+  // SCALABLE: referral_conversions is the source of truth for all leaderboard period queries.
+  // paid_count on users remains as an all-time cache only. Do not use paid_count for period filtering.
+  await pool.query(`CREATE TABLE IF NOT EXISTS referral_conversions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    contractor_id TEXT NOT NULL,
+    jobber_client_id TEXT NOT NULL,
+    converted_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, jobber_client_id)
+  )`);
+
+  await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS year_start_month INTEGER DEFAULT 1`);
+  await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS quarter_1_start INTEGER DEFAULT 1`);
+  await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS quarter_2_start INTEGER DEFAULT 4`);
+  await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS quarter_3_start INTEGER DEFAULT 7`);
+  await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS quarter_4_start INTEGER DEFAULT 10`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

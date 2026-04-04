@@ -39,10 +39,31 @@ router.get('/api/pipeline', async (req, res) => {
     if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     const userId = sessionResult.rows[0].user_id;
     const data = await fetchPipelineForReferrer(req.query.referrer);
+    // MVP: update this to cron-based sync at scale
     await pool.query(
       'UPDATE users SET paid_count=$1, paid_count_updated_at=NOW() WHERE id=$2',
       [data.paidCount, userId]
     );
+
+    // BUSINESS RULE: one conversion per referred client, ever. A returning client does not
+    // generate a second bonus for the original referrer. The UNIQUE constraint on
+    // (user_id, jobber_client_id) enforces this automatically — duplicate inserts are silently ignored.
+    //
+    // SCALABLE: currently conversions are recorded when a referrer loads their pipeline.
+    // The production-grade version is a Jobber webhook that fires the moment an invoice
+    // is marked paid in Jobber — writes the conversion row, triggers Stripe ACH payout,
+    // updates balance, and fires a push notification immediately. Build this during the
+    // Stripe ACH session. Until then Danny should periodically view referrers in the admin
+    // panel near period end dates to ensure all syncs are current before prize decisions are made.
+    for (const item of data.pipeline.filter(i => i.bonusEarned)) {
+      await pool.query(
+        `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (user_id, jobber_client_id) DO NOTHING`,
+        [userId, 'accent-roofing', item.id]
+      );
+    }
+
     res.json(data);
   } catch (err) {
     res.status(500).send('API call failed: ' + (err.response ? JSON.stringify(err.response.data) : err.message));
@@ -480,6 +501,49 @@ router.post('/api/announcement/seen', async (req, res) => {
 });
 
 // ── REFERRER: LEADERBOARD ──────────────────────────────────────────────────────
+
+// SCALABLE: period boundaries driven by contractor engagement_settings, not hardcoded
+function getPeriodDateRange(period, settings) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  if (!period || period === 'alltime') return { start: null, end: null };
+  if (period === 'monthly') {
+    return {
+      start: new Date(currentYear, now.getMonth(), 1),
+      end: new Date(currentYear, now.getMonth() + 1, 1),
+    };
+  }
+  if (period === 'yearly') {
+    const ysm = settings.year_start_month || 1;
+    const startYear = currentMonth >= ysm ? currentYear : currentYear - 1;
+    return {
+      start: new Date(startYear, ysm - 1, 1),
+      end: new Date(startYear + 1, ysm - 1, 1),
+    };
+  }
+  if (period === 'quarterly') {
+    const q = [
+      settings.quarter_1_start || 1,
+      settings.quarter_2_start || 4,
+      settings.quarter_3_start || 7,
+      settings.quarter_4_start || 10,
+    ];
+    let qIdx = 0;
+    for (let i = q.length - 1; i >= 0; i--) {
+      if (currentMonth >= q[i]) { qIdx = i; break; }
+    }
+    const qStartMonth = q[qIdx];
+    const qEndMonth = q[(qIdx + 1) % 4];
+    const endYear = qEndMonth <= qStartMonth ? currentYear + 1 : currentYear;
+    return {
+      start: new Date(currentYear, qStartMonth - 1, 1),
+      end: new Date(endYear, qEndMonth - 1, 1),
+    };
+  }
+  return { start: null, end: null };
+}
+
 router.get('/api/referrer/leaderboard', async (req, res) => {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Not authorized' });
@@ -492,38 +556,90 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
     const userId = sessionResult.rows[0].user_id;
 
     const settingsResult = await pool.query(
-      'SELECT leaderboard_enabled FROM engagement_settings WHERE contractor_id=$1',
+      `SELECT leaderboard_enabled, year_start_month, quarter_1_start,
+              quarter_2_start, quarter_3_start, quarter_4_start
+       FROM engagement_settings WHERE contractor_id=$1`,
       ['accent-roofing']
     );
-    const leaderboard_enabled = settingsResult.rows.length > 0
-      ? settingsResult.rows[0].leaderboard_enabled
-      : true;
+    const settings = settingsResult.rows[0] || {};
+    const leaderboard_enabled = settings.leaderboard_enabled ?? true;
 
-    const top10Result = await pool.query(
-      `SELECT full_name, paid_count
-       FROM users
-       WHERE paid_count > 0
-       ORDER BY paid_count DESC
-       LIMIT 10`
-    );
+    const period = req.query.period || 'alltime';
+    const { start, end } = getPeriodDateRange(period, settings);
+
+    let top10Result, userCountResult;
+    if (!start) {
+      [top10Result, userCountResult] = await Promise.all([
+        pool.query(
+          `SELECT u.id, u.full_name, COUNT(rc.id) as converted_count
+           FROM users u
+           LEFT JOIN referral_conversions rc ON rc.user_id = u.id AND rc.contractor_id = 'accent-roofing'
+           GROUP BY u.id, u.full_name
+           ORDER BY converted_count DESC
+           LIMIT 10`
+        ),
+        pool.query(
+          `SELECT COUNT(*) as converted_count FROM referral_conversions
+           WHERE user_id = $1 AND contractor_id = 'accent-roofing'`,
+          [userId]
+        ),
+      ]);
+    } else {
+      [top10Result, userCountResult] = await Promise.all([
+        pool.query(
+          `SELECT u.id, u.full_name, COUNT(rc.id) as converted_count
+           FROM users u
+           LEFT JOIN referral_conversions rc ON rc.user_id = u.id
+             AND rc.contractor_id = 'accent-roofing'
+             AND rc.converted_at >= $1 AND rc.converted_at < $2
+           GROUP BY u.id, u.full_name
+           ORDER BY converted_count DESC
+           LIMIT 10`,
+          [start, end]
+        ),
+        pool.query(
+          `SELECT COUNT(*) as converted_count FROM referral_conversions
+           WHERE user_id = $1 AND contractor_id = 'accent-roofing'
+             AND converted_at >= $2 AND converted_at < $3`,
+          [userId, start, end]
+        ),
+      ]);
+    }
+
     const top10 = top10Result.rows.map((row, i) => ({
       rank: i + 1,
       first_name: row.full_name.split(' ')[0],
-      converted_count: row.paid_count
+      converted_count: parseInt(row.converted_count) || 0,
     }));
 
-    const userResult = await pool.query(
-      'SELECT paid_count FROM users WHERE id=$1',
-      [userId]
-    );
-    const userPaidCount = userResult.rows[0]?.paid_count || 0;
+    const userCount = parseInt(userCountResult.rows[0]?.converted_count) || 0;
     let userRank = null;
-    if (userPaidCount > 0) {
-      const rankResult = await pool.query(
-        'SELECT COUNT(*) as rank FROM users WHERE paid_count > $1',
-        [userPaidCount]
-      );
-      userRank = { rank: parseInt(rankResult.rows[0].rank) + 1, converted_count: userPaidCount };
+    if (userCount > 0) {
+      let rankResult;
+      if (!start) {
+        rankResult = await pool.query(
+          `SELECT COUNT(*) as rank_above FROM (
+             SELECT user_id FROM referral_conversions
+             WHERE contractor_id = 'accent-roofing'
+             GROUP BY user_id HAVING COUNT(*) > $1
+           ) sub`,
+          [userCount]
+        );
+      } else {
+        rankResult = await pool.query(
+          `SELECT COUNT(*) as rank_above FROM (
+             SELECT user_id FROM referral_conversions
+             WHERE contractor_id = 'accent-roofing'
+               AND converted_at >= $1 AND converted_at < $2
+             GROUP BY user_id HAVING COUNT(*) > $3
+           ) sub`,
+          [start, end, userCount]
+        );
+      }
+      userRank = {
+        rank: parseInt(rankResult.rows[0]?.rank_above || 0) + 1,
+        converted_count: userCount,
+      };
     }
 
     res.json({ top10, userRank, leaderboard_enabled });

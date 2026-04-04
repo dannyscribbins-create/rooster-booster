@@ -16,6 +16,12 @@ const PLACES = [
   { label: '🥉 3rd Place', idx: 2 },
 ];
 
+const MONTH_NAMES = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+];
+const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
 function emptyPrizes() {
   return [
     { amount: '', description: '' },
@@ -45,6 +51,66 @@ const inputBase = {
   boxSizing: 'border-box',
   transition: 'border-color 0.15s',
 };
+
+// Compute current quarter and year windows from season settings for the preview row
+function computeSeasonPreview(ysm, q1, q2, q3, q4) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  function fmt(d) {
+    return `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  }
+  function lastDay(exclusiveEnd) {
+    return new Date(exclusiveEnd.getTime() - 86400000);
+  }
+
+  // Year window
+  const yStartYear = currentMonth >= ysm ? currentYear : currentYear - 1;
+  const yStart = new Date(yStartYear, ysm - 1, 1);
+  const yEnd = lastDay(new Date(yStartYear + 1, ysm - 1, 1));
+
+  // Quarter window
+  const q = [q1, q2, q3, q4];
+  let qIdx = 0;
+  for (let i = q.length - 1; i >= 0; i--) {
+    if (currentMonth >= q[i]) { qIdx = i; break; }
+  }
+  const qStartMonth = q[qIdx];
+  const qEndMonth = q[(qIdx + 1) % 4];
+  const qEndYear = qEndMonth <= qStartMonth ? currentYear + 1 : currentYear;
+  const qStart = new Date(currentYear, qStartMonth - 1, 1);
+  const qEnd = lastDay(new Date(qEndYear, qEndMonth - 1, 1));
+
+  return {
+    quarter: `${fmt(qStart)} – ${fmt(qEnd)}`,
+    year: `${fmt(yStart)} – ${fmt(yEnd)}`,
+  };
+}
+
+function MonthSelect({ value, onChange, label, helperText }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: AD.textSecondary, marginBottom: 6 }}>
+        {label}
+      </label>
+      <select
+        value={value}
+        onChange={e => onChange(parseInt(e.target.value))}
+        style={{ ...inputBase, width: 200, cursor: 'pointer' }}
+        onFocus={e => e.target.style.borderColor = AD.blueLight}
+        onBlur={e => e.target.style.borderColor = AD.borderStrong}
+      >
+        {MONTH_NAMES.map((name, i) => (
+          <option key={i + 1} value={i + 1}>{name}</option>
+        ))}
+      </select>
+      {helperText && (
+        <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 4 }}>{helperText}</div>
+      )}
+    </div>
+  );
+}
 
 function PrizeRows({ prizes, setPrizes }) {
   function update(idx, field, value) {
@@ -86,6 +152,13 @@ export default function AdminEngagement({ setLoggedIn }) {
   const [loading, setLoading]       = useState(true);
   const [loadError, setLoadError]   = useState('');
 
+  // Section 0 — Season Settings
+  const [yearStartMonth, setYearStartMonth] = useState(1);
+  const [q1Start, setQ1Start] = useState(1);
+  const [q2Start, setQ2Start] = useState(4);
+  const [q3Start, setQ3Start] = useState(7);
+  const [q4Start, setQ4Start] = useState(10);
+
   // Section 1 — Leaderboard toggle
   const [leaderboardEnabled, setLeaderboardEnabled] = useState(true);
 
@@ -102,6 +175,10 @@ export default function AdminEngagement({ setLoggedIn }) {
   const [lbLoading,   setLbLoading]   = useState(true);
   const [period,      setPeriod]      = useState('alltime');
 
+  // Section 4 — Prize Preview
+  const [preview,        setPreview]        = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
       headers: { 'Authorization': `Bearer ${adminToken()}` },
@@ -116,6 +193,11 @@ export default function AdminEngagement({ setLoggedIn }) {
         if (Array.isArray(d.yearly_prizes) && d.yearly_prizes.length > 0) {
           setYearlyPrizes(d.yearly_prizes.map(p => ({ amount: p.amount ?? '', description: p.description ?? '' })));
         }
+        setYearStartMonth(d.year_start_month ?? 1);
+        setQ1Start(d.quarter_1_start ?? 1);
+        setQ2Start(d.quarter_2_start ?? 4);
+        setQ3Start(d.quarter_3_start ?? 7);
+        setQ4Start(d.quarter_4_start ?? 10);
         setLoading(false);
       })
       .catch(() => { setLoadError('Failed to load settings.'); setLoading(false); });
@@ -146,6 +228,11 @@ export default function AdminEngagement({ setLoggedIn }) {
         leaderboard_enabled: leaderboardEnabled,
         quarterly_prizes: quarterlyPrizes,
         yearly_prizes: yearlyPrizes,
+        year_start_month: yearStartMonth,
+        quarter_1_start: q1Start,
+        quarter_2_start: q2Start,
+        quarter_3_start: q3Start,
+        quarter_4_start: q4Start,
       }),
     })
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
@@ -156,6 +243,25 @@ export default function AdminEngagement({ setLoggedIn }) {
         setTimeout(() => setSaveStatus(''), 2000);
       })
       .catch(() => { setSaving(false); setSaveStatus('error'); });
+  }
+
+  function handlePreviewWinners() {
+    setPreviewLoading(true);
+    setPreview(null);
+    Promise.all([
+      fetch(`${BACKEND_URL}/api/admin/leaderboard?period=quarterly`, { headers: { 'Authorization': `Bearer ${adminToken()}` } }),
+      fetch(`${BACKEND_URL}/api/admin/leaderboard?period=yearly`,    { headers: { 'Authorization': `Bearer ${adminToken()}` } }),
+    ])
+      .then(async ([qRes, yRes]) => {
+        if (qRes.status === 401 || yRes.status === 401) { on401(); return; }
+        const [qData, yData] = await Promise.all([qRes.json(), yRes.json()]);
+        setPreview({
+          quarterly: Array.isArray(qData) ? qData : [],
+          yearly:    Array.isArray(yData) ? yData : [],
+        });
+        setPreviewLoading(false);
+      })
+      .catch(() => { setPreview({ error: 'Failed to load preview.' }); setPreviewLoading(false); });
   }
 
   if (loading) {
@@ -176,9 +282,52 @@ export default function AdminEngagement({ setLoggedIn }) {
     );
   }
 
+  const seasonPreview = computeSeasonPreview(yearStartMonth, q1Start, q2Start, q3Start, q4Start);
+
   return (
     <>
       <AdminPageHeader title="Engagement" subtitle="Leaderboard and prize configuration" />
+
+      {/* Section 0 — Season Settings */}
+      <div style={card}>
+        <div style={{ fontSize: 17, fontWeight: 600, color: AD.textPrimary, marginBottom: 4 }}>Season Settings</div>
+        <div style={{ fontSize: 14, color: AD.textSecondary, marginBottom: 20 }}>
+          Define when your leaderboard periods reset. Defaults to standard calendar year.
+        </div>
+
+        <MonthSelect
+          value={yearStartMonth}
+          onChange={setYearStartMonth}
+          label="Your leaderboard year begins in…"
+          helperText="This sets when yearly prizes reset. Default is January."
+        />
+
+        <div style={{ borderTop: `1px solid ${AD.border}`, margin: '20px 0' }} />
+
+        <div style={{ fontSize: 14, fontWeight: 500, color: AD.textSecondary, marginBottom: 16 }}>
+          Quarter Definitions
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0 32px' }}>
+          <MonthSelect value={q1Start} onChange={setQ1Start} label="Q1 Start" helperText="First quarter begins" />
+          <MonthSelect value={q2Start} onChange={setQ2Start} label="Q2 Start" helperText="Second quarter begins" />
+          <MonthSelect value={q3Start} onChange={setQ3Start} label="Q3 Start" helperText="Third quarter begins" />
+          <MonthSelect value={q4Start} onChange={setQ4Start} label="Q4 Start" helperText="Fourth quarter begins" />
+        </div>
+
+        <div style={{
+          marginTop: 8,
+          padding: '12px 16px',
+          background: AD.bgCardTint,
+          borderRadius: 10,
+          fontSize: 13,
+          color: AD.textSecondary,
+          lineHeight: 1.6,
+        }}>
+          <span style={{ color: AD.blueText, fontWeight: 500 }}>Current quarter:</span> {seasonPreview.quarter}
+          <span style={{ margin: '0 10px', color: AD.textTertiary }}>·</span>
+          <span style={{ color: AD.blueText, fontWeight: 500 }}>Current year:</span> {seasonPreview.year}
+        </div>
+      </div>
 
       {/* Section 1 — Leaderboard Toggle */}
       <div style={card}>
@@ -227,6 +376,67 @@ export default function AdminEngagement({ setLoggedIn }) {
         {saveStatus === 'error' && <span style={{ color: AD.red2Text,  fontSize: 14 }}>Save failed — try again.</span>}
       </div>
 
+      {/* Section 4 — Prize Preview */}
+      {/* STRIPE HOOK: replace preview-only state with confirmation + Stripe trigger when stripe.js routes are implemented */}
+      <div style={card}>
+        <div style={{ fontSize: 17, fontWeight: 600, color: AD.textPrimary, marginBottom: 6 }}>Prize Preview</div>
+        <div style={{ fontSize: 14, color: AD.textSecondary, marginBottom: 20 }}>
+          See who would win prizes based on current standings. No payouts are triggered.
+        </div>
+
+        <Btn onClick={handlePreviewWinners} variant="secondary" size="md" style={{ opacity: previewLoading ? 0.7 : 1 }}>
+          {previewLoading ? 'Loading…' : 'Preview Winners'}
+        </Btn>
+
+        {preview && !preview.error && (
+          <div style={{ marginTop: 24 }}>
+            {['quarterly', 'yearly'].map(pKey => {
+              const prizeSrc = pKey === 'quarterly' ? quarterlyPrizes : yearlyPrizes;
+              const winners  = preview[pKey] || [];
+              return (
+                <div key={pKey} style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: AD.textSecondary, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+                    {pKey === 'quarterly' ? 'Quarterly' : 'Yearly'} — {seasonPreview[pKey === 'quarterly' ? 'quarter' : 'year']}
+                  </div>
+                  {PLACES.map(({ label, idx }) => {
+                    const winner = winners[idx];
+                    const prize  = prizeSrc[idx];
+                    const hasAmount = prize?.amount && parseFloat(prize.amount) > 0;
+                    if (!winner || winner.converted_count === 0) {
+                      return (
+                        <div key={idx} style={{ fontSize: 14, color: AD.textTertiary, marginBottom: 8 }}>
+                          {label}: Not enough data yet
+                        </div>
+                      );
+                    }
+                    const lastInitial = winner.last_name ? ` ${winner.last_name[0].toUpperCase()}.` : '';
+                    return (
+                      <div key={idx} style={{ fontSize: 14, color: AD.textPrimary, marginBottom: 8 }}>
+                        <span style={{ color: AD.textSecondary }}>{label}:</span>{' '}
+                        <strong>{winner.first_name}{lastInitial}</strong>
+                        {' '}({winner.converted_count} {winner.converted_count === 1 ? 'job' : 'jobs'})
+                        {' '}would receive{' '}
+                        <strong style={{ color: hasAmount ? AD.greenText : AD.textSecondary }}>
+                          {hasAmount ? `$${prize.amount}` : '(no prize set)'}
+                        </strong>
+                        {prize?.description ? <span style={{ color: AD.textSecondary }}> — {prize.description}</span> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 8, borderTop: `1px solid ${AD.border}`, paddingTop: 12 }}>
+              This is a preview only. No payouts are triggered. When Stripe ACH is connected, a Confirm Payout button will appear here.
+            </div>
+          </div>
+        )}
+
+        {preview?.error && (
+          <div style={{ marginTop: 16, fontSize: 14, color: AD.red2Text }}>{preview.error}</div>
+        )}
+      </div>
+
       {/* Section 3 — Admin Leaderboard View */}
       <div style={card}>
         <div style={{ fontSize: 17, fontWeight: 600, color: AD.textPrimary, marginBottom: 16 }}>Leaderboard</div>
@@ -271,9 +481,9 @@ export default function AdminEngagement({ setLoggedIn }) {
                 {leaderboard.map((row, i) => (
                   <tr key={row.email || i} style={{ borderBottom: `1px solid ${AD.border}` }}>
                     <td style={{ textAlign: 'center', padding: '12px', color: AD.textSecondary, fontSize: 13 }}>{i + 1}</td>
-                    <td style={{ padding: '12px', fontWeight: 500, color: AD.textPrimary }}>{row.name}</td>
+                    <td style={{ padding: '12px', fontWeight: 500, color: AD.textPrimary }}>{row.first_name} {row.last_name}</td>
                     <td style={{ padding: '12px', color: AD.textSecondary }}>{row.email}</td>
-                    <td style={{ textAlign: 'center', padding: '12px', fontWeight: 600, color: AD.textPrimary }}>{row.converted_jobs ?? 0}</td>
+                    <td style={{ textAlign: 'center', padding: '12px', fontWeight: 600, color: AD.textPrimary }}>{row.converted_count ?? 0}</td>
                   </tr>
                 ))}
               </tbody>
