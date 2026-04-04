@@ -1,3 +1,4 @@
+// DEPRECATED: content moved to ProfileTab.jsx in Session 23. Safe to delete after Session 23 is fully verified.
 import { useState } from 'react';
 import { R } from '../../constants/theme';
 import { STATUS_CONFIG } from '../../constants/theme';

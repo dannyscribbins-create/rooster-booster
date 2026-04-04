@@ -1,8 +1,6 @@
 import { R } from '../../constants/theme';
 import Dashboard from './DashboardTab';
-import Pipeline from './PipelineTab';
 import CashOut from './CashOutTab';
-import History from './HistoryTab';
 import Profile from './ProfileTab';
 import ReferAFriendTab from './ReferAFriendTab';
 import AnnouncementPopup from './AnnouncementPopup';
@@ -10,12 +8,10 @@ import AnnouncementPopup from './AnnouncementPopup';
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
 function BottomNav({ tab, setTab }) {
   const tabs = [
-    { id: "dashboard", icon: "ph-house",          label: "Home"     },
-    { id: "pipeline",  icon: "ph-chart-bar",       label: "Pipeline" },
-    { id: "cashout",   icon: "ph-money",           label: "Cash Out" },
-    { id: "history",   icon: "ph-clock-clockwise", label: "History"  },
-    { id: "refer",     icon: "ph-share-network",   label: "Refer"    },
-    { id: "profile",   icon: "ph-user-circle",     label: "Profile"  },
+    { id: "dashboard", icon: "ph-house",         label: "Home"     },
+    { id: "cashout",   icon: "ph-money",          label: "Cash Out" },
+    { id: "refer",     icon: "ph-share-network",  label: "Refer"    },
+    { id: "profile",   icon: "ph-user-circle",    label: "Profile"  },
   ];
 
   const activeIndex = tabs.findIndex(t => t.id === tab);
@@ -119,11 +115,9 @@ export default function ReferrerApp({
 }) {
   const screens = {
     dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} />,
-    pipeline:  <Pipeline pipeline={pipeline} loading={loading} />,
     cashout:   <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
-    history:   <History pipeline={pipeline} />,
     refer:     <ReferAFriendTab userName={userName} token={sessionStorage.getItem('rb_token')} />,
-    profile:   <Profile onLogout={onLogout} pipeline={pipeline} userName={userName} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} />,
+    profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} />,
   };
 
   return (

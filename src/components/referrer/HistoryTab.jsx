@@ -1,3 +1,4 @@
+// DEPRECATED: content moved to ProfileTab.jsx in Session 23. Safe to delete after Session 23 is fully verified.
 import { R } from '../../constants/theme';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
