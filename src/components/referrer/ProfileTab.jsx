@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { R, STATUS_CONFIG } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
 import { getNextPayout } from '../../constants/boostSchedule';
@@ -9,7 +9,7 @@ import ContactModal from '../shared/ContactModal';
 import StatusBadge from '../shared/StatusBadge';
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
-export default function Profile({ onLogout, pipeline, loading, userName, profilePhoto, setProfilePhoto }) {
+export default function Profile({ onLogout, pipeline, loading, userName, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight }) {
   const soldCount  = pipeline.filter(p => p.status === "sold").length;
   const balance    = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
   const nextPayout = getNextPayout(soldCount);
@@ -18,6 +18,18 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
   const [uploadError, setUploadError] = useState("");
   const [filter, setFilter]           = useState("all");
   const fileInputRef = useRef(null);
+
+  // UX: highlight animation guides user to the correct section when arriving from Dashboard View All button
+  const [sectionHighlighted, setSectionHighlighted] = useState(!!highlightReferrals);
+  useEffect(() => {
+    if (!highlightReferrals) return;
+    const t = setTimeout(() => {
+      setSectionHighlighted(false);
+      onResetHighlight();
+    }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Pipeline filter ──────────────────────────────────────────────────────────
   const filters      = ["all", "lead", "inspection", "sold", "closed"];
@@ -134,8 +146,10 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
         {/* ── Section 1: My Referrals ──────────────────────────────────────────── */}
         <AnimCard delay={160} screenKey="profile">
           <div style={{
-            background: R.bgCard, border: `1px solid ${R.border}`,
+            background: sectionHighlighted ? "#E8E8E8" : R.bgCard,
+            border: `1px solid ${R.border}`,
             borderRadius: 16, overflow: "hidden", boxShadow: R.shadow, marginBottom: 16,
+            transition: "background-color 600ms ease",
           }}>
             {/* Section header */}
             <div style={{

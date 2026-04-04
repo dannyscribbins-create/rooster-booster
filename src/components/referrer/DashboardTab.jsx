@@ -11,7 +11,7 @@ import ContractorAboutModal from './ContractorAboutModal';
 import BookingFormModal from './BookingFormModal';
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-export default function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken }) {
+export default function Dashboard({ setTab, pipeline, loading, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals }) {
   const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
   const progressPct = Math.min((soldCount / 7) * 100, 100);
@@ -441,7 +441,7 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
               margin: 0, fontSize: 12, color: R.textMuted,
               fontFamily: R.fontMono, letterSpacing: "0.1em", textTransform: "uppercase",
             }}>Recent Referrals</p>
-            <button onClick={() => setTab("pipeline")} style={{
+            <button onClick={onViewAllReferrals} style={{
               background: "none", border: "none", cursor: "pointer",
               color: R.navy, fontSize: 12, fontFamily: R.fontMono, fontWeight: 600,
               display: "flex", alignItems: "center", gap: 4,

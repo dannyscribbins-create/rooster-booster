@@ -34,6 +34,8 @@ If a shortcut is taken for MVP speed, it must be flagged with a code comment in 
 
 - **paid_count on users table** — updated only when a referrer loads their pipeline. Stale if a referral converts in Jobber between app visits. At FORA scale, replace with a background cron job that syncs all referrers' pipeline data from their CRM on a scheduled interval (e.g. every 24 hours). The column stays — the cron job is additive, not a rewrite. Flagged in code with comment: `// MVP: update this to cron-based sync at scale`
 
+- **Jobber webhook not yet implemented** — referral_conversions rows are recorded only when the leaderboard endpoint is called (i.e. when a referrer opens the Rankings tab). At FORA scale, implement a Jobber webhook that fires on invoice payment and writes to referral_conversions immediately, then also trigger a push notification and kick off the Stripe ACH payout flow. See referral_conversions insert logic for full comment. This is the Stripe ACH session deliverable.
+
 ---
 
 **Rooster Booster** is a referral rewards platform for Accent Roofing Service — a full-stack app with a Node.js/Express backend and a React SPA frontend split across organized component files.
@@ -84,7 +86,7 @@ server/
 - **Admin dashboard stats** — cached in `admin_cache` table with 15-minute TTL
 - **Rate limiting** — 10 attempts/15min referrer login, 5 admin login, 3 forgot-pin, 10 reset-pin
 
-**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings`, `user_badges`
+**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings` (incl. season settings), `user_badges`, `referral_conversions`
 
 ---
 
@@ -93,8 +95,8 @@ server/
 `src/App.js` is a 135-line routing shell. It holds root state, two useEffect hooks, and the routing gate. Do not add component code into App.js — all UI lives in the component files below.
 
 **Two top-level modes:**
-- **Referrer app** — 5-tab bottom nav: Dashboard, Pipeline, Cash Out, History, Profile
-- **Admin panel** — accessed via `?admin=true` URL param — 5 sections: Dashboard, Referrers, Cash Outs, Activity Log, Announcements
+- **Referrer app** — 5-tab bottom nav: Home, Refer, Rankings, Cash Out, Profile
+- **Admin panel** — accessed via `?admin=true` URL param — 6 sections: Dashboard, Referrers, Cash Outs, Activity Log, Announcements, Engagement
 
 #### Root state (lives in App.js — do not move)
 `loggedIn`, `tab`, `userName`, `userEmail`, `pipeline`, `balance`, `paidCount`, `loading`, `profilePhoto`, `showReviewCard`, `announcement`, `announcementSettings`, `showAnnouncement`, `announcementShown`
@@ -124,12 +126,11 @@ src/
     ├── referrer/
     │   ├── ReferrerApp.jsx         ← Tab shell + BottomNav
     │   ├── DashboardTab.jsx
-    │   ├── PipelineTab.jsx
+    │   ├── ReferAFriendTab.jsx     ← Refer a Friend tab — QR code + share link
+    │   ├── RankingsTab.jsx         ← Rankings tab — leaderboard, time filters, prize display, personal rank row
     │   ├── CashOutTab.jsx
-    │   ├── HistoryTab.jsx
-    │   ├── ProfileTab.jsx
-    │   ├── AnnouncementPopup.jsx   ← Payout popup + PRESET_MESSAGES + resolveMessage()
-    │   └── ReferAFriendTab.jsx     ← Placeholder — returns null, ready to build
+    │   ├── ProfileTab.jsx          ← Personal hub — My Referrals (pipeline), Activity feed, Badges placeholder
+    │   └── AnnouncementPopup.jsx   ← Payout popup + PRESET_MESSAGES + resolveMessage()
     └── admin/
         ├── AdminApp.jsx            ← AdminPanel + AdminLogin + useAdminFonts
         ├── AdminComponents.jsx     ← AdminSidebar, AdminShell, AdminPageHeader,
