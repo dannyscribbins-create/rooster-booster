@@ -307,7 +307,7 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
        RETURNING leaderboard_enabled, quarterly_prizes, yearly_prizes`,
       ['accent-roofing', leaderboard_enabled, JSON.stringify(quarterly_prizes), JSON.stringify(yearly_prizes)]
     );
-    res.json(result.rows[0]);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
