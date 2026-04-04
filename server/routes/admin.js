@@ -243,4 +243,72 @@ router.post('/api/admin/announcement-settings', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── ADMIN: LEADERBOARD ────────────────────────────────────────────────────────
+router.get('/api/admin/leaderboard', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // period param accepted but all periods return same all-time paid_count for MVP
+  // (date-range filtering deferred until pipeline caching is built)
+  try {
+    const result = await pool.query(
+      `SELECT full_name, email, paid_count
+       FROM users
+       WHERE paid_count > 0
+       ORDER BY paid_count DESC
+       LIMIT 50`
+    );
+    const rows = result.rows.map((row, i) => {
+      const parts = row.full_name.trim().split(' ');
+      return {
+        rank: i + 1,
+        first_name: parts[0] || '',
+        last_name: parts.slice(1).join(' ') || '',
+        email: row.email,
+        converted_count: row.paid_count,
+        period: req.query.period || 'alltime'
+      };
+    });
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── ADMIN: ENGAGEMENT SETTINGS ────────────────────────────────────────────────
+router.get('/api/admin/engagement-settings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const result = await pool.query(
+      'SELECT leaderboard_enabled, quarterly_prizes, yearly_prizes FROM engagement_settings WHERE contractor_id = $1',
+      ['accent-roofing']
+    );
+    if (result.rows.length === 0) {
+      return res.json({ leaderboard_enabled: true, quarterly_prizes: [], yearly_prizes: [] });
+    }
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/api/admin/engagement-settings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { leaderboard_enabled, quarterly_prizes, yearly_prizes } = req.body;
+  if (typeof leaderboard_enabled !== 'boolean') {
+    return res.status(400).json({ error: 'leaderboard_enabled must be a boolean' });
+  }
+  if (!Array.isArray(quarterly_prizes) || quarterly_prizes.length > 3) {
+    return res.status(400).json({ error: 'quarterly_prizes must be an array of max 3 items' });
+  }
+  if (!Array.isArray(yearly_prizes) || yearly_prizes.length > 3) {
+    return res.status(400).json({ error: 'yearly_prizes must be an array of max 3 items' });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO engagement_settings (contractor_id, leaderboard_enabled, quarterly_prizes, yearly_prizes, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (contractor_id) DO UPDATE
+         SET leaderboard_enabled=$2, quarterly_prizes=$3, yearly_prizes=$4, updated_at=NOW()
+       RETURNING leaderboard_enabled, quarterly_prizes, yearly_prizes`,
+      ['accent-roofing', leaderboard_enabled, JSON.stringify(quarterly_prizes), JSON.stringify(yearly_prizes)]
+    );
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

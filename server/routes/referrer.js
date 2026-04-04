@@ -37,7 +37,12 @@ router.get('/api/pipeline', async (req, res) => {
       [token, 'referrer']
     );
     if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
     const data = await fetchPipelineForReferrer(req.query.referrer);
+    await pool.query(
+      'UPDATE users SET paid_count=$1, paid_count_updated_at=NOW() WHERE id=$2',
+      [data.paidCount, userId]
+    );
     res.json(data);
   } catch (err) {
     res.status(500).send('API call failed: ' + (err.response ? JSON.stringify(err.response.data) : err.message));
@@ -471,6 +476,57 @@ router.post('/api/announcement/seen', async (req, res) => {
       [announcementId, userId]
     );
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── REFERRER: LEADERBOARD ──────────────────────────────────────────────────────
+router.get('/api/referrer/leaderboard', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    const settingsResult = await pool.query(
+      'SELECT leaderboard_enabled FROM engagement_settings WHERE contractor_id=$1',
+      ['accent-roofing']
+    );
+    const leaderboard_enabled = settingsResult.rows.length > 0
+      ? settingsResult.rows[0].leaderboard_enabled
+      : true;
+
+    const top10Result = await pool.query(
+      `SELECT full_name, paid_count
+       FROM users
+       WHERE paid_count > 0
+       ORDER BY paid_count DESC
+       LIMIT 10`
+    );
+    const top10 = top10Result.rows.map((row, i) => ({
+      rank: i + 1,
+      first_name: row.full_name.split(' ')[0],
+      converted_count: row.paid_count
+    }));
+
+    const userResult = await pool.query(
+      'SELECT paid_count FROM users WHERE id=$1',
+      [userId]
+    );
+    const userPaidCount = userResult.rows[0]?.paid_count || 0;
+    let userRank = null;
+    if (userPaidCount > 0) {
+      const rankResult = await pool.query(
+        'SELECT COUNT(*) as rank FROM users WHERE paid_count > $1',
+        [userPaidCount]
+      );
+      userRank = { rank: parseInt(rankResult.rows[0].rank) + 1, converted_count: userPaidCount };
+    }
+
+    res.json({ top10, userRank, leaderboard_enabled });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -110,6 +110,23 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS booking_submitted BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE admin_cache ADD COLUMN IF NOT EXISTS cache_key TEXT`);
   await pool.query(`ALTER TABLE admin_cache ADD COLUMN IF NOT EXISTS data JSONB`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS paid_count INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS paid_count_updated_at TIMESTAMPTZ`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS engagement_settings (
+    contractor_id TEXT PRIMARY KEY,
+    leaderboard_enabled BOOLEAN DEFAULT true,
+    quarterly_prizes JSONB DEFAULT '[]',
+    yearly_prizes JSONB DEFAULT '[]',
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS user_badges (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    badge_id TEXT NOT NULL,
+    earned_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, badge_id)
+  )`);
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
