@@ -8,6 +8,7 @@ import AdminCashOuts from './AdminCashOuts';
 import AdminActivity from './AdminActivityLog';
 import AdminAnnouncementSettings from './AdminAnnouncementSettings';
 import AdminAboutUs from './AdminAboutUs';
+import AdminEngagement from './AdminEngagement';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
 function useAdminFonts() {
@@ -83,8 +84,9 @@ export default function AdminPanel() {
     referrers: <AdminReferrers setLoggedIn={setAuthed} />,
     cashouts:  <AdminCashOuts  setLoggedIn={setAuthed} />,
     activity:  <AdminActivity  setLoggedIn={setAuthed} />,
-    settings:  <AdminAnnouncementSettings setLoggedIn={setAuthed} />,
-    about:     <AdminAboutUs setLoggedIn={setAuthed} />,
+    settings:    <AdminAnnouncementSettings setLoggedIn={setAuthed} />,
+    engagement:  <AdminEngagement           setLoggedIn={setAuthed} />,
+    about:       <AdminAboutUs             setLoggedIn={setAuthed} />,
   };
 
   return (
