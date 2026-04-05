@@ -388,6 +388,7 @@ export default function RankingsTab({ token }) {
                 : row.first_name;
               return (
                 <div key={row.rank} style={{
+                  position: "relative",
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "12px 16px",
                   borderBottom: `1px solid ${R.border}`,
@@ -407,9 +408,9 @@ export default function RankingsTab({ token }) {
                     {row.display_badge && (
                       <span style={{ fontSize: 14, marginLeft: 5 }}>{row.display_badge.emoji}</span>
                     )}
-                    {/* Speech bubble with left-pointing tail */}
+                    {/* Speech bubble with downward-pointing tail */}
                     <div style={{
-                      position: "relative", marginLeft: 8,
+                      position: "absolute", bottom: "100%", left: 50, marginBottom: 4,
                       background: "#fff", border: "1px solid #012854",
                       borderRadius: 12, padding: "6px 10px",
                       fontSize: 12, color: "#333",
@@ -418,8 +419,10 @@ export default function RankingsTab({ token }) {
                       pointerEvents: "none", whiteSpace: "nowrap",
                       zIndex: 10,
                     }}>
-                      <div style={{ position: "absolute", left: -9, top: "50%", transform: "translateY(-50%)", width: 0, height: 0, borderTop: "7px solid transparent", borderBottom: "7px solid transparent", borderRight: "8px solid #012854" }} />
-                      <div style={{ position: "absolute", left: -7, top: "50%", transform: "translateY(-50%)", width: 0, height: 0, borderTop: "6px solid transparent", borderBottom: "6px solid transparent", borderRight: "7px solid #fff" }} />
+                      {/* Tail — border layer */}
+                      <div style={{ position: "absolute", bottom: -8, left: 16, width: 0, height: 0, borderLeft: "7px solid transparent", borderRight: "7px solid transparent", borderTop: "8px solid #012854" }} />
+                      {/* Tail — fill layer */}
+                      <div style={{ position: "absolute", bottom: -6, left: 17, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "7px solid #fff" }} />
                       {activeShoutText}
                     </div>
                   </div>
