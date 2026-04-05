@@ -82,12 +82,13 @@ server/
 - **Jobber GraphQL API** — queried in fetchPipelineForReferrer() to find clients with "Referred by" custom field, cross-referenced with quotes/jobs/invoices
 - **Pipeline stages**: lead → inspection → sold → paid
 - **Bonus calculation** — 7-tier boost schedule ($500–$900 per sale) based on cumulative paid count
+- **Leaderboard endpoint** — returns `period_earnings` (sum of bonus_amount for the filtered period) on every top10 row, userRank row, and warmup row; returns `current_user` (full_name, profile_photo) on all responses for the personal rank row
 - **Cash out workflow** — referrers request payouts; admin approves/denies; Resend sends email notifications; approval triggers payout_announcements row
 - **Admin dashboard stats** — cached in `admin_cache` table with 15-minute TTL
 - **Rate limiting** — 10 attempts/15min referrer login, 5 admin login, 3 forgot-pin, 10 reset-pin
 - **Badge system** — `GET /api/referrer/badges` returns all 7 badges merged with user's earned records (unearned secrets return null name/description); `POST /api/referrer/badges/acknowledge` marks badges seen after the celebration popup is dismissed; `checkAndAwardBadges(userId, count)` runs after every pipeline sync; founding_referrer awarded at account creation (first 20 users)
 
-**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings` (incl. season settings), `user_badges` (incl. seen column), `referral_conversions`
+**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings` (incl. season settings), `user_badges` (incl. seen column), `referral_conversions` (incl. bonus_amount INTEGER — dollar amount stored at sync time, source of truth for period-filtered earnings; see pipeline sync comment)
 
 ---
 
@@ -129,7 +130,7 @@ src/
     │   ├── ReferrerApp.jsx         ← Tab shell + BottomNav
     │   ├── DashboardTab.jsx
     │   ├── ReferAFriendTab.jsx     ← Refer a Friend tab — QR code + share link
-    │   ├── RankingsTab.jsx         ← Rankings tab — leaderboard, time filters, prize display, personal rank row
+    │   ├── RankingsTab.jsx         ← Rankings tab — podium display (top 3), leaderboard list (4–10), time filters, prize display, always-visible personal rank row with period_earnings
     │   ├── CashOutTab.jsx
     │   ├── ProfileTab.jsx          ← Personal hub — My Referrals (pipeline), Activity feed, Badge gallery
     │   ├── BadgeCelebrationPopup.jsx ← New badge celebration overlay — one badge at a time, entrance animation

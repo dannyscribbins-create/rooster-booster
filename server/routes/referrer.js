@@ -31,16 +31,16 @@ const resetPinLimiter = rateLimit({
 // Must stay in sync with src/constants/shouts.js WARMUP_ENTRIES.
 // Kept server-side to avoid a runtime import of an ES module from CommonJS.
 const WARMUP_ENTRIES_SERVER = [
-  { id: "warmup_1",  firstName: "Nail",     referralCount: 14, shout: "I nailed it." },
-  { id: "warmup_2",  firstName: "Galvan",   referralCount: 11, shout: "Fully charged. ⚡" },
-  { id: "warmup_3",  firstName: "Paige",    referralCount: 9,  shout: "On to the next chapter." },
-  { id: "warmup_4",  firstName: "Flash",    referralCount: 8,  shout: "Blink and you'll miss me." },
-  { id: "warmup_5",  firstName: "Roger",    referralCount: 7,  shout: "Roger that. 🫡" },
-  { id: "warmup_6",  firstName: "Grant",    referralCount: 6,  shout: "It's a great day to refer." },
-  { id: "warmup_7",  firstName: "Victor",   referralCount: 5,  shout: "Victory is the only option." },
-  { id: "warmup_8",  firstName: "Pete",     referralCount: 4,  shout: "Always closing." },
-  { id: "warmup_9",  firstName: "Ridgeard", referralCount: 3,  shout: "Keep running those referrals." },
-  { id: "warmup_10", firstName: "Tarence",  referralCount: 2,  shout: "Staying sharp." },
+  { id: "warmup_1",  firstName: "Nail",     lastName: "Armstrong", referralCount: 14, earnings: 7000, shout: "I nailed it." },
+  { id: "warmup_2",  firstName: "Galvan",   lastName: "Ized",      referralCount: 11, earnings: 5500, shout: "Fully charged. ⚡" },
+  { id: "warmup_3",  firstName: "Paige",    lastName: "Turner",    referralCount: 9,  earnings: 4500, shout: "On to the next chapter." },
+  { id: "warmup_4",  firstName: "Flash",    lastName: "Feltman",   referralCount: 8,  earnings: 4000, shout: "Blink and you'll miss me." },
+  { id: "warmup_5",  firstName: "Roger",    lastName: "Ringshank", referralCount: 7,  earnings: 3500, shout: "Roger that. 🫡" },
+  { id: "warmup_6",  firstName: "Grant",    lastName: "Gable",     referralCount: 6,  earnings: 3000, shout: "It's a great day to refer." },
+  { id: "warmup_7",  firstName: "Victor",   lastName: "Valley",    referralCount: 5,  earnings: 2500, shout: "Victory is the only option." },
+  { id: "warmup_8",  firstName: "Pete",     lastName: "Pitch",     referralCount: 4,  earnings: 2000, shout: "Always closing." },
+  { id: "warmup_9",  firstName: "Ridgeard", lastName: "Runner",    referralCount: 3,  earnings: 1500, shout: "Keep running those referrals." },
+  { id: "warmup_10", firstName: "Tarence",  lastName: "Tack",      referralCount: 2,  earnings: 1000, shout: "Staying sharp." },
 ];
 
 // ── BADGE AWARD HELPER ────────────────────────────────────────────────────────
@@ -109,11 +109,13 @@ router.get('/api/pipeline', async (req, res) => {
     // Stripe ACH session. Until then Danny should periodically view referrers in the admin
     // panel near period end dates to ensure all syncs are current before prize decisions are made.
     for (const item of data.pipeline.filter(i => i.bonusEarned)) {
+      // bonus_amount stored at sync time — source of truth for all period-filtered earnings queries.
+      // Full real-time accuracy requires Jobber webhook (Stripe ACH session).
       await pool.query(
-        `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at)
-         VALUES ($1, $2, $3, NOW())
+        `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at, bonus_amount)
+         VALUES ($1, $2, $3, NOW(), $4)
          ON CONFLICT (user_id, jobber_client_id) DO NOTHING`,
-        [userId, 'accent-roofing', item.id]
+        [userId, 'accent-roofing', item.id, item.payout]
       );
     }
 
@@ -706,7 +708,7 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
         ['accent-roofing']
       ),
       pool.query(
-        'SELECT shout_opt_out, pinned_shout FROM users WHERE id=$1',
+        'SELECT shout_opt_out, pinned_shout, full_name, profile_photo FROM users WHERE id=$1',
         [userId]
       ),
     ]);
@@ -725,15 +727,19 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
     if (!start) {
       [top10Result, userCountResult] = await Promise.all([
         pool.query(
-          `SELECT u.id, u.full_name, COUNT(rc.id) as converted_count
+          `SELECT u.id, u.full_name, u.profile_photo,
+                  COUNT(rc.id) as converted_count,
+                  COALESCE(SUM(rc.bonus_amount), 0) as period_earnings
            FROM users u
            LEFT JOIN referral_conversions rc ON rc.user_id = u.id AND rc.contractor_id = 'accent-roofing'
-           GROUP BY u.id, u.full_name
+           GROUP BY u.id, u.full_name, u.profile_photo
            ORDER BY converted_count DESC
            LIMIT 10`
         ),
         pool.query(
-          `SELECT COUNT(*) as converted_count FROM referral_conversions
+          `SELECT COUNT(*) as converted_count,
+                  COALESCE(SUM(bonus_amount), 0) as period_earnings
+           FROM referral_conversions
            WHERE user_id = $1 AND contractor_id = 'accent-roofing'`,
           [userId]
         ),
@@ -741,18 +747,22 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
     } else {
       [top10Result, userCountResult] = await Promise.all([
         pool.query(
-          `SELECT u.id, u.full_name, COUNT(rc.id) as converted_count
+          `SELECT u.id, u.full_name, u.profile_photo,
+                  COUNT(rc.id) as converted_count,
+                  COALESCE(SUM(rc.bonus_amount), 0) as period_earnings
            FROM users u
            LEFT JOIN referral_conversions rc ON rc.user_id = u.id
              AND rc.contractor_id = 'accent-roofing'
              AND rc.converted_at >= $1 AND rc.converted_at < $2
-           GROUP BY u.id, u.full_name
+           GROUP BY u.id, u.full_name, u.profile_photo
            ORDER BY converted_count DESC
            LIMIT 10`,
           [start, end]
         ),
         pool.query(
-          `SELECT COUNT(*) as converted_count FROM referral_conversions
+          `SELECT COUNT(*) as converted_count,
+                  COALESCE(SUM(bonus_amount), 0) as period_earnings
+           FROM referral_conversions
            WHERE user_id = $1 AND contractor_id = 'accent-roofing'
              AND converted_at >= $2 AND converted_at < $3`,
           [userId, start, end]
@@ -771,7 +781,9 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
         const warmupTop10 = WARMUP_ENTRIES_SERVER.map((entry, i) => ({
           rank: i + 1,
           first_name: entry.firstName,
+          last_name: entry.lastName,
           converted_count: entry.referralCount,
+          period_earnings: entry.earnings,
           shout: entry.shout,
           display_badge: null,
           is_warmup: true,
@@ -779,6 +791,10 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
         return res.json({
           top10: warmupTop10,
           userRank: null,
+          current_user: {
+            full_name: userShoutResult.rows[0]?.full_name || null,
+            profile_photo: userShoutResult.rows[0]?.profile_photo || null,
+          },
           leaderboard_enabled,
           warmup_mode_enabled: true,
           shouts_enabled,
@@ -799,10 +815,14 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
     const top10Ids = top10Result.rows.map(r => r.id);
     const allIds = [...new Set([...top10Ids, userId])];
 
-    // Run badge lookup and rank query in parallel
+    // Run badge lookup, rank query, and current user profile in parallel
     const badgesPromise = pool.query(
       'SELECT user_id, badge_id FROM user_badges WHERE user_id = ANY($1)',
       [allIds]
+    );
+    const userProfilePromise = pool.query(
+      'SELECT full_name, profile_photo FROM users WHERE id=$1',
+      [userId]
     );
     const rankPromise = userCount > 0
       ? (!start
@@ -826,7 +846,7 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
         )
       : Promise.resolve(null);
 
-    const [badgesResult, rankResult] = await Promise.all([badgesPromise, rankPromise]);
+    const [badgesResult, rankResult, userProfileResult] = await Promise.all([badgesPromise, rankPromise, userProfilePromise]);
 
     // Build badge map: userId → Set of earned badge ids
     const badgeMap = {};
@@ -838,19 +858,29 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
     const top10 = top10Result.rows.map((row, i) => ({
       rank: i + 1,
       first_name: row.full_name.split(' ')[0],
+      profile_photo: row.profile_photo || null,
       converted_count: parseInt(row.converted_count) || 0,
+      period_earnings: parseInt(row.period_earnings) || 0,
       display_badge: pickDisplayBadge(badgeMap[row.id] || new Set()),
     }));
 
+    const userProfile = userProfileResult.rows[0] || {};
     const userRank = userCount > 0 ? {
       rank: parseInt(rankResult.rows[0]?.rank_above || 0) + 1,
+      full_name: userProfile.full_name || null,
+      profile_photo: userProfile.profile_photo || null,
       converted_count: userCount,
+      period_earnings: parseInt(userCountResult.rows[0]?.period_earnings) || 0,
       display_badge: pickDisplayBadge(badgeMap[userId] || new Set()),
     } : null;
 
     const response = {
       top10,
       userRank,
+      current_user: {
+        full_name: userProfile.full_name || null,
+        profile_photo: userProfile.profile_photo || null,
+      },
       leaderboard_enabled,
       warmup_mode_enabled: false,
       shouts_enabled,

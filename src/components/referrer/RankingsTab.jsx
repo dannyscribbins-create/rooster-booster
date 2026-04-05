@@ -4,6 +4,7 @@ import { BACKEND_URL } from '../../config/contractor';
 import { SHOUT_BUCKETS } from '../../constants/shouts';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
+import AvatarCircle from '../shared/AvatarCircle';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PERIODS = [
@@ -66,7 +67,7 @@ export default function RankingsTab({ token }) {
       let next = (shoutIndexRef.current + 1) % entries.length;
       let attempts = 0;
       while (attempts < entries.length) {
-        if (next === userRankIndex && data.shout_opt_out) {
+        if (next === userRankIndex && data.shout_opt_out && !entries[next].is_warmup) {
           next = (next + 1) % entries.length;
           attempts++;
         } else {
@@ -118,8 +119,9 @@ export default function RankingsTab({ token }) {
       : [];
   const showPrizes = (period === "quarterly" || period === "yearly") && !loading && !error;
 
-  // User is outside the top 10 if userRank exists and rank > 10
-  const userOutsideTop10 = data?.userRank && data.userRank.rank > 10;
+  // Split leaderboard: top 3 → podium, 4–10 → list rows
+  const podiumEntries = data?.top10?.slice(0, 3) ?? [];
+  const listEntries   = data?.top10?.slice(3)    ?? [];
 
   // ── Header (always rendered) ─────────────────────────────────────────────────
   const header = (
@@ -267,8 +269,74 @@ export default function RankingsTab({ token }) {
           </AnimCard>
         )}
 
-        {/* ── Leaderboard List ───────────────────────────────────────────────── */}
-        <AnimCard delay={showPrizes ? 200 : 120} screenKey="rankings">
+        {/* ── Podium — top 3 ────────────────────────────────────────────────── */}
+        {!loading && !error && podiumEntries.length > 0 && (
+          <AnimCard delay={showPrizes ? 200 : 120} screenKey="rankings">
+            <div style={{
+              background: R.bgCard, border: `1px solid ${R.border}`,
+              borderRadius: 16, boxShadow: R.shadow,
+              padding: "20px 16px 24px", marginBottom: 12,
+            }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", gap: 16 }}>
+
+                {/* #2 — left */}
+                {podiumEntries[1] && (() => {
+                  const e = podiumEntries[1];
+                  const name = e.is_warmup ? `${e.first_name} ${e.last_name || ''}`.trim() : e.first_name;
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 28, minWidth: 80 }}>
+                      <span style={{ fontSize: 22, marginBottom: -8, lineHeight: 1 }}>🥈</span>
+                      <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={52} />
+                      <div style={{ textAlign: "center", marginTop: 8 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: R.textPrimary, fontFamily: R.fontBody }}>{name}</div>
+                        <div style={{ fontSize: 11, color: R.textMuted, fontFamily: R.fontBody, marginTop: 2 }}>{e.converted_count} jobs</div>
+                        <div style={{ fontSize: 11, color: R.navy, fontFamily: R.fontMono, marginTop: 1 }}>${e.period_earnings.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* #1 — center */}
+                {(() => {
+                  const e = podiumEntries[0];
+                  const name = e.is_warmup ? `${e.first_name} ${e.last_name || ''}`.trim() : e.first_name;
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 0, minWidth: 90 }}>
+                      <span style={{ fontSize: 26, marginBottom: -10, lineHeight: 1 }}>🥇</span>
+                      <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={64} />
+                      <div style={{ textAlign: "center", marginTop: 10 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: R.textPrimary, fontFamily: R.fontBody }}>{name}</div>
+                        <div style={{ fontSize: 12, color: R.textMuted, fontFamily: R.fontBody, marginTop: 2 }}>{e.converted_count} jobs</div>
+                        <div style={{ fontSize: 12, color: R.navy, fontFamily: R.fontMono, marginTop: 1 }}>${e.period_earnings.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* #3 — right */}
+                {podiumEntries[2] && (() => {
+                  const e = podiumEntries[2];
+                  const name = e.is_warmup ? `${e.first_name} ${e.last_name || ''}`.trim() : e.first_name;
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 28, minWidth: 80 }}>
+                      <span style={{ fontSize: 22, marginBottom: -8, lineHeight: 1 }}>🥉</span>
+                      <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={52} />
+                      <div style={{ textAlign: "center", marginTop: 8 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: R.textPrimary, fontFamily: R.fontBody }}>{name}</div>
+                        <div style={{ fontSize: 11, color: R.textMuted, fontFamily: R.fontBody, marginTop: 2 }}>{e.converted_count} jobs</div>
+                        <div style={{ fontSize: 11, color: R.navy, fontFamily: R.fontMono, marginTop: 1 }}>${e.period_earnings.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              </div>
+            </div>
+          </AnimCard>
+        )}
+
+        {/* ── Leaderboard List (rows 4–10) + personal rank ──────────────────── */}
+        <AnimCard delay={showPrizes ? 260 : 180} screenKey="rankings">
           <div style={{
             background: R.bgCard, border: `1px solid ${R.border}`,
             borderRadius: 16, overflow: "hidden", boxShadow: R.shadow,
@@ -312,127 +380,101 @@ export default function RankingsTab({ token }) {
               </div>
             )}
 
-            {/* Top 10 rows */}
-            {!loading && !error && data?.top10?.length > 0 && (
-              <>
-                {data.top10.map((row, i) => {
-                  const medal = MEDAL[row.rank];
-                  const bubbleActive = data.shouts_enabled && activeShoutIndex === i && showBubble;
-                  return (
-                    <div key={row.rank} style={{
-                      display: "flex", alignItems: "center", gap: 14,
-                      padding: "14px 18px",
-                      borderBottom: `1px solid ${R.border}`,
-                      borderLeft: medal ? `3px solid ${medal.border}` : "3px solid transparent",
-                      background: medal ? medal.bg : "transparent",
-                      transition: "background 0.15s",
-                    }}>
-                      {/* Rank number */}
-                      <span style={{
-                        fontSize: 18, fontWeight: 900,
-                        fontFamily: R.fontMono, color: R.navy,
-                        minWidth: 28, textAlign: "center",
-                      }}>
-                        {row.rank}
-                      </span>
-
-                      {/* Name + trophy for 1st + display badge + shout bubble */}
-                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-                        <span style={{ fontSize: 15, fontWeight: 600, color: R.textPrimary }}>
-                          {row.first_name}
-                        </span>
-                        {row.rank === 1 && (
-                          <i className="ph ph-trophy-fill" style={{ fontSize: 14, color: "#fbbf24" }} />
-                        )}
-                        {row.display_badge && (
-                          <span style={{ fontSize: 14, marginLeft: 5 }}>{row.display_badge.emoji}</span>
-                        )}
-                        <div style={{
-                          marginLeft: 8,
-                          background: "#fff", border: "1px solid #012854",
-                          borderRadius: 12, padding: "6px 10px",
-                          fontSize: 12, color: "#333",
-                          opacity: bubbleActive ? 1 : 0,
-                          transition: "opacity 200ms",
-                          pointerEvents: "none",
-                          whiteSpace: "nowrap",
-                        }}>
-                          {activeShoutText}
-                        </div>
-                      </div>
-
-                      {/* Jobs count */}
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                        <span style={{ fontSize: 18, fontWeight: 800, fontFamily: R.fontMono, color: R.navy }}>
-                          {row.converted_count}
-                        </span>
-                        <span style={{ fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>jobs</span>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* User's own rank — below divider if outside top 10 */}
-                {userOutsideTop10 && (
-                  <>
-                    {/* Divider */}
+            {/* Rows 4–10 */}
+            {!loading && !error && listEntries.map((row, i) => {
+              const bubbleActive = data.shouts_enabled && activeShoutIndex === (i + 3) && showBubble;
+              const avatarName = row.is_warmup
+                ? `${row.first_name} ${row.last_name || ''}`.trim()
+                : row.first_name;
+              return (
+                <div key={row.rank} style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "12px 16px",
+                  borderBottom: `1px solid ${R.border}`,
+                  borderLeft: "3px solid transparent",
+                }}>
+                  <span style={{ fontSize: 16, fontWeight: 900, fontFamily: R.fontMono, color: R.navy, minWidth: 24, textAlign: "center" }}>
+                    {row.rank}
+                  </span>
+                  <AvatarCircle
+                    userName={avatarName}
+                    profilePhoto={row.is_warmup ? null : (row.profile_photo || null)}
+                    size={36}
+                  />
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: R.textPrimary }}>{row.first_name}</span>
+                    {row.display_badge && (
+                      <span style={{ fontSize: 14, marginLeft: 5 }}>{row.display_badge.emoji}</span>
+                    )}
+                    {/* Speech bubble with left-pointing tail */}
                     <div style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      padding: "10px 18px",
-                      background: R.bgPage,
-                      borderTop: `1px solid ${R.border}`,
-                      borderBottom: `1px solid ${R.border}`,
+                      position: "relative", marginLeft: 8,
+                      background: "#fff", border: "1px solid #012854",
+                      borderRadius: 12, padding: "6px 10px",
+                      fontSize: 12, color: "#333",
+                      opacity: bubbleActive ? 1 : 0,
+                      transition: "opacity 200ms",
+                      pointerEvents: "none", whiteSpace: "nowrap",
                     }}>
-                      <div style={{ flex: 1, height: 1, background: R.border }} />
-                      <span style={{ fontSize: 11, color: R.textMuted, fontFamily: R.fontMono, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                        Your Ranking
-                      </span>
-                      <div style={{ flex: 1, height: 1, background: R.border }} />
+                      <div style={{ position: "absolute", left: -9, top: "50%", transform: "translateY(-50%)", width: 0, height: 0, borderTop: "7px solid transparent", borderBottom: "7px solid transparent", borderRight: "8px solid #012854" }} />
+                      <div style={{ position: "absolute", left: -7, top: "50%", transform: "translateY(-50%)", width: 0, height: 0, borderTop: "6px solid transparent", borderBottom: "6px solid transparent", borderRight: "7px solid #fff" }} />
+                      {activeShoutText}
                     </div>
-
-                    {/* User row */}
-                    <div style={{
-                      display: "flex", alignItems: "center", gap: 14,
-                      padding: "14px 18px",
-                      borderLeft: `3px solid ${R.red}`,
-                      background: "rgba(204,0,0,0.04)",
-                    }}>
-                      <span style={{
-                        fontSize: 18, fontWeight: 900,
-                        fontFamily: R.fontMono, color: R.red,
-                        minWidth: 28, textAlign: "center",
-                      }}>
-                        {data.userRank.rank}
-                      </span>
-                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 15, fontWeight: 600, color: R.textPrimary }}>You</span>
-                        {data.userRank.display_badge && (
-                          <span style={{ fontSize: 14, marginLeft: 5 }}>{data.userRank.display_badge.emoji}</span>
-                        )}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                        <span style={{ fontSize: 18, fontWeight: 800, fontFamily: R.fontMono, color: R.red }}>
-                          {data.userRank.converted_count}
-                        </span>
-                        <span style={{ fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>jobs</span>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* User has zero conversions */}
-                {!loading && !error && !data.userRank && (
-                  <div style={{
-                    padding: "14px 18px",
-                    borderTop: `1px solid ${R.border}`,
-                    background: R.bgPage,
-                    textAlign: "center",
-                  }}>
-                    <p style={{ margin: 0, fontSize: 13, color: R.textMuted, fontStyle: "italic" }}>
-                      Complete your first referral to appear on the leaderboard
-                    </p>
                   </div>
-                )}
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                    <span style={{ fontSize: 18, fontWeight: 800, fontFamily: R.fontMono, color: R.navy }}>{row.converted_count}</span>
+                    <span style={{ fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>jobs</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* ── Personal rank row — always visible ──────────────────────────── */}
+            {!loading && !error && (
+              <>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 16px", background: R.bgPage,
+                  borderTop: `1px solid ${R.border}`,
+                }}>
+                  <div style={{ flex: 1, height: 1, background: R.border }} />
+                  <span style={{ fontSize: 11, color: R.textMuted, fontFamily: R.fontMono, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                    Your Ranking
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: R.border }} />
+                </div>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "12px 16px",
+                  borderLeft: `3px solid ${R.red}`,
+                  background: "rgba(204,0,0,0.04)",
+                }}>
+                  <span style={{ fontSize: 16, fontWeight: 900, fontFamily: R.fontMono, color: R.red, minWidth: 24, textAlign: "center" }}>
+                    {data.userRank ? data.userRank.rank : '—'}
+                  </span>
+                  <AvatarCircle
+                    userName={data.current_user?.full_name || 'You'}
+                    profilePhoto={data.current_user?.profile_photo || null}
+                    size={36}
+                  />
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: R.textPrimary }}>You</span>
+                    {data.userRank?.display_badge && (
+                      <span style={{ fontSize: 14, marginLeft: 5 }}>{data.userRank.display_badge.emoji}</span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                      <span style={{ fontSize: 18, fontWeight: 800, fontFamily: R.fontMono, color: R.red }}>
+                        {data.userRank?.converted_count ?? 0}
+                      </span>
+                      <span style={{ fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>jobs</span>
+                    </div>
+                    <span style={{ fontSize: 12, color: R.navy, fontFamily: R.fontMono }}>
+                      ${(data.userRank?.period_earnings ?? 0).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
               </>
             )}
           </div>

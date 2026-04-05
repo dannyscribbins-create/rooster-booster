@@ -150,6 +150,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS pinned_shout TEXT DEFAULT null`);
   await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS warmup_mode_enabled BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS shouts_enabled BOOLEAN DEFAULT true`);
+  await pool.query(`ALTER TABLE referral_conversions ADD COLUMN IF NOT EXISTS bonus_amount INTEGER DEFAULT 0`);
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {

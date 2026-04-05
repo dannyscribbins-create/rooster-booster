@@ -6,14 +6,14 @@ export const SHOUT_BUCKETS = {
 };
 
 export const WARMUP_ENTRIES = [
-  { id: "warmup_1",  firstName: "Nail",     referralCount: 14, earnings: 7000,  shout: "I nailed it." },
-  { id: "warmup_2",  firstName: "Galvan",   referralCount: 11, earnings: 5500,  shout: "Fully charged. ⚡" },
-  { id: "warmup_3",  firstName: "Paige",    referralCount: 9,  earnings: 4500,  shout: "On to the next chapter." },
-  { id: "warmup_4",  firstName: "Flash",    referralCount: 8,  earnings: 4000,  shout: "Blink and you'll miss me." },
-  { id: "warmup_5",  firstName: "Roger",    referralCount: 7,  earnings: 3500,  shout: "Roger that. 🫡" },
-  { id: "warmup_6",  firstName: "Grant",    referralCount: 6,  earnings: 3000,  shout: "It's a great day to refer." },
-  { id: "warmup_7",  firstName: "Victor",   referralCount: 5,  earnings: 2500,  shout: "Victory is the only option." },
-  { id: "warmup_8",  firstName: "Pete",     referralCount: 4,  earnings: 2000,  shout: "Always closing." },
-  { id: "warmup_9",  firstName: "Ridgeard", referralCount: 3,  earnings: 1500,  shout: "Keep running those referrals." },
-  { id: "warmup_10", firstName: "Tarence",  referralCount: 2,  earnings: 1000,  shout: "Staying sharp." },
+  { id: "warmup_1",  firstName: "Nail",     lastName: "Armstrong", referralCount: 14, earnings: 7000, shout: "I nailed it." },
+  { id: "warmup_2",  firstName: "Galvan",   lastName: "Ized",      referralCount: 11, earnings: 5500, shout: "Fully charged. ⚡" },
+  { id: "warmup_3",  firstName: "Paige",    lastName: "Turner",    referralCount: 9,  earnings: 4500, shout: "On to the next chapter." },
+  { id: "warmup_4",  firstName: "Flash",    lastName: "Feltman",   referralCount: 8,  earnings: 4000, shout: "Blink and you'll miss me." },
+  { id: "warmup_5",  firstName: "Roger",    lastName: "Ringshank", referralCount: 7,  earnings: 3500, shout: "Roger that. 🫡" },
+  { id: "warmup_6",  firstName: "Grant",    lastName: "Gable",     referralCount: 6,  earnings: 3000, shout: "It's a great day to refer." },
+  { id: "warmup_7",  firstName: "Victor",   lastName: "Valley",    referralCount: 5,  earnings: 2500, shout: "Victory is the only option." },
+  { id: "warmup_8",  firstName: "Pete",     lastName: "Pitch",     referralCount: 4,  earnings: 2000, shout: "Always closing." },
+  { id: "warmup_9",  firstName: "Ridgeard", lastName: "Runner",    referralCount: 3,  earnings: 1500, shout: "Keep running those referrals." },
+  { id: "warmup_10", firstName: "Tarence",  lastName: "Tack",      referralCount: 2,  earnings: 1000, shout: "Staying sharp." },
 ];
