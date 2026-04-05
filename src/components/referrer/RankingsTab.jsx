@@ -250,13 +250,16 @@ export default function RankingsTab({ token }) {
                         {row.rank}
                       </span>
 
-                      {/* Name + trophy for 1st */}
+                      {/* Name + trophy for 1st + display badge */}
                       <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontSize: 15, fontWeight: 600, color: R.textPrimary }}>
                           {row.first_name}
                         </span>
                         {row.rank === 1 && (
                           <i className="ph ph-trophy-fill" style={{ fontSize: 14, color: "#fbbf24" }} />
+                        )}
+                        {row.display_badge && (
+                          <span style={{ fontSize: 14, marginLeft: 5 }}>{row.display_badge.emoji}</span>
                         )}
                       </div>
 
@@ -303,8 +306,11 @@ export default function RankingsTab({ token }) {
                       }}>
                         {data.userRank.rank}
                       </span>
-                      <div style={{ flex: 1 }}>
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontSize: 15, fontWeight: 600, color: R.textPrimary }}>You</span>
+                        {data.userRank.display_badge && (
+                          <span style={{ fontSize: 14, marginLeft: 5 }}>{data.userRank.display_badge.emoji}</span>
+                        )}
                       </div>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
                         <span style={{ fontSize: 18, fontWeight: 800, fontFamily: R.fontMono, color: R.red }}>

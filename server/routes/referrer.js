@@ -27,6 +27,43 @@ const resetPinLimiter = rateLimit({
   message: { error: 'Too many attempts. Please request a new reset link.' }
 });
 
+// ── BADGE AWARD HELPER ────────────────────────────────────────────────────────
+// Called after every pipeline sync. Checks pipeline_sync-triggered badges and
+// inserts any newly qualifying ones. Returns array of newly awarded badge ids
+// so the caller can surface the celebration popup.
+async function checkAndAwardBadges(userId, totalReferralCount) {
+  const existing = await pool.query(
+    'SELECT badge_id FROM user_badges WHERE user_id=$1',
+    [userId]
+  );
+  const earned = new Set(existing.rows.map(r => r.badge_id));
+
+  const candidates = [
+    { id: 'first_referral', qualifies: totalReferralCount >= 1 },
+    { id: 'milestone_5',    qualifies: totalReferralCount >= 5  },
+    { id: 'milestone_10',   qualifies: totalReferralCount >= 10 },
+    { id: 'milestone_25',   qualifies: totalReferralCount >= 25 },
+    // MVP shortcut: full trigger via Jobber webhook in Stripe ACH session
+    // { id: 'client_badge', qualifies: ... },
+    // MVP shortcut: full trigger via Jobber webhook in Stripe ACH session
+    // { id: 'yearly_winner', qualifies: ... },
+  ];
+
+  const newlyAwarded = [];
+  for (const { id, qualifies } of candidates) {
+    if (qualifies && !earned.has(id)) {
+      await pool.query(
+        `INSERT INTO user_badges (user_id, badge_id, seen)
+         VALUES ($1, $2, false)
+         ON CONFLICT (user_id, badge_id) DO NOTHING`,
+        [userId, id]
+      );
+      newlyAwarded.push(id);
+    }
+  }
+  return newlyAwarded;
+}
+
 // ── REFERRER: PIPELINE ────────────────────────────────────────────────────────
 router.get('/api/pipeline', async (req, res) => {
   try {
@@ -63,6 +100,8 @@ router.get('/api/pipeline', async (req, res) => {
         [userId, 'accent-roofing', item.id]
       );
     }
+
+    await checkAndAwardBadges(userId, data.pipeline.length);
 
     res.json(data);
   } catch (err) {
@@ -500,7 +539,93 @@ router.post('/api/announcement/seen', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── REFERRER: BADGES ──────────────────────────────────────────────────────────
+
+// Badge master list — must match src/constants/badges.js exactly.
+// Kept server-side to avoid a runtime import of an ES module from CommonJS.
+const BADGES_MASTER = [
+  { id: "founding_referrer", name: null,              emoji: "🐓", description: null,                                          tier: "secret",   trigger: "account_creation" },
+  { id: "first_referral",    name: "First Referral",  emoji: "⭐", description: "You made your first referral.",               tier: "standard", trigger: "pipeline_sync"    },
+  { id: "milestone_5",       name: "On a Roll",        emoji: "🔥", description: "5 referrals and counting.",                  tier: "standard", trigger: "pipeline_sync"    },
+  { id: "milestone_10",      name: "Double Digits",    emoji: "🔥", description: "10 referrals. You're serious about this.",   tier: "standard", trigger: "pipeline_sync"    },
+  { id: "milestone_25",      name: "Referral Machine", emoji: "🔥", description: "25 referrals. Legendary.",                   tier: "standard", trigger: "pipeline_sync"    },
+  { id: "client_badge",      name: "Client",           emoji: "🏠", description: "You're not just a referrer — you're family.", tier: "standard", trigger: "pipeline_sync"   },
+  { id: "yearly_winner",     name: "Yearly Champion",  emoji: "🏆", description: "Top of the leaderboard at year end.",        tier: "standard", trigger: "admin_awarded"    },
+];
+
+router.get('/api/referrer/badges', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    const earnedResult = await pool.query(
+      'SELECT badge_id, earned_at, seen FROM user_badges WHERE user_id=$1',
+      [userId]
+    );
+    const earnedMap = {};
+    for (const row of earnedResult.rows) {
+      earnedMap[row.badge_id] = { earned_at: row.earned_at, seen: row.seen };
+    }
+
+    const badges = BADGES_MASTER.map(badge => {
+      const record = earnedMap[badge.id];
+      if (record) {
+        return { ...badge, earned: true, earned_at: record.earned_at, seen: record.seen };
+      }
+      // Unearned secret badges: reveal nothing
+      if (badge.tier === 'secret') {
+        return { id: badge.id, emoji: badge.emoji, name: null, description: null, tier: 'secret', trigger: badge.trigger, earned: false, earned_at: null, seen: false };
+      }
+      return { ...badge, earned: false, earned_at: null, seen: false };
+    });
+
+    res.json(badges);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/api/referrer/badges/acknowledge', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    const { badgeIds } = req.body;
+    if (!Array.isArray(badgeIds) || badgeIds.length === 0) return res.status(400).json({ error: 'badgeIds must be a non-empty array' });
+
+    await pool.query(
+      'UPDATE user_badges SET seen=true WHERE user_id=$1 AND badge_id=ANY($2)',
+      [userId, badgeIds]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── REFERRER: LEADERBOARD ──────────────────────────────────────────────────────
+
+// Priority order for leaderboard display badge — first match wins
+const BADGE_PRIORITY = ['yearly_winner', 'milestone_25', 'milestone_10', 'milestone_5', 'client_badge', 'first_referral', 'founding_referrer'];
+
+// Returns { id, emoji } for the highest-priority badge the user has earned, or null
+function pickDisplayBadge(earnedSet) {
+  for (const id of BADGE_PRIORITY) {
+    if (earnedSet.has(id)) {
+      const badge = BADGES_MASTER.find(b => b.id === id);
+      return badge ? { id: badge.id, emoji: badge.emoji } : null;
+    }
+  }
+  return null;
+}
 
 // SCALABLE: period boundaries driven by contractor engagement_settings, not hardcoded
 function getPeriodDateRange(period, settings) {
@@ -607,41 +732,60 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
       ]);
     }
 
+    const userCount = parseInt(userCountResult.rows[0]?.converted_count) || 0;
+
+    // Collect all user IDs we need badges for: top 10 + the logged-in user
+    const top10Ids = top10Result.rows.map(r => r.id);
+    const allIds = [...new Set([...top10Ids, userId])];
+
+    // Run badge lookup and rank query in parallel
+    const badgesPromise = pool.query(
+      'SELECT user_id, badge_id FROM user_badges WHERE user_id = ANY($1)',
+      [allIds]
+    );
+    const rankPromise = userCount > 0
+      ? (!start
+          ? pool.query(
+              `SELECT COUNT(*) as rank_above FROM (
+                 SELECT user_id FROM referral_conversions
+                 WHERE contractor_id = 'accent-roofing'
+                 GROUP BY user_id HAVING COUNT(*) > $1
+               ) sub`,
+              [userCount]
+            )
+          : pool.query(
+              `SELECT COUNT(*) as rank_above FROM (
+                 SELECT user_id FROM referral_conversions
+                 WHERE contractor_id = 'accent-roofing'
+                   AND converted_at >= $1 AND converted_at < $2
+                 GROUP BY user_id HAVING COUNT(*) > $3
+               ) sub`,
+              [start, end, userCount]
+            )
+        )
+      : Promise.resolve(null);
+
+    const [badgesResult, rankResult] = await Promise.all([badgesPromise, rankPromise]);
+
+    // Build badge map: userId → Set of earned badge ids
+    const badgeMap = {};
+    for (const row of badgesResult.rows) {
+      if (!badgeMap[row.user_id]) badgeMap[row.user_id] = new Set();
+      badgeMap[row.user_id].add(row.badge_id);
+    }
+
     const top10 = top10Result.rows.map((row, i) => ({
       rank: i + 1,
       first_name: row.full_name.split(' ')[0],
       converted_count: parseInt(row.converted_count) || 0,
+      display_badge: pickDisplayBadge(badgeMap[row.id] || new Set()),
     }));
 
-    const userCount = parseInt(userCountResult.rows[0]?.converted_count) || 0;
-    let userRank = null;
-    if (userCount > 0) {
-      let rankResult;
-      if (!start) {
-        rankResult = await pool.query(
-          `SELECT COUNT(*) as rank_above FROM (
-             SELECT user_id FROM referral_conversions
-             WHERE contractor_id = 'accent-roofing'
-             GROUP BY user_id HAVING COUNT(*) > $1
-           ) sub`,
-          [userCount]
-        );
-      } else {
-        rankResult = await pool.query(
-          `SELECT COUNT(*) as rank_above FROM (
-             SELECT user_id FROM referral_conversions
-             WHERE contractor_id = 'accent-roofing'
-               AND converted_at >= $1 AND converted_at < $2
-             GROUP BY user_id HAVING COUNT(*) > $3
-           ) sub`,
-          [start, end, userCount]
-        );
-      }
-      userRank = {
-        rank: parseInt(rankResult.rows[0]?.rank_above || 0) + 1,
-        converted_count: userCount,
-      };
-    }
+    const userRank = userCount > 0 ? {
+      rank: parseInt(rankResult.rows[0]?.rank_above || 0) + 1,
+      converted_count: userCount,
+      display_badge: pickDisplayBadge(badgeMap[userId] || new Set()),
+    } : null;
 
     res.json({
       top10,

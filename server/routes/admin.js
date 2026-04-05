@@ -49,7 +49,24 @@ router.post('/api/admin/users', async (req, res) => {
       'INSERT INTO users (full_name,email,pin) VALUES ($1,$2,$3) RETURNING id,full_name,email,created_at',
       [full_name, email, hashedPin]
     );
-    res.json(result.rows[0]);
+    const newUser = result.rows[0];
+
+    // Award founding_referrer badge to the first 20 users ever registered.
+    // MVP shortcut: at FORA scale, scope this count per contractorId so each
+    // contractor gets their own founding cohort of 20.
+    // TODO: when self-serve signup is built, add the same founding_referrer check
+    // to that new registration endpoint.
+    const countResult = await pool.query('SELECT COUNT(*) as total FROM users');
+    if (parseInt(countResult.rows[0].total) <= 20) {
+      await pool.query(
+        `INSERT INTO user_badges (user_id, badge_id, seen)
+         VALUES ($1, 'founding_referrer', false)
+         ON CONFLICT (user_id, badge_id) DO NOTHING`,
+        [newUser.id]
+      );
+    }
+
+    res.json(newUser);
   } catch (err) {
     res.status(err.code === '23505' ? 400 : 500).json({ error: err.code === '23505' ? 'Email already exists' : err.message });
   }

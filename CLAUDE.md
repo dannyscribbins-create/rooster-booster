@@ -85,8 +85,9 @@ server/
 - **Cash out workflow** — referrers request payouts; admin approves/denies; Resend sends email notifications; approval triggers payout_announcements row
 - **Admin dashboard stats** — cached in `admin_cache` table with 15-minute TTL
 - **Rate limiting** — 10 attempts/15min referrer login, 5 admin login, 3 forgot-pin, 10 reset-pin
+- **Badge system** — `GET /api/referrer/badges` returns all 7 badges merged with user's earned records (unearned secrets return null name/description); `POST /api/referrer/badges/acknowledge` marks badges seen after the celebration popup is dismissed; `checkAndAwardBadges(userId, count)` runs after every pipeline sync; founding_referrer awarded at account creation (first 20 users)
 
-**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings` (incl. season settings), `user_badges`, `referral_conversions`
+**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings` (incl. season settings), `user_badges` (incl. seen column), `referral_conversions`
 
 ---
 
@@ -110,7 +111,8 @@ src/
 ├── constants/
 │   ├── theme.js                    ← R design tokens + STATUS_CONFIG
 │   ├── adminTheme.js               ← AD admin design tokens
-│   └── boostSchedule.js            ← BOOST_TABLE + getNextPayout()
+│   ├── boostSchedule.js            ← BOOST_TABLE + getNextPayout()
+│   └── badges.js                   ← BADGES array — badge definitions, tiers, and trigger types
 ├── hooks/
 │   └── useEntrance.js              ← useEntrance animation hook
 └── components/
@@ -129,7 +131,8 @@ src/
     │   ├── ReferAFriendTab.jsx     ← Refer a Friend tab — QR code + share link
     │   ├── RankingsTab.jsx         ← Rankings tab — leaderboard, time filters, prize display, personal rank row
     │   ├── CashOutTab.jsx
-    │   ├── ProfileTab.jsx          ← Personal hub — My Referrals (pipeline), Activity feed, Badges placeholder
+    │   ├── ProfileTab.jsx          ← Personal hub — My Referrals (pipeline), Activity feed, Badge gallery
+    │   ├── BadgeCelebrationPopup.jsx ← New badge celebration overlay — one badge at a time, entrance animation
     │   └── AnnouncementPopup.jsx   ← Payout popup + PRESET_MESSAGES + resolveMessage()
     └── admin/
         ├── AdminApp.jsx            ← AdminPanel + AdminLogin + useAdminFonts

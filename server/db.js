@@ -127,6 +127,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     earned_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, badge_id)
   )`);
+  await pool.query(`ALTER TABLE user_badges ADD COLUMN IF NOT EXISTS seen BOOLEAN DEFAULT false`);
 
   // SCALABLE: referral_conversions is the source of truth for all leaderboard period queries.
   // paid_count on users remains as an all-time cache only. Do not use paid_count for period filtering.

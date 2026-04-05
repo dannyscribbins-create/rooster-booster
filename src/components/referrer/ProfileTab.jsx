@@ -2,11 +2,13 @@ import { useState, useRef, useEffect } from 'react';
 import { R, STATUS_CONFIG } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
 import { getNextPayout } from '../../constants/boostSchedule';
+import { BADGES } from '../../constants/badges';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import AvatarCircle from '../shared/AvatarCircle';
 import ContactModal from '../shared/ContactModal';
 import StatusBadge from '../shared/StatusBadge';
+import BadgeCelebrationPopup from './BadgeCelebrationPopup';
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 export default function Profile({ onLogout, pipeline, loading, userName, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight }) {
@@ -19,6 +21,11 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
   const [filter, setFilter]           = useState("all");
   const fileInputRef = useRef(null);
 
+  const [badges, setBadges]               = useState(null);
+  const [badgesLoading, setBadgesLoading] = useState(false);
+  const [badgesError, setBadgesError]     = useState(false);
+  const [newBadges, setNewBadges]         = useState([]); // Phase 3: unseen earned badges → celebration popup
+
   // UX: highlight animation guides user to the correct section when arriving from Dashboard View All button
   const [sectionHighlighted, setSectionHighlighted] = useState(!!highlightReferrals);
   useEffect(() => {
@@ -30,6 +37,39 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function handleBadgeDismiss() {
+    const ids = newBadges.map(b => b.id);
+    // Fire-and-forget — seen state clears client-side immediately regardless of response
+    fetch(`${BACKEND_URL}/api/referrer/badges/acknowledge`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
+      },
+      body: JSON.stringify({ badgeIds: ids }),
+    }).catch(() => {});
+    setNewBadges([]);
+  }
+
+  function fetchBadges() {
+    setBadgesLoading(true);
+    setBadgesError(false);
+    fetch(`${BACKEND_URL}/api/referrer/badges`, {
+      headers: { Authorization: `Bearer ${sessionStorage.getItem("rb_token")}` },
+    })
+      .then(r => r.json())
+      .then(data => {
+        setBadges(data);
+        setNewBadges(data.filter(b => b.earned && !b.seen));
+      })
+      .catch(() => setBadgesError(true))
+      .finally(() => setBadgesLoading(false));
+  }
+
+  useEffect(() => {
+    fetchBadges();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Pipeline filter ──────────────────────────────────────────────────────────
   const filters      = ["all", "lead", "inspection", "sold", "closed"];
@@ -304,12 +344,12 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
         </AnimCard>
 
         {/* ── Section 3: Badges ────────────────────────────────────────────────── */}
-        {/* PHASE 5: replace placeholder with real badge grid when badge system is built */}
         <AnimCard delay={320} screenKey="profile">
           <div style={{
             background: R.bgCard, border: `1px solid ${R.border}`,
             borderRadius: 16, overflow: "hidden", boxShadow: R.shadow, marginBottom: 16,
           }}>
+            {/* Section header */}
             <div style={{
               padding: "16px 18px 14px",
               borderBottom: `1px solid ${R.border}`,
@@ -318,12 +358,75 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
               <i className="ph ph-trophy" style={{ fontSize: 18, color: R.navy }} />
               <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: R.textPrimary }}>My Badges</span>
             </div>
-            <div style={{ padding: "28px 20px", textAlign: "center" }}>
-              <i className="ph ph-medal" style={{ fontSize: 36, color: R.blueLight, display: "block", marginBottom: 10 }} />
-              <p style={{ margin: 0, color: R.textSecondary, fontSize: 14, lineHeight: 1.6 }}>
-                Your earned badges will appear here.
-              </p>
-            </div>
+
+            {/* Loading */}
+            {badgesLoading && (
+              <div style={{ padding: "28px 20px", textAlign: "center" }}>
+                <i className="ph ph-circle-notch" style={{ fontSize: 24, color: R.textMuted, animation: "spin 0.8s linear infinite" }} />
+                <p style={{ color: R.textMuted, fontSize: 13, marginTop: 8 }}>Loading badges...</p>
+              </div>
+            )}
+
+            {/* Error */}
+            {!badgesLoading && badgesError && (
+              <div style={{ padding: "28px 20px", textAlign: "center" }}>
+                <p style={{ margin: "0 0 12px", color: R.textSecondary, fontSize: 13 }}>Could not load badges.</p>
+                <button onClick={fetchBadges} style={{
+                  background: R.navy, color: "#fff", border: "none",
+                  borderRadius: 8, padding: "8px 18px",
+                  fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: R.fontBody,
+                }}>Retry</button>
+              </div>
+            )}
+
+            {/* Badge grid */}
+            {!badgesLoading && !badgesError && badges !== null && (() => {
+              const earned   = badges.filter(b => b.earned).sort((a, b) => new Date(b.earned_at) - new Date(a.earned_at));
+              const uStandard = badges.filter(b => !b.earned && b.tier === 'standard')
+                .sort((a, b) => BADGES.findIndex(x => x.id === a.id) - BADGES.findIndex(x => x.id === b.id));
+              const uSecret  = badges.filter(b => !b.earned && b.tier === 'secret');
+              const sorted   = [...earned, ...uStandard, ...uSecret];
+
+              return (
+                <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                  {sorted.map(badge => {
+                    if (badge.earned) {
+                      const dateStr = new Date(badge.earned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                      return (
+                        <div key={badge.id} style={{
+                          background: R.bgPage, borderRadius: 12, padding: "14px 10px",
+                          textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                        }}>
+                          <span style={{ fontSize: 32, lineHeight: 1 }}>{badge.emoji}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: R.navy, fontFamily: R.fontBody, lineHeight: 1.3 }}>{badge.name}</span>
+                          <span style={{ fontSize: 11, color: "#999", fontFamily: R.fontBody }}>Earned {dateStr}</span>
+                        </div>
+                      );
+                    }
+                    if (badge.tier === 'secret') {
+                      return (
+                        <div key={badge.id} style={{
+                          background: R.bgPage, borderRadius: 12, padding: "14px 10px",
+                          textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
+                        }}>
+                          <span style={{ fontSize: 28, lineHeight: 1, opacity: 0.4 }}>🔒</span>
+                        </div>
+                      );
+                    }
+                    // Unearned standard
+                    return (
+                      <div key={badge.id} style={{
+                        background: R.bgPage, borderRadius: 12, padding: "14px 10px",
+                        textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                      }}>
+                        <span style={{ fontSize: 32, lineHeight: 1, opacity: 0.2 }}>{badge.emoji}</span>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: "#999", fontFamily: R.fontBody, lineHeight: 1.3 }}>{badge.name}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </AnimCard>
 
@@ -363,6 +466,9 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
         </AnimCard>
       </div>
 
+      {newBadges.length > 0 && (
+        <BadgeCelebrationPopup badges={newBadges} onDismiss={handleBadgeDismiss} />
+      )}
       <ContactModal isOpen={showContact} onClose={() => setShowContact(false)} />
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </Screen>
