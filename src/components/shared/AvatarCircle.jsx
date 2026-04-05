@@ -1,6 +1,6 @@
 import { R } from '../../constants/theme';
 
-export default function AvatarCircle({ userName, profilePhoto, size, shadow, onClick, showCameraHint }) {
+export default function AvatarCircle({ userName, profilePhoto, size, shadow, onClick, showCameraHint, bg }) {
   const initials = userName.split(" ").map(n => n[0]).join("");
   return (
     <div
@@ -22,7 +22,7 @@ export default function AvatarCircle({ userName, profilePhoto, size, shadow, onC
       ) : (
         <div style={{
           width: size, height: size, borderRadius: "50%",
-          background: R.red, color: "#fff",
+          background: bg || R.red, color: "#fff",
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: size * 0.34, fontWeight: 700, fontFamily: R.fontMono,
           boxShadow: shadow,

@@ -286,7 +286,7 @@ export default function RankingsTab({ token }) {
                   return (
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 28, minWidth: 80 }}>
                       <span style={{ fontSize: 22, marginBottom: -8, lineHeight: 1 }}>🥈</span>
-                      <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={52} />
+                      <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={52} bg={e.is_warmup ? R.navy : undefined} />
                       <div style={{ textAlign: "center", marginTop: 8 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: R.textPrimary, fontFamily: R.fontBody }}>{name}</div>
                         <div style={{ fontSize: 11, color: R.textMuted, fontFamily: R.fontBody, marginTop: 2 }}>{e.converted_count} jobs</div>
@@ -303,7 +303,7 @@ export default function RankingsTab({ token }) {
                   return (
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 0, minWidth: 90 }}>
                       <span style={{ fontSize: 26, marginBottom: -10, lineHeight: 1 }}>🥇</span>
-                      <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={64} />
+                      <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={64} bg={e.is_warmup ? R.navy : undefined} />
                       <div style={{ textAlign: "center", marginTop: 10 }}>
                         <div style={{ fontSize: 15, fontWeight: 700, color: R.textPrimary, fontFamily: R.fontBody }}>{name}</div>
                         <div style={{ fontSize: 12, color: R.textMuted, fontFamily: R.fontBody, marginTop: 2 }}>{e.converted_count} jobs</div>
@@ -320,7 +320,7 @@ export default function RankingsTab({ token }) {
                   return (
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 28, minWidth: 80 }}>
                       <span style={{ fontSize: 22, marginBottom: -8, lineHeight: 1 }}>🥉</span>
-                      <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={52} />
+                      <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={52} bg={e.is_warmup ? R.navy : undefined} />
                       <div style={{ textAlign: "center", marginTop: 8 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: R.textPrimary, fontFamily: R.fontBody }}>{name}</div>
                         <div style={{ fontSize: 11, color: R.textMuted, fontFamily: R.fontBody, marginTop: 2 }}>{e.converted_count} jobs</div>
@@ -339,7 +339,7 @@ export default function RankingsTab({ token }) {
         <AnimCard delay={showPrizes ? 260 : 180} screenKey="rankings">
           <div style={{
             background: R.bgCard, border: `1px solid ${R.border}`,
-            borderRadius: 16, overflow: "hidden", boxShadow: R.shadow,
+            borderRadius: 16, overflow: "visible", boxShadow: R.shadow,
           }}>
 
             {/* Loading */}
@@ -400,6 +400,7 @@ export default function RankingsTab({ token }) {
                     userName={avatarName}
                     profilePhoto={row.is_warmup ? null : (row.profile_photo || null)}
                     size={36}
+                    bg={row.is_warmup ? R.navy : undefined}
                   />
                   <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                     <span style={{ fontSize: 15, fontWeight: 600, color: R.textPrimary }}>{row.first_name}</span>
@@ -415,6 +416,7 @@ export default function RankingsTab({ token }) {
                       opacity: bubbleActive ? 1 : 0,
                       transition: "opacity 200ms",
                       pointerEvents: "none", whiteSpace: "nowrap",
+                      zIndex: 10,
                     }}>
                       <div style={{ position: "absolute", left: -9, top: "50%", transform: "translateY(-50%)", width: 0, height: 0, borderTop: "7px solid transparent", borderBottom: "7px solid transparent", borderRight: "8px solid #012854" }} />
                       <div style={{ position: "absolute", left: -7, top: "50%", transform: "translateY(-50%)", width: 0, height: 0, borderTop: "6px solid transparent", borderBottom: "6px solid transparent", borderRight: "7px solid #fff" }} />
