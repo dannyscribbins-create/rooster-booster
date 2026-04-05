@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Lock, DownloadSimple, Phone, Envelope } from '@phosphor-icons/react';
+import { Lock, DownloadSimple, Phone, Envelope, ShareNetwork } from '@phosphor-icons/react';
 import { R } from '../../constants/theme';
 import { CONTRACTOR_CONFIG, BACKEND_URL } from '../../config/contractor';
 import AnimCard from '../shared/AnimCard';
@@ -9,6 +9,7 @@ import Screen from '../shared/Screen';
 export default function ReferAFriendTab({ userName, token }) {
   const firstName = userName ? userName.split(' ')[0] : 'there';
 
+  const [copied, setCopied] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState(null);
   const [qrLoading, setQrLoading] = useState(true);
   const [qrError, setQrError] = useState(false);
@@ -43,6 +44,26 @@ export default function ReferAFriendTab({ userName, token }) {
     a.href = qrCodeDataUrl;
     a.download = 'my-referral-qr.png';
     a.click();
+  };
+
+  const buildShareText = () => {
+    const lines = [CONTRACTOR_CONFIG.name];
+    if (CONTRACTOR_CONFIG.phone) lines.push(`📞 ${CONTRACTOR_CONFIG.phone}`);
+    if (CONTRACTOR_CONFIG.email) lines.push(`✉️ ${CONTRACTOR_CONFIG.email}`);
+    if (CONTRACTOR_CONFIG.website) lines.push(`🌐 ${CONTRACTOR_CONFIG.website}`);
+    return lines.join('\n');
+  };
+
+  const handleShare = () => {
+    const text = buildShareText();
+    if (navigator.share) {
+      navigator.share({ title: CONTRACTOR_CONFIG.name, text });
+    } else {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
   };
 
   const phoneDigits = CONTRACTOR_CONFIG.phone
@@ -241,7 +262,27 @@ export default function ReferAFriendTab({ userName, token }) {
           <div style={{
             background: R.bgCard, borderRadius: 16,
             boxShadow: R.shadow, overflow: 'hidden',
+            position: 'relative',
           }}>
+            <button
+              onClick={handleShare}
+              style={{
+                position: 'absolute', top: 10, right: 10,
+                background: 'none', border: 'none', padding: 6,
+                cursor: 'pointer', lineHeight: 0,
+              }}
+              aria-label="Share contact info"
+            >
+              <ShareNetwork size={20} color="#012854" />
+            </button>
+            {copied && (
+              <span style={{
+                position: 'absolute', top: 12, right: 38,
+                fontFamily: R.fontBody, fontSize: 12, color: R.textMuted,
+              }}>
+                Copied!
+              </span>
+            )}
             {CONTRACTOR_CONFIG.phone && (
               <a
                 href={`tel:${phoneDigits}`}
