@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Lock, DownloadSimple, Phone, Envelope, ShareNetwork } from '@phosphor-icons/react';
+import { Lock, DownloadSimple, Phone, Envelope, ShareNetwork, GlobeSimple } from '@phosphor-icons/react';
 import { R } from '../../constants/theme';
 import { CONTRACTOR_CONFIG, BACKEND_URL } from '../../config/contractor';
 import AnimCard from '../shared/AnimCard';
@@ -289,7 +289,7 @@ export default function ReferAFriendTab({ userName, token }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '15px 18px', textDecoration: 'none',
-                  borderBottom: CONTRACTOR_CONFIG.email ? `1px solid ${R.border}` : 'none',
+                  borderBottom: (CONTRACTOR_CONFIG.email || CONTRACTOR_CONFIG.website) ? `1px solid ${R.border}` : 'none',
                 }}
               >
                 <Phone size={20} color={R.navy} weight="duotone" />
@@ -307,6 +307,7 @@ export default function ReferAFriendTab({ userName, token }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '15px 18px', textDecoration: 'none',
+                  borderBottom: CONTRACTOR_CONFIG.website ? `1px solid ${R.border}` : 'none',
                 }}
               >
                 <Envelope size={20} color={R.navy} weight="duotone" />
@@ -315,6 +316,25 @@ export default function ReferAFriendTab({ userName, token }) {
                   color: R.textPrimary,
                 }}>
                   {CONTRACTOR_CONFIG.email}
+                </span>
+              </a>
+            )}
+            {CONTRACTOR_CONFIG.website && (
+              <a
+                href={`https://${CONTRACTOR_CONFIG.website}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '15px 18px', textDecoration: 'none',
+                }}
+              >
+                <GlobeSimple size={20} color={R.navy} weight="duotone" />
+                <span style={{
+                  fontFamily: R.fontBody, fontSize: 15,
+                  color: R.textPrimary,
+                }}>
+                  {CONTRACTOR_CONFIG.website}
                 </span>
               </a>
             )}
