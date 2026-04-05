@@ -145,6 +145,33 @@ function PrizeRows({ prizes, setPrizes }) {
   ));
 }
 
+function ToggleRow({ label, sublabel, value, onChange }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div>
+        <div style={{ fontSize: 17, fontWeight: 600, color: AD.textPrimary, marginBottom: 3 }}>{label}</div>
+        {sublabel && <div style={{ fontSize: 14, color: AD.textSecondary, maxWidth: 480 }}>{sublabel}</div>}
+      </div>
+      <button
+        onClick={() => onChange(!value)}
+        aria-label={`Toggle ${label}`}
+        style={{
+          width: 48, height: 26, borderRadius: 99, flexShrink: 0,
+          background: value ? AD.green : AD.borderStrong,
+          border: 'none', cursor: 'pointer', position: 'relative',
+          transition: 'background 0.2s', padding: 0, marginLeft: 24,
+        }}
+      >
+        <div style={{
+          position: 'absolute', top: 3, left: value ? 25 : 3,
+          width: 20, height: 20, borderRadius: '50%', background: '#fff',
+          transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+        }} />
+      </button>
+    </div>
+  );
+}
+
 export default function AdminEngagement({ setLoggedIn }) {
   const adminToken = () => sessionStorage.getItem('rb_admin_token');
   const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
@@ -159,8 +186,10 @@ export default function AdminEngagement({ setLoggedIn }) {
   const [q3Start, setQ3Start] = useState(7);
   const [q4Start, setQ4Start] = useState(10);
 
-  // Section 1 — Leaderboard toggle
-  const [leaderboardEnabled, setLeaderboardEnabled] = useState(true);
+  // Section 1 — Leaderboard toggles
+  const [leaderboardEnabled,  setLeaderboardEnabled]  = useState(true);
+  const [warmupModeEnabled,   setWarmupModeEnabled]   = useState(false);
+  const [shoutsEnabled,       setShoutsEnabled]       = useState(true);
 
   // Section 2 — Prize config
   const [quarterlyPrizes, setQuarterlyPrizes] = useState(emptyPrizes());
@@ -179,6 +208,10 @@ export default function AdminEngagement({ setLoggedIn }) {
   const [preview,        setPreview]        = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // Warmup auto-disable banner
+  const [warmupJustDisabled, setWarmupJustDisabled] = useState(false);
+  const [bannerDismissed,    setBannerDismissed]    = useState(false);
+
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
       headers: { 'Authorization': `Bearer ${adminToken()}` },
@@ -187,6 +220,8 @@ export default function AdminEngagement({ setLoggedIn }) {
       .then(d => {
         if (!d) return;
         setLeaderboardEnabled(d.leaderboard_enabled ?? true);
+        setWarmupModeEnabled(d.warmup_mode_enabled ?? false);
+        setShoutsEnabled(d.shouts_enabled ?? true);
         if (Array.isArray(d.quarterly_prizes) && d.quarterly_prizes.length > 0) {
           setQuarterlyPrizes(d.quarterly_prizes.map(p => ({ amount: p.amount ?? '', description: p.description ?? '' })));
         }
@@ -212,7 +247,14 @@ export default function AdminEngagement({ setLoggedIn }) {
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
       .then(d => {
         if (!d) return;
-        setLeaderboard(Array.isArray(d) ? d : []);
+        // Response is now { rows, warmup_just_disabled }
+        const rows = Array.isArray(d.rows) ? d.rows : (Array.isArray(d) ? d : []);
+        setLeaderboard(rows);
+        if (d.warmup_just_disabled) {
+          setWarmupModeEnabled(false);
+          setWarmupJustDisabled(true);
+          setBannerDismissed(false);
+        }
         setLbLoading(false);
       })
       .catch(() => setLbLoading(false));
@@ -233,6 +275,8 @@ export default function AdminEngagement({ setLoggedIn }) {
         quarter_2_start: q2Start,
         quarter_3_start: q3Start,
         quarter_4_start: q4Start,
+        warmup_mode_enabled: warmupModeEnabled,
+        shouts_enabled: shoutsEnabled,
       }),
     })
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
@@ -255,10 +299,9 @@ export default function AdminEngagement({ setLoggedIn }) {
       .then(async ([qRes, yRes]) => {
         if (qRes.status === 401 || yRes.status === 401) { on401(); return; }
         const [qData, yData] = await Promise.all([qRes.json(), yRes.json()]);
-        setPreview({
-          quarterly: Array.isArray(qData) ? qData : [],
-          yearly:    Array.isArray(yData) ? yData : [],
-        });
+        const qRows = Array.isArray(qData.rows) ? qData.rows : (Array.isArray(qData) ? qData : []);
+        const yRows = Array.isArray(yData.rows) ? yData.rows : (Array.isArray(yData) ? yData : []);
+        setPreview({ quarterly: qRows, yearly: yRows });
         setPreviewLoading(false);
       })
       .catch(() => { setPreview({ error: 'Failed to load preview.' }); setPreviewLoading(false); });
@@ -283,10 +326,34 @@ export default function AdminEngagement({ setLoggedIn }) {
   }
 
   const seasonPreview = computeSeasonPreview(yearStartMonth, q1Start, q2Start, q3Start, q4Start);
+  const showBanner = warmupJustDisabled && !bannerDismissed;
 
   return (
     <>
       <AdminPageHeader title="Engagement" subtitle="Leaderboard and prize configuration" />
+
+      {/* Warmup auto-disable banner */}
+      {showBanner && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+          background: AD.navy, color: '#fff',
+          borderRadius: 12, padding: '14px 20px', marginBottom: 24,
+          boxShadow: AD.shadowSm,
+        }}>
+          <span style={{ fontSize: 14, lineHeight: 1.5 }}>
+            Warm-Up Mode has been turned off automatically — you now have 5 real referrers on the leaderboard. The momentum is real. 🎉
+          </span>
+          <button
+            onClick={() => setBannerDismissed(true)}
+            aria-label="Dismiss"
+            style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              color: 'rgba(255,255,255,0.7)', fontSize: 20, lineHeight: 1,
+              padding: '0 4px', flexShrink: 0,
+            }}
+          >×</button>
+        </div>
+      )}
 
       {/* Section 0 — Season Settings */}
       <div style={card}>
@@ -331,28 +398,46 @@ export default function AdminEngagement({ setLoggedIn }) {
 
       {/* Section 1 — Leaderboard Toggle */}
       <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 17, fontWeight: 600, color: AD.textPrimary, marginBottom: 3 }}>Leaderboard</div>
-            <div style={{ fontSize: 14, color: AD.textSecondary }}>Show Rankings tab to referrers</div>
+        <ToggleRow
+          label="Leaderboard"
+          sublabel="Show Rankings tab to referrers"
+          value={leaderboardEnabled}
+          onChange={setLeaderboardEnabled}
+        />
+      </div>
+
+      {/* Section 1b — Leaderboard Warm-Up Mode */}
+      <div style={card}>
+        <ToggleRow
+          label="Leaderboard Warm-Up Mode"
+          sublabel="Populates the leaderboard with placeholder entries until 5 real referrers appear. Auto-disables when momentum builds."
+          value={warmupModeEnabled}
+          onChange={setWarmupModeEnabled}
+        />
+        {warmupModeEnabled && (
+          <div style={{
+            marginTop: 16,
+            padding: '10px 14px',
+            background: AD.bgCardTint,
+            borderRadius: 10,
+            fontSize: 13,
+            color: AD.textSecondary,
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+          }}>
+            <i className="ph ph-info" style={{ fontSize: 15, color: AD.blueText, flexShrink: 0, marginTop: 1 }} />
+            <span>Placeholder names are clearly fictional (punny names). This is illustrative, not deceptive.</span>
           </div>
-          <button
-            onClick={() => setLeaderboardEnabled(v => !v)}
-            aria-label="Toggle leaderboard visibility"
-            style={{
-              width: 48, height: 26, borderRadius: 99, flexShrink: 0,
-              background: leaderboardEnabled ? AD.green : AD.borderStrong,
-              border: 'none', cursor: 'pointer', position: 'relative',
-              transition: 'background 0.2s', padding: 0,
-            }}
-          >
-            <div style={{
-              position: 'absolute', top: 3, left: leaderboardEnabled ? 25 : 3,
-              width: 20, height: 20, borderRadius: '50%', background: '#fff',
-              transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-            }} />
-          </button>
-        </div>
+        )}
+      </div>
+
+      {/* Section 1c — Leaderboard Shouts */}
+      <div style={card}>
+        <ToggleRow
+          label="Leaderboard Shouts"
+          sublabel="Animated word bubbles appear next to referrer names on the leaderboard. Turn off for a quieter, more professional look."
+          value={shoutsEnabled}
+          onChange={setShoutsEnabled}
+        />
       </div>
 
       {/* Section 2 — Prize Configuration */}

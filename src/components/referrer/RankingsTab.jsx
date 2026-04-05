@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { R } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
+import { SHOUT_BUCKETS } from '../../constants/shouts';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 
@@ -20,10 +21,16 @@ const MEDAL = {
 
 // ─── RankingsTab ──────────────────────────────────────────────────────────────
 export default function RankingsTab({ token }) {
-  const [period, setPeriod]       = useState("yearly");
-  const [data, setData]           = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState(false);
+  const [period, setPeriod]           = useState("yearly");
+  const [data, setData]               = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState(false);
+
+  // Shout bubble state
+  const [activeShoutIndex, setActiveShoutIndex] = useState(null);
+  const [showBubble, setShowBubble]             = useState(false);
+  const [activeShoutText, setActiveShoutText]   = useState('');
+  const shoutIndexRef = useRef(-1);
 
   function fetchLeaderboard(p) {
     setLoading(true);
@@ -40,6 +47,68 @@ export default function RankingsTab({ token }) {
     fetchLeaderboard(period);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
+
+  // Shout bubble interval — cycles through leaderboard rows every 5s, visible 3s
+  useEffect(() => {
+    if (!data || !data.shouts_enabled || !data.top10 || data.top10.length === 0) return;
+
+    const entries = data.top10;
+    const userRankIndex = (data.userRank && data.userRank.rank <= 10) ? data.userRank.rank - 1 : -1;
+
+    shoutIndexRef.current = -1;
+    setActiveShoutIndex(null);
+    setShowBubble(false);
+
+    let hideTimeout = null;
+
+    const tick = () => {
+      // Advance to next valid index, skipping opted-out user row
+      let next = (shoutIndexRef.current + 1) % entries.length;
+      let attempts = 0;
+      while (attempts < entries.length) {
+        if (next === userRankIndex && data.shout_opt_out) {
+          next = (next + 1) % entries.length;
+          attempts++;
+        } else {
+          break;
+        }
+      }
+      if (attempts >= entries.length) return; // all rows opted out
+
+      shoutIndexRef.current = next;
+      const row = entries[next];
+
+      // Determine shout text for this row
+      let text;
+      if (row.is_warmup) {
+        text = row.shout;
+      } else if (next === userRankIndex && data.pinned_shout) {
+        text = data.pinned_shout;
+      } else {
+        const rank = next + 1;
+        const bucket = rank === 1 ? SHOUT_BUCKETS.rank1
+          : rank <= 3 ? SHOUT_BUCKETS.rank2_3
+          : rank <= 7 ? SHOUT_BUCKETS.rank4_7
+          : SHOUT_BUCKETS.rank8_10;
+        text = bucket[Math.floor(Math.random() * bucket.length)];
+      }
+
+      setActiveShoutIndex(next);
+      setActiveShoutText(text);
+      setShowBubble(true);
+
+      if (hideTimeout) clearTimeout(hideTimeout);
+      hideTimeout = setTimeout(() => setShowBubble(false), 3000);
+    };
+
+    const interval = setInterval(tick, 5000);
+
+    return () => {
+      clearInterval(interval);
+      if (hideTimeout) clearTimeout(hideTimeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   // Prize array for the active period
   const prizes = period === "quarterly"
@@ -114,6 +183,22 @@ export default function RankingsTab({ token }) {
             ))}
           </div>
         </AnimCard>
+
+        {/* ── Warm-Up Motivational Banner ───────────────────────────────────── */}
+        {data?.warmup_mode_enabled && (!data.userRank || data.userRank.converted_count === 0) && (
+          <AnimCard delay={90} screenKey="rankings">
+            <div style={{
+              background: R.blueLight,
+              borderRadius: 12,
+              padding: "12px 16px",
+              marginBottom: 16,
+            }}>
+              <p style={{ margin: 0, fontSize: 13, color: R.navy, lineHeight: 1.6 }}>
+                Every top referrer started at zero. Make your first referral and claim your spot.
+              </p>
+            </div>
+          </AnimCard>
+        )}
 
         {/* ── Prize Display Card ─────────────────────────────────────────────── */}
         {/* STRIPE HOOK: when Stripe ACH is live, prize display will show payout status for winners at period end */}
@@ -230,8 +315,9 @@ export default function RankingsTab({ token }) {
             {/* Top 10 rows */}
             {!loading && !error && data?.top10?.length > 0 && (
               <>
-                {data.top10.map((row) => {
+                {data.top10.map((row, i) => {
                   const medal = MEDAL[row.rank];
+                  const bubbleActive = data.shouts_enabled && activeShoutIndex === i && showBubble;
                   return (
                     <div key={row.rank} style={{
                       display: "flex", alignItems: "center", gap: 14,
@@ -250,8 +336,8 @@ export default function RankingsTab({ token }) {
                         {row.rank}
                       </span>
 
-                      {/* Name + trophy for 1st + display badge */}
-                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+                      {/* Name + trophy for 1st + display badge + shout bubble */}
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                         <span style={{ fontSize: 15, fontWeight: 600, color: R.textPrimary }}>
                           {row.first_name}
                         </span>
@@ -261,6 +347,18 @@ export default function RankingsTab({ token }) {
                         {row.display_badge && (
                           <span style={{ fontSize: 14, marginLeft: 5 }}>{row.display_badge.emoji}</span>
                         )}
+                        <div style={{
+                          marginLeft: 8,
+                          background: "#fff", border: "1px solid #012854",
+                          borderRadius: 12, padding: "6px 10px",
+                          fontSize: 12, color: "#333",
+                          opacity: bubbleActive ? 1 : 0,
+                          transition: "opacity 200ms",
+                          pointerEvents: "none",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {activeShoutText}
+                        </div>
                       </div>
 
                       {/* Jobs count */}

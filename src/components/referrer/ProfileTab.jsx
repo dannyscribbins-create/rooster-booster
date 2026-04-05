@@ -3,6 +3,7 @@ import { R, STATUS_CONFIG } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
 import { getNextPayout } from '../../constants/boostSchedule';
 import { BADGES } from '../../constants/badges';
+import { SHOUT_BUCKETS } from '../../constants/shouts';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import AvatarCircle from '../shared/AvatarCircle';
@@ -25,6 +26,12 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
   const [badgesLoading, setBadgesLoading] = useState(false);
   const [badgesError, setBadgesError]     = useState(false);
   const [newBadges, setNewBadges]         = useState([]); // Phase 3: unseen earned badges → celebration popup
+
+  // Leaderboard shout settings
+  const [shoutOptOut,     setShoutOptOut]     = useState(false);
+  const [pinnedShout,     setPinnedShout]     = useState(null);
+  const [shoutRank,       setShoutRank]       = useState(null); // userRank from leaderboard, for bucket selection
+  const [shoutSettingsLoading, setShoutSettingsLoading] = useState(true);
 
   // UX: highlight animation guides user to the correct section when arriving from Dashboard View All button
   const [sectionHighlighted, setSectionHighlighted] = useState(!!highlightReferrals);
@@ -70,6 +77,31 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
   useEffect(() => {
     fetchBadges();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/referrer/leaderboard?period=alltime`, {
+      headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+    })
+      .then(r => r.json())
+      .then(d => {
+        setShoutOptOut(d.shout_opt_out ?? false);
+        setPinnedShout(d.pinned_shout ?? null);
+        setShoutRank(d.userRank ?? null);
+      })
+      .catch(() => {})
+      .finally(() => setShoutSettingsLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function saveShoutSettings(optOut, pinned) {
+    fetch(`${BACKEND_URL}/api/referrer/shout-settings`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
+      },
+      body: JSON.stringify({ shout_opt_out: optOut, pinned_shout: pinned }),
+    }).catch(() => {}); // optimistic — fire-and-forget
+  }
 
   // ── Pipeline filter ──────────────────────────────────────────────────────────
   const filters      = ["all", "lead", "inspection", "sold", "closed"];
@@ -430,8 +462,105 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
           </div>
         </AnimCard>
 
+        {/* ── Section 4: Leaderboard Shout ────────────────────────────────────── */}
+        {!shoutSettingsLoading && (() => {
+          const rank = shoutRank?.rank ?? null;
+          const bucket = rank === 1 ? SHOUT_BUCKETS.rank1
+            : rank !== null && rank <= 3 ? SHOUT_BUCKETS.rank2_3
+            : rank !== null && rank <= 7 ? SHOUT_BUCKETS.rank4_7
+            : SHOUT_BUCKETS.rank8_10;
+
+          return (
+            <AnimCard delay={400} screenKey="profile">
+              <div style={{
+                background: R.bgCard, border: `1px solid ${R.border}`,
+                borderRadius: 16, overflow: "hidden", boxShadow: R.shadow, marginBottom: 16,
+              }}>
+                {/* Section header */}
+                <div style={{
+                  padding: "16px 18px 14px",
+                  borderBottom: `1px solid ${R.border}`,
+                  display: "flex", alignItems: "center", gap: 8,
+                }}>
+                  <i className="ph ph-chat-circle" style={{ fontSize: 18, color: R.navy }} />
+                  <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: R.textPrimary }}>Leaderboard Shout</span>
+                </div>
+
+                {/* Opt-out toggle */}
+                <div style={{
+                  padding: "16px 18px",
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  borderBottom: !shoutOptOut ? `1px solid ${R.border}` : "none",
+                }}>
+                  <span style={{ fontSize: 15, color: R.textSecondary, fontFamily: R.fontBody }}>Show my shout on the leaderboard</span>
+                  <button
+                    onClick={() => {
+                      const next = !shoutOptOut;
+                      setShoutOptOut(next);
+                      saveShoutSettings(next, pinnedShout);
+                    }}
+                    aria-label="Toggle leaderboard shout visibility"
+                    style={{
+                      width: 44, height: 24, borderRadius: 99, flexShrink: 0,
+                      background: !shoutOptOut ? R.navy : R.border,
+                      border: "none", cursor: "pointer", position: "relative",
+                      transition: "background 0.2s", padding: 0, marginLeft: 16,
+                    }}
+                  >
+                    <div style={{
+                      position: "absolute", top: 3,
+                      left: !shoutOptOut ? 23 : 3,
+                      width: 18, height: 18, borderRadius: "50%", background: "#fff",
+                      transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+                    }} />
+                  </button>
+                </div>
+
+                {/* Pin section — only when showing shout */}
+                {!shoutOptOut && (
+                  <div style={{ padding: "16px 18px" }}>
+                    <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 600, color: R.textPrimary, fontFamily: R.fontBody }}>
+                      Pin a favorite phrase
+                    </p>
+                    <p style={{ margin: "0 0 14px", fontSize: 13, color: R.textMuted, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+                      Choose a phrase to always show instead of a random one.
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {bucket.map(phrase => {
+                        const selected = pinnedShout === phrase;
+                        return (
+                          <button
+                            key={phrase}
+                            onClick={() => {
+                              const next = selected ? null : phrase;
+                              setPinnedShout(next);
+                              saveShoutSettings(shoutOptOut, next);
+                            }}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: 999,
+                              border: `1.5px solid ${selected ? R.navy : R.border}`,
+                              background: selected ? R.navy : R.bgPage,
+                              color: selected ? "#fff" : R.textSecondary,
+                              fontSize: 13, fontFamily: R.fontBody,
+                              cursor: "pointer", fontWeight: selected ? 600 : 400,
+                              transition: "background 0.15s, border-color 0.15s, color 0.15s",
+                            }}
+                          >
+                            {phrase}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </AnimCard>
+          );
+        })()}
+
         {/* ── Contact Support + Sign Out ───────────────────────────────────────── */}
-        <AnimCard delay={400} screenKey="profile">
+        <AnimCard delay={480} screenKey="profile">
           <button onClick={() => setShowContact(true)} style={{
             width: "100%", background: R.bgCard,
             border: `1.5px solid ${R.border}`, borderRadius: 12,
@@ -448,7 +577,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
           </button>
         </AnimCard>
 
-        <AnimCard delay={460} screenKey="profile">
+        <AnimCard delay={540} screenKey="profile">
           <button onClick={onLogout} style={{
             width: "100%", background: "#fff5f5",
             border: "1.5px solid #fecaca", borderRadius: 12,

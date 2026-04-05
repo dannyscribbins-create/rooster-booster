@@ -146,6 +146,11 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS quarter_3_start INTEGER DEFAULT 7`);
   await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS quarter_4_start INTEGER DEFAULT 10`);
 
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS shout_opt_out BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS pinned_shout TEXT DEFAULT null`);
+  await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS warmup_mode_enabled BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS shouts_enabled BOOLEAN DEFAULT true`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

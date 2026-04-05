@@ -309,11 +309,12 @@ router.get('/api/admin/leaderboard', async (req, res) => {
   try {
     const settingsResult = await pool.query(
       `SELECT year_start_month, quarter_1_start, quarter_2_start,
-              quarter_3_start, quarter_4_start
+              quarter_3_start, quarter_4_start, warmup_mode_enabled
        FROM engagement_settings WHERE contractor_id=$1`,
       ['accent-roofing']
     );
     const settings = settingsResult.rows[0] || {};
+    const warmup_mode_enabled = settings.warmup_mode_enabled ?? false;
     const period = req.query.period || 'alltime';
     const { start, end } = getPeriodDateRange(period, settings);
 
@@ -352,7 +353,20 @@ router.get('/api/admin/leaderboard', async (req, res) => {
         period,
       };
     });
-    res.json(rows);
+
+    // Auto-disable warmup mode if 5+ real referrers now have conversions
+    let warmup_just_disabled = false;
+    if (warmup_mode_enabled) {
+      const realWithCount = rows.filter(r => r.converted_count > 0).length;
+      if (realWithCount >= 5) {
+        await pool.query(
+          `UPDATE engagement_settings SET warmup_mode_enabled=false WHERE contractor_id='accent-roofing'`
+        );
+        warmup_just_disabled = true;
+      }
+    }
+
+    res.json({ rows, warmup_just_disabled });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -363,7 +377,8 @@ router.get('/api/admin/engagement-settings', async (req, res) => {
     const result = await pool.query(
       `SELECT leaderboard_enabled, quarterly_prizes, yearly_prizes,
               year_start_month, quarter_1_start, quarter_2_start,
-              quarter_3_start, quarter_4_start
+              quarter_3_start, quarter_4_start,
+              warmup_mode_enabled, shouts_enabled
        FROM engagement_settings WHERE contractor_id = $1`,
       ['accent-roofing']
     );
@@ -372,6 +387,7 @@ router.get('/api/admin/engagement-settings', async (req, res) => {
         leaderboard_enabled: true, quarterly_prizes: [], yearly_prizes: [],
         year_start_month: 1, quarter_1_start: 1, quarter_2_start: 4,
         quarter_3_start: 7, quarter_4_start: 10,
+        warmup_mode_enabled: false, shouts_enabled: true,
       });
     }
     const row = result.rows[0];
@@ -384,6 +400,8 @@ router.get('/api/admin/engagement-settings', async (req, res) => {
       quarter_2_start: row.quarter_2_start ?? 4,
       quarter_3_start: row.quarter_3_start ?? 7,
       quarter_4_start: row.quarter_4_start ?? 10,
+      warmup_mode_enabled: row.warmup_mode_enabled ?? false,
+      shouts_enabled: row.shouts_enabled ?? true,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -393,6 +411,7 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
   const {
     leaderboard_enabled, quarterly_prizes, yearly_prizes,
     year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
+    warmup_mode_enabled, shouts_enabled,
   } = req.body;
   if (typeof leaderboard_enabled !== 'boolean') {
     return res.status(400).json({ error: 'leaderboard_enabled must be a boolean' });
@@ -402,6 +421,12 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
   }
   if (!Array.isArray(yearly_prizes) || yearly_prizes.length > 3) {
     return res.status(400).json({ error: 'yearly_prizes must be an array of max 3 items' });
+  }
+  if (typeof warmup_mode_enabled !== 'boolean') {
+    return res.status(400).json({ error: 'warmup_mode_enabled must be a boolean' });
+  }
+  if (typeof shouts_enabled !== 'boolean') {
+    return res.status(400).json({ error: 'shouts_enabled must be a boolean' });
   }
   const monthFields = { year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start };
   for (const [field, val] of Object.entries(monthFields)) {
@@ -416,17 +441,19 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
       `INSERT INTO engagement_settings (
          contractor_id, leaderboard_enabled, quarterly_prizes, yearly_prizes,
          year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
-         updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         warmup_mode_enabled, shouts_enabled, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
        ON CONFLICT (contractor_id) DO UPDATE
          SET leaderboard_enabled=$2, quarterly_prizes=$3, yearly_prizes=$4,
              year_start_month=$5, quarter_1_start=$6, quarter_2_start=$7,
-             quarter_3_start=$8, quarter_4_start=$9, updated_at=NOW()`,
+             quarter_3_start=$8, quarter_4_start=$9,
+             warmup_mode_enabled=$10, shouts_enabled=$11, updated_at=NOW()`,
       [
         'accent-roofing', leaderboard_enabled,
         JSON.stringify(quarterly_prizes), JSON.stringify(yearly_prizes),
         monthFields.year_start_month, monthFields.quarter_1_start, monthFields.quarter_2_start,
         monthFields.quarter_3_start, monthFields.quarter_4_start,
+        warmup_mode_enabled, shouts_enabled,
       ]
     );
     res.json({ success: true });

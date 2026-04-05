@@ -27,6 +27,22 @@ const resetPinLimiter = rateLimit({
   message: { error: 'Too many attempts. Please request a new reset link.' }
 });
 
+// ── WARMUP ENTRIES ────────────────────────────────────────────────────────────
+// Must stay in sync with src/constants/shouts.js WARMUP_ENTRIES.
+// Kept server-side to avoid a runtime import of an ES module from CommonJS.
+const WARMUP_ENTRIES_SERVER = [
+  { id: "warmup_1",  firstName: "Nail",     referralCount: 14, shout: "I nailed it." },
+  { id: "warmup_2",  firstName: "Galvan",   referralCount: 11, shout: "Fully charged. ⚡" },
+  { id: "warmup_3",  firstName: "Paige",    referralCount: 9,  shout: "On to the next chapter." },
+  { id: "warmup_4",  firstName: "Flash",    referralCount: 8,  shout: "Blink and you'll miss me." },
+  { id: "warmup_5",  firstName: "Roger",    referralCount: 7,  shout: "Roger that. 🫡" },
+  { id: "warmup_6",  firstName: "Grant",    referralCount: 6,  shout: "It's a great day to refer." },
+  { id: "warmup_7",  firstName: "Victor",   referralCount: 5,  shout: "Victory is the only option." },
+  { id: "warmup_8",  firstName: "Pete",     referralCount: 4,  shout: "Always closing." },
+  { id: "warmup_9",  firstName: "Ridgeard", referralCount: 3,  shout: "Keep running those referrals." },
+  { id: "warmup_10", firstName: "Tarence",  referralCount: 2,  shout: "Staying sharp." },
+];
+
 // ── BADGE AWARD HELPER ────────────────────────────────────────────────────────
 // Called after every pipeline sync. Checks pipeline_sync-triggered badges and
 // inserts any newly qualifying ones. Returns array of newly awarded badge ids
@@ -680,15 +696,27 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
     if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     const userId = sessionResult.rows[0].user_id;
 
-    const settingsResult = await pool.query(
-      `SELECT leaderboard_enabled, year_start_month, quarter_1_start,
-              quarter_2_start, quarter_3_start, quarter_4_start,
-              quarterly_prizes, yearly_prizes
-       FROM engagement_settings WHERE contractor_id=$1`,
-      ['accent-roofing']
-    );
+    const [settingsResult, userShoutResult] = await Promise.all([
+      pool.query(
+        `SELECT leaderboard_enabled, year_start_month, quarter_1_start,
+                quarter_2_start, quarter_3_start, quarter_4_start,
+                quarterly_prizes, yearly_prizes,
+                warmup_mode_enabled, shouts_enabled
+         FROM engagement_settings WHERE contractor_id=$1`,
+        ['accent-roofing']
+      ),
+      pool.query(
+        'SELECT shout_opt_out, pinned_shout FROM users WHERE id=$1',
+        [userId]
+      ),
+    ]);
+
     const settings = settingsResult.rows[0] || {};
-    const leaderboard_enabled = settings.leaderboard_enabled ?? true;
+    const leaderboard_enabled  = settings.leaderboard_enabled  ?? true;
+    const warmup_mode_enabled  = settings.warmup_mode_enabled  ?? false;
+    const shouts_enabled       = settings.shouts_enabled       ?? true;
+    const shout_opt_out        = userShoutResult.rows[0]?.shout_opt_out  ?? false;
+    const pinned_shout         = userShoutResult.rows[0]?.pinned_shout   ?? null;
 
     const period = req.query.period || 'alltime';
     const { start, end } = getPeriodDateRange(period, settings);
@@ -734,6 +762,39 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
 
     const userCount = parseInt(userCountResult.rows[0]?.converted_count) || 0;
 
+    // Count real entries with at least 1 conversion for warmup threshold check
+    const realWithCount = top10Result.rows.filter(r => parseInt(r.converted_count) > 0).length;
+
+    // ── Warmup mode: return placeholder entries when fewer than 5 real referrers have converted ──
+    if (warmup_mode_enabled) {
+      if (realWithCount < 5) {
+        const warmupTop10 = WARMUP_ENTRIES_SERVER.map((entry, i) => ({
+          rank: i + 1,
+          first_name: entry.firstName,
+          converted_count: entry.referralCount,
+          shout: entry.shout,
+          display_badge: null,
+          is_warmup: true,
+        }));
+        return res.json({
+          top10: warmupTop10,
+          userRank: null,
+          leaderboard_enabled,
+          warmup_mode_enabled: true,
+          shouts_enabled,
+          shout_opt_out,
+          pinned_shout,
+          quarterly_prizes: settings.quarterly_prizes ?? [],
+          yearly_prizes: settings.yearly_prizes ?? [],
+        });
+      }
+      // 5+ real referrers — auto-disable warmup mode
+      await pool.query(
+        `UPDATE engagement_settings SET warmup_mode_enabled=false WHERE contractor_id='accent-roofing'`
+      );
+    }
+
+    // ── Normal leaderboard path ───────────────────────────────────────────────
     // Collect all user IDs we need badges for: top 10 + the logged-in user
     const top10Ids = top10Result.rows.map(r => r.id);
     const allIds = [...new Set([...top10Ids, userId])];
@@ -787,13 +848,52 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
       display_badge: pickDisplayBadge(badgeMap[userId] || new Set()),
     } : null;
 
-    res.json({
+    const response = {
       top10,
       userRank,
       leaderboard_enabled,
+      warmup_mode_enabled: false,
+      shouts_enabled,
+      shout_opt_out,
+      pinned_shout,
       quarterly_prizes: settings.quarterly_prizes ?? [],
       yearly_prizes: settings.yearly_prizes ?? [],
-    });
+    };
+
+    // Signal to admin panel that warmup was just auto-disabled
+    if (warmup_mode_enabled && realWithCount >= 5) {
+      response.warmup_just_disabled = true;
+    }
+
+    res.json(response);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── REFERRER: SHOUT SETTINGS ───────────────────────────────────────────────────
+router.patch('/api/referrer/shout-settings', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    const { shout_opt_out, pinned_shout } = req.body;
+    if (typeof shout_opt_out !== 'boolean') {
+      return res.status(400).json({ error: 'shout_opt_out must be a boolean' });
+    }
+    if (pinned_shout !== null && typeof pinned_shout !== 'string') {
+      return res.status(400).json({ error: 'pinned_shout must be a string or null' });
+    }
+
+    await pool.query(
+      'UPDATE users SET shout_opt_out=$1, pinned_shout=$2 WHERE id=$3',
+      [shout_opt_out, pinned_shout, userId]
+    );
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
