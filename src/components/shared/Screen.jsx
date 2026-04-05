@@ -5,7 +5,7 @@ export default function Screen({ children, style = {} }) {
     <div style={{
       maxWidth: 430, margin: "0 auto", minHeight: "100vh",
       background: R.bgPage, color: R.textPrimary, paddingBottom: 88,
-      fontFamily: R.fontBody, position: "relative", overflow: "hidden",
+      fontFamily: R.fontBody, position: "relative", overflowX: "hidden", overflowY: "visible",
       ...style,
     }}>
       {children}
