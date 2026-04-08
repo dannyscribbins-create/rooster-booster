@@ -57,7 +57,7 @@ export default function AdminReferrers({ setLoggedIn }) {
       headers: { 'Authorization': `Bearer ${adminToken()}` },
     })
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => { if (!d) return; setDetail(d); setDetailLoading(false); })
+      .then(d => { if (!d) return; if (d.error) { setDetailLoading(false); return; } setDetail(d); setDetailLoading(false); })
       .catch(() => setDetailLoading(false));
   }
 
@@ -185,10 +185,7 @@ export default function AdminReferrers({ setLoggedIn }) {
                       <i className="ph ph-envelope" style={{ fontSize: 13, color: AD.textTertiary }} />
                       <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{selected.email}</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <i className="ph ph-phone" style={{ fontSize: 13, color: AD.textTertiary }} />
-                      <span style={{ fontSize: 13, color: AD.textSecondary }}>{ui && ui.phone ? ui.phone : '—'}</span>
-                    </div>
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <i className="ph ph-calendar-blank" style={{ fontSize: 13, color: AD.textTertiary }} />
                       <span style={{ fontSize: 13, color: AD.textSecondary }}>

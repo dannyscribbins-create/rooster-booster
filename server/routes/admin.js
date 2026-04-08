@@ -124,7 +124,7 @@ router.get('/api/admin/referrer/:name', async (req, res) => {
       fetchPipelineForReferrer(name),
       pool.query(
         `SELECT
-          u.id, u.full_name, u.email, u.phone, u.created_at,
+          u.id, u.full_name, u.email, u.created_at,
           u.signup_source, u.invited_by_user_id, u.jobber_client_id,
           u.email_verified,
           ref.full_name AS invited_by_name,
