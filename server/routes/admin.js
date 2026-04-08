@@ -460,4 +460,46 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── ADMIN: INVITE LINKS ───────────────────────────────────────────────────────
+router.post('/api/admin/invite-links', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { linkType } = req.body;
+  if (!['contractor'].includes(linkType)) {
+    return res.status(400).json({ error: "linkType must be 'contractor'" });
+  }
+  try {
+    const slug = crypto.randomBytes(5).toString('hex');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const fullUrl = `${frontendUrl}?signup=${slug}`;
+    await pool.query(
+      `INSERT INTO contractor_invite_links (contractor_id, slug, link_type, created_by_user_id, active)
+       VALUES ('accent-roofing', $1, $2, NULL, true)`,
+      [slug, linkType]
+    );
+    await pool.query(
+      `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('admin', 'Admin', '', $1)`,
+      [`Generated ${linkType} invite link: ${slug}`]
+    );
+    res.json({ slug, fullUrl });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/api/admin/invite-links', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const result = await pool.query(
+      `SELECT id, slug, link_type, active, created_at
+       FROM contractor_invite_links
+       WHERE contractor_id='accent-roofing' AND active=true
+       ORDER BY created_at DESC`
+    );
+    const rows = result.rows.map(r => ({
+      ...r,
+      fullUrl: `${frontendUrl}?signup=${r.slug}`,
+    }));
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
