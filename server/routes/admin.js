@@ -35,8 +35,35 @@ router.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
 // ── ADMIN: REFERRERS ──────────────────────────────────────────────────────────
 router.get('/api/admin/users', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
+  const { signup_source, joined_after, joined_before } = req.query;
   try {
-    const result = await pool.query('SELECT id,full_name,email,created_at FROM users ORDER BY created_at DESC');
+    const conditions = [];
+    const params = [];
+    if (signup_source) {
+      params.push(signup_source);
+      conditions.push(`u.signup_source = $${params.length}`);
+    }
+    if (joined_after) {
+      params.push(new Date(joined_after));
+      conditions.push(`u.created_at >= $${params.length}`);
+    }
+    if (joined_before) {
+      params.push(new Date(joined_before));
+      conditions.push(`u.created_at <= $${params.length}`);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sql = `
+      SELECT
+        u.id, u.full_name, u.email, u.created_at,
+        u.signup_source, u.invited_by_user_id, u.jobber_client_id,
+        u.email_verified,
+        ref.full_name AS invited_by_name
+      FROM users u
+      LEFT JOIN users ref ON ref.id = u.invited_by_user_id
+      ${where}
+      ORDER BY u.created_at DESC
+    `;
+    const result = await pool.query(sql, params);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -92,8 +119,25 @@ router.delete('/api/admin/users/:id', async (req, res) => {
 router.get('/api/admin/referrer/:name', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
-    const data = await fetchPipelineForReferrer(decodeURIComponent(req.params.name));
-    res.json(data);
+    const name = decodeURIComponent(req.params.name);
+    const [pipelineData, userResult] = await Promise.all([
+      fetchPipelineForReferrer(name),
+      pool.query(
+        `SELECT
+          u.id, u.full_name, u.email, u.phone, u.created_at,
+          u.signup_source, u.invited_by_user_id, u.jobber_client_id,
+          u.email_verified,
+          ref.full_name AS invited_by_name,
+          (SELECT COUNT(*) FROM user_badges WHERE user_id = u.id) AS badge_count
+         FROM users u
+         LEFT JOIN users ref ON ref.id = u.invited_by_user_id
+         WHERE u.full_name = $1
+         LIMIT 1`,
+        [name]
+      ),
+    ]);
+    const userInfo = userResult.rows[0] || null;
+    res.json({ ...pipelineData, userInfo });
   } catch (err) { res.status(500).json({ error: 'Failed to fetch referrer data: ' + err.message }); }
 });
 
