@@ -4,6 +4,8 @@ import AdminPanel from './components/admin/AdminApp';
 import { BACKEND_URL } from './config/contractor';
 import LoginScreen from './components/auth/LoginScreen';
 import ResetPinScreen from './components/auth/ResetPinScreen';
+import SignupScreen from './components/auth/SignupScreen';
+import EmailVerifyScreen from './components/auth/EmailVerifyScreen';
 import ReferrerApp from './components/referrer/ReferrerApp';
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
@@ -41,10 +43,37 @@ export default function App() {
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [announcementShown, setAnnouncementShown] = useState(false);
 
+  const [signupSlug, setSignupSlug]       = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('signup') || null;
+  });
+  const [signupContractorName, setSignupContractorName] = useState(null);
+  const [showVerify, setShowVerify]       = useState(false);
+  const [pendingUserId, setPendingUserId] = useState(null);
+  const [pendingEmail, setPendingEmail]   = useState(null);
+
   const isAdmin = window.location.search.includes("admin=true");
   const resetToken = new URLSearchParams(window.location.search).get('reset');
 
   useReferrerFonts();
+
+  useEffect(() => {
+    if (!signupSlug) return;
+    fetch(`${BACKEND_URL}/api/invite/${signupSlug}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.valid) {
+          setSignupSlug(null);
+          window.history.replaceState(null, '', window.location.pathname);
+        } else {
+          setSignupContractorName(data.contractorName);
+        }
+      })
+      .catch(() => {
+        setSignupSlug(null);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (loggedIn && userName) {
@@ -116,6 +145,39 @@ export default function App() {
 
   if (isAdmin) return <AdminPanel />;
   if (resetToken) return <ResetPinScreen token={resetToken} />;
+  if (showVerify) return (
+    <EmailVerifyScreen
+      userId={pendingUserId}
+      email={pendingEmail}
+      inviteSlug={signupSlug}
+      contractorName={signupContractorName}
+      onVerifyComplete={() => {
+        setShowVerify(false);
+        setPendingUserId(null);
+        setPendingEmail(null);
+        setSignupSlug(null);
+        setSignupContractorName(null);
+      }}
+    />
+  );
+  if (signupSlug && !loggedIn) return (
+    <SignupScreen
+      inviteSlug={signupSlug}
+      contractorName={signupContractorName}
+      onSignupComplete={({ action, userId, email }) => {
+        if (action === 'verify') {
+          setPendingUserId(userId);
+          setPendingEmail(email);
+          window.history.replaceState(null, '', window.location.pathname);
+          setShowVerify(true);
+        } else {
+          // action === 'login'
+          setSignupSlug(null);
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      }}
+    />
+  );
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
 
   return (
