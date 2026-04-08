@@ -26,3 +26,6 @@ yarn-error.log*
 # Claude Code local files
 .claude/
 server.log
+
+# Git worktrees
+.worktrees/
