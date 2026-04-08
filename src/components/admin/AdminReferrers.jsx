@@ -105,9 +105,8 @@ export default function AdminReferrers({ setLoggedIn }) {
   }
 
   function handleResetPin(id, name) {
-    const p = window.prompt(`New PIN for ${name} (4–6 digits):`);
+    const p = window.prompt(`New password for ${name} (letters, numbers, and characters allowed):`);
     if (!p) return;
-    if (p.length < 4 || p.length > 6) { alert('PIN must be 4–6 digits'); return; }
     fetch(`${BACKEND_URL}/api/admin/users/${id}/pin`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
