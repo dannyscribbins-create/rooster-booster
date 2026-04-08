@@ -140,24 +140,111 @@ export default function AdminReferrers({ setLoggedIn }) {
   );
 
   if (selected) {
+    const ui = detail && detail.userInfo;
+    const joinSource = ui ? ui.signup_source : selected.signup_source;
+    const invitedByName = ui ? ui.invited_by_name : selected.invited_by_name;
+
+    function JoinPill({ source }) {
+      if (source === 'contractor_link') return <span style={{ background: AD.navy, color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>Contractor Link</span>;
+      if (source === 'peer_link')       return <span style={{ background: '#2D6A4F', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>Peer Referral</span>;
+      return <span style={{ background: '#4B5563', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>Admin Added</span>;
+    }
+
     return (
       <>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
           <Btn onClick={() => setSelected(null)} variant="outline" size="sm"><i className="ph ph-arrow-left" /> Back to Referrers</Btn>
         </div>
-        <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px', marginBottom: 20, boxShadow: AD.shadowSm, display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 600, flexShrink: 0 }}>
-            {selected.full_name.split(' ').map(n => n[0]).join('')}
-          </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>{selected.full_name}</h2>
-            <p style={{ margin: '3px 0 0', fontSize: 15, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{selected.email}</p>
-          </div>
-        </div>
+
         {detailLoading ? (
-          <p style={{ color: AD.textSecondary, fontSize: 15, padding: '20px 0' }}>Loading Jobber data...</p>
+          <>
+            <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px', marginBottom: 20, boxShadow: AD.shadowSm, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 600, flexShrink: 0 }}>
+                {selected.full_name.split(' ').map(n => n[0]).join('')}
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>{selected.full_name}</h2>
+                <p style={{ margin: '3px 0 0', fontSize: 15, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{selected.email}</p>
+              </div>
+            </div>
+            <p style={{ color: AD.textSecondary, fontSize: 15, padding: '20px 0' }}>Loading data...</p>
+          </>
         ) : detail ? (
           <>
+            {/* ── Account Info card ── */}
+            <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px', marginBottom: 20, boxShadow: AD.shadowSm }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                {/* Left column: identity */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                  <div style={{ width: 52, height: 52, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
+                    {selected.full_name.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <div>
+                    <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 700, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>{selected.full_name}</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <i className="ph ph-envelope" style={{ fontSize: 13, color: AD.textTertiary }} />
+                      <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{selected.email}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <i className="ph ph-phone" style={{ fontSize: 13, color: AD.textTertiary }} />
+                      <span style={{ fontSize: 13, color: AD.textSecondary }}>{ui && ui.phone ? ui.phone : '—'}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="ph ph-calendar-blank" style={{ fontSize: 13, color: AD.textTertiary }} />
+                      <span style={{ fontSize: 13, color: AD.textSecondary }}>
+                        Member since {new Date(selected.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right column: attribution */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: AD.textTertiary, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 90 }}>How Joined</span>
+                    <JoinPill source={joinSource} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: AD.textTertiary, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 90 }}>Referred By</span>
+                    <span style={{ fontSize: 13, color: AD.textSecondary }}>
+                      {invitedByName || 'Direct signup'}
+                      {/* MVP: make this name clickable to navigate to that referrer's detail view in a future session */}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: AD.textTertiary, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 90 }}>Jobber</span>
+                    {ui && ui.jobber_client_id ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <i className="ph ph-check-circle" style={{ fontSize: 14, color: AD.greenText }} />
+                        <span style={{ fontSize: 13, color: AD.greenText, fontWeight: 500 }}>Matched to Jobber</span>
+                        <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>{ui.jobber_client_id}</span>
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 13, color: AD.textSecondary }}>Not yet a client</span>
+                    )}
+                    {/* MVP: jobber_client_id is matched at signup or by background lookup.
+                        Full solution: Jobber webhook fires on client creation and matches automatically.
+                        Build in Stripe ACH / webhook session. */}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: AD.textTertiary, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 90 }}>Email</span>
+                    {ui && ui.email_verified ? (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: AD.greenText, fontWeight: 500 }}>
+                        <i className="ph ph-check-circle" style={{ fontSize: 14 }} /> Verified
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 13, color: AD.amberText, fontWeight: 500 }}>Pending</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: AD.textTertiary, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 90 }}>Badges</span>
+                    <span style={{ fontSize: 13, color: AD.textSecondary }}>{ui ? parseInt(ui.badge_count) : 0} earned</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Existing pipeline content ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
               <StatCard label="Total Referrals" value={detail.pipeline.length}                        icon="ph-clipboard-text" animDelay={0}   />
               <StatCard label="Sold"            value={detail.paidCount}                              icon="ph-trophy" accent={AD.greenText} animDelay={80}  />
@@ -190,7 +277,20 @@ export default function AdminReferrers({ setLoggedIn }) {
               })}
             </div>
           </>
-        ) : <p style={{ color: AD.red2Text, fontSize: 15 }}>Failed to load Jobber data for this referrer.</p>}
+        ) : (
+          <>
+            <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px', marginBottom: 20, boxShadow: AD.shadowSm, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 600, flexShrink: 0 }}>
+                {selected.full_name.split(' ').map(n => n[0]).join('')}
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>{selected.full_name}</h2>
+                <p style={{ margin: '3px 0 0', fontSize: 15, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{selected.email}</p>
+              </div>
+            </div>
+            <p style={{ color: AD.red2Text, fontSize: 15 }}>Failed to load Jobber data for this referrer.</p>
+          </>
+        )}
       </>
     );
   }
