@@ -24,15 +24,32 @@ export default function AdminReferrers({ setLoggedIn }) {
   const [inviteLinkCopied, setInviteLinkCopied] = useState(null);
   const [generatingLink, setGeneratingLink]     = useState(false);
   const [newLinkUrl, setNewLinkUrl]             = useState(null);
+  const [joinMethod, setJoinMethod]             = useState('');
+  const [dateRange, setDateRange]               = useState('');
 
-  function loadUsers() {
+  function getJoinedAfter(range) {
+    if (!range) return null;
+    const d = new Date();
+    if (range === '7')  d.setDate(d.getDate() - 7);
+    else if (range === '30') d.setDate(d.getDate() - 30);
+    else if (range === '90') d.setDate(d.getDate() - 90);
+    else return null;
+    return d.toISOString();
+  }
+
+  function loadUsers(method, range) {
     setLoading(true);
-    fetch(`${BACKEND_URL}/api/admin/users`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
+    const params = new URLSearchParams();
+    if (method) params.set('signup_source', method);
+    const joinedAfter = getJoinedAfter(range);
+    if (joinedAfter) params.set('joined_after', joinedAfter);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    fetch(`${BACKEND_URL}/api/admin/users${qs}`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
       .then(d => { if (!d) return; setUsers(Array.isArray(d) ? d : []); setLoading(false); });
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => { loadUsers('', ''); }, []);
 
   function openDetail(user) {
     setSelected(user); setDetail(null); setDetailLoading(true);
@@ -91,7 +108,7 @@ export default function AdminReferrers({ setLoggedIn }) {
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
       .then(d => { if (!d) return;
         if (d.error) setFormError(d.error);
-        else { setFormSuccess(`✓ ${newName} added`); setNewName(''); setNewEmail(''); setNewPin(''); setShowAdd(false); loadUsers(); }
+        else { setFormSuccess(`✓ ${newName} added`); setNewName(''); setNewEmail(''); setNewPin(''); setShowAdd(false); loadUsers(joinMethod, dateRange); }
       });
   }
 
@@ -101,7 +118,7 @@ export default function AdminReferrers({ setLoggedIn }) {
       method: 'DELETE',
       headers: { 'Authorization': `Bearer ${adminToken()}` },
     })
-      .then(r => { if (r.status === 401) { on401(); return; } loadUsers(); });
+      .then(r => { if (r.status === 401) { on401(); return; } loadUsers(joinMethod, dateRange); });
   }
 
   function handleResetPin(id, name) {
@@ -311,6 +328,37 @@ export default function AdminReferrers({ setLoggedIn }) {
           )}
         </div>
 
+      {/* ── Filter controls ── */}
+      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <select
+          value={joinMethod}
+          onChange={e => { setJoinMethod(e.target.value); loadUsers(e.target.value, dateRange); }}
+          style={{
+            background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd,
+            color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14,
+            padding: '8px 12px', cursor: 'pointer', outline: 'none',
+          }}
+        >
+          <option value="">All Join Methods</option>
+          <option value="contractor_link">Contractor Link</option>
+          <option value="peer_link">Peer Referral</option>
+          <option value="admin">Admin Added</option>
+        </select>
+        <select
+          value={dateRange}
+          onChange={e => { setDateRange(e.target.value); loadUsers(joinMethod, e.target.value); }}
+          style={{
+            background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd,
+            color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14,
+            padding: '8px 12px', cursor: 'pointer', outline: 'none',
+          }}
+        >
+          <option value="">All Time</option>
+          <option value="7">Last 7 Days</option>
+          <option value="30">Last 30 Days</option>
+          <option value="90">Last 90 Days</option>
+        </select>
+      </div>
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 99, padding: '8px 16px', maxWidth: 320, boxShadow: AD.shadowSm }}>
         <i className="ph ph-magnifying-glass" style={{ color: AD.textTertiary, fontSize: 16 }} />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ border: 'none', background: 'transparent', fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary, outline: 'none', flex: 1 }} />
@@ -319,16 +367,16 @@ export default function AdminReferrers({ setLoggedIn }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: AD.fontSans, fontSize: 15 }}>
           <thead>
             <tr style={{ background: AD.bgCardTint, borderBottom: `1px solid ${AD.border}` }}>
-              {['Referrer', 'Email', 'Added', 'Actions'].map(h => (
+              {['Referrer', 'Email', 'Added', 'How They Joined', 'Referred By', 'Actions'].map(h => (
                 <th key={h} style={{ padding: '11px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: AD.textSecondary, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>Loading...</td></tr>
+              <tr><td colSpan={6} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>Loading...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={4} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
+              <tr><td colSpan={6} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
             ) : filtered.map((u, i) => (
               <tr key={u.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${AD.border}` : 'none', transition: 'background 0.12s' }}
                 onMouseEnter={e => e.currentTarget.style.background = AD.bgCardTint}
@@ -344,6 +392,20 @@ export default function AdminReferrers({ setLoggedIn }) {
                 </td>
                 <td style={{ padding: '16px 24px', color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace", fontSize: 12.5 }}>{u.email}</td>
                 <td style={{ padding: '16px 24px', color: AD.textSecondary, fontSize: 12.5 }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                <td style={{ padding: '16px 24px' }}>
+                  {u.signup_source === 'contractor_link' && (
+                    <span style={{ background: AD.navy, color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>Contractor Link</span>
+                  )}
+                  {u.signup_source === 'peer_link' && (
+                    <span style={{ background: '#2D6A4F', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>Peer Referral</span>
+                  )}
+                  {(!u.signup_source || u.signup_source === 'admin') && (
+                    <span style={{ background: '#4B5563', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>Admin Added</span>
+                  )}
+                </td>
+                <td style={{ padding: '16px 24px', color: AD.textSecondary, fontSize: 13 }}>
+                  {u.invited_by_name ? u.invited_by_name.split(' ')[0] : ''}
+                </td>
                 <td style={{ padding: '16px 24px' }}>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <Btn onClick={() => openDetail(u)} variant="outline" size="sm"><i className="ph ph-eye" /> View</Btn>
