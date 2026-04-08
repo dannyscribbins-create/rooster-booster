@@ -8,6 +8,8 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const QRCode = require('qrcode');
+const axios = require('axios');
+const { refreshTokenIfNeeded } = require('../crm/jobber');
 
 const referrerLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -27,6 +29,18 @@ const resetPinLimiter = rateLimit({
   message: { error: 'Too many attempts. Please request a new reset link.' }
 });
 
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: { error: 'Too many signup attempts. Please try again in an hour.' }
+});
+
+const verifyEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many verification attempts. Please wait 15 minutes.' }
+});
+
 // ── WARMUP ENTRIES ────────────────────────────────────────────────────────────
 // Must stay in sync with src/constants/shouts.js WARMUP_ENTRIES.
 // Kept server-side to avoid a runtime import of an ES module from CommonJS.
@@ -42,6 +56,9 @@ const WARMUP_ENTRIES_SERVER = [
   { id: "warmup_9",  firstName: "Ridgeard", lastName: "Runner",    referralCount: 3,  earnings: 1800,  shout: "Keep running those referrals." },
   { id: "warmup_10", firstName: "Tarence",  lastName: "Tack",      referralCount: 2,  earnings: 1100,  shout: "Staying sharp." },
 ];
+
+// MVP: move to env var (CONTRACTOR_NAME) or DB lookup for multi-contractor support at FORA scale
+const CONTRACTOR_NAME = 'Accent Roofing Service';
 
 // ── BADGE AWARD HELPER ────────────────────────────────────────────────────────
 // Called after every pipeline sync. Checks pipeline_sync-triggered badges and
@@ -79,6 +96,188 @@ async function checkAndAwardBadges(userId, totalReferralCount) {
   }
   return newlyAwarded;
 }
+
+// ── SELF-SERVE SIGNUP: INVITE LINK VALIDATION ─────────────────────────────────
+router.get('/api/invite/:slug', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT contractor_id, link_type FROM contractor_invite_links
+       WHERE slug=$1 AND active=true`,
+      [req.params.slug]
+    );
+    if (result.rows.length === 0) return res.json({ valid: false });
+    const { contractor_id, link_type } = result.rows[0];
+    res.json({ valid: true, contractorName: CONTRACTOR_NAME, contractorId: contractor_id, linkType: link_type });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── SELF-SERVE SIGNUP: CREATE ACCOUNT ─────────────────────────────────────────
+router.post('/api/signup', signupLimiter, async (req, res) => {
+  const { firstName, lastName, phone, email, password, inviteSlug } = req.body;
+
+  // Validate required fields
+  if (!firstName || !lastName || !phone || !email || !password || !inviteSlug) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRe.test(email)) return res.status(400).json({ error: 'Invalid email address.' });
+  const phoneRe = /^[\d\s\-\+\(\)]{7,}$/;
+  if (!phoneRe.test(phone)) return res.status(400).json({ error: 'Invalid phone number.' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+
+  try {
+    // Check invite link
+    const linkResult = await pool.query(
+      `SELECT id, contractor_id, link_type, created_by_user_id
+       FROM contractor_invite_links WHERE slug=$1 AND active=true`,
+      [inviteSlug]
+    );
+    if (linkResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired invite link.' });
+    }
+    const link = linkResult.rows[0];
+
+    // Check for duplicate email
+    const existing = await pool.query('SELECT id FROM users WHERE LOWER(email)=LOWER($1)', [email]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'An account with this email already exists.' });
+    }
+
+    const full_name = `${firstName.trim()} ${lastName.trim()}`;
+    const hashedPassword = await bcrypt.hash(String(password), 10);
+    const signupSource = link.link_type === 'peer' ? 'peer_link' : 'contractor_link';
+    const invitedByUserId = link.link_type === 'peer' ? link.created_by_user_id : null;
+
+    // Create user (email_verified = false)
+    const userResult = await pool.query(
+      `INSERT INTO users (full_name, email, pin, invite_slug, invited_by_user_id, signup_source, email_verified)
+       VALUES ($1, $2, $3, $4, $5, $6, false)
+       RETURNING id`,
+      [full_name, email, hashedPassword, inviteSlug, invitedByUserId, signupSource]
+    );
+    const newUserId = userResult.rows[0].id;
+
+    // Generate 6-digit verification code
+    const code = String(crypto.randomInt(100000, 1000000));
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await pool.query(
+      `INSERT INTO email_verifications (user_id, code, expires_at) VALUES ($1, $2, $3)`,
+      [newUserId, code, expiresAt]
+    );
+
+    // Send verification email via Resend
+    await resend.emails.send({
+      from: 'Rooster Booster <noreply@roofmiles.com>',
+      to: email,
+      subject: `Your ${CONTRACTOR_NAME} rewards account — verify your email`,
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
+          <h2 style="color:#012854;margin:0 0 8px;">Welcome to ${CONTRACTOR_NAME}'s rewards program!</h2>
+          <p style="color:#444;margin:0 0 24px;line-height:1.6;">
+            You're almost in. Enter the verification code below to activate your account.
+          </p>
+          <div style="background:#f5f8ff;border:2px solid #D3E3F0;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+            <p style="margin:0 0 8px;font-size:13px;color:#666;letter-spacing:0.05em;text-transform:uppercase;">Your verification code</p>
+            <p style="margin:0;font-size:40px;font-weight:700;color:#012854;letter-spacing:0.15em;font-family:monospace;">${code}</p>
+          </div>
+          <p style="color:#888;font-size:13px;margin:0;">This code expires in 1 hour. If you didn't create this account, you can ignore this email.</p>
+        </div>
+      `,
+    });
+
+    // MVP: Award founding_referrer badge if within first 20 users.
+    // Counts all users (no contractor filter) to match admin.js logic.
+    // At FORA scale, scope this count per contractor_id so each contractor
+    // gets their own founding cohort of 20.
+    const countResult = await pool.query('SELECT COUNT(*) as total FROM users');
+    if (parseInt(countResult.rows[0].total) <= 20) {
+      await pool.query(
+        `INSERT INTO user_badges (user_id, badge_id, seen)
+         VALUES ($1, 'founding_referrer', false)
+         ON CONFLICT (user_id, badge_id) DO NOTHING`,
+        [newUserId]
+      );
+    }
+
+    // BACKGROUND: Jobber client lookup by phone or email.
+    // Do not await — never blocks the signup response.
+    // MVP: This is a one-time lookup at signup. Full solution is a Jobber webhook that fires
+    // on client creation and runs this match automatically. Build in Stripe ACH / webhook session.
+    (async () => {
+      try {
+        await refreshTokenIfNeeded();
+        const tokenRes = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
+        if (!tokenRes.rows[0]?.access_token) return;
+        const jobberToken = tokenRes.rows[0].access_token;
+
+        const gqlResponse = await axios.post(
+          'https://api.getjobber.com/api/graphql',
+          // MVP: fetches only first 100 Jobber clients — no pagination. At scale, use Jobber webhook (Stripe ACH session).
+          { query: `{ clients(first:100) { nodes { id phoneNumbers { number } emails { address } } } }` },
+          { headers: { Authorization: `Bearer ${jobberToken}`, 'Content-Type': 'application/json', 'X-JOBBER-GRAPHQL-VERSION': '2026-02-17' } }
+        );
+
+        const clients = gqlResponse.data.data?.clients?.nodes || [];
+        const cleanPhone = phone.replace(/\D/g, '');
+        const match = clients.find(c =>
+          c.phoneNumbers?.some(p => p.number.replace(/\D/g, '') === cleanPhone) ||
+          c.emails?.some(e => e.address.toLowerCase() === email.toLowerCase())
+        );
+
+        if (match) {
+          await pool.query('UPDATE users SET jobber_client_id=$1 WHERE id=$2', [match.id, newUserId]);
+          await pool.query(
+            `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('signup', $1, $2, $3)`,
+            [full_name, email, `Jobber client match found at signup: ${match.id}`]
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('signup', $1, $2, $3)`,
+            [full_name, email, 'No Jobber client match found at signup — expected for peer signups']
+          );
+        }
+      } catch (err) {
+        console.error('Background Jobber match failed for signup:', err.message);
+      }
+    })();
+
+    res.status(201).json({ message: 'Account created. Check your email for a verification code.', userId: newUserId });
+  } catch (err) {
+    res.status(500).json({ error: 'Signup failed: ' + err.message });
+  }
+});
+
+// ── SELF-SERVE SIGNUP: VERIFY EMAIL ───────────────────────────────────────────
+router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => {
+  const { userId, code } = req.body;
+  if (!userId || !code) return res.status(400).json({ error: 'Missing userId or code.' });
+  try {
+    const result = await pool.query(
+      `SELECT id FROM email_verifications
+       WHERE user_id=$1 AND code=$2 AND used_at IS NULL AND expires_at > NOW()`,
+      [userId, String(code)]
+    );
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired code. Request a new one.' });
+    }
+    const verificationId = result.rows[0].id;
+    await pool.query('UPDATE email_verifications SET used_at=NOW() WHERE id=$1', [verificationId]);
+    await pool.query('UPDATE users SET email_verified=true WHERE id=$1', [userId]);
+
+    const userResult = await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId]);
+    if (userResult.rows.length > 0) {
+      const { full_name, email } = userResult.rows[0];
+      await pool.query(
+        `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('signup', $1, $2, $3)`,
+        [full_name, email, 'Email verified for new signup']
+      );
+    }
+
+    res.json({ message: 'Email verified. You can now log in.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Verification failed: ' + err.message });
+  }
+});
 
 // ── REFERRER: PIPELINE ────────────────────────────────────────────────────────
 router.get('/api/pipeline', async (req, res) => {
