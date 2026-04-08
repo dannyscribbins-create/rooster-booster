@@ -28,7 +28,7 @@ export default function SignupScreen({ inviteSlug, contractorName, onSignupCompl
     if (!lastName.trim())  errors.lastName  = 'Last name is required.';
     if (!phone.trim()) {
       errors.phone = 'Phone number is required.';
-    } else if (!/^[\d\s\-\+\(\)]{7,}$/.test(phone)) {
+    } else if (!/^[\d\s\-()+]{7,}$/.test(phone)) {
       errors.phone = 'Enter a valid phone number.';
     }
     if (!email.trim()) {

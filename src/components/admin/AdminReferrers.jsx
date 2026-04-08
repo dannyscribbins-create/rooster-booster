@@ -19,6 +19,11 @@ export default function AdminReferrers({ setLoggedIn }) {
   const [selected, setSelected]     = useState(null);
   const [detail, setDetail]         = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [inviteLinks, setInviteLinks]           = useState([]);
+  const [inviteLinksOpen, setInviteLinksOpen]   = useState(false);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(null);
+  const [generatingLink, setGeneratingLink]     = useState(false);
+  const [newLinkUrl, setNewLinkUrl]             = useState(null);
 
   function loadUsers() {
     setLoading(true);
@@ -37,6 +42,42 @@ export default function AdminReferrers({ setLoggedIn }) {
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
       .then(d => { if (!d) return; setDetail(d); setDetailLoading(false); })
       .catch(() => setDetailLoading(false));
+  }
+
+  function loadInviteLinks() {
+    fetch(`${BACKEND_URL}/api/admin/invite-links`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
+      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
+      .then(d => { if (!d) return; setInviteLinks(Array.isArray(d) ? d : []); });
+  }
+
+  function toggleInviteLinks() {
+    if (!inviteLinksOpen) loadInviteLinks();
+    setInviteLinksOpen(v => !v);
+  }
+
+  function generateLink() {
+    setGeneratingLink(true);
+    setNewLinkUrl(null);
+    fetch(`${BACKEND_URL}/api/admin/invite-links`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+      body: JSON.stringify({ linkType: 'contractor' }),
+    })
+      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
+      .then(d => {
+        if (!d) return;
+        setNewLinkUrl(d.fullUrl);
+        setGeneratingLink(false);
+        loadInviteLinks();
+      })
+      .catch(() => setGeneratingLink(false));
+  }
+
+  function copyInviteLink(url, slug) {
+    navigator.clipboard.writeText(url).then(() => {
+      setInviteLinkCopied(slug);
+      setTimeout(() => setInviteLinkCopied(null), 2000);
+    });
   }
 
   function handleAdd() {
@@ -156,6 +197,121 @@ export default function AdminReferrers({ setLoggedIn }) {
           {formSuccess  && <p style={{ color: AD.greenText, fontSize: 12, margin: '4px 0 0' }}>{formSuccess}</p>}
         </div>
       )}
+        {/* ── Invite Links ── */}
+        <div style={{ marginBottom: 28 }}>
+          <button
+            onClick={toggleInviteLinks}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: inviteLinksOpen ? AD.bgCard : AD.bgCardTint,
+              border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd,
+              padding: '12px 18px', cursor: 'pointer', width: '100%',
+              fontFamily: AD.fontSans, fontSize: 15, fontWeight: 500,
+              color: AD.textPrimary,
+            }}
+          >
+            <i className="ph ph-link" style={{ fontSize: 18, opacity: 0.7 }} />
+            <span>Invite Links</span>
+            <i className={`ph ph-caret-${inviteLinksOpen ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 14, opacity: 0.5 }} />
+          </button>
+
+          {inviteLinksOpen && (
+            <div style={{
+              background: AD.bgCard, border: `1px solid ${AD.border}`,
+              borderTop: 'none', borderRadius: `0 0 ${AD.radiusMd} ${AD.radiusMd}`,
+              padding: '20px', display: 'flex', flexDirection: 'column', gap: 16,
+            }}>
+              {/* Generate button + new link display */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button
+                  onClick={generateLink}
+                  disabled={generatingLink}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: AD.navy, color: '#fff', border: 'none',
+                    borderRadius: AD.radiusSm, padding: '10px 18px',
+                    fontFamily: AD.fontSans, fontSize: 14, fontWeight: 500,
+                    cursor: generatingLink ? 'default' : 'pointer',
+                    opacity: generatingLink ? 0.7 : 1,
+                  }}
+                >
+                  <i className="ph ph-plus" style={{ fontSize: 14 }} />
+                  {generatingLink ? 'Generating…' : 'Generate Invite Link'}
+                </button>
+                {newLinkUrl && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                    <span style={{
+                      fontFamily: AD.fontSans, fontSize: 13, color: AD.textSecondary,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                    }}>
+                      {newLinkUrl}
+                    </span>
+                    <button
+                      onClick={() => copyInviteLink(newLinkUrl, 'new')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 0, flexShrink: 0 }}
+                      aria-label="Copy new link"
+                    >
+                      <i className="ph ph-copy" style={{ fontSize: 16, color: inviteLinkCopied === 'new' ? AD.green : AD.textSecondary }} />
+                    </button>
+                    {inviteLinkCopied === 'new' && (
+                      <span style={{ fontSize: 12, color: AD.greenText, flexShrink: 0 }}>Copied!</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Active links list */}
+              {inviteLinks.length > 0 && (
+                <div>
+                  <p style={{ fontFamily: AD.fontSans, fontSize: 12, color: AD.textTertiary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                    Active Links
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {inviteLinks.map(link => (
+                      <div
+                        key={link.slug}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          background: AD.bgCardTint, borderRadius: AD.radiusSm,
+                          padding: '10px 14px',
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{
+                            fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary,
+                            margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {link.fullUrl}
+                          </p>
+                          <p style={{ fontFamily: AD.fontSans, fontSize: 11, color: AD.textTertiary, margin: 0 }}>
+                            Created {new Date(link.created_at).toLocaleDateString()} · {link.link_type}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => copyInviteLink(link.fullUrl, link.slug)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 0, flexShrink: 0 }}
+                          aria-label="Copy link"
+                        >
+                          <i className="ph ph-copy" style={{ fontSize: 16, color: inviteLinkCopied === link.slug ? AD.green : AD.textSecondary }} />
+                        </button>
+                        {inviteLinkCopied === link.slug && (
+                          <span style={{ fontSize: 12, color: AD.greenText, flexShrink: 0 }}>Copied!</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {inviteLinks.length === 0 && !generatingLink && (
+                <p style={{ fontFamily: AD.fontSans, fontSize: 14, color: AD.textTertiary, margin: 0 }}>
+                  No invite links yet. Generate one above.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 99, padding: '8px 16px', maxWidth: 320, boxShadow: AD.shadowSm }}>
         <i className="ph ph-magnifying-glass" style={{ color: AD.textTertiary, fontSize: 16 }} />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ border: 'none', background: 'transparent', fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary, outline: 'none', flex: 1 }} />
