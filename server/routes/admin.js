@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
-const { fetchPipelineForReferrer } = require('../crm/jobber');
+const { fetchPipelineForReferrer, refreshTokenIfNeeded } = require('../crm/jobber');
+const axios = require('axios');
 const { verifyAdminSession } = require('../middleware/auth');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
@@ -113,6 +114,51 @@ router.delete('/api/admin/users/:id', async (req, res) => {
     await pool.query('DELETE FROM users WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── ADMIN: MATCH USER TO JOBBER CLIENT ────────────────────────────────────────
+router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const userResult = await pool.query('SELECT id, full_name, email FROM users WHERE id = $1', [req.params.id]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const user = userResult.rows[0];
+
+    // MVP: Matches by email only since phone column doesn't exist yet on users table.
+    // Full solution: match by phone + email once phone column is added to users table.
+    // Also: Jobber webhook will make this manual trigger unnecessary at scale.
+    await refreshTokenIfNeeded();
+    const tokenRes = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
+    if (!tokenRes.rows[0]?.access_token) return res.status(503).json({ error: 'Jobber not connected' });
+    const jobberToken = tokenRes.rows[0].access_token;
+
+    const gqlResponse = await axios.post(
+      'https://api.getjobber.com/api/graphql',
+      // MVP: fetches only first 100 Jobber clients — no pagination. At scale, use Jobber webhook (Stripe ACH session).
+      { query: `{ clients(first:100) { nodes { id emails { address } } } }` },
+      { headers: { Authorization: `Bearer ${jobberToken}`, 'Content-Type': 'application/json', 'X-JOBBER-GRAPHQL-VERSION': '2026-02-17' } }
+    );
+
+    const clients = gqlResponse.data.data?.clients?.nodes || [];
+    const match = clients.find(c =>
+      c.emails?.some(e => e.address.toLowerCase() === user.email.toLowerCase())
+    );
+
+    if (match) {
+      await pool.query('UPDATE users SET jobber_client_id=$1 WHERE id=$2', [match.id, user.id]);
+      await pool.query(
+        `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('admin', $1, $2, $3)`,
+        [user.full_name, user.email, `Admin manually matched to Jobber client: ${match.id}`]
+      );
+      return res.json({ matched: true, jobberClientId: match.id, message: 'Matched to Jobber client.' });
+    } else {
+      await pool.query(
+        `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('admin', $1, $2, $3)`,
+        [user.full_name, user.email, 'Admin manual Jobber match: no client found by email']
+      );
+      return res.json({ matched: false, jobberClientId: null, message: 'No Jobber client found with this email address.' });
+    }
+  } catch (err) { res.status(500).json({ error: 'Jobber match failed: ' + err.message }); }
 });
 
 // ── ADMIN: REFERRER DETAIL ────────────────────────────────────────────────────

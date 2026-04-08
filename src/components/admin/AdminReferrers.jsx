@@ -26,6 +26,8 @@ export default function AdminReferrers({ setLoggedIn }) {
   const [newLinkUrl, setNewLinkUrl]             = useState(null);
   const [joinMethod, setJoinMethod]             = useState('');
   const [dateRange, setDateRange]               = useState('');
+  const [matchLoading, setMatchLoading]         = useState(false);
+  const [matchMsg, setMatchMsg]                 = useState(null);
 
   function getJoinedAfter(range) {
     if (!range) return null;
@@ -52,7 +54,7 @@ export default function AdminReferrers({ setLoggedIn }) {
   useEffect(() => { loadUsers('', ''); }, []);
 
   function openDetail(user) {
-    setSelected(user); setDetail(null); setDetailLoading(true);
+    setSelected(user); setDetail(null); setDetailLoading(true); setMatchLoading(false); setMatchMsg(null);
     fetch(`${BACKEND_URL}/api/admin/referrer/${encodeURIComponent(user.full_name)}`, {
       headers: { 'Authorization': `Bearer ${adminToken()}` },
     })
@@ -132,6 +134,28 @@ export default function AdminReferrers({ setLoggedIn }) {
       if (r.status === 401) { on401(); return null; }
       return r.json();
     }).then(d => { if (!d) return; if (d.error) alert(d.error); else alert('✓ PIN updated'); });
+  }
+
+  function handleMatchJobber() {
+    setMatchLoading(true);
+    setMatchMsg(null);
+    fetch(`${BACKEND_URL}/api/admin/users/${selected.id}/match-jobber`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${adminToken()}` },
+    })
+      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
+      .then(d => {
+        if (!d) return;
+        setMatchLoading(false);
+        if (d.error) { setMatchMsg({ type: 'error', text: d.error }); return; }
+        if (d.matched) {
+          setDetail(prev => ({ ...prev, userInfo: { ...prev.userInfo, jobber_client_id: d.jobberClientId } }));
+          setMatchMsg({ type: 'success', text: 'Matched!' });
+        } else {
+          setMatchMsg({ type: 'warn', text: 'No match found in Jobber' });
+        }
+      })
+      .catch(() => { setMatchLoading(false); setMatchMsg({ type: 'error', text: 'Request failed' }); });
   }
 
   const filtered = users.filter(u =>
@@ -217,7 +241,29 @@ export default function AdminReferrers({ setLoggedIn }) {
                         <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>{ui.jobber_client_id}</span>
                       </span>
                     ) : (
-                      <span style={{ fontSize: 13, color: AD.textSecondary }}>Not yet a client</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 13, color: AD.textSecondary }}>Not yet a client</span>
+                        <button
+                          onClick={handleMatchJobber}
+                          disabled={matchLoading}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            background: 'transparent', border: `1px solid ${AD.navy}`,
+                            borderRadius: AD.radiusSm, padding: '3px 10px',
+                            fontFamily: AD.fontSans, fontSize: 12, fontWeight: 500,
+                            color: AD.blueText, cursor: matchLoading ? 'default' : 'pointer',
+                            opacity: matchLoading ? 0.6 : 1,
+                          }}
+                        >
+                          <i className="ph ph-magnifying-glass" style={{ fontSize: 12 }} />
+                          {matchLoading ? 'Searching…' : 'Find in Jobber'}
+                        </button>
+                        {matchMsg && (
+                          <span style={{ fontSize: 12, color: matchMsg.type === 'error' ? AD.red2Text : matchMsg.type === 'warn' ? AD.amberText : AD.greenText }}>
+                            {matchMsg.text}
+                          </span>
+                        )}
+                      </span>
                     )}
                     {/* MVP: jobber_client_id is matched at signup or by background lookup.
                         Full solution: Jobber webhook fires on client creation and matches automatically.
