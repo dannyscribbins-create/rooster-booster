@@ -616,6 +616,52 @@ router.get('/api/referrer/qr-code', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Failed to generate QR code' }); }
 });
 
+// ── REFERRER: PERSONAL INVITE LINK ────────────────────────────────────────────
+// Lazy-generates a peer invite link for this referrer on first request.
+router.get('/api/referrer/my-invite-link', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    // Check if peer link already exists for this user
+    let linkResult = await pool.query(
+      `SELECT slug FROM contractor_invite_links
+       WHERE created_by_user_id=$1 AND link_type='peer' AND active=true
+       LIMIT 1`,
+      [userId]
+    );
+
+    let slug;
+    if (linkResult.rows.length > 0) {
+      slug = linkResult.rows[0].slug;
+    } else {
+      // Lazy-create the peer link
+      slug = crypto.randomBytes(5).toString('hex');
+      await pool.query(
+        `INSERT INTO contractor_invite_links (contractor_id, slug, link_type, created_by_user_id, active)
+         VALUES ('accent-roofing', $1, 'peer', $2, true)`,
+        [slug, userId]
+      );
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const fullUrl = `${frontendUrl}?signup=${slug}`;
+
+    // Generate QR code for the invite URL (server-side, existing qrcode package)
+    // MVP: QR code generated server-side per request. Full solution: pre-generate and cache as
+    // a stored asset when print materials are needed (Stripe ACH / print session).
+    const qrCodeDataUrl = await QRCode.toDataURL(fullUrl, { width: 400, margin: 2 });
+
+    res.json({ slug, fullUrl, qrCodeDataUrl });
+  } catch (err) { res.status(500).json({ error: 'Failed to get invite link: ' + err.message }); }
+});
+
 // ── REFERRER: ABOUT ───────────────────────────────────────────────────────────
 router.get('/api/referrer/about', async (req, res) => {
   const token = req.headers['authorization']?.replace('Bearer ', '');
