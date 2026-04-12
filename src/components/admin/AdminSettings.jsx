@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AD } from '../../constants/adminTheme';
 import CompanyDetailsSettings from './CompanyDetailsSettings';
 import BrandingProfileSettings from './BrandingProfileSettings';
+import CRMSettings from './CRMSettings';
 
 const SETTINGS_NAV = [
   { id: 'company',  icon: 'ph-buildings',    label: 'Company Details'  },
@@ -51,7 +52,7 @@ const SETTINGS_PAGES = {
   banking:  <ComingSoonCard icon="ph-bank"        label="Banking Settings" description="Connect your bank account and configure payout settings." />,
   accounts: <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
   team:     <ComingSoonCard icon="ph-users-three" label="Manage Team"      description="Add team members, manage recruitment links, and set permissions." />,
-  crm:      <ComingSoonCard icon="ph-plugs"       label="CRM"              description="Connect and manage your CRM integration and sync settings." />,
+  crm:      <CRMSettings />,
 };
 
 export default function AdminSettings() {
