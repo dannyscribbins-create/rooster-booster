@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AD } from '../../constants/adminTheme';
+import CompanyDetailsSettings from './CompanyDetailsSettings';
 
 const SETTINGS_NAV = [
   { id: 'company',  icon: 'ph-buildings',    label: 'Company Details'  },
@@ -30,7 +31,7 @@ function ComingSoonCard({ icon, label, description }) {
 }
 
 const SETTINGS_PAGES = {
-  company:  <div style={{ color: AD.textPrimary }}>Company Details</div>,
+  company:  <CompanyDetailsSettings />,
   branding: <div style={{ color: AD.textPrimary }}>Branding Profile</div>,
   banking:  <ComingSoonCard icon="ph-bank"        label="Banking Settings" description="Connect your bank account and configure ACH payouts" />,
   accounts: <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="Transaction records, tax documents, and 1099 generation" />,
