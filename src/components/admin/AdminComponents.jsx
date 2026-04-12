@@ -13,30 +13,17 @@ export const ADMIN_NAV = [
   { id: 'about',        icon: 'ph-identification-card',   label: 'About Us & Booking' },
 ];
 
-export function AdminSidebar({ page, setPage, pendingCount, onSettingsClick, settingsActive }) {
+export function AdminSidebar({ page, setPage, pendingCount }) {
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, width: 230, height: '100vh',
       background: AD.bgSidebar, display: 'flex', flexDirection: 'column',
       zIndex: 100, fontFamily: AD.fontSans,
     }}>
-      <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
-        <button
-          onClick={onSettingsClick}
-          title="Settings"
-          style={{
-            background: settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent',
-            border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: settingsActive ? AD.blueLight : 'rgba(255,255,255,0.4)',
-            transition: 'color 0.15s, background 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : 'rgba(255,255,255,0.8)'; e.currentTarget.style.background = 'rgba(255,255,255,0.10)'; }}
-          onMouseLeave={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : 'rgba(255,255,255,0.4)'; e.currentTarget.style.background = settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent'; }}
-        >
-          <i className="ph ph-gear-six" style={{ fontSize: 18 }} />
-        </button>
+      <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
+        </div>
       </div>
       <div style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 16px 8px' }}>Main Menu</div>
       <nav style={{ padding: '0 10px', flex: 1 }}>
@@ -79,7 +66,23 @@ export function AdminSidebar({ page, setPage, pendingCount, onSettingsClick, set
 export function AdminShell({ children, page, setPage, pendingCount, onSettingsClick, settingsActive }) {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
-      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} onSettingsClick={onSettingsClick} settingsActive={settingsActive} />
+      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} />
+      <button
+        onClick={onSettingsClick}
+        title="Settings"
+        style={{
+          position: 'fixed', top: 20, right: 28, zIndex: 200,
+          background: settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent',
+          border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: settingsActive ? AD.blueLight : 'rgba(240,237,232,0.45)',
+          transition: 'color 0.15s, background 0.15s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : AD.textPrimary; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+        onMouseLeave={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : 'rgba(240,237,232,0.45)'; e.currentTarget.style.background = settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent'; }}
+      >
+        <i className="ph ph-gear-six" style={{ fontSize: 20 }} />
+      </button>
       {settingsActive && <AdminSettings />}
       <main style={{ marginLeft: 230, flex: 1, padding: '36px 40px', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)', display: settingsActive ? 'none' : 'block' }}>
         {children}
