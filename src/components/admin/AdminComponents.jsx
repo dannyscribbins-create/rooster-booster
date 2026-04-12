@@ -105,7 +105,7 @@ export function AdminShell({ children, page, setPage, pendingCount, onSettingsCl
         {/* ── Page content ── */}
         {settingsActive
           ? <AdminSettings />
-          : <main style={{ padding: '36px 40px' }}>{children}</main>
+          : <main style={{ padding: '36px 80px 36px 40px' }}>{children}</main>
         }
 
       </div>

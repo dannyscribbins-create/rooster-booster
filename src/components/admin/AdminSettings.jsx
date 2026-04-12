@@ -20,24 +20,38 @@ function ComingSoonCard({ icon, label, description }) {
         padding: '48px 40px', textAlign: 'center', maxWidth: 420,
       }}>
         <i className={`ph ${icon}`} style={{ fontSize: 48, color: 'rgba(255,255,255,0.15)' }} />
-        <div style={{ fontSize: 18, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans, margin: '16px 0 8px' }}>{label}</div>
+        <div style={{ fontSize: 18, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans, margin: '16px 0 12px' }}>{label}</div>
+        <p style={{ margin: '0 0 14px', fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>{description}</p>
         <span style={{
           display: 'inline-block', padding: '3px 10px', borderRadius: AD.radiusPill,
-          background: AD.bgCardTint, color: AD.textSecondary, fontSize: 12, marginBottom: 12,
+          background: AD.bgCardTint, color: AD.textSecondary, fontSize: 12,
         }}>Coming soon</span>
-        <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>{description}</p>
       </div>
     </div>
   );
 }
 
+const SETTINGS_TITLES = {
+  company:  'Company Details',
+  branding: 'Branding Profile',
+  banking:  'Banking Settings',
+  accounts: 'Account Keeping',
+  team:     'Manage Team',
+  crm:      'CRM',
+};
+
+const SETTINGS_DESCRIPTIONS = {
+  company:  'Your company\'s core contact information and physical address.',
+  branding: 'Customize how your referral app looks and feels to referrers.',
+};
+
 const SETTINGS_PAGES = {
   company:  <CompanyDetailsSettings />,
   branding: <BrandingProfileSettings />,
-  banking:  <ComingSoonCard icon="ph-bank"        label="Banking Settings" description="Connect your bank account and configure ACH payouts" />,
-  accounts: <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="Transaction records, tax documents, and 1099 generation" />,
-  team:     <ComingSoonCard icon="ph-users-three" label="Manage Team"      description="Internal users, recruitment links, and team management" />,
-  crm:      <ComingSoonCard icon="ph-plugs"       label="CRM"              description="Connect and configure your CRM integration" />,
+  banking:  <ComingSoonCard icon="ph-bank"        label="Banking Settings" description="Connect your bank account and configure payout settings." />,
+  accounts: <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
+  team:     <ComingSoonCard icon="ph-users-three" label="Manage Team"      description="Add team members, manage recruitment links, and set permissions." />,
+  crm:      <ComingSoonCard icon="ph-plugs"       label="CRM"              description="Connect and manage your CRM integration and sync settings." />,
 };
 
 export default function AdminSettings() {
@@ -89,7 +103,10 @@ export default function AdminSettings() {
       <main style={{ flex: 1, padding: '36px 40px', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         <div style={{ marginBottom: 32 }}>
           <p style={{ fontSize: 15, color: AD.textSecondary, marginBottom: 2, fontFamily: AD.fontSans }}>Rooster Booster · Accent Roofing</p>
-          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 400, fontFamily: "'DM Serif Display', serif", color: AD.textPrimary, lineHeight: 1.2 }}>Settings</h1>
+          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 400, fontFamily: "'DM Serif Display', serif", color: AD.textPrimary, lineHeight: 1.2 }}>{SETTINGS_TITLES[settingsPage]}</h1>
+          {SETTINGS_DESCRIPTIONS[settingsPage] && (
+            <p style={{ margin: 0, marginTop: 4, fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>{SETTINGS_DESCRIPTIONS[settingsPage]}</p>
+          )}
         </div>
         {SETTINGS_PAGES[settingsPage]}
       </main>

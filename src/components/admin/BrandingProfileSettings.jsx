@@ -270,7 +270,7 @@ export default function BrandingProfileSettings() {
   const saveDisabled = !dirty || saving;
 
   return (
-    <div style={{ display: 'flex', gap: 40, alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', gap: 40, alignItems: 'flex-start', maxWidth: 1040, margin: '0 auto' }}>
       <div style={{ flex: 1, minWidth: 0, maxWidth: 640 }}>
 
       {/* ── Section 1: Brand Logos (display only) ── */}
