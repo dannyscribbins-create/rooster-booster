@@ -71,10 +71,10 @@ export function AdminShell({ children, page, setPage, pendingCount, onSettingsCl
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
       <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} />
-      <div style={{ marginLeft: 230, flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)' }}>
+      <div style={{ marginLeft: 230, flex: 1, position: 'relative', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)' }}>
 
-        {/* ── Persistent top bar ── */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, padding: '20px 40px 0', flexShrink: 0 }}>
+        {/* ── Persistent top bar (floats over content) ── */}
+        <div style={{ position: 'absolute', top: 20, right: 40, zIndex: 150, display: 'flex', alignItems: 'center', gap: 12 }}>
           {page === 'dashboard' && !settingsActive && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {cachedAgoText && (
@@ -105,7 +105,7 @@ export function AdminShell({ children, page, setPage, pendingCount, onSettingsCl
         {/* ── Page content ── */}
         {settingsActive
           ? <AdminSettings />
-          : <main style={{ flex: 1, padding: '16px 40px 36px' }}>{children}</main>
+          : <main style={{ padding: '36px 40px' }}>{children}</main>
         }
 
       </div>

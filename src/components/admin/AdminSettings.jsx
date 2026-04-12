@@ -42,7 +42,7 @@ export default function AdminSettings() {
   const [settingsPage, setSettingsPage] = useState('company');
 
   return (
-    <div style={{ display: 'flex', flex: 1 }}>
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
 
       {/* ── Settings sidebar ── */}
       <div style={{
@@ -85,6 +85,10 @@ export default function AdminSettings() {
 
       {/* ── Content area ── */}
       <main style={{ flex: 1, padding: '36px 40px', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        <div style={{ marginBottom: 32 }}>
+          <p style={{ fontSize: 15, color: AD.textSecondary, marginBottom: 2, fontFamily: AD.fontSans }}>Rooster Booster · Accent Roofing</p>
+          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 400, fontFamily: "'DM Serif Display', serif", color: AD.textPrimary, lineHeight: 1.2 }}>Settings</h1>
+        </div>
         {SETTINGS_PAGES[settingsPage]}
       </main>
 
