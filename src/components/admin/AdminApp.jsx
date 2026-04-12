@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
-import { AdminShell, AdminInput, Btn } from './AdminComponents';
+import { AdminShell, AdminInput } from './AdminComponents';
 import AdminDashboard from './AdminDashboard';
 import AdminReferrers from './AdminReferrers';
 import AdminCashOuts from './AdminCashOuts';
@@ -29,18 +29,28 @@ function useAdminFonts() {
 function AdminLogin({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
 
   function handleLogin() {
+    setLoading(true);
+    setError('');
     fetch(`${BACKEND_URL}/api/admin/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
-    }).then(r => r.json()).then(d => {
-      if (d.error) setError('Incorrect password');
-      else {
-        sessionStorage.setItem('rb_admin_token', d.token);
-        onLogin();
-      }
-    });
+    })
+      .then(r => r.json())
+      .then(d => {
+        setLoading(false);
+        if (d.error) setError('Incorrect password');
+        else {
+          sessionStorage.setItem('rb_admin_token', d.token);
+          onLogin();
+        }
+      })
+      .catch(() => {
+        setLoading(false);
+        setError('Something went wrong. Please try again.');
+      });
   }
 
   return (
@@ -52,10 +62,28 @@ function AdminLogin({ onLogin }) {
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '28px', boxShadow: AD.shadowLg }}>
           <AdminInput type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter admin password" label="Admin Password" onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }} />
           {error && <p style={{ color: AD.red2Text, fontSize: 15, margin: '-8px 0 12px' }}>{error}</p>}
-          <Btn onClick={handleLogin} variant="accent" style={{ width: '100%', padding: '12px' }}>Sign In</Btn>
+          <button onClick={handleLogin} style={{
+            width: '100%', marginTop: 16,
+            background: loading
+              ? AD.redDark
+              : `linear-gradient(135deg, ${AD.red} 0%, ${AD.redDark} 100%)`,
+            border: 'none', borderRadius: 10, padding: '16px',
+            color: '#fff', fontSize: 15, fontWeight: 700,
+            fontFamily: AD.fontSans, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            transition: 'transform 0.2s, box-shadow 0.2s, background 0.2s',
+            transform: loading ? 'scale(0.98)' : 'scale(1)',
+            boxShadow: loading ? 'none' : '0 4px 14px rgba(204,0,0,0.35)',
+          }}>
+            {loading
+              ? <><i className="ph ph-circle-notch" style={{ fontSize: 16, animation: 'spin 0.8s linear infinite' }} /> Signing in...</>
+              : <><i className="ph ph-sign-in" style={{ fontSize: 16 }} /> Sign In</>
+            }
+          </button>
         </div>
         <p style={{ margin: '16px 0 0', textAlign: 'center', color: AD.textSecondary, fontSize: 15 }}>Accent Roofing</p>
       </div>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
