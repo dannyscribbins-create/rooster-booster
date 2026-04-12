@@ -682,4 +682,82 @@ router.put('/api/admin/settings', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── ADMIN: EXTRACT COLORS FROM URL ───────────────────────────────────────────
+router.get('/api/admin/extract-colors', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'URL required' });
+
+  try {
+    const response = await axios.get(url, {
+      timeout: 8000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RoosterBooster/1.0)' },
+      responseType: 'text',
+    });
+    const html = response.data;
+
+    const hexRe = /#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})\b/g;
+    const rawMatches = [];
+
+    // Extract from <style> tag contents
+    const styleTagRe = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+    let m;
+    while ((m = styleTagRe.exec(html)) !== null) {
+      const colors = m[1].match(hexRe);
+      if (colors) rawMatches.push(...colors);
+    }
+
+    // Extract from inline style attributes
+    const inlineStyleRe = /style="([^"]*)"/gi;
+    while ((m = inlineStyleRe.exec(html)) !== null) {
+      const colors = m[1].match(hexRe);
+      if (colors) rawMatches.push(...colors);
+    }
+
+    // Normalize 3-digit and 6-digit hex to lowercase 6-digit
+    function normalize(hex) {
+      const h = hex.slice(1);
+      const full = h.length === 3
+        ? h[0]+h[0]+h[1]+h[1]+h[2]+h[2]
+        : h;
+      return '#' + full.toLowerCase();
+    }
+
+    // Compute perceptual lightness from hex
+    function lightness(hex) {
+      const r = parseInt(hex.slice(1,3),16)/255;
+      const g = parseInt(hex.slice(3,5),16)/255;
+      const b = parseInt(hex.slice(5,7),16)/255;
+      return (Math.max(r,g,b) + Math.min(r,g,b)) / 2;
+    }
+
+    const normalized = rawMatches.map(normalize);
+
+    // Filter near-white (lightness > 90%) and near-black (lightness < 10%)
+    const filtered = normalized.filter(hex => {
+      const l = lightness(hex);
+      return l >= 0.10 && l <= 0.90;
+    });
+
+    // Count frequency and deduplicate
+    const freq = {};
+    for (const hex of filtered) {
+      freq[hex] = (freq[hex] || 0) + 1;
+    }
+
+    const top = Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([hex]) => hex);
+
+    if (top.length < 3) {
+      return res.json({ error: 'Not enough brand colors detected. Try uploading your logo instead.' });
+    }
+
+    res.json({ colors: top });
+  } catch {
+    res.json({ error: 'Could not reach this website. Try uploading your logo instead.' });
+  }
+});
+
 module.exports = router;

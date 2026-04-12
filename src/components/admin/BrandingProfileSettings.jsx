@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { getPaletteSync } from 'colorthief';
 import QRCode from 'qrcode';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
@@ -64,32 +65,91 @@ function HelperText({ children }) {
   return <p style={{ margin: '6px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, lineHeight: 1.4 }}>{children}</p>;
 }
 
-function ColorRow({ label, value, onChange, placeholder }) {
-  const isValid = HEX_RE.test(value);
+function SwatchItem({ hex, selected, onSelect }) {
+  const [hovered, setHovered] = useState(false);
   return (
-    <div>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: AD.textSecondary, marginBottom: 6 }}>{label}</label>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      {hovered && (
         <div style={{
-          width: 28, height: 28, borderRadius: 6, flexShrink: 0,
-          border: `1px solid ${AD.border}`,
-          backgroundColor: isValid ? value : 'transparent',
-          transition: 'background-color 0.1s',
-        }} />
+          position: 'absolute', bottom: '100%', left: '50%',
+          transform: 'translateX(-50%)', marginBottom: 5,
+          background: 'rgba(0,0,0,0.85)', color: '#fff',
+          fontFamily: "'Roboto Mono', monospace", fontSize: 10,
+          padding: '2px 6px', borderRadius: 3, whiteSpace: 'nowrap',
+          pointerEvents: 'none', zIndex: 10,
+        }}>
+          {hex}
+        </div>
+      )}
+      <div
+        onClick={e => { e.stopPropagation(); onSelect(); }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: 40, height: 40, borderRadius: 8,
+          backgroundColor: hex, cursor: 'pointer',
+          outline: selected ? '2px solid #ffffff' : 'none',
+          outlineOffset: 2,
+          boxShadow: selected ? '0 0 0 4px rgba(96,165,250,0.5)' : 'none',
+          transition: 'outline 0.1s, box-shadow 0.1s',
+        }}
+      />
+    </div>
+  );
+}
+
+function SwatchRow({ colors, selectedIdx, onSelect }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {colors.map((hex, i) => (
+        <SwatchItem key={i} hex={hex} selected={selectedIdx === i} onSelect={() => onSelect(i)} />
+      ))}
+    </div>
+  );
+}
+
+function ColorRow({ label, value, onChange, placeholder, pendingColor, onAssign }) {
+  const isValid = HEX_RE.test(value);
+  const swatchColor = isValid ? value : '#cccccc';
+  const hasPending = !!pendingColor;
+
+  return (
+    <div
+      onClick={hasPending ? e => { e.stopPropagation(); onAssign(pendingColor); } : undefined}
+      style={{ cursor: hasPending ? 'pointer' : 'default' }}
+    >
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: AD.textSecondary, marginBottom: 6, cursor: 'inherit' }}>
+        {label}
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <input
+          type="color"
+          value={swatchColor}
+          onChange={e => onChange(e.target.value)}
+          onClick={e => { if (hasPending) e.stopPropagation(); }}
+          style={{
+            width: 36, height: 36, borderRadius: 6, flexShrink: 0,
+            border: `1px solid ${AD.border}`, cursor: 'pointer',
+            padding: 2, background: 'none', outline: 'none',
+          }}
+        />
         <input
           type="text"
           value={value}
           onChange={e => onChange(e.target.value)}
+          onClick={e => { if (hasPending) e.stopPropagation(); }}
           placeholder={placeholder}
+          readOnly={hasPending}
           style={{
             flex: 1, padding: '9px 12px',
-            background: AD.bgCard, border: `1px solid ${AD.border}`,
+            background: AD.bgCard, border: `1px solid ${hasPending ? '#60a5fa' : AD.border}`,
             borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
             color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
             transition: 'border-color 0.15s',
+            ...(hasPending ? { animation: 'rbColorPulse 1.2s ease-in-out infinite' } : {}),
           }}
-          onFocus={e => e.target.style.borderColor = AD.blueLight}
-          onBlur={e => e.target.style.borderColor = AD.border}
+          onFocus={e => { if (!hasPending) e.target.style.borderColor = AD.blueLight; }}
+          onBlur={e => { if (!hasPending) e.target.style.borderColor = AD.border; }}
         />
       </div>
     </div>
@@ -142,18 +202,50 @@ const EMPTY_FORM = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function BrandingProfileSettings() {
-  const [formData, setFormData]     = useState(EMPTY_FORM);
-  const [logoData, setLogoData]     = useState({ logo_url: null, app_logo_url: null });
-  const [loading, setLoading]       = useState(true);
-  const [saving, setSaving]         = useState(false);
-  const [saveStatus, setSaveStatus] = useState(null);
-  const [dirty, setDirty]           = useState(false);
-  const [inviteUrl, setInviteUrl]   = useState(null);
-  const [qrDataUrl, setQrDataUrl]   = useState(null);
-  const [copied, setCopied]         = useState(false);
-  const fullSettingsRef             = useRef(null);
-  const statusTimer                 = useRef(null);
-  const copiedTimer                 = useRef(null);
+  const [formData, setFormData]           = useState(EMPTY_FORM);
+  const [logoData, setLogoData]           = useState({ logo_url: null, app_logo_url: null });
+  const [loading, setLoading]             = useState(true);
+  const [saving, setSaving]               = useState(false);
+  const [saveStatus, setSaveStatus]       = useState(null);
+  const [dirty, setDirty]                 = useState(false);
+  const [inviteUrl, setInviteUrl]         = useState(null);
+  const [qrDataUrl, setQrDataUrl]         = useState(null);
+  const [copied, setCopied]               = useState(false);
+
+  // Color detection state
+  const [detectionTab, setDetectionTab]       = useState('upload');
+  const [extractedColors, setExtractedColors] = useState([]);
+  const [selectedSwatchIdx, setSelectedSwatchIdx] = useState(null);
+  const [previewSrc, setPreviewSrc]           = useState(null);
+  const [dragOver, setDragOver]               = useState(false);
+  const [urlInput, setUrlInput]               = useState('');
+  const [urlLoading, setUrlLoading]           = useState(false);
+  const [urlError, setUrlError]               = useState(null);
+
+  const fullSettingsRef = useRef(null);
+  const statusTimer     = useRef(null);
+  const copiedTimer     = useRef(null);
+  const fileInputRef    = useRef(null);
+
+  // Inject keyframe animations once
+  useEffect(() => {
+    if (!document.getElementById('rb-color-detect-styles')) {
+      const s = document.createElement('style');
+      s.id = 'rb-color-detect-styles';
+      s.textContent = [
+        '@keyframes rbColorPulse { 0%,100% { box-shadow: 0 0 0 2px rgba(96,165,250,0.6); } 50% { box-shadow: 0 0 0 5px rgba(96,165,250,0.2); } }',
+        '@keyframes rbSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }',
+      ].join('\n');
+      document.head.appendChild(s);
+    }
+  }, []);
+
+  // Clear swatch selection on click anywhere outside
+  useEffect(() => {
+    function handleDocClick() { setSelectedSwatchIdx(null); }
+    document.addEventListener('click', handleDocClick);
+    return () => document.removeEventListener('click', handleDocClick);
+  }, []);
 
   // Mount: fetch settings + invite links in parallel
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -263,6 +355,71 @@ export default function BrandingProfileSettings() {
     });
   }
 
+  // ── Color detection handlers ──
+
+  function processImageFile(file) {
+    if (!file || !file.type.match(/^image\/(png|jpeg|webp)$/)) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const src = e.target.result;
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const palette = getPaletteSync(img, { colorCount: 5 });
+          const hexColors = palette.map(color => color.hex());
+          setExtractedColors(hexColors);
+          setPreviewSrc(src);
+          setSelectedSwatchIdx(null);
+        } catch {}
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleFileDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processImageFile(file);
+  }
+
+  function handleFileSelect(e) {
+    const file = e.target.files?.[0];
+    if (file) processImageFile(file);
+  }
+
+  async function handleDetectUrl() {
+    if (!urlInput.trim()) return;
+    setUrlLoading(true);
+    setUrlError(null);
+    setExtractedColors([]);
+    setSelectedSwatchIdx(null);
+    try {
+      const token = sessionStorage.getItem('rb_admin_token');
+      const res = await fetch(
+        `${BACKEND_URL}/api/admin/extract-colors?url=${encodeURIComponent(urlInput.trim())}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await res.json();
+      if (data.error) {
+        setUrlError(data.error);
+      } else {
+        setExtractedColors(data.colors || []);
+      }
+    } catch {
+      setUrlError('Could not reach this website. Try uploading your logo instead.');
+    }
+    setUrlLoading(false);
+  }
+
+  function handleSwatchAssign(field, hex) {
+    handleChange(field, hex);
+    setSelectedSwatchIdx(null);
+  }
+
+  const pendingHex = selectedSwatchIdx !== null ? extractedColors[selectedSwatchIdx] : null;
+
   if (loading) {
     return <div style={{ color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 14, padding: '8px 0' }}>Loading…</div>;
   }
@@ -302,10 +459,184 @@ export default function BrandingProfileSettings() {
       {/* ── Section 2: Brand Colors ── */}
       <div style={{ background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: AD.radiusLg, padding: 32, marginBottom: 20 }}>
         <SectionHeading>Brand Colors</SectionHeading>
+
+        {/* ── Color Detection Section ── */}
+        <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${AD.border}` }}>
+          <div style={{ fontSize: 12, fontWeight: 500, color: AD.textSecondary, marginBottom: 4 }}>
+            Brand Color Detection
+          </div>
+          <p style={{ margin: '0 0 14px', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, lineHeight: 1.4 }}>
+            Upload your logo or paste your website URL to pull your brand colors automatically.
+          </p>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', marginBottom: 14, borderBottom: `1px solid ${AD.border}` }}>
+            {['upload', 'url'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setDetectionTab(tab);
+                  setExtractedColors([]);
+                  setSelectedSwatchIdx(null);
+                  setPreviewSrc(null);
+                  setUrlError(null);
+                }}
+                style={{
+                  padding: '7px 16px', border: 'none', background: 'none',
+                  fontFamily: AD.fontSans, fontSize: 13,
+                  fontWeight: detectionTab === tab ? 600 : 400,
+                  color: detectionTab === tab ? AD.textPrimary : AD.textTertiary,
+                  cursor: 'pointer',
+                  borderBottom: detectionTab === tab ? `2px solid ${AD.blueLight}` : '2px solid transparent',
+                  marginBottom: -1,
+                  transition: 'color 0.15s',
+                }}
+              >
+                {tab === 'upload' ? 'Upload Image' : 'Paste URL'}
+              </button>
+            ))}
+          </div>
+
+          {/* Upload Image tab */}
+          {detectionTab === 'upload' && (
+            <>
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragEnter={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleFileDrop}
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  border: `2px dashed ${dragOver ? AD.blueLight : AD.border}`,
+                  borderRadius: AD.radiusMd, padding: '20px 16px',
+                  textAlign: 'center', cursor: 'pointer',
+                  background: dragOver ? 'rgba(96,165,250,0.06)' : 'transparent',
+                  transition: 'border-color 0.15s, background 0.15s',
+                  marginBottom: extractedColors.length > 0 ? 12 : 0,
+                }}
+              >
+                <i className="ph ph-upload-simple" style={{ fontSize: 20, color: AD.textTertiary, display: 'block', marginBottom: 6 }} />
+                <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                  Drop your logo or any brand image here
+                </span>
+                <span style={{ display: 'block', fontSize: 11, color: AD.textTertiary, marginTop: 4, opacity: 0.7 }}>
+                  PNG, JPG, WEBP · click to browse
+                </span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  style={{ display: 'none' }}
+                  onChange={handleFileSelect}
+                />
+              </div>
+
+              {extractedColors.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {previewSrc && (
+                    <img
+                      src={previewSrc}
+                      alt="Uploaded preview"
+                      style={{ maxWidth: 100, maxHeight: 60, width: 'auto', height: 'auto', borderRadius: 4, border: `1px solid ${AD.border}`, flexShrink: 0 }}
+                    />
+                  )}
+                  <SwatchRow colors={extractedColors} selectedIdx={selectedSwatchIdx} onSelect={setSelectedSwatchIdx} />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Paste URL tab */}
+          {detectionTab === 'url' && (
+            <>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  value={urlInput}
+                  onChange={e => {
+                    setUrlInput(e.target.value);
+                    if (!e.target.value) { setExtractedColors([]); setSelectedSwatchIdx(null); }
+                    setUrlError(null);
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') handleDetectUrl(); }}
+                  placeholder="https://yourwebsite.com"
+                  style={{
+                    flex: 1, padding: '9px 12px',
+                    background: AD.bgCard, border: `1px solid ${AD.border}`,
+                    borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
+                    color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
+                    transition: 'border-color 0.15s',
+                  }}
+                  onFocus={e => e.target.style.borderColor = AD.blueLight}
+                  onBlur={e => e.target.style.borderColor = AD.border}
+                />
+                <button
+                  onClick={handleDetectUrl}
+                  disabled={!urlInput.trim() || urlLoading}
+                  style={{
+                    padding: '9px 16px', borderRadius: AD.radiusMd, border: 'none',
+                    background: AD.navy, color: '#fff',
+                    fontFamily: AD.fontSans, fontSize: 13, fontWeight: 500,
+                    cursor: !urlInput.trim() || urlLoading ? 'not-allowed' : 'pointer',
+                    opacity: !urlInput.trim() || urlLoading ? 0.5 : 1,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    flexShrink: 0, whiteSpace: 'nowrap',
+                    transition: 'opacity 0.15s',
+                  }}
+                >
+                  {urlLoading ? (
+                    <>
+                      <i className="ph ph-spinner" style={{ fontSize: 14, animation: 'rbSpin 1s linear infinite' }} />
+                      Detecting…
+                    </>
+                  ) : 'Detect Colors'}
+                </button>
+              </div>
+              {urlError && (
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: '#ef4444', fontFamily: AD.fontSans }}>{urlError}</p>
+              )}
+              {extractedColors.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <SwatchRow colors={extractedColors} selectedIdx={selectedSwatchIdx} onSelect={setSelectedSwatchIdx} />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Assignment instruction */}
+          {selectedSwatchIdx !== null && (
+            <p style={{ margin: '10px 0 0', fontSize: 11, color: AD.blueLight, fontFamily: AD.fontSans }}>
+              Now click Primary, Secondary, or Accent to apply
+            </p>
+          )}
+        </div>
+        {/* ── End Color Detection Section ── */}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <ColorRow label="Primary Color"   value={formData.primary_color}   onChange={v => handleChange('primary_color', v)}   placeholder="#012854" />
-          <ColorRow label="Secondary Color" value={formData.secondary_color} onChange={v => handleChange('secondary_color', v)} placeholder="#CC0000" />
-          <ColorRow label="Accent Color"    value={formData.accent_color}    onChange={v => handleChange('accent_color', v)}    placeholder="#D3E3F0" />
+          <ColorRow
+            label="Primary Color"
+            value={formData.primary_color}
+            onChange={v => handleChange('primary_color', v)}
+            placeholder="#012854"
+            pendingColor={pendingHex}
+            onAssign={hex => handleSwatchAssign('primary_color', hex)}
+          />
+          <ColorRow
+            label="Secondary Color"
+            value={formData.secondary_color}
+            onChange={v => handleChange('secondary_color', v)}
+            placeholder="#CC0000"
+            pendingColor={pendingHex}
+            onAssign={hex => handleSwatchAssign('secondary_color', hex)}
+          />
+          <ColorRow
+            label="Accent Color"
+            value={formData.accent_color}
+            onChange={v => handleChange('accent_color', v)}
+            placeholder="#D3E3F0"
+            pendingColor={pendingHex}
+            onAssign={hex => handleSwatchAssign('accent_color', hex)}
+          />
         </div>
       </div>
 
