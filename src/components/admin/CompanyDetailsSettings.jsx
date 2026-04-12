@@ -118,7 +118,7 @@ export default function CompanyDetailsSettings() {
   const saveDisabled = !dirty || saving;
 
   return (
-    <div style={{ maxWidth: 820, margin: '0 auto' }}>
+    <div style={{ maxWidth: 820, margin: '0 auto', width: '100%' }}>
 
       {/* ── Section 1: Company Information ── */}
       <div style={{
