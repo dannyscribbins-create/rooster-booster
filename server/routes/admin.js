@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
-const { fetchPipelineForReferrer, refreshTokenIfNeeded } = require('../crm/jobber');
+const { getCRMAdapter } = require('../crm/index');
+const { refreshTokenIfNeeded } = require('../crm/jobber'); // still used for direct Jobber client-match endpoint
 const axios = require('axios');
 const { verifyAdminSession } = require('../middleware/auth');
 const bcrypt = require('bcrypt');
@@ -166,8 +167,11 @@ router.get('/api/admin/referrer/:name', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const name = decodeURIComponent(req.params.name);
+    // TODO: pull contractorId from admin session token when multi-contractor is live
+    const contractorId = 'accent-roofing';
+    const adapter = await getCRMAdapter(contractorId);
     const [pipelineData, userResult] = await Promise.all([
-      fetchPipelineForReferrer(name),
+      adapter.fetchPipelineForReferrer(name),
       pool.query(
         `SELECT
           u.id, u.full_name, u.email, u.created_at,
@@ -184,7 +188,13 @@ router.get('/api/admin/referrer/:name', async (req, res) => {
     ]);
     const userInfo = userResult.rows[0] || null;
     res.json({ ...pipelineData, userInfo });
-  } catch (err) { res.status(500).json({ error: 'Failed to fetch referrer data: ' + err.message }); }
+  } catch (err) {
+    if (err.message && (err.message.includes('No CRM connected') || err.message.includes('No connected CRM'))) {
+      return res.status(503).json({ error: 'crm_not_connected', message: 'No CRM is connected for this contractor. Please connect a CRM in admin settings.' });
+    }
+    console.error('CRM fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch referrer data: ' + err.message });
+  }
 });
 
 // ── ADMIN: CASH OUTS ──────────────────────────────────────────────────────────
@@ -248,9 +258,20 @@ router.get('/api/admin/stats', async (req, res) => {
     const usersResult = await pool.query('SELECT full_name FROM users');
     const allUsers = usersResult.rows;
     let totalReferrals=0, totalSold=0, totalNotSold=0, totalLeads=0, totalInspections=0, totalBalance=0, activeReferrers=0;
+    // TODO: pull contractorId from admin session token when multi-contractor is live
+    const contractorId = 'accent-roofing';
+    let adapter;
+    try {
+      adapter = await getCRMAdapter(contractorId);
+    } catch (err) {
+      if (err.message && (err.message.includes('No CRM connected') || err.message.includes('No connected CRM'))) {
+        return res.status(503).json({ error: 'crm_not_connected', message: 'No CRM is connected for this contractor. Please connect a CRM in admin settings.' });
+      }
+      throw err;
+    }
     for (const user of allUsers) {
       try {
-        const data = await fetchPipelineForReferrer(user.full_name);
+        const data = await adapter.fetchPipelineForReferrer(user.full_name);
         const p = data.pipeline;
         if (p.length > 0) activeReferrers++;
         totalReferrals   += p.length;
@@ -859,11 +880,14 @@ router.put('/api/admin/crm/settings', async (req, res) => {
 router.post('/api/admin/crm/sync', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
+    // TODO: pull contractorId from admin session token when multi-contractor is live
+    const contractorId = 'accent-roofing';
+    const adapter = await getCRMAdapter(contractorId);
     const referrers = await pool.query('SELECT id, full_name FROM users ORDER BY id');
     const errors = [];
     for (const user of referrers.rows) {
       try {
-        await fetchPipelineForReferrer(user.full_name);
+        await adapter.fetchPipelineForReferrer(user.full_name);
       } catch (err) {
         errors.push(`${user.full_name}: ${err.message}`);
       }

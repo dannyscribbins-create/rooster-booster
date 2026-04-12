@@ -1,3 +1,6 @@
+// TODO: setAccessToken() and module-level accessToken are deprecated.
+// All credential access now goes through getCRMAdapter(contractorId) in crm/index.js.
+// Remove these after confirming all routes use the adapter pattern.
 const axios = require('axios');
 const { pool } = require('../db');
 

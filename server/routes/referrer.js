@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
-const { fetchPipelineForReferrer } = require('../crm/jobber');
+const { getCRMAdapter } = require('../crm/index');
+const { refreshTokenIfNeeded } = require('../crm/jobber'); // still used for background Jobber client-match at signup
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const bcrypt = require('bcrypt');
@@ -9,7 +10,6 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const QRCode = require('qrcode');
 const axios = require('axios');
-const { refreshTokenIfNeeded } = require('../crm/jobber');
 
 const referrerLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -290,7 +290,10 @@ router.get('/api/pipeline', async (req, res) => {
     );
     if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     const userId = sessionResult.rows[0].user_id;
-    const data = await fetchPipelineForReferrer(req.query.referrer);
+    // TODO: pull contractorId from referrer session token when multi-contractor is live
+    const contractorId = 'accent-roofing';
+    const adapter = await getCRMAdapter(contractorId);
+    const data = await adapter.fetchPipelineForReferrer(req.query.referrer);
     // MVP: update this to cron-based sync at scale
     await pool.query(
       'UPDATE users SET paid_count=$1, paid_count_updated_at=NOW() WHERE id=$2',
@@ -322,6 +325,10 @@ router.get('/api/pipeline', async (req, res) => {
 
     res.json(data);
   } catch (err) {
+    if (err.message && (err.message.includes('No CRM connected') || err.message.includes('No connected CRM'))) {
+      return res.status(503).json({ error: 'crm_not_connected', message: 'No CRM is connected for this contractor. Please connect a CRM in admin settings.' });
+    }
+    console.error('CRM fetch error:', err);
     res.status(500).send('API call failed: ' + (err.response ? JSON.stringify(err.response.data) : err.message));
   }
 });
