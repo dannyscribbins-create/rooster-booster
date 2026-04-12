@@ -205,6 +205,12 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     created_at          TIMESTAMP DEFAULT NOW(),
     updated_at          TIMESTAMP DEFAULT NOW()
   )`);
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS font_heading VARCHAR(100)`);
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS font_body VARCHAR(100)`);
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS app_display_name VARCHAR(255)`);
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS tagline TEXT`);
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS email_sender_name VARCHAR(255)`);
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS email_footer_text TEXT`);
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {

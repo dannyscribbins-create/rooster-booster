@@ -616,6 +616,12 @@ router.get('/api/admin/settings', async (req, res) => {
         review_url: 'https://g.page/r/CbtYNjHgUCwhEBM/review',
         review_button_text: 'Leave a Review',
         review_message: 'Enjoying the rewards? Leave us a quick Google review!',
+        font_heading: 'Montserrat',
+        font_body: 'Roboto',
+        app_display_name: 'Rooster Booster',
+        tagline: 'Refer your neighbors. Earn cash rewards.',
+        email_sender_name: 'Accent Roofing Service',
+        email_footer_text: 'Accent Roofing Service · Powered by Rooster Booster',
         created_at: null, updated_at: null,
       });
     }
@@ -634,6 +640,8 @@ router.put('/api/admin/settings', async (req, res) => {
     primary_color, secondary_color, accent_color,
     social_facebook, social_instagram, social_google, social_nextdoor, social_website,
     review_url, review_button_text, review_message,
+    font_heading, font_body, app_display_name, tagline,
+    email_sender_name, email_footer_text,
   } = req.body;
   try {
     const result = await pool.query(
@@ -644,8 +652,10 @@ router.put('/api/admin/settings', async (req, res) => {
          primary_color, secondary_color, accent_color,
          social_facebook, social_instagram, social_google, social_nextdoor, social_website,
          review_url, review_button_text, review_message,
+         font_heading, font_body, app_display_name, tagline,
+         email_sender_name, email_footer_text,
          updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,NOW())
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,NOW())
        ON CONFLICT (contractor_id) DO UPDATE SET
          company_name=$2, company_phone=$3, company_email=$4, company_url=$5,
          company_address=$6, company_city=$7, company_state=$8, company_zip=$9, company_country=$10,
@@ -653,6 +663,8 @@ router.put('/api/admin/settings', async (req, res) => {
          primary_color=$13, secondary_color=$14, accent_color=$15,
          social_facebook=$16, social_instagram=$17, social_google=$18, social_nextdoor=$19, social_website=$20,
          review_url=$21, review_button_text=$22, review_message=$23,
+         font_heading=$24, font_body=$25, app_display_name=$26, tagline=$27,
+         email_sender_name=$28, email_footer_text=$29,
          updated_at=NOW()
        RETURNING *`,
       [
@@ -662,6 +674,8 @@ router.put('/api/admin/settings', async (req, res) => {
         primary_color, secondary_color, accent_color,
         social_facebook, social_instagram, social_google, social_nextdoor, social_website,
         review_url, review_button_text, review_message,
+        font_heading, font_body, app_display_name, tagline,
+        email_sender_name, email_footer_text,
       ]
     );
     res.json({ success: true, settings: result.rows[0] });
