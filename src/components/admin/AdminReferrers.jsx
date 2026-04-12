@@ -13,6 +13,7 @@ export default function AdminReferrers({ setLoggedIn }) {
   const [showAdd, setShowAdd]       = useState(false);
   const [newName, setNewName]       = useState('');
   const [newEmail, setNewEmail]     = useState('');
+  const [newPhone, setNewPhone]     = useState('');
   const [newPin, setNewPin]         = useState('');
   const [formError, setFormError]   = useState('');
   const [formSuccess, setFormSuccess] = useState('');
@@ -105,12 +106,12 @@ export default function AdminReferrers({ setLoggedIn }) {
     fetch(`${BACKEND_URL}/api/admin/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
-      body: JSON.stringify({ full_name: newName, email: newEmail, pin: newPin }),
+      body: JSON.stringify({ full_name: newName, email: newEmail, phone: newPhone, pin: newPin }),
     })
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
       .then(d => { if (!d) return;
         if (d.error) setFormError(d.error);
-        else { setFormSuccess(`✓ ${newName} added`); setNewName(''); setNewEmail(''); setNewPin(''); setShowAdd(false); loadUsers(joinMethod, dateRange); }
+        else { setFormSuccess(`✓ ${newName} added`); setNewName(''); setNewEmail(''); setNewPhone(''); setNewPin(''); setShowAdd(false); loadUsers(joinMethod, dateRange); }
       });
   }
 
@@ -352,6 +353,7 @@ export default function AdminReferrers({ setLoggedIn }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 160px auto', gap: 12, alignItems: 'flex-end' }}>
             <AdminInput value={newName}  onChange={e => setNewName(e.target.value)}  placeholder="Daniel Scribbins" label="Full name (match Jobber exactly)" />
             <AdminInput value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="email@example.com" label="Email address" />
+            <AdminInput value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone number (optional)" label="Phone number (optional)" />
             <AdminInput value={newPin}   onChange={e => setNewPin(e.target.value)}   placeholder="1234" label="PIN (4–6 digits)" />
             <div style={{ paddingBottom: 16 }}><Btn onClick={handleAdd} variant="accent">Add</Btn></div>
           </div>
