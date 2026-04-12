@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import BrandingPreview from './BrandingPreview';
 
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
@@ -269,7 +270,8 @@ export default function BrandingProfileSettings() {
   const saveDisabled = !dirty || saving;
 
   return (
-    <div style={{ maxWidth: 640 }}>
+    <div style={{ display: 'flex', gap: 40, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 0, maxWidth: 640 }}>
 
       {/* ── Section 1: Brand Logos (display only) ── */}
       <div style={{ background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: AD.radiusLg, padding: 32, marginBottom: 20 }}>
@@ -453,6 +455,10 @@ export default function BrandingProfileSettings() {
         </button>
       </div>
 
+      </div>
+      <div style={{ flexShrink: 0, width: 320, position: 'sticky', top: 20 }}>
+        <BrandingPreview formData={formData} />
+      </div>
     </div>
   );
 }
