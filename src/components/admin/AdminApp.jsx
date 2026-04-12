@@ -50,7 +50,7 @@ function AdminLogin({ onLogin }) {
           <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 200, height: 'auto', margin: '0 auto 16px', display: 'block' }} />
         </div>
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '28px', boxShadow: AD.shadowLg }}>
-          <AdminInput type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter admin password" label="Admin Password" />
+          <AdminInput type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter admin password" label="Admin Password" onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }} />
           {error && <p style={{ color: AD.red2Text, fontSize: 15, margin: '-8px 0 12px' }}>{error}</p>}
           <Btn onClick={handleLogin} variant="accent" style={{ width: '100%', padding: '12px' }}>Sign In</Btn>
         </div>

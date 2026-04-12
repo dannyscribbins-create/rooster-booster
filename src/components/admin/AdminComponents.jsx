@@ -190,11 +190,11 @@ export function Btn({ onClick, children, variant = 'primary', size = 'md', style
   );
 }
 
-export function AdminInput({ value, onChange, placeholder, type = 'text', label }) {
+export function AdminInput({ value, onChange, placeholder, type = 'text', label, onKeyDown }) {
   return (
     <div style={{ marginBottom: 16 }}>
       {label && <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: AD.textSecondary, marginBottom: 8 }}>{label}</label>}
-      <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={{
+      <input type={type} value={value} onChange={onChange} placeholder={placeholder} onKeyDown={onKeyDown} style={{
         width: '100%', padding: '8px 12px', background: AD.bgSurface,
         border: `1px solid ${AD.borderStrong}`, borderRadius: 10,
         fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary,
