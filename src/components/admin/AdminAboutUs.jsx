@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn } from './AdminComponents';
+import Skeleton from '../shared/Skeleton';
 
 const ALL_AWARDS = [
   // Manufacturer Certifications
@@ -165,7 +166,11 @@ export default function AdminAboutUs({ setLoggedIn }) {
     return (
       <>
         <AdminPageHeader title="About Us & Booking" />
-        <p style={{ color: AD.textSecondary, fontSize: 15 }}>Loading…</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Skeleton height="52px" borderRadius="12px" />
+          <Skeleton height="52px" width="75%" borderRadius="12px" />
+          <Skeleton height="52px" width="55%" borderRadius="12px" />
+        </div>
       </>
     );
   }

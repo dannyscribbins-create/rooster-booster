@@ -347,11 +347,11 @@ export default function RankingsTab({ token }) {
             {loading && (
               <div style={{ padding: "16px" }}>
                 {[0, 1, 2, 3, 4].map(i => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < 4 ? `1px solid rgba(255,255,255,0.06)` : "none" }}>
-                    <Skeleton width="24px" height="20px" borderRadius="4px" />
-                    <Skeleton width="36px" height="36px" borderRadius="50%" style={{ flexShrink: 0 }} />
-                    <Skeleton height="16px" borderRadius="6px" />
-                    <Skeleton width="48px" height="20px" borderRadius="4px" style={{ flexShrink: 0 }} />
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < 4 ? `1px solid rgba(1,40,84,0.08)` : "none" }}>
+                    <Skeleton width="24px" height="20px" borderRadius="4px" style={{ background: 'rgba(1,40,84,0.08)' }} />
+                    <Skeleton width="36px" height="36px" borderRadius="50%" style={{ flexShrink: 0, background: 'rgba(1,40,84,0.08)' }} />
+                    <Skeleton height="16px" borderRadius="6px" style={{ background: 'rgba(1,40,84,0.08)' }} />
+                    <Skeleton width="48px" height="20px" borderRadius="4px" style={{ flexShrink: 0, background: 'rgba(1,40,84,0.08)' }} />
                   </div>
                 ))}
               </div>

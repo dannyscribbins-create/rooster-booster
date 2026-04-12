@@ -395,9 +395,9 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
 
             {/* Loading */}
             {badgesLoading && (
-              <div style={{ padding: "28px 20px", textAlign: "center" }}>
-                <i className="ph ph-circle-notch" style={{ fontSize: 24, color: R.textMuted, animation: "spin 0.8s linear infinite" }} />
-                <p style={{ color: R.textMuted, fontSize: 13, marginTop: 8 }}>Loading badges...</p>
+              <div style={{ padding: 16, display: "flex", gap: 10 }}>
+                <Skeleton height="96px" borderRadius="12px" style={{ background: 'rgba(1,40,84,0.08)' }} />
+                <Skeleton height="96px" borderRadius="12px" style={{ background: 'rgba(1,40,84,0.08)' }} />
               </div>
             )}
 

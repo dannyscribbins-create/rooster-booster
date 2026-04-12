@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn } from './AdminComponents';
+import Skeleton from '../shared/Skeleton';
 
 const PERIODS = [
   { key: 'monthly',   label: 'Monthly'   },
@@ -310,8 +311,11 @@ export default function AdminEngagement({ setLoggedIn }) {
   if (loading) {
     return (
       <>
-        <AdminPageHeader title="Engagement" />
-        <p style={{ color: AD.textSecondary, fontSize: 15 }}>Loading…</p>
+        <AdminPageHeader title="Engagement" subtitle="Leaderboard and prize configuration" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Skeleton height="120px" borderRadius="16px" />
+          <Skeleton height="180px" borderRadius="16px" />
+        </div>
       </>
     );
   }

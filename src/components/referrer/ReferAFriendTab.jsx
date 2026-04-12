@@ -4,6 +4,7 @@ import { R } from '../../constants/theme';
 import { CONTRACTOR_CONFIG, BACKEND_URL } from '../../config/contractor';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
+import Skeleton from '../shared/Skeleton';
 
 // ─── Refer a Friend ───────────────────────────────────────────────────────────
 export default function ReferAFriendTab({ userName, token }) {
@@ -117,18 +118,7 @@ export default function ReferAFriendTab({ userName, token }) {
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
           }}>
             {linkLoading && (
-              <div style={{
-                width: 180, height: 180, display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: '50%',
-                  border: `3px solid ${R.navy}`,
-                  borderTopColor: 'transparent',
-                  animation: 'spin 0.8s linear infinite',
-                }} />
-                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-              </div>
+              <Skeleton width="180px" height="180px" borderRadius="12px" style={{ background: 'rgba(1,40,84,0.08)' }} />
             )}
 
             {!linkLoading && linkError && (
