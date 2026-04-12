@@ -150,10 +150,10 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
 
     // Create user (email_verified = false)
     const userResult = await pool.query(
-      `INSERT INTO users (full_name, email, pin, invite_slug, invited_by_user_id, signup_source, email_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, false)
+      `INSERT INTO users (full_name, email, pin, phone, invite_slug, invited_by_user_id, signup_source, email_verified)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false)
        RETURNING id`,
-      [full_name, email, hashedPassword, inviteSlug, invitedByUserId, signupSource]
+      [full_name, email, hashedPassword, phone || null, inviteSlug, invitedByUserId, signupSource]
     );
     const newUserId = userResult.rows[0].id;
 
@@ -374,7 +374,7 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
     const settingsResult = await pool.query('SELECT enabled, mode, custom_message FROM announcement_settings WHERE id = 1');
     const announcementSettings = settingsResult.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null };
 
-    res.json({ success: true, fullName: user.full_name, email: user.email, token, showReviewCard, announcement, announcementSettings });
+    res.json({ success: true, fullName: user.full_name, email: user.email, phone: user.phone || null, token, showReviewCard, announcement, announcementSettings });
   } catch (err) { res.status(500).json({ error: 'Login failed: ' + err.message }); }
 });
 

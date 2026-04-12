@@ -55,7 +55,7 @@ router.get('/api/admin/users', async (req, res) => {
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const sql = `
       SELECT
-        u.id, u.full_name, u.email, u.created_at,
+        u.id, u.full_name, u.email, u.phone, u.created_at,
         u.signup_source, u.invited_by_user_id, u.jobber_client_id,
         u.email_verified,
         ref.full_name AS invited_by_name
@@ -70,12 +70,12 @@ router.get('/api/admin/users', async (req, res) => {
 });
 router.post('/api/admin/users', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
-  const { full_name, email, pin } = req.body;
+  const { full_name, email, pin, phone } = req.body;
   try {
     const hashedPin = await bcrypt.hash(String(pin), 10);
     const result = await pool.query(
-      'INSERT INTO users (full_name,email,pin) VALUES ($1,$2,$3) RETURNING id,full_name,email,created_at',
-      [full_name, email, hashedPin]
+      'INSERT INTO users (full_name,email,pin,phone) VALUES ($1,$2,$3,$4) RETURNING id,full_name,email,phone,created_at',
+      [full_name, email, hashedPin, phone || null]
     );
     const newUser = result.rows[0];
 
@@ -120,13 +120,11 @@ router.delete('/api/admin/users/:id', async (req, res) => {
 router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
-    const userResult = await pool.query('SELECT id, full_name, email FROM users WHERE id = $1', [req.params.id]);
+    const userResult = await pool.query('SELECT id, full_name, email, phone FROM users WHERE id = $1', [req.params.id]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = userResult.rows[0];
 
-    // MVP: Matches by email only since phone column doesn't exist yet on users table.
-    // Full solution: match by phone + email once phone column is added to users table.
-    // Also: Jobber webhook will make this manual trigger unnecessary at scale.
+    // Matches by phone (if available) or email. At scale, Jobber webhook will make this unnecessary.
     await refreshTokenIfNeeded();
     const tokenRes = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
     if (!tokenRes.rows[0]?.access_token) return res.status(503).json({ error: 'Jobber not connected' });
@@ -135,13 +133,15 @@ router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
     const gqlResponse = await axios.post(
       'https://api.getjobber.com/api/graphql',
       // MVP: fetches only first 100 Jobber clients — no pagination. At scale, use Jobber webhook (Stripe ACH session).
-      { query: `{ clients(first:100) { nodes { id emails { address } } } }` },
+      { query: `{ clients(first:100) { nodes { id emails { address } phoneNumbers { number } } } }` },
       { headers: { Authorization: `Bearer ${jobberToken}`, 'Content-Type': 'application/json', 'X-JOBBER-GRAPHQL-VERSION': '2026-02-17' } }
     );
 
     const clients = gqlResponse.data.data?.clients?.nodes || [];
+    const cleanPhone = user.phone ? user.phone.replace(/\D/g, '') : null;
     const match = clients.find(c =>
-      c.emails?.some(e => e.address.toLowerCase() === user.email.toLowerCase())
+      c.emails?.some(e => e.address.toLowerCase() === user.email.toLowerCase()) ||
+      (cleanPhone && c.phoneNumbers?.some(p => p.number.replace(/\D/g, '') === cleanPhone))
     );
 
     if (match) {
@@ -154,9 +154,9 @@ router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
     } else {
       await pool.query(
         `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('admin', $1, $2, $3)`,
-        [user.full_name, user.email, 'Admin manual Jobber match: no client found by email']
+        [user.full_name, user.email, 'Admin manual Jobber match: no client found by email or phone']
       );
-      return res.json({ matched: false, jobberClientId: null, message: 'No Jobber client found with this email address.' });
+      return res.json({ matched: false, jobberClientId: null, message: 'No Jobber client found with this email or phone number.' });
     }
   } catch (err) { res.status(500).json({ error: 'Jobber match failed: ' + err.message }); }
 });
