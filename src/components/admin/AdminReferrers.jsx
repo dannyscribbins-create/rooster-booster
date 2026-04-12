@@ -340,9 +340,12 @@ export default function AdminReferrers({ setLoggedIn }) {
 
   return (
     <>
-      <AdminPageHeader title="Referrers" subtitle={`${users.length} account${users.length !== 1 ? 's' : ''} enrolled`}
-        action={<Btn onClick={() => setShowAdd(!showAdd)} variant="accent" size="md"><i className={`ph ph-${showAdd ? 'x' : 'plus'}`} /> {showAdd ? 'Cancel' : 'Add Referrer'}</Btn>}
-      />
+      <div style={{ position: 'absolute', top: 64, right: 40, zIndex: 100 }}>
+        <Btn onClick={() => setShowAdd(!showAdd)} variant="accent" size="md">
+          <i className={`ph ph-${showAdd ? 'x' : 'plus'}`} /> {showAdd ? 'Cancel' : 'Add Referrer'}
+        </Btn>
+      </div>
+      <AdminPageHeader title="Referrers" subtitle={`${users.length} account${users.length !== 1 ? 's' : ''} enrolled`} />
       {showAdd && (
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px 24px', marginBottom: 20, boxShadow: AD.shadowSm }}>
           <p style={{ margin: '0 0 16px', fontSize: 12, color: AD.blueText, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}>New Referrer Account</p>
