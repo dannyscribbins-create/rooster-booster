@@ -120,7 +120,7 @@ export default function ReferrerApp({
 
   const screens = {
     dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} onViewAllReferrals={() => { setTab("profile"); setHighlightReferrals(true); }} />,
-    cashout:   <CashOut pipeline={pipeline} userName={userName} userEmail={userEmail} />,
+    cashout:   <CashOut pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} />,
     refer:     <ReferAFriendTab userName={userName} token={sessionStorage.getItem('rb_token')} />,
     rankings:  <Rankings token={sessionStorage.getItem('rb_token')} />,
     profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} highlightReferrals={highlightReferrals} onResetHighlight={() => setHighlightReferrals(false)} />,

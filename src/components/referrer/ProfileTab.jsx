@@ -9,6 +9,7 @@ import Screen from '../shared/Screen';
 import AvatarCircle from '../shared/AvatarCircle';
 import ContactModal from '../shared/ContactModal';
 import StatusBadge from '../shared/StatusBadge';
+import Skeleton from '../shared/Skeleton';
 import BadgeCelebrationPopup from './BadgeCelebrationPopup';
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
@@ -257,9 +258,10 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
 
             {/* Referral cards */}
             {loading ? (
-              <div style={{ padding: "28px 20px", textAlign: "center" }}>
-                <i className="ph ph-circle-notch" style={{ fontSize: 28, color: R.textMuted, animation: "spin 0.8s linear infinite" }} />
-                <p style={{ color: R.textMuted, fontSize: 14, marginTop: 8 }}>Loading referrals...</p>
+              <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {[0, 1, 2, 3].map(i => (
+                  <Skeleton key={i} height="62px" borderRadius="12px" />
+                ))}
               </div>
             ) : filtered.length === 0 ? (
               <div style={{ padding: "32px 20px", textAlign: "center" }}>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Badge } from './AdminComponents';
+import Skeleton from '../shared/Skeleton';
 
 export default function AdminActivity({ setLoggedIn }) {
   const adminToken = () => sessionStorage.getItem('rb_admin_token');
@@ -33,7 +34,21 @@ export default function AdminActivity({ setLoggedIn }) {
       </div>
       <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
         {loading ? (
-          <p style={{ color: AD.textSecondary, fontSize: 15, padding: 20 }}>Loading...</p>
+          <>
+            {[0, 1, 2, 3, 4, 5].map(i => (
+              <div key={i} style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '16px 24px', borderBottom: i < 5 ? `1px solid ${AD.border}` : 'none' }}>
+                <Skeleton width="36px" height="36px" borderRadius="10px" style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <Skeleton width="140px" height="14px" borderRadius="4px" style={{ marginBottom: 6 }} />
+                  <Skeleton width="200px" height="12px" borderRadius="4px" />
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <Skeleton width="70px" height="12px" borderRadius="4px" style={{ marginBottom: 4 }} />
+                  <Skeleton width="50px" height="12px" borderRadius="4px" />
+                </div>
+              </div>
+            ))}
+          </>
         ) : filtered.length === 0 ? (
           <p style={{ color: AD.textSecondary, fontSize: 15, padding: 20 }}>No activity yet.</p>
         ) : filtered.map((item, i) => (

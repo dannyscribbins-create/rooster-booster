@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, StatCard, PipelineBar } from './AdminComponents';
+import Skeleton from '../shared/Skeleton';
 
 export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats }) {
   const [stats, setStats]     = useState(null);
@@ -42,9 +43,19 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
         </div>
       )}
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
-          {[...Array(6)].map((_, i) => <div key={i} style={{ background: AD.bgCard, borderRadius: 16, height: 108, border: `1px solid ${AD.border}`, opacity: 0.4 }} />)}
-        </div>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
+            {[0, 1, 2].map(i => (
+              <Skeleton key={i} height="108px" borderRadius="16px" />
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+            {[0, 1, 2].map(i => (
+              <Skeleton key={i} height="108px" borderRadius="16px" />
+            ))}
+          </div>
+          <Skeleton height="120px" borderRadius="16px" style={{ marginBottom: 24 }} />
+        </>
       ) : error ? (
         <div style={{ background: AD.red2Bg, border: `1px solid ${AD.red2}30`, borderRadius: 12, padding: '16px 20px' }}>
           <span style={{ color: AD.red2Text, fontSize: 15 }}>{error}</span>

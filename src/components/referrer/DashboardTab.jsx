@@ -7,6 +7,7 @@ import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import StatusBadge from '../shared/StatusBadge';
 import AvatarCircle from '../shared/AvatarCircle';
+import Skeleton from '../shared/Skeleton';
 import ContractorAboutModal from './ContractorAboutModal';
 import BookingFormModal from './BookingFormModal';
 
@@ -169,9 +170,9 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
             }}>Available Balance</p>
 
             {loading ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "10px 0 6px" }}>
-                <i className="ph ph-circle-notch" style={{ fontSize: 22, color: R.textMuted, animation: "spin 0.8s linear infinite" }} />
-                <span style={{ color: R.textMuted, fontSize: 15 }}>Loading...</span>
+              <div style={{ margin: "10px 0 6px" }}>
+                <Skeleton height="52px" borderRadius="8px" style={{ marginBottom: 8 }} />
+                <Skeleton width="60%" height="14px" borderRadius="6px" />
               </div>
             ) : (
               <>
@@ -451,7 +452,11 @@ export default function Dashboard({ setTab, pipeline, loading, userName, balance
           </div>
 
           {loading ? (
-            <p style={{ color: R.textMuted, fontSize: 15 }}>Loading referrals...</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[0, 1, 2].map(i => (
+                <Skeleton key={i} height="62px" borderRadius="12px" />
+              ))}
+            </div>
           ) : pipeline.length === 0 ? (
             <div style={{
               background: R.bgCard, border: `1px solid ${R.border}`,

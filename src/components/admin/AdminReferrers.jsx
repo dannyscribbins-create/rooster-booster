@@ -3,6 +3,7 @@ import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { STATUS_CONFIG } from '../../constants/theme';
 import { AdminPageHeader, StatCard, Badge, Btn, AdminInput } from './AdminComponents';
+import Skeleton from '../shared/Skeleton';
 
 export default function AdminReferrers({ setLoggedIn }) {
   const adminToken = () => sessionStorage.getItem('rb_admin_token');
@@ -522,7 +523,23 @@ export default function AdminReferrers({ setLoggedIn }) {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>Loading...</td></tr>
+              <>
+                {[0, 1, 2, 3, 4].map(i => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${AD.border}` }}>
+                    <td style={{ padding: '16px 24px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Skeleton width="30px" height="30px" borderRadius="50%" style={{ flexShrink: 0 }} />
+                        <Skeleton width="120px" height="14px" borderRadius="4px" />
+                      </div>
+                    </td>
+                    <td style={{ padding: '16px 24px' }}><Skeleton width="160px" height="14px" borderRadius="4px" /></td>
+                    <td style={{ padding: '16px 24px' }}><Skeleton width="80px" height="14px" borderRadius="4px" /></td>
+                    <td style={{ padding: '16px 24px' }}><Skeleton width="60px" height="14px" borderRadius="4px" /></td>
+                    <td style={{ padding: '16px 24px' }}><Skeleton width="100px" height="14px" borderRadius="4px" /></td>
+                    <td style={{ padding: '16px 24px' }}><Skeleton width="80px" height="28px" borderRadius="6px" /></td>
+                  </tr>
+                ))}
+              </>
             ) : filtered.length === 0 ? (
               <tr><td colSpan={6} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
             ) : filtered.map((u, i) => (

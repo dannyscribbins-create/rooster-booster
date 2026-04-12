@@ -5,9 +5,10 @@ import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
+import Skeleton from '../shared/Skeleton';
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
-export default function CashOut({ pipeline, userName, userEmail }) {
+export default function CashOut({ pipeline, loading, userName, userEmail }) {
   const [method, setMethod] = useState(null);
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
@@ -62,6 +63,32 @@ export default function CashOut({ pipeline, userName, userEmail }) {
 
   // Step indicator
   const steps = ["Method", "Amount", "Confirm"];
+
+  if (loading) {
+    return (
+      <Screen>
+        <div style={{
+          background: `linear-gradient(145deg, #012854 0%, #001a3a 100%)`,
+          padding: "52px 24px 24px",
+        }}>
+          <Skeleton width="120px" height="12px" borderRadius="4px" style={{ marginBottom: 8 }} />
+          <Skeleton width="140px" height="28px" borderRadius="6px" style={{ marginBottom: 8 }} />
+          <Skeleton width="160px" height="18px" borderRadius="6px" style={{ marginBottom: 24 }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {[0, 1, 2].map(i => (
+              <Skeleton key={i} width="28px" height="28px" borderRadius="50%" style={{ flexShrink: 0 }} />
+            ))}
+          </div>
+        </div>
+        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <Skeleton height="14px" width="180px" borderRadius="4px" style={{ marginBottom: 4 }} />
+          {[0, 1, 2].map(i => (
+            <Skeleton key={i} height="66px" borderRadius="14px" />
+          ))}
+        </div>
+      </Screen>
+    );
+  }
 
   if (step === 4) {
     return (

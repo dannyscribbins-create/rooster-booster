@@ -5,6 +5,7 @@ import { SHOUT_BUCKETS } from '../../constants/shouts';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import AvatarCircle from '../shared/AvatarCircle';
+import Skeleton from '../shared/Skeleton';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PERIODS = [
@@ -344,9 +345,15 @@ export default function RankingsTab({ token }) {
 
             {/* Loading */}
             {loading && (
-              <div style={{ padding: "40px 20px", textAlign: "center" }}>
-                <i className="ph ph-circle-notch" style={{ fontSize: 32, color: R.textMuted, animation: "spin 0.8s linear infinite" }} />
-                <p style={{ color: R.textMuted, fontSize: 14, marginTop: 10 }}>Loading rankings...</p>
+              <div style={{ padding: "16px" }}>
+                {[0, 1, 2, 3, 4].map(i => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < 4 ? `1px solid rgba(255,255,255,0.06)` : "none" }}>
+                    <Skeleton width="24px" height="20px" borderRadius="4px" />
+                    <Skeleton width="36px" height="36px" borderRadius="50%" style={{ flexShrink: 0 }} />
+                    <Skeleton height="16px" borderRadius="6px" />
+                    <Skeleton width="48px" height="20px" borderRadius="4px" style={{ flexShrink: 0 }} />
+                  </div>
+                ))}
               </div>
             )}
 

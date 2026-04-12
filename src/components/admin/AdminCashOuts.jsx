@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Badge, Btn } from './AdminComponents';
+import Skeleton from '../shared/Skeleton';
 
 export default function AdminCashOuts({ setLoggedIn }) {
   const adminToken = () => sessionStorage.getItem('rb_admin_token');
@@ -45,7 +46,11 @@ export default function AdminCashOuts({ setLoggedIn }) {
         ))}
       </div>
       {loading ? (
-        <p style={{ color: AD.textSecondary, fontSize: 15 }}>Loading...</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[0, 1, 2].map(i => (
+            <Skeleton key={i} height="120px" borderRadius="16px" />
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '32px', textAlign: 'center' }}>
           <i className="ph ph-check-circle" style={{ fontSize: 32, color: AD.greenText, display: 'block', marginBottom: 8 }} />
