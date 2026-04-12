@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
-import { AdminPageHeader, StatCard, Btn, PipelineBar } from './AdminComponents';
+import { AdminPageHeader, StatCard, PipelineBar } from './AdminComponents';
 
-export default function AdminDashboard({ setLoggedIn, setPage }) {
+export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats }) {
   const [stats, setStats]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
@@ -17,13 +17,12 @@ export default function AdminDashboard({ setLoggedIn, setPage }) {
         if (r.status === 401) { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); return null; }
         return r.json();
       })
-      .then(d => { if (!d) return; if (d.error) setError(d.error); else setStats(d); setLoading(false); })
+      .then(d => { if (!d) return; if (d.error) setError(d.error); else { setStats(d); if (onStats) onStats(d); } setLoading(false); })
       .catch(() => { setError('Failed to load stats'); setLoading(false); });
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadStats(); }, []);
+  useEffect(() => { loadStats(); }, [refreshKey]);
 
-  const cachedAgo = stats?.cachedAt ? Math.round((Date.now() - new Date(stats.cachedAt).getTime()) / 60000) : null;
   const pipelineTotal = stats ? stats.totalLeads + stats.totalInspections + stats.totalSold + stats.totalNotSold : 0;
   const pct = (val) => pipelineTotal > 0 ? Math.round((val / pipelineTotal) * 100) : 0;
 
@@ -32,14 +31,7 @@ export default function AdminDashboard({ setLoggedIn, setPage }) {
 
   return (
     <>
-      <AdminPageHeader title={`${greeting}, Danny.`} subtitle="Rooster Booster · Accent Roofing"
-        action={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {stats && <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>{stats.fromCache ? `Cached ${cachedAgo}m ago` : 'Live data'}</span>}
-            <Btn onClick={() => loadStats(true)} variant="outline" size="sm"><i className="ph ph-arrows-clockwise" /> Refresh</Btn>
-          </div>
-        }
-      />
+      <AdminPageHeader title={`${greeting}, Danny.`} subtitle="Rooster Booster · Accent Roofing" />
       {stats?.pendingCashouts > 0 && (
         <div onClick={() => setPage('cashouts')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: AD.amberBg, border: `1px solid ${AD.amber}40`, borderRadius: 12, padding: '16px 24px', marginBottom: 24, cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

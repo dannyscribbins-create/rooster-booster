@@ -63,30 +63,52 @@ export function AdminSidebar({ page, setPage, pendingCount }) {
   );
 }
 
-export function AdminShell({ children, page, setPage, pendingCount, onSettingsClick, settingsActive }) {
+export function AdminShell({ children, page, setPage, pendingCount, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard }) {
+  const cachedAgoText = dashboardCachedAt
+    ? `Cached ${Math.round((Date.now() - new Date(dashboardCachedAt).getTime()) / 60000)}m ago`
+    : null;
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
       <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} />
-      <button
-        onClick={onSettingsClick}
-        title="Settings"
-        style={{
-          position: 'fixed', top: 20, right: 28, zIndex: 200,
-          background: settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent',
-          border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: settingsActive ? AD.blueLight : 'rgba(240,237,232,0.45)',
-          transition: 'color 0.15s, background 0.15s',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : AD.textPrimary; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-        onMouseLeave={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : 'rgba(240,237,232,0.45)'; e.currentTarget.style.background = settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent'; }}
-      >
-        <i className="ph ph-gear-six" style={{ fontSize: 20 }} />
-      </button>
-      {settingsActive && <AdminSettings />}
-      <main style={{ marginLeft: 230, flex: 1, padding: '36px 40px', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)', display: settingsActive ? 'none' : 'block' }}>
-        {children}
-      </main>
+      <div style={{ marginLeft: 230, flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)' }}>
+
+        {/* ── Persistent top bar ── */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, padding: '20px 40px 0', flexShrink: 0 }}>
+          {page === 'dashboard' && !settingsActive && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {cachedAgoText && (
+                <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>{cachedAgoText}</span>
+              )}
+              <Btn onClick={onRefreshDashboard} variant="outline" size="sm">
+                <i className="ph ph-arrows-clockwise" /> Refresh
+              </Btn>
+            </div>
+          )}
+          <button
+            onClick={onSettingsClick}
+            title="Settings"
+            style={{
+              background: settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent',
+              border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: settingsActive ? AD.blueLight : 'rgba(240,237,232,0.45)',
+              transition: 'color 0.15s, background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : AD.textPrimary; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : 'rgba(240,237,232,0.45)'; e.currentTarget.style.background = settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent'; }}
+          >
+            <i className="ph ph-gear-six" style={{ fontSize: 20 }} />
+          </button>
+        </div>
+
+        {/* ── Page content ── */}
+        {settingsActive
+          ? <AdminSettings />
+          : <main style={{ flex: 1, padding: '16px 40px 36px' }}>{children}</main>
+        }
+
+      </div>
     </div>
   );
 }

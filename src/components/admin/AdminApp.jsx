@@ -61,10 +61,12 @@ function AdminLogin({ onLogin }) {
 }
 
 export default function AdminPanel() {
-  const [authed, setAuthed]             = useState(false);
-  const [page, setPage]                 = useState('dashboard');
-  const [pendingCount, setPendingCount] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
+  const [authed, setAuthed]                       = useState(false);
+  const [page, setPage]                           = useState('dashboard');
+  const [pendingCount, setPendingCount]           = useState(0);
+  const [showSettings, setShowSettings]           = useState(false);
+  const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
+  const [dashboardCachedAt, setDashboardCachedAt]     = useState(null);
 
   useAdminFonts();
 
@@ -81,7 +83,7 @@ export default function AdminPanel() {
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
 
   const pages = {
-    dashboard:     <AdminDashboard          setLoggedIn={setAuthed} setPage={setPage} />,
+    dashboard:     <AdminDashboard          setLoggedIn={setAuthed} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} />,
     referrers:     <AdminReferrers          setLoggedIn={setAuthed} />,
     cashouts:      <AdminCashOuts           setLoggedIn={setAuthed} />,
     activity:      <AdminActivity           setLoggedIn={setAuthed} />,
@@ -96,7 +98,7 @@ export default function AdminPanel() {
   }
 
   return (
-    <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings}>
+    <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)}>
       {pages[page]}
     </AdminShell>
   );
