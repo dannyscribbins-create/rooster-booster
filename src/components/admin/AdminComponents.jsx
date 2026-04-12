@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
+import AdminSettings from './AdminSettings';
 
 export const ADMIN_NAV = [
   { id: 'dashboard',    icon: 'ph-squares-four',          label: 'Dashboard'          },
@@ -79,7 +80,8 @@ export function AdminShell({ children, page, setPage, pendingCount, onSettingsCl
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
       <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} onSettingsClick={onSettingsClick} settingsActive={settingsActive} />
-      <main style={{ marginLeft: 230, flex: 1, minHeight: '100vh', maxWidth: 'calc(100vw - 230px)', display: 'flex', ...(settingsActive ? {} : { padding: '36px 40px' }) }}>
+      {settingsActive && <AdminSettings />}
+      <main style={{ marginLeft: 230, flex: 1, padding: '36px 40px', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)', display: settingsActive ? 'none' : 'block' }}>
         {children}
       </main>
     </div>

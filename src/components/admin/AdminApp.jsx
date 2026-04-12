@@ -9,7 +9,6 @@ import AdminActivity from './AdminActivityLog';
 import AdminAnnouncementSettings from './AdminAnnouncementSettings';
 import AdminAboutUs from './AdminAboutUs';
 import AdminEngagement from './AdminEngagement';
-import AdminSettings from './AdminSettings';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
 function useAdminFonts() {
@@ -98,7 +97,7 @@ export default function AdminPanel() {
 
   return (
     <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings}>
-      {showSettings ? <AdminSettings /> : pages[page]}
+      {pages[page]}
     </AdminShell>
   );
 }

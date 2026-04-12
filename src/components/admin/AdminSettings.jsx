@@ -42,7 +42,7 @@ export default function AdminSettings() {
   const [settingsPage, setSettingsPage] = useState('company');
 
   return (
-    <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+    <div style={{ marginLeft: 230, flex: 1, minHeight: '100vh', maxWidth: 'calc(100vw - 230px)', display: 'flex' }}>
 
       {/* ── Settings sidebar ── */}
       <div style={{
