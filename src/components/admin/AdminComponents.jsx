@@ -3,26 +3,39 @@ import { AD } from '../../constants/adminTheme';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
 export const ADMIN_NAV = [
-  { id: 'dashboard', icon: 'ph-squares-four',    label: 'Dashboard'    },
-  { id: 'referrers', icon: 'ph-users',            label: 'Referrers'    },
-  { id: 'cashouts',  icon: 'ph-money',            label: 'Cash Outs'    },
-  { id: 'activity',  icon: 'ph-clock-clockwise',  label: 'Activity'     },
-  { id: 'settings',    icon: 'ph-megaphone',             label: 'Announcements'      },
-  { id: 'engagement', icon: 'ph-trophy',               label: 'Engagement'         },
-  { id: 'about',      icon: 'ph-identification-card',  label: 'About Us & Booking' },
+  { id: 'dashboard',    icon: 'ph-squares-four',          label: 'Dashboard'          },
+  { id: 'referrers',    icon: 'ph-users',                 label: 'Referrers'          },
+  { id: 'cashouts',     icon: 'ph-money',                 label: 'Cash Outs'          },
+  { id: 'activity',     icon: 'ph-clock-clockwise',       label: 'Activity'           },
+  { id: 'announcements', icon: 'ph-megaphone',            label: 'Announcements'      },
+  { id: 'engagement',   icon: 'ph-trophy',                label: 'Engagement'         },
+  { id: 'about',        icon: 'ph-identification-card',   label: 'About Us & Booking' },
 ];
 
-export function AdminSidebar({ page, setPage, pendingCount }) {
+export function AdminSidebar({ page, setPage, pendingCount, onSettingsClick, settingsActive }) {
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, width: 230, height: '100vh',
       background: AD.bgSidebar, display: 'flex', flexDirection: 'column',
       zIndex: 100, fontFamily: AD.fontSans,
     }}>
-      <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
-        </div>
+      <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
+        <button
+          onClick={onSettingsClick}
+          title="Settings"
+          style={{
+            background: settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent',
+            border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: settingsActive ? AD.blueLight : 'rgba(255,255,255,0.4)',
+            transition: 'color 0.15s, background 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : 'rgba(255,255,255,0.8)'; e.currentTarget.style.background = 'rgba(255,255,255,0.10)'; }}
+          onMouseLeave={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : 'rgba(255,255,255,0.4)'; e.currentTarget.style.background = settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent'; }}
+        >
+          <i className="ph ph-gear-six" style={{ fontSize: 18 }} />
+        </button>
       </div>
       <div style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 16px 8px' }}>Main Menu</div>
       <nav style={{ padding: '0 10px', flex: 1 }}>
@@ -62,11 +75,11 @@ export function AdminSidebar({ page, setPage, pendingCount }) {
   );
 }
 
-export function AdminShell({ children, page, setPage, pendingCount }) {
+export function AdminShell({ children, page, setPage, pendingCount, onSettingsClick, settingsActive }) {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
-      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} />
-      <main style={{ marginLeft: 230, flex: 1, padding: '36px 40px', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)' }}>
+      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} onSettingsClick={onSettingsClick} settingsActive={settingsActive} />
+      <main style={{ marginLeft: 230, flex: 1, minHeight: '100vh', maxWidth: 'calc(100vw - 230px)', display: 'flex', ...(settingsActive ? {} : { padding: '36px 40px' }) }}>
         {children}
       </main>
     </div>

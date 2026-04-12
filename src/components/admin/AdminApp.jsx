@@ -9,6 +9,7 @@ import AdminActivity from './AdminActivityLog';
 import AdminAnnouncementSettings from './AdminAnnouncementSettings';
 import AdminAboutUs from './AdminAboutUs';
 import AdminEngagement from './AdminEngagement';
+import AdminSettings from './AdminSettings';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
 function useAdminFonts() {
@@ -61,9 +62,10 @@ function AdminLogin({ onLogin }) {
 }
 
 export default function AdminPanel() {
-  const [authed, setAuthed]         = useState(false);
-  const [page, setPage]             = useState('dashboard');
+  const [authed, setAuthed]             = useState(false);
+  const [page, setPage]                 = useState('dashboard');
   const [pendingCount, setPendingCount] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
 
   useAdminFonts();
 
@@ -80,18 +82,23 @@ export default function AdminPanel() {
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
 
   const pages = {
-    dashboard: <AdminDashboard setLoggedIn={setAuthed} setPage={setPage} />,
-    referrers: <AdminReferrers setLoggedIn={setAuthed} />,
-    cashouts:  <AdminCashOuts  setLoggedIn={setAuthed} />,
-    activity:  <AdminActivity  setLoggedIn={setAuthed} />,
-    settings:    <AdminAnnouncementSettings setLoggedIn={setAuthed} />,
-    engagement:  <AdminEngagement           setLoggedIn={setAuthed} />,
-    about:       <AdminAboutUs             setLoggedIn={setAuthed} />,
+    dashboard:     <AdminDashboard          setLoggedIn={setAuthed} setPage={setPage} />,
+    referrers:     <AdminReferrers          setLoggedIn={setAuthed} />,
+    cashouts:      <AdminCashOuts           setLoggedIn={setAuthed} />,
+    activity:      <AdminActivity           setLoggedIn={setAuthed} />,
+    announcements: <AdminAnnouncementSettings setLoggedIn={setAuthed} />,
+    engagement:    <AdminEngagement         setLoggedIn={setAuthed} />,
+    about:         <AdminAboutUs            setLoggedIn={setAuthed} />,
   };
 
+  function handleNavClick(id) {
+    setShowSettings(false);
+    setPage(id);
+  }
+
   return (
-    <AdminShell page={page} setPage={setPage} pendingCount={pendingCount}>
-      {pages[page]}
+    <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings}>
+      {showSettings ? <AdminSettings /> : pages[page]}
     </AdminShell>
   );
 }
