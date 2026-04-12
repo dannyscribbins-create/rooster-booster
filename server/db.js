@@ -213,6 +213,33 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS email_sender_name VARCHAR(255)`);
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS email_footer_text TEXT`);
 
+  // ── CRM SETTINGS ──────────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS contractor_crm_settings (
+    contractor_id        TEXT PRIMARY KEY,
+    crm_type             TEXT,
+    crm_account_name     TEXT,
+    connection_method    TEXT,
+    api_key              TEXT,
+    referrer_field_name  TEXT DEFAULT 'Referred by',
+    stage_map            JSONB DEFAULT '{"lead":"Quote Sent","inspection":"Assessment Scheduled","sold":"Job Approved","paid":"Invoice Paid"}',
+    connected_at         TIMESTAMP,
+    last_synced_at       TIMESTAMP,
+    sync_interval_mins   INTEGER DEFAULT 30,
+    is_connected         BOOLEAN DEFAULT false
+  )`);
+
+  // Add UNIQUE constraint to tokens.contractor_id if not already present
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'tokens_contractor_id_unique'
+      ) THEN
+        ALTER TABLE tokens ADD CONSTRAINT tokens_contractor_id_unique UNIQUE (contractor_id);
+      END IF;
+    END $$;
+  `);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

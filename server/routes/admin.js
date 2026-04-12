@@ -682,6 +682,220 @@ router.put('/api/admin/settings', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── ADMIN: CRM SETTINGS ───────────────────────────────────────────────────────
+
+// GET /api/admin/crm/status
+// Returns current CRM connection state for the contractor.
+router.get('/api/admin/crm/status', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  try {
+    const settingsResult = await pool.query(
+      'SELECT * FROM contractor_crm_settings WHERE contractor_id = $1',
+      [contractorId]
+    );
+    if (settingsResult.rows.length === 0) {
+      return res.json({
+        isConnected: false, crmType: null, crmAccountName: null,
+        connectionMethod: null, referrerFieldName: 'Referred by',
+        stageMap: { lead: 'Quote Sent', inspection: 'Assessment Scheduled', sold: 'Job Approved', paid: 'Invoice Paid' },
+        connectedAt: null, lastSyncedAt: null, syncIntervalMins: 30, tokenStatus: 'missing',
+      });
+    }
+    const s = settingsResult.rows[0];
+
+    // Check OAuth token status
+    let tokenStatus = 'missing';
+    if (s.connection_method === 'oauth') {
+      const tokenResult = await pool.query(
+        'SELECT expires_at FROM tokens WHERE contractor_id = $1',
+        [contractorId]
+      );
+      if (tokenResult.rows.length === 0) {
+        tokenStatus = 'missing';
+      } else {
+        const expiresAt = tokenResult.rows[0].expires_at;
+        tokenStatus = (!expiresAt || new Date(expiresAt) < new Date()) ? 'expired' : 'ok';
+      }
+    } else if (s.connection_method === 'api_key') {
+      tokenStatus = s.api_key ? 'ok' : 'missing';
+    }
+
+    // Trigger background sync if overdue (fire-and-forget, don't block response)
+    if (s.is_connected && s.last_synced_at && s.sync_interval_mins) {
+      const syncDue = new Date(s.last_synced_at.getTime() + s.sync_interval_mins * 60 * 1000);
+      if (new Date() > syncDue) {
+        pool.query(
+          `UPDATE contractor_crm_settings SET last_synced_at = NOW() WHERE contractor_id = $1`,
+          [contractorId]
+        ).catch(err => console.error('Background sync update failed:', err.message));
+      }
+    }
+
+    res.json({
+      isConnected: s.is_connected,
+      crmType: s.crm_type,
+      crmAccountName: s.crm_account_name,
+      connectionMethod: s.connection_method,
+      referrerFieldName: s.referrer_field_name || 'Referred by',
+      stageMap: s.stage_map || { lead: 'Quote Sent', inspection: 'Assessment Scheduled', sold: 'Job Approved', paid: 'Invoice Paid' },
+      connectedAt: s.connected_at,
+      lastSyncedAt: s.last_synced_at,
+      syncIntervalMins: s.sync_interval_mins || 30,
+      tokenStatus,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/admin/crm/test-connection
+// Body: { crmType, credential }
+// Tests that the credential can reach the CRM API. Does not save anything.
+router.post('/api/admin/crm/test-connection', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { crmType, credential } = req.body;
+  if (!crmType || !credential) return res.status(400).json({ error: 'crmType and credential required' });
+  try {
+    if (crmType === 'jobber') {
+      const accountRes = await axios.post(
+        'https://api.getjobber.com/api/graphql',
+        { query: '{ account { name } }' },
+        { headers: {
+            Authorization: `Bearer ${credential}`,
+            'Content-Type': 'application/json',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+        } }
+      );
+      const name = accountRes.data?.data?.account?.name;
+      if (name) return res.json({ success: true, accountName: name, message: 'Connected successfully' });
+      return res.json({ success: false, message: 'Invalid credential or no account data returned' });
+    }
+    if (crmType === 'servicetitan') {
+      return res.json({ success: false, message: 'ServiceTitan adapter not yet implemented' });
+    }
+    if (crmType === 'acculynx') {
+      return res.json({ success: false, message: 'AccuLynx adapter not yet implemented' });
+    }
+    return res.status(400).json({ error: `Unknown crmType: ${crmType}` });
+  } catch (err) {
+    res.json({ success: false, message: err.response?.data?.errors?.[0]?.message || err.message });
+  }
+});
+
+// POST /api/admin/crm/connect-api-key
+// Body: { crmType, credential }
+// Tests connection first, then saves to contractor_crm_settings as api_key connection.
+router.post('/api/admin/crm/connect-api-key', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  const { crmType, credential } = req.body;
+  if (!crmType || !credential) return res.status(400).json({ error: 'crmType and credential required' });
+
+  // Test first
+  let accountName = null;
+  try {
+    if (crmType === 'jobber') {
+      const accountRes = await axios.post(
+        'https://api.getjobber.com/api/graphql',
+        { query: '{ account { name } }' },
+        { headers: {
+            Authorization: `Bearer ${credential}`,
+            'Content-Type': 'application/json',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+        } }
+      );
+      accountName = accountRes.data?.data?.account?.name;
+      if (!accountName) return res.json({ success: false, message: 'Could not verify credential — no account data returned' });
+    } else if (crmType === 'servicetitan' || crmType === 'acculynx') {
+      return res.json({ success: false, message: `${crmType} adapter not yet implemented` });
+    } else {
+      return res.status(400).json({ error: `Unknown crmType: ${crmType}` });
+    }
+  } catch (err) {
+    return res.json({ success: false, message: err.message });
+  }
+
+  // Save
+  try {
+    const credentialStr = typeof credential === 'object' ? JSON.stringify(credential) : credential;
+    // MVP: api_key stored as plaintext — TODO: encrypt before FORA launch
+    await pool.query(
+      `INSERT INTO contractor_crm_settings
+         (contractor_id, crm_type, connection_method, api_key, crm_account_name, is_connected, connected_at)
+       VALUES ($1, $2, 'api_key', $3, $4, true, NOW())
+       ON CONFLICT (contractor_id) DO UPDATE SET
+         crm_type = $2, connection_method = 'api_key', api_key = $3,
+         crm_account_name = $4, is_connected = true, connected_at = NOW()`,
+      [contractorId, crmType, credentialStr, accountName]
+    );
+    res.json({ success: true, accountName });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PUT /api/admin/crm/settings
+// Body: { referrerFieldName, stageMap, syncIntervalMins }
+// Updates field mapping and sync settings.
+router.put('/api/admin/crm/settings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  const { referrerFieldName, stageMap, syncIntervalMins } = req.body;
+  try {
+    await pool.query(
+      `UPDATE contractor_crm_settings
+       SET referrer_field_name = COALESCE($2, referrer_field_name),
+           stage_map = COALESCE($3, stage_map),
+           sync_interval_mins = COALESCE($4, sync_interval_mins)
+       WHERE contractor_id = $1`,
+      [contractorId, referrerFieldName || null, stageMap ? JSON.stringify(stageMap) : null, syncIntervalMins || null]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/admin/crm/sync
+// Triggers a pipeline sync for all active referrers and updates last_synced_at.
+router.post('/api/admin/crm/sync', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const referrers = await pool.query('SELECT id, full_name FROM users ORDER BY id');
+    const errors = [];
+    for (const user of referrers.rows) {
+      try {
+        await fetchPipelineForReferrer(user.full_name);
+      } catch (err) {
+        errors.push(`${user.full_name}: ${err.message}`);
+      }
+    }
+    const lastSyncedAt = new Date();
+    await pool.query(
+      `UPDATE contractor_crm_settings SET last_synced_at = $1 WHERE contractor_id = 'accent-roofing'`,
+      [lastSyncedAt]
+    );
+    res.json({ success: true, lastSyncedAt, errors: errors.length ? errors : undefined });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/admin/crm/disconnect
+// Removes OAuth token and marks CRM as disconnected.
+router.post('/api/admin/crm/disconnect', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  try {
+    await pool.query(`DELETE FROM tokens WHERE contractor_id = $1`, [contractorId]);
+    await pool.query(
+      `UPDATE contractor_crm_settings
+       SET is_connected = false, crm_type = null, connection_method = null,
+           api_key = null, crm_account_name = null
+       WHERE contractor_id = $1`,
+      [contractorId]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── ADMIN: EXTRACT COLORS FROM URL ───────────────────────────────────────────
 router.get('/api/admin/extract-colors', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;

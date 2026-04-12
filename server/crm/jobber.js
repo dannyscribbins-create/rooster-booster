@@ -3,9 +3,15 @@ const { pool } = require('../db');
 
 let accessToken = null;
 
+// TODO: setAccessToken() is kept for backward compatibility while existing routes import
+// directly from jobber.js. Once all callers go through getCRMAdapter() in crm/index.js,
+// this function and the module-level accessToken variable can be removed.
 function setAccessToken(token) { accessToken = token; }
 
 // ── TOKEN AUTO-REFRESH ────────────────────────────────────────────────────────
+// TODO: refreshTokenIfNeeded() is kept for backward compatibility. It uses WHERE id=1
+// (single-contractor pattern). Once all callers go through getCRMAdapter(), replace with
+// a contractorId-aware version and remove this function.
 async function refreshTokenIfNeeded() {
   const result = await pool.query('SELECT * FROM tokens WHERE id = 1');
   if (result.rows.length === 0) throw new Error('No token - visit /auth/jobber');
@@ -30,8 +36,30 @@ async function refreshTokenIfNeeded() {
 }
 
 // ── SHARED: FETCH PIPELINE FOR A REFERRER ────────────────────────────────────
-async function fetchPipelineForReferrer(referrerName) {
-  await refreshTokenIfNeeded();
+// fetchPipelineForReferrer(referrerName, contractorId, config)
+//
+// config = { credential, referrerFieldName, stageMap }
+//   - credential: OAuth access token or API key (from getCRMAdapter)
+//   - referrerFieldName: Jobber custom field label, e.g. 'Referred by'
+//   - stageMap: maps our internal stage names to CRM display labels (available for future use)
+//
+// contractorId and config are optional for backward compatibility with existing direct callers.
+// When config is omitted, falls back to module-level accessToken and hardcoded 'referred by'.
+async function fetchPipelineForReferrer(referrerName, contractorId = null, config = null) {
+  let token;
+  let fieldName;
+
+  if (config) {
+    // New config-based path: credential and field name come from getCRMAdapter()
+    token = config.credential;
+    fieldName = config.referrerFieldName.toLowerCase();
+  } else {
+    // Legacy path: use module-level accessToken, refresh via WHERE id=1 pattern
+    await refreshTokenIfNeeded();
+    token = accessToken;
+    fieldName = 'referred by';
+  }
+
   const response = await axios.post(
     'https://api.getjobber.com/api/graphql',
     { query: `{ clients(first:50) { nodes { id firstName lastName
@@ -41,14 +69,14 @@ async function fetchPipelineForReferrer(referrerName) {
           invoices(first:5) { nodes { id invoiceStatus amounts { total } } }
         } }
       } } }` },
-    { headers: { Authorization: `Bearer ${accessToken}`,
+    { headers: { Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         'X-JOBBER-GRAPHQL-VERSION': '2026-02-17' } }
   );
   if (!response.data.data) throw new Error('No data from Jobber: ' + JSON.stringify(response.data));
   const allClients = response.data.data.clients.nodes;
   const referred = allClients.filter(c => {
-    const f = c.customFields.find(f => f.label && f.label.toLowerCase() === 'referred by');
+    const f = c.customFields.find(f => f.label && f.label.toLowerCase() === fieldName);
     return f && f.valueText?.trim().toLowerCase() === referrerName.trim().toLowerCase();
   });
   const pipeline = referred.map(client => {
