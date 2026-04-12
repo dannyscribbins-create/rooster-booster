@@ -592,4 +592,80 @@ router.get('/api/admin/invite-links', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── ADMIN: CONTRACTOR SETTINGS ────────────────────────────────────────────────
+router.get('/api/admin/settings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const result = await pool.query(
+      "SELECT * FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1"
+    );
+    if (result.rows.length === 0) {
+      return res.json({
+        contractor_id: 'accent-roofing',
+        company_name: 'Accent Roofing Service',
+        company_phone: '770-277-4869',
+        company_email: 'contact@leaksmith.com',
+        company_url: 'accentroofingservice.com',
+        company_address: null, company_city: null, company_state: null,
+        company_zip: null, company_country: 'US',
+        logo_url: '/AccentRoofing-Logo-White.png',
+        app_logo_url: null,
+        primary_color: null, secondary_color: null, accent_color: null,
+        social_facebook: null, social_instagram: null, social_google: null,
+        social_nextdoor: null, social_website: null,
+        review_url: 'https://g.page/r/CbtYNjHgUCwhEBM/review',
+        review_button_text: 'Leave a Review',
+        review_message: 'Enjoying the rewards? Leave us a quick Google review!',
+        created_at: null, updated_at: null,
+      });
+    }
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.put('/api/admin/settings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id. FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  const {
+    company_name, company_phone, company_email, company_url,
+    company_address, company_city, company_state, company_zip, company_country,
+    logo_url, app_logo_url,
+    primary_color, secondary_color, accent_color,
+    social_facebook, social_instagram, social_google, social_nextdoor, social_website,
+    review_url, review_button_text, review_message,
+  } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO contractor_settings (
+         contractor_id, company_name, company_phone, company_email, company_url,
+         company_address, company_city, company_state, company_zip, company_country,
+         logo_url, app_logo_url,
+         primary_color, secondary_color, accent_color,
+         social_facebook, social_instagram, social_google, social_nextdoor, social_website,
+         review_url, review_button_text, review_message,
+         updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,NOW())
+       ON CONFLICT (contractor_id) DO UPDATE SET
+         company_name=$2, company_phone=$3, company_email=$4, company_url=$5,
+         company_address=$6, company_city=$7, company_state=$8, company_zip=$9, company_country=$10,
+         logo_url=$11, app_logo_url=$12,
+         primary_color=$13, secondary_color=$14, accent_color=$15,
+         social_facebook=$16, social_instagram=$17, social_google=$18, social_nextdoor=$19, social_website=$20,
+         review_url=$21, review_button_text=$22, review_message=$23,
+         updated_at=NOW()
+       RETURNING *`,
+      [
+        contractorId, company_name, company_phone, company_email, company_url,
+        company_address, company_city, company_state, company_zip, company_country ?? 'US',
+        logo_url, app_logo_url,
+        primary_color, secondary_color, accent_color,
+        social_facebook, social_instagram, social_google, social_nextdoor, social_website,
+        review_url, review_button_text, review_message,
+      ]
+    );
+    res.json({ success: true, settings: result.rows[0] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

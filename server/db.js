@@ -177,6 +177,35 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     used_at TIMESTAMPTZ
   )`);
 
+  await pool.query(`CREATE TABLE IF NOT EXISTS contractor_settings (
+    id                  SERIAL PRIMARY KEY,
+    contractor_id       VARCHAR(100) NOT NULL UNIQUE,
+    company_name        VARCHAR(255),
+    company_phone       VARCHAR(50),
+    company_email       VARCHAR(255),
+    company_url         VARCHAR(500),
+    company_address     TEXT,
+    company_city        VARCHAR(100),
+    company_state       VARCHAR(100),
+    company_zip         VARCHAR(20),
+    company_country     VARCHAR(100) DEFAULT 'US',
+    logo_url            TEXT,
+    app_logo_url        TEXT,
+    primary_color       VARCHAR(20),
+    secondary_color     VARCHAR(20),
+    accent_color        VARCHAR(20),
+    social_facebook     VARCHAR(500),
+    social_instagram    VARCHAR(500),
+    social_google       VARCHAR(500),
+    social_nextdoor     VARCHAR(500),
+    social_website      VARCHAR(500),
+    review_url          TEXT,
+    review_button_text  VARCHAR(255),
+    review_message      TEXT,
+    created_at          TIMESTAMP DEFAULT NOW(),
+    updated_at          TIMESTAMP DEFAULT NOW()
+  )`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');
