@@ -52,20 +52,35 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
   let token;
   let fieldName;
 
+  let startDateISO;
+
   if (config) {
     // New config-based path: credential and field name come from getCRMAdapter()
     token = config.credential;
     fieldName = config.referrerFieldName.toLowerCase();
+    startDateISO = config.effectiveStartDate
+      ? new Date(config.effectiveStartDate).toISOString()
+      : null;
   } else {
     // Legacy path: use module-level accessToken, refresh via WHERE id=1 pattern
+    // TODO: remove legacy path once all callers use getCRMAdapter()
     await refreshTokenIfNeeded();
     token = accessToken;
     fieldName = 'referred by';
+    // Fallback: filter to last 90 days to avoid scanning thousands of historical clients
+    startDateISO = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   }
+
+  // Build the clients() filter argument — when startDateISO is set, restrict by createdAt
+  // TODO: add cursor-based pagination once createdAt filter is confirmed working in production.
+  // With date filtering active, first:50 is sufficient for normal referral volume per sync.
+  const clientsArg = startDateISO
+    ? `first:50, filter:{ createdAt:{ after:"${startDateISO}" } }`
+    : `first:50`;
 
   const response = await axios.post(
     'https://api.getjobber.com/api/graphql',
-    { query: `{ clients(first:50) { nodes { id firstName lastName
+    { query: `{ clients(${clientsArg}) { nodes { id firstName lastName
         customFields { ... on CustomFieldText { label valueText } }
         quotes(first:5) { nodes { id quoteStatus } }
         jobs(first:5) { nodes { id jobStatus

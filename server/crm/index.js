@@ -19,7 +19,8 @@ async function getCRMAdapter(contractorId) {
   }
 
   const settings = settingsResult.rows[0];
-  const { crm_type, connection_method, referrer_field_name, stage_map, api_key } = settings;
+  const { crm_type, connection_method, referrer_field_name, stage_map, api_key,
+          referral_start_date, connected_at } = settings;
 
   let credential;
 
@@ -54,6 +55,9 @@ async function getCRMAdapter(contractorId) {
       sold: 'Job Approved',
       paid: 'Invoice Paid',
     },
+    // effectiveStartDate: referral_start_date when set by contractor, otherwise falls back to OAuth connected_at.
+    // fetchPipelineForReferrer() uses this to filter Jobber clients by createdAt.
+    effectiveStartDate: referral_start_date ?? connected_at ?? null,
   };
 
   switch (crm_type) {

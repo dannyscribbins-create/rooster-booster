@@ -762,6 +762,7 @@ router.get('/api/admin/crm/status', async (req, res) => {
       referrerFieldName: s.referrer_field_name || 'Referred by',
       stageMap: s.stage_map || { lead: 'Quote Sent', inspection: 'Assessment Scheduled', sold: 'Job Approved', paid: 'Invoice Paid' },
       connectedAt: s.connected_at,
+      referralStartDate: s.referral_start_date || null,
       lastSyncedAt: s.last_synced_at,
       syncIntervalMins: s.sync_interval_mins || 30,
       tokenStatus,
@@ -872,6 +873,41 @@ router.put('/api/admin/crm/settings', async (req, res) => {
       [contractorId, referrerFieldName || null, stageMap ? JSON.stringify(stageMap) : null, syncIntervalMins || null]
     );
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/admin/crm/referral-start-date
+// Body: { referralStartDate: '2026-04-13' } or { referralStartDate: null } to reset to default.
+// Sets the date filter for fetchPipelineForReferrer — only clients created on/after this date
+// will appear in referrers' pipelines. When null, falls back to connected_at.
+router.post('/api/admin/crm/referral-start-date', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // TODO FORA: pull contractorId from session token instead of hardcoding accent-roofing
+  const contractorId = 'accent-roofing';
+  const { referralStartDate } = req.body;
+
+  try {
+    let parsedDate = null;
+    if (referralStartDate != null) {
+      parsedDate = new Date(referralStartDate);
+      if (isNaN(parsedDate.getTime())) {
+        return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 (e.g. 2026-04-13).' });
+      }
+    }
+
+    await pool.query(
+      `UPDATE contractor_crm_settings SET referral_start_date = $2 WHERE contractor_id = $1`,
+      [contractorId, parsedDate]
+    );
+
+    const settingsResult = await pool.query(
+      'SELECT referral_start_date, connected_at FROM contractor_crm_settings WHERE contractor_id = $1',
+      [contractorId]
+    );
+    const row = settingsResult.rows[0];
+    const effectiveStartDate = row?.referral_start_date ?? row?.connected_at ?? null;
+
+    res.json({ success: true, referralStartDate: row?.referral_start_date || null, effectiveStartDate });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

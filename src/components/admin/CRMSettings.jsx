@@ -175,13 +175,21 @@ export default function CRMSettings() {
   const [syncMsg, setSyncMsg]           = useState('');
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
 
+  // Referral start date
+  const [referralStartDate, setReferralStartDate] = useState(null);   // saved custom date (string or null)
+  const [connectedAt, setConnectedAt]             = useState(null);   // OAuth connection date (string)
+  const [startDateInput, setStartDateInput]       = useState('');     // controlled input value
+  const [startDateSaving, setStartDateSaving]     = useState(false);
+  const [startDateMessage, setStartDateMessage]   = useState('');
+
   // Disconnect modal
   const [showDisconnect, setShowDisconnect] = useState(false);
   const [disconnecting, setDisconnecting]   = useState(false);
 
-  const fieldSavedTimer = useRef(null);
-  const stageSavedTimer = useRef(null);
-  const syncMsgTimer    = useRef(null);
+  const fieldSavedTimer     = useRef(null);
+  const stageSavedTimer     = useRef(null);
+  const syncMsgTimer        = useRef(null);
+  const startDateMsgTimer   = useRef(null);
 
   function authHeaders() {
     return { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` };
@@ -197,6 +205,9 @@ export default function CRMSettings() {
         setStageMap(d.stageMap || { lead: '', inspection: '', sold: '', paid: '' });
         setSyncInterval(d.syncIntervalMins || 30);
         setLastSyncedAt(d.lastSyncedAt || null);
+        setReferralStartDate(d.referralStartDate || null);
+        setConnectedAt(d.connectedAt || null);
+        setStartDateInput(d.referralStartDate ? d.referralStartDate.slice(0, 10) : '');
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -764,6 +775,103 @@ export default function CRMSettings() {
     );
   }
 
+  // ── Card 5b ── Referral program start date ──────────────────────────────────
+  async function handleSaveStartDate(dateStr) {
+    setStartDateSaving(true);
+    setStartDateMessage('');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/crm/referral-start-date`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referralStartDate: dateStr }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setReferralStartDate(d.referralStartDate);
+        if (d.referralStartDate) setStartDateInput(d.referralStartDate.slice(0, 10));
+        setStartDateMessage(dateStr ? 'Start date saved ✓' : 'Reset to connection date ✓');
+        if (startDateMsgTimer.current) clearTimeout(startDateMsgTimer.current);
+        startDateMsgTimer.current = setTimeout(() => setStartDateMessage(''), 3000);
+      } else {
+        setStartDateMessage('Save failed — ' + (d.error || 'unknown error'));
+      }
+    } catch {
+      setStartDateMessage('Network error — please try again.');
+    } finally {
+      setStartDateSaving(false);
+    }
+  }
+
+  function renderStartDateCard() {
+    // Placeholder shows connected_at formatted as YYYY-MM-DD so contractor sees the default
+    const connectedAtPlaceholder = connectedAt
+      ? new Date(connectedAt).toISOString().slice(0, 10)
+      : 'e.g. 2026-04-01';
+
+    return (
+      <Card>
+        <SectionHeading>Referral Program Start Date</SectionHeading>
+        <p style={{ margin: '0 0 18px', fontSize: 14, color: AD.textSecondary, lineHeight: 1.65 }}>
+          Only clients created in Jobber on or after this date will appear in referrers' pipelines.
+          Defaults to the date you connected Jobber.
+        </p>
+        <div style={{ maxWidth: 260, marginBottom: 18 }}>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: AD.textSecondary, marginBottom: 6 }}>
+            Start Date
+          </label>
+          <input
+            type="date"
+            value={startDateInput}
+            onChange={e => setStartDateInput(e.target.value)}
+            placeholder={connectedAtPlaceholder}
+            style={{
+              width: '100%', padding: '9px 12px',
+              background: AD.bgCard, border: `1px solid ${AD.border}`,
+              borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
+              color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
+              transition: 'border-color 0.15s',
+            }}
+            onFocus={e => { e.target.style.borderColor = AD.blueLight; }}
+            onBlur={e => { e.target.style.borderColor = AD.border; }}
+          />
+          {!referralStartDate && connectedAt && (
+            <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 5 }}>
+              Default: {connectedAtPlaceholder} (connection date)
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <PrimaryBtn
+            onClick={() => handleSaveStartDate(startDateInput || null)}
+            loading={startDateSaving}
+            disabled={!startDateInput}
+          >
+            Save Start Date
+          </PrimaryBtn>
+          {referralStartDate && (
+            <button
+              onClick={() => { setStartDateInput(''); handleSaveStartDate(null); }}
+              disabled={startDateSaving}
+              style={{
+                background: 'none', border: 'none', padding: 0,
+                color: AD.blueText, fontSize: 13, fontFamily: AD.fontSans,
+                cursor: startDateSaving ? 'not-allowed' : 'pointer',
+                textDecoration: 'underline',
+              }}
+            >
+              Reset to connection date
+            </button>
+          )}
+          {startDateMessage && (
+            <span style={{ fontSize: 13, color: startDateMessage.includes('failed') || startDateMessage.includes('error') ? AD.red2Text : AD.greenText }}>
+              {startDateMessage}
+            </span>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
   // ── Card 6 ── Danger zone ───────────────────────────────────────────────────
   function renderDangerCard() {
     const description = isOAuth
@@ -873,6 +981,7 @@ export default function CRMSettings() {
           {renderFieldMappingCard()}
           {renderStageMappingCard()}
           {renderSyncCard()}
+          {renderStartDateCard()}
           {renderDangerCard()}
         </>
       )}

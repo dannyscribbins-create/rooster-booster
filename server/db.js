@@ -225,8 +225,11 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     connected_at         TIMESTAMP,
     last_synced_at       TIMESTAMP,
     sync_interval_mins   INTEGER DEFAULT 30,
-    is_connected         BOOLEAN DEFAULT false
+    is_connected         BOOLEAN DEFAULT false,
+    referral_start_date  TIMESTAMP
   )`);
+
+  await pool.query(`ALTER TABLE contractor_crm_settings ADD COLUMN IF NOT EXISTS referral_start_date TIMESTAMP`);
 
   // Add UNIQUE constraint to tokens.contractor_id if not already present
   await pool.query(`
