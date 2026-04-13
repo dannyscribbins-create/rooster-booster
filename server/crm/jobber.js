@@ -89,7 +89,7 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
       } } }` },
     { headers: { Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'X-JOBBER-GRAPHQL-VERSION': '2026-02-17' } }
+        'X-JOBBER-GRAPHQL-VERSION': '2025-04-16' } }
   );
   if (!response.data.data) throw new Error('No data from Jobber: ' + JSON.stringify(response.data));
   const allClients = response.data.data.clients.nodes;
