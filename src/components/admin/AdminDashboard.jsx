@@ -4,13 +4,14 @@ import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, StatCard, PipelineBar } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
 
-export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats }) {
-  const [stats, setStats]     = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState('');
+export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats, onSettingsClick }) {
+  const [stats, setStats]               = useState(null);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState('');
+  const [crmNotConnected, setCrmNotConnected] = useState(false);
 
   function loadStats(forceRefresh = false) {
-    setLoading(true); setError('');
+    setLoading(true); setError(''); setCrmNotConnected(false);
     fetch(`${BACKEND_URL}/api/admin/stats${forceRefresh ? '?refresh=true' : ''}`, {
       headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
     })
@@ -18,7 +19,13 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
         if (r.status === 401) { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); return null; }
         return r.json();
       })
-      .then(d => { if (!d) return; if (d.error) setError(d.error); else { setStats(d); if (onStats) onStats(d); } setLoading(false); })
+      .then(d => {
+        if (!d) return;
+        if (d.error === 'crm_not_connected') { setCrmNotConnected(true); }
+        else if (d.error) { setError(d.error); }
+        else { setStats(d); if (onStats) onStats(d); }
+        setLoading(false);
+      })
       .catch(() => { setError('Failed to load stats'); setLoading(false); });
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,6 +67,32 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
         <div style={{ background: AD.red2Bg, border: `1px solid ${AD.red2}30`, borderRadius: 12, padding: '16px 20px' }}>
           <span style={{ color: AD.red2Text, fontSize: 15 }}>{error}</span>
         </div>
+      ) : crmNotConnected ? (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
+            <StatCard label="Active Referrers"   value="—" sub="no CRM connected" icon="ph-users"        accent={AD.blueLight}  animDelay={0}   />
+            <StatCard label="Total Balance Owed" value="—" sub="no CRM connected" icon="ph-scales"       accent={AD.amberText}  animDelay={80}  />
+            <StatCard label="Total Paid Out"     value="—" sub="approved payouts"  icon="ph-check-circle" accent={AD.greenText}  animDelay={160} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
+            <StatCard label="Total Referrals" value="—" icon="ph-clipboard-text" animDelay={240} />
+            <StatCard label="Leads"           value="—" icon="ph-funnel"          accent={AD.textSecondary} animDelay={300} />
+            <StatCard label="Inspections"     value="—" icon="ph-magnifying-glass" accent={AD.blueText}     animDelay={360} />
+            <StatCard label="Sold"            value="—" icon="ph-trophy"           accent={AD.greenText}    animDelay={420} />
+          </div>
+          <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '20px 24px', marginBottom: 24, boxShadow: AD.shadowSm }}>
+            <PipelineBar segments={[{ val: 0, color: 'rgba(255,255,255,0.25)' }]} total={0} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="ph ph-plugs-connected" style={{ fontSize: 15, color: AD.textTertiary }} />
+              <span style={{ fontSize: 13, color: AD.textTertiary }}>
+                Connect a CRM in Settings to start syncing data.{' '}
+                {onSettingsClick
+                  ? <button onClick={onSettingsClick} style={{ background: 'none', border: 'none', padding: 0, color: AD.blueText, fontSize: 13, fontFamily: AD.fontSans, cursor: 'pointer', textDecoration: 'underline' }}>Open Settings</button>
+                  : null}
+              </span>
+            </div>
+          </div>
+        </>
       ) : stats && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>

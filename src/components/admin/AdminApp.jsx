@@ -111,7 +111,7 @@ export default function AdminPanel() {
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
 
   const pages = {
-    dashboard:     <AdminDashboard          setLoggedIn={setAuthed} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} />,
+    dashboard:     <AdminDashboard          setLoggedIn={setAuthed} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} />,
     referrers:     <AdminReferrers          setLoggedIn={setAuthed} />,
     cashouts:      <AdminCashOuts           setLoggedIn={setAuthed} />,
     activity:      <AdminActivity           setLoggedIn={setAuthed} />,

@@ -333,7 +333,10 @@ export default function AdminReferrers({ setLoggedIn }) {
                 <p style={{ margin: '3px 0 0', fontSize: 15, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{selected.email}</p>
               </div>
             </div>
-            <p style={{ color: AD.red2Text, fontSize: 15 }}>Failed to load Jobber data for this referrer.</p>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: AD.textTertiary, margin: 0 }}>
+              <i className="ph ph-plugs-connected" style={{ fontSize: 15 }} />
+              No pipeline data — connect a CRM in Settings to start syncing referral data.
+            </p>
           </>
         )}
       </>
