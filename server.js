@@ -6,6 +6,7 @@ const oauthRoutes = require('./server/routes/oauth');
 const referrerRoutes = require('./server/routes/referrer');
 const adminRoutes = require('./server/routes/admin');
 const stripeRoutes = require('./server/routes/stripe');
+const jobberWebhooks = require('./server/routes/webhooks/jobber');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -15,6 +16,9 @@ app.use(express.json({ limit: '5mb' }));
 // Token management moved to getCRMAdapter() — reads from DB per request.
 // No startup token load needed.
 initDB();
+
+// Jobber webhook — no auth middleware, Jobber verifies via HMAC signature
+app.use('/webhooks', jobberWebhooks);
 
 app.use('/', oauthRoutes);
 app.use('/', referrerRoutes);
