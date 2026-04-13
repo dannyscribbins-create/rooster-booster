@@ -80,6 +80,21 @@ function AdminLogin({ onLogin }) {
               : <><i className="ph ph-sign-in" style={{ fontSize: 16 }} /> Sign In</>
             }
           </button>
+          <p style={{ textAlign: 'center', marginTop: 12, marginBottom: 0 }}>
+            <button
+              onClick={() => window.open('/privacy', '_blank')}
+              style={{
+                background: 'none', border: 'none', padding: 0, margin: 0,
+                font: 'inherit', cursor: 'pointer',
+                color: '#888888', fontSize: 12,
+                textDecoration: 'none',
+              }}
+              onMouseEnter={e => e.target.style.textDecoration = 'underline'}
+              onMouseLeave={e => e.target.style.textDecoration = 'none'}
+            >
+              Privacy Policy
+            </button>
+          </p>
         </div>
         <p style={{ margin: '16px 0 0', textAlign: 'center', color: AD.textSecondary, fontSize: 15 }}>Accent Roofing</p>
       </div>
