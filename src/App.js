@@ -7,6 +7,7 @@ import ResetPinScreen from './components/auth/ResetPinScreen';
 import SignupScreen from './components/auth/SignupScreen';
 import EmailVerifyScreen from './components/auth/EmailVerifyScreen';
 import ReferrerApp from './components/referrer/ReferrerApp';
+import PrivacyPolicy from './components/PrivacyPolicy';
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
 function useReferrerFonts() {
@@ -143,6 +144,7 @@ export default function App() {
     setAnnouncement(null);
   }
 
+  if (window.location.pathname === '/privacy') return <PrivacyPolicy />;
   if (isAdmin) return <AdminPanel />;
   if (resetToken) return <ResetPinScreen token={resetToken} />;
   if (showVerify) return (

@@ -301,6 +301,22 @@ export default function LoginScreen({ onLogin }) {
             Contact your rep
           </button>
         </p>
+
+        <p style={{ textAlign: "center", marginTop: 12, marginBottom: 0 }}>
+          <button
+            onClick={() => window.open('/privacy', '_blank')}
+            style={{
+              background: "none", border: "none", padding: 0, margin: 0,
+              font: "inherit", cursor: "pointer",
+              color: "#888888", fontSize: 12,
+              textDecoration: "none",
+            }}
+            onMouseEnter={e => e.target.style.textDecoration = "underline"}
+            onMouseLeave={e => e.target.style.textDecoration = "none"}
+          >
+            Privacy Policy
+          </button>
+        </p>
       </div>
 
       <p style={{
