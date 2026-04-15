@@ -262,6 +262,20 @@ router.post('/totp/disable', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── POST /api/account/totp/reset ─────────────────────────────────────────────
+router.post('/totp/reset', async (req, res) => {
+  try {
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+
+    await pool.query(
+      'UPDATE users SET totp_enabled=false, totp_secret=NULL WHERE id=$1',
+      [session.userId]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── PUT /api/account/sms-2fa ──────────────────────────────────────────────────
 router.put('/sms-2fa', async (req, res) => {
   try {

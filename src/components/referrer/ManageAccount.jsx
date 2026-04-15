@@ -53,10 +53,11 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
   const [phoneError, setPhoneError]       = useState('');
 
   // ── Security ───────────────────────────────────────────────────────────────
-  const [totpSetup, setTotpSetup]   = useState(null); // { secret, qrCodeUrl }
-  const [totpToken, setTotpToken]   = useState('');
-  const [totpBusy, setTotpBusy]     = useState(false);
-  const [totpError, setTotpError]   = useState('');
+  const [totpSetup, setTotpSetup]       = useState(null); // { secret, qrCodeUrl }
+  const [totpToken, setTotpToken]       = useState('');
+  const [totpBusy, setTotpBusy]         = useState(false);
+  const [totpError, setTotpError]       = useState('');
+  const [showTotpReset, setShowTotpReset] = useState(false);
 
   const [recoveryPhone, setRecoveryPhone]   = useState('');
   const [recoveryEmail, setRecoveryEmail]   = useState('');
@@ -257,6 +258,21 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
       if (!r.ok) { setTotpError('Failed to disable'); return; }
       setAcct(a => ({ ...a, totp_enabled: false }));
     } catch { setTotpError('Failed to disable'); }
+    finally { setTotpBusy(false); }
+  }
+
+  async function resetTotp() {
+    setTotpBusy(true); setTotpError('');
+    try {
+      await fetch(`${BACKEND_URL}/api/account/totp/disable`, {
+        method: 'POST', headers: authHeaders(),
+      });
+      await fetch(`${BACKEND_URL}/api/account/totp/reset`, {
+        method: 'POST', headers: authHeaders(),
+      });
+      setAcct(a => ({ ...a, totp_enabled: false }));
+      setShowTotpReset(false);
+    } catch { setTotpError('Reset failed'); }
     finally { setTotpBusy(false); }
   }
 
@@ -652,6 +668,54 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       )}
                       {!totpSetup && totpError && (
                         <p style={{ margin: '6px 0 0', fontSize: 12, color: R.red }}>{totpError}</p>
+                      )}
+                      {acct?.totp_enabled && !totpSetup && (
+                        <div style={{ marginTop: 10 }}>
+                          <button
+                            onClick={() => setShowTotpReset(true)}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              padding: 0, color: '#dc2626',
+                              fontSize: 13, fontWeight: 600, fontFamily: R.fontBody,
+                            }}
+                          >
+                            Reset Authenticator
+                          </button>
+                          {showTotpReset && (
+                            <div style={{
+                              marginTop: 10, padding: 14, borderRadius: 10,
+                              background: '#fff5f5', border: '1px solid #fecaca',
+                            }}>
+                              <p style={{ margin: '0 0 12px', fontSize: 13, color: R.textSecondary, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+                                This will unlink your current authenticator app. You'll need to re-scan a new QR code to re-enable.
+                              </p>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button
+                                  onClick={resetTotp}
+                                  disabled={totpBusy}
+                                  style={{
+                                    background: '#dc2626', color: '#fff', border: 'none',
+                                    borderRadius: 8, padding: '8px 16px',
+                                    fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: R.fontBody,
+                                  }}
+                                >
+                                  {totpBusy ? 'Resetting…' : 'Reset'}
+                                </button>
+                                <button
+                                  onClick={() => setShowTotpReset(false)}
+                                  style={{
+                                    background: 'transparent', color: R.textSecondary,
+                                    border: `1.5px solid ${R.border}`, borderRadius: 8,
+                                    padding: '8px 16px', fontSize: 13, fontWeight: 600,
+                                    cursor: 'pointer', fontFamily: R.fontBody,
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
 
