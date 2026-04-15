@@ -7,6 +7,7 @@ const referrerRoutes = require('./server/routes/referrer');
 const adminRoutes = require('./server/routes/admin');
 const stripeRoutes = require('./server/routes/stripe');
 const jobberWebhooks = require('./server/routes/webhooks/jobber');
+const accountRoutes = require('./server/routes/account');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -24,6 +25,8 @@ app.use('/', oauthRoutes);
 app.use('/', referrerRoutes);
 app.use('/', adminRoutes);
 app.use('/', stripeRoutes);
+// Manage Account routes
+app.use('/api/account', accountRoutes);
 
 // ─────────────────────────────────────────────────────────────────────────────
 app.listen(4000, () => console.log('Server running on port 4000'));

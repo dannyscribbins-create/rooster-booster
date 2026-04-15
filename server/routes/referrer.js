@@ -345,10 +345,28 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
 
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await pool.query(
-      'INSERT INTO sessions (user_id, token, expires_at) VALUES ($1,$2,$3)',
-      [user.id, token, expiresAt]
+    const deviceInfo = req.headers['user-agent'] || null;
+    const ipAddress = req.ip || null;
+    const sessionResult = await pool.query(
+      'INSERT INTO sessions (user_id, token, expires_at, device_info, ip_address) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+      [user.id, token, expiresAt, deviceInfo, ipAddress]
     );
+    const sessionId = sessionResult.rows[0].id;
+
+    // Async geo-lookup — do not await, never blocks login response
+    if (ipAddress) {
+      (async () => {
+        try {
+          const geoRes = await axios.get(`http://ip-api.com/json/${ipAddress}?fields=city,country`, { timeout: 3000 });
+          if (geoRes.data && geoRes.data.city) {
+            await pool.query(
+              'UPDATE sessions SET city=$1, country=$2 WHERE id=$3',
+              [geoRes.data.city || null, geoRes.data.country || null, sessionId]
+            );
+          }
+        } catch (_) { /* non-critical */ }
+      })();
+    }
     await pool.query(
       `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('login',$1,$2,$3)`,
       [user.full_name, user.email, 'Logged in']
