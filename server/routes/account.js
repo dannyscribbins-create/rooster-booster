@@ -372,6 +372,24 @@ router.delete('/me', async (req, res) => {
       [session.userId]
     );
 
+    // Auto-create a final cashout request if the user has an outstanding balance.
+    // Balance = total earned from referral_conversions minus total already requested (non-denied).
+    const balanceResult = await pool.query(
+      `SELECT
+         COALESCE((SELECT SUM(bonus_amount) FROM referral_conversions WHERE user_id=$1), 0)
+         - COALESCE((SELECT SUM(amount) FROM cashout_requests WHERE user_id=$1 AND status != 'denied'), 0)
+       AS balance`,
+      [session.userId]
+    );
+    const balance = parseFloat(balanceResult.rows[0]?.balance || 0);
+    if (balance > 0) {
+      await pool.query(
+        `INSERT INTO cashout_requests (user_id, full_name, email, amount, method, status, requested_at)
+         VALUES ($1, $2, $3, $4, 'account_deletion', 'pending', NOW())`,
+        [session.userId, full_name, email, balance]
+      );
+    }
+
     // TODO: cron job to permanently purge users where deleted_at < NOW() - INTERVAL '30 days'
 
     // Confirmation to user
