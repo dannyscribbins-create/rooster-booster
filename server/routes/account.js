@@ -323,7 +323,7 @@ router.get('/sessions', async (req, res) => {
        FROM sessions
        WHERE user_id=$1 AND role='referrer' AND expires_at > NOW()
        ORDER BY created_at DESC
-       LIMIT 6`,
+       LIMIT 2`,
       [session.userId]
     );
 
