@@ -159,9 +159,15 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
       }}>
         <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>Cash Out</h1>
-        <p style={{ margin: "4px 0 16px", fontSize: 15, color: "rgba(255,255,255,0.6)" }}>
+        <p style={{ margin: "4px 0 0", fontSize: 15, color: "rgba(255,255,255,0.6)" }}>
           ${balance.toLocaleString()} available
         </p>
+        {balance < 20 && (
+          <p style={{ margin: "6px 0 16px", fontSize: 13, color: "#fca5a5", fontFamily: R.fontBody }}>
+            Minimum cashout amount is $20
+          </p>
+        )}
+        {balance >= 20 && <div style={{ marginBottom: 16 }} />}
 
         {/* Step indicator */}
         <style>{`@keyframes nodePop { 0%{transform:scale(1)} 50%{transform:scale(1.22)} 100%{transform:scale(1)} } @keyframes cardDrop { 0%{transform:translateY(-60px) scale(0.96);opacity:0} 60%{transform:translateY(8px) scale(1.01);opacity:1} 80%{transform:translateY(-4px) scale(0.995)} 100%{transform:translateY(0) scale(1);opacity:1} }`}</style>
@@ -311,7 +317,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
                 onBlur={e => e.target.style.borderColor = R.border}
               />
             </div>
-            {amount && parseFloat(amount) > 0 && parseFloat(amount) <= balance && (
+            {amount && parseFloat(amount) >= 20 && parseFloat(amount) <= balance && (
               <button onClick={() => advanceStep(3)} style={{
                 width: "100%", marginTop: 16,
                 background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,

@@ -372,6 +372,7 @@ router.delete('/me', async (req, res) => {
       [session.userId]
     );
 
+    // Final payout on deletion — minimum threshold intentionally bypassed.
     // Auto-create a final cashout request if the user has an outstanding balance.
     // Balance = total earned from referral_conversions minus total already requested (non-denied).
     const balanceResult = await pool.query(

@@ -413,6 +413,9 @@ router.post('/api/cashout', async (req, res) => {
   );
   if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
   const { user_id, full_name, email, amount, method } = req.body;
+  if (parseFloat(amount) < 20) {
+    return res.status(400).json({ error: 'Minimum cashout amount is $20' });
+  }
   try {
     await pool.query(
       `INSERT INTO cashout_requests (user_id,full_name,email,amount,method,status,requested_at)
