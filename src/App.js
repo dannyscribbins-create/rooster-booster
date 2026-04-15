@@ -8,6 +8,8 @@ import SignupScreen from './components/auth/SignupScreen';
 import EmailVerifyScreen from './components/auth/EmailVerifyScreen';
 import ReferrerApp from './components/referrer/ReferrerApp';
 import PrivacyPolicy from './components/PrivacyPolicy';
+import TermsOfService from './components/TermsOfService';
+import ContractorTerms from './components/ContractorTerms';
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
 function useReferrerFonts() {
@@ -145,6 +147,8 @@ export default function App() {
   }
 
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />;
+  if (window.location.pathname === '/terms') return <TermsOfService />;
+  if (window.location.pathname === '/contractor-terms') return <ContractorTerms />;
   if (isAdmin) return <AdminPanel />;
   if (resetToken) return <ResetPinScreen token={resetToken} />;
   if (showVerify) return (
