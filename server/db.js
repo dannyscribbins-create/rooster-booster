@@ -231,6 +231,33 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   await pool.query(`ALTER TABLE contractor_crm_settings ADD COLUMN IF NOT EXISTS referral_start_date TIMESTAMP`);
 
+  // ── MANAGE ACCOUNT MIGRATIONS ─────────────────────────────────────────────────
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20)`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS sms_2fa_enabled BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_phone VARCHAR(20)`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_email VARCHAR(255)`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMP`);
+
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_info TEXT`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45)`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS city VARCHAR(100)`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS country VARCHAR(100)`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS verification_codes (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    code VARCHAR(6) NOT NULL,
+    type VARCHAR(30) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    used BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+
   // Add UNIQUE constraint to tokens.contractor_id if not already present
   await pool.query(`
     DO $$
