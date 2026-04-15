@@ -114,7 +114,7 @@ export default function ReferrerApp({
   showReviewCard, onDismissReview,
   announcement, announcementSettings,
   showAnnouncement, onDismissAnnouncement,
-  onLogout,
+  onLogout, onNameUpdate,
 }) {
   const [highlightReferrals, setHighlightReferrals] = useState(false);
 
@@ -123,7 +123,7 @@ export default function ReferrerApp({
     cashout:   <CashOut pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} />,
     refer:     <ReferAFriendTab userName={userName} token={sessionStorage.getItem('rb_token')} />,
     rankings:  <Rankings token={sessionStorage.getItem('rb_token')} />,
-    profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} highlightReferrals={highlightReferrals} onResetHighlight={() => setHighlightReferrals(false)} />,
+    profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} onNameUpdate={onNameUpdate} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} highlightReferrals={highlightReferrals} onResetHighlight={() => setHighlightReferrals(false)} />,
   };
 
   return (

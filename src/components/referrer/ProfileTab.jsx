@@ -11,9 +11,10 @@ import ContactModal from '../shared/ContactModal';
 import StatusBadge from '../shared/StatusBadge';
 import Skeleton from '../shared/Skeleton';
 import BadgeCelebrationPopup from './BadgeCelebrationPopup';
+import ManageAccount from './ManageAccount';
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
-export default function Profile({ onLogout, pipeline, loading, userName, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight }) {
+export default function Profile({ onLogout, pipeline, loading, userName, userEmail, onNameUpdate, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight }) {
   const soldCount  = pipeline.filter(p => p.status === "sold").length;
   const balance    = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
   const nextPayout = getNextPayout(soldCount);
@@ -560,6 +561,16 @@ export default function Profile({ onLogout, pipeline, loading, userName, profile
             </AnimCard>
           );
         })()}
+
+        {/* ── Manage Account ──────────────────────────────────────────────────── */}
+        <AnimCard delay={460} screenKey="profile">
+          <ManageAccount
+            userEmail={userEmail}
+            userName={userName}
+            onNameUpdate={onNameUpdate}
+            onLogout={onLogout}
+          />
+        </AnimCard>
 
         {/* ── Contact Support + Sign Out ───────────────────────────────────────── */}
         <AnimCard delay={480} screenKey="profile">

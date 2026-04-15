@@ -193,6 +193,7 @@ export default function App() {
       announcement={announcement} announcementSettings={announcementSettings}
       showAnnouncement={showAnnouncement} onDismissAnnouncement={handleDismissAnnouncement}
       onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(''); setProfilePhoto(null); sessionStorage.removeItem('rb_token'); }}
+      onNameUpdate={setUserName}
     />
   );
 }
