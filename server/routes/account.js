@@ -255,7 +255,7 @@ router.post('/totp/disable', async (req, res) => {
     if (!session) return;
 
     await pool.query(
-      'UPDATE users SET totp_enabled=false, totp_secret=NULL WHERE id=$1',
+      'UPDATE users SET totp_enabled=false WHERE id=$1',
       [session.userId]
     );
     res.json({ success: true });
