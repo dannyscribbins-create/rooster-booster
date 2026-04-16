@@ -310,7 +310,15 @@ router.get('/api/pipeline', async (req, res) => {
     // updates balance, and fires a push notification immediately. Build this during the
     // Stripe ACH session. Until then Danny should periodically view referrers in the admin
     // panel near period end dates to ensure all syncs are current before prize decisions are made.
-    for (const item of data.pipeline.filter(i => i.bonusEarned)) {
+    for (const item of data.pipeline) {
+      // Hard gate: pre-start-date referrals never earn bonuses, regardless of pipeline_status.
+      // This is enforced at sync time (pre_start_date=true in pipeline_cache) and here as a
+      // double-check before writing to referral_conversions.
+      if (item.pre_start_date) {
+        console.log(`[pipeline] Skipping pre-start-date referral: ${item.name} (contractor: ${contractorId || 'unknown'})`);
+        continue;
+      }
+      if (!item.bonusEarned) continue;
       // bonus_amount stored at sync time — source of truth for all period-filtered earnings queries.
       // Full real-time accuracy requires Jobber webhook (Stripe ACH session).
       await pool.query(
