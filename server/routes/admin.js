@@ -1034,4 +1034,62 @@ router.get('/api/admin/extract-colors', async (req, res) => {
   }
 });
 
+// ── ADMIN: FLAGGED REFERRALS ──────────────────────────────────────────────────
+
+// GET /api/admin/flagged-referrals/summary
+// Returns count of unresolved flagged referrals for the admin dashboard banner.
+router.get('/api/admin/flagged-referrals/summary', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      'SELECT COUNT(*) FROM flagged_referrals WHERE reviewed = false AND contractor_id = $1',
+      [contractorId]
+    );
+    res.json({ unresolved_count: parseInt(result.rows[0].count) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/admin/flagged-referrals
+// Returns all flagged referrals ordered by unresolved first, then newest first.
+router.get('/api/admin/flagged-referrals', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      `SELECT id, jobber_client_id, client_name, referred_by, pipeline_status,
+              flag_reason, reviewed, review_label, review_note, created_at, reviewed_at
+       FROM flagged_referrals
+       WHERE contractor_id = $1
+       ORDER BY reviewed ASC, created_at DESC`,
+      [contractorId]
+    );
+    res.json({ flagged: result.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// PUT /api/admin/flagged-referrals/:id
+// Resolves (or un-resolves) a flagged referral.
+// Body: { reviewed, review_label, review_note }
+router.put('/api/admin/flagged-referrals/:id', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  const { reviewed, review_label, review_note } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE flagged_referrals
+       SET reviewed = $1, review_label = $2, review_note = $3,
+           reviewed_at = CASE WHEN $1 = true THEN NOW() ELSE NULL END
+       WHERE id = $4 AND contractor_id = $5
+       RETURNING id`,
+      [reviewed, review_label ?? null, review_note ?? null, req.params.id, contractorId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
