@@ -56,6 +56,9 @@ async function refreshTokenIfNeeded() {
 async function fetchPipelineForReferrer(referrerName, contractorId = null, config = null) {
   // Resolve contractorId — config-based path provides it; legacy path defaults to accent-roofing
   const resolvedContractorId = contractorId || (config?.contractorId) || 'accent-roofing';
+  // Note: config is accepted for caller compatibility with getCRMAdapter() but is not
+  // used — pipeline data comes from pipeline_cache, not the CRM directly.
+  // credential and effectiveStartDate in config are intentionally ignored here.
 
   // Read from pipeline_cache — case-insensitive match on referred_by
   const cacheResult = await pool.query(
@@ -69,6 +72,9 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
 
   // If no cache records exist yet (initial sync not complete), signal sync pending
   if (cacheResult.rows.length === 0) {
+    // MVP: issues a second query on every load for referrers with zero pipeline entries.
+    // At scale, include sync_state in the initial query as a LEFT JOIN on pipeline_cache
+    // so a single round-trip handles both the data and the sync status.
     const syncResult = await pool.query(
       'SELECT initial_sync_complete FROM sync_state WHERE contractor_id = $1',
       [resolvedContractorId]
@@ -85,6 +91,9 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
   // Map pipeline_cache rows to the response shape PipelineTab expects
   // Bonus schedule: $500 base + boost per tier [0,100,200,250,300,350,400]
   const boostSchedule = [0, 100, 200, 250, 300, 350, 400];
+  // paidCount here is the index into boostSchedule — it counts only bonus-eligible
+  // (post-start-date) paid referrals in this result set, NOT the referrer's all-time
+  // paid count. Pre-start-date rows are excluded from tier calculation.
   let paidCount    = 0;
   let totalBalance = 0;
 
