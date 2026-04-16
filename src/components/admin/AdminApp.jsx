@@ -137,19 +137,13 @@ export default function AdminPanel() {
     })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setPendingCount(d.filter(c => c.status === 'pending').length); });
-  }
-
-  useEffect(() => {
-    const token = sessionStorage.getItem('rb_admin_token');
-    if (!token) return;
     fetch(`${BACKEND_URL}/api/admin/flagged-referrals/summary`, {
       headers: { 'Authorization': `Bearer ${token}` },
     })
       .then(r => r.json())
       .then(data => { setFlaggedUnresolved(data.unresolved_count); })
       .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }
 
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
 
