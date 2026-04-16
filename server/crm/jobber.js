@@ -39,88 +39,86 @@ async function refreshTokenIfNeeded() {
 }
 
 // ── SHARED: FETCH PIPELINE FOR A REFERRER ────────────────────────────────────
-// fetchPipelineForReferrer(referrerName, contractorId, config)
+// Reads from pipeline_cache (populated by the background sync worker) instead of
+// calling Jobber directly. Returns the same shape as the previous Jobber-direct
+// implementation so all callers (referrer.js routes, admin routes) are unaffected.
 //
-// config = { credential, referrerFieldName, stageMap }
-//   - credential: OAuth access token or API key (from getCRMAdapter)
-//   - referrerFieldName: Jobber custom field label, e.g. 'Referred by'
-//   - stageMap: maps our internal stage names to CRM display labels (available for future use)
+// Response shape:
+//   { pipeline: [{ id, name, status, bonusEarned, payout, pre_start_date }], balance, paidCount }
+//   plus sync_pending: true when the initial cache sync has not yet completed.
 //
-// contractorId and config are optional for backward compatibility with existing direct callers.
-// When config is omitted, falls back to module-level accessToken and hardcoded 'referred by'.
+// Status mapping (pipeline_cache → frontend STATUS_CONFIG keys):
+//   'paid'     → 'sold'   (paid invoice = closed sale in frontend terms)
+//   'not_sold' → 'closed'
+//   all others → unchanged ('lead', 'inspection', 'sold')
+//
+// Bonus eligibility: pipeline_status === 'paid' AND pre_start_date === false
 async function fetchPipelineForReferrer(referrerName, contractorId = null, config = null) {
-  let token;
-  let fieldName;
+  // Resolve contractorId — config-based path provides it; legacy path defaults to accent-roofing
+  const resolvedContractorId = contractorId || (config?.contractorId) || 'accent-roofing';
 
-  let startDateISO;
+  // Read from pipeline_cache — case-insensitive match on referred_by
+  const cacheResult = await pool.query(
+    `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date
+     FROM pipeline_cache
+     WHERE contractor_id = $1
+       AND LOWER(referred_by) = LOWER($2)
+     ORDER BY jobber_created_at ASC NULLS LAST`,
+    [resolvedContractorId, referrerName]
+  );
 
-  if (config) {
-    // New config-based path: credential and field name come from getCRMAdapter()
-    token = config.credential;
-    fieldName = config.referrerFieldName.toLowerCase();
-    startDateISO = config.effectiveStartDate
-      ? new Date(config.effectiveStartDate).toISOString()
-      : null;
-  } else {
-    // Legacy path: use module-level accessToken, refresh via WHERE id=1 pattern
-    // TODO: remove legacy path once all callers use getCRMAdapter()
-    await refreshTokenIfNeeded();
-    token = accessToken;
-    fieldName = 'referred by';
-    // Fallback: filter to last 90 days to avoid scanning thousands of historical clients
-    startDateISO = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  // If no cache records exist yet (initial sync not complete), signal sync pending
+  if (cacheResult.rows.length === 0) {
+    const syncResult = await pool.query(
+      'SELECT initial_sync_complete FROM sync_state WHERE contractor_id = $1',
+      [resolvedContractorId]
+    );
+    const syncComplete = syncResult.rows[0]?.initial_sync_complete ?? false;
+    return {
+      pipeline: [],
+      balance: 0,
+      paidCount: 0,
+      sync_pending: !syncComplete,
+    };
   }
 
-  // Build the clients() filter argument — when startDateISO is set, restrict by createdAt
-  // TODO: add cursor-based pagination once createdAt filter is confirmed working in production.
-  // With date filtering active, first:50 is sufficient for normal referral volume per sync.
-  const clientsArg = startDateISO
-    ? `first:50, filter:{ createdAt:{ after:"${startDateISO}" } }`
-    : `first:50`;
-
-  const response = await axios.post(
-    'https://api.getjobber.com/api/graphql',
-    { query: `{ clients(${clientsArg}) { nodes { id firstName lastName
-        customFields { ... on CustomFieldText { label valueText } }
-        quotes(first:5) { nodes { id quoteStatus } }
-        jobs(first:5) { nodes { id jobStatus
-          invoices(first:5) { nodes { id invoiceStatus amounts { total } } }
-        } }
-      } } }` },
-    { headers: { Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-JOBBER-GRAPHQL-VERSION': '2025-04-16' } }
-  );
-  if (!response.data.data) throw new Error('No data from Jobber: ' + JSON.stringify(response.data));
-  const allClients = response.data.data.clients.nodes;
-  const referred = allClients.filter(c => {
-    const f = c.customFields.find(f => f.label && f.label.toLowerCase() === fieldName);
-    return f && f.valueText?.trim().toLowerCase() === referrerName.trim().toLowerCase();
-  });
-  const pipeline = referred.map(client => {
-    const jobs = client.jobs.nodes;
-    const quotes = client.quotes.nodes;
-    const paidInvoice = jobs.flatMap(j => j.invoices.nodes).find(inv => inv.invoiceStatus === 'paid');
-    const hasJob = jobs.length > 0;
-    const activeQuotes = quotes.filter(q => q.quoteStatus !== 'archived');
-    let status, bonusEarned = false;
-    if (hasJob) { status = 'sold'; if (paidInvoice) bonusEarned = true; }
-    else if (activeQuotes.length > 0) status = 'inspection';
-    else if (quotes.length > 0) status = 'closed';
-    else status = 'lead';
-    return { id: client.id, name: `${client.firstName} ${client.lastName}`, status, bonusEarned };
-  });
+  // Map pipeline_cache rows to the response shape PipelineTab expects
+  // Bonus schedule: $500 base + boost per tier [0,100,200,250,300,350,400]
   const boostSchedule = [0, 100, 200, 250, 300, 350, 400];
-  let paidCount = 0, totalBalance = 0;
-  const result = pipeline.map(client => {
+  let paidCount    = 0;
+  let totalBalance = 0;
+
+  const pipeline = cacheResult.rows.map(row => {
+    const isPreStart = row.pre_start_date;
+
+    // Map internal status to frontend status values
+    let status;
+    if (row.pipeline_status === 'paid')          status = 'sold';
+    else if (row.pipeline_status === 'not_sold') status = 'closed';
+    else status = row.pipeline_status; // 'lead', 'inspection', 'sold'
+
+    // Bonus only fires when paid AND not pre-start-date
+    const bonusEarned = row.pipeline_status === 'paid' && !isPreStart;
+
     let payout = null;
-    if (client.bonusEarned) {
+    if (bonusEarned) {
       const boost = boostSchedule[Math.min(paidCount, boostSchedule.length - 1)];
-      payout = 500 + boost; totalBalance += payout; paidCount++;
+      payout        = 500 + boost;
+      totalBalance += payout;
+      paidCount++;
     }
-    return { ...client, payout };
+
+    return {
+      id:            row.jobber_client_id,
+      name:          row.client_name || 'Unknown',
+      status,
+      bonusEarned,
+      payout,
+      pre_start_date: isPreStart,
+    };
   });
-  return { pipeline: result, balance: totalBalance, paidCount };
+
+  return { pipeline, balance: totalBalance, paidCount };
 }
 
 module.exports = { setAccessToken, refreshTokenIfNeeded, fetchPipelineForReferrer };
