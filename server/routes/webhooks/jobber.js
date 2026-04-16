@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const { pool } = require('../../db');
+const { syncSingleClient } = require('../../crm/pipelineSync');
 
 // POST /webhooks/jobber/disconnect
 // Called by Jobber when a contractor removes Rooster Booster from their Jobber account.
@@ -74,6 +75,104 @@ router.post('/jobber/disconnect', async (req, res) => {
   }
 
   res.status(200).json({ received: true });
+});
+
+// POST /webhooks/jobber/client-create
+// Jobber fires this when a new client profile is created.
+// Responds 200 immediately — sync runs async to stay within Jobber's response window.
+router.post('/jobber/client-create', async (req, res) => {
+  // ── HMAC SIGNATURE VERIFICATION ─────────────────────────────────────────────
+  const signature = req.headers['x-jobber-hmac-sha256'];
+  const secret    = process.env.JOBBER_CLIENT_SECRET;
+
+  if (!secret) {
+    console.error('[jobber-webhook] JOBBER_CLIENT_SECRET not set — cannot verify signature');
+    return res.status(401).json({ error: 'Webhook secret not configured' });
+  }
+  if (!signature) {
+    console.warn('[jobber-webhook] Missing x-jobber-hmac-sha256 header on client-create');
+    return res.status(401).json({ error: 'Missing signature' });
+  }
+
+  const rawBody     = JSON.stringify(req.body);
+  const expectedSig = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
+  if (signature !== expectedSig) {
+    console.warn('[jobber-webhook] Signature mismatch on client-create');
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // Respond 200 immediately — Jobber requires a fast response
+  res.status(200).json({ received: true });
+
+  // Async sync — never blocks the webhook response
+  // MVP: webhook payload may not include full nested quotes/jobs/invoices data.
+  // If payload is incomplete, classifyPipelineStatus returns 'lead' as default.
+  // The 30-minute incremental sync will correct the status. This is acceptable for MVP.
+  const contractorId = req.query.contractorId || req.body?.contractor_id || 'accent-roofing';
+  const client       = req.body?.data?.client || req.body;
+
+  (async () => {
+    try {
+      const settingsResult = await pool.query(
+        'SELECT referral_start_date FROM contractor_crm_settings WHERE contractor_id = $1',
+        [contractorId]
+      );
+      const referralStartDate = settingsResult.rows[0]?.referral_start_date
+        ? new Date(settingsResult.rows[0].referral_start_date)
+        : null;
+      await syncSingleClient(contractorId, client, referralStartDate);
+      console.log(`[jobber-webhook] client-create sync complete for client: ${client?.id}`);
+    } catch (err) {
+      console.error('[jobber-webhook] client-create sync failed:', err.message);
+    }
+  })();
+});
+
+// POST /webhooks/jobber/client-update
+// Jobber fires this when a client profile is updated (custom fields, job status, etc).
+// Responds 200 immediately — sync runs async.
+router.post('/jobber/client-update', async (req, res) => {
+  // ── HMAC SIGNATURE VERIFICATION ─────────────────────────────────────────────
+  const signature = req.headers['x-jobber-hmac-sha256'];
+  const secret    = process.env.JOBBER_CLIENT_SECRET;
+
+  if (!secret) {
+    console.error('[jobber-webhook] JOBBER_CLIENT_SECRET not set — cannot verify signature');
+    return res.status(401).json({ error: 'Webhook secret not configured' });
+  }
+  if (!signature) {
+    console.warn('[jobber-webhook] Missing x-jobber-hmac-sha256 header on client-update');
+    return res.status(401).json({ error: 'Missing signature' });
+  }
+
+  const rawBody     = JSON.stringify(req.body);
+  const expectedSig = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
+  if (signature !== expectedSig) {
+    console.warn('[jobber-webhook] Signature mismatch on client-update');
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // Respond 200 immediately
+  res.status(200).json({ received: true });
+
+  const contractorId = req.query.contractorId || req.body?.contractor_id || 'accent-roofing';
+  const client       = req.body?.data?.client || req.body;
+
+  (async () => {
+    try {
+      const settingsResult = await pool.query(
+        'SELECT referral_start_date FROM contractor_crm_settings WHERE contractor_id = $1',
+        [contractorId]
+      );
+      const referralStartDate = settingsResult.rows[0]?.referral_start_date
+        ? new Date(settingsResult.rows[0].referral_start_date)
+        : null;
+      await syncSingleClient(contractorId, client, referralStartDate);
+      console.log(`[jobber-webhook] client-update sync complete for client: ${client?.id}`);
+    } catch (err) {
+      console.error('[jobber-webhook] client-update sync failed:', err.message);
+    }
+  })();
 });
 
 module.exports = router;
