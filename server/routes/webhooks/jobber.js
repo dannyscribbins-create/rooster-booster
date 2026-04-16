@@ -108,6 +108,7 @@ router.post('/jobber/client-create', async (req, res) => {
   // MVP: webhook payload may not include full nested quotes/jobs/invoices data.
   // If payload is incomplete, classifyPipelineStatus returns 'lead' as default.
   // The 30-minute incremental sync will correct the status. This is acceptable for MVP.
+  // TODO: implement multi-contractor lookup here when FORA scales beyond one contractor
   const contractorId = req.query.contractorId || req.body?.contractor_id || 'accent-roofing';
   const client       = req.body?.data?.client || req.body;
 
@@ -155,6 +156,11 @@ router.post('/jobber/client-update', async (req, res) => {
   // Respond 200 immediately
   res.status(200).json({ received: true });
 
+  // Async sync — never blocks the webhook response
+  // MVP: webhook payload may not include full nested quotes/jobs/invoices data.
+  // If payload is incomplete, classifyPipelineStatus returns 'lead' as default.
+  // The 30-minute incremental sync will correct the status. This is acceptable for MVP.
+  // TODO: implement multi-contractor lookup here when FORA scales beyond one contractor
   const contractorId = req.query.contractorId || req.body?.contractor_id || 'accent-roofing';
   const client       = req.body?.data?.client || req.body;
 
