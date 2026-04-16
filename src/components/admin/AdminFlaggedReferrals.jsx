@@ -3,6 +3,29 @@ import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn, AdminInput } from './AdminComponents';
 
+const LABEL_OPTIONS = [
+  { value: '',             label: 'Select label...' },
+  { value: 'confirmed',    label: 'Confirmed referral' },
+  { value: 'not_referred', label: 'Not a referral' },
+  { value: 'duplicate',    label: 'Duplicate' },
+  { value: 'other',        label: 'Other' },
+];
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+const pipelineBadgeStyle = (status) => {
+  const map = {
+    lead:       { background: 'rgba(255,255,255,0.08)', color: AD.textSecondary },
+    inspection: { background: AD.blueBg,               color: AD.blueText      },
+    sold:       { background: AD.greenBg,              color: AD.greenText     },
+    paid:       { background: 'rgba(45,139,95,0.25)',  color: '#7dd3aa'        },
+  };
+  return map[status] || { background: 'rgba(255,255,255,0.06)', color: AD.textSecondary };
+};
+
 export default function AdminFlaggedReferrals() {
   const [flagged, setFlagged]           = useState([]);
   const [loading, setLoading]           = useState(true);
@@ -12,17 +35,15 @@ export default function AdminFlaggedReferrals() {
 
   const fetchFlagged = useCallback(() => {
     setLoading(true);
-    fetch(`${BACKEND_URL}/api/admin/flagged-referrals`, {
+    return fetch(`${BACKEND_URL}/api/admin/flagged-referrals`, {
       headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
     })
       .then(r => r.json())
       .then(d => { setFlagged(d.flagged || []); setLoading(false); })
       .catch(() => { setLoading(false); });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchFlagged(); }, []);
+  useEffect(() => { fetchFlagged(); }, [fetchFlagged]);
 
   function handleResolve(id) {
     setResolving(id);
@@ -35,39 +56,16 @@ export default function AdminFlaggedReferrals() {
       body: JSON.stringify({
         reviewed: true,
         review_label: resolveLabels[id] || null,
-        review_note: resolveNotes[id] || null,
+        review_note: (resolveLabels[id] === 'other' ? resolveNotes[id] : null) || null,
       }),
     })
       .then(r => {
         if (!r.ok) throw new Error('Failed to resolve');
-        fetchFlagged();
-        setResolving(null);
+        return fetchFlagged();
       })
+      .then(() => { setResolving(null); })
       .catch(err => { console.error(err); setResolving(null); });
   }
-
-  const LABEL_OPTIONS = [
-    { value: '',             label: 'Select label...' },
-    { value: 'confirmed',    label: 'Confirmed referral' },
-    { value: 'not_referred', label: 'Not a referral' },
-    { value: 'duplicate',    label: 'Duplicate' },
-    { value: 'other',        label: 'Other' },
-  ];
-
-  function formatDate(iso) {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  }
-
-  const pipelineBadgeStyle = (status) => {
-    const map = {
-      lead:       { background: 'rgba(255,255,255,0.08)', color: AD.textSecondary },
-      inspection: { background: AD.blueBg,               color: AD.blueText      },
-      sold:       { background: AD.greenBg,              color: AD.greenText     },
-      paid:       { background: 'rgba(45,139,95,0.25)',  color: '#7dd3aa'        },
-    };
-    return map[status] || { background: 'rgba(255,255,255,0.06)', color: AD.textSecondary };
-  };
 
   return (
     <>
