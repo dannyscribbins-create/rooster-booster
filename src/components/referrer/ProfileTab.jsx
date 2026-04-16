@@ -294,7 +294,12 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                           }}>
                             {ref.name.split(" ").map(n => n[0]).join("")}
                           </div>
-                          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: R.textPrimary }}>{ref.name}</p>
+                          <div>
+                            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: R.textPrimary }}>{ref.name}</p>
+                            {ref.pre_start_date && (
+                              <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888", fontStyle: "italic", fontWeight: 400 }}>Historical Record</p>
+                            )}
+                          </div>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                           <StatusBadge status={ref.status} />
