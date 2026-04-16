@@ -9,6 +9,7 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
   const [crmNotConnected, setCrmNotConnected] = useState(false);
+  const [flaggedUnresolved, setFlaggedUnresolved] = useState(0);
 
   function loadStats(forceRefresh = false) {
     setLoading(true); setError(''); setCrmNotConnected(false);
@@ -31,6 +32,16 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadStats(); }, [refreshKey]);
 
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/admin/flagged-referrals/summary`, {
+      headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && d.unresolved_count != null) setFlaggedUnresolved(d.unresolved_count); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const pipelineTotal = stats ? stats.totalLeads + stats.totalInspections + stats.totalSold + stats.totalNotSold : 0;
   const pct = (val) => pipelineTotal > 0 ? Math.round((val / pipelineTotal) * 100) : 0;
 
@@ -40,6 +51,11 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
   return (
     <>
       <AdminPageHeader title={`${greeting}, Danny.`} subtitle="Rooster Booster · Accent Roofing" />
+      {flaggedUnresolved > 0 && (
+        <div style={{ background: '#FFC107', color: '#1A1A1A', padding: '12px 16px', borderRadius: 6, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 500 }}>
+          ⚠️ {flaggedUnresolved} flagged referral{flaggedUnresolved !== 1 ? 's' : ''} need review
+        </div>
+      )}
       {stats?.pendingCashouts > 0 && (
         <div onClick={() => setPage('cashouts')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: AD.amberBg, border: `1px solid ${AD.amber}40`, borderRadius: 12, padding: '16px 24px', marginBottom: 24, cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
