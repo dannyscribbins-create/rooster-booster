@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
-import { AdminPageHeader, Btn, AdminInput } from './AdminComponents';
+import { AdminPageHeader, Btn } from './AdminComponents';
 
 const LABEL_OPTIONS = [
   { value: '',             label: 'Select label...' },
