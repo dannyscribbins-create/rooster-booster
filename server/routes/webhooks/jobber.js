@@ -3,8 +3,46 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const axios = require('axios');
 const { pool } = require('../../db');
 const { syncSingleClient } = require('../../crm/pipelineSync');
+
+// ── FULL CLIENT FETCH ─────────────────────────────────────────────────────────
+// Fetches complete client data from Jobber by ID, including quotes/jobs/invoices
+// needed for accurate pipeline status classification. Called from webhook handlers
+// so classifyPipelineStatus gets full data rather than the sparse webhook payload.
+async function fetchFullClient(clientId, token) {
+  const query = `{
+    client(id: "${clientId}") {
+      id firstName lastName createdAt
+      customFields { ... on CustomFieldText { label valueText } }
+      quotes(first: 10) { nodes { id quoteStatus } }
+      jobs(first: 10) {
+        nodes {
+          id jobStatus
+          invoices(first: 5) { nodes { invoiceStatus } }
+        }
+      }
+    }
+  }`;
+
+  const response = await axios.post(
+    'https://api.getjobber.com/api/graphql',
+    { query },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+      },
+    }
+  );
+
+  if (!response.data?.data?.client) {
+    throw new Error(`fetchFullClient: no client returned for id ${clientId}`);
+  }
+  return response.data.data.client;
+}
 
 // POST /webhooks/jobber/disconnect
 // Called by Jobber when a contractor removes Rooster Booster from their Jobber account.
@@ -121,8 +159,27 @@ router.post('/jobber/client-create', async (req, res) => {
       const referralStartDate = settingsResult.rows[0]?.referral_start_date
         ? new Date(settingsResult.rows[0].referral_start_date)
         : null;
-      await syncSingleClient(contractorId, client, referralStartDate);
-      console.log(`[jobber-webhook] client-create sync complete for client: ${client?.id}`);
+
+      // Fetch fresh token for the Jobber API call
+      const tokenResult = await pool.query(
+        'SELECT access_token FROM tokens WHERE contractor_id = $1',
+        [contractorId]
+      );
+      const token = tokenResult.rows[0]?.access_token;
+
+      // Fetch full client data including quotes/jobs/invoices for accurate status classification
+      const rawClientId = client?.id;
+      if (!rawClientId) throw new Error('client-create webhook: missing client id in payload');
+
+      const fullClient = token
+        ? await fetchFullClient(rawClientId, token).catch(err => {
+            console.warn(`[jobber-webhook] fetchFullClient failed, using raw payload: ${err.message}`);
+            return client;
+          })
+        : client;
+
+      await syncSingleClient(contractorId, fullClient, referralStartDate);
+      console.log(`[jobber-webhook] client-create sync complete for client: ${rawClientId}`);
     } catch (err) {
       console.error('[jobber-webhook] client-create sync failed:', err.message);
     }
@@ -173,8 +230,27 @@ router.post('/jobber/client-update', async (req, res) => {
       const referralStartDate = settingsResult.rows[0]?.referral_start_date
         ? new Date(settingsResult.rows[0].referral_start_date)
         : null;
-      await syncSingleClient(contractorId, client, referralStartDate);
-      console.log(`[jobber-webhook] client-update sync complete for client: ${client?.id}`);
+
+      // Fetch fresh token for the Jobber API call
+      const tokenResult = await pool.query(
+        'SELECT access_token FROM tokens WHERE contractor_id = $1',
+        [contractorId]
+      );
+      const token = tokenResult.rows[0]?.access_token;
+
+      // Fetch full client data including quotes/jobs/invoices for accurate status classification
+      const rawClientId = client?.id;
+      if (!rawClientId) throw new Error('client-update webhook: missing client id in payload');
+
+      const fullClient = token
+        ? await fetchFullClient(rawClientId, token).catch(err => {
+            console.warn(`[jobber-webhook] fetchFullClient failed, using raw payload: ${err.message}`);
+            return client;
+          })
+        : client;
+
+      await syncSingleClient(contractorId, fullClient, referralStartDate);
+      console.log(`[jobber-webhook] client-update sync complete for client: ${rawClientId}`);
     } catch (err) {
       console.error('[jobber-webhook] client-update sync failed:', err.message);
     }
