@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { pool } = require('../db');
+const { refreshTokenIfNeeded } = require('./jobber');
 
 // ── PIPELINE STATUS CLASSIFIER ────────────────────────────────────────────────
 // Input: a single Jobber client object with quotes, jobs, invoices
@@ -110,7 +111,8 @@ async function runFullSync(contractorId) {
   const referralStartDate = new Date(settingsResult.rows[0].referral_start_date);
   const startDateISO      = referralStartDate.toISOString();
 
-  // Fetch OAuth token for this contractor
+  // Refresh OAuth token if expiring soon, then fetch the (potentially updated) token
+  await refreshTokenIfNeeded();
   const tokenResult = await pool.query(
     'SELECT access_token FROM tokens WHERE contractor_id = $1',
     [contractorId]
@@ -227,7 +229,8 @@ async function runIncrementalSync(contractorId) {
     ? new Date(settingsResult.rows[0].referral_start_date)
     : null;
 
-  // Fetch OAuth token
+  // Refresh OAuth token if expiring soon, then fetch the (potentially updated) token
+  await refreshTokenIfNeeded();
   const tokenResult = await pool.query(
     'SELECT access_token FROM tokens WHERE contractor_id = $1',
     [contractorId]
