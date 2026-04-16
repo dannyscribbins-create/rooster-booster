@@ -52,7 +52,7 @@ async function syncSingleClient(contractorId, client, referralStartDate) {
 
   const clientName  = `${client.firstName || ''} ${client.lastName || ''}`.trim();
   const createdAt   = client.createdAt ? new Date(client.createdAt) : null;
-  const isPreStart  = referralStartDate && createdAt && createdAt < referralStartDate;
+  const isPreStart  = !!(referralStartDate && createdAt && createdAt < referralStartDate);
   const status      = classifyPipelineStatus(client);
 
   await pool.query(
@@ -122,6 +122,10 @@ async function runFullSync(contractorId) {
   const token = tokenResult.rows[0].access_token;
 
   // Paginate through all Jobber clients created since referral_start_date
+  // MVP: allClients array accumulates all pages before processing. At FORA scale with
+  // tens of thousands of clients per contractor, process each page immediately in the
+  // while loop rather than collecting all into memory. The schema and sync_state update
+  // at the bottom would remain the same.
   let allClients  = [];
   let cursor      = null;
   let hasNextPage = true;
@@ -157,9 +161,12 @@ async function runFullSync(contractorId) {
       }
     );
 
-    if (!response.data.data) {
-      console.error('[pipelineSync] Jobber returned no data:', JSON.stringify(response.data));
-      throw new Error('Jobber GraphQL returned no data during full sync');
+    if (!response.data.data || !response.data.data.clients) {
+      console.error('[pipelineSync] Jobber returned no clients data:', JSON.stringify(response.data));
+      throw new Error('Jobber GraphQL returned no clients data during full sync');
+    }
+    if (response.data.errors?.length) {
+      console.warn('[pipelineSync] Jobber returned partial errors during full sync:', JSON.stringify(response.data.errors));
     }
 
     const { nodes, pageInfo } = response.data.data.clients;
@@ -232,6 +239,7 @@ async function runIncrementalSync(contractorId) {
   const token = tokenResult.rows[0].access_token;
 
   // Paginate — filter by updatedAt since last sync
+  // MVP: same in-memory accumulation as runFullSync — see comment there for scale path.
   let allClients  = [];
   let cursor      = null;
   let hasNextPage = true;
@@ -267,9 +275,12 @@ async function runIncrementalSync(contractorId) {
       }
     );
 
-    if (!response.data.data) {
-      console.error('[pipelineSync] Jobber returned no data during incremental sync:', JSON.stringify(response.data));
-      throw new Error('Jobber GraphQL returned no data during incremental sync');
+    if (!response.data.data || !response.data.data.clients) {
+      console.error('[pipelineSync] Jobber returned no clients data during incremental sync:', JSON.stringify(response.data));
+      throw new Error('Jobber GraphQL returned no clients data during incremental sync');
+    }
+    if (response.data.errors?.length) {
+      console.warn('[pipelineSync] Jobber returned partial errors during incremental sync:', JSON.stringify(response.data.errors));
     }
 
     const { nodes, pageInfo } = response.data.data.clients;
