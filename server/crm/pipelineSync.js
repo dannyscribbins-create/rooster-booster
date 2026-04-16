@@ -304,4 +304,31 @@ async function runIncrementalSync(contractorId) {
   console.log(`[pipelineSync] Incremental sync complete for ${contractorId}`);
 }
 
-module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync };
+// ── SCHEDULED SYNC RUNNER ────────────────────────────────────────────────────
+// Called by server.js on a 30-minute interval.
+// Queries all contractors with valid tokens and runs runIncrementalSync for each.
+// Per-contractor errors are isolated — one failure never stops the others.
+async function runScheduledSync() {
+  console.log('[scheduler] Starting scheduled incremental sync cycle');
+  try {
+    const result = await pool.query(
+      'SELECT DISTINCT contractor_id FROM tokens WHERE access_token IS NOT NULL'
+    );
+    if (result.rows.length === 0) {
+      console.log('[scheduler] No contractors with tokens — skipping cycle');
+      return;
+    }
+    for (const row of result.rows) {
+      try {
+        await runIncrementalSync(row.contractor_id);
+      } catch (err) {
+        console.error(`[scheduler] Sync failed for contractor ${row.contractor_id}:`, err.message);
+      }
+    }
+    console.log('[scheduler] Sync cycle complete');
+  } catch (err) {
+    console.error('[scheduler] Failed to query contractor list:', err.message);
+  }
+}
+
+module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync };
