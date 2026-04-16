@@ -270,6 +270,46 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     END $$;
   `);
 
+  // ── PIPELINE CACHE MIGRATIONS ─────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS pipeline_cache (
+    id SERIAL PRIMARY KEY,
+    contractor_id VARCHAR(100) NOT NULL,
+    jobber_client_id VARCHAR(255) NOT NULL,
+    client_name VARCHAR(255),
+    referred_by VARCHAR(255),
+    pipeline_status VARCHAR(50) DEFAULT 'lead',
+    bonus_amount NUMERIC(10,2),
+    jobber_created_at TIMESTAMP,
+    pre_start_date BOOLEAN DEFAULT false,
+    last_synced_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(contractor_id, jobber_client_id)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS flagged_referrals (
+    id SERIAL PRIMARY KEY,
+    contractor_id VARCHAR(100) NOT NULL,
+    jobber_client_id VARCHAR(255) NOT NULL,
+    client_name VARCHAR(255),
+    referred_by VARCHAR(255),
+    pipeline_status VARCHAR(50),
+    flag_reason VARCHAR(100),
+    reviewed BOOLEAN DEFAULT false,
+    review_label VARCHAR(100),
+    review_note TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    reviewed_at TIMESTAMP,
+    UNIQUE(contractor_id, jobber_client_id)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS sync_state (
+    contractor_id VARCHAR(100) PRIMARY KEY,
+    last_synced_at TIMESTAMP,
+    initial_sync_complete BOOLEAN DEFAULT false,
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');
