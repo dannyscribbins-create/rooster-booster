@@ -139,10 +139,10 @@ async function runFullSync(contractorId) {
         nodes {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
-          quotes(first: 10) { nodes { id quoteStatus archivedAt } }
+          quotes(first: 10) { nodes { id quoteStatus } }
           jobs(first: 10) {
             nodes {
-              id jobStatus archivedAt
+              id jobStatus
               invoices(first: 5) { nodes { invoiceStatus } }
             }
           }
@@ -254,10 +254,10 @@ async function runIncrementalSync(contractorId) {
         nodes {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
-          quotes(first: 10) { nodes { id quoteStatus archivedAt } }
+          quotes(first: 10) { nodes { id quoteStatus } }
           jobs(first: 10) {
             nodes {
-              id jobStatus archivedAt
+              id jobStatus
               invoices(first: 5) { nodes { invoiceStatus } }
             }
           }
