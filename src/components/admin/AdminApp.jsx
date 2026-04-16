@@ -9,6 +9,7 @@ import AdminActivity from './AdminActivityLog';
 import AdminAnnouncementSettings from './AdminAnnouncementSettings';
 import AdminAboutUs from './AdminAboutUs';
 import AdminEngagement from './AdminEngagement';
+import AdminFlaggedReferrals from './AdminFlaggedReferrals';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
 function useAdminFonts() {
@@ -121,6 +122,7 @@ export default function AdminPanel() {
   const [authed, setAuthed]                       = useState(false);
   const [page, setPage]                           = useState('dashboard');
   const [pendingCount, setPendingCount]           = useState(0);
+  const [flaggedUnresolved, setFlaggedUnresolved] = useState(0);
   const [showSettings, setShowSettings]           = useState(false);
   const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
   const [dashboardCachedAt, setDashboardCachedAt]     = useState(null);
@@ -137,6 +139,18 @@ export default function AdminPanel() {
       .then(d => { if (Array.isArray(d)) setPendingCount(d.filter(c => c.status === 'pending').length); });
   }
 
+  useEffect(() => {
+    const token = sessionStorage.getItem('rb_admin_token');
+    if (!token) return;
+    fetch(`${BACKEND_URL}/api/admin/flagged-referrals/summary`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(data => { setFlaggedUnresolved(data.unresolved_count); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
 
   const pages = {
@@ -147,6 +161,7 @@ export default function AdminPanel() {
     announcements: <AdminAnnouncementSettings setLoggedIn={setAuthed} />,
     engagement:    <AdminEngagement         setLoggedIn={setAuthed} />,
     about:         <AdminAboutUs            setLoggedIn={setAuthed} />,
+    flagged:       <AdminFlaggedReferrals />,
   };
 
   function handleNavClick(id) {
@@ -155,7 +170,7 @@ export default function AdminPanel() {
   }
 
   return (
-    <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)}>
+    <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)}>
       {pages[page]}
     </AdminShell>
   );

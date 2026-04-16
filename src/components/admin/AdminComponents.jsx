@@ -11,9 +11,10 @@ export const ADMIN_NAV = [
   { id: 'announcements', icon: 'ph-megaphone',            label: 'Announcements'      },
   { id: 'engagement',   icon: 'ph-trophy',                label: 'Engagement'         },
   { id: 'about',        icon: 'ph-identification-card',   label: 'About Us & Booking' },
+  { id: 'flagged',      icon: 'ph-flag',                  label: 'Flagged Referrals'  },
 ];
 
-export function AdminSidebar({ page, setPage, pendingCount }) {
+export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved }) {
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, width: 230, height: '100vh',
@@ -46,6 +47,9 @@ export function AdminSidebar({ page, setPage, pendingCount }) {
               {item.id === 'cashouts' && pendingCount > 0 && (
                 <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{pendingCount}</span>
               )}
+              {item.id === 'flagged' && flaggedUnresolved > 0 && (
+                <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{flaggedUnresolved}</span>
+              )}
             </button>
           );
         })}
@@ -63,14 +67,14 @@ export function AdminSidebar({ page, setPage, pendingCount }) {
   );
 }
 
-export function AdminShell({ children, page, setPage, pendingCount, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard }) {
+export function AdminShell({ children, page, setPage, pendingCount, flaggedUnresolved, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard }) {
   const cachedAgoText = dashboardCachedAt
     ? `Cached ${Math.round((Date.now() - new Date(dashboardCachedAt).getTime()) / 60000)}m ago`
     : null;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
-      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} />
+      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved} />
       <div style={{ marginLeft: 230, flex: 1, position: 'relative', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)' }}>
 
         {/* ── Persistent top bar (floats over content) ── */}
