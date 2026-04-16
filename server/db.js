@@ -278,7 +278,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     client_name VARCHAR(255),
     referred_by VARCHAR(255),
     pipeline_status VARCHAR(50) DEFAULT 'lead',
-    bonus_amount NUMERIC(10,2),
+    bonus_amount NUMERIC(10,2), -- MVP: not populated in this phase; reserved for future caching of computed bonus at sync time
     jobber_created_at TIMESTAMP,
     pre_start_date BOOLEAN DEFAULT false,
     last_synced_at TIMESTAMP DEFAULT NOW(),
