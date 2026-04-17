@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { pool } = require('../db');
 const { refreshTokenIfNeeded } = require('./jobber');
+const { logError } = require('../middleware/errorLogger');
 
 // ── PIPELINE STATUS CLASSIFIER ────────────────────────────────────────────────
 // Input: a single Jobber client object with quotes, jobs, invoices
@@ -325,11 +326,13 @@ async function runScheduledSync() {
       try {
         await runIncrementalSync(row.contractor_id);
       } catch (err) {
+        await logError({ req: null, error: err });
         console.error(`[scheduler] Sync failed for contractor ${row.contractor_id}:`, err.message);
       }
     }
     console.log('[scheduler] Sync cycle complete');
   } catch (err) {
+    await logError({ req: null, error: err });
     console.error('[scheduler] Failed to query contractor list:', err.message);
   }
 }

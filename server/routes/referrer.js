@@ -10,6 +10,8 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const QRCode = require('qrcode');
 const axios = require('axios');
+const { logError } = require('../middleware/errorLogger');
+const { body, validationResult } = require('express-validator');
 
 const referrerLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -108,7 +110,10 @@ router.get('/api/invite/:slug', async (req, res) => {
     if (result.rows.length === 0) return res.json({ valid: false });
     const { contractor_id, link_type } = result.rows[0];
     res.json({ valid: true, contractorName: CONTRACTOR_NAME, contractorId: contractor_id, linkType: link_type });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── SELF-SERVE SIGNUP: CREATE ACCOUNT ─────────────────────────────────────────
@@ -237,12 +242,14 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
           );
         }
       } catch (err) {
+        await logError({ req, error: err });
         console.error('Background Jobber match failed for signup:', err.message);
       }
     })();
 
     res.status(201).json({ message: 'Account created. Check your email for a verification code.', userId: newUserId });
   } catch (err) {
+    await logError({ req, error: err });
     res.status(500).json({ error: 'Signup failed: ' + err.message });
   }
 });
@@ -275,6 +282,7 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
 
     res.json({ message: 'Email verified. You can now log in.' });
   } catch (err) {
+    await logError({ req, error: err });
     res.status(500).json({ error: 'Verification failed: ' + err.message });
   }
 });
@@ -333,6 +341,7 @@ router.get('/api/pipeline', async (req, res) => {
 
     res.json(data);
   } catch (err) {
+    await logError({ req, error: err });
     if (err.message && (err.message.includes('No CRM connected') || err.message.includes('No connected CRM'))) {
       return res.status(503).json({ error: 'crm_not_connected', message: 'No CRM is connected for this contractor. Please connect a CRM in admin settings.' });
     }
@@ -372,7 +381,10 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
               [geoRes.data.city || null, geoRes.data.country || null, sessionId]
             );
           }
-        } catch (_) { /* non-critical */ }
+        } catch (_) {
+          await logError({ req, error: _ });
+          /* non-critical */
+        }
       })();
     }
     await pool.query(
@@ -408,11 +420,22 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
     const announcementSettings = settingsResult.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null };
 
     res.json({ success: true, fullName: user.full_name, email: user.email, phone: user.phone || null, token, showReviewCard, announcement, announcementSettings });
-  } catch (err) { res.status(500).json({ error: 'Login failed: ' + err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Login failed: ' + err.message });
+  }
 });
 
 // ── REFERRER: CASH OUT ────────────────────────────────────────────────────────
-router.post('/api/cashout', async (req, res) => {
+router.post('/api/cashout', [
+  body('amount').isNumeric().withMessage('Amount must be a number')
+    .custom(val => parseFloat(val) > 0).withMessage('Amount must be greater than 0')
+    .custom(val => parseFloat(val) < 10000).withMessage('Amount must be less than 10000'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(422).json({ errors: errors.array() });
+  }
   const token = req.headers['authorization']?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Not authorized' });
   const sessionResult = await pool.query(
@@ -443,7 +466,10 @@ router.post('/api/cashout', async (req, res) => {
              <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`
     });
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: 'Failed to save cash out request' }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to save cash out request' });
+  }
 });
 
 // ── REFERRER: GET PROFILE PHOTO ───────────────────────────────────────────────
@@ -459,7 +485,10 @@ router.get('/api/profile/photo', async (req, res) => {
     const userId = sessionResult.rows[0].user_id;
     const result = await pool.query('SELECT profile_photo FROM users WHERE id=$1', [userId]);
     res.json({ photo: result.rows[0]?.profile_photo || null });
-  } catch (err) { res.status(500).json({ error: 'Failed to fetch photo' }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to fetch photo' });
+  }
 });
 
 // ── REFERRER: SAVE PROFILE PHOTO ──────────────────────────────────────────────
@@ -480,7 +509,10 @@ router.post('/api/profile/photo', async (req, res) => {
     const userId = sessionResult.rows[0].user_id;
     await pool.query('UPDATE users SET profile_photo=$1 WHERE id=$2', [photo, userId]);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: 'Failed to save photo' }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to save photo' });
+  }
 });
 
 // ── REFERRER: FORGOT PIN ───────────────────────────────────────────────────────
@@ -539,6 +571,7 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
           `,
         });
       } catch (emailErr) {
+        await logError({ req, error: emailErr });
         console.error('Resend error (forgot-pin):', emailErr);
         // swallow — do not reveal whether email exists
       }
@@ -549,12 +582,14 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
           ['pin_reset_request', user.full_name, user.email, 'Reset link sent']
         );
       } catch (logErr) {
+        await logError({ req, error: logErr });
         console.error('Activity log error (forgot-pin):', logErr);
       }
     }
 
     res.json(genericResponse);
   } catch (err) {
+    await logError({ req, error: err });
     console.error('forgot-pin error:', err);
     res.json(genericResponse); // always return generic even on DB error
   }
@@ -595,6 +630,7 @@ router.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
       await client.query('UPDATE pin_reset_tokens SET used_at=NOW() WHERE token=$1', [token]);
       await client.query('COMMIT');
     } catch (txErr) {
+      await logError({ req, error: txErr });
       await client.query('ROLLBACK');
       throw txErr;
     } finally {
@@ -606,11 +642,13 @@ router.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
         ['pin_reset', full_name, email, 'PIN reset via email link']
       );
     } catch (logErr) {
+      await logError({ req, error: logErr });
       console.error('Activity log error (reset-pin):', logErr);
     }
 
     res.json({ success: true });
   } catch (err) {
+    await logError({ req, error: err });
     console.error('reset-pin error:', err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
@@ -632,7 +670,10 @@ router.post('/api/review/dismiss', async (req, res) => {
       [userId]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── REFERRER: QR CODE ─────────────────────────────────────────────────────────
@@ -649,7 +690,10 @@ router.get('/api/referrer/qr-code', async (req, res) => {
     const referralUrl = `https://leaksmith.com/refer?ref=${userId}&contractor=accent-roofing`;
     const qrCodeDataUrl = await QRCode.toDataURL(referralUrl);
     res.json({ qrCodeDataUrl });
-  } catch (err) { res.status(500).json({ error: 'Failed to generate QR code' }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to generate QR code' });
+  }
 });
 
 // ── REFERRER: PERSONAL INVITE LINK ────────────────────────────────────────────
@@ -695,7 +739,10 @@ router.get('/api/referrer/my-invite-link', async (req, res) => {
     const qrCodeDataUrl = await QRCode.toDataURL(fullUrl, { width: 400, margin: 2 });
 
     res.json({ slug, fullUrl, qrCodeDataUrl });
-  } catch (err) { res.status(500).json({ error: 'Failed to get invite link: ' + err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to get invite link: ' + err.message });
+  }
 });
 
 // ── REFERRER: ABOUT ───────────────────────────────────────────────────────────
@@ -759,7 +806,10 @@ router.get('/api/referrer/about', async (req, res) => {
 
     const certs = typeof about.certifications === 'string' ? JSON.parse(about.certifications) : (about.certifications || []);
     res.json({ ...about, certifications: certs, google_rating, google_review_count, about_modal_seen, booking_submitted });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── REFERRER: MARK ABOUT MODAL SEEN ───────────────────────────────────────────
@@ -775,11 +825,23 @@ router.patch('/api/referrer/about/seen', async (req, res) => {
     const userId = sessionResult.rows[0].user_id;
     await pool.query('UPDATE users SET about_modal_seen = true WHERE id = $1', [userId]);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── REFERRER: BOOKING ─────────────────────────────────────────────────────────
-router.post('/api/referrer/booking', async (req, res) => {
+router.post('/api/referrer/booking', [
+  body('name').notEmpty().withMessage('Name is required').isString().isLength({ max: 100 }).withMessage('Name must be 100 characters or less').trim(),
+  body('phone').optional().matches(/^[\d\s\(\)\-\+]{7,20}$/).withMessage('Invalid phone number'),
+  body('email').optional().isEmail().withMessage('Invalid email address'),
+  body('notes').optional().isLength({ max: 500 }).withMessage('Notes must be 500 characters or less'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(422).json({ errors: errors.array() });
+  }
   const token = req.headers['authorization']?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
@@ -814,7 +876,10 @@ router.post('/api/referrer/booking', async (req, res) => {
     });
 
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── REFERRER: MARK ANNOUNCEMENT SEEN ──────────────────────────────────────────
@@ -835,7 +900,10 @@ router.post('/api/announcement/seen', async (req, res) => {
       [announcementId, userId]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── REFERRER: BADGES ──────────────────────────────────────────────────────────
@@ -885,7 +953,10 @@ router.get('/api/referrer/badges', async (req, res) => {
     });
 
     res.json(badges);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/api/referrer/badges/acknowledge', async (req, res) => {
@@ -907,7 +978,10 @@ router.post('/api/referrer/badges/acknowledge', async (req, res) => {
       [userId, badgeIds]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── REFERRER: LEADERBOARD ──────────────────────────────────────────────────────
@@ -1177,7 +1251,10 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
     }
 
     res.json(response);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── REFERRER: SHOUT SETTINGS ───────────────────────────────────────────────────
@@ -1205,7 +1282,10 @@ router.patch('/api/referrer/shout-settings', async (req, res) => {
       [shout_opt_out, pinned_shout, userId]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

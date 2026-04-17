@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { pool } = require('../../db');
 const { syncSingleClient } = require('../../crm/pipelineSync');
+const { logError } = require('../../middleware/errorLogger');
 
 // ── FULL CLIENT FETCH ─────────────────────────────────────────────────────────
 // Fetches complete client data from Jobber by ID, including quotes/jobs/invoices
@@ -109,6 +110,7 @@ router.post('/jobber/disconnect', async (req, res) => {
     console.log(`[jobber-webhook] Cleanup complete for contractor: ${contractorId}`);
   } catch (err) {
     // Log but do not propagate — Jobber must receive 200 to prevent retries
+    await logError({ req, error: err });
     console.error('[jobber-webhook] DB cleanup failed:', err.message);
   }
 
@@ -181,6 +183,7 @@ router.post('/jobber/client-create', async (req, res) => {
       await syncSingleClient(contractorId, fullClient, referralStartDate);
       console.log(`[jobber-webhook] client-create sync complete for client: ${rawClientId}`);
     } catch (err) {
+      await logError({ req, error: err });
       console.error('[jobber-webhook] client-create sync failed:', err.message);
     }
   })();
@@ -252,6 +255,7 @@ router.post('/jobber/client-update', async (req, res) => {
       await syncSingleClient(contractorId, fullClient, referralStartDate);
       console.log(`[jobber-webhook] client-update sync complete for client: ${rawClientId}`);
     } catch (err) {
+      await logError({ req, error: err });
       console.error('[jobber-webhook] client-update sync failed:', err.message);
     }
   })();

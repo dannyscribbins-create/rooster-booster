@@ -9,9 +9,12 @@ const stripeRoutes = require('./server/routes/stripe');
 const jobberWebhooks = require('./server/routes/webhooks/jobber');
 const accountRoutes = require('./server/routes/account');
 const { runScheduledSync } = require('./server/crm/pipelineSync');
+const { expressErrorHandler } = require('./server/middleware/errorLogger');
+const helmet = require('helmet');
 
 const app = express();
 app.set('trust proxy', 1);
+app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
 
@@ -34,6 +37,8 @@ setTimeout(() => {
   runScheduledSync();
   setInterval(runScheduledSync, 30 * 60 * 1000);
 }, 60 * 1000);
+
+app.use(expressErrorHandler);
 
 // ─────────────────────────────────────────────────────────────────────────────
 app.listen(4000, () => console.log('Server running on port 4000'));

@@ -8,6 +8,8 @@ const { verifyAdminSession } = require('../middleware/auth');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const { logError } = require('../middleware/errorLogger');
+const { body, validationResult } = require('express-validator');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -18,7 +20,13 @@ const adminLoginLimiter = rateLimit({
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
 
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
-router.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
+router.post('/api/admin/login', adminLoginLimiter, [
+  body('password').notEmpty().withMessage('Password is required').isString().isLength({ max: 200 }).withMessage('Password too long'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(422).json({ errors: errors.array() });
+  }
   if (req.body.password !== ADMIN_PASSWORD)
     return res.status(401).json({ error: 'Incorrect password' });
   try {
@@ -30,6 +38,7 @@ router.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
     );
     res.json({ success: true, token });
   } catch (err) {
+    await logError({ req, error: err });
     res.status(500).json({ error: 'Login failed: ' + err.message });
   }
 });
@@ -67,7 +76,10 @@ router.get('/api/admin/users', async (req, res) => {
     `;
     const result = await pool.query(sql, params);
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 router.post('/api/admin/users', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
@@ -97,6 +109,7 @@ router.post('/api/admin/users', async (req, res) => {
 
     res.json(newUser);
   } catch (err) {
+    await logError({ req, error: err });
     res.status(err.code === '23505' ? 400 : 500).json({ error: err.code === '23505' ? 'Email already exists' : err.message });
   }
 });
@@ -107,14 +120,20 @@ router.patch('/api/admin/users/:id/pin', async (req, res) => {
   try {
     await pool.query('UPDATE users SET pin=$1 WHERE id=$2', [await bcrypt.hash(String(pin), 10), req.params.id]);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 router.delete('/api/admin/users/:id', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     await pool.query('DELETE FROM users WHERE id=$1', [req.params.id]);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: MATCH USER TO JOBBER CLIENT ────────────────────────────────────────
@@ -159,7 +178,10 @@ router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
       );
       return res.json({ matched: false, jobberClientId: null, message: 'No Jobber client found with this email or phone number.' });
     }
-  } catch (err) { res.status(500).json({ error: 'Jobber match failed: ' + err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Jobber match failed: ' + err.message });
+  }
 });
 
 // ── ADMIN: REFERRER DETAIL ────────────────────────────────────────────────────
@@ -189,6 +211,7 @@ router.get('/api/admin/referrer/:name', async (req, res) => {
     const userInfo = userResult.rows[0] || null;
     res.json({ ...pipelineData, userInfo });
   } catch (err) {
+    await logError({ req, error: err });
     if (err.message && (err.message.includes('No CRM connected') || err.message.includes('No connected CRM'))) {
       return res.status(503).json({ error: 'crm_not_connected', message: 'No CRM is connected for this contractor. Please connect a CRM in admin settings.' });
     }
@@ -203,7 +226,10 @@ router.get('/api/admin/cashouts', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM cashout_requests ORDER BY requested_at DESC');
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 router.patch('/api/admin/cashouts/:id', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
@@ -231,7 +257,10 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
       );
     }
     res.json(result.rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: ACTIVITY LOG ───────────────────────────────────────────────────────
@@ -240,7 +269,10 @@ router.get('/api/admin/activity', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 100');
     res.json(result.rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: DASHBOARD STATS (cached 15 min) ────────────────────────────────────
@@ -280,7 +312,10 @@ router.get('/api/admin/stats', async (req, res) => {
         totalLeads       += p.filter(x => x.status==='lead').length;
         totalInspections += p.filter(x => x.status==='inspection').length;
         totalBalance     += data.balance;
-      } catch(e) { console.error(`Stats: failed for ${user.full_name}:`, e.message); }
+      } catch(e) {
+        await logError({ req, error: e });
+        console.error(`Stats: failed for ${user.full_name}:`, e.message);
+      }
     }
     const paidRes    = await pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM cashout_requests WHERE status='approved'`);
     const pendingRes = await pool.query(`SELECT COUNT(*) as count FROM cashout_requests WHERE status='pending'`);
@@ -296,7 +331,10 @@ router.get('/api/admin/stats', async (req, res) => {
       [JSON.stringify(stats)]
     );
     res.json({ ...stats, cachedAt: new Date(), fromCache: false });
-  } catch (err) { res.status(500).json({ error: 'Stats failed: ' + err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Stats failed: ' + err.message });
+  }
 });
 
 // ── ADMIN: ABOUT ──────────────────────────────────────────────────────────────
@@ -323,7 +361,10 @@ router.get('/api/admin/about', async (req, res) => {
     const row = result.rows[0];
     const certs = typeof row.certifications === 'string' ? JSON.parse(row.certifications) : (row.certifications || []);
     res.json({ ...row, certifications: certs });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/api/admin/about', async (req, res) => {
@@ -340,6 +381,7 @@ router.post('/api/admin/about', async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) {
+    await logError({ req, error: err });
     console.error('POST /api/admin/about error:', err.message, err.stack);
     res.status(500).json({ error: 'Save failed', detail: err.message });
   }
@@ -351,7 +393,10 @@ router.get('/api/admin/announcement-settings', async (req, res) => {
   try {
     const result = await pool.query('SELECT enabled, mode, custom_message FROM announcement_settings WHERE id = 1');
     res.json(result.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/api/admin/announcement-settings', async (req, res) => {
@@ -368,7 +413,10 @@ router.post('/api/admin/announcement-settings', async (req, res) => {
       [enabled, mode, customMessage || null]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: LEADERBOARD ────────────────────────────────────────────────────────
@@ -478,7 +526,10 @@ router.get('/api/admin/leaderboard', async (req, res) => {
     }
 
     res.json({ rows, warmup_just_disabled });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: ENGAGEMENT SETTINGS ────────────────────────────────────────────────
@@ -514,7 +565,10 @@ router.get('/api/admin/engagement-settings', async (req, res) => {
       warmup_mode_enabled: row.warmup_mode_enabled ?? false,
       shouts_enabled: row.shouts_enabled ?? true,
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/api/admin/engagement-settings', async (req, res) => {
@@ -568,7 +622,10 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
       ]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: INVITE LINKS ───────────────────────────────────────────────────────
@@ -592,7 +649,10 @@ router.post('/api/admin/invite-links', async (req, res) => {
       [`Generated ${linkType} invite link: ${slug}`]
     );
     res.json({ slug, fullUrl });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get('/api/admin/invite-links', async (req, res) => {
@@ -610,7 +670,10 @@ router.get('/api/admin/invite-links', async (req, res) => {
       fullUrl: `${frontendUrl}?signup=${r.slug}`,
     }));
     res.json(rows);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: CONTRACTOR SETTINGS ────────────────────────────────────────────────
@@ -647,7 +710,10 @@ router.get('/api/admin/settings', async (req, res) => {
       });
     }
     res.json(result.rows[0]);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.put('/api/admin/settings', async (req, res) => {
@@ -700,7 +766,10 @@ router.put('/api/admin/settings', async (req, res) => {
       ]
     );
     res.json({ success: true, settings: result.rows[0] });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: CRM SETTINGS ───────────────────────────────────────────────────────
@@ -767,7 +836,10 @@ router.get('/api/admin/crm/status', async (req, res) => {
       syncIntervalMins: s.sync_interval_mins || 30,
       tokenStatus,
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/admin/crm/test-connection
@@ -800,6 +872,7 @@ router.post('/api/admin/crm/test-connection', async (req, res) => {
     }
     return res.status(400).json({ error: `Unknown crmType: ${crmType}` });
   } catch (err) {
+    await logError({ req, error: err });
     res.json({ success: false, message: err.response?.data?.errors?.[0]?.message || err.message });
   }
 });
@@ -835,6 +908,7 @@ router.post('/api/admin/crm/connect-api-key', async (req, res) => {
       return res.status(400).json({ error: `Unknown crmType: ${crmType}` });
     }
   } catch (err) {
+    await logError({ req, error: err });
     return res.json({ success: false, message: err.message });
   }
 
@@ -852,7 +926,10 @@ router.post('/api/admin/crm/connect-api-key', async (req, res) => {
       [contractorId, crmType, credentialStr, accountName]
     );
     res.json({ success: true, accountName });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PUT /api/admin/crm/settings
@@ -873,7 +950,10 @@ router.put('/api/admin/crm/settings', async (req, res) => {
       [contractorId, referrerFieldName || null, stageMap ? JSON.stringify(stageMap) : null, syncIntervalMins || null]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/admin/crm/referral-start-date
@@ -908,7 +988,10 @@ router.post('/api/admin/crm/referral-start-date', async (req, res) => {
     const effectiveStartDate = row?.referral_start_date ?? row?.connected_at ?? null;
 
     res.json({ success: true, referralStartDate: row?.referral_start_date || null, effectiveStartDate });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/admin/crm/sync
@@ -925,6 +1008,7 @@ router.post('/api/admin/crm/sync', async (req, res) => {
       try {
         await adapter.fetchPipelineForReferrer(user.full_name);
       } catch (err) {
+        await logError({ req, error: err });
         errors.push(`${user.full_name}: ${err.message}`);
       }
     }
@@ -934,7 +1018,10 @@ router.post('/api/admin/crm/sync', async (req, res) => {
       [lastSyncedAt]
     );
     res.json({ success: true, lastSyncedAt, errors: errors.length ? errors : undefined });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/admin/crm/disconnect
@@ -953,7 +1040,10 @@ router.post('/api/admin/crm/disconnect', async (req, res) => {
       [contractorId]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── ADMIN: EXTRACT COLORS FROM URL ───────────────────────────────────────────
@@ -1029,7 +1119,8 @@ router.get('/api/admin/extract-colors', async (req, res) => {
     }
 
     res.json({ colors: top });
-  } catch {
+  } catch (err) {
+    await logError({ req, error: err });
     res.json({ error: 'Could not reach this website. Try uploading your logo instead.' });
   }
 });
@@ -1048,7 +1139,10 @@ router.get('/api/admin/flagged-referrals/summary', async (req, res) => {
       [contractorId]
     );
     res.json({ unresolved_count: parseInt(result.rows[0].count) });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/admin/flagged-referrals
@@ -1067,7 +1161,10 @@ router.get('/api/admin/flagged-referrals', async (req, res) => {
       [contractorId]
     );
     res.json({ flagged: result.rows });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // PUT /api/admin/flagged-referrals/:id
@@ -1089,7 +1186,10 @@ router.put('/api/admin/flagged-referrals/:id', async (req, res) => {
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

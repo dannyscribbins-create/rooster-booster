@@ -310,6 +310,24 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
 
+  // ── ERROR LOG ─────────────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS error_log (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT DEFAULT 'accent-roofing',
+    route TEXT,
+    method TEXT,
+    error_message TEXT NOT NULL,
+    stack_trace TEXT,
+    severity TEXT NOT NULL CHECK (severity IN ('CRITICAL', 'WARNING', 'INFO')),
+    app_version TEXT DEFAULT 'unknown',
+    count INTEGER NOT NULL DEFAULT 1,
+    resolved BOOLEAN NOT NULL DEFAULT false,
+    first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS error_log_dedup_idx
+    ON error_log (contractor_id, route, method, error_message)`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');
