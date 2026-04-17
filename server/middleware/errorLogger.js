@@ -38,7 +38,7 @@ async function sendErrorAlert(errorRow) {
 
   await resend.emails.send({
     from: 'noreply@roofmiles.com',
-    to: 'hello@roofmiles.com',
+    to: 'admin1@roofmiles.com',
     subject,
     text: body,
   });
