@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
+import { safeAsync } from '../../utils/clientErrorReporter';
 import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import AnimCard from '../shared/AnimCard';
@@ -368,7 +369,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
                   <p style={{ color: "#dc2626", fontSize: 15, margin: 0 }}>{submitError}</p>
                 </div>
               )}
-              <button onClick={async () => {
+              <button onClick={safeAsync(async () => {
                 setSubmitting(true);
                 setSubmitError("");
                 try {
@@ -396,7 +397,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
                   setSubmitError("Connection error. Please check your connection and try again.");
                   setSubmitting(false);
                 }
-              }} style={{
+              }, 'CashOutTab')} style={{
                 width: "100%", marginTop: 4,
                 background: `linear-gradient(135deg, ${R.green} 0%, #15803d 100%)`,
                 border: "none", borderRadius: 12, padding: "16px",

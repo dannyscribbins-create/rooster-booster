@@ -13,6 +13,33 @@ const axios = require('axios');
 const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 
+router.post('/api/log-client-error', async (req, res) => {
+  try {
+    const { error_message, stack_trace, route, component } = req.body
+
+    if (!error_message) {
+      return res.status(400).json({ error: 'error_message is required' })
+    }
+
+    await logError({
+      req: {
+        path: route || component || 'frontend-unknown',
+        method: 'CLIENT'
+      },
+      error: {
+        message: String(error_message).substring(0, 500),
+        stack: stack_trace ? String(stack_trace).substring(0, 5000) : null
+      },
+      source: 'frontend'
+    })
+
+    res.status(200).json({ ok: true })
+  } catch (err) {
+    console.error('[log-client-error] Failed to log client error:', err)
+    res.status(500).json({ error: 'Failed to log error' })
+  }
+})
+
 const referrerLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
