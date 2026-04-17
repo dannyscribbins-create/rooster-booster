@@ -327,6 +327,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   )`);
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS error_log_dedup_idx
     ON error_log (contractor_id, route, method, error_message)`);
+  await pool.query(`
+    ALTER TABLE error_log ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'backend'
+  `);
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
