@@ -99,6 +99,11 @@ async function checkAndAwardBadges(userId, totalReferralCount) {
   return newlyAwarded;
 }
 
+// ── TEMP: ERROR LOGGER VERIFICATION — REMOVE AFTER CONFIRMING END-TO-END ─────
+router.get('/api/test-error', async (req, res, next) => {
+  throw new Error('Test error from /api/test-error route')
+})
+
 // ── SELF-SERVE SIGNUP: INVITE LINK VALIDATION ─────────────────────────────────
 router.get('/api/invite/:slug', async (req, res) => {
   try {

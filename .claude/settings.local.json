@@ -33,7 +33,8 @@
       "Bash(railway service:*)",
       "Bash(npm install:*)",
       "Bash(railway --version)",
-      "Bash(ls .env*)"
+      "Bash(ls .env*)",
+      "Skill(ui-designer)"
     ]
   }
 }
