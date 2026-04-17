@@ -43,11 +43,6 @@ const verifyEmailLimiter = rateLimit({
   message: { error: 'Too many verification attempts. Please wait 15 minutes.' }
 });
 
-// ── TEMP: TEST ERROR ROUTE ────────────────────────────────────────────────────
-router.get('/api/test-error', async (req, res, next) => {
-  next(new Error('Test error for email label verification'))
-})
-
 // ── WARMUP ENTRIES ────────────────────────────────────────────────────────────
 // Must stay in sync with src/constants/shouts.js WARMUP_ENTRIES.
 // Kept server-side to avoid a runtime import of an ES module from CommonJS.
