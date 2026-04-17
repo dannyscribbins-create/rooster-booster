@@ -12,6 +12,18 @@ const { runScheduledSync } = require('./server/crm/pipelineSync');
 const { expressErrorHandler } = require('./server/middleware/errorLogger');
 const helmet = require('helmet');
 
+process.on('unhandledRejection', async (reason, promise) => {
+  console.error('[server] Unhandled promise rejection:', reason)
+  const { logError } = require('./server/middleware/errorLogger')
+  await logError({ req: null, error: reason instanceof Error ? reason : new Error(String(reason)) })
+})
+
+process.on('uncaughtException', async (err) => {
+  console.error('[server] Uncaught exception:', err)
+  const { logError } = require('./server/middleware/errorLogger')
+  await logError({ req: null, error: err })
+})
+
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet());
