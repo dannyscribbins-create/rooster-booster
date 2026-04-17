@@ -4,6 +4,7 @@ import { BACKEND_URL } from '../../config/contractor';
 import { STATUS_CONFIG } from '../../constants/theme';
 import { AdminPageHeader, StatCard, Badge, Btn, AdminInput } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
+import { safeAsync } from '../../utils/clientErrorReporter';
 
 export default function AdminReferrers({ setLoggedIn }) {
   const adminToken = () => sessionStorage.getItem('rb_admin_token');
@@ -41,124 +42,157 @@ export default function AdminReferrers({ setLoggedIn }) {
     return d.toISOString();
   }
 
-  function loadUsers(method, range) {
+  const loadUsers = safeAsync(async (method, range) => {
     setLoading(true);
     const params = new URLSearchParams();
     if (method) params.set('signup_source', method);
     const joinedAfter = getJoinedAfter(range);
     if (joinedAfter) params.set('joined_after', joinedAfter);
     const qs = params.toString() ? `?${params.toString()}` : '';
-    fetch(`${BACKEND_URL}/api/admin/users${qs}`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => { if (!d) return; setUsers(Array.isArray(d) ? d : []); setLoading(false); });
-  }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/users${qs}`, { headers: { 'Authorization': `Bearer ${adminToken()}` } });
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      setUsers(Array.isArray(d) ? d : []);
+      setLoading(false);
+    } catch {
+      // no-op
+    }
+  }, 'AdminReferrers');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadUsers('', ''); }, []);
 
-  function openDetail(user) {
+  const openDetail = safeAsync(async (user) => {
     setSelected(user); setDetail(null); setDetailLoading(true); setMatchLoading(false); setMatchMsg(null);
-    fetch(`${BACKEND_URL}/api/admin/referrer/${encodeURIComponent(user.full_name)}`, {
-      headers: { 'Authorization': `Bearer ${adminToken()}` },
-    })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => { if (!d) return; if (d.error) { setDetailLoading(false); return; } setDetail(d); setDetailLoading(false); })
-      .catch(() => setDetailLoading(false));
-  }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/referrer/${encodeURIComponent(user.full_name)}`, {
+        headers: { 'Authorization': `Bearer ${adminToken()}` },
+      });
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      if (d.error) { setDetailLoading(false); return; }
+      setDetail(d); setDetailLoading(false);
+    } catch {
+      setDetailLoading(false);
+    }
+  }, 'AdminReferrers');
 
-  function loadInviteLinks() {
-    fetch(`${BACKEND_URL}/api/admin/invite-links`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => { if (!d) return; setInviteLinks(Array.isArray(d) ? d : []); });
-  }
+  const loadInviteLinks = safeAsync(async () => {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/invite-links`, { headers: { 'Authorization': `Bearer ${adminToken()}` } });
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      setInviteLinks(Array.isArray(d) ? d : []);
+    } catch {
+      // swallow
+    }
+  }, 'AdminReferrers');
 
   function toggleInviteLinks() {
     if (!inviteLinksOpen) loadInviteLinks();
     setInviteLinksOpen(v => !v);
   }
 
-  function generateLink() {
+  const generateLink = safeAsync(async () => {
     setGeneratingLink(true);
     setNewLinkUrl(null);
-    fetch(`${BACKEND_URL}/api/admin/invite-links`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
-      body: JSON.stringify({ linkType: 'contractor' }),
-    })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => {
-        if (!d) return;
-        setNewLinkUrl(d.fullUrl);
-        setGeneratingLink(false);
-        loadInviteLinks();
-      })
-      .catch(() => setGeneratingLink(false));
-  }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/invite-links`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+        body: JSON.stringify({ linkType: 'contractor' }),
+      });
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      setNewLinkUrl(d.fullUrl);
+      setGeneratingLink(false);
+      loadInviteLinks();
+    } catch {
+      setGeneratingLink(false);
+    }
+  }, 'AdminReferrers');
 
-  function copyInviteLink(url, slug) {
-    navigator.clipboard.writeText(url).then(() => {
+  const copyInviteLink = safeAsync(async (url, slug) => {
+    try {
+      await navigator.clipboard.writeText(url);
       setInviteLinkCopied(slug);
       setTimeout(() => setInviteLinkCopied(null), 2000);
-    });
-  }
+    } catch {
+      // swallow
+    }
+  }, 'AdminReferrers');
 
-  function handleAdd() {
+  const handleAdd = safeAsync(async () => {
     setFormError(''); setFormSuccess('');
     if (!newName || !newEmail || !newPin) { setFormError('All fields required'); return; }
-    fetch(`${BACKEND_URL}/api/admin/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
-      body: JSON.stringify({ full_name: newName, email: newEmail, phone: newPhone, pin: newPin }),
-    })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => { if (!d) return;
-        if (d.error) setFormError(d.error);
-        else { setFormSuccess(`✓ ${newName} added`); setNewName(''); setNewEmail(''); setNewPhone(''); setNewPin(''); setShowAdd(false); loadUsers(joinMethod, dateRange); }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+        body: JSON.stringify({ full_name: newName, email: newEmail, phone: newPhone, pin: newPin }),
       });
-  }
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      if (d.error) setFormError(d.error);
+      else { setFormSuccess(`✓ ${newName} added`); setNewName(''); setNewEmail(''); setNewPhone(''); setNewPin(''); setShowAdd(false); loadUsers(joinMethod, dateRange); }
+    } catch {
+      // swallow
+    }
+  }, 'AdminReferrers');
 
-  function handleRemove(id, name) {
+  const handleRemove = safeAsync(async (id, name) => {
     if (!window.confirm(`Remove ${name}?`)) return;
-    fetch(`${BACKEND_URL}/api/admin/users/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${adminToken()}` },
-    })
-      .then(r => { if (r.status === 401) { on401(); return; } loadUsers(joinMethod, dateRange); });
-  }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/users/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${adminToken()}` },
+      });
+      if (r.status === 401) { on401(); return; }
+      loadUsers(joinMethod, dateRange);
+    } catch {
+      // swallow
+    }
+  }, 'AdminReferrers');
 
-  function handleResetPin(id, name) {
+  const handleResetPin = safeAsync(async (id, name) => {
     const p = window.prompt(`New password for ${name} (letters, numbers, and characters allowed):`);
     if (!p) return;
-    fetch(`${BACKEND_URL}/api/admin/users/${id}/pin`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
-      body: JSON.stringify({ pin: p }),
-    }).then(r => {
-      if (r.status === 401) { on401(); return null; }
-      return r.json();
-    }).then(d => { if (!d) return; if (d.error) alert(d.error); else alert('✓ PIN updated'); });
-  }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/users/${id}/pin`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+        body: JSON.stringify({ pin: p }),
+      });
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      if (d.error) alert(d.error); else alert('✓ PIN updated');
+    } catch {
+      // swallow
+    }
+  }, 'AdminReferrers');
 
-  function handleMatchJobber() {
+  const handleMatchJobber = safeAsync(async () => {
     setMatchLoading(true);
     setMatchMsg(null);
-    fetch(`${BACKEND_URL}/api/admin/users/${selected.id}/match-jobber`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${adminToken()}` },
-    })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => {
-        if (!d) return;
-        setMatchLoading(false);
-        if (d.error) { setMatchMsg({ type: 'error', text: d.error }); return; }
-        if (d.matched) {
-          setDetail(prev => ({ ...prev, userInfo: { ...prev.userInfo, jobber_client_id: d.jobberClientId } }));
-          setMatchMsg({ type: 'success', text: 'Matched!' });
-        } else {
-          setMatchMsg({ type: 'warn', text: 'No match found in Jobber' });
-        }
-      })
-      .catch(() => { setMatchLoading(false); setMatchMsg({ type: 'error', text: 'Request failed' }); });
-  }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/users/${selected.id}/match-jobber`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${adminToken()}` },
+      });
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      setMatchLoading(false);
+      if (d.error) { setMatchMsg({ type: 'error', text: d.error }); return; }
+      if (d.matched) {
+        setDetail(prev => ({ ...prev, userInfo: { ...prev.userInfo, jobber_client_id: d.jobberClientId } }));
+        setMatchMsg({ type: 'success', text: 'Matched!' });
+      } else {
+        setMatchMsg({ type: 'warn', text: 'No match found in Jobber' });
+      }
+    } catch {
+      setMatchLoading(false); setMatchMsg({ type: 'error', text: 'Request failed' });
+    }
+  }, 'AdminReferrers');
 
   const filtered = users.filter(u =>
     u.full_name.toLowerCase().includes(search.toLowerCase()) ||

@@ -12,6 +12,7 @@ import StatusBadge from '../shared/StatusBadge';
 import Skeleton from '../shared/Skeleton';
 import BadgeCelebrationPopup from './BadgeCelebrationPopup';
 import ManageAccount from './ManageAccount';
+import { safeAsync } from '../../utils/clientErrorReporter';
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 export default function Profile({ onLogout, pipeline, loading, userName, userEmail, onNameUpdate, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight }) {
@@ -47,63 +48,76 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleBadgeDismiss() {
+  const handleBadgeDismiss = safeAsync(async () => {
     const ids = newBadges.map(b => b.id);
-    // Fire-and-forget — seen state clears client-side immediately regardless of response
-    fetch(`${BACKEND_URL}/api/referrer/badges/acknowledge`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
-      },
-      body: JSON.stringify({ badgeIds: ids }),
-    }).catch(() => {});
-    setNewBadges([]);
-  }
+    setNewBadges([]); // clears immediately — fire-and-forget
+    try {
+      await fetch(`${BACKEND_URL}/api/referrer/badges/acknowledge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
+        },
+        body: JSON.stringify({ badgeIds: ids }),
+      });
+    } catch {
+      // swallow
+    }
+  }, 'ProfileTab');
 
-  function fetchBadges() {
+  const fetchBadges = safeAsync(async () => {
     setBadgesLoading(true);
     setBadgesError(false);
-    fetch(`${BACKEND_URL}/api/referrer/badges`, {
-      headers: { Authorization: `Bearer ${sessionStorage.getItem("rb_token")}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        setBadges(data);
-        setNewBadges(data.filter(b => b.earned && !b.seen));
-      })
-      .catch(() => setBadgesError(true))
-      .finally(() => setBadgesLoading(false));
-  }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/referrer/badges`, {
+        headers: { Authorization: `Bearer ${sessionStorage.getItem("rb_token")}` },
+      });
+      const data = await r.json();
+      setBadges(data);
+      setNewBadges(data.filter(b => b.earned && !b.seen));
+    } catch {
+      setBadgesError(true);
+    } finally {
+      setBadgesLoading(false);
+    }
+  }, 'ProfileTab');
 
   useEffect(() => {
     fetchBadges();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/referrer/leaderboard?period=alltime`, {
-      headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
-    })
-      .then(r => r.json())
-      .then(d => {
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/referrer/leaderboard?period=alltime`, {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+        });
+        const d = await r.json();
         setShoutOptOut(d.shout_opt_out ?? false);
         setPinnedShout(d.pinned_shout ?? null);
         setShoutRank(d.userRank ?? null);
-      })
-      .catch(() => {})
-      .finally(() => setShoutSettingsLoading(false));
+      } catch {
+        // swallow
+      } finally {
+        setShoutSettingsLoading(false);
+      }
+    })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function saveShoutSettings(optOut, pinned) {
-    fetch(`${BACKEND_URL}/api/referrer/shout-settings`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
-      },
-      body: JSON.stringify({ shout_opt_out: optOut, pinned_shout: pinned }),
-    }).catch(() => {}); // optimistic — fire-and-forget
-  }
+  const saveShoutSettings = safeAsync(async (optOut, pinned) => {
+    try {
+      await fetch(`${BACKEND_URL}/api/referrer/shout-settings`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
+        },
+        body: JSON.stringify({ shout_opt_out: optOut, pinned_shout: pinned }),
+      });
+    } catch {
+      // optimistic — fire-and-forget
+    }
+  }, 'ProfileTab');
 
   // ── Pipeline filter ──────────────────────────────────────────────────────────
   const filters      = ["all", "lead", "inspection", "sold", "closed"];

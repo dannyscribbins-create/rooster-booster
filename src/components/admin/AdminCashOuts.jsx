@@ -3,6 +3,7 @@ import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Badge, Btn } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
+import { safeAsync } from '../../utils/clientErrorReporter';
 
 export default function AdminCashOuts({ setLoggedIn }) {
   const adminToken = () => sessionStorage.getItem('rb_admin_token');
@@ -11,25 +12,36 @@ export default function AdminCashOuts({ setLoggedIn }) {
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');
 
-  function load() {
+  async function load() {
     setLoading(true);
-    fetch(`${BACKEND_URL}/api/admin/cashouts`, { headers: { 'Authorization': `Bearer ${adminToken()}` } })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => { if (!d) return; setCashouts(Array.isArray(d) ? d : []); setLoading(false); });
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/cashouts`, { headers: { 'Authorization': `Bearer ${adminToken()}` } });
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      setCashouts(Array.isArray(d) ? d : []);
+      setLoading(false);
+    } catch {
+      // no-op: preserves original behavior where setLoading stays true on error
+    }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, []);
 
-  function handleAction(id, status) {
+  const handleAction = safeAsync(async (id, status) => {
     if (!window.confirm(`${status === 'approved' ? 'Approve' : 'Deny'} this request?`)) return;
-    fetch(`${BACKEND_URL}/api/admin/cashouts/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
-      body: JSON.stringify({ status }),
-    })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => { if (!d) return; if (d.error) alert(d.error); else load(); });
-  }
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/cashouts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+        body: JSON.stringify({ status }),
+      });
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      if (d.error) alert(d.error); else load();
+    } catch {
+      // swallow
+    }
+  }, 'AdminCashOuts');
 
   const filtered = filter === 'all' ? cashouts : cashouts.filter(c => c.status === filter);
   const pendingCount = cashouts.filter(c => c.status === 'pending').length;
