@@ -43,6 +43,11 @@ const verifyEmailLimiter = rateLimit({
   message: { error: 'Too many verification attempts. Please wait 15 minutes.' }
 });
 
+// ── TEMP: TEST ERROR ROUTE ────────────────────────────────────────────────────
+router.get('/api/test-error', async (req, res, next) => {
+  next(new Error('Test error for email label verification'))
+})
+
 // ── WARMUP ENTRIES ────────────────────────────────────────────────────────────
 // Must stay in sync with src/constants/shouts.js WARMUP_ENTRIES.
 // Kept server-side to avoid a runtime import of an ES module from CommonJS.
@@ -102,7 +107,6 @@ async function checkAndAwardBadges(userId, totalReferralCount) {
 // ── SELF-SERVE SIGNUP: INVITE LINK VALIDATION ─────────────────────────────────
 router.get('/api/invite/:slug', async (req, res) => {
   try {
-    throw new Error('Test error for email verification')
     const result = await pool.query(
       `SELECT contractor_id, link_type FROM contractor_invite_links
        WHERE slug=$1 AND active=true`,
