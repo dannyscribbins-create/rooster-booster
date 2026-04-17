@@ -169,6 +169,19 @@ All styling is inline (no CSS framework). Never add CSS files. Design tokens liv
 - Icons: Phosphor Icons v2.1.1
 - Mobile-first layout: 430px max-width with safe-area insets
 
+## Code Quality Standards
+
+When reading any file during a session, silently audit for the following and flag any violations before proceeding with the assigned task:
+
+- .then() chains → must be converted to async/await
+- var declarations → must be const or let
+- callbacks → must be async/await
+- class components → must be functional components (except ErrorBoundary.jsx — intentional exception)
+- missing try/catch on async functions → must be wrapped
+- hardcoded contractor_id or credentials → must use environment variables or CONTRACTOR_CONFIG
+
+Do not wait to be asked. Do not skip files that appear to be "working." If a violation is found, report it and ask whether to fix it before or after the assigned task. Never silently leave a violation in place.
+
 ## Brand Standards
 
 For any UI or UX work, read and apply the design skills at:
