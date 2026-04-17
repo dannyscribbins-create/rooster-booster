@@ -102,6 +102,7 @@ async function checkAndAwardBadges(userId, totalReferralCount) {
 // ── SELF-SERVE SIGNUP: INVITE LINK VALIDATION ─────────────────────────────────
 router.get('/api/invite/:slug', async (req, res) => {
   try {
+    throw new Error('Test error for email verification')
     const result = await pool.query(
       `SELECT contractor_id, link_type FROM contractor_invite_links
        WHERE slug=$1 AND active=true`,
