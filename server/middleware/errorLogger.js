@@ -36,12 +36,14 @@ async function sendErrorAlert(errorRow) {
     errorRow.stack_trace || '(none)',
   ].join('\n');
 
-  await resend.emails.send({
+  console.log('[errorLogger] sendErrorAlert called — count:', errorRow.count, 'severity:', errorRow.severity)
+  const result = await resend.emails.send({
     from: 'noreply@roofmiles.com',
     to: 'hello@roofmiles.com',
     subject,
     text: body,
   });
+  console.log('[errorLogger] Resend send result:', JSON.stringify(result))
 }
 
 // ── SECTION C — logError() ────────────────────────────────────────────────────
@@ -52,6 +54,7 @@ async function logError({ req, error, contractorId }) {
     const error_message = (error?.message || String(error)).slice(0, 500);
     const stack_trace   = (error?.stack || null)?.slice(0, 5000) ?? null;
     const severity      = classifySeverity(route);
+    console.log('[errorLogger] logError called — route:', route, 'severity:', severity)
     const app_version   = process.env.APP_VERSION || 'unknown';
     const contractor_id = contractorId || req?.session?.contractorId || 'accent-roofing';
 
@@ -82,6 +85,7 @@ async function logError({ req, error, contractorId }) {
 
 // ── SECTION D — EXPRESS ERROR HANDLER MIDDLEWARE ──────────────────────────────
 async function expressErrorHandler(err, req, res, next) {
+  console.log('[errorLogger] expressErrorHandler called — error:', err?.message)
   await logError({ req, error: err });
   if (res.headersSent) return next(err);
   res.status(err.status || 500).json({
