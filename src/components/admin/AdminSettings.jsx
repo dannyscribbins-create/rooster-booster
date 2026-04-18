@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
+import { BACKEND_URL } from '../../config/contractor';
 import CompanyDetailsSettings from './CompanyDetailsSettings';
 import BrandingProfileSettings from './BrandingProfileSettings';
 import CRMSettings from './CRMSettings';
@@ -11,6 +12,7 @@ const SETTINGS_NAV = [
   { id: 'accounts', icon: 'ph-receipt',      label: 'Account Keeping'  },
   { id: 'team',     icon: 'ph-users-three',  label: 'Manage Team'      },
   { id: 'crm',      icon: 'ph-plugs',        label: 'CRM'              },
+  { id: 'system',   icon: 'ph-hard-drives',  label: 'System'           },
 ];
 
 function ComingSoonCard({ icon, label, description }) {
@@ -39,12 +41,102 @@ const SETTINGS_TITLES = {
   accounts: 'Account Keeping',
   team:     'Manage Team',
   crm:      'CRM',
+  system:   'System',
 };
 
 const SETTINGS_DESCRIPTIONS = {
   company:  'Your company\'s core contact information and physical address.',
   branding: 'Customize how your referral app looks and feels to referrers.',
+  system:   'Database maintenance and infrastructure tools.',
 };
+
+function SystemSettings() {
+  const [loading, setLoading]   = useState(false);
+  const [message, setMessage]   = useState(null); // { type: 'success' | 'error', text: string }
+  const timerRef                = useRef(null);
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
+
+  async function handleRunBackup() {
+    setLoading(true);
+    setMessage(null);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/backup/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMessage({ type: 'success', text: 'Backup completed successfully.' });
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Backup failed. Check server logs.' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message || 'Network error.' });
+    } finally {
+      setLoading(false);
+      timerRef.current = setTimeout(() => setMessage(null), 10000);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <div style={{
+        background: AD.bgCard, borderRadius: AD.radiusLg, border: `1px solid ${AD.border}`,
+        padding: '28px 28px 24px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <i className="ph ph-hard-drives" style={{ fontSize: 20, color: AD.blueLight }} />
+          <span style={{ fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>Database Backup</span>
+        </div>
+        <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.6 }}>
+          Manual trigger for the daily automated backup to Backblaze B2. The scheduled backup runs automatically at 2am UTC.
+        </p>
+
+        <button
+          onClick={handleRunBackup}
+          disabled={loading}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '9px 20px', borderRadius: AD.radiusMd,
+            background: loading ? AD.bgCardTint : AD.blueText,
+            border: `1px solid ${loading ? AD.border : AD.blueText}`,
+            color: loading ? AD.textSecondary : '#fff',
+            fontSize: 14, fontWeight: 500, fontFamily: AD.fontSans,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            transition: 'background 0.15s, color 0.15s',
+          }}
+        >
+          {loading
+            ? <><i className="ph ph-circle-notch" style={{ fontSize: 15, animation: 'spin 0.8s linear infinite' }} />Running backup...</>
+            : <><i className="ph ph-cloud-arrow-up" style={{ fontSize: 15 }} />Run Backup Now</>
+          }
+        </button>
+
+        {message && (
+          <div style={{
+            marginTop: 16, padding: '10px 14px', borderRadius: AD.radiusMd,
+            background: message.type === 'success' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+            border: `1px solid ${message.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            color: message.type === 'success' ? '#4ade80' : '#f87171',
+            fontSize: 13, fontFamily: AD.fontSans, display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <i className={`ph ${message.type === 'success' ? 'ph-check-circle' : 'ph-warning-circle'}`} style={{ fontSize: 16, flexShrink: 0 }} />
+            {message.text}
+          </div>
+        )}
+      </div>
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
 
 const SETTINGS_PAGES = {
   company:  <CompanyDetailsSettings />,
@@ -53,6 +145,7 @@ const SETTINGS_PAGES = {
   accounts: <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
   team:     <ComingSoonCard icon="ph-users-three" label="Manage Team"      description="Add team members, manage recruitment links, and set permissions." />,
   crm:      <CRMSettings />,
+  system:   <SystemSettings />,
 };
 
 export default function AdminSettings() {
