@@ -29,6 +29,7 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.get('/health', (req, res) => res.json({ status: 'ok', version: process.env.APP_VERSION || 'unknown', timestamp: new Date().toISOString() }));
 app.use(cors());
+app.use('/webhooks', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '5mb' }));
 
 // Token management moved to getCRMAdapter() — reads from DB per request.

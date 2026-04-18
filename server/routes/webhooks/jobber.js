@@ -13,23 +13,24 @@ const { logError } = require('../../middleware/errorLogger');
 // needed for accurate pipeline status classification. Called from webhook handlers
 // so classifyPipelineStatus gets full data rather than the sparse webhook payload.
 async function fetchFullClient(clientId, token) {
-  const query = `{
-    client(id: "${clientId}") {
-      id firstName lastName createdAt
-      customFields { ... on CustomFieldText { label valueText } }
-      quotes(first: 10) { nodes { id quoteStatus } }
-      jobs(first: 10) {
-        nodes {
-          id jobStatus
-          invoices(first: 5) { nodes { invoiceStatus } }
-        }
-      }
-    }
-  }`;
-
   const response = await axios.post(
     'https://api.getjobber.com/api/graphql',
-    { query },
+    {
+      query: `query GetClient($id: EncodedId!) {
+        client(id: $id) {
+          id firstName lastName createdAt
+          customFields { ... on CustomFieldText { label valueText } }
+          quotes(first: 10) { nodes { id quoteStatus } }
+          jobs(first: 10) {
+            nodes {
+              id jobStatus
+              invoices(first: 5) { nodes { invoiceStatus } }
+            }
+          }
+        }
+      }`,
+      variables: { id: clientId },
+    },
     {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -64,7 +65,7 @@ router.post('/jobber/disconnect', async (req, res) => {
     return res.status(401).json({ error: 'Missing signature' });
   }
 
-  const rawBody = JSON.stringify(req.body);
+  const rawBody = req.body;
   const expectedSig = crypto
     .createHmac('sha256', secret)
     .update(rawBody)
@@ -75,12 +76,13 @@ router.post('/jobber/disconnect', async (req, res) => {
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
+  const payload = JSON.parse(req.body.toString());
   // ── CONTRACTOR IDENTIFICATION ─────────────────────────────────────────────
   // Jobber may include contractor context in query params or body.
   // TODO: implement multi-contractor lookup here when FORA scales beyond one contractor
   const contractorId =
     req.query.contractorId ||
-    req.body?.contractor_id ||
+    payload?.contractor_id ||
     'accent-roofing'; // MVP default
 
   console.log(`[jobber-webhook] Disconnect received for contractor: ${contractorId}`);
@@ -134,13 +136,14 @@ router.post('/jobber/client-create', async (req, res) => {
     return res.status(401).json({ error: 'Missing signature' });
   }
 
-  const rawBody     = JSON.stringify(req.body);
+  const rawBody     = req.body;
   const expectedSig = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
   if (signature !== expectedSig) {
     console.warn('[jobber-webhook] Signature mismatch on client-create');
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
+  const payload = JSON.parse(req.body.toString());
   // Respond 200 immediately — Jobber requires a fast response
   res.status(200).json({ received: true });
 
@@ -149,8 +152,8 @@ router.post('/jobber/client-create', async (req, res) => {
   // If payload is incomplete, classifyPipelineStatus returns 'lead' as default.
   // The 30-minute incremental sync will correct the status. This is acceptable for MVP.
   // TODO: implement multi-contractor lookup here when FORA scales beyond one contractor
-  const contractorId = req.query.contractorId || req.body?.contractor_id || 'accent-roofing';
-  const client       = req.body?.data?.client || req.body;
+  const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
+  const client       = payload?.data?.client || payload;
 
   (async () => {
     try {
@@ -206,13 +209,14 @@ router.post('/jobber/client-update', async (req, res) => {
     return res.status(401).json({ error: 'Missing signature' });
   }
 
-  const rawBody     = JSON.stringify(req.body);
+  const rawBody     = req.body;
   const expectedSig = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
   if (signature !== expectedSig) {
     console.warn('[jobber-webhook] Signature mismatch on client-update');
     return res.status(401).json({ error: 'Invalid signature' });
   }
 
+  const payload = JSON.parse(req.body.toString());
   // Respond 200 immediately
   res.status(200).json({ received: true });
 
@@ -221,8 +225,8 @@ router.post('/jobber/client-update', async (req, res) => {
   // If payload is incomplete, classifyPipelineStatus returns 'lead' as default.
   // The 30-minute incremental sync will correct the status. This is acceptable for MVP.
   // TODO: implement multi-contractor lookup here when FORA scales beyond one contractor
-  const contractorId = req.query.contractorId || req.body?.contractor_id || 'accent-roofing';
-  const client       = req.body?.data?.client || req.body;
+  const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
+  const client       = payload?.data?.client || payload;
 
   (async () => {
     try {
