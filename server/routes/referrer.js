@@ -325,10 +325,13 @@ router.get('/api/pipeline', async (req, res) => {
     );
     if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     const userId = sessionResult.rows[0].user_id;
+    const userNameResult = await pool.query('SELECT full_name FROM users WHERE id=$1', [userId]);
+    if (!userNameResult.rows[0]?.full_name) return res.status(404).json({ error: 'User not found' });
+    const referrerName = userNameResult.rows[0].full_name;
     // TODO: pull contractorId from referrer session token when multi-contractor is live
     const contractorId = 'accent-roofing';
     const adapter = await getCRMAdapter(contractorId);
-    const data = await adapter.fetchPipelineForReferrer(req.query.referrer);
+    const data = await adapter.fetchPipelineForReferrer(referrerName);
     // MVP: update this to cron-based sync at scale
     await pool.query(
       'UPDATE users SET paid_count=$1, paid_count_updated_at=NOW() WHERE id=$2',
@@ -470,15 +473,19 @@ router.post('/api/cashout', [
     [token, 'referrer']
   );
   if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-  const { user_id, full_name, email, amount, method } = req.body;
+  const { amount, method } = req.body;
   if (parseFloat(amount) < 20) {
     return res.status(400).json({ error: 'Minimum cashout amount is $20' });
   }
   try {
+    const userId = sessionResult.rows[0].user_id;
+    const userResult = await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const { full_name, email } = userResult.rows[0];
     await pool.query(
       `INSERT INTO cashout_requests (user_id,full_name,email,amount,method,status,requested_at)
        VALUES ($1,$2,$3,$4,$5,'pending',NOW())`,
-      [user_id, full_name, email, amount, method || null]
+      [userId, full_name, email, amount, method || null]
     );
     await pool.query(
       `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('cashout',$1,$2,$3)`,
