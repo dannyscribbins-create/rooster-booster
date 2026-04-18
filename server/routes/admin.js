@@ -246,17 +246,21 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
        `Cash out request #${req.params.id} ${status} ($${result.rows[0].amount})`]
     );
     if (status === 'approved') {
-      await pool.query(
-        `INSERT INTO payout_announcements (cashout_request_id, user_id)
-         SELECT $1, COALESCE(cr.user_id, u.id)
-         FROM cashout_requests cr
-         LEFT JOIN users u ON u.full_name = cr.full_name
-         WHERE cr.id = $1
-           AND NOT EXISTS (
-             SELECT 1 FROM payout_announcements WHERE cashout_request_id = $1
-           )`,
-        [req.params.id]
-      );
+      const crRow = await pool.query('SELECT user_id FROM cashout_requests WHERE id=$1', [req.params.id]);
+      if (crRow.rows[0]?.user_id == null) {
+        await logError({ req, error: { message: `Payout announcement skipped: cashout_request #${req.params.id} has no user_id`, severity: 'INFO' } });
+      } else {
+        await pool.query(
+          `INSERT INTO payout_announcements (cashout_request_id, user_id)
+           SELECT $1, cr.user_id
+           FROM cashout_requests cr
+           WHERE cr.id = $1 AND cr.user_id IS NOT NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM payout_announcements WHERE cashout_request_id = $1
+             )`,
+          [req.params.id]
+        );
+      }
     }
     res.json(result.rows[0]);
   } catch (err) {
