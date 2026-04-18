@@ -39,6 +39,7 @@ export default function App() {
   const [balance, setBalance]     = useState(0);
   const [paidCount, setPaidCount] = useState(0);
   const [loading, setLoading]     = useState(false);
+  const [pipelineRateLimited, setPipelineRateLimited] = useState(false);
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [showReviewCard, setShowReviewCard] = useState(true);
   const [announcement, setAnnouncement] = useState(null);
@@ -84,8 +85,17 @@ export default function App() {
       fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`, {
         headers: { "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}` },
       })
-        .then(res => res.json())
+        .then(res => {
+          if (res.status === 429) {
+            setPipelineRateLimited(true);
+            setLoading(false);
+            return null;
+          }
+          return res.json();
+        })
         .then(data => {
+          if (!data) return;
+          setPipelineRateLimited(false);
           setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
           setBalance(data.balance || 0);
           setPaidCount(data.paidCount || 0);
@@ -189,7 +199,7 @@ export default function App() {
   return (
     <ReferrerApp
       tab={tab} setTab={setTab}
-      pipeline={pipeline} loading={loading}
+      pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited}
       userName={userName} userEmail={userEmail}
       balance={balance} paidCount={paidCount}
       profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto}
