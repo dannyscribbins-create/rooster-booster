@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
+const { getPeriodDateRange } = require('../utils/dateUtils');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -225,7 +226,7 @@ router.get('/api/admin/referrer/:name', async (req, res) => {
 router.get('/api/admin/cashouts', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
-    const result = await pool.query('SELECT * FROM cashout_requests ORDER BY requested_at DESC');
+    const result = await pool.query('SELECT id, user_id, full_name, email, amount, method, status, requested_at FROM cashout_requests ORDER BY requested_at DESC');
     res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });
@@ -268,7 +269,7 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
 router.get('/api/admin/activity', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
-    const result = await pool.query('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT 100');
+    const result = await pool.query('SELECT id, event_type, full_name, email, detail, created_at FROM activity_log ORDER BY created_at DESC LIMIT 100');
     res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });
@@ -421,48 +422,6 @@ router.post('/api/admin/announcement-settings', async (req, res) => {
 });
 
 // ── ADMIN: LEADERBOARD ────────────────────────────────────────────────────────
-
-// SCALABLE: period boundaries driven by contractor engagement_settings, not hardcoded
-function getPeriodDateRange(period, settings) {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth() + 1;
-  if (!period || period === 'alltime') return { start: null, end: null };
-  if (period === 'monthly') {
-    return {
-      start: new Date(currentYear, now.getMonth(), 1),
-      end: new Date(currentYear, now.getMonth() + 1, 1),
-    };
-  }
-  if (period === 'yearly') {
-    const ysm = settings.year_start_month || 1;
-    const startYear = currentMonth >= ysm ? currentYear : currentYear - 1;
-    return {
-      start: new Date(startYear, ysm - 1, 1),
-      end: new Date(startYear + 1, ysm - 1, 1),
-    };
-  }
-  if (period === 'quarterly') {
-    const q = [
-      settings.quarter_1_start || 1,
-      settings.quarter_2_start || 4,
-      settings.quarter_3_start || 7,
-      settings.quarter_4_start || 10,
-    ];
-    let qIdx = 0;
-    for (let i = q.length - 1; i >= 0; i--) {
-      if (currentMonth >= q[i]) { qIdx = i; break; }
-    }
-    const qStartMonth = q[qIdx];
-    const qEndMonth = q[(qIdx + 1) % 4];
-    const endYear = qEndMonth <= qStartMonth ? currentYear + 1 : currentYear;
-    return {
-      start: new Date(currentYear, qStartMonth - 1, 1),
-      end: new Date(endYear, qEndMonth - 1, 1),
-    };
-  }
-  return { start: null, end: null };
-}
 
 router.get('/api/admin/leaderboard', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
@@ -1052,6 +1011,23 @@ router.get('/api/admin/extract-colors', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: 'URL required' });
+
+  // SSRF protection: validate URL before making any outbound request
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch (_) {
+    return res.status(400).json({ error: 'Invalid URL' });
+  }
+  if (parsedUrl.protocol !== 'https:') {
+    return res.status(400).json({ error: 'Only HTTPS URLs are allowed' });
+  }
+  const hostname = parsedUrl.hostname;
+  // Reject private/loopback/link-local IP ranges
+  const privateIpRe = /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3})$/;
+  if (privateIpRe.test(hostname)) {
+    return res.status(400).json({ error: 'Requests to private IP addresses are not allowed' });
+  }
 
   try {
     const response = await axios.get(url, {
