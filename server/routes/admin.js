@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../utils/dateUtils');
+const { runBackup } = require('../utils/backup');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -1183,6 +1184,24 @@ router.put('/api/admin/flagged-referrals/:id', async (req, res) => {
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });
+  }
+});
+
+const backupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many backup requests. Please try again in an hour.' }
+});
+
+// ── ADMIN: MANUAL BACKUP TRIGGER ──────────────────────────────────────────────
+router.post('/api/admin/backup/run', backupLimiter, async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    await runBackup();
+    res.json({ success: true, message: 'Backup completed successfully' });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

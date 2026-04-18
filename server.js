@@ -11,6 +11,8 @@ const accountRoutes = require('./server/routes/account');
 const { runScheduledSync } = require('./server/crm/pipelineSync');
 const { expressErrorHandler } = require('./server/middleware/errorLogger');
 const helmet = require('helmet');
+const cron = require('node-cron');
+const { runBackup } = require('./server/utils/backup');
 
 process.on('unhandledRejection', async (reason, promise) => {
   console.error('[server] Unhandled promise rejection:', reason)
@@ -53,6 +55,17 @@ setTimeout(() => {
 }, 60 * 1000);
 
 app.use(expressErrorHandler);
+
+// Daily database backup — runs at 2:00am UTC
+cron.schedule('0 2 * * *', async () => {
+  console.log('[Backup] Scheduled daily backup starting...');
+  try {
+    await runBackup();
+    console.log('[Backup] Scheduled daily backup completed successfully.');
+  } catch (err) {
+    console.error('[Backup] Scheduled daily backup FAILED:', err.message);
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 app.listen(4000, () => console.log('Server running on port 4000'));
