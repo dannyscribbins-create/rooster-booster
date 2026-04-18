@@ -13,7 +13,31 @@ const axios = require('axios');
 const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 
-router.post('/api/log-client-error', async (req, res) => {
+const clientErrorLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many error reports. Please try again in an hour.' }
+});
+
+const pipelineLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many pipeline requests. Please wait a few minutes.' }
+});
+
+const cashoutLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many cashout requests. Please try again in an hour.' }
+});
+
+const bookingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many booking requests. Please try again in an hour.' }
+});
+
+router.post('/api/log-client-error', clientErrorLimiter, async (req, res) => {
   try {
     const { error_message, stack_trace, route, component } = req.body
 
@@ -315,7 +339,7 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
 });
 
 // ── REFERRER: PIPELINE ────────────────────────────────────────────────────────
-router.get('/api/pipeline', async (req, res) => {
+router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
   try {
     const token = req.headers['authorization']?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Not authorized' });
@@ -457,7 +481,7 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
 });
 
 // ── REFERRER: CASH OUT ────────────────────────────────────────────────────────
-router.post('/api/cashout', [
+router.post('/api/cashout', cashoutLimiter, [
   body('amount').isNumeric().withMessage('Amount must be a number')
     .custom(val => parseFloat(val) > 0).withMessage('Amount must be greater than 0')
     .custom(val => parseFloat(val) < 10000).withMessage('Amount must be less than 10000'),
@@ -482,6 +506,14 @@ router.post('/api/cashout', [
     const userResult = await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const { full_name, email } = userResult.rows[0];
+    const [earnedResult, pendingResult] = await Promise.all([
+      pool.query('SELECT COALESCE(SUM(bonus_amount), 0) AS earned FROM referral_conversions WHERE user_id = $1', [userId]),
+      pool.query("SELECT COALESCE(SUM(amount), 0) AS pending FROM cashout_requests WHERE user_id = $1 AND status IN ('pending', 'approved')", [userId]),
+    ]);
+    const available = parseFloat(earnedResult.rows[0].earned) - parseFloat(pendingResult.rows[0].pending);
+    if (parseFloat(amount) > available) {
+      return res.status(400).json({ error: 'Requested amount exceeds your available balance' });
+    }
     await pool.query(
       `INSERT INTO cashout_requests (user_id,full_name,email,amount,method,status,requested_at)
        VALUES ($1,$2,$3,$4,$5,'pending',NOW())`,
@@ -866,7 +898,7 @@ router.patch('/api/referrer/about/seen', async (req, res) => {
 });
 
 // ── REFERRER: BOOKING ─────────────────────────────────────────────────────────
-router.post('/api/referrer/booking', [
+router.post('/api/referrer/booking', bookingLimiter, [
   body('name').notEmpty().withMessage('Name is required').isString().isLength({ max: 100 }).withMessage('Name must be 100 characters or less').trim(),
   body('phone').optional().matches(/^[\d\s\(\)\-\+]{7,20}$/).withMessage('Invalid phone number'),
   body('email').optional().isEmail().withMessage('Invalid email address'),

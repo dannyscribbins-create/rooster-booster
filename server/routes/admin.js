@@ -17,7 +17,8 @@ const adminLoginLimiter = rateLimit({
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' }
 });
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'rooster123';
+if (!process.env.ADMIN_PASSWORD) throw new Error('ADMIN_PASSWORD environment variable is required');
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 router.post('/api/admin/login', adminLoginLimiter, [
