@@ -13,6 +13,14 @@ const axios = require('axios');
 const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../utils/dateUtils');
+const { retryWithBackoff } = require('../utils/retryWithBackoff');
+
+const resendShouldRetry = (error) => {
+  const status = error?.response?.status || error?.statusCode;
+  if (!status) return true;   // network error — retry
+  if (status >= 500) return true; // Resend server error — retry
+  return false;               // 4xx (bad address, invalid key) — do not retry
+};
 
 const clientErrorLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -223,10 +231,11 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
     );
 
     // Send verification email via Resend
-    await resend.emails.send({
-      from: 'Rooster Booster <noreply@roofmiles.com>',
-      to: email,
-      subject: `Your ${CONTRACTOR_NAME} rewards account — verify your email`,
+    await retryWithBackoff(
+      () => resend.emails.send({
+        from: 'Rooster Booster <noreply@roofmiles.com>',
+        to: email,
+        subject: `Your ${CONTRACTOR_NAME} rewards account — verify your email`,
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
           <h2 style="color:#012854;margin:0 0 8px;">Welcome to ${CONTRACTOR_NAME}'s rewards program!</h2>
@@ -240,7 +249,9 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
           <p style="color:#888;font-size:13px;margin:0;">This code expires in 1 hour. If you didn't create this account, you can ignore this email.</p>
         </div>
       `,
-    });
+      }),
+      { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+    );
 
     // MVP: Award founding_referrer badge if within first 20 users.
     // Counts all users (no contractor filter) to match admin.js logic.
@@ -341,6 +352,7 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
 
 // ── REFERRER: PIPELINE ────────────────────────────────────────────────────────
 router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
+  let referrerName;
   try {
     const token = req.headers['authorization']?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Not authorized' });
@@ -352,7 +364,7 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
     const userId = sessionResult.rows[0].user_id;
     const userNameResult = await pool.query('SELECT full_name FROM users WHERE id=$1', [userId]);
     if (!userNameResult.rows[0]?.full_name) return res.status(404).json({ error: 'User not found' });
-    const referrerName = userNameResult.rows[0].full_name;
+    referrerName = userNameResult.rows[0].full_name;
     // TODO: pull contractorId from referrer session token when multi-contractor is live
     const contractorId = 'accent-roofing';
     const adapter = await getCRMAdapter(contractorId);
@@ -401,7 +413,52 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
       return res.status(503).json({ error: 'crm_not_connected', message: 'No CRM is connected for this contractor. Please connect a CRM in admin settings.' });
     }
     console.error('CRM fetch error:', err);
-    res.status(500).send('API call failed: ' + (err.response ? JSON.stringify(err.response.data) : err.message));
+
+    // Stale cache fallback — serve last known pipeline data when the adapter throws
+    if (referrerName) {
+      try {
+        const contractorId = 'accent-roofing';
+        const cacheResult = await pool.query(
+          `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date, last_synced_at
+           FROM pipeline_cache
+           WHERE contractor_id = $1 AND LOWER(referred_by) = LOWER($2)
+           ORDER BY jobber_created_at ASC NULLS LAST`,
+          [contractorId, referrerName]
+        );
+
+        if (cacheResult.rows.length > 0) {
+          const boostSchedule = [0, 100, 200, 250, 300, 350, 400];
+          let paidCount = 0;
+          let totalBalance = 0;
+          const pipeline = cacheResult.rows.map(row => {
+            const isPreStart = row.pre_start_date;
+            let status;
+            if (row.pipeline_status === 'paid') status = 'sold';
+            else if (row.pipeline_status === 'not_sold') status = 'closed';
+            else status = row.pipeline_status;
+            const bonusEarned = row.pipeline_status === 'paid' && !isPreStart;
+            let payout = null;
+            if (bonusEarned) {
+              const boost = boostSchedule[Math.min(paidCount, boostSchedule.length - 1)];
+              payout = 500 + boost;
+              totalBalance += payout;
+              paidCount++;
+            }
+            return { id: row.jobber_client_id, name: row.client_name || 'Unknown', status, bonusEarned, payout, pre_start_date: isPreStart };
+          });
+          const maxSyncedAt = cacheResult.rows.reduce(
+            (max, row) => (row.last_synced_at && (!max || row.last_synced_at > max) ? row.last_synced_at : max),
+            null
+          );
+          console.warn(`[pipeline] Serving stale cache for ${referrerName} after adapter error`);
+          return res.json({ pipeline, balance: totalBalance, paidCount, stale: true, stale_since: maxSyncedAt });
+        }
+      } catch (cacheErr) {
+        console.error('[pipeline] Stale cache fallback also failed:', cacheErr.message);
+      }
+    }
+
+    res.status(503).json({ error: 'pipeline_unavailable', message: 'Pipeline data is temporarily unavailable.' });
   }
 });
 
@@ -524,14 +581,17 @@ router.post('/api/cashout', cashoutLimiter, [
       `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('cashout',$1,$2,$3)`,
       [full_name, email, `Requested $${amount} via ${method || 'unknown'}`]
     );
-    await resend.emails.send({
-      from: 'Rooster Booster <noreply@roofmiles.com>', to: process.env.RESEND_TO_EMAIL,
-      subject: 'New Cash Out Request - Rooster Booster',
-      html: `<h2>New Cash Out Request</h2><p><strong>Name:</strong> ${full_name}</p>
-             <p><strong>Email:</strong> ${email}</p><p><strong>Amount:</strong> $${amount}</p>
-             <p><strong>Method:</strong> ${method || 'Not specified'}</p>
-             <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`
-    });
+    await retryWithBackoff(
+      () => resend.emails.send({
+        from: 'Rooster Booster <noreply@roofmiles.com>', to: process.env.RESEND_TO_EMAIL,
+        subject: 'New Cash Out Request - Rooster Booster',
+        html: `<h2>New Cash Out Request</h2><p><strong>Name:</strong> ${full_name}</p>
+               <p><strong>Email:</strong> ${email}</p><p><strong>Amount:</strong> $${amount}</p>
+               <p><strong>Method:</strong> ${method || 'Not specified'}</p>
+               <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`,
+      }),
+      { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+    );
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
@@ -608,7 +668,8 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
       const resetUrl = `${frontendUrl}/?reset=${token}`;
 
       try {
-        await resend.emails.send({
+        await retryWithBackoff(
+          () => resend.emails.send({
           from: 'Rooster Booster <noreply@roofmiles.com>',
           to: user.email,
           subject: 'Reset your Rooster Booster PIN',
@@ -636,7 +697,9 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
               </p>
             </div>
           `,
-        });
+          }),
+          { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+        );
       } catch (emailErr) {
         await logError({ req, error: emailErr });
         console.error('Resend error (forgot-pin):', emailErr);
@@ -929,18 +992,21 @@ router.post('/api/referrer/booking', bookingLimiter, [
     );
     const toEmail = aboutResult.rows[0]?.booking_email || process.env.RESEND_TO_EMAIL;
 
-    await resend.emails.send({
-      from: 'Rooster Booster <noreply@roofmiles.com>',
-      to: toEmail,
-      subject: `New Inspection Booking Request — ${name}`,
-      html: `<h2>New Inspection Booking Request</h2>
-             <p><strong>Name:</strong> ${name}</p>
-             <p><strong>Phone:</strong> ${phone}</p>
-             ${email ? `<p><strong>Email:</strong> ${email}</p>` : ''}
-             ${address ? `<p><strong>Address:</strong> ${address}</p>` : ''}
-             ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
-             <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`
-    });
+    await retryWithBackoff(
+      () => resend.emails.send({
+        from: 'Rooster Booster <noreply@roofmiles.com>',
+        to: toEmail,
+        subject: `New Inspection Booking Request — ${name}`,
+        html: `<h2>New Inspection Booking Request</h2>
+               <p><strong>Name:</strong> ${name}</p>
+               <p><strong>Phone:</strong> ${phone}</p>
+               ${email ? `<p><strong>Email:</strong> ${email}</p>` : ''}
+               ${address ? `<p><strong>Address:</strong> ${address}</p>` : ''}
+               ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
+               <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`,
+      }),
+      { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+    );
 
     res.json({ success: true });
   } catch (err) {

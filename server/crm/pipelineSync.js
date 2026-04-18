@@ -2,6 +2,15 @@ const axios = require('axios');
 const { pool } = require('../db');
 const { refreshTokenIfNeeded } = require('./jobber');
 const { logError } = require('../middleware/errorLogger');
+const { retryWithBackoff } = require('../utils/retryWithBackoff');
+
+const jobberShouldRetry = (error) => {
+  const status = error?.response?.status;
+  if (!status) return true;
+  if (status === 401) return false;
+  if (status >= 500) return true;
+  return false;
+};
 
 // ── PIPELINE STATUS CLASSIFIER ────────────────────────────────────────────────
 // Input: a single Jobber client object with quotes, jobs, invoices
@@ -152,16 +161,19 @@ async function runFullSync(contractorId) {
       }
     }`;
 
-    const response = await axios.post(
-      'https://api.getjobber.com/api/graphql',
-      { query },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-        },
-      }
+    const response = await retryWithBackoff(
+      () => axios.post(
+        'https://api.getjobber.com/api/graphql',
+        { query },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          },
+        }
+      ),
+      { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
     );
 
     if (!response.data.data || !response.data.data.clients) {
@@ -267,16 +279,19 @@ async function runIncrementalSync(contractorId) {
       }
     }`;
 
-    const response = await axios.post(
-      'https://api.getjobber.com/api/graphql',
-      { query },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-        },
-      }
+    const response = await retryWithBackoff(
+      () => axios.post(
+        'https://api.getjobber.com/api/graphql',
+        { query },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          },
+        }
+      ),
+      { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
     );
 
     if (!response.data.data || !response.data.data.clients) {

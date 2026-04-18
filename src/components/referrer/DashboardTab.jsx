@@ -12,7 +12,7 @@ import ContractorAboutModal from './ContractorAboutModal';
 import BookingFormModal from './BookingFormModal';
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals }) {
+export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals }) {
   const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
   const progressPct = Math.min((soldCount / 7) * 100, 100);
@@ -239,6 +239,38 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
             <i className="ph ph-warning" style={{ fontSize: 18, color: '#B8860B', flexShrink: 0 }} />
             <p style={{ margin: 0, fontSize: 13, color: '#7B5900', fontFamily: R.fontBody, lineHeight: 1.5 }}>
               Pipeline data is temporarily unavailable. Please wait a few minutes and try again.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Stale cache notice — live sync failed, serving last known data */}
+      {pipelineStale && !pipelineUnavailable && (
+        <div style={{ padding: '12px 20px 0' }}>
+          <div style={{
+            background: '#FFF8E1', border: '1px solid #F5C518',
+            borderRadius: 12, padding: '12px 16px',
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <i className="ph ph-clock-countdown" style={{ fontSize: 18, color: '#B8860B', flexShrink: 0 }} />
+            <p style={{ margin: 0, fontSize: 13, color: '#7B5900', fontFamily: R.fontBody, lineHeight: 1.5 }}>
+              {'Showing cached pipeline data' + (pipelineStaleSince ? ` (last updated ${(() => { const diff = Date.now() - new Date(pipelineStaleSince).getTime(); const mins = Math.floor(diff / 60000); const hrs = Math.floor(mins / 60); return hrs > 0 ? `${hrs}h ago` : mins > 0 ? `${mins}m ago` : 'just now'; })()})` : '') + '. Live sync will resume automatically.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Pipeline unavailable — no cache to fall back to */}
+      {pipelineUnavailable && (
+        <div style={{ padding: '12px 20px 0' }}>
+          <div style={{
+            background: '#FFF0F0', border: '1px solid #CC0000',
+            borderRadius: 12, padding: '12px 16px',
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            <i className="ph ph-warning-circle" style={{ fontSize: 18, color: '#CC0000', flexShrink: 0 }} />
+            <p style={{ margin: 0, fontSize: 13, color: '#7A0000', fontFamily: R.fontBody, lineHeight: 1.5 }}>
+              Pipeline data is currently unavailable. Please try again later.
             </p>
           </div>
         </div>

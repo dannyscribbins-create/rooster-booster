@@ -40,6 +40,9 @@ export default function App() {
   const [paidCount, setPaidCount] = useState(0);
   const [loading, setLoading]     = useState(false);
   const [pipelineRateLimited, setPipelineRateLimited] = useState(false);
+  const [pipelineStale, setPipelineStale] = useState(false);
+  const [pipelineStaleSince, setPipelineStaleSince] = useState(null);
+  const [pipelineUnavailable, setPipelineUnavailable] = useState(false);
   const [profilePhoto, setProfilePhoto] = useState(null);
   const [showReviewCard, setShowReviewCard] = useState(true);
   const [announcement, setAnnouncement] = useState(null);
@@ -91,11 +94,24 @@ export default function App() {
             setLoading(false);
             return null;
           }
+          if (res.status === 503) {
+            setPipelineUnavailable(true);
+            setLoading(false);
+            return null;
+          }
           return res.json();
         })
         .then(data => {
           if (!data) return;
           setPipelineRateLimited(false);
+          setPipelineUnavailable(false);
+          if (data.stale) {
+            setPipelineStale(true);
+            setPipelineStaleSince(data.stale_since || null);
+          } else {
+            setPipelineStale(false);
+            setPipelineStaleSince(null);
+          }
           setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
           setBalance(data.balance || 0);
           setPaidCount(data.paidCount || 0);
@@ -200,6 +216,7 @@ export default function App() {
     <ReferrerApp
       tab={tab} setTab={setTab}
       pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited}
+      pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable}
       userName={userName} userEmail={userEmail}
       balance={balance} paidCount={paidCount}
       profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto}

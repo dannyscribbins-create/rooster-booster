@@ -107,7 +107,7 @@ function BottomNav({ tab, setTab }) {
 // ─── ReferrerApp ──────────────────────────────────────────────────────────────
 export default function ReferrerApp({
   tab, setTab,
-  pipeline, loading, pipelineRateLimited,
+  pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable,
   userName, userEmail,
   balance, paidCount,
   profilePhoto, setProfilePhoto,
@@ -119,7 +119,7 @@ export default function ReferrerApp({
   const [highlightReferrals, setHighlightReferrals] = useState(false);
 
   const screens = {
-    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} onViewAllReferrals={() => { setTab("profile"); setHighlightReferrals(true); }} />,
+    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited} pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} onViewAllReferrals={() => { setTab("profile"); setHighlightReferrals(true); }} />,
     cashout:   <CashOut pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} />,
     refer:     <ReferAFriendTab userName={userName} token={sessionStorage.getItem('rb_token')} />,
     rankings:  <Rankings token={sessionStorage.getItem('rb_token')} />,

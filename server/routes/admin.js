@@ -237,35 +237,48 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { status } = req.body;
   if (!['approved','denied'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  const client = await pool.connect();
   try {
-    const result = await pool.query('UPDATE cashout_requests SET status=$1 WHERE id=$2 RETURNING *', [status, req.params.id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    await pool.query(
-      `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('admin',$1,$2,$3)`,
-      [result.rows[0].full_name, result.rows[0].email,
-       `Cash out request #${req.params.id} ${status} ($${result.rows[0].amount})`]
+    await client.query('BEGIN');
+
+    const result = await client.query(
+      'UPDATE cashout_requests SET status=$1 WHERE id=$2 RETURNING *',
+      [status, req.params.id]
     );
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const cashout = result.rows[0];
+
+    await client.query(
+      `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('admin',$1,$2,$3)`,
+      [cashout.full_name, cashout.email,
+       `Cash out request #${req.params.id} ${status} ($${cashout.amount})`]
+    );
+
     if (status === 'approved') {
-      const crRow = await pool.query('SELECT user_id FROM cashout_requests WHERE id=$1', [req.params.id]);
-      if (crRow.rows[0]?.user_id == null) {
+      // SCALABLE: wrap Stripe ACH call inside this transaction before committing approved status
+      if (cashout.user_id == null) {
         await logError({ req, error: { message: `Payout announcement skipped: cashout_request #${req.params.id} has no user_id`, severity: 'INFO' } });
       } else {
-        await pool.query(
+        await client.query(
           `INSERT INTO payout_announcements (cashout_request_id, user_id)
-           SELECT $1, cr.user_id
-           FROM cashout_requests cr
-           WHERE cr.id = $1 AND cr.user_id IS NOT NULL
-             AND NOT EXISTS (
-               SELECT 1 FROM payout_announcements WHERE cashout_request_id = $1
-             )`,
-          [req.params.id]
+           VALUES ($1, $2)
+           ON CONFLICT (cashout_request_id) DO NOTHING`,
+          [req.params.id, cashout.user_id]
         );
       }
     }
-    res.json(result.rows[0]);
+
+    await client.query('COMMIT');
+    res.json(cashout);
   } catch (err) {
+    await client.query('ROLLBACK');
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

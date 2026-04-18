@@ -6,6 +6,14 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const { retryWithBackoff } = require('../utils/retryWithBackoff');
+
+const twilioShouldRetry = (error) => {
+  const code = error?.code;
+  if (!code) return true;
+  if (String(code).startsWith('2')) return true;
+  return false;
+};
 
 // Twilio is optional — only initialised when credentials are present so the
 // server doesn't crash in environments where Twilio isn't yet configured.
@@ -103,11 +111,14 @@ router.post('/send-phone-verification', async (req, res) => {
     const twilio = getTwilioClient();
     if (!twilio) return res.status(503).json({ error: 'SMS service not configured' });
 
-    await twilio.messages.create({
-      body: `Your Rooster Booster verification code is: ${code}. Expires in 10 minutes.`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: phone_number,
-    });
+    await retryWithBackoff(
+      () => twilio.messages.create({
+        body: `Your Rooster Booster verification code is: ${code}. Expires in 10 minutes.`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: phone_number,
+      }),
+      { retries: 2, initialDelayMs: 1000, shouldRetry: twilioShouldRetry }
+    );
 
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

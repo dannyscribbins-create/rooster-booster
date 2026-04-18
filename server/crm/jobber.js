@@ -3,6 +3,15 @@
 // Remove these after confirming all routes use the adapter pattern.
 const axios = require('axios');
 const { pool } = require('../db');
+const { retryWithBackoff } = require('../utils/retryWithBackoff');
+
+const jobberShouldRetry = (error) => {
+  const status = error?.response?.status;
+  if (!status) return true;   // network error — always retry
+  if (status === 401) return false; // token expired — do not retry
+  if (status >= 500) return true;   // server error — retry
+  return false;
+};
 
 let accessToken = null;
 
@@ -22,10 +31,13 @@ async function refreshTokenIfNeeded() {
   const fiveMin = new Date(Date.now() + 5 * 60 * 1000);
   if (!expires_at || new Date(expires_at) < fiveMin) {
     console.log('Refreshing token...');
-    const response = await axios.post('https://api.getjobber.com/api/oauth/token', {
-      grant_type: 'refresh_token', client_id: process.env.JOBBER_CLIENT_ID,
-      client_secret: process.env.JOBBER_CLIENT_SECRET, refresh_token
-    });
+    const response = await retryWithBackoff(
+      () => axios.post('https://api.getjobber.com/api/oauth/token', {
+        grant_type: 'refresh_token', client_id: process.env.JOBBER_CLIENT_ID,
+        client_secret: process.env.JOBBER_CLIENT_SECRET, refresh_token,
+      }),
+      { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+    );
     const newAccess = response.data.access_token;
     const newRefresh = response.data.refresh_token;
     const newExpiry = new Date(Date.now() + (parseInt(response.data.expires_in) || 3600) * 1000);
@@ -62,7 +74,7 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
 
   // Read from pipeline_cache — case-insensitive match on referred_by
   const cacheResult = await pool.query(
-    `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date
+    `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date, last_synced_at
      FROM pipeline_cache
      WHERE contractor_id = $1
        AND LOWER(referred_by) = LOWER($2)
@@ -127,7 +139,11 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
     };
   });
 
-  return { pipeline, balance: totalBalance, paidCount };
+  const synced_at = cacheResult.rows.reduce(
+    (max, row) => (row.last_synced_at && (!max || row.last_synced_at > max) ? row.last_synced_at : max),
+    null
+  );
+  return { pipeline, balance: totalBalance, paidCount, synced_at };
 }
 
 module.exports = { setAccessToken, refreshTokenIfNeeded, fetchPipelineForReferrer };
