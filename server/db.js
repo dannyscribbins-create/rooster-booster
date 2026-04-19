@@ -310,6 +310,29 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
 
+  // ── PENDING REFERRALS ─────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS pending_referrals (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL,
+    jobber_client_id TEXT NOT NULL,
+    client_name TEXT,
+    referred_by_name TEXT,
+    referred_by_phone TEXT,
+    referred_by_email TEXT,
+    invite_sent_at TIMESTAMPTZ,
+    invite_channel TEXT,
+    invite_resent_at TIMESTAMPTZ,
+    matched_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    matched_at TIMESTAMPTZ,
+    match_seen_at TIMESTAMPTZ,
+    closed_out_by_admin BOOLEAN DEFAULT false,
+    closed_out_at TIMESTAMPTZ,
+    closed_out_note TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(contractor_id, jobber_client_id)
+  )`);
+
   // ── ERROR LOG ─────────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS error_log (
     id SERIAL PRIMARY KEY,
