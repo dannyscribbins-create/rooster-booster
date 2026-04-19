@@ -1,13 +1,8 @@
 const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const { exec } = require('child_process');
+const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
-const { pipeline } = require('stream');
-const { promisify } = require('util');
-
-const execAsync = promisify(exec);
-const pipelineAsync = promisify(pipeline);
 
 function getS3Client() {
   const endpoint = process.env.B2_ENDPOINT;
@@ -32,38 +27,48 @@ async function runBackup() {
   if (!bucketName) throw new Error('B2_BUCKET_NAME environment variable is required');
 
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
-  const filename = `roofmiles-${today}.sql.gz`;
+  const filename = `roofmiles-${today}.json.gz`;
   const tmpPath = path.join(require('os').tmpdir(), filename);
 
-  // Step 1: pg_dump to compressed file
-  console.log(`[backup] Starting pg_dump → ${tmpPath}`);
+  // Step 1: Pure JS export — connect to DB, dump all tables to compressed JSON
+  console.log(`[backup] Starting JS database export → ${tmpPath}`);
+  const pool = new Pool({ connectionString: dbUrl });
   try {
-    await new Promise((resolve, reject) => {
-      const dumpProc = require('child_process').spawn('pg_dump', ['--no-password', dbUrl], {
-        env: { ...process.env },
-      });
-      const gzip = zlib.createGzip();
-      const outStream = fs.createWriteStream(tmpPath);
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      tables: {},
+    };
 
-      dumpProc.stdout.pipe(gzip).pipe(outStream);
+    // Discover all tables dynamically — no hardcoded names
+    const tablesResult = await pool.query(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+       ORDER BY table_name`
+    );
+    const tableNames = tablesResult.rows.map((r) => r.table_name);
+    console.log(`[backup] Found ${tableNames.length} tables: ${tableNames.join(', ')}`);
 
-      dumpProc.stderr.on('data', (data) => {
-        const msg = data.toString().trim();
-        if (msg) console.warn(`[backup] pg_dump stderr: ${msg}`);
-      });
+    for (const tableName of tableNames) {
+      try {
+        const result = await pool.query(`SELECT * FROM "${tableName}"`);
+        backup.tables[tableName] = { rowCount: result.rowCount, rows: result.rows };
+        console.log(`[backup] Exported ${tableName}: ${result.rowCount} rows`);
+      } catch (tableErr) {
+        console.error(`[backup] Failed to export table "${tableName}": ${tableErr.message}`);
+        // Continue with remaining tables — do not abort the whole backup
+      }
+    }
 
-      dumpProc.on('error', (err) => reject(new Error(`pg_dump spawn failed: ${err.message}`)));
-      dumpProc.on('close', (code) => {
-        if (code !== 0) return reject(new Error(`pg_dump exited with code ${code}`));
-        outStream.on('finish', resolve);
-        outStream.on('error', reject);
-      });
-    });
+    const json = JSON.stringify(backup);
+    const compressed = zlib.gzipSync(Buffer.from(json, 'utf8'));
+    fs.writeFileSync(tmpPath, compressed);
   } catch (err) {
     if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-    throw new Error(`pg_dump failed: ${err.message}`);
+    throw new Error(`Database export failed: ${err.message}`);
+  } finally {
+    await pool.end();
   }
-  console.log(`[backup] pg_dump complete`);
+  console.log(`[backup] Database export complete`);
 
   // Step 2: Upload to B2
   console.log(`[backup] Uploading ${filename} to B2 bucket "${bucketName}"`);
@@ -100,7 +105,7 @@ async function runBackup() {
     const objects = listResult.Contents || [];
 
     for (const obj of objects) {
-      const match = obj.Key.match(/^roofmiles-(\d{4}-\d{2}-\d{2})\.sql\.gz$/);
+      const match = obj.Key.match(/^roofmiles-(\d{4}-\d{2}-\d{2})\.json\.gz$/);
       if (!match) continue;
       const fileDate = new Date(match[1]);
       if (fileDate < cutoff) {
