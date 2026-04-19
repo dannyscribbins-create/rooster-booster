@@ -343,6 +343,21 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
       );
     }
 
+    // ── PENDING REFERRAL MATCH CHECK ────────────────────────────────────────────
+    // Check if this newly verified user matches any pending referral record.
+    // Runs async in background — must not block the signup response.
+    (async () => {
+      try {
+        const { matchPendingReferral } = require('../utils/pendingReferral');
+        const uResult = await pool.query('SELECT email, phone FROM users WHERE id=$1', [userId]);
+        const u = uResult.rows[0];
+        if (u) await matchPendingReferral(userId, u.email, u.phone);
+      } catch (err) {
+        await logError({ req, error: err });
+        console.error('[signup] pending referral match check failed:', err.message);
+      }
+    })();
+
     res.json({ message: 'Email verified. You can now log in.' });
   } catch (err) {
     await logError({ req, error: err });
@@ -1371,6 +1386,58 @@ router.patch('/api/referrer/shout-settings', async (req, res) => {
     await pool.query(
       'UPDATE users SET shout_opt_out=$1, pinned_shout=$2 WHERE id=$3',
       [shout_opt_out, pinned_shout, userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PENDING REFERRAL: MATCH CHECK ─────────────────────────────────────────────
+// GET /api/referral/pending/match-check
+// Called by ReferrerApp on login to check for unseen pending referral matches.
+// Returns the pending record if matched_at is set and match_seen_at is null.
+router.get('/api/referral/pending/match-check', async (req, res) => {
+  try {
+    const token = req.headers['authorization']?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Not authorized' });
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired' });
+    const userId = sessionResult.rows[0].user_id;
+    const result = await pool.query(
+      `SELECT id, client_name, referred_by_name, matched_at
+       FROM pending_referrals
+       WHERE matched_user_id=$1 AND match_seen_at IS NULL AND status='matched'
+       LIMIT 1`,
+      [userId]
+    );
+    res.json({ match: result.rows[0] || null });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PENDING REFERRAL: MARK SEEN ───────────────────────────────────────────────
+// PUT /api/referral/pending/:id/seen
+// Marks the celebration popup as seen so it does not fire again.
+router.put('/api/referral/pending/:id/seen', async (req, res) => {
+  try {
+    const token = req.headers['authorization']?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Not authorized' });
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired' });
+    const userId = sessionResult.rows[0].user_id;
+    await pool.query(
+      'UPDATE pending_referrals SET match_seen_at=NOW() WHERE id=$1 AND matched_user_id=$2',
+      [req.params.id, userId]
     );
     res.json({ success: true });
   } catch (err) {

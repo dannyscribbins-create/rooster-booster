@@ -40,6 +40,24 @@ function classifyPipelineStatus(client) {
   return 'not_sold';
 }
 
+// ── PHONE / EMAIL EXTRACTORS ──────────────────────────────────────────────────
+// Used by pendingReferral.js to extract contact info from Jobber client objects.
+function getPrimaryPhone(client) {
+  const nodes = client.phones?.nodes || [];
+  if (nodes.length === 0) return null;
+  const primary = nodes.find(p =>
+    p.description?.toLowerCase().includes('main') ||
+    p.description?.toLowerCase().includes('mobile')
+  ) || nodes[0];
+  return primary?.number || null;
+}
+
+function getPrimaryEmail(client) {
+  const nodes = client.emails?.nodes || [];
+  if (nodes.length === 0) return null;
+  return nodes[0]?.address || null;
+}
+
 // ── REFERRED BY FIELD EXTRACTOR ───────────────────────────────────────────────
 // Input: a single Jobber client object
 // Output: string value of "Referred by" custom field, or null
@@ -81,6 +99,19 @@ async function syncSingleClient(contractorId, client, referralStartDate) {
     [contractorId, client.id, clientName, referredBy, status,
      isPreStart, createdAt]
   );
+
+  // ── PENDING REFERRAL CHECK ──────────────────────────────────────────────────
+  // If this referred client's referrer has no app account, create a pending record
+  // and fire an auto-invite. Runs async — must not block or throw inside syncSingleClient.
+  // SCALABLE: This check runs on every sync. At high contractor volume, consider
+  // batching or caching the user lookup. For MVP with single contractor, this is fine.
+  try {
+    const { checkAndCreatePendingReferral } = require('../utils/pendingReferral');
+    await checkAndCreatePendingReferral(contractorId, client, referredBy);
+  } catch (err) {
+    await logError({ req: null, error: err });
+    console.error('[pipelineSync] pending referral check failed:', err.message);
+  }
 
   // Flag pre-start-date clients for admin review only during initial sync
   if (isPreStart) {
@@ -149,6 +180,8 @@ async function runFullSync(contractorId) {
         nodes {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
+          phones(first: 3) { nodes { number description } }
+          emails(first: 3) { nodes { address description } }
           quotes(first: 10) { nodes { id quoteStatus } }
           jobs(first: 10) {
             nodes {
@@ -267,6 +300,8 @@ async function runIncrementalSync(contractorId) {
         nodes {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
+          phones(first: 3) { nodes { number description } }
+          emails(first: 3) { nodes { address description } }
           quotes(first: 10) { nodes { id quoteStatus } }
           jobs(first: 10) {
             nodes {
@@ -352,4 +387,4 @@ async function runScheduledSync() {
   }
 }
 
-module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync };
+module.exports = { classifyPipelineStatus, getReferredByValue, getPrimaryPhone, getPrimaryEmail, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync };

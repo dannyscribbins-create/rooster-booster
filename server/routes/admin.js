@@ -1226,4 +1226,98 @@ router.post('/api/admin/backup/verify', backupLimiter, async (req, res) => {
   }
 });
 
+// ── ADMIN: PENDING REFERRALS ──────────────────────────────────────────────────
+
+const resendInviteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many resend attempts. Please try again in an hour.' }
+});
+
+// GET /api/admin/pending-referrals
+// List all pending referrals. Default excludes closed; ?include_closed=true shows all.
+router.get('/api/admin/pending-referrals', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  const includeClosed = req.query.include_closed === 'true';
+  try {
+    const statusFilter = includeClosed ? '' : `AND status != 'closed'`;
+    const result = await pool.query(
+      `SELECT id, contractor_id, jobber_client_id, client_name, referred_by_name,
+              referred_by_phone, referred_by_email, invite_sent_at, invite_channel,
+              invite_resent_at, matched_user_id, matched_at, match_seen_at,
+              closed_out_by_admin, closed_out_at, closed_out_note, status, created_at
+       FROM pending_referrals
+       WHERE contractor_id = $1 ${statusFilter}
+       ORDER BY
+         CASE status WHEN 'pending' THEN 0 WHEN 'matched' THEN 1 ELSE 2 END,
+         created_at DESC`,
+      [contractorId]
+    );
+    res.json({ pending: result.rows });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/pending-referrals/:id/resend
+// Resend invite email (and SMS if Twilio active). Updates invite_resent_at.
+router.post('/api/admin/pending-referrals/:id/resend', resendInviteLimiter, async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      `SELECT id, referred_by_name, referred_by_email, referred_by_phone, status
+       FROM pending_referrals WHERE id=$1 AND contractor_id=$2`,
+      [req.params.id, contractorId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const record = result.rows[0];
+
+    if (record.status === 'closed') {
+      return res.status(400).json({ error: 'Cannot resend invite to a closed record.' });
+    }
+
+    const { sendPendingInviteEmail, sendPendingInviteSMS } = require('../utils/pendingReferral');
+    if (record.referred_by_email) await sendPendingInviteEmail(record, contractorId);
+    if (record.referred_by_phone) await sendPendingInviteSMS(record, contractorId);
+
+    await pool.query(
+      'UPDATE pending_referrals SET invite_resent_at=NOW() WHERE id=$1',
+      [req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/pending-referrals/:id/close
+// Close out a pending referral. Optional body.note → closed_out_note.
+router.post('/api/admin/pending-referrals/:id/close', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  const { note } = req.body || {};
+  try {
+    const result = await pool.query(
+      `UPDATE pending_referrals
+       SET closed_out_by_admin=true, closed_out_at=NOW(), status='closed',
+           closed_out_note=$1
+       WHERE id=$2 AND contractor_id=$3
+       RETURNING id`,
+      [note || null, req.params.id, contractorId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
