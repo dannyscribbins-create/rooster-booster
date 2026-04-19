@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
+import { BACKEND_URL } from '../../config/contractor';
 import Dashboard from './DashboardTab';
 import CashOut from './CashOutTab';
 import Rankings from './RankingsTab';
 import Profile from './ProfileTab';
 import ReferAFriendTab from './ReferAFriendTab';
 import AnnouncementPopup from './AnnouncementPopup';
+import PendingMatchPopup from './PendingMatchPopup';
 
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
 function BottomNav({ tab, setTab }) {
@@ -117,6 +119,20 @@ export default function ReferrerApp({
   onLogout, onNameUpdate,
 }) {
   const [highlightReferrals, setHighlightReferrals] = useState(false);
+  const [pendingMatch, setPendingMatch]             = useState(null);
+
+  // Check for unseen pending referral match once on mount after login
+  useEffect(() => {
+    const token = sessionStorage.getItem('rb_token');
+    if (!token) return;
+    fetch(`${BACKEND_URL}/api/referral/pending/match-check`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.match) setPendingMatch(d.match); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const screens = {
     dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited} pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} onViewAllReferrals={() => { setTab("profile"); setHighlightReferrals(true); }} />,
@@ -128,9 +144,17 @@ export default function ReferrerApp({
 
   return (
     <div style={{ background: R.bgPage, minHeight: "100vh" }}>
+      {pendingMatch && (
+        <PendingMatchPopup
+          match={pendingMatch}
+          token={sessionStorage.getItem('rb_token')}
+          onClose={() => setPendingMatch(null)}
+          onViewPipeline={() => { setTab('profile'); window.scrollTo(0, 0); }}
+        />
+      )}
       {screens[tab]}
       <BottomNav tab={tab} setTab={setTab} />
-      {showAnnouncement && announcement && announcementSettings?.enabled && (
+      {!pendingMatch && showAnnouncement && announcement && announcementSettings?.enabled && (
         <AnnouncementPopup
           announcement={announcement}
           referrerFirstName={userName.split(' ')[0]}
