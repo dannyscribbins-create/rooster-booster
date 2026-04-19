@@ -20,8 +20,8 @@ async function fetchFullClient(clientId, token) {
         client(id: $id) {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
-          phones(first: 3) { nodes { number description } }
-          emails(first: 3) { nodes { address description } }
+          phones { number description }
+          emails { address description }
           quotes(first: 10) { nodes { id quoteStatus } }
           jobs(first: 10) {
             nodes {

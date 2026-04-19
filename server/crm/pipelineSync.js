@@ -43,19 +43,19 @@ function classifyPipelineStatus(client) {
 // ── PHONE / EMAIL EXTRACTORS ──────────────────────────────────────────────────
 // Used by pendingReferral.js to extract contact info from Jobber client objects.
 function getPrimaryPhone(client) {
-  const nodes = client.phones?.nodes || [];
-  if (nodes.length === 0) return null;
-  const primary = nodes.find(p =>
+  const phones = client.phones || [];
+  if (phones.length === 0) return null;
+  const primary = phones.find(p =>
     p.description?.toLowerCase().includes('main') ||
     p.description?.toLowerCase().includes('mobile')
-  ) || nodes[0];
+  ) || phones[0];
   return primary?.number || null;
 }
 
 function getPrimaryEmail(client) {
-  const nodes = client.emails?.nodes || [];
-  if (nodes.length === 0) return null;
-  return nodes[0]?.address || null;
+  const emails = client.emails || [];
+  if (emails.length === 0) return null;
+  return emails[0]?.address || null;
 }
 
 // ── REFERRED BY FIELD EXTRACTOR ───────────────────────────────────────────────
@@ -180,8 +180,8 @@ async function runFullSync(contractorId) {
         nodes {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
-          phones(first: 3) { nodes { number description } }
-          emails(first: 3) { nodes { address description } }
+          phones { number description }
+          emails { address description }
           quotes(first: 10) { nodes { id quoteStatus } }
           jobs(first: 10) {
             nodes {
@@ -300,8 +300,8 @@ async function runIncrementalSync(contractorId) {
         nodes {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
-          phones(first: 3) { nodes { number description } }
-          emails(first: 3) { nodes { address description } }
+          phones { number description }
+          emails { address description }
           quotes(first: 10) { nodes { id quoteStatus } }
           jobs(first: 10) {
             nodes {
