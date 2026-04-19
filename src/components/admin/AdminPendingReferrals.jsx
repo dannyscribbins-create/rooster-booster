@@ -19,11 +19,18 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, needsVerification }) {
+  if (needsVerification) {
+    return (
+      <span style={{ background: AD.amberBg, color: AD.amberText, padding: '3px 10px', borderRadius: 99, fontSize: 12, fontWeight: 500 }}>
+        Verify Identity
+      </span>
+    );
+  }
   const map = {
-    pending: { bg: AD.amberBg,  color: AD.amberText, label: 'Pending'  },
-    matched: { bg: AD.greenBg,  color: AD.greenText,  label: 'Matched'  },
-    closed:  { bg: AD.bgCardTint, color: AD.textSecondary, label: 'Closed' },
+    pending: { bg: AD.amberBg,    color: AD.amberText,       label: 'Pending'  },
+    matched: { bg: AD.greenBg,    color: AD.greenText,        label: 'Matched'  },
+    closed:  { bg: AD.bgCardTint, color: AD.textSecondary,    label: 'Closed'   },
   };
   const s = map[status] || map.pending;
   return (
@@ -44,6 +51,8 @@ export default function AdminPendingReferrals() {
   const [closeConfirm, setCloseConfirm]   = useState(null);
   const [followUpOpen, setFollowUpOpen]   = useState(null);
   const [followUpMsg, setFollowUpMsg]     = useState({});
+  const [confirming, setConfirming]       = useState(null);
+  const [confirmSuccess, setConfirmSuccess] = useState({});
 
   const token = sessionStorage.getItem('rb_admin_token');
 
@@ -95,6 +104,29 @@ export default function AdminPendingReferrals() {
     }
   }
 
+  async function handleConfirmReferrer(id, candidate) {
+    setConfirming(id + candidate.id);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/pending-referrals/${id}/confirm-referrer`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          referrer_phone: candidate.phone || null,
+          referrer_email: candidate.email || null,
+          referrer_name: candidate.name || null,
+        }),
+      });
+      if (!r.ok) throw new Error('Confirm failed');
+      setConfirmSuccess(prev => ({ ...prev, [id]: true }));
+      setTimeout(() => setConfirmSuccess(prev => { const n = { ...prev }; delete n[id]; return n; }), 3000);
+      fetchRecords();
+    } catch {
+      // silent
+    } finally {
+      setConfirming(null);
+    }
+  }
+
   // Follow Up uses the resend endpoint with a future custom message hook
   // TODO: wire custom message body to resend endpoint once copy is finalized
   async function handleFollowUp(id) {
@@ -126,11 +158,13 @@ export default function AdminPendingReferrals() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {records.map(row => {
-            const isMatched = row.status === 'matched';
-            const isClosed  = row.status === 'closed';
-            const isPending = row.status === 'pending';
-            const isResendingThis = resending === row.id;
-            const isClosingThis   = closing === row.id;
+            const isMatched         = row.status === 'matched';
+            const isClosed          = row.status === 'closed';
+            const isPending         = row.status === 'pending';
+            const needsVerification = !!row.needs_admin_verification;
+            const isResendingThis   = resending === row.id;
+            const isClosingThis     = closing === row.id;
+            const candidates        = row.jobber_name_matches || [];
 
             // Default follow-up message template
             const defaultMsg = `Hi ${row.referred_by_name || 'there'}, just checking in — your referral reward is still waiting. Create your account here: ${process.env.REACT_APP_FRONTEND_URL || ''}`;
@@ -138,7 +172,12 @@ export default function AdminPendingReferrals() {
             return (
               <div key={row.id} style={{
                 background: AD.bgCard,
-                border: `1px solid ${isMatched ? 'rgba(45,139,95,0.25)' : isClosed ? AD.border : 'rgba(217,119,6,0.2)'}`,
+                border: `1px solid ${
+                  isMatched          ? 'rgba(45,139,95,0.25)'   :
+                  isClosed           ? AD.border                :
+                  needsVerification  ? 'rgba(217,119,6,0.4)'   :
+                  'rgba(217,119,6,0.2)'
+                }`,
                 borderRadius: 12,
                 padding: '20px 24px',
                 boxShadow: AD.shadowSm,
@@ -148,11 +187,14 @@ export default function AdminPendingReferrals() {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                       <span style={{ fontSize: 16, fontWeight: 600, color: AD.textPrimary }}>{row.referred_by_name || '—'}</span>
-                      <StatusBadge status={row.status} />
+                      <StatusBadge status={row.status} needsVerification={needsVerification} />
                     </div>
                     <div style={{ fontSize: 13, color: AD.textSecondary }}>
                       {row.referred_by_email && <span style={{ marginRight: 12 }}>{row.referred_by_email}</span>}
                       {row.referred_by_phone && <span>{row.referred_by_phone}</span>}
+                      {!row.referred_by_email && !row.referred_by_phone && needsVerification && (
+                        <span style={{ color: AD.amberText, fontStyle: 'italic' }}>Contact info pending verification</span>
+                      )}
                     </div>
                   </div>
                   <div style={{ fontSize: 12, color: AD.textTertiary, textAlign: 'right' }}>
@@ -182,6 +224,58 @@ export default function AdminPendingReferrals() {
                   )}
                 </div>
 
+                {/* ── Verify Identity: candidate list ── */}
+                {needsVerification && isPending && (
+                  <div style={{ background: 'rgba(217,119,6,0.06)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 10, padding: '14px 16px', marginBottom: 12 }}>
+                    <p style={{ margin: '0 0 10px', fontSize: 13, color: AD.amberText, fontWeight: 500 }}>
+                      {candidates.length === 0
+                        ? 'No Jobber clients matched this name. Review manually and confirm the referrer below, or close this record.'
+                        : `${candidates.length} Jobber client${candidates.length !== 1 ? 's' : ''} matched "${row.referred_by_name}". Select the correct referrer to send their invite.`
+                      }
+                    </p>
+                    {confirmSuccess[row.id] && (
+                      <p style={{ margin: '0 0 10px', fontSize: 13, color: AD.greenText, fontWeight: 500 }}>Referrer confirmed — invite sent.</p>
+                    )}
+                    {candidates.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {candidates.map((c, i) => {
+                          const isConfirmingThis = confirming === row.id + c.id;
+                          return (
+                            <div key={i} style={{
+                              background: AD.bgCard,
+                              border: `1px solid ${AD.borderStrong}`,
+                              borderRadius: 8,
+                              padding: '10px 14px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 12,
+                              flexWrap: 'wrap',
+                            }}>
+                              <div>
+                                <span style={{ fontSize: 14, fontWeight: 500, color: AD.textPrimary }}>{c.name || '—'}</span>
+                                <div style={{ fontSize: 12, color: AD.textSecondary, marginTop: 2 }}>
+                                  {c.email && <span style={{ marginRight: 10 }}>{c.email}</span>}
+                                  {c.phone && <span>{c.phone}</span>}
+                                  {!c.email && !c.phone && <span style={{ fontStyle: 'italic' }}>No contact info</span>}
+                                </div>
+                              </div>
+                              <Btn
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleConfirmReferrer(row.id, c)}
+                                style={{ opacity: isConfirmingThis ? 0.6 : 1, pointerEvents: isConfirmingThis ? 'none' : 'auto', whiteSpace: 'nowrap' }}
+                              >
+                                {isConfirmingThis ? 'Confirming…' : 'Confirm This Referrer'}
+                              </Btn>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* ── Matched info ── */}
                 {isMatched && (
                   <div style={{ background: AD.greenBg, border: `1px solid rgba(45,139,95,0.2)`, borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
@@ -202,29 +296,33 @@ export default function AdminPendingReferrals() {
                 {/* ── Action buttons (pending only) ── */}
                 {isPending && (
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 4 }}>
-                    {/* Resend Invite */}
-                    <Btn
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleResend(row.id)}
-                      style={{ opacity: isResendingThis ? 0.6 : 1, pointerEvents: isResendingThis ? 'none' : 'auto' }}
-                    >
-                      {resendSuccess[row.id] ? 'Sent!' : isResendingThis ? 'Sending…' : 'Resend Invite'}
-                    </Btn>
+                    {/* Resend Invite — only if contact info is available */}
+                    {(row.referred_by_email || row.referred_by_phone) && (
+                      <Btn
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleResend(row.id)}
+                        style={{ opacity: isResendingThis ? 0.6 : 1, pointerEvents: isResendingThis ? 'none' : 'auto' }}
+                      >
+                        {resendSuccess[row.id] ? 'Sent!' : isResendingThis ? 'Sending…' : 'Resend Invite'}
+                      </Btn>
+                    )}
 
                     {/* Follow Up */}
-                    <Btn
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setFollowUpOpen(followUpOpen === row.id ? null : row.id);
-                        if (!followUpMsg[row.id]) {
-                          setFollowUpMsg(prev => ({ ...prev, [row.id]: defaultMsg }));
-                        }
-                      }}
-                    >
-                      {followUpOpen === row.id ? 'Cancel' : 'Follow Up'}
-                    </Btn>
+                    {(row.referred_by_email || row.referred_by_phone) && (
+                      <Btn
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setFollowUpOpen(followUpOpen === row.id ? null : row.id);
+                          if (!followUpMsg[row.id]) {
+                            setFollowUpMsg(prev => ({ ...prev, [row.id]: defaultMsg }));
+                          }
+                        }}
+                      >
+                        {followUpOpen === row.id ? 'Cancel' : 'Follow Up'}
+                      </Btn>
+                    )}
 
                     {/* Close Out */}
                     <Btn

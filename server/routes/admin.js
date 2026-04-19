@@ -1247,10 +1247,13 @@ router.get('/api/admin/pending-referrals', async (req, res) => {
       `SELECT id, contractor_id, jobber_client_id, client_name, referred_by_name,
               referred_by_phone, referred_by_email, invite_sent_at, invite_channel,
               invite_resent_at, matched_user_id, matched_at, match_seen_at,
-              closed_out_by_admin, closed_out_at, closed_out_note, status, created_at
+              closed_out_by_admin, closed_out_at, closed_out_note, status, created_at,
+              needs_admin_verification, jobber_name_matches, referrer_lookup_attempted,
+              credit_email_sent_at
        FROM pending_referrals
        WHERE contractor_id = $1 ${statusFilter}
        ORDER BY
+         CASE WHEN needs_admin_verification THEN 0 ELSE 1 END,
          CASE status WHEN 'pending' THEN 0 WHEN 'matched' THEN 1 ELSE 2 END,
          created_at DESC`,
       [contractorId]
@@ -1313,6 +1316,55 @@ router.post('/api/admin/pending-referrals/:id/close', async (req, res) => {
       [note || null, req.params.id, contractorId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/pending-referrals/:id/confirm-referrer
+// Admin selects the correct Jobber candidate for a needs_admin_verification record.
+// Updates contact info, clears verification flag, and fires the invite.
+router.post('/api/admin/pending-referrals/:id/confirm-referrer', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  const { referrer_phone, referrer_email, referrer_name } = req.body || {};
+  try {
+    const result = await pool.query(
+      `UPDATE pending_referrals
+       SET referred_by_phone=$1, referred_by_email=$2, referred_by_name=$3,
+           needs_admin_verification=false
+       WHERE id=$4 AND contractor_id=$5
+       RETURNING id, referred_by_name, referred_by_email, referred_by_phone, status`,
+      [referrer_phone || null, referrer_email || null, referrer_name || null, req.params.id, contractorId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const record = result.rows[0];
+
+    const { sendPendingInviteEmail, sendPendingInviteSMS } = require('../utils/pendingReferral');
+    let inviteChannel = 'none';
+    if (referrer_email) {
+      await sendPendingInviteEmail(record, contractorId);
+      inviteChannel = referrer_phone ? 'email_and_sms' : 'email';
+    }
+    if (referrer_phone) {
+      await sendPendingInviteSMS(record, contractorId);
+      if (inviteChannel === 'email') inviteChannel = 'email_and_sms';
+      else if (inviteChannel === 'none') inviteChannel = 'sms';
+    }
+
+    await pool.query(
+      `UPDATE pending_referrals SET invite_channel=$1, invite_sent_at=NOW() WHERE id=$2`,
+      [inviteChannel, req.params.id]
+    );
+
+    await pool.query(
+      `INSERT INTO activity_log (event_type, detail) VALUES ('pending_referral_referrer_confirmed', $1)`,
+      [`Admin confirmed referrer "${referrer_name}" for pending referral #${req.params.id}. Invite sent via ${inviteChannel}.`]
+    );
+
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
