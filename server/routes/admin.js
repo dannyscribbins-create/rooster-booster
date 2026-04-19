@@ -12,6 +12,7 @@ const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../utils/dateUtils');
 const { runBackup } = require('../utils/backup');
+const { runVerify } = require('../utils/restore-verify');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -1202,6 +1203,26 @@ router.post('/api/admin/backup/run', backupLimiter, async (req, res) => {
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── ADMIN: VERIFY LATEST BACKUP ───────────────────────────────────────────────
+router.post('/api/admin/backup/verify', backupLimiter, async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const lines = [];
+  const origLog = console.log;
+  console.log = (...args) => {
+    lines.push(args.map(String).join(' '));
+    origLog(...args);
+  };
+  try {
+    await runVerify();
+    res.json({ success: true, output: lines });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    console.log = origLog;
   }
 });
 

@@ -51,18 +51,23 @@ const SETTINGS_DESCRIPTIONS = {
 };
 
 function SystemSettings() {
-  const [loading, setLoading]   = useState(false);
-  const [message, setMessage]   = useState(null); // { type: 'success' | 'error', text: string }
-  const timerRef                = useRef(null);
+  const [loading, setLoading]         = useState(null); // null | 'backup' | 'verify'
+  const [backupMsg, setBackupMsg]     = useState(null); // { type: 'success'|'error', text: string }
+  const [verifyResult, setVerifyResult] = useState(null); // { type: 'success', lines: [] } | { type: 'error', text: string }
+  const backupTimerRef                = useRef(null);
+  const verifyTimerRef                = useRef(null);
 
   useEffect(() => {
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return () => {
+      if (backupTimerRef.current) clearTimeout(backupTimerRef.current);
+      if (verifyTimerRef.current) clearTimeout(verifyTimerRef.current);
+    };
   }, []);
 
   async function handleRunBackup() {
-    setLoading(true);
-    setMessage(null);
-    if (timerRef.current) clearTimeout(timerRef.current);
+    setLoading('backup');
+    setBackupMsg(null);
+    if (backupTimerRef.current) clearTimeout(backupTimerRef.current);
     try {
       const res = await fetch(`${BACKEND_URL}/api/admin/backup/run`, {
         method: 'POST',
@@ -73,17 +78,45 @@ function SystemSettings() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setMessage({ type: 'success', text: 'Backup completed successfully.' });
+        setBackupMsg({ type: 'success', text: 'Backup completed successfully.' });
       } else {
-        setMessage({ type: 'error', text: data.error || 'Backup failed. Check server logs.' });
+        setBackupMsg({ type: 'error', text: data.error || 'Backup failed. Check server logs.' });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err.message || 'Network error.' });
+      setBackupMsg({ type: 'error', text: err.message || 'Network error.' });
     } finally {
-      setLoading(false);
-      timerRef.current = setTimeout(() => setMessage(null), 10000);
+      setLoading(null);
+      backupTimerRef.current = setTimeout(() => setBackupMsg(null), 10000);
     }
   }
+
+  async function handleVerifyBackup() {
+    setLoading('verify');
+    setVerifyResult(null);
+    if (verifyTimerRef.current) clearTimeout(verifyTimerRef.current);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/backup/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setVerifyResult({ type: 'success', lines: data.output || [] });
+      } else {
+        setVerifyResult({ type: 'error', text: data.error || 'Verification failed. Check server logs.' });
+      }
+    } catch (err) {
+      setVerifyResult({ type: 'error', text: err.message || 'Network error.' });
+    } finally {
+      setLoading(null);
+      verifyTimerRef.current = setTimeout(() => setVerifyResult(null), 30000);
+    }
+  }
+
+  const busy = loading !== null;
 
   return (
     <div style={{ maxWidth: 560 }}>
@@ -99,36 +132,86 @@ function SystemSettings() {
           Manual trigger for the daily automated backup to Backblaze B2. The scheduled backup runs automatically at 2am UTC.
         </p>
 
-        <button
-          onClick={handleRunBackup}
-          disabled={loading}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '9px 20px', borderRadius: AD.radiusMd,
-            background: loading ? AD.bgCardTint : AD.blueText,
-            border: `1px solid ${loading ? AD.border : AD.blueText}`,
-            color: loading ? AD.textSecondary : '#fff',
-            fontSize: 14, fontWeight: 500, fontFamily: AD.fontSans,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            transition: 'background 0.15s, color 0.15s',
-          }}
-        >
-          {loading
-            ? <><i className="ph ph-circle-notch" style={{ fontSize: 15, animation: 'spin 0.8s linear infinite' }} />Running backup...</>
-            : <><i className="ph ph-cloud-arrow-up" style={{ fontSize: 15 }} />Run Backup Now</>
-          }
-        </button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button
+            onClick={handleRunBackup}
+            disabled={busy}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '9px 20px', borderRadius: AD.radiusMd,
+              background: busy ? AD.bgCardTint : AD.blueText,
+              border: `1px solid ${busy ? AD.border : AD.blueText}`,
+              color: busy ? AD.textSecondary : '#fff',
+              fontSize: 14, fontWeight: 500, fontFamily: AD.fontSans,
+              cursor: busy ? 'not-allowed' : 'pointer',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+          >
+            {loading === 'backup'
+              ? <><i className="ph ph-circle-notch" style={{ fontSize: 15, animation: 'spin 0.8s linear infinite' }} />Running backup...</>
+              : <><i className="ph ph-cloud-arrow-up" style={{ fontSize: 15 }} />Run Backup Now</>
+            }
+          </button>
 
-        {message && (
+          <button
+            onClick={handleVerifyBackup}
+            disabled={busy}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '9px 20px', borderRadius: AD.radiusMd,
+              background: busy ? AD.bgCardTint : 'transparent',
+              border: `1px solid ${busy ? AD.border : AD.blueLight}`,
+              color: busy ? AD.textSecondary : AD.blueLight,
+              fontSize: 14, fontWeight: 500, fontFamily: AD.fontSans,
+              cursor: busy ? 'not-allowed' : 'pointer',
+              transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+            }}
+          >
+            {loading === 'verify'
+              ? <><i className="ph ph-circle-notch" style={{ fontSize: 15, animation: 'spin 0.8s linear infinite' }} />Verifying backup...</>
+              : <><i className="ph ph-shield-check" style={{ fontSize: 15 }} />Verify Latest Backup</>
+            }
+          </button>
+        </div>
+
+        {backupMsg && (
           <div style={{
             marginTop: 16, padding: '10px 14px', borderRadius: AD.radiusMd,
-            background: message.type === 'success' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-            border: `1px solid ${message.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-            color: message.type === 'success' ? '#4ade80' : '#f87171',
+            background: backupMsg.type === 'success' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+            border: `1px solid ${backupMsg.type === 'success' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            color: backupMsg.type === 'success' ? '#4ade80' : '#f87171',
             fontSize: 13, fontFamily: AD.fontSans, display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            <i className={`ph ${message.type === 'success' ? 'ph-check-circle' : 'ph-warning-circle'}`} style={{ fontSize: 16, flexShrink: 0 }} />
-            {message.text}
+            <i className={`ph ${backupMsg.type === 'success' ? 'ph-check-circle' : 'ph-warning-circle'}`} style={{ fontSize: 16, flexShrink: 0 }} />
+            {backupMsg.text}
+          </div>
+        )}
+
+        {verifyResult && verifyResult.type === 'success' && (
+          <div style={{
+            marginTop: 16, padding: '12px 14px', borderRadius: AD.radiusMd,
+            background: 'rgba(34,197,94,0.08)',
+            border: '1px solid rgba(34,197,94,0.25)',
+          }}>
+            {verifyResult.lines.map((line, i) => (
+              <div key={i} style={{
+                fontSize: 12, fontFamily: 'Roboto Mono, monospace',
+                color: '#4ade80', lineHeight: 1.7, whiteSpace: 'pre',
+              }}>{line}</div>
+            ))}
+          </div>
+        )}
+
+        {verifyResult && verifyResult.type === 'error' && (
+          <div style={{
+            marginTop: 16, padding: '10px 14px', borderRadius: AD.radiusMd,
+            background: 'rgba(239,68,68,0.12)',
+            border: '1px solid rgba(239,68,68,0.3)',
+            color: '#f87171', fontSize: 13, fontFamily: AD.fontSans,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <i className="ph ph-warning-circle" style={{ fontSize: 16, flexShrink: 0 }} />
+            {verifyResult.text}
           </div>
         )}
       </div>
