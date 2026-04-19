@@ -332,6 +332,10 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(contractor_id, jobber_client_id)
   )`);
+  await pool.query(`ALTER TABLE pending_referrals ADD COLUMN IF NOT EXISTS needs_admin_verification BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE pending_referrals ADD COLUMN IF NOT EXISTS jobber_name_matches JSONB`);
+  await pool.query(`ALTER TABLE pending_referrals ADD COLUMN IF NOT EXISTS referrer_lookup_attempted BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE pending_referrals ADD COLUMN IF NOT EXISTS credit_email_sent_at TIMESTAMPTZ`);
 
   // ── ERROR LOG ─────────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS error_log (
