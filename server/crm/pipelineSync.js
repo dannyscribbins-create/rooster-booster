@@ -40,24 +40,6 @@ function classifyPipelineStatus(client) {
   return 'not_sold';
 }
 
-// ── PHONE / EMAIL EXTRACTORS ──────────────────────────────────────────────────
-// Used by pendingReferral.js to extract contact info from Jobber client objects.
-function getPrimaryPhone(client) {
-  const phones = client.phones || [];
-  if (phones.length === 0) return null;
-  const primary = phones.find(p =>
-    p.description?.toLowerCase().includes('main') ||
-    p.description?.toLowerCase().includes('mobile')
-  ) || phones[0];
-  return primary?.number || null;
-}
-
-function getPrimaryEmail(client) {
-  const emails = client.emails || [];
-  if (emails.length === 0) return null;
-  return emails[0]?.address || null;
-}
-
 // ── REFERRED BY FIELD EXTRACTOR ───────────────────────────────────────────────
 // Input: a single Jobber client object
 // Output: string value of "Referred by" custom field, or null
@@ -180,8 +162,6 @@ async function runFullSync(contractorId) {
         nodes {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
-          phones { number description }
-          emails { address description }
           quotes(first: 10) { nodes { id quoteStatus } }
           jobs(first: 10) {
             nodes {
@@ -300,8 +280,6 @@ async function runIncrementalSync(contractorId) {
         nodes {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
-          phones { number description }
-          emails { address description }
           quotes(first: 10) { nodes { id quoteStatus } }
           jobs(first: 10) {
             nodes {
@@ -387,4 +365,4 @@ async function runScheduledSync() {
   }
 }
 
-module.exports = { classifyPipelineStatus, getReferredByValue, getPrimaryPhone, getPrimaryEmail, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync };
+module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync };

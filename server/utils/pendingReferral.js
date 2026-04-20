@@ -4,7 +4,21 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('./retryWithBackoff');
-const { getPrimaryPhone, getPrimaryEmail } = require('../crm/pipelineSync');
+function getPrimaryPhone(client) {
+  const phones = client.phones || [];
+  if (phones.length === 0) return null;
+  const primary = phones.find(p =>
+    p.description?.toLowerCase().includes('main') ||
+    p.description?.toLowerCase().includes('mobile')
+  ) || phones[0];
+  return primary?.number || null;
+}
+
+function getPrimaryEmail(client) {
+  const emails = client.emails || [];
+  if (emails.length === 0) return null;
+  return emails[0]?.address || null;
+}
 
 const resendShouldRetry = (error) => {
   const status = error?.response?.status || error?.statusCode;
