@@ -224,6 +224,14 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
 // ── LOOKUP REFERRER IN JOBBER ─────────────────────────────────────────────────
 // Searches the contractor's Jobber account for a client whose name matches the
 // referrer name from the "Referred by" field.
+//
+// Jobber's name filter searches by first or last name individually, not combined
+// full-name strings — so we try multiple strategies in sequence, stopping at the
+// first one that returns results:
+//   Strategy 1: firstName + lastName as separate filter params (most precise)
+//   Strategy 2: full name string via name filter (fallback if API rejects split)
+//   Strategy 3: first part of name only (split on last space)
+//   Strategy 4: last part of name only (split on last space)
 async function lookupReferrerInJobber(referredByName, contractorId) {
   const tokenResult = await pool.query(
     'SELECT access_token FROM tokens WHERE contractor_id = $1',
@@ -235,36 +243,72 @@ async function lookupReferrerInJobber(referredByName, contractorId) {
     return { matches: [], token: null };
   }
 
-  const safeName = referredByName.replace(/"/g, '');
-  const query = `{
-    clients(filter: { name: "${safeName}" }) {
-      nodes {
-        id
-        firstName
-        lastName
-        phones { number description }
-        emails { address description }
+  const safeName = referredByName.replace(/"/g, '').trim();
+  const lastSpaceIdx = safeName.lastIndexOf(' ');
+  const firstPart = lastSpaceIdx > -1 ? safeName.slice(0, lastSpaceIdx) : safeName;
+  const lastPart = lastSpaceIdx > -1 ? safeName.slice(lastSpaceIdx + 1) : '';
+
+  const clientFields = `id firstName lastName phones { number description } emails { address description }`;
+
+  const runQuery = async (filter) => {
+    const gql = `{ clients(filter: { ${filter} }) { nodes { ${clientFields} } } }`;
+    const res = await retryWithBackoff(
+      () => axios.post(
+        'https://api.getjobber.com/api/graphql',
+        { query: gql },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          },
+        }
+      ),
+      { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+    );
+    return res.data?.data?.clients?.nodes || [];
+  };
+
+  // Strategy 1: firstName + lastName as separate filter params
+  if (lastPart) {
+    try {
+      const nodes = await runQuery(`firstName: "${firstPart}", lastName: "${lastPart}"`);
+      if (nodes.length > 0) {
+        console.log('[pendingReferral] Referrer found via strategy 1 (firstName + lastName)');
+        return { matches: nodes, token };
       }
+    } catch (err) {
+      // Jobber may not support firstName/lastName filter — fall through to strategy 2
+      console.warn('[pendingReferral] Strategy 1 (firstName/lastName) unsupported:', err.message);
     }
-  }`;
+  }
 
-  const response = await retryWithBackoff(
-    () => axios.post(
-      'https://api.getjobber.com/api/graphql',
-      { query },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-        },
-      }
-    ),
-    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-  );
+  // Strategy 2: full name as-is
+  const nodesFullName = await runQuery(`name: "${safeName}"`);
+  if (nodesFullName.length > 0) {
+    console.log('[pendingReferral] Referrer found via strategy 2 (full name)');
+    return { matches: nodesFullName, token };
+  }
 
-  const nodes = response.data?.data?.clients?.nodes || [];
-  return { matches: nodes, token };
+  // Strategy 3: first part of name only (everything before the last space)
+  if (firstPart && firstPart !== safeName) {
+    const nodesFirst = await runQuery(`name: "${firstPart}"`);
+    if (nodesFirst.length > 0) {
+      console.log('[pendingReferral] Referrer found via strategy 3 (first name part)');
+      return { matches: nodesFirst, token };
+    }
+  }
+
+  // Strategy 4: last part of name only (last word)
+  if (lastPart) {
+    const nodesLast = await runQuery(`name: "${lastPart}"`);
+    if (nodesLast.length > 0) {
+      console.log('[pendingReferral] Referrer found via strategy 4 (last name part)');
+      return { matches: nodesLast, token };
+    }
+  }
+
+  return { matches: [], token };
 }
 
 // ── CHECK AND CREATE PENDING REFERRAL ─────────────────────────────────────────
