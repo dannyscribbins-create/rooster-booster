@@ -107,8 +107,12 @@ async function sendPendingInviteEmail(pendingRecord, contractorId) {
 // ── SEND PENDING INVITE SMS ───────────────────────────────────────────────────
 // Sends an invite SMS to the referrer's phone number.
 // Failure is logged but never thrown — a failed invite must never crash the sync.
-// TODO: Activate SMS invite after Twilio 10DLC registration is complete (requires LLC + EIN)
+// Gated on TWILIO_10DLC_ACTIVE=true — flip this in Railway after 10DLC approval.
 async function sendPendingInviteSMS(pendingRecord, contractorId) {
+  if (process.env.NODE_ENV !== 'production' || process.env.TWILIO_10DLC_ACTIVE !== 'true') {
+    console.warn('[pendingReferral] SMS invite skipped — 10DLC not yet active');
+    return;
+  }
   try {
     const settingsResult = await pool.query(
       'SELECT company_name FROM contractor_settings WHERE contractor_id = $1',
