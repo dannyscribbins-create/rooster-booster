@@ -57,7 +57,7 @@ function getReferredByValue(client) {
 // Pre-start-date clients: written to pipeline_cache with pre_start_date=true
 // and inserted into flagged_referrals if initial_sync is still running.
 // Pre-start-date clients never trigger bonus logic (checked upstream by hard gate).
-async function syncSingleClient(contractorId, client, referralStartDate) {
+async function syncSingleClient(contractorId, client, referralStartDate, allClients = []) {
   const referredBy = getReferredByValue(client);
   if (!referredBy) return; // not a referred client — do nothing
 
@@ -89,7 +89,7 @@ async function syncSingleClient(contractorId, client, referralStartDate) {
   // batching or caching the user lookup. For MVP with single contractor, this is fine.
   try {
     const { checkAndCreatePendingReferral } = require('../utils/pendingReferral');
-    await checkAndCreatePendingReferral(contractorId, client, referredBy);
+    await checkAndCreatePendingReferral(contractorId, client, referredBy, allClients);
   } catch (err) {
     await logError({ req: null, error: err });
     console.error('[pipelineSync] pending referral check failed:', err.message);
@@ -210,7 +210,7 @@ async function runFullSync(contractorId) {
   for (const client of allClients) {
     const referredBy = getReferredByValue(client);
     if (referredBy) referredCount++;
-    await syncSingleClient(contractorId, client, referralStartDate);
+    await syncSingleClient(contractorId, client, referralStartDate, allClients);
   }
 
   // Mark initial sync complete
@@ -324,7 +324,7 @@ async function runIncrementalSync(contractorId) {
   console.log(`[pipelineSync] Incremental sync fetched ${allClients.length} updated clients`);
 
   for (const client of allClients) {
-    await syncSingleClient(contractorId, client, referralStartDate);
+    await syncSingleClient(contractorId, client, referralStartDate, allClients);
   }
 
   await pool.query(

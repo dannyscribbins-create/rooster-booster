@@ -221,41 +221,30 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
   }
 }
 
-// ── LOOKUP REFERRER IN JOBBER ─────────────────────────────────────────────────
-// Searches the contractor's Jobber account for a client whose name matches the
-// referrer name from the "Referred by" field.
-//
-// Jobber's name filter searches by first or last name individually, not combined
-// full-name strings — so we try multiple strategies in sequence, stopping at the
-// first one that returns results:
-//   Strategy 1: firstName + lastName as separate filter params (most precise)
-//   Strategy 2: full name string via name filter (fallback if API rejects split)
-//   Strategy 3: first part of name only (split on last space)
-//   Strategy 4: last part of name only (split on last space)
-async function lookupReferrerInJobber(referredByName, contractorId) {
+// ── FETCH REFERRER CONTACT ────────────────────────────────────────────────────
+// Targeted single-client Jobber query to get phones and emails for a known client ID.
+// Called only after a single name match — one API call, not a bulk fetch.
+async function fetchReferrerContact(jobberId, contractorId) {
   const tokenResult = await pool.query(
     'SELECT access_token FROM tokens WHERE contractor_id = $1',
     [contractorId]
   );
   const token = tokenResult.rows[0]?.access_token;
-  if (!token) {
-    console.warn(`[pendingReferral] No access token for contractor ${contractorId} — cannot look up referrer`);
-    return { matches: [], token: null };
-  }
+  if (!token) return { phone: null, email: null };
 
-  const safeName = referredByName.replace(/"/g, '').trim();
-  const lastSpaceIdx = safeName.lastIndexOf(' ');
-  const firstPart = lastSpaceIdx > -1 ? safeName.slice(0, lastSpaceIdx) : safeName;
-  const lastPart = lastSpaceIdx > -1 ? safeName.slice(lastSpaceIdx + 1) : '';
-
-  const clientFields = `id firstName lastName phones { number description } emails { address description }`;
-
-  const runQuery = async (filter) => {
-    const gql = `{ clients(filter: { ${filter} }) { nodes { ${clientFields} } } }`;
-    const res = await retryWithBackoff(
+  try {
+    const response = await retryWithBackoff(
       () => axios.post(
         'https://api.getjobber.com/api/graphql',
-        { query: gql },
+        {
+          query: `query GetReferrerContact($id: EncodedId!) {
+            client(id: $id) {
+              phones { number description }
+              emails { address description }
+            }
+          }`,
+          variables: { id: jobberId },
+        },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -266,49 +255,14 @@ async function lookupReferrerInJobber(referredByName, contractorId) {
       ),
       { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
     );
-    return res.data?.data?.clients?.nodes || [];
-  };
-
-  // Strategy 1: firstName + lastName as separate filter params
-  if (lastPart) {
-    try {
-      const nodes = await runQuery(`firstName: "${firstPart}", lastName: "${lastPart}"`);
-      if (nodes.length > 0) {
-        console.log('[pendingReferral] Referrer found via strategy 1 (firstName + lastName)');
-        return { matches: nodes, token };
-      }
-    } catch (err) {
-      // Jobber may not support firstName/lastName filter — fall through to strategy 2
-      console.warn('[pendingReferral] Strategy 1 (firstName/lastName) unsupported:', err.message);
-    }
+    const c = response.data?.data?.client;
+    if (!c) return { phone: null, email: null };
+    return { phone: getPrimaryPhone(c), email: getPrimaryEmail(c) };
+  } catch (err) {
+    await logError({ req: null, error: err });
+    console.error('[pendingReferral] fetchReferrerContact failed:', err.message);
+    return { phone: null, email: null };
   }
-
-  // Strategy 2: full name as-is
-  const nodesFullName = await runQuery(`name: "${safeName}"`);
-  if (nodesFullName.length > 0) {
-    console.log('[pendingReferral] Referrer found via strategy 2 (full name)');
-    return { matches: nodesFullName, token };
-  }
-
-  // Strategy 3: first part of name only (everything before the last space)
-  if (firstPart && firstPart !== safeName) {
-    const nodesFirst = await runQuery(`name: "${firstPart}"`);
-    if (nodesFirst.length > 0) {
-      console.log('[pendingReferral] Referrer found via strategy 3 (first name part)');
-      return { matches: nodesFirst, token };
-    }
-  }
-
-  // Strategy 4: last part of name only (last word)
-  if (lastPart) {
-    const nodesLast = await runQuery(`name: "${lastPart}"`);
-    if (nodesLast.length > 0) {
-      console.log('[pendingReferral] Referrer found via strategy 4 (last name part)');
-      return { matches: nodesLast, token };
-    }
-  }
-
-  return { matches: [], token };
 }
 
 // ── CHECK AND CREATE PENDING REFERRAL ─────────────────────────────────────────
@@ -316,7 +270,7 @@ async function lookupReferrerInJobber(referredByName, contractorId) {
 // If the referrer has no app account, creates a pending_referrals record then
 // looks them up in Jobber by name to find their contact info for the auto-invite.
 // No-op if user account already exists or record already pending.
-async function checkAndCreatePendingReferral(contractorId, client, referredByName) {
+async function checkAndCreatePendingReferral(contractorId, client, referredByName, allClients = []) {
   // Check if referrer already has an account
   const userResult = await pool.query(
     'SELECT id FROM users WHERE LOWER(full_name) = LOWER($1) AND deleted_at IS NULL LIMIT 1',
@@ -355,7 +309,18 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
   let inviteSentAt = null;
 
   try {
-    const { matches } = await lookupReferrerInJobber(referredByName, contractorId);
+    // ── REFERRER NAME MATCH ───────────────────────────────────────────────────────
+    // Match referredByName against the full client list already fetched during sync.
+    // No extra Jobber API call needed — the data is already in memory.
+    // Jobber ClientFilterAttributes does not support name filtering — confirmed in
+    // GraphiQL. Local matching is the correct approach.
+    const normalizedReferrerName = referredByName.trim().toLowerCase();
+
+    const matches = allClients.filter(c => {
+      const fullName = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
+      const reverseName = `${c.lastName || ''} ${c.firstName || ''}`.trim().toLowerCase();
+      return fullName === normalizedReferrerName || reverseName === normalizedReferrerName;
+    });
 
     await pool.query(
       'UPDATE pending_referrals SET referrer_lookup_attempted=true WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -363,10 +328,8 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
     );
 
     if (matches.length === 1) {
-      // Single match — extract contact info and send auto-invite
-      const referrerClient = matches[0];
-      const referrerPhone = getPrimaryPhone(referrerClient);
-      const referrerEmail = getPrimaryEmail(referrerClient);
+      // Single match — fetch contact info via targeted Jobber query (bulk sync omits phones/emails)
+      const { phone: referrerPhone, email: referrerEmail } = await fetchReferrerContact(matches[0].id, contractorId);
 
       await pool.query(
         `UPDATE pending_referrals
@@ -396,9 +359,7 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
       // No match or multiple matches — flag for admin verification
       const matchData = matches.map(m => ({
         id: m.id,
-        name: `${m.firstName} ${m.lastName}`.trim(),
-        phone: getPrimaryPhone(m),
-        email: getPrimaryEmail(m),
+        name: `${m.firstName || ''} ${m.lastName || ''}`.trim(),
       }));
 
       await pool.query(
