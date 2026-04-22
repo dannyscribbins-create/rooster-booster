@@ -392,6 +392,8 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
       if (!isRetry) {
         const referredEmail = getPrimaryEmail(client);
         const referredPhone = getPrimaryPhone(client);
+        // diagnostic log — intentional
+        console.log('[pendingReferral] credit attribution — referred email:', referredEmail, 'referred phone:', referredPhone);
         if (referredEmail || referredPhone) {
           await sendCreditAttributionEmail(
             {
@@ -404,6 +406,11 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
             },
             contractorId
           );
+          // diagnostic log — intentional
+          console.log('[pendingReferral] credit attribution email sent to:', referredEmail);
+        } else {
+          // diagnostic log — intentional
+          console.warn('[pendingReferral] credit attribution skipped — no contact info found for referred client:', clientName);
         }
       }
 
