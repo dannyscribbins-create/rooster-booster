@@ -7,39 +7,72 @@ const axios = require('axios');
 const { pool } = require('../../db');
 const { syncSingleClient } = require('../../crm/pipelineSync');
 const { logError } = require('../../middleware/errorLogger');
+const { retryWithBackoff } = require('../../utils/retryWithBackoff');
+const { jobberShouldRetry } = require('../../utils/retryHelpers');
+
+// ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
+// Returns true if the request passes verification, false and sends 401 otherwise.
+// TODO: confirm exact Jobber webhook signature header name before Marketplace submission
+function verifyJobberWebhookSignature(req, res) {
+  const signature = req.headers['x-jobber-hmac-sha256'];
+  const secret    = process.env.JOBBER_CLIENT_SECRET;
+
+  if (!secret) {
+    console.error('[jobber-webhook] JOBBER_CLIENT_SECRET not set — cannot verify signature');
+    res.status(401).json({ error: 'Webhook secret not configured' });
+    return false;
+  }
+  if (!signature) {
+    console.warn('[jobber-webhook] Missing x-jobber-hmac-sha256 header — rejecting request');
+    res.status(401).json({ error: 'Missing signature' });
+    return false;
+  }
+
+  const expectedSig = crypto.createHmac('sha256', secret).update(req.body).digest('base64');
+  if (signature !== expectedSig) {
+    console.warn('[jobber-webhook] Signature mismatch — rejecting request');
+    res.status(401).json({ error: 'Invalid signature' });
+    return false;
+  }
+
+  return true;
+}
 
 // ── FULL CLIENT FETCH ─────────────────────────────────────────────────────────
 // Fetches complete client data from Jobber by ID, including quotes/jobs/invoices
 // needed for accurate pipeline status classification. Called from webhook handlers
 // so classifyPipelineStatus gets full data rather than the sparse webhook payload.
 async function fetchFullClient(clientId, token) {
-  const response = await axios.post(
-    'https://api.getjobber.com/api/graphql',
-    {
-      query: `query GetClient($id: EncodedId!) {
-        client(id: $id) {
-          id firstName lastName createdAt
-          customFields { ... on CustomFieldText { label valueText } }
-          phones { number description }
-          emails { address description }
-          quotes(first: 10) { nodes { id quoteStatus } }
-          jobs(first: 10) {
-            nodes {
-              id jobStatus
-              invoices(first: 5) { nodes { invoiceStatus } }
+  const response = await retryWithBackoff(
+    () => axios.post(
+      'https://api.getjobber.com/api/graphql',
+      {
+        query: `query GetClient($id: EncodedId!) {
+          client(id: $id) {
+            id firstName lastName createdAt
+            customFields { ... on CustomFieldText { label valueText } }
+            phones { number description }
+            emails { address description }
+            quotes(first: 10) { nodes { id quoteStatus } }
+            jobs(first: 10) {
+              nodes {
+                id jobStatus
+                invoices(first: 5) { nodes { invoiceStatus } }
+              }
             }
           }
-        }
-      }`,
-      variables: { id: clientId },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+        }`,
+        variables: { id: clientId },
       },
-    }
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+        },
+      }
+    ),
+    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
   );
 
   if (!response.data?.data?.client) {
@@ -52,31 +85,7 @@ async function fetchFullClient(clientId, token) {
 // Called by Jobber when a contractor removes Rooster Booster from their Jobber account.
 // Jobber expects a 200 response or it will retry — we always return 200, even on DB failure.
 router.post('/jobber/disconnect', async (req, res) => {
-  // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────
-  // TODO: confirm exact Jobber webhook signature header name before Marketplace submission
-  const signature = req.headers['x-jobber-hmac-sha256'];
-  const secret = process.env.JOBBER_CLIENT_SECRET;
-
-  if (!secret) {
-    console.error('[jobber-webhook] JOBBER_CLIENT_SECRET not set — cannot verify signature');
-    return res.status(401).json({ error: 'Webhook secret not configured' });
-  }
-
-  if (!signature) {
-    console.warn('[jobber-webhook] Missing x-jobber-hmac-sha256 header — rejecting request');
-    return res.status(401).json({ error: 'Missing signature' });
-  }
-
-  const rawBody = req.body;
-  const expectedSig = crypto
-    .createHmac('sha256', secret)
-    .update(rawBody)
-    .digest('base64');
-
-  if (signature !== expectedSig) {
-    console.warn('[jobber-webhook] Signature mismatch — rejecting request');
-    return res.status(401).json({ error: 'Invalid signature' });
-  }
+  if (!verifyJobberWebhookSignature(req, res)) return;
 
   const payload = JSON.parse(req.body.toString());
   // ── CONTRACTOR IDENTIFICATION ─────────────────────────────────────────────
@@ -125,25 +134,7 @@ router.post('/jobber/disconnect', async (req, res) => {
 // Jobber fires this when a new client profile is created.
 // Responds 200 immediately — sync runs async to stay within Jobber's response window.
 router.post('/jobber/client-create', async (req, res) => {
-  // ── HMAC SIGNATURE VERIFICATION ─────────────────────────────────────────────
-  const signature = req.headers['x-jobber-hmac-sha256'];
-  const secret    = process.env.JOBBER_CLIENT_SECRET;
-
-  if (!secret) {
-    console.error('[jobber-webhook] JOBBER_CLIENT_SECRET not set — cannot verify signature');
-    return res.status(401).json({ error: 'Webhook secret not configured' });
-  }
-  if (!signature) {
-    console.warn('[jobber-webhook] Missing x-jobber-hmac-sha256 header on client-create');
-    return res.status(401).json({ error: 'Missing signature' });
-  }
-
-  const rawBody     = req.body;
-  const expectedSig = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
-  if (signature !== expectedSig) {
-    console.warn('[jobber-webhook] Signature mismatch on client-create');
-    return res.status(401).json({ error: 'Invalid signature' });
-  }
+  if (!verifyJobberWebhookSignature(req, res)) return;
 
   const payload = JSON.parse(req.body.toString());
   // Respond 200 immediately — Jobber requires a fast response
@@ -198,25 +189,7 @@ router.post('/jobber/client-create', async (req, res) => {
 // Jobber fires this when a client profile is updated (custom fields, job status, etc).
 // Responds 200 immediately — sync runs async.
 router.post('/jobber/client-update', async (req, res) => {
-  // ── HMAC SIGNATURE VERIFICATION ─────────────────────────────────────────────
-  const signature = req.headers['x-jobber-hmac-sha256'];
-  const secret    = process.env.JOBBER_CLIENT_SECRET;
-
-  if (!secret) {
-    console.error('[jobber-webhook] JOBBER_CLIENT_SECRET not set — cannot verify signature');
-    return res.status(401).json({ error: 'Webhook secret not configured' });
-  }
-  if (!signature) {
-    console.warn('[jobber-webhook] Missing x-jobber-hmac-sha256 header on client-update');
-    return res.status(401).json({ error: 'Missing signature' });
-  }
-
-  const rawBody     = req.body;
-  const expectedSig = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
-  if (signature !== expectedSig) {
-    console.warn('[jobber-webhook] Signature mismatch on client-update');
-    return res.status(401).json({ error: 'Invalid signature' });
-  }
+  if (!verifyJobberWebhookSignature(req, res)) return;
 
   const payload = JSON.parse(req.body.toString());
   // Respond 200 immediately

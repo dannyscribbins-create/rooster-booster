@@ -4,6 +4,16 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('./retryWithBackoff');
+const { resendShouldRetry, twilioShouldRetry, jobberShouldRetry } = require('./retryHelpers');
+function escapeHtml(s) {
+  if (!s || typeof s !== 'string') return '';
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function getPrimaryPhone(client) {
   const phones = client.phones || [];
   if (phones.length === 0) return null;
@@ -19,28 +29,6 @@ function getPrimaryEmail(client) {
   if (emails.length === 0) return null;
   return emails[0]?.address || null;
 }
-
-const resendShouldRetry = (error) => {
-  const status = error?.response?.status || error?.statusCode;
-  if (!status) return true;
-  if (status >= 500) return true;
-  return false;
-};
-
-const twilioShouldRetry = (error) => {
-  const code = error?.code;
-  if (!code) return true;
-  if (String(code).startsWith('2')) return true;
-  return false;
-};
-
-const jobberShouldRetry = (error) => {
-  const status = error?.response?.status;
-  if (!status) return true;
-  if (status === 401) return false;
-  if (status >= 500) return true;
-  return false;
-};
 
 function getTwilioClient() {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
@@ -58,13 +46,15 @@ async function sendPendingInviteEmail(pendingRecord, contractorId) {
       [contractorId]
     );
     const settings    = settingsResult.rows[0] || {};
-    const companyName = settings.company_name || 'Your contractor';
-    const companyPhone = settings.company_phone || '';
+    const companyName = escapeHtml(settings.company_name || 'Your contractor');
+    const companyPhone = escapeHtml(settings.company_phone || '');
     const logoUrl     = settings.logo_url || settings.app_logo_url || null;
     const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+    const safeLogoUrl = escapeHtml(logoUrl || '');
+    const safeReferrerName = escapeHtml(pendingRecord.referred_by_name || '');
 
     const logoHtml = logoUrl
-      ? `<img src="${logoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
+      ? `<img src="${safeLogoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
       : '';
 
     // TODO: Update CTA link to App Store URL after Capacitor build.
@@ -80,7 +70,7 @@ async function sendPendingInviteEmail(pendingRecord, contractorId) {
             ${logoHtml}
             <h2 style="color:#012854;margin:0 0 12px;font-size:22px;">You have a referral reward waiting</h2>
             <p style="color:#444;margin:0 0 24px;line-height:1.6;font-size:15px;">
-              ${pendingRecord.referred_by_name}, someone you referred to ${companyName} is moving forward.
+              ${safeReferrerName}, someone you referred to ${companyName} is moving forward.
               You've earned a reward — create your account to claim it.
             </p>
             <div style="text-align:center;margin-bottom:24px;">
@@ -153,12 +143,16 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
       [contractorId]
     );
     const settings = settingsResult.rows[0] || {};
-    const companyName = settings.company_name || 'Your contractor';
+    const companyName = escapeHtml(settings.company_name || 'Your contractor');
+    const companyPhone = escapeHtml(settings.company_phone || '');
     const logoUrl = settings.logo_url || settings.app_logo_url || null;
-    const appUrl = process.env.FRONTEND_URL || 'https://rooster-booster.vercel.app';
+    const safeLogoUrl = escapeHtml(logoUrl || '');
+    const appUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+    const safeReferredName = escapeHtml(referredRecord.referred_name || '');
+    const safeReferrerName = escapeHtml(referredRecord.referred_by_name || '');
 
     const logoHtml = logoUrl
-      ? `<img src="${logoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
+      ? `<img src="${safeLogoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
       : '';
 
     await retryWithBackoff(
@@ -171,17 +165,17 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
             ${logoHtml}
             <h2 style="color:#012854;margin:0 0 16px;font-size:22px;">Help us give credit where it's due</h2>
             <p style="color:#444;margin:0 0 16px;line-height:1.6;">
-              Hi ${referredRecord.referred_name}, someone referred you to ${companyName} —
+              Hi ${safeReferredName}, someone referred you to ${companyName} —
               and we want to make sure they get the credit (and reward) they deserve.
             </p>
             <p style="color:#444;margin:0 0 24px;line-height:1.6;">
-              We believe the person who referred you is <strong>${referredRecord.referred_by_name}</strong>.
+              We believe the person who referred you is <strong>${safeReferrerName}</strong>.
               Forward this email to them so they can log in and claim their reward, or simply
               reply to this email with their name and best contact info and we'll take it from there.
             </p>
             <div style="text-align:center;margin:0 0 32px;">
               <a href="${appUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:600;font-size:15px;">
-                Forward to ${referredRecord.referred_by_name}
+                Forward to ${safeReferrerName}
               </a>
             </div>
             <hr style="border:none;border-top:1px solid #eee;margin:0 0 24px;" />
@@ -195,7 +189,7 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
               </a>
             </div>
             <p style="color:#aaa;font-size:12px;margin:0;text-align:center;">
-              ${companyName}${settings.company_phone ? ' · ' + settings.company_phone : ''}
+              ${companyName}${companyPhone ? ' · ' + companyPhone : ''}
               <br/>You're receiving this because you were recently referred to us.
               Reply to this email at any time.
             </p>
@@ -269,7 +263,13 @@ async function fetchReferrerContact(jobberId, contractorId) {
 // Called from syncSingleClient for every referred client.
 // If the referrer has no app account, creates a pending_referrals record then
 // looks them up in Jobber by name to find their contact info for the auto-invite.
-// No-op if user account already exists or record already pending.
+// No-op if user account already exists or record already processed.
+//
+// MVP: webhook path calls this with allClients=[] because the full client list is
+// not available per-request. When allClients=[] the name match always fails and the
+// record is flagged needs_admin_verification=true. The next scheduled full sync
+// (which has allClients populated) will re-attempt the name match for those records
+// via the isRetry path below.
 async function checkAndCreatePendingReferral(contractorId, client, referredByName, allClients = []) {
   // Check if referrer already has an account
   const userResult = await pool.query(
@@ -278,42 +278,59 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
   );
   if (userResult.rows.length > 0) return;
 
-  // Check if a pending record already exists for this client
-  const existingResult = await pool.query(
-    'SELECT id FROM pending_referrals WHERE contractor_id = $1 AND jobber_client_id = $2',
-    [contractorId, client.id]
-  );
-  if (existingResult.rows.length > 0) return;
-
   const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
 
-  // Insert with null contact info — populated after Jobber lookup below
-  const insertResult = await pool.query(
-    `INSERT INTO pending_referrals
-       (contractor_id, jobber_client_id, client_name, referred_by_name,
-        referred_by_phone, referred_by_email, invite_channel,
-        invite_sent_at, status)
-     VALUES ($1, $2, $3, $4, NULL, NULL, 'none', NULL, 'pending')
-     ON CONFLICT (contractor_id, jobber_client_id) DO NOTHING
-     RETURNING id, referred_by_name, referred_by_email, referred_by_phone`,
-    [contractorId, client.id, clientName, referredByName]
+  // Check if a pending record already exists for this client
+  const existingResult = await pool.query(
+    `SELECT id, needs_admin_verification, invite_channel, status
+     FROM pending_referrals WHERE contractor_id = $1 AND jobber_client_id = $2`,
+    [contractorId, client.id]
   );
 
-  if (insertResult.rows.length === 0) return; // conflict — already existed
+  // Allow re-processing only if the record was flagged for admin verification with no
+  // invite sent and we now have a real client list. This repairs webhook-created records
+  // on the next scheduled full sync.
+  let isRetry = false;
+  if (existingResult.rows.length > 0) {
+    const rec = existingResult.rows[0];
+    if (
+      rec.needs_admin_verification &&
+      rec.invite_channel === 'none' &&
+      rec.status === 'pending' &&
+      allClients.length > 0
+    ) {
+      isRetry = true;
+    } else {
+      return;
+    }
+  }
+
+  if (!isRetry) {
+    // Insert with null contact info — populated after Jobber lookup below
+    const insertResult = await pool.query(
+      `INSERT INTO pending_referrals
+         (contractor_id, jobber_client_id, client_name, referred_by_name,
+          referred_by_phone, referred_by_email, invite_channel,
+          invite_sent_at, status)
+       VALUES ($1, $2, $3, $4, NULL, NULL, 'none', NULL, 'pending')
+       ON CONFLICT (contractor_id, jobber_client_id) DO NOTHING
+       RETURNING id`,
+      [contractorId, client.id, clientName, referredByName]
+    );
+
+    if (insertResult.rows.length === 0) return; // conflict — already existed
+  }
 
   // ── REFERRER JOBBER LOOKUP ────────────────────────────────────────────────────
   // The referrer is named in the "Referred by" field but their contact info is in
   // their own Jobber client record — not in the referred person's record.
   // Look them up by name to find their phone/email for the auto-invite.
+  // Jobber ClientFilterAttributes does not support name filtering — confirmed in
+  // GraphiQL. Local matching against allClients is the correct approach.
   let inviteChannel = 'none';
   let inviteSentAt = null;
 
   try {
-    // ── REFERRER NAME MATCH ───────────────────────────────────────────────────────
-    // Match referredByName against the full client list already fetched during sync.
-    // No extra Jobber API call needed — the data is already in memory.
-    // Jobber ClientFilterAttributes does not support name filtering — confirmed in
-    // GraphiQL. Local matching is the correct approach.
     const normalizedReferrerName = referredByName.trim().toLowerCase();
 
     const matches = allClients.filter(c => {
@@ -333,13 +350,14 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
 
       await pool.query(
         `UPDATE pending_referrals
-         SET referred_by_phone=$1, referred_by_email=$2
+         SET referred_by_phone=$1, referred_by_email=$2, needs_admin_verification=false
          WHERE contractor_id=$3 AND jobber_client_id=$4`,
         [referrerPhone, referrerEmail, contractorId, client.id]
       );
 
       const pendingResult = await pool.query(
-        'SELECT * FROM pending_referrals WHERE contractor_id=$1 AND jobber_client_id=$2',
+        `SELECT id, referred_by_name, referred_by_email, referred_by_phone
+         FROM pending_referrals WHERE contractor_id=$1 AND jobber_client_id=$2`,
         [contractorId, client.id]
       );
       const pendingRecord = pendingResult.rows[0];
@@ -369,22 +387,24 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
         [JSON.stringify(matchData), contractorId, client.id]
       );
 
-      // Send "help us give credit" email to the REFERRED PERSON (we have their
-      // contact info from the Jobber client object passed into this function)
-      const referredEmail = getPrimaryEmail(client);
-      const referredPhone = getPrimaryPhone(client);
-      if (referredEmail || referredPhone) {
-        await sendCreditAttributionEmail(
-          {
-            referred_name: clientName,
-            referred_email: referredEmail,
-            referred_phone: referredPhone,
-            referred_by_name: referredByName,
-            client_name: clientName,
-            jobber_client_id: client.id,
-          },
-          contractorId
-        );
+      // Send "help us give credit" email to the REFERRED PERSON only on first creation.
+      // On retry, the referred client already received this email — do not resend.
+      if (!isRetry) {
+        const referredEmail = getPrimaryEmail(client);
+        const referredPhone = getPrimaryPhone(client);
+        if (referredEmail || referredPhone) {
+          await sendCreditAttributionEmail(
+            {
+              referred_name: clientName,
+              referred_email: referredEmail,
+              referred_phone: referredPhone,
+              referred_by_name: referredByName,
+              client_name: clientName,
+              jobber_client_id: client.id,
+            },
+            contractorId
+          );
+        }
       }
 
       const reason = matches.length === 0 ? 'no_jobber_match' : 'multiple_jobber_matches';
@@ -403,10 +423,15 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
     console.error('[pendingReferral] referrer lookup failed:', err.message);
   }
 
-  await pool.query(
-    `INSERT INTO activity_log (event_type, detail) VALUES ('pending_referral_created', $1)`,
-    [`Pending referral created for referrer "${referredByName}" (client: "${clientName}"). Channel: ${inviteChannel}`]
-  );
+  try {
+    await pool.query(
+      `INSERT INTO activity_log (event_type, detail) VALUES ('pending_referral_created', $1)`,
+      [`Pending referral ${isRetry ? 'retry' : 'created'} for referrer "${referredByName}" (client: "${clientName}"). Channel: ${inviteChannel}`]
+    );
+  } catch (logErr) {
+    await logError({ req: null, error: logErr });
+    console.warn('[pendingReferral] activity_log insert failed:', logErr.message);
+  }
 }
 
 // ── MATCH PENDING REFERRAL ────────────────────────────────────────────────────
@@ -426,9 +451,12 @@ async function matchPendingReferral(userId, email, phone) {
   }
 
   if (!match && phone) {
+    // Normalize both sides to digits-only to handle format differences between
+    // Jobber-stored numbers (e.g. "+1 (555) 999-5555") and signup-entered numbers.
     const result = await pool.query(
       `SELECT id FROM pending_referrals
-       WHERE status = 'pending' AND referred_by_phone = $1
+       WHERE status = 'pending'
+         AND REGEXP_REPLACE(referred_by_phone, '[^0-9]', '', 'g') = REGEXP_REPLACE($1, '[^0-9]', '', 'g')
        LIMIT 1`,
       [phone]
     );
@@ -447,18 +475,9 @@ async function matchPendingReferral(userId, email, phone) {
   return match;
 }
 
-// ── MARK MATCH SEEN ───────────────────────────────────────────────────────────
-async function markMatchSeen(pendingId) {
-  await pool.query(
-    'UPDATE pending_referrals SET match_seen_at = NOW() WHERE id = $1',
-    [pendingId]
-  );
-}
-
 module.exports = {
   checkAndCreatePendingReferral,
   matchPendingReferral,
-  markMatchSeen,
   sendPendingInviteEmail,
   sendPendingInviteSMS,
   sendCreditAttributionEmail,

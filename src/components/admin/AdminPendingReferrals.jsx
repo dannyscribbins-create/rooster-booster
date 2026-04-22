@@ -53,16 +53,22 @@ export default function AdminPendingReferrals() {
   const [followUpMsg, setFollowUpMsg]     = useState({});
   const [confirming, setConfirming]       = useState(null);
   const [confirmSuccess, setConfirmSuccess] = useState({});
+  const [actionError, setActionError]     = useState({});
 
   const token = sessionStorage.getItem('rb_admin_token');
 
-  const fetchRecords = useCallback(() => {
+  const fetchRecords = useCallback(async () => {
     setLoading(true);
     const url = `${BACKEND_URL}/api/admin/pending-referrals${includeClosed ? '?include_closed=true' : ''}`;
-    fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { setRecords(d.pending || []); setLoading(false); })
-      .catch(() => setLoading(false));
+    try {
+      const r = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      const d = await r.json();
+      setRecords(d.pending || []);
+    } catch {
+      // keep existing records on failure
+    } finally {
+      setLoading(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [includeClosed]);
 
@@ -70,6 +76,7 @@ export default function AdminPendingReferrals() {
 
   async function handleResend(id) {
     setResending(id);
+    setActionError(prev => { const n = { ...prev }; delete n[`resend_${id}`]; return n; });
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/pending-referrals/${id}/resend`, {
         method: 'POST',
@@ -80,7 +87,7 @@ export default function AdminPendingReferrals() {
       setTimeout(() => setResendSuccess(prev => { const n = { ...prev }; delete n[id]; return n; }), 3000);
       fetchRecords();
     } catch {
-      // silent — no blocking error UI needed for resend
+      setActionError(prev => ({ ...prev, [`resend_${id}`]: 'Failed — try again' }));
     } finally {
       setResending(null);
     }
@@ -88,6 +95,7 @@ export default function AdminPendingReferrals() {
 
   async function handleClose(id) {
     setClosing(id);
+    setActionError(prev => { const n = { ...prev }; delete n[`close_${id}`]; return n; });
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/pending-referrals/${id}/close`, {
         method: 'POST',
@@ -98,7 +106,7 @@ export default function AdminPendingReferrals() {
       setCloseConfirm(null);
       fetchRecords();
     } catch {
-      // silent
+      setActionError(prev => ({ ...prev, [`close_${id}`]: 'Failed — try again' }));
     } finally {
       setClosing(null);
     }
@@ -106,13 +114,13 @@ export default function AdminPendingReferrals() {
 
   async function handleConfirmReferrer(id, candidate) {
     setConfirming(id + candidate.id);
+    setActionError(prev => { const n = { ...prev }; delete n[`confirm_${id}`]; return n; });
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/pending-referrals/${id}/confirm-referrer`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          referrer_phone: candidate.phone || null,
-          referrer_email: candidate.email || null,
+          referrer_jobber_id: candidate.id || null,
           referrer_name: candidate.name || null,
         }),
       });
@@ -121,7 +129,7 @@ export default function AdminPendingReferrals() {
       setTimeout(() => setConfirmSuccess(prev => { const n = { ...prev }; delete n[id]; return n; }), 3000);
       fetchRecords();
     } catch {
-      // silent
+      setActionError(prev => ({ ...prev, [`confirm_${id}`]: 'Failed — try again' }));
     } finally {
       setConfirming(null);
     }
@@ -166,8 +174,8 @@ export default function AdminPendingReferrals() {
             const isClosingThis     = closing === row.id;
             const candidates        = row.jobber_name_matches || [];
 
-            // Default follow-up message template
-            const defaultMsg = `Hi ${row.referred_by_name || 'there'}, just checking in — your referral reward is still waiting. Create your account here: ${process.env.REACT_APP_FRONTEND_URL || ''}`;
+            // Preview only — the standard invite template is sent, not this text
+            const defaultMsg = `Hi ${row.referred_by_name || 'there'}, just checking in — your referral reward is still waiting. Create your account here: https://roofmiles.com`;
 
             return (
               <div key={row.id} style={{
@@ -236,6 +244,9 @@ export default function AdminPendingReferrals() {
                     {confirmSuccess[row.id] && (
                       <p style={{ margin: '0 0 10px', fontSize: 13, color: AD.greenText, fontWeight: 500 }}>Referrer confirmed — invite sent.</p>
                     )}
+                    {actionError[`confirm_${row.id}`] && (
+                      <p style={{ margin: '0 0 10px', fontSize: 12, color: AD.red2Text }}>{actionError[`confirm_${row.id}`]}</p>
+                    )}
                     {candidates.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {candidates.map((c, i) => {
@@ -295,65 +306,62 @@ export default function AdminPendingReferrals() {
 
                 {/* ── Action buttons (pending only) ── */}
                 {isPending && (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 4 }}>
-                    {/* Resend Invite — only if contact info is available */}
-                    {(row.referred_by_email || row.referred_by_phone) && (
-                      <Btn
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleResend(row.id)}
-                        style={{ opacity: isResendingThis ? 0.6 : 1, pointerEvents: isResendingThis ? 'none' : 'auto' }}
-                      >
-                        {resendSuccess[row.id] ? 'Sent!' : isResendingThis ? 'Sending…' : 'Resend Invite'}
-                      </Btn>
-                    )}
+                  <>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 4 }}>
+                      {/* Resend Invite — only if contact info is available */}
+                      {(row.referred_by_email || row.referred_by_phone) && (
+                        <Btn
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleResend(row.id)}
+                          style={{ opacity: isResendingThis ? 0.6 : 1, pointerEvents: isResendingThis ? 'none' : 'auto' }}
+                        >
+                          {resendSuccess[row.id] ? 'Sent!' : isResendingThis ? 'Sending…' : 'Resend Invite'}
+                        </Btn>
+                      )}
 
-                    {/* Follow Up */}
-                    {(row.referred_by_email || row.referred_by_phone) && (
-                      <Btn
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setFollowUpOpen(followUpOpen === row.id ? null : row.id);
-                          if (!followUpMsg[row.id]) {
-                            setFollowUpMsg(prev => ({ ...prev, [row.id]: defaultMsg }));
-                          }
-                        }}
-                      >
-                        {followUpOpen === row.id ? 'Cancel' : 'Follow Up'}
-                      </Btn>
-                    )}
+                      {/* Follow Up */}
+                      {(row.referred_by_email || row.referred_by_phone) && (
+                        <Btn
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setFollowUpOpen(followUpOpen === row.id ? null : row.id);
+                            if (!followUpMsg[row.id]) {
+                              setFollowUpMsg(prev => ({ ...prev, [row.id]: defaultMsg }));
+                            }
+                          }}
+                        >
+                          {followUpOpen === row.id ? 'Cancel' : 'Follow Up'}
+                        </Btn>
+                      )}
 
-                    {/* Close Out */}
-                    <Btn
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setCloseConfirm(closeConfirm === row.id ? null : row.id)}
-                      style={{ color: AD.red2Text, borderColor: 'rgba(220,38,38,0.3)' }}
-                    >
-                      Close Out
-                    </Btn>
-                  </div>
+                      {/* Close Out */}
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCloseConfirm(closeConfirm === row.id ? null : row.id)}
+                        style={{ color: AD.red2Text, borderColor: 'rgba(220,38,38,0.3)' }}
+                      >
+                        Close Out
+                      </Btn>
+                    </div>
+                    {actionError[`resend_${row.id}`] && (
+                      <p style={{ margin: '6px 0 0', fontSize: 12, color: AD.red2Text }}>{actionError[`resend_${row.id}`]}</p>
+                    )}
+                  </>
                 )}
 
                 {/* ── Follow Up compose area ── */}
+                {/* TODO: wire custom message to resend endpoint once copy is finalized */}
                 {followUpOpen === row.id && (
                   <div style={{ marginTop: 12, background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`, borderRadius: 8, padding: '14px' }}>
-                    <label style={{ fontSize: 11, fontWeight: 500, color: AD.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>
-                      Message
-                    </label>
-                    <textarea
-                      value={followUpMsg[row.id] || defaultMsg}
-                      onChange={e => setFollowUpMsg(prev => ({ ...prev, [row.id]: e.target.value }))}
-                      rows={3}
-                      style={{
-                        width: '100%', boxSizing: 'border-box',
-                        background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
-                        borderRadius: 8, padding: '8px 10px',
-                        fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans,
-                        outline: 'none', resize: 'vertical', marginBottom: 8,
-                      }}
-                    />
+                    <p style={{ margin: '0 0 8px', fontSize: 12, color: AD.textTertiary }}>
+                      The standard invite email will be resent. Custom message copy coming in a future update.
+                    </p>
+                    <p style={{ margin: '0 0 12px', fontSize: 13, color: AD.textSecondary, fontStyle: 'italic', lineHeight: 1.5 }}>
+                      {defaultMsg}
+                    </p>
                     <Btn variant="primary" size="sm" onClick={() => handleFollowUp(row.id)}>
                       Send Follow Up
                     </Btn>
@@ -390,6 +398,9 @@ export default function AdminPendingReferrals() {
                       </Btn>
                       <Btn variant="outline" size="sm" onClick={() => setCloseConfirm(null)}>Cancel</Btn>
                     </div>
+                    {actionError[`close_${row.id}`] && (
+                      <p style={{ margin: '8px 0 0', fontSize: 12, color: AD.red2Text }}>{actionError[`close_${row.id}`]}</p>
+                    )}
                   </div>
                 )}
               </div>

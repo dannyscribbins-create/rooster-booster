@@ -1283,6 +1283,9 @@ router.post('/api/admin/pending-referrals/:id/resend', resendInviteLimiter, asyn
     if (record.status === 'closed') {
       return res.status(400).json({ error: 'Cannot resend invite to a closed record.' });
     }
+    if (!record.referred_by_email && !record.referred_by_phone) {
+      return res.status(400).json({ error: 'No contact info available to resend.' });
+    }
 
     const { sendPendingInviteEmail, sendPendingInviteSMS } = require('../utils/pendingReferral');
     if (record.referred_by_email) await sendPendingInviteEmail(record, contractorId);
@@ -1306,6 +1309,7 @@ router.post('/api/admin/pending-referrals/:id/close', async (req, res) => {
   // MVP: hardcoded contractor_id — FORA: pull from admin session token
   const contractorId = 'accent-roofing';
   const { note } = req.body || {};
+  if (note && note.length > 500) return res.status(400).json({ error: 'Note must be 500 characters or less.' });
   try {
     const result = await pool.query(
       `UPDATE pending_referrals
@@ -1325,31 +1329,43 @@ router.post('/api/admin/pending-referrals/:id/close', async (req, res) => {
 
 // POST /api/admin/pending-referrals/:id/confirm-referrer
 // Admin selects the correct Jobber candidate for a needs_admin_verification record.
-// Updates contact info, clears verification flag, and fires the invite.
+// referrer_jobber_id: the Jobber client ID of the selected candidate (from jobber_name_matches).
+// The backend fetches contact info from Jobber using that ID, stores it, and fires the invite.
 router.post('/api/admin/pending-referrals/:id/confirm-referrer', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   // MVP: hardcoded contractor_id — FORA: pull from admin session token
   const contractorId = 'accent-roofing';
-  const { referrer_phone, referrer_email, referrer_name } = req.body || {};
+  const { referrer_name, referrer_jobber_id } = req.body || {};
   try {
+    // Fetch contact info from Jobber using the selected candidate's Jobber client ID.
+    // jobber_name_matches stores { id, name } per candidate — id is the Jobber client ID.
+    let referrerPhone = null;
+    let referrerEmail = null;
+    if (referrer_jobber_id) {
+      const { fetchReferrerContact } = require('../utils/pendingReferral');
+      const contact = await fetchReferrerContact(String(referrer_jobber_id), contractorId);
+      referrerPhone = contact.phone;
+      referrerEmail = contact.email;
+    }
+
     const result = await pool.query(
       `UPDATE pending_referrals
        SET referred_by_phone=$1, referred_by_email=$2, referred_by_name=$3,
            needs_admin_verification=false
        WHERE id=$4 AND contractor_id=$5
        RETURNING id, referred_by_name, referred_by_email, referred_by_phone, status`,
-      [referrer_phone || null, referrer_email || null, referrer_name || null, req.params.id, contractorId]
+      [referrerPhone || null, referrerEmail || null, referrer_name || null, req.params.id, contractorId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const record = result.rows[0];
 
     const { sendPendingInviteEmail, sendPendingInviteSMS } = require('../utils/pendingReferral');
     let inviteChannel = 'none';
-    if (referrer_email) {
+    if (referrerEmail) {
       await sendPendingInviteEmail(record, contractorId);
-      inviteChannel = referrer_phone ? 'email_and_sms' : 'email';
+      inviteChannel = referrerPhone ? 'email_and_sms' : 'email';
     }
-    if (referrer_phone) {
+    if (referrerPhone) {
       await sendPendingInviteSMS(record, contractorId);
       if (inviteChannel === 'email') inviteChannel = 'email_and_sms';
       else if (inviteChannel === 'none') inviteChannel = 'sms';
@@ -1365,7 +1381,7 @@ router.post('/api/admin/pending-referrals/:id/confirm-referrer', async (req, res
       [`Admin confirmed referrer "${referrer_name}" for pending referral #${req.params.id}. Invite sent via ${inviteChannel}.`]
     );
 
-    res.json({ success: true });
+    res.json({ success: true, inviteChannel });
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });

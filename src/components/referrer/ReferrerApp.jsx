@@ -125,12 +125,18 @@ export default function ReferrerApp({
   useEffect(() => {
     const token = sessionStorage.getItem('rb_token');
     if (!token) return;
-    fetch(`${BACKEND_URL}/api/referral/pending/match-check`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.match) setPendingMatch(d.match); })
-      .catch(() => {});
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/referral/pending/match-check`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d?.match) setPendingMatch(d.match);
+      } catch {
+        // non-critical — failure silently ignored
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

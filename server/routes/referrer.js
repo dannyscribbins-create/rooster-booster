@@ -1426,6 +1426,7 @@ router.get('/api/referral/pending/match-check', async (req, res) => {
 // PUT /api/referral/pending/:id/seen
 // Marks the celebration popup as seen so it does not fire again.
 router.put('/api/referral/pending/:id/seen', async (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'Invalid id.' });
   try {
     const token = req.headers['authorization']?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Not authorized' });

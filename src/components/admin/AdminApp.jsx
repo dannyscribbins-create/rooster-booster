@@ -33,26 +33,25 @@ function AdminLogin({ onLogin }) {
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
 
-  function handleLogin() {
+  async function handleLogin() {
     setLoading(true);
     setError('');
-    fetch(`${BACKEND_URL}/api/admin/login`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    })
-      .then(r => r.json())
-      .then(d => {
-        setLoading(false);
-        if (d.error) setError('Incorrect password');
-        else {
-          sessionStorage.setItem('rb_admin_token', d.token);
-          onLogin();
-        }
-      })
-      .catch(() => {
-        setLoading(false);
-        setError('Something went wrong. Please try again.');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
       });
+      const d = await r.json();
+      if (d.error) setError('Incorrect password');
+      else {
+        sessionStorage.setItem('rb_admin_token', d.token);
+        onLogin();
+      }
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -134,27 +133,24 @@ export default function AdminPanel() {
   function handleLogin() {
     setAuthed(true);
     const token = sessionStorage.getItem('rb_admin_token');
-    fetch(`${BACKEND_URL}/api/admin/cashouts`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setPendingCount(d.filter(c => c.status === 'pending').length); });
-    fetch(`${BACKEND_URL}/api/admin/flagged-referrals/summary`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(data => { setFlaggedUnresolved(data.unresolved_count); })
-      .catch(() => {});
-    fetch(`${BACKEND_URL}/api/admin/pending-referrals`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (Array.isArray(data.pending)) {
-          setPendingReferralCount(data.pending.filter(r => r.status === 'pending').length);
-        }
-      })
-      .catch(() => {});
+    const headers = { 'Authorization': `Bearer ${token}` };
+    (async () => {
+      const fetchJson = async (url) => { const r = await fetch(url, { headers }); return r.json(); };
+      const [cashoutsRes, flaggedRes, pendingRes] = await Promise.allSettled([
+        fetchJson(`${BACKEND_URL}/api/admin/cashouts`),
+        fetchJson(`${BACKEND_URL}/api/admin/flagged-referrals/summary`),
+        fetchJson(`${BACKEND_URL}/api/admin/pending-referrals`),
+      ]);
+      if (cashoutsRes.status === 'fulfilled' && Array.isArray(cashoutsRes.value)) {
+        setPendingCount(cashoutsRes.value.filter(c => c.status === 'pending').length);
+      }
+      if (flaggedRes.status === 'fulfilled') {
+        setFlaggedUnresolved(flaggedRes.value.unresolved_count);
+      }
+      if (pendingRes.status === 'fulfilled' && Array.isArray(pendingRes.value.pending)) {
+        setPendingReferralCount(pendingRes.value.pending.filter(r => r.status === 'pending').length);
+      }
+    })();
   }
 
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
