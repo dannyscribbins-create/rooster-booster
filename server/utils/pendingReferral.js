@@ -16,18 +16,24 @@ function escapeHtml(s) {
 
 function getPrimaryPhone(client) {
   const phones = client.phones || [];
-  if (phones.length === 0) return null;
-  const primary = phones.find(p =>
-    p.description?.toLowerCase().includes('main') ||
-    p.description?.toLowerCase().includes('mobile')
-  ) || phones[0];
-  return primary?.number || null;
+  if (phones.length > 0) {
+    const primary = phones.find(p =>
+      p.description?.toLowerCase().includes('main') ||
+      p.description?.toLowerCase().includes('mobile')
+    ) || phones[0];
+    return primary?.number || null;
+  }
+  // flat-string fallback for raw webhook payloads that use client.phone instead of client.phones[]
+  return (typeof client.phone === 'string' && client.phone.trim()) ? client.phone.trim() : null;
 }
 
 function getPrimaryEmail(client) {
   const emails = client.emails || [];
-  if (emails.length === 0) return null;
-  return emails[0]?.address || null;
+  if (emails.length > 0) {
+    return emails[0]?.address || null;
+  }
+  // flat-string fallback for raw webhook payloads that use client.email instead of client.emails[]
+  return (typeof client.email === 'string' && client.email.trim()) ? client.email.trim() : null;
 }
 
 function getTwilioClient() {
@@ -393,7 +399,7 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
         const referredEmail = getPrimaryEmail(client);
         const referredPhone = getPrimaryPhone(client);
         // diagnostic log — intentional
-        console.log('[pendingReferral] credit attribution — referred email:', referredEmail, 'referred phone:', referredPhone);
+        console.log('[pendingReferral] referred client contact extraction — email:', referredEmail, 'phone:', referredPhone, 'client id:', client.id);
         if (referredEmail || referredPhone) {
           await sendCreditAttributionEmail(
             {
