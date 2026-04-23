@@ -140,22 +140,23 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const base64 = reader.result;
-      fetch(`${BACKEND_URL}/api/profile/photo`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}`,
-        },
-        body: JSON.stringify({ photo: base64 }),
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) setProfilePhoto(base64);
-          else setUploadError("Upload failed. Please try again.");
-        })
-        .catch(() => setUploadError("Upload failed. Please try again."));
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/profile/photo`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}`,
+          },
+          body: JSON.stringify({ photo: base64 }),
+        });
+        const data = await res.json();
+        if (data.success) setProfilePhoto(base64);
+        else setUploadError("Upload failed. Please try again.");
+      } catch {
+        setUploadError("Upload failed. Please try again.");
+      }
     };
     reader.onerror = () => setUploadError("Could not read the file. Please try again.");
     reader.readAsDataURL(file);

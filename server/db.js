@@ -337,6 +337,23 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE pending_referrals ADD COLUMN IF NOT EXISTS referrer_lookup_attempted BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE pending_referrals ADD COLUMN IF NOT EXISTS credit_email_sent_at TIMESTAMPTZ`);
 
+  // ── BOOKING REQUESTS ──────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS booking_requests (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL DEFAULT 'accent-roofing',
+    submitted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    referred_name TEXT NOT NULL,
+    referred_phone TEXT,
+    referred_email TEXT,
+    referred_address TEXT,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    jobber_client_id TEXT,
+    matched_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
   // ── ERROR LOG ─────────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS error_log (
     id SERIAL PRIMARY KEY,

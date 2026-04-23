@@ -39,16 +39,19 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
   // Fetch About Us data on mount
   useEffect(() => {
     if (!sessionToken) return;
-    fetch(`${BACKEND_URL}/api/referrer/about`, {
-      headers: { Authorization: `Bearer ${sessionToken}` },
-    })
-      .then(r => r.json())
-      .then(d => {
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/referrer/about`, {
+          headers: { Authorization: `Bearer ${sessionToken}` },
+        });
+        const d = await r.json();
         if (!d || !d.enabled) { setAboutData(null); return; }
         setAboutData(d);
         if (d.booking_submitted) setBookingSubmitted(true);
-      })
-      .catch(() => setAboutData(null));
+      } catch {
+        setAboutData(null);
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -83,19 +86,23 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
     if (!showQRModal) return;
     setQrLoading(true);
     setQrError(false);
-    fetch(`${BACKEND_URL}/api/referrer/qr-code`, {
-      headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
-    })
-      .then(r => r.json())
-      .then(data => {
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/referrer/qr-code`, {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+        });
+        const data = await r.json();
         if (data.qrCodeDataUrl) {
           setQrCodeDataUrl(data.qrCodeDataUrl);
         } else {
           setQrError(true);
         }
-      })
-      .catch(() => setQrError(true))
-      .finally(() => setQrLoading(false));
+      } catch {
+        setQrError(true);
+      } finally {
+        setQrLoading(false);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showQRModal]);
 
@@ -277,6 +284,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
       )}
 
       {/* Booking Banner */}
+      {/* TODO: hide booking banner for contractor-link users (signup_source not in login response) */}
       {aboutData?.booking_enabled && !bookingSubmitted && (
         <div style={{ padding: "16px 20px 0" }}>
           <AnimCard delay={200} screenKey="dashboard">

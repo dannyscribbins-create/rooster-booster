@@ -368,6 +368,7 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
 // ── REFERRER: PIPELINE ────────────────────────────────────────────────────────
 router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
   let referrerName;
+  let userId;
   try {
     const token = req.headers['authorization']?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Not authorized' });
@@ -376,7 +377,7 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
       [token, 'referrer']
     );
     if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    userId = sessionResult.rows[0].user_id;
     const userNameResult = await pool.query('SELECT full_name FROM users WHERE id=$1', [userId]);
     if (!userNameResult.rows[0]?.full_name) return res.status(404).json({ error: 'User not found' });
     referrerName = userNameResult.rows[0].full_name;
@@ -420,6 +421,48 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
     }
 
     await checkAndAwardBadges(userId, data.pipeline.length);
+
+    // Fetch pending booking requests submitted by this referrer's peer-referred users
+    // and append them as booking_pending pipeline items.
+    try {
+      const brResult = await pool.query(
+        `SELECT br.id, br.referred_name, br.notes, br.created_at,
+                u.full_name AS submitter_name
+         FROM booking_requests br
+         JOIN users u ON u.id = br.submitted_by_user_id
+         WHERE br.submitted_by_user_id IN (
+           SELECT id FROM users WHERE invited_by_user_id = $1
+         )
+         AND br.status = 'pending'
+         AND br.contractor_id = 'accent-roofing'`,
+        // Only surfaces for peer-referred users (invited_by_user_id IS NOT NULL).
+        // Users who joined via contractor invite link have no referrer attribution
+        // and their booking requests do not appear in any pipeline.
+        // This is intentional — contractor-link users are already known to the contractor.
+        [userId]
+      );
+      const existingNames = new Set(data.pipeline.map(p => p.name.toLowerCase()));
+      const bookingItems = brResult.rows
+        .filter(row =>
+          !existingNames.has(row.submitter_name.toLowerCase()) &&
+          !existingNames.has(row.referred_name.toLowerCase())
+        )
+        .map(row => ({
+          id: 'booking_' + row.id,
+          name: row.referred_name,
+          status: 'booking_pending',
+          bonusEarned: false,
+          payout: null,
+          pre_start_date: false,
+          source: 'booking_request',
+          booking_submitted_at: row.created_at,
+          notes: row.notes || null,
+        }));
+      data.pipeline = [...data.pipeline, ...bookingItems];
+    } catch (brErr) {
+      await logError({ req, error: brErr });
+      // booking_requests failure must never break the pipeline response
+    }
 
     res.json(data);
   } catch (err) {
@@ -466,6 +509,46 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
             null
           );
           console.warn(`[pipeline] Serving stale cache for ${referrerName} after adapter error`);
+
+          // Append booking_pending items even in stale mode — these come from our DB, not Jobber.
+          if (userId) {
+            try {
+              const brResult = await pool.query(
+                `SELECT br.id, br.referred_name, br.notes, br.created_at,
+                        u.full_name AS submitter_name
+                 FROM booking_requests br
+                 JOIN users u ON u.id = br.submitted_by_user_id
+                 WHERE br.submitted_by_user_id IN (
+                   SELECT id FROM users WHERE invited_by_user_id = $1
+                 )
+                 AND br.status = 'pending'
+                 AND br.contractor_id = 'accent-roofing'`,
+                [userId]
+              );
+              const existingNames = new Set(pipeline.map(p => p.name.toLowerCase()));
+              const bookingItems = brResult.rows
+                .filter(row =>
+                  !existingNames.has(row.submitter_name.toLowerCase()) &&
+                  !existingNames.has(row.referred_name.toLowerCase())
+                )
+                .map(row => ({
+                  id: 'booking_' + row.id,
+                  name: row.referred_name,
+                  status: 'booking_pending',
+                  bonusEarned: false,
+                  payout: null,
+                  pre_start_date: false,
+                  source: 'booking_request',
+                  booking_submitted_at: row.created_at,
+                  notes: row.notes || null,
+                }));
+              pipeline.push(...bookingItems);
+            } catch (brErr) {
+              await logError({ req, error: brErr });
+              // booking_requests failure must never block the stale cache response
+            }
+          }
+
           return res.json({ pipeline, balance: totalBalance, paidCount, stale: true, stale_since: maxSyncedAt });
         }
       } catch (cacheErr) {
@@ -1022,6 +1105,19 @@ router.post('/api/referrer/booking', bookingLimiter, [
       }),
       { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
     );
+
+    try {
+      await pool.query(
+        `INSERT INTO booking_requests
+           (contractor_id, submitted_by_user_id, referred_name, referred_phone,
+            referred_email, referred_address, notes)
+         VALUES ('accent-roofing', $1, $2, $3, $4, $5, $6)`,
+        [userId, name, phone || null, email || null, address || null, notes || null]
+      );
+    } catch (bookingErr) {
+      await logError({ req, error: bookingErr });
+      // booking_requests insert failure must never prevent the email success response
+    }
 
     res.json({ success: true });
   } catch (err) {

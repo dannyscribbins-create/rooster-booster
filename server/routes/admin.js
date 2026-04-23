@@ -1388,4 +1388,31 @@ router.post('/api/admin/pending-referrals/:id/confirm-referrer', async (req, res
   }
 });
 
+// ── ADMIN: BOOKING REQUESTS ───────────────────────────────────────────────────
+router.get('/api/admin/booking-requests', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      `SELECT br.id, br.referred_name, br.referred_phone, br.referred_email,
+              br.referred_address, br.notes, br.status, br.created_at, br.matched_at,
+              br.jobber_client_id,
+              u.full_name AS submitted_by_name, u.email AS submitted_by_email,
+              ref.full_name AS referrer_name
+       FROM booking_requests br
+       JOIN users u ON u.id = br.submitted_by_user_id
+       LEFT JOIN users ref ON ref.id = u.invited_by_user_id
+       WHERE br.contractor_id = $1
+       ORDER BY
+         CASE WHEN br.status = 'pending' THEN 0 ELSE 1 END,
+         br.created_at DESC`,
+      [contractorId]
+    );
+    res.json({ bookingRequests: result.rows });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

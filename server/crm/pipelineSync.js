@@ -113,6 +113,27 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
       );
     }
   }
+
+  // ── BOOKING REQUEST MATCH ───────────────────────────────────────────────────
+  // When a Jobber client appears whose name matches a pending booking_request referral,
+  // mark the request matched so it no longer surfaces as booking_pending in the pipeline.
+  // MVP: name-only match — bulk sync omits phones/emails (CLAUDE.md constraint) so
+  // full phone/email confirmation via fetchReferrerContact is deferred.
+  try {
+    await pool.query(
+      `UPDATE booking_requests br
+       SET status = 'matched', jobber_client_id = $1, matched_at = NOW(), updated_at = NOW()
+       FROM users u
+       WHERE u.id = br.submitted_by_user_id
+         AND LOWER(u.full_name) = LOWER($2)
+         AND br.status = 'pending'
+         AND br.contractor_id = $3`,
+      [client.id, clientName, contractorId]
+    );
+  } catch (brMatchErr) {
+    await logError({ req: null, error: brMatchErr });
+    console.error('[pipelineSync] booking request match check failed:', brMatchErr.message);
+  }
 }
 
 // ── FULL SYNC ─────────────────────────────────────────────────────────────────

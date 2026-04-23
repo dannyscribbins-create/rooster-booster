@@ -28,32 +28,33 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
 
   if (!visible) return null;
 
-  function handleSubmit() {
+  async function handleSubmit() {
     setFieldError('');
     if (!name.trim() || !phone.trim()) {
       setFieldError('Please enter your name and phone number.');
       return;
     }
     setStatus('submitting');
-    fetch(`${BACKEND_URL}/api/referrer/booking`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionToken}`,
-      },
-      body: JSON.stringify({ name, phone, email, address: `${streetAddress}, ${city}, ${state} ${zipCode}`.trim(), notes }),
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (d.success) {
-          setStatus('success');
-          if (onBookingSuccess) onBookingSuccess();
-          setTimeout(() => onClose(), 2000);
-        } else {
-          setStatus('error');
-        }
-      })
-      .catch(() => setStatus('error'));
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/referrer/booking`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({ name, phone, email, address: `${streetAddress}, ${city}, ${state} ${zipCode}`.trim(), notes }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setStatus('success');
+        if (onBookingSuccess) onBookingSuccess();
+        setTimeout(() => onClose(), 2000);
+      } else {
+        setStatus('error');
+      }
+    } catch {
+      setStatus('error');
+    }
   }
 
   const inputStyle = {

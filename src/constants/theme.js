@@ -50,8 +50,9 @@ export const R = {
 };
 
 export const STATUS_CONFIG = {
-  lead:       { label: "Lead Submitted",       color: R.grayText,  dot: R.grayText,  bg: R.grayBg  },
-  inspection: { label: "Inspection Completed", color: R.blueText,  dot: R.blue,      bg: R.blueBg  },
-  sold:       { label: "Sold ✓",               color: R.greenText, dot: R.green,     bg: R.greenBg },
-  closed:     { label: "Not Sold",             color: "#b91c1c",   dot: "#ef4444",   bg: "#fee2e2" },
+  lead:            { label: "Lead Submitted",       color: R.grayText,  dot: R.grayText,  bg: R.grayBg  },
+  inspection:      { label: "Inspection Completed", color: R.blueText,  dot: R.blue,      bg: R.blueBg  },
+  sold:            { label: "Sold ✓",               color: R.greenText, dot: R.green,     bg: R.greenBg },
+  closed:          { label: "Not Sold",             color: "#b91c1c",   dot: "#ef4444",   bg: "#fee2e2" },
+  booking_pending: { label: "Booking Sent",         color: R.amberText, dot: R.amber,     bg: R.amberBg },
 };
