@@ -253,3 +253,235 @@ Railway auto-deploys on every GitHub push. Wait ~30 seconds after pushing before
 **Local environment cannot connect to Railway PostgreSQL.** Always test login-dependent features on the live Vercel/Railway deployment, never locally.
 
 **Jobber API version header is `2026-02-17`** — monitor for deprecation notices. Real Accent Roofing Jobber account connects April 14, 2026.
+
+---
+
+### Session Safety Protocol — Run Before Any Code Changes
+
+Every Claude Code session must begin with these steps, in order, before writing or modifying any code:
+
+1. Read this entire CLAUDE.md file
+2. Read every file that will be touched during this session — in full, before touching it
+3. For any function being modified, search the entire codebase for all call sites of that function and list them
+4. Produce a brief impact statement: what does this change affect, and what adjacent code could silently break?
+5. Do not proceed until the impact statement is complete and has been acknowledged
+
+After completing any set of changes:
+1. Re-read every modified file in full
+2. Confirm all imports still resolve, no functions were accidentally renamed or deleted, no logic was altered outside the targeted change
+3. Confirm all useEffect hooks with intentionally omitted deps still have eslint-disable-next-line comments
+4. Confirm no .then() chains were introduced
+5. Confirm no new console.log statements were added to production code paths (diagnostic logs marked with // diagnostic log — intentional are exempt)
+6. Run: git add -A && git commit -m "[descriptive message]" && git push
+7. Never commit a broken or partial state
+
+---
+
+### Never Break These Rules — Non-Negotiable Constraints
+
+These rules encode decisions made across Sessions 1–38. Violating any of them breaks either security, data integrity, or a multi-contractor architecture that has been carefully designed. Every rule has a reason. Do not remove, work around, or simplify any of them without an explicit instruction from Danny.
+
+**Authentication & Session Security**
+- Every session token in the sessions table has a role column (referrer or admin). Admin endpoints must always check AND role='admin'. Referrer endpoints must always check AND role='referrer'. These filters must never be removed or loosened.
+- verifyAdminSession() in server/middleware/auth.js is the only authorized way to protect admin endpoints. Never inline auth checks or duplicate this logic.
+- Session tokens are 64-character hex strings generated from 32 random bytes. Never shorten or weaken token generation.
+- Sessions expire after 24 hours. Never extend TTL without explicit instruction.
+- ADMIN_PASSWORD lives in Railway environment variables only. It must never be hardcoded anywhere in the codebase, even as a fallback.
+
+**Database Integrity**
+- UNIQUE(user_id, jobber_client_id) on referral_conversions enforces one conversion per referred client, ever. This constraint must never be removed. Returning clients do not generate repeat bonuses.
+- contractor_id must be present on every database write that touches contractor-owned data. In MVP it is hardcoded as 'accent-roofing'. Before contractor #2 is onboarded it must be pulled from the session token. Never remove contractor_id from queries.
+- Never use SELECT * in production queries. Always specify the columns needed.
+- Never run destructive SQL (DROP, TRUNCATE, DELETE without WHERE) without an explicit instruction and a confirmed backup.
+- Always click Run Backup Now in the admin panel before any migration or database-touching push.
+- pending_referrals records must never be hard deleted. Close out sets status='closed', closed_out_by_admin=true, closed_out_at=NOW(). Records are retained permanently for audit trail.
+
+**Jobber API**
+- All Jobber GraphQL calls must be wrapped in retryWithBackoff with jobberShouldRetry. No direct axios.post to Jobber without retry logic.
+- retryWithBackoff helpers (resendShouldRetry, twilioShouldRetry, jobberShouldRetry) live in server/utils/retryHelpers.js. Import from there — never redefine locally.
+- Jobber API version header is 2026-02-17. Do not change this without verifying the new version in Jobber's changelog.
+- ClientFilterAttributes does NOT support name, firstName, or lastName filtering. Never attempt to filter Jobber clients by name via the API. Always use local filtering on an already-fetched allClients array.
+- Jobber GraphQL is read-only. There are no mutations anywhere in this codebase. Never add a mutation without explicit instruction.
+- OAuth token refresh is handled automatically by refreshTokenIfNeeded() in crm/jobber.js. Never bypass this.
+- getPrimaryEmail and getPrimaryPhone in pendingReferral.js handle both the GraphQL array shape (client.emails[]/client.phones[]) and a flat-string fallback (client.email/client.phone) for raw webhook payloads. Never simplify these back to single-shape extraction.
+- phones and emails fields are intentionally absent from the bulk allClients sync query — removed to reduce API load. They are only fetched in fetchFullClient (single-client webhook path) and fetchReferrerContact (targeted referrer lookup). Do not add them back to bulk queries without explicit instruction and architectural review.
+
+**External Services**
+- All Resend email calls must be wrapped in retryWithBackoff with resendShouldRetry.
+- All Twilio SMS calls must be wrapped in retryWithBackoff with twilioShouldRetry.
+- SMS sending is gated by TWILIO_10DLC_ACTIVE environment variable. This must remain false until 10DLC registration is complete. Never remove this guard.
+- Resend sends from noreply@roofmiles.com. Admin alerts go to admin1@roofmiles.com. Never change these without explicit instruction.
+
+**Frontend Rules**
+- Screen.jsx overflow settings are intentional. Do not change them.
+- All styling is inline. Never add CSS files or introduce a CSS framework.
+- Design tokens live in src/constants/theme.js (R object) and src/constants/adminTheme.js (AD object). Never hardcode colors, fonts, or spacing values outside these files.
+- Icons: Phosphor Icons v2.1.1 only. No other icon library.
+- WARMUP_ENTRIES_SERVER in the backend must always stay in sync with WARMUP_ENTRIES in shouts.js.
+- react-hooks/exhaustive-deps warnings are hard Vercel build errors. Every useEffect with intentionally omitted dependencies must have // eslint-disable-next-line react-hooks/exhaustive-deps on the line immediately above the dependency array.
+
+**Code Quality**
+- No .then() chains anywhere. All async code uses async/await.
+- No var declarations. Use const or let.
+- No callback patterns. Use async/await.
+- No class components except ErrorBoundary.jsx — intentional exception, React requires class components for error boundaries.
+- Every async function must have try/catch. No unhandled promise rejections.
+- Error responses must never expose internal stack traces or database details to the client.
+- No console.log in production code paths. Diagnostic logs marked with // diagnostic log — intentional are the only exception.
+- User-sourced strings and CRM-sourced strings embedded in HTML emails must be HTML-escaped before insertion. Use the escapeHtml helper in pendingReferral.js. Escape <, >, &, and " at minimum.
+- The silent audit rule applies to every file read during any session: check for .then() chains, var declarations, callback patterns, class components, missing try/catch, and hardcoded contractor_id — flag all violations before proceeding with the assigned task.
+
+**Architecture Boundaries**
+- server.js is a 23-line entry point only. No route handlers or business logic in server.js.
+- App.js is a 135-line routing shell only. No component code in App.js.
+- pendingReferral.js is a utility file. No route handling or middleware in it.
+- New referrer routes → server/routes/referrer.js only.
+- New admin routes → server/routes/admin.js only.
+- New CRM adapters → server/crm/[name].js, wired through server/crm/index.js.
+- getCRMAdapter(contractorId) in crm/index.js is the FORA multi-contractor hook. Never bypass it by importing a CRM adapter directly in a route file.
+- Retry helpers → server/utils/retryHelpers.js. Never redefine resendShouldRetry, twilioShouldRetry, or jobberShouldRetry locally in any file.
+
+---
+
+### Feature Registry — Completed Features and Their Rules
+
+This registry is the source of truth for every major feature in the system. When building anything that touches a listed feature, read its entry in full before writing code.
+
+---
+
+**Authentication System**
+- Status: Complete
+- Files: server/routes/referrer.js (referrer login/signup/PIN), server/routes/admin.js (admin login), server/middleware/auth.js, server/db.js (users, sessions tables)
+- How it works: Referrers log in with email + PIN (bcrypt hashed). Admins log in with ADMIN_PASSWORD env var. Both receive 64-char hex session tokens stored in the sessions table with a role column. Tokens expire after 24 hours.
+- Key rules: role column is the only separator between referrer and admin access. AND role='referrer' and AND role='admin' must always be present in session queries. verifyAdminSession() is the only authorized admin auth check.
+- Rate limiters: referrerLoginLimiter (10/15min), forgotPinLimiter (3/15min), resetPinLimiter (10/15min), adminLoginLimiter (5/15min)
+
+**Referral Pipeline System**
+- Status: Complete
+- Files: server/crm/jobber.js (fetchPipelineForReferrer), server/crm/pipelineSync.js (syncSingleClient, runFullSync, runIncrementalSync), server/db.js (pipeline_cache, referral_conversions tables)
+- How it works: Jobber webhook fires on CLIENT_CREATE or CLIENT_UPDATE. syncSingleClient writes client to pipeline_cache. fetchPipelineForReferrer reads pipeline_cache and cross-references with Jobber for quote/job/invoice status. Pipeline stages: lead → inspection → sold → paid.
+- Key rules: One conversion per referred client ever, enforced by UNIQUE(user_id, jobber_client_id) on referral_conversions. Referral program start date is 01/01/2026 — historical clients before this date are excluded. Bonus amounts are stored at time of conversion, never recalculated. allClients name matching uses local JavaScript filtering only — never Jobber API name filters. phones and emails are not in the bulk allClients query — only fetched via targeted single-client queries.
+- Jobber pagination: cursor-based looping with first:50 cap per query. pipeline_cache stores results. Background sync runs every ~30 minutes.
+
+**Pending Referral System**
+- Status: Complete — audited and hardened in Session 38
+- Files: server/utils/pendingReferral.js, server/utils/retryHelpers.js, server/crm/pipelineSync.js, server/routes/webhooks/jobber.js, server/routes/referrer.js, server/routes/admin.js, src/components/referrer/PendingMatchPopup.jsx, src/components/referrer/ReferrerApp.jsx, src/components/admin/AdminPendingReferrals.jsx, src/components/admin/AdminApp.jsx, src/components/admin/AdminComponents.jsx
+- How it works: When syncSingleClient detects a referred client whose referrer has no app account, a pending_referrals record is created. The referrer's contact info is looked up in Jobber via fetchReferrerContact(). An auto-invite email fires via Resend. When the referrer signs up and verifies their email, matchPendingReferral() matches them by email or phone and credits them. A celebration popup (PendingMatchPopup.jsx) fires on their first login.
+- Key rules: Webhook-triggered syncs pass allClients=[] — forces no-match path and admin flagging. The scheduled full sync retries webhook-created records that have needs_admin_verification=true, invite_channel='none', status='pending' — the isRetry path in checkAndCreatePendingReferral handles this. jobber_name_matches JSONB stores id and name only — contact info must be fetched via fetchReferrerContact() at confirm time using the stored Jobber client ID. SMS invites gated by TWILIO_10DLC_ACTIVE=false. Credit attribution email is gated by !isRetry to prevent duplicate sends on retry. getPrimaryEmail and getPrimaryPhone handle both GraphQL array shape and flat-string fallback. pending_referrals records are never hard deleted — close out sets status='closed'. HMAC verification is handled by verifyJobberWebhookSignature() — a single shared function used by all three webhook handlers.
+- Known deferred items: PendingMatchPopup copy is placeholder (TODO in code). Invite email copy is placeholder (TODO in code). App Store links in emails are placeholder (#) until Capacitor build. About Us modal renders behind PendingMatchPopup on first login — fix in UI overhaul session. Bulk sync path (allClients) does not fetch phone/email — credit attribution email cannot fire for referrals that enter via scheduled sync rather than webhook. Architectural decision deferred.
+
+**Cash Out System**
+- Status: Complete
+- Files: server/routes/referrer.js (cashout request), server/routes/admin.js (approve/deny), server/db.js (cashout_requests table)
+- How it works: Referrer requests payout from Cash Out tab. Admin approves or denies. Approval triggers payout_announcements row and Resend notification email. $20 minimum cashout threshold enforced server-side.
+- Key rules: Balance gate — cashout request rejected if balance insufficient. $20 minimum enforced on server endpoint, not just UI. Stripe ACH pipeline not yet built — cashouts are currently manual.
+
+**Manage Account**
+- Status: Complete (Session 32)
+- Files: server/routes/account.js, src/components/referrer/ManageAccount.jsx, src/components/referrer/ProfileTab.jsx
+- How it works: Collapsible section at bottom of Profile tab. Three toggle tabs: Personal Info, Security, Privacy. Delete Account triggers soft delete (sets deleted_at timestamp). $20 minimum cashout exception applies on deletion — balance auto-cashed out regardless of minimum.
+- Key rules: Delete Account is soft delete only. Sets deleted_at + deletion_requested_at. 30-day retention before permanent purge (cron job location marked with TODO). Admin notified via email on deletion. User must type DELETE in modal — enforced in UI and verified server-side. TOTP via speakeasy. Recovery phone and recovery email fields exist on users table.
+
+**Error Monitoring System**
+- Status: Complete (Session 34)
+- Files: server/middleware/errorLogger.js, server/db.js (error_log table), src/utils/clientErrorReporter.js, src/components/shared/ErrorBoundary.jsx
+- How it works: All backend errors route through logError() which upserts to error_log with deduplication, classifies severity, and sends email alert to admin1@roofmiles.com on first occurrence and every 10th recurrence. Frontend errors route through reportClientError() with 60-second deduplication.
+- Key rules: Never make API calls inside error handlers — rule-based plain-English explanations only. /api/log-client-error is intentionally public with no auth. Severity: CRITICAL for /cashout /payout /stripe /webhook /auth /token, WARNING for /login /pin /reset /admin, INFO for everything else. Never delete error_log rows — use resolved=true to mark fixed.
+
+**Database Backup System**
+- Status: Complete (Session 36)
+- Files: server/utils/backup.js, server/utils/restore-verify.js, server/routes/admin.js (backup endpoints)
+- How it works: Pure JavaScript backup using pg client. Discovers all tables dynamically. Compresses to .json.gz, uploads to Backblaze B2. Daily cron at 2am UTC. Admin panel has Run Backup Now and Verify Latest Backup buttons. Retains 30 days.
+- Key rules: Always run backup before any database migration or risky push. Backup endpoints rate-limited to 3/hr. Full restore script (one-click admin button) not yet built — queued for future session.
+
+**Announcement / Payout Popup System**
+- Status: Complete
+- Files: src/components/referrer/AnnouncementPopup.jsx, server/routes/admin.js (announcement settings), server/db.js (payout_announcements, announcement_settings tables)
+- How it works: Admin configures announcement messages. On login, referrer app checks for unread announcements. Payout approval triggers payout_announcements row which fires celebration popup.
+- Key rules: WARMUP_ENTRIES_SERVER must stay in sync with WARMUP_ENTRIES in shouts.js. PendingMatchPopup must take priority over AnnouncementPopup when both present — currently not enforced, fix in UI overhaul session.
+
+**Invite Link System**
+- Status: Complete
+- Files: server/routes/referrer.js, server/routes/admin.js, server/db.js (contractor_invite_links, email_verifications tables)
+- How it works: Admin generates contractor invite links. Referrers generate peer invite links. Links route to signup flow. Email verification required via 6-digit code sent by Resend.
+- Key rules: No limit currently enforced on how many links can be generated — known gap for future fix. OAuth flow must complete within a single browser session.
+
+**Admin Panel**
+- Status: Complete
+- Files: src/components/admin/ (all files), server/routes/admin.js
+- How it works: Accessed via ?admin=true URL param. Sections: Dashboard, Referrers, Cash Outs, Activity Log, Announcements, Pending Referrals, Settings. Admin stats cached in admin_cache with 15-minute TTL.
+- Key rules: All admin endpoints protected by verifyAdminSession(). Admin token stored in sessionStorage as rb_admin_token. 401 handler clears token and resets loggedIn=false. New admin pages added to src/components/admin/ and wired into AdminApp.jsx and ADMIN_NAV in AdminComponents.jsx.
+
+---
+
+### Pending Features — Design Specs and Current Constraints
+
+When building any feature listed here, read both the original design spec AND the current constraints column before writing a single line of code. These designs were made at a point in time — the constraints column reflects everything that has changed since.
+
+---
+
+**Feature: Booking Request Pending State (Pending Referral Feature 2)**
+- Designed: Session 37
+- Original spec: Referred person submits a booking request via referral link → a pending pipeline card appears in the referrer's pipeline tab before the job is in Jobber. Reuses infrastructure from the Pending Referral System.
+- Current constraints: booking_requests table does not yet exist — design it properly before building. The pending referral system (Feature 1) is complete and audited — its table structure should inform the booking_requests schema. Pipeline tab currently reads only from pipeline_cache — the booking request card must integrate without breaking the existing pipeline read path. The isRetry pattern in checkAndCreatePendingReferral is a reference for how to handle retry logic cleanly.
+- Do not build until: Explicitly scheduled by Danny.
+
+**Feature: Missing Referral Self-Report (Pending Referral Feature 3)**
+- Designed: Sessions 25.5 and 37
+- Original spec: Entry point in Profile tab. Popup form with channel dropdown (5 options: in-app QR code, personal link via app, sent company's direct info via app, sent company's info outside of app, sent salesman's contact info). Creates a purple admin inbox thread for admin to investigate and manually credit.
+- Current constraints: No admin inbox thread system exists yet — this feature requires building it. Channel dropdown options are locked per Session 25.5 design. Purple color must use AD design tokens. Admin inbox is separate from the existing activity log — it is a new UI surface.
+- Do not build until: Explicitly scheduled by Danny. Standalone — no dependency on Feature 2.
+
+**Feature: Stripe ACH Payout Pipeline**
+- Designed: Sessions 24–25
+- Original spec: Stripe Connect Standard — each contractor connects their own Stripe account. RoofMiles orchestrates payouts without holding funds. Jobber webhook on invoice paid triggers full payout pipeline. Payout transaction wrapper (BEGIN/COMMIT/ROLLBACK) already in place in admin.js.
+- Current constraints: server/routes/stripe.js placeholder exists — build into it. Stripe Connect Standard confirmed — do not propose Express or platform payouts (avoids money transmitter licensing). $20 minimum cashout threshold enforced server-side must be respected by Stripe pipeline. Payout approval must trigger payout_announcements row. Determine with Danny whether pipeline is fully automatic or still admin-approved.
+- Do not build until: Stripe Connect account registered. Explicitly scheduled by Danny.
+
+**Feature: Vite Migration**
+- Designed: Session 35 range
+- Original spec: Replace Create React App with Vite. Closes all 26 remaining npm audit vulnerabilities. No functional changes — pure toolchain swap.
+- Current constraints: 26 vulnerabilities are all CRA build toolchain — none reachable in production. Test on staging branch first, never directly on main. All env vars prefixed REACT_APP_ may need renaming to VITE_ — audit all references before migrating.
+- Do not build until: Explicitly scheduled by Danny.
+
+**Feature: ServiceTitan CRM Adapter**
+- Designed: Session 25 range
+- Original spec: server/crm/servicetitan.js placeholder exists. Implement fetchPipeline() when ready. getCRMAdapter() dispatcher already routes by contractorId.
+- Current constraints: Accent Roofing migrating to ServiceTitan within approximately 6 months from April 2026. Do not bypass getCRMAdapter(). ServiceTitan API auth is different from Jobber OAuth — research before building. fetchPipelineForReferrer() in jobber.js is the reference implementation.
+- Do not build until: ServiceTitan API credentials available. Explicitly scheduled by Danny.
+
+**Feature: Full Restore Script**
+- Designed: Session 36
+- Original spec: One-click restore button in admin panel. Uses restore-verify.js as foundation.
+- Current constraints: restore-verify.js exists in server/utils/ — build on it. Must require explicit admin confirmation. Must be rate-limited. Must trigger a backup of current state before overwriting.
+- Do not build until: Explicitly scheduled by Danny.
+
+**Feature: [STAGING] Error Email Prefix**
+- Designed: Session 36
+- Original spec: Add NODE_ENV=staging check to error emails so staging incidents are distinguishable from production.
+- Current constraints: Change goes in logError() in server/middleware/errorLogger.js only. Add [STAGING] prefix to email subject when NODE_ENV === 'staging'. Railway staging env var NODE_ENV is already set to staging.
+- Can be bundled into any session — does not need its own dedicated session.
+
+**Feature: Capacitor Mobile Build**
+- Designed: Sessions 28–30
+- Original spec: Wrap React frontend in Capacitor for native iOS and Android builds. Submit to App Store and Google Play.
+- Current constraints: Manage Account feature is complete — App Store hard requirement met. Invite email CTA links use placeholder (#) App Store URLs — update after Capacitor build. Apple Developer Account ($99/yr) and Google Play ($25) not yet registered — Danny action item. Twilio 10DLC must be active before submission.
+- Do not build until: Developer accounts registered. LLC + EIN complete. Explicitly scheduled by Danny.
+
+**Feature: Pending Referral Bulk Sync Phone/Email Architecture**
+- Designed: Identified in Session 38 audit
+- Original spec: The bulk allClients sync query deliberately omits phones and emails to reduce API load. This means getPrimaryEmail and getPrimaryPhone always return null for referrals that enter via the scheduled sync rather than via webhook. The credit attribution email cannot fire for these referrals.
+- Current constraints: Adding phones/emails to bulk query means fetching contact info for potentially hundreds of clients every 30 minutes — significant API load increase. Alternatives to evaluate: fetch contact info only for referred clients (those with a non-empty Referred by field) rather than all clients; or accept the limitation and rely on admin verification for bulk-sync referrals.
+- Do not build until: Explicitly scheduled by Danny. Requires architectural decision on API load tradeoff.
+
+**Feature: Master Admin Panel**
+- Designed: Session 34 range
+- Original spec: Danny-only platform-wide admin panel with insights across all contractors.
+- Current constraints: Requires separate auth layer from contractor admin. contractor_id must be pulled from session before this works. No build started.
+- Do not build until: Second contractor onboarded. Explicitly scheduled by Danny.
+
+**Feature: Referral Program Modes**
+- Designed: Session 24
+- Original spec: Six modes — Flat Bonus (live), Service-Tiered, Percentage of Job Value, Tiered Milestone, Give & Get, Chain Attribution. Stackable with VIP tier multipliers.
+- Current constraints: Only Flat Bonus is live. Bonus amounts stored at conversion time — any new mode must also store at conversion time. BOOST_TABLE in boostSchedule.js drives current mode. VIP multipliers not built.
+- Do not build until: Explicitly scheduled by Danny.
