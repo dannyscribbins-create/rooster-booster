@@ -403,72 +403,61 @@ This registry is the source of truth for every major feature in the system. When
 
 ### Pending Features — Design Specs and Current Constraints
 
-When building any feature listed here, read both the original design spec AND the current constraints column before writing a single line of code. These designs were made at a point in time — the constraints column reflects everything that has changed since.
+When building any feature listed here, read the current constraints before writing a single line of code — they reflect everything that has changed since the original design.
 
 ---
 
 **Feature: Booking Request Pending State (Pending Referral Feature 2)**
-- Designed: Session 37
-- Original spec: Referred person submits a booking request via referral link → a pending pipeline card appears in the referrer's pipeline tab before the job is in Jobber. Reuses infrastructure from the Pending Referral System.
+- Referred person submits a booking request via referral link, creating a pending pipeline card in the referrer's tab before the job enters Jobber.
 - Current constraints: booking_requests table does not yet exist — design it properly before building. The pending referral system (Feature 1) is complete and audited — its table structure should inform the booking_requests schema. Pipeline tab currently reads only from pipeline_cache — the booking request card must integrate without breaking the existing pipeline read path. The isRetry pattern in checkAndCreatePendingReferral is a reference for how to handle retry logic cleanly.
 - Do not build until: Explicitly scheduled by Danny.
 
 **Feature: Missing Referral Self-Report (Pending Referral Feature 3)**
-- Designed: Sessions 25.5 and 37
-- Original spec: Entry point in Profile tab. Popup form with channel dropdown (5 options: in-app QR code, personal link via app, sent company's direct info via app, sent company's info outside of app, sent salesman's contact info). Creates a purple admin inbox thread for admin to investigate and manually credit.
+- Profile tab entry point opens a popup with a 5-option channel dropdown that creates a purple admin inbox thread for manual credit investigation.
 - Current constraints: No admin inbox thread system exists yet — this feature requires building it. Channel dropdown options are locked per Session 25.5 design. Purple color must use AD design tokens. Admin inbox is separate from the existing activity log — it is a new UI surface.
 - Do not build until: Explicitly scheduled by Danny. Standalone — no dependency on Feature 2.
 
 **Feature: Stripe ACH Payout Pipeline**
-- Designed: Sessions 24–25
-- Original spec: Stripe Connect Standard — each contractor connects their own Stripe account. RoofMiles orchestrates payouts without holding funds. Jobber webhook on invoice paid triggers full payout pipeline. Payout transaction wrapper (BEGIN/COMMIT/ROLLBACK) already in place in admin.js.
+- Stripe Connect Standard pipeline where each contractor connects their own Stripe account and RoofMiles orchestrates ACH payouts without holding funds.
 - Current constraints: server/routes/stripe.js placeholder exists — build into it. Stripe Connect Standard confirmed — do not propose Express or platform payouts (avoids money transmitter licensing). $20 minimum cashout threshold enforced server-side must be respected by Stripe pipeline. Payout approval must trigger payout_announcements row. Determine with Danny whether pipeline is fully automatic or still admin-approved.
 - Do not build until: Stripe Connect account registered. Explicitly scheduled by Danny.
 
 **Feature: Vite Migration**
-- Designed: Session 35 range
-- Original spec: Replace Create React App with Vite. Closes all 26 remaining npm audit vulnerabilities. No functional changes — pure toolchain swap.
+- Pure toolchain swap replacing Create React App with Vite to close 26 npm audit vulnerabilities with no functional changes.
 - Current constraints: 26 vulnerabilities are all CRA build toolchain — none reachable in production. Test on staging branch first, never directly on main. All env vars prefixed REACT_APP_ may need renaming to VITE_ — audit all references before migrating.
 - Do not build until: Explicitly scheduled by Danny.
 
 **Feature: ServiceTitan CRM Adapter**
-- Designed: Session 25 range
-- Original spec: server/crm/servicetitan.js placeholder exists. Implement fetchPipeline() when ready. getCRMAdapter() dispatcher already routes by contractorId.
+- Implement fetchPipeline() in server/crm/servicetitan.js wired through the existing getCRMAdapter() dispatcher.
 - Current constraints: Accent Roofing migrating to ServiceTitan within approximately 6 months from April 2026. Do not bypass getCRMAdapter(). ServiceTitan API auth is different from Jobber OAuth — research before building. fetchPipelineForReferrer() in jobber.js is the reference implementation.
 - Do not build until: ServiceTitan API credentials available. Explicitly scheduled by Danny.
 
 **Feature: Full Restore Script**
-- Designed: Session 36
-- Original spec: One-click restore button in admin panel. Uses restore-verify.js as foundation.
+- One-click admin panel restore button built on restore-verify.js, requiring explicit confirmation and a pre-restore backup.
 - Current constraints: restore-verify.js exists in server/utils/ — build on it. Must require explicit admin confirmation. Must be rate-limited. Must trigger a backup of current state before overwriting.
 - Do not build until: Explicitly scheduled by Danny.
 
 **Feature: [STAGING] Error Email Prefix**
-- Designed: Session 36
-- Original spec: Add NODE_ENV=staging check to error emails so staging incidents are distinguishable from production.
+- Add [STAGING] prefix to error email subjects in logError() when NODE_ENV === 'staging' so staging incidents are distinguishable from production.
 - Current constraints: Change goes in logError() in server/middleware/errorLogger.js only. Add [STAGING] prefix to email subject when NODE_ENV === 'staging'. Railway staging env var NODE_ENV is already set to staging.
 - Can be bundled into any session — does not need its own dedicated session.
 
 **Feature: Capacitor Mobile Build**
-- Designed: Sessions 28–30
-- Original spec: Wrap React frontend in Capacitor for native iOS and Android builds. Submit to App Store and Google Play.
+- Wrap the React frontend in Capacitor for native iOS and Android builds submitted to App Store and Google Play.
 - Current constraints: Manage Account feature is complete — App Store hard requirement met. Invite email CTA links use placeholder (#) App Store URLs — update after Capacitor build. Apple Developer Account ($99/yr) and Google Play ($25) not yet registered — Danny action item. Twilio 10DLC must be active before submission.
 - Do not build until: Developer accounts registered. LLC + EIN complete. Explicitly scheduled by Danny.
 
 **Feature: Pending Referral Bulk Sync Phone/Email Architecture**
-- Designed: Identified in Session 38 audit
-- Original spec: The bulk allClients sync query deliberately omits phones and emails to reduce API load. This means getPrimaryEmail and getPrimaryPhone always return null for referrals that enter via the scheduled sync rather than via webhook. The credit attribution email cannot fire for these referrals.
+- The bulk allClients sync deliberately omits phones/emails to reduce API load, so credit attribution emails cannot fire for referrals entering via scheduled sync — requires an architectural decision before fixing.
 - Current constraints: Adding phones/emails to bulk query means fetching contact info for potentially hundreds of clients every 30 minutes — significant API load increase. Alternatives to evaluate: fetch contact info only for referred clients (those with a non-empty Referred by field) rather than all clients; or accept the limitation and rely on admin verification for bulk-sync referrals.
 - Do not build until: Explicitly scheduled by Danny. Requires architectural decision on API load tradeoff.
 
 **Feature: Master Admin Panel**
-- Designed: Session 34 range
-- Original spec: Danny-only platform-wide admin panel with insights across all contractors.
+- Danny-only platform-wide admin panel with cross-contractor insights requiring a separate auth layer from contractor admin.
 - Current constraints: Requires separate auth layer from contractor admin. contractor_id must be pulled from session before this works. No build started.
 - Do not build until: Second contractor onboarded. Explicitly scheduled by Danny.
 
 **Feature: Referral Program Modes**
-- Designed: Session 24
-- Original spec: Six modes — Flat Bonus (live), Service-Tiered, Percentage of Job Value, Tiered Milestone, Give & Get, Chain Attribution. Stackable with VIP tier multipliers.
+- Six planned bonus modes (Flat Bonus, Service-Tiered, Percentage, Tiered Milestone, Give & Get, Chain Attribution) stackable with VIP tier multipliers; only Flat Bonus is currently live.
 - Current constraints: Only Flat Bonus is live. Bonus amounts stored at conversion time — any new mode must also store at conversion time. BOOST_TABLE in boostSchedule.js drives current mode. VIP multipliers not built.
 - Do not build until: Explicitly scheduled by Danny.
