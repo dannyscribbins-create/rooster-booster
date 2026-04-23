@@ -179,6 +179,7 @@ export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onN
   const [loading, setLoading]   = useState(false);
   const [readIds, setReadIds]   = useState(new Set());
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchMessages = useCallback(safeAsync(async () => {
     setLoading(true);
     const token = sessionStorage.getItem('rb_admin_token');
