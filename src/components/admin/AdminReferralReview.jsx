@@ -274,7 +274,6 @@ function MissingTab() {
         body: JSON.stringify({ admin_note: noteValues[id] || null }),
       });
       if (!r.ok) throw new Error('Failed');
-      setResolveSuccess(prev => ({ ...prev, [id]: true }));
       setExpanded(null);
       showToast('Report marked as resolved.');
       await fetchReports();
