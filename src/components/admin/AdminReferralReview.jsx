@@ -237,7 +237,6 @@ function MissingTab() {
   const [expanded, setExpanded]       = useState(null);
   const [noteValues, setNoteValues]   = useState({});
   const [resolving, setResolving]     = useState(null);
-  const [resolveSuccess, setResolveSuccess] = useState({});
   const [resolveError, setResolveError]     = useState({});
   const [toast, setToast]             = useState('');
 
