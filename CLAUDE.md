@@ -351,66 +351,53 @@ This registry is the source of truth for every major feature in the system. When
 
 **Authentication System**
 - Status: Complete
-- Files: server/routes/referrer.js (referrer login/signup/PIN), server/routes/admin.js (admin login), server/middleware/auth.js, server/db.js (users, sessions tables)
-- How it works: Referrers log in with email + PIN (bcrypt hashed). Admins log in with ADMIN_PASSWORD env var. Both receive 64-char hex session tokens stored in the sessions table with a role column. Tokens expire after 24 hours.
-- Key rules: role column is the only separator between referrer and admin access. AND role='referrer' and AND role='admin' must always be present in session queries. verifyAdminSession() is the only authorized admin auth check.
-- Rate limiters: referrerLoginLimiter (10/15min), forgotPinLimiter (3/15min), resetPinLimiter (10/15min), adminLoginLimiter (5/15min)
+- Files: server/routes/referrer.js, server/routes/admin.js, server/middleware/auth.js, server/db.js
+- Email + PIN login for referrers and password login for admins; both issue 64-char hex session tokens with a role column (referrer/admin) stored in the sessions table, expiring after 24 hours.
 
 **Referral Pipeline System**
 - Status: Complete
-- Files: server/crm/jobber.js (fetchPipelineForReferrer), server/crm/pipelineSync.js (syncSingleClient, runFullSync, runIncrementalSync), server/db.js (pipeline_cache, referral_conversions tables)
-- How it works: Jobber webhook fires on CLIENT_CREATE or CLIENT_UPDATE. syncSingleClient writes client to pipeline_cache. fetchPipelineForReferrer reads pipeline_cache and cross-references with Jobber for quote/job/invoice status. Pipeline stages: lead → inspection → sold → paid.
-- Key rules: One conversion per referred client ever, enforced by UNIQUE(user_id, jobber_client_id) on referral_conversions. Referral program start date is 01/01/2026 — historical clients before this date are excluded. Bonus amounts are stored at time of conversion, never recalculated. allClients name matching uses local JavaScript filtering only — never Jobber API name filters. phones and emails are not in the bulk allClients query — only fetched via targeted single-client queries.
-- Jobber pagination: cursor-based looping with first:50 cap per query. pipeline_cache stores results. Background sync runs every ~30 minutes.
+- Files: server/crm/jobber.js, server/crm/pipelineSync.js, server/db.js
+- Syncs Jobber clients with a "Referred by" field into pipeline_cache and tracks them through lead → inspection → sold → paid stages, recording one bonus conversion per referred client ever via UNIQUE(user_id, jobber_client_id).
 
 **Pending Referral System**
-- Status: Complete — audited and hardened in Session 38
-- Files: server/utils/pendingReferral.js, server/utils/retryHelpers.js, server/crm/pipelineSync.js, server/routes/webhooks/jobber.js, server/routes/referrer.js, server/routes/admin.js, src/components/referrer/PendingMatchPopup.jsx, src/components/referrer/ReferrerApp.jsx, src/components/admin/AdminPendingReferrals.jsx, src/components/admin/AdminApp.jsx, src/components/admin/AdminComponents.jsx
-- How it works: When syncSingleClient detects a referred client whose referrer has no app account, a pending_referrals record is created. The referrer's contact info is looked up in Jobber via fetchReferrerContact(). An auto-invite email fires via Resend. When the referrer signs up and verifies their email, matchPendingReferral() matches them by email or phone and credits them. A celebration popup (PendingMatchPopup.jsx) fires on their first login.
-- Key rules: Webhook-triggered syncs pass allClients=[] — forces no-match path and admin flagging. The scheduled full sync retries webhook-created records that have needs_admin_verification=true, invite_channel='none', status='pending' — the isRetry path in checkAndCreatePendingReferral handles this. jobber_name_matches JSONB stores id and name only — contact info must be fetched via fetchReferrerContact() at confirm time using the stored Jobber client ID. SMS invites gated by TWILIO_10DLC_ACTIVE=false. Credit attribution email is gated by !isRetry to prevent duplicate sends on retry. getPrimaryEmail and getPrimaryPhone handle both GraphQL array shape and flat-string fallback. pending_referrals records are never hard deleted — close out sets status='closed'. HMAC verification is handled by verifyJobberWebhookSignature() — a single shared function used by all three webhook handlers.
-- Known deferred items: PendingMatchPopup copy is placeholder (TODO in code). Invite email copy is placeholder (TODO in code). App Store links in emails are placeholder (#) until Capacitor build. About Us modal renders behind PendingMatchPopup on first login — fix in UI overhaul session. Bulk sync path (allClients) does not fetch phone/email — credit attribution email cannot fire for referrals that enter via scheduled sync rather than webhook. Architectural decision deferred.
+- Status: Complete
+- Files: server/utils/pendingReferral.js, server/utils/retryHelpers.js, server/crm/pipelineSync.js, server/routes/webhooks/jobber.js, server/routes/referrer.js, server/routes/admin.js, src/components/referrer/PendingMatchPopup.jsx, src/components/admin/AdminPendingReferrals.jsx
+- When a referred client's referrer has no app account, creates a pending_referrals record, sends an auto-invite email, and credits the referrer automatically when they sign up and verify their contact info.
 
 **Cash Out System**
 - Status: Complete
-- Files: server/routes/referrer.js (cashout request), server/routes/admin.js (approve/deny), server/db.js (cashout_requests table)
-- How it works: Referrer requests payout from Cash Out tab. Admin approves or denies. Approval triggers payout_announcements row and Resend notification email. $20 minimum cashout threshold enforced server-side.
-- Key rules: Balance gate — cashout request rejected if balance insufficient. $20 minimum enforced on server endpoint, not just UI. Stripe ACH pipeline not yet built — cashouts are currently manual.
+- Files: server/routes/referrer.js, server/routes/admin.js, server/db.js
+- Referrers request payouts ($20 minimum, enforced server-side) which admins approve or deny, triggering a payout_announcements row and Resend notification email; Stripe ACH not yet built — payouts are currently manual.
 
 **Manage Account**
-- Status: Complete (Session 32)
+- Status: Complete
 - Files: server/routes/account.js, src/components/referrer/ManageAccount.jsx, src/components/referrer/ProfileTab.jsx
-- How it works: Collapsible section at bottom of Profile tab. Three toggle tabs: Personal Info, Security, Privacy. Delete Account triggers soft delete (sets deleted_at timestamp). $20 minimum cashout exception applies on deletion — balance auto-cashed out regardless of minimum.
-- Key rules: Delete Account is soft delete only. Sets deleted_at + deletion_requested_at. 30-day retention before permanent purge (cron job location marked with TODO). Admin notified via email on deletion. User must type DELETE in modal — enforced in UI and verified server-side. TOTP via speakeasy. Recovery phone and recovery email fields exist on users table.
+- Collapsible account management section in Profile tab covering personal info, security (TOTP via speakeasy), privacy, and soft-delete (deleted_at) with 30-day retention before permanent purge.
 
 **Error Monitoring System**
-- Status: Complete (Session 34)
-- Files: server/middleware/errorLogger.js, server/db.js (error_log table), src/utils/clientErrorReporter.js, src/components/shared/ErrorBoundary.jsx
-- How it works: All backend errors route through logError() which upserts to error_log with deduplication, classifies severity, and sends email alert to admin1@roofmiles.com on first occurrence and every 10th recurrence. Frontend errors route through reportClientError() with 60-second deduplication.
-- Key rules: Never make API calls inside error handlers — rule-based plain-English explanations only. /api/log-client-error is intentionally public with no auth. Severity: CRITICAL for /cashout /payout /stripe /webhook /auth /token, WARNING for /login /pin /reset /admin, INFO for everything else. Never delete error_log rows — use resolved=true to mark fixed.
+- Status: Complete
+- Files: server/middleware/errorLogger.js, server/db.js, src/utils/clientErrorReporter.js, src/components/shared/ErrorBoundary.jsx
+- Routes all backend and frontend errors through logError() into error_log with deduplication, emailing admin1@roofmiles.com on first occurrence and every 10th recurrence; never delete rows, use resolved=true.
 
 **Database Backup System**
-- Status: Complete (Session 36)
-- Files: server/utils/backup.js, server/utils/restore-verify.js, server/routes/admin.js (backup endpoints)
-- How it works: Pure JavaScript backup using pg client. Discovers all tables dynamically. Compresses to .json.gz, uploads to Backblaze B2. Daily cron at 2am UTC. Admin panel has Run Backup Now and Verify Latest Backup buttons. Retains 30 days.
-- Key rules: Always run backup before any database migration or risky push. Backup endpoints rate-limited to 3/hr. Full restore script (one-click admin button) not yet built — queued for future session.
+- Status: Complete
+- Files: server/utils/backup.js, server/utils/restore-verify.js, server/routes/admin.js
+- Daily cron at 2am UTC compresses all tables to .json.gz and uploads to Backblaze B2 with 30-day retention; admin panel exposes Run Backup Now and Verify Latest Backup buttons (rate-limited to 3/hr).
 
 **Announcement / Payout Popup System**
 - Status: Complete
-- Files: src/components/referrer/AnnouncementPopup.jsx, server/routes/admin.js (announcement settings), server/db.js (payout_announcements, announcement_settings tables)
-- How it works: Admin configures announcement messages. On login, referrer app checks for unread announcements. Payout approval triggers payout_announcements row which fires celebration popup.
-- Key rules: WARMUP_ENTRIES_SERVER must stay in sync with WARMUP_ENTRIES in shouts.js. PendingMatchPopup must take priority over AnnouncementPopup when both present — currently not enforced, fix in UI overhaul session.
+- Files: src/components/referrer/AnnouncementPopup.jsx, server/routes/admin.js, server/db.js
+- Admin-configured announcement messages and payout-triggered celebration popups shown to referrers on login via payout_announcements and announcement_settings tables.
 
 **Invite Link System**
 - Status: Complete
-- Files: server/routes/referrer.js, server/routes/admin.js, server/db.js (contractor_invite_links, email_verifications tables)
-- How it works: Admin generates contractor invite links. Referrers generate peer invite links. Links route to signup flow. Email verification required via 6-digit code sent by Resend.
-- Key rules: No limit currently enforced on how many links can be generated — known gap for future fix. OAuth flow must complete within a single browser session.
+- Files: server/routes/referrer.js, server/routes/admin.js, server/db.js
+- Admin and referrers generate invite links that route to signup with mandatory email verification via a 6-digit Resend code.
 
 **Admin Panel**
 - Status: Complete
 - Files: src/components/admin/ (all files), server/routes/admin.js
-- How it works: Accessed via ?admin=true URL param. Sections: Dashboard, Referrers, Cash Outs, Activity Log, Announcements, Pending Referrals, Settings. Admin stats cached in admin_cache with 15-minute TTL.
-- Key rules: All admin endpoints protected by verifyAdminSession(). Admin token stored in sessionStorage as rb_admin_token. 401 handler clears token and resets loggedIn=false. New admin pages added to src/components/admin/ and wired into AdminApp.jsx and ADMIN_NAV in AdminComponents.jsx.
+- Web-based admin dashboard (accessed via ?admin=true) covering referrers, cash outs, activity log, announcements, pending referrals, and settings with 15-minute cached stats; all endpoints protected by verifyAdminSession().
 
 ---
 
