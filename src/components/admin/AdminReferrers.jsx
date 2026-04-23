@@ -199,6 +199,25 @@ export default function AdminReferrers({ setLoggedIn }) {
     u.email.toLowerCase().includes(search.toLowerCase())
   );
 
+  function FunnelStatusPill({ status }) {
+    if (!status) return <span style={{ color: AD.textTertiary }}>—</span>;
+    const map = {
+      app_account_only:     { background: '#F3F4F6', color: '#4B5563', border: '1px solid #D1D5DB', label: 'App Account Only' },
+      booking_requested:    { background: AD.amberBg, color: AD.amberText, border: `1px solid ${AD.amber}`, label: 'Booking Requested' },
+      in_pipeline_lead:     { background: STATUS_CONFIG.lead.bg, color: STATUS_CONFIG.lead.color, border: `1px solid ${STATUS_CONFIG.lead.dot}`, label: 'Lead' },
+      in_pipeline_inspection: { background: STATUS_CONFIG.inspection.bg, color: STATUS_CONFIG.inspection.color, border: `1px solid ${STATUS_CONFIG.inspection.dot}`, label: 'Inspection' },
+      in_pipeline_sold:     { background: STATUS_CONFIG.sold.bg, color: STATUS_CONFIG.sold.color, border: `1px solid ${STATUS_CONFIG.sold.dot}`, label: 'Sold' },
+      in_pipeline_paid:     { background: STATUS_CONFIG.sold.bg, color: STATUS_CONFIG.sold.color, border: `1px solid ${STATUS_CONFIG.sold.dot}`, label: 'Paid' },
+    };
+    const s = map[status];
+    if (!s) return <span style={{ color: AD.textTertiary }}>—</span>;
+    return (
+      <span style={{ background: s.background, color: s.color, border: s.border, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {s.label}
+      </span>
+    );
+  }
+
   if (selected) {
     const ui = detail && detail.userInfo;
     const joinSource = ui ? ui.signup_source : selected.signup_source;
@@ -261,6 +280,12 @@ export default function AdminReferrers({ setLoggedIn }) {
                     <span style={{ fontSize: 12, color: AD.textTertiary, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 90 }}>How Joined</span>
                     <JoinPill source={joinSource} />
                   </div>
+                  {selected.signup_source === 'peer_link' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, color: AD.textTertiary, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 90 }}>Funnel Status</span>
+                      <FunnelStatusPill status={selected.lifecycle_status} />
+                    </div>
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 12, color: AD.textTertiary, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 90 }}>Referred By</span>
                     <span style={{ fontSize: 13, color: AD.textSecondary }}>
@@ -553,7 +578,7 @@ export default function AdminReferrers({ setLoggedIn }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: AD.fontSans, fontSize: 15 }}>
           <thead>
             <tr style={{ background: AD.bgCardTint, borderBottom: `1px solid ${AD.border}` }}>
-              {['Referrer', 'Email', 'Added', 'How They Joined', 'Referred By', 'Actions'].map(h => (
+              {['Referrer', 'Email', 'Added', 'How They Joined', 'Referred By', 'Funnel Status', 'Actions'].map(h => (
                 <th key={h} style={{ padding: '11px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: AD.textSecondary, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
@@ -573,12 +598,13 @@ export default function AdminReferrers({ setLoggedIn }) {
                     <td style={{ padding: '16px 24px' }}><Skeleton width="80px" height="14px" borderRadius="4px" /></td>
                     <td style={{ padding: '16px 24px' }}><Skeleton width="60px" height="14px" borderRadius="4px" /></td>
                     <td style={{ padding: '16px 24px' }}><Skeleton width="100px" height="14px" borderRadius="4px" /></td>
+                    <td style={{ padding: '16px 24px' }}><Skeleton width="90px" height="22px" borderRadius="20px" /></td>
                     <td style={{ padding: '16px 24px' }}><Skeleton width="80px" height="28px" borderRadius="6px" /></td>
                   </tr>
                 ))}
               </>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
+              <tr><td colSpan={7} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
             ) : filtered.map((u, i) => (
               <tr key={u.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${AD.border}` : 'none', transition: 'background 0.12s' }}
                 onMouseEnter={e => e.currentTarget.style.background = AD.bgCardTint}
@@ -607,6 +633,9 @@ export default function AdminReferrers({ setLoggedIn }) {
                 </td>
                 <td style={{ padding: '16px 24px', color: AD.textSecondary, fontSize: 13 }}>
                   {u.invited_by_name ? u.invited_by_name.split(' ')[0] : ''}
+                </td>
+                <td style={{ padding: '16px 24px' }}>
+                  <FunnelStatusPill status={u.lifecycle_status} />
                 </td>
                 <td style={{ padding: '16px 24px' }}>
                   <div style={{ display: 'flex', gap: 8 }}>

@@ -72,7 +72,19 @@ router.get('/api/admin/users', async (req, res) => {
         u.id, u.full_name, u.email, u.phone, u.created_at,
         u.signup_source, u.invited_by_user_id, u.jobber_client_id,
         u.email_verified,
-        ref.full_name AS invited_by_name
+        ref.full_name AS invited_by_name,
+        CASE
+          WHEN u.signup_source != 'peer_link' THEN NULL
+          WHEN (
+            EXISTS (SELECT 1 FROM referral_conversions rc WHERE rc.user_id = u.id)
+            OR EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'paid' AND pc.contractor_id = 'accent-roofing')
+          ) THEN 'in_pipeline_paid'
+          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'sold' AND pc.contractor_id = 'accent-roofing') THEN 'in_pipeline_sold'
+          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'inspection' AND pc.contractor_id = 'accent-roofing') THEN 'in_pipeline_inspection'
+          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.contractor_id = 'accent-roofing') THEN 'in_pipeline_lead'
+          WHEN EXISTS (SELECT 1 FROM booking_requests br WHERE br.submitted_by_user_id = u.id AND br.status != 'matched') THEN 'booking_requested'
+          ELSE 'app_account_only'
+        END AS lifecycle_status
       FROM users u
       LEFT JOIN users ref ON ref.id = u.invited_by_user_id
       ${where}
