@@ -375,6 +375,33 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     ALTER TABLE error_log ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'backend'
   `);
 
+  // ── MISSING REFERRAL REPORTS ──────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS missing_referral_reports (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    referred_name TEXT NOT NULL,
+    referred_contact TEXT,
+    channel TEXT NOT NULL,
+    approximate_date DATE,
+    admin_note TEXT,
+    resolved BOOLEAN DEFAULT false,
+    resolved_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+
+  // ── ADMIN MESSAGES (stub — full inbox built Session 39C) ───────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS admin_messages (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL DEFAULT 'accent-roofing',
+    message_type TEXT NOT NULL,
+    reference_id INTEGER,
+    title TEXT NOT NULL,
+    body TEXT,
+    color_code TEXT NOT NULL,
+    read BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

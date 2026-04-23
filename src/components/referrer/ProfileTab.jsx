@@ -12,7 +12,16 @@ import StatusBadge from '../shared/StatusBadge';
 import Skeleton from '../shared/Skeleton';
 import BadgeCelebrationPopup from './BadgeCelebrationPopup';
 import ManageAccount from './ManageAccount';
+import MissingReferralModal from './MissingReferralModal';
 import { safeAsync } from '../../utils/clientErrorReporter';
+
+const CHANNEL_LABEL_MAP = {
+  qr_code:                  'In-app QR code',
+  personal_link:            'Personal link via app',
+  company_info_via_app:     'Sent company info via app',
+  company_info_outside_app: 'Sent company info outside of app',
+  salesman_contact:         "Sent salesman's contact info",
+};
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 export default function Profile({ onLogout, pipeline, loading, userName, userEmail, onNameUpdate, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight }) {
@@ -35,6 +44,11 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
   const [pinnedShout,     setPinnedShout]     = useState(null);
   const [shoutRank,       setShoutRank]       = useState(null); // userRank from leaderboard, for bucket selection
   const [shoutSettingsLoading, setShoutSettingsLoading] = useState(true);
+
+  // Missing referral reports
+  const [showMissingModal,   setShowMissingModal]   = useState(false);
+  const [missingReports,     setMissingReports]     = useState([]);
+  const [missingLoading,     setMissingLoading]     = useState(true);
 
   // UX: highlight animation guides user to the correct section when arriving from Dashboard View All button
   const [sectionHighlighted, setSectionHighlighted] = useState(!!highlightReferrals);
@@ -102,6 +116,25 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
         setShoutSettingsLoading(false);
       }
     })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchMissingReports = safeAsync(async () => {
+    setMissingLoading(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/referrer/missing-referrals`, {
+        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+      });
+      const data = await r.json();
+      setMissingReports(Array.isArray(data) ? data : []);
+    } catch {
+      setMissingReports([]);
+    } finally {
+      setMissingLoading(false);
+    }
+  }, 'ProfileTab');
+
+  useEffect(() => {
+    fetchMissingReports();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveShoutSettings = safeAsync(async (optOut, pinned) => {
@@ -582,6 +615,84 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
           );
         })()}
 
+        {/* ── Section 5: My Referral Reports ──────────────────────────────────── */}
+        <AnimCard delay={430} screenKey="profile">
+          <div style={{
+            background: R.bgCard, border: `1px solid ${R.border}`,
+            borderRadius: 16, overflow: "hidden", boxShadow: R.shadow, marginBottom: 16,
+          }}>
+            {/* Section header */}
+            <div style={{
+              padding: "16px 18px 14px",
+              borderBottom: `1px solid ${R.border}`,
+              display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <i className="ph ph-magnifying-glass" style={{ fontSize: 18, color: R.navy }} />
+              <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: R.textPrimary }}>My Referral Reports</span>
+            </div>
+
+            {/* Entry point row */}
+            <button
+              onClick={() => setShowMissingModal(true)}
+              style={{
+                width: "100%", display: "flex", alignItems: "center",
+                justifyContent: "space-between", padding: "14px 18px",
+                background: "transparent", border: "none", cursor: "pointer",
+                borderBottom: `1px solid ${R.border}`,
+                fontFamily: R.fontBody,
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = R.bgPage; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <span style={{ fontSize: 14, color: R.textSecondary }}>Don't see a referral in your pipeline?</span>
+              <i className="ph ph-caret-right" style={{ fontSize: 16, color: R.textMuted }} />
+            </button>
+
+            {/* Report list */}
+            <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {missingLoading ? (
+                <>
+                  <div style={{ height: 52, borderRadius: 10, background: R.bgPage, animation: "pulse 1.5s ease-in-out infinite" }} />
+                  <div style={{ height: 52, borderRadius: 10, background: R.bgPage, animation: "pulse 1.5s ease-in-out infinite" }} />
+                </>
+              ) : missingReports.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 13, color: R.textMuted, textAlign: "center", padding: "12px 0 4px", fontFamily: R.fontBody }}>
+                  No reports submitted yet.
+                </p>
+              ) : (
+                missingReports.map(report => (
+                  <div key={report.id} style={{
+                    background: R.bgPage, borderRadius: 10,
+                    padding: "12px 14px",
+                    display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+                    boxShadow: R.shadow,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600, color: R.textPrimary, fontFamily: R.fontBody }}>
+                        {report.referred_name}
+                      </p>
+                      <p style={{ margin: 0, fontSize: 12, color: R.textSecondary, fontFamily: R.fontBody }}>
+                        {CHANNEL_LABEL_MAP[report.channel] || report.channel}
+                        {report.approximate_date && ` · ${new Date(report.approximate_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                      </p>
+                    </div>
+                    <span style={{
+                      marginLeft: 12, flexShrink: 0,
+                      padding: "3px 10px", borderRadius: 99,
+                      fontSize: 12, fontWeight: 500,
+                      background: report.resolved ? R.greenBg : R.amberBg,
+                      color: report.resolved ? R.greenText : R.amberText,
+                    }}>
+                      {report.resolved ? 'Closed' : 'Open'}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </AnimCard>
+
         {/* ── Manage Account ──────────────────────────────────────────────────── */}
         <AnimCard delay={460} screenKey="profile">
           <ManageAccount
@@ -631,8 +742,16 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
       {newBadges.length > 0 && (
         <BadgeCelebrationPopup badges={newBadges} onDismiss={handleBadgeDismiss} />
       )}
+      <MissingReferralModal
+        isOpen={showMissingModal}
+        onClose={() => setShowMissingModal(false)}
+        onSuccess={fetchMissingReports}
+      />
       <ContactModal isOpen={showContact} onClose={() => setShowContact(false)} />
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+      `}</style>
     </Screen>
   );
 }

@@ -46,6 +46,12 @@ const bookingLimiter = rateLimit({
   message: { error: 'Too many booking requests. Please try again in an hour.' }
 });
 
+const missingReferralLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many missing referral reports. Please try again tomorrow.' }
+});
+
 router.post('/api/log-client-error', clientErrorLimiter, async (req, res) => {
   try {
     const { error_message, stack_trace, route, component } = req.body
@@ -1537,6 +1543,106 @@ router.put('/api/referral/pending/:id/seen', async (req, res) => {
       [req.params.id, userId]
     );
     res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── REFERRER: MISSING REFERRAL REPORT ─────────────────────────────────────────
+
+const VALID_CHANNELS = ['qr_code', 'personal_link', 'company_info_via_app', 'company_info_outside_app', 'salesman_contact'];
+const CHANNEL_LABELS = {
+  qr_code:                  'In-app QR code',
+  personal_link:            'Personal link via app',
+  company_info_via_app:     'Sent company info via app',
+  company_info_outside_app: 'Sent company info outside of app',
+  salesman_contact:         'Sent salesman\'s contact info',
+};
+
+router.post('/api/referrer/missing-referral', missingReferralLimiter, async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    const userResult = await pool.query('SELECT full_name FROM users WHERE id=$1 AND deleted_at IS NULL', [userId]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const fullName = userResult.rows[0].full_name;
+
+    const { referred_name, channel, referred_contact, approximate_date } = req.body;
+    if (!referred_name || typeof referred_name !== 'string' || referred_name.trim().length === 0) {
+      return res.status(400).json({ error: 'referred_name is required' });
+    }
+    if (!channel || !VALID_CHANNELS.includes(channel)) {
+      return res.status(400).json({ error: 'channel must be one of: ' + VALID_CHANNELS.join(', ') });
+    }
+
+    const safeReferredName   = referred_name.trim().substring(0, 200);
+    const safeReferredContact = referred_contact ? String(referred_contact).trim().substring(0, 200) : null;
+    const safeApproxDate     = approximate_date || null;
+
+    const reportResult = await pool.query(
+      `INSERT INTO missing_referral_reports
+         (user_id, referred_name, referred_contact, channel, approximate_date)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [userId, safeReferredName, safeReferredContact, channel, safeApproxDate]
+    );
+    const reportId = reportResult.rows[0].id;
+
+    const channelLabel = CHANNEL_LABELS[channel] || channel;
+    const messageTitle = `Missing Referral — ${fullName}`;
+    const messageBody  = `${fullName} reported a missing referral: ${safeReferredName} via ${channelLabel}`;
+
+    await pool.query(
+      `INSERT INTO admin_messages
+         (contractor_id, message_type, reference_id, title, body, color_code)
+       VALUES ('accent-roofing', 'missing_referral', $1, $2, $3, 'purple')`,
+      [reportId, messageTitle, messageBody]
+    );
+
+    try {
+      await pool.query(
+        `INSERT INTO activity_log (event_type, full_name, detail)
+         VALUES ('missing_referral_submitted', $1, $2)`,
+        [fullName, `Reported missing referral: ${safeReferredName} via ${channelLabel}`]
+      );
+    } catch (logErr) {
+      await logError({ req, error: logErr });
+    }
+
+    res.status(201).json({ id: reportId });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/api/referrer/missing-referrals', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    const result = await pool.query(
+      `SELECT id, referred_name, referred_contact, channel, approximate_date,
+              resolved, resolved_at, created_at
+       FROM missing_referral_reports
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+    res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });

@@ -13,6 +13,10 @@ const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../utils/dateUtils');
 const { runBackup } = require('../utils/backup');
 const { runVerify } = require('../utils/restore-verify');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
+const { retryWithBackoff } = require('../utils/retryWithBackoff');
+const { resendShouldRetry } = require('../utils/retryHelpers');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -1421,6 +1425,113 @@ router.get('/api/admin/booking-requests', async (req, res) => {
       [contractorId]
     );
     res.json({ bookingRequests: result.rows });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ADMIN: MISSING REFERRAL REPORTS ───────────────────────────────────────────
+
+const ADMIN_CHANNEL_LABELS = {
+  qr_code:                  'In-app QR code',
+  personal_link:            'Personal link via app',
+  company_info_via_app:     'Sent company info via app',
+  company_info_outside_app: 'Sent company info outside of app',
+  salesman_contact:         'Sent salesman\'s contact info',
+};
+
+// GET /api/admin/missing-referrals
+router.get('/api/admin/missing-referrals', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const result = await pool.query(
+      `SELECT mrr.id, mrr.referred_name, mrr.referred_contact, mrr.channel,
+              mrr.approximate_date, mrr.admin_note, mrr.resolved, mrr.resolved_at,
+              mrr.created_at, u.full_name AS referrer_name, u.email AS referrer_email
+       FROM missing_referral_reports mrr
+       JOIN users u ON u.id = mrr.user_id
+       ORDER BY mrr.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/admin/missing-referrals/:id/resolve
+router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const id = parseInt(req.params.id, 10);
+  if (!id || id < 1) return res.status(400).json({ error: 'Invalid report id' });
+
+  const admin_note = req.body.admin_note
+    ? String(req.body.admin_note).trim().substring(0, 1000)
+    : null;
+
+  try {
+    const updateResult = await pool.query(
+      `UPDATE missing_referral_reports
+       SET resolved=true, resolved_at=NOW(), admin_note=$1
+       WHERE id=$2
+       RETURNING id, user_id, referred_name, channel`,
+      [admin_note, id]
+    );
+    if (updateResult.rows.length === 0) return res.status(404).json({ error: 'Report not found' });
+    const report = updateResult.rows[0];
+
+    const userResult = await pool.query(
+      'SELECT full_name, email FROM users WHERE id=$1',
+      [report.user_id]
+    );
+    const referrer = userResult.rows[0];
+
+    if (referrer?.email) {
+      try {
+        await retryWithBackoff(
+          () => resend.emails.send({
+            from: 'Rooster Booster <noreply@roofmiles.com>',
+            to: referrer.email,
+            subject: 'Your Missing Referral Was Found! 🎉',
+            html: `
+              <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px">
+                <h2 style="color:#012854;margin:0 0 12px">Great news, ${referrer.full_name}!</h2>
+                <p style="color:#333;line-height:1.6;margin:0 0 16px">
+                  We found your missing referral and it's been added to your pipeline!
+                  Tap the button below to check it out.
+                </p>
+                <a href="${process.env.FRONTEND_URL}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:700;font-size:15px">
+                  View My Pipeline
+                </a>
+                <p style="color:#888;font-size:12px;margin-top:24px">
+                  Questions? Reply to this email and we'll help.
+                </p>
+              </div>
+            `,
+          }),
+          { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+        );
+      } catch (emailErr) {
+        await logError({ req, error: emailErr });
+      }
+    }
+
+    const channelLabel = ADMIN_CHANNEL_LABELS[report.channel] || report.channel;
+    try {
+      await pool.query(
+        `INSERT INTO activity_log (event_type, full_name, detail)
+         VALUES ('missing_referral_resolved', $1, $2)`,
+        [
+          referrer?.full_name || 'Unknown',
+          `Admin resolved missing referral report for "${report.referred_name}" via ${channelLabel}${admin_note ? `. Note: ${admin_note}` : ''}`,
+        ]
+      );
+    } catch (logErr) {
+      await logError({ req, error: logErr });
+    }
+
+    res.json(updateResult.rows[0]);
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });

@@ -10,9 +10,8 @@ export const ADMIN_NAV = [
   { id: 'activity',     icon: 'ph-clock-clockwise',       label: 'Activity'           },
   { id: 'announcements', icon: 'ph-megaphone',            label: 'Announcements'      },
   { id: 'engagement',   icon: 'ph-trophy',                label: 'Engagement'         },
-  { id: 'about',        icon: 'ph-identification-card',   label: 'About Us & Booking' },
-  { id: 'flagged',      icon: 'ph-flag',                  label: 'Flagged Referrals'  },
-  { id: 'pending',      icon: 'ph-clock',                 label: 'Pending Referrals'  },
+  { id: 'about',          icon: 'ph-identification-card',   label: 'About Us & Booking' },
+  { id: 'referralReview', icon: 'ph-git-branch',           label: 'Referral Review'    },
 ];
 
 export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount }) {
@@ -48,11 +47,8 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
               {item.id === 'cashouts' && pendingCount > 0 && (
                 <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{pendingCount}</span>
               )}
-              {item.id === 'flagged' && flaggedUnresolved > 0 && (
-                <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{flaggedUnresolved}</span>
-              )}
-              {item.id === 'pending' && pendingReferralCount > 0 && (
-                <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{pendingReferralCount}</span>
+              {item.id === 'referralReview' && (flaggedUnresolved + pendingReferralCount) > 0 && (
+                <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{flaggedUnresolved + pendingReferralCount}</span>
               )}
             </button>
           );

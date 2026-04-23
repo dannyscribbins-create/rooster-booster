@@ -4,41 +4,46 @@ import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, StatCard, PipelineBar } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
 
-export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats, onSettingsClick }) {
+export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats, onSettingsClick, onFlaggedBannerClick }) {
   const [stats, setStats]               = useState(null);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
   const [crmNotConnected, setCrmNotConnected] = useState(false);
   const [flaggedUnresolved, setFlaggedUnresolved] = useState(0);
 
-  function loadStats(forceRefresh = false) {
+  async function loadStats(forceRefresh = false) {
     setLoading(true); setError(''); setCrmNotConnected(false);
-    fetch(`${BACKEND_URL}/api/admin/stats${forceRefresh ? '?refresh=true' : ''}`, {
-      headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
-    })
-      .then(r => {
-        if (r.status === 401) { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); return null; }
-        return r.json();
-      })
-      .then(d => {
-        if (!d) return;
-        if (d.error === 'crm_not_connected') { setCrmNotConnected(true); }
-        else if (d.error) { setError(d.error); }
-        else { setStats(d); if (onStats) onStats(d); }
-        setLoading(false);
-      })
-      .catch(() => { setError('Failed to load stats'); setLoading(false); });
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/stats${forceRefresh ? '?refresh=true' : ''}`, {
+        headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+      });
+      if (r.status === 401) { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); return; }
+      const d = await r.json();
+      if (d.error === 'crm_not_connected') { setCrmNotConnected(true); }
+      else if (d.error) { setError(d.error); }
+      else { setStats(d); if (onStats) onStats(d); }
+    } catch {
+      setError('Failed to load stats');
+    } finally {
+      setLoading(false);
+    }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadStats(); }, [refreshKey]);
 
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/admin/flagged-referrals/summary`, {
-      headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d && d.unresolved_count != null) setFlaggedUnresolved(d.unresolved_count); })
-      .catch(() => {});
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/flagged-referrals/summary`, {
+          headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d && d.unresolved_count != null) setFlaggedUnresolved(d.unresolved_count);
+      } catch {
+        // swallow
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -52,8 +57,12 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
     <>
       <AdminPageHeader title={`${greeting}, Danny.`} subtitle="Rooster Booster · Accent Roofing" />
       {flaggedUnresolved > 0 && (
-        <div style={{ background: '#FFC107', color: '#1A1A1A', padding: '12px 16px', borderRadius: 6, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 500 }}>
-          ⚠️ {flaggedUnresolved} flagged referral{flaggedUnresolved !== 1 ? 's' : ''} need review
+        <div
+          onClick={onFlaggedBannerClick}
+          style={{ background: '#FFC107', color: '#1A1A1A', padding: '12px 16px', borderRadius: 6, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 14, fontWeight: 500, cursor: onFlaggedBannerClick ? 'pointer' : 'default' }}
+        >
+          <span>⚠️ {flaggedUnresolved} flagged referral{flaggedUnresolved !== 1 ? 's' : ''} need review</span>
+          {onFlaggedBannerClick && <span style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>Review <i className="ph ph-arrow-right" /></span>}
         </div>
       )}
       {stats?.pendingCashouts > 0 && (

@@ -9,8 +9,7 @@ import AdminActivity from './AdminActivityLog';
 import AdminAnnouncementSettings from './AdminAnnouncementSettings';
 import AdminAboutUs from './AdminAboutUs';
 import AdminEngagement from './AdminEngagement';
-import AdminFlaggedReferrals from './AdminFlaggedReferrals';
-import AdminPendingReferrals from './AdminPendingReferrals';
+import AdminReferralReview from './AdminReferralReview';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
 function useAdminFonts() {
@@ -124,6 +123,8 @@ export default function AdminPanel() {
   const [pendingCount, setPendingCount]           = useState(0);
   const [flaggedUnresolved, setFlaggedUnresolved] = useState(0);
   const [pendingReferralCount, setPendingReferralCount] = useState(0);
+  const [missingOpenCount, setMissingOpenCount]   = useState(0);
+  const [referralReviewTab, setReferralReviewTab] = useState('pending');
   const [showSettings, setShowSettings]           = useState(false);
   const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
   const [dashboardCachedAt, setDashboardCachedAt]     = useState(null);
@@ -136,10 +137,11 @@ export default function AdminPanel() {
     const headers = { 'Authorization': `Bearer ${token}` };
     (async () => {
       const fetchJson = async (url) => { const r = await fetch(url, { headers }); return r.json(); };
-      const [cashoutsRes, flaggedRes, pendingRes] = await Promise.allSettled([
+      const [cashoutsRes, flaggedRes, pendingRes, missingRes] = await Promise.allSettled([
         fetchJson(`${BACKEND_URL}/api/admin/cashouts`),
         fetchJson(`${BACKEND_URL}/api/admin/flagged-referrals/summary`),
         fetchJson(`${BACKEND_URL}/api/admin/pending-referrals`),
+        fetchJson(`${BACKEND_URL}/api/admin/missing-referrals`),
       ]);
       if (cashoutsRes.status === 'fulfilled' && Array.isArray(cashoutsRes.value)) {
         setPendingCount(cashoutsRes.value.filter(c => c.status === 'pending').length);
@@ -150,30 +152,33 @@ export default function AdminPanel() {
       if (pendingRes.status === 'fulfilled' && Array.isArray(pendingRes.value.pending)) {
         setPendingReferralCount(pendingRes.value.pending.filter(r => r.status === 'pending').length);
       }
+      if (missingRes.status === 'fulfilled' && Array.isArray(missingRes.value)) {
+        setMissingOpenCount(missingRes.value.filter(r => !r.resolved).length);
+      }
     })();
   }
 
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
 
   const pages = {
-    dashboard:     <AdminDashboard          setLoggedIn={setAuthed} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} />,
+    dashboard:     <AdminDashboard          setLoggedIn={setAuthed} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} onFlaggedBannerClick={() => { setReferralReviewTab('flagged'); setPage('referralReview'); }} />,
     referrers:     <AdminReferrers          setLoggedIn={setAuthed} />,
     cashouts:      <AdminCashOuts           setLoggedIn={setAuthed} />,
     activity:      <AdminActivity           setLoggedIn={setAuthed} />,
     announcements: <AdminAnnouncementSettings setLoggedIn={setAuthed} />,
     engagement:    <AdminEngagement         setLoggedIn={setAuthed} />,
     about:         <AdminAboutUs            setLoggedIn={setAuthed} />,
-    flagged:       <AdminFlaggedReferrals />,
-    pending:       <AdminPendingReferrals />,
+    referralReview: <AdminReferralReview    initialTab={referralReviewTab} />,
   };
 
   function handleNavClick(id) {
     setShowSettings(false);
+    if (id === 'referralReview') setReferralReviewTab('pending');
     setPage(id);
   }
 
   return (
-    <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)}>
+    <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)}>
       {pages[page]}
     </AdminShell>
   );
