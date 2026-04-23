@@ -188,7 +188,9 @@ export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onN
     const data = await r.json();
     if (Array.isArray(data)) setMessages(data);
     setLoading(false);
-  }, 'AdminInboxSidebar.fetchMessages'), []);
+  }, 'AdminInboxSidebar.fetchMessages'),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  []);
 
   useEffect(() => {
     if (isOpen) fetchMessages();
