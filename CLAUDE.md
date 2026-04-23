@@ -208,7 +208,7 @@ When reading any file during a session, silently audit for the following and fla
 - missing retryWithBackoff on external API calls → all Jobber, Resend, Twilio, and Stripe calls must use `retryWithBackoff()` from server/utils/retryWithBackoff.js
 - `SELECT *` in queries that return data to the client → always use explicit column lists
 
-Do not wait to be asked. Do not skip files that appear to be "working." If a violation is found, report it and ask whether to fix it before or after the assigned task. Never silently leave a violation in place.
+If a violation is found, report it and ask whether to fix it before or after the assigned task. Never silently leave a violation in place.
 
 ## Security Standards
 
@@ -224,16 +224,13 @@ Do not wait to be asked. Do not skip files that appear to be "working." If a vio
 ## Brand Standards
 
 For any UI or UX work, read and apply the design skills at:
-- `.claude/skills/ui-designer/` — UI design guidance
-- `.claude/skills/ux-designer/` — UX design guidance
-- `.claude/skills/ui-ux-pro-max/` — installed Session 15, use for polish passes
+- `.claude/skills/ui-designer/`
+- `.claude/skills/ux-designer/`
+- `.claude/skills/ui-ux-pro-max/`
 
-Also reference the brand files located at:
-
-`G:\My Drive\Accent Roofing Service\app builder\accent roofing brand kit`
-
-- `accent-roofing-brand-tokens.css` — design tokens (colors, typography, spacing, etc.)
-- `accent-roofing-brand-reference.md` — brand guidelines and usage rules
+Brand files at `G:\My Drive\Accent Roofing Service\app builder\accent roofing brand kit`:
+- `accent-roofing-brand-tokens.css` — design tokens
+- `accent-roofing-brand-reference.md` — brand guidelines
 
 ## Deployment
 
@@ -345,119 +342,109 @@ These rules encode decisions made across Sessions 1–38. Violating any of them 
 
 ### Feature Registry — Completed Features and Their Rules
 
-This registry is the source of truth for every major feature in the system. When building anything that touches a listed feature, read its entry in full before writing code.
+When building anything that touches a listed feature, read its entry before writing code.
 
 ---
 
 **Authentication System**
-- Status: Complete
 - Files: server/routes/referrer.js, server/routes/admin.js, server/middleware/auth.js, server/db.js
-- Email + PIN login for referrers and password login for admins; both issue 64-char hex session tokens with a role column (referrer/admin) stored in the sessions table, expiring after 24 hours.
+- Email + PIN for referrers, password for admins; both get 64-char hex session tokens with a role column (referrer/admin), expiring after 24 hours.
 
 **Referral Pipeline System**
-- Status: Complete
 - Files: server/crm/jobber.js, server/crm/pipelineSync.js, server/db.js
-- Syncs Jobber clients with a "Referred by" field into pipeline_cache and tracks them through lead → inspection → sold → paid stages, recording one bonus conversion per referred client ever via UNIQUE(user_id, jobber_client_id).
+- Syncs Jobber clients with "Referred by" field through lead → inspection → sold → paid; one bonus conversion per client enforced by UNIQUE(user_id, jobber_client_id).
 
 **Pending Referral System**
-- Status: Complete
 - Files: server/utils/pendingReferral.js, server/utils/retryHelpers.js, server/crm/pipelineSync.js, server/routes/webhooks/jobber.js, server/routes/referrer.js, server/routes/admin.js, src/components/referrer/PendingMatchPopup.jsx, src/components/admin/AdminPendingReferrals.jsx
-- When a referred client's referrer has no app account, creates a pending_referrals record, sends an auto-invite email, and credits the referrer automatically when they sign up and verify their contact info.
+- Creates a pending_referrals record for referred clients whose referrers have no app account, auto-invites via email, and credits them on signup verification.
 
 **Cash Out System**
-- Status: Complete
 - Files: server/routes/referrer.js, server/routes/admin.js, server/db.js
-- Referrers request payouts ($20 minimum, enforced server-side) which admins approve or deny, triggering a payout_announcements row and Resend notification email; Stripe ACH not yet built — payouts are currently manual.
+- Referrers request payouts ($20 min, server-side); admins approve or deny, triggering payout_announcements and a Resend email; Stripe ACH not yet built — currently manual.
 
 **Manage Account**
-- Status: Complete
 - Files: server/routes/account.js, src/components/referrer/ManageAccount.jsx, src/components/referrer/ProfileTab.jsx
-- Collapsible account management section in Profile tab covering personal info, security (TOTP via speakeasy), privacy, and soft-delete (deleted_at) with 30-day retention before permanent purge.
+- Collapsible Profile tab section for personal info, security (TOTP), privacy, and soft-delete with 30-day retention before permanent purge.
 
 **Error Monitoring System**
-- Status: Complete
 - Files: server/middleware/errorLogger.js, server/db.js, src/utils/clientErrorReporter.js, src/components/shared/ErrorBoundary.jsx
-- Routes all backend and frontend errors through logError() into error_log with deduplication, emailing admin1@roofmiles.com on first occurrence and every 10th recurrence; never delete rows, use resolved=true.
+- All errors through logError() into error_log with deduplication; email alert on first and every 10th recurrence; use resolved=true, never delete rows.
 
 **Database Backup System**
-- Status: Complete
 - Files: server/utils/backup.js, server/utils/restore-verify.js, server/routes/admin.js
-- Daily cron at 2am UTC compresses all tables to .json.gz and uploads to Backblaze B2 with 30-day retention; admin panel exposes Run Backup Now and Verify Latest Backup buttons (rate-limited to 3/hr).
+- Daily 2am UTC cron compresses all tables to .json.gz and uploads to Backblaze B2 (30-day retention); admin has Run Backup Now and Verify Latest Backup buttons (rate-limited 3/hr).
 
 **Announcement / Payout Popup System**
-- Status: Complete
 - Files: src/components/referrer/AnnouncementPopup.jsx, server/routes/admin.js, server/db.js
-- Admin-configured announcement messages and payout-triggered celebration popups shown to referrers on login via payout_announcements and announcement_settings tables.
+- Admin-configured announcements and payout-triggered popups shown to referrers on login via payout_announcements and announcement_settings tables.
 
 **Invite Link System**
-- Status: Complete
 - Files: server/routes/referrer.js, server/routes/admin.js, server/db.js
-- Admin and referrers generate invite links that route to signup with mandatory email verification via a 6-digit Resend code.
+- Admin and referrers generate invite links routing to signup with email verification via a 6-digit Resend code.
 
 **Admin Panel**
-- Status: Complete
 - Files: src/components/admin/ (all files), server/routes/admin.js
-- Web-based admin dashboard (accessed via ?admin=true) covering referrers, cash outs, activity log, announcements, pending referrals, and settings with 15-minute cached stats; all endpoints protected by verifyAdminSession().
+- Admin dashboard at ?admin=true covering referrers, cash outs, activity log, announcements, pending referrals, and settings; 15-minute stats cache; all endpoints behind verifyAdminSession().
 
 ---
 
 ### Pending Features — Design Specs and Current Constraints
 
-When building any feature listed here, read the current constraints before writing a single line of code — they reflect everything that has changed since the original design.
+Read the current constraints before building any feature below.
 
 ---
 
 **Feature: Booking Request Pending State (Pending Referral Feature 2)**
-- Referred person submits a booking request via referral link, creating a pending pipeline card in the referrer's tab before the job enters Jobber.
+- Booking request via referral link creates a pending pipeline card in the referrer's tab before the job enters Jobber.
 - Current constraints: booking_requests table does not yet exist — design it properly before building. The pending referral system (Feature 1) is complete and audited — its table structure should inform the booking_requests schema. Pipeline tab currently reads only from pipeline_cache — the booking request card must integrate without breaking the existing pipeline read path. The isRetry pattern in checkAndCreatePendingReferral is a reference for how to handle retry logic cleanly.
 - Do not build until: Explicitly scheduled by Danny.
 
 **Feature: Missing Referral Self-Report (Pending Referral Feature 3)**
-- Profile tab entry point opens a popup with a 5-option channel dropdown that creates a purple admin inbox thread for manual credit investigation.
+- Profile tab popup with 5-option channel dropdown creates a purple admin inbox thread for manual credit investigation.
 - Current constraints: No admin inbox thread system exists yet — this feature requires building it. Channel dropdown options are locked per Session 25.5 design. Purple color must use AD design tokens. Admin inbox is separate from the existing activity log — it is a new UI surface.
 - Do not build until: Explicitly scheduled by Danny. Standalone — no dependency on Feature 2.
 
 **Feature: Stripe ACH Payout Pipeline**
-- Stripe Connect Standard pipeline where each contractor connects their own Stripe account and RoofMiles orchestrates ACH payouts without holding funds.
+- Stripe Connect Standard — each contractor's own Stripe account, RoofMiles orchestrates ACH payouts without holding funds.
 - Current constraints: server/routes/stripe.js placeholder exists — build into it. Stripe Connect Standard confirmed — do not propose Express or platform payouts (avoids money transmitter licensing). $20 minimum cashout threshold enforced server-side must be respected by Stripe pipeline. Payout approval must trigger payout_announcements row. Determine with Danny whether pipeline is fully automatic or still admin-approved.
 - Do not build until: Stripe Connect account registered. Explicitly scheduled by Danny.
 
 **Feature: Vite Migration**
-- Pure toolchain swap replacing Create React App with Vite to close 26 npm audit vulnerabilities with no functional changes.
+- Replace Create React App with Vite — pure toolchain swap, no functional changes, closes 26 npm audit vulnerabilities.
 - Current constraints: 26 vulnerabilities are all CRA build toolchain — none reachable in production. Test on staging branch first, never directly on main. All env vars prefixed REACT_APP_ may need renaming to VITE_ — audit all references before migrating.
 - Do not build until: Explicitly scheduled by Danny.
 
 **Feature: ServiceTitan CRM Adapter**
-- Implement fetchPipeline() in server/crm/servicetitan.js wired through the existing getCRMAdapter() dispatcher.
+- Implement fetchPipeline() in server/crm/servicetitan.js via the getCRMAdapter() dispatcher.
 - Current constraints: Accent Roofing migrating to ServiceTitan within approximately 6 months from April 2026. Do not bypass getCRMAdapter(). ServiceTitan API auth is different from Jobber OAuth — research before building. fetchPipelineForReferrer() in jobber.js is the reference implementation.
 - Do not build until: ServiceTitan API credentials available. Explicitly scheduled by Danny.
 
 **Feature: Full Restore Script**
-- One-click admin panel restore button built on restore-verify.js, requiring explicit confirmation and a pre-restore backup.
+- One-click admin panel restore button built on restore-verify.js.
 - Current constraints: restore-verify.js exists in server/utils/ — build on it. Must require explicit admin confirmation. Must be rate-limited. Must trigger a backup of current state before overwriting.
 - Do not build until: Explicitly scheduled by Danny.
 
 **Feature: [STAGING] Error Email Prefix**
-- Add [STAGING] prefix to error email subjects in logError() when NODE_ENV === 'staging' so staging incidents are distinguishable from production.
+- Prefix error alert subjects with [STAGING] in logError() when NODE_ENV === 'staging'.
 - Current constraints: Change goes in logError() in server/middleware/errorLogger.js only. Add [STAGING] prefix to email subject when NODE_ENV === 'staging'. Railway staging env var NODE_ENV is already set to staging.
-- Can be bundled into any session — does not need its own dedicated session.
+- Can be bundled into any session.
 
 **Feature: Capacitor Mobile Build**
-- Wrap the React frontend in Capacitor for native iOS and Android builds submitted to App Store and Google Play.
+- Native iOS and Android builds via Capacitor for App Store and Google Play.
 - Current constraints: Manage Account feature is complete — App Store hard requirement met. Invite email CTA links use placeholder (#) App Store URLs — update after Capacitor build. Apple Developer Account ($99/yr) and Google Play ($25) not yet registered — Danny action item. Twilio 10DLC must be active before submission.
 - Do not build until: Developer accounts registered. LLC + EIN complete. Explicitly scheduled by Danny.
 
 **Feature: Pending Referral Bulk Sync Phone/Email Architecture**
-- The bulk allClients sync deliberately omits phones/emails to reduce API load, so credit attribution emails cannot fire for referrals entering via scheduled sync — requires an architectural decision before fixing.
+- Bulk sync omits phones/emails (API load concern) — credit attribution emails can't fire for scheduled-sync referrals; architectural decision pending.
 - Current constraints: Adding phones/emails to bulk query means fetching contact info for potentially hundreds of clients every 30 minutes — significant API load increase. Alternatives to evaluate: fetch contact info only for referred clients (those with a non-empty Referred by field) rather than all clients; or accept the limitation and rely on admin verification for bulk-sync referrals.
 - Do not build until: Explicitly scheduled by Danny. Requires architectural decision on API load tradeoff.
 
 **Feature: Master Admin Panel**
-- Danny-only platform-wide admin panel with cross-contractor insights requiring a separate auth layer from contractor admin.
+- Platform-wide admin panel (Danny only) with cross-contractor insights; requires a separate auth layer.
 - Current constraints: Requires separate auth layer from contractor admin. contractor_id must be pulled from session before this works. No build started.
 - Do not build until: Second contractor onboarded. Explicitly scheduled by Danny.
 
 **Feature: Referral Program Modes**
-- Six planned bonus modes (Flat Bonus, Service-Tiered, Percentage, Tiered Milestone, Give & Get, Chain Attribution) stackable with VIP tier multipliers; only Flat Bonus is currently live.
+- Six planned bonus modes stackable with VIP tier multipliers; only Flat Bonus is currently live.
 - Current constraints: Only Flat Bonus is live. Bonus amounts stored at conversion time — any new mode must also store at conversion time. BOOST_TABLE in boostSchedule.js drives current mode. VIP multipliers not built.
 - Do not build until: Explicitly scheduled by Danny.
