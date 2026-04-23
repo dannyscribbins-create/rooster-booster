@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import { safeAsync } from '../../utils/clientErrorReporter';
 import { AdminShell, AdminInput } from './AdminComponents';
 import AdminDashboard from './AdminDashboard';
 import AdminReferrers from './AdminReferrers';
@@ -10,6 +11,7 @@ import AdminAnnouncementSettings from './AdminAnnouncementSettings';
 import AdminAboutUs from './AdminAboutUs';
 import AdminEngagement from './AdminEngagement';
 import AdminReferralReview from './AdminReferralReview';
+import AdminInboxSidebar from './AdminInboxSidebar';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
 function useAdminFonts() {
@@ -128,8 +130,25 @@ export default function AdminPanel() {
   const [showSettings, setShowSettings]           = useState(false);
   const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
   const [dashboardCachedAt, setDashboardCachedAt]     = useState(null);
+  const [inboxOpen, setInboxOpen]                 = useState(false);
+  const [inboxUnreadCount, setInboxUnreadCount]   = useState(0);
 
   useAdminFonts();
+
+  useEffect(() => {
+    if (!authed) return;
+    safeAsync(async () => {
+      const token = sessionStorage.getItem('rb_admin_token');
+      const r = await fetch(`${BACKEND_URL}/api/admin/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await r.json();
+      if (Array.isArray(data)) {
+        setInboxUnreadCount(data.filter(m => !m.read).length);
+      }
+    }, 'AdminPanel.fetchInboxUnreadCount')();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
 
   function handleLogin() {
     setAuthed(true);
@@ -178,8 +197,22 @@ export default function AdminPanel() {
   }
 
   return (
-    <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)}>
-      {pages[page]}
-    </AdminShell>
+    <>
+      <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount}>
+        {pages[page]}
+      </AdminShell>
+      <AdminInboxSidebar
+        isOpen={inboxOpen}
+        onClose={() => setInboxOpen(false)}
+        onUnreadChange={(count) => setInboxUnreadCount(count)}
+        onNavigate={(navPage, options) => {
+          if (navPage === 'referralReview' && options?.initialTab) {
+            setReferralReviewTab(options.initialTab);
+          }
+          setShowSettings(false);
+          setPage(navPage);
+        }}
+      />
+    </>
   );
 }

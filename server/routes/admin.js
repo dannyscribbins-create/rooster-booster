@@ -1538,4 +1538,75 @@ router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
   }
 });
 
+// ── ADMIN: INBOX MESSAGES ─────────────────────────────────────────────────────
+
+// GET /api/admin/messages
+// Returns all admin_messages for this contractor with joined detail rows for
+// both message types (missing_referral and suggestion_box).
+router.get('/api/admin/messages', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const result = await pool.query(
+      `SELECT
+         am.id, am.message_type, am.reference_id, am.title, am.body,
+         am.color_code, am.read, am.created_at,
+         mrs.referred_name,
+         u1.full_name  AS referrer_name,
+         u1.email      AS referrer_email,
+         sbs.message_text,
+         u2.full_name  AS submitter_name,
+         u2.email      AS submitter_email
+       FROM admin_messages am
+       LEFT JOIN missing_referral_reports mrs
+         ON am.message_type = 'missing_referral' AND am.reference_id = mrs.id
+       LEFT JOIN users u1
+         ON am.message_type = 'missing_referral' AND mrs.user_id = u1.id
+       LEFT JOIN suggestion_box_submissions sbs
+         ON am.message_type = 'suggestion_box' AND am.reference_id = sbs.id
+       LEFT JOIN users u2
+         ON am.message_type = 'suggestion_box' AND sbs.user_id = u2.id
+       WHERE am.contractor_id = 'accent-roofing'
+       ORDER BY am.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/admin/messages/:id/read
+// Marks a single admin_messages row as read and returns the new unread count.
+router.patch('/api/admin/messages/:id/read', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const id = parseInt(req.params.id, 10);
+  if (!id || id < 1) return res.status(400).json({ error: 'Invalid message id' });
+  try {
+    await pool.query(
+      `UPDATE admin_messages SET read = true
+       WHERE id = $1 AND contractor_id = 'accent-roofing'`,
+      [id]
+    );
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM admin_messages
+       WHERE contractor_id = 'accent-roofing' AND read = false`
+    );
+    const unreadCount = parseInt(countResult.rows[0].count, 10);
+
+    try {
+      await pool.query(
+        `INSERT INTO activity_log (event_type, detail) VALUES ('admin', $1)`,
+        [`Admin marked inbox message #${id} as read`]
+      );
+    } catch (logErr) {
+      await logError({ req, error: logErr });
+    }
+
+    res.json({ success: true, unreadCount });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

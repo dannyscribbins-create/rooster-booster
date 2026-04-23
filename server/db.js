@@ -402,6 +402,15 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     created_at TIMESTAMP DEFAULT NOW()
   )`);
 
+  // ── SUGGESTION BOX ────────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS suggestion_box_submissions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    contractor_id TEXT NOT NULL,
+    message_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

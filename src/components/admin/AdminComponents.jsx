@@ -67,7 +67,7 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
   );
 }
 
-export function AdminShell({ children, page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard }) {
+export function AdminShell({ children, page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard, onInboxOpen, inboxUnreadCount = 0 }) {
   const cachedAgoText = dashboardCachedAt
     ? `Cached ${Math.round((Date.now() - new Date(dashboardCachedAt).getTime()) / 60000)}m ago`
     : null;
@@ -89,6 +89,38 @@ export function AdminShell({ children, page, setPage, pendingCount, flaggedUnres
               </Btn>
             </div>
           )}
+          <div style={{ position: 'relative', display: 'inline-flex' }}>
+            <button
+              onClick={onInboxOpen}
+              title="Inbox"
+              style={{
+                background: 'transparent',
+                border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'rgba(240,237,232,0.45)',
+                transition: 'color 0.15s, background 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = AD.textPrimary; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(240,237,232,0.45)'; e.currentTarget.style.background = 'transparent'; }}
+            >
+              <i className="ph ph-bell" style={{ fontSize: 22 }} />
+            </button>
+            {inboxUnreadCount > 0 && (
+              <span style={{
+                position: 'absolute', top: 2, right: 2,
+                width: 18, height: 18,
+                background: AD.red,
+                color: '#fff',
+                fontSize: 11, fontWeight: 600,
+                borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: AD.fontSans,
+                pointerEvents: 'none',
+              }}>
+                {inboxUnreadCount > 9 ? '9+' : inboxUnreadCount}
+              </span>
+            )}
+          </div>
           <button
             onClick={onSettingsClick}
             title="Settings"
