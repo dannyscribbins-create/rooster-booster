@@ -118,7 +118,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     leaderboard_enabled BOOLEAN DEFAULT true,
     quarterly_prizes JSONB DEFAULT '[]',
     yearly_prizes JSONB DEFAULT '[]',
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    experience_flow_enabled BOOLEAN DEFAULT false
   )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS user_badges (
     id SERIAL PRIMARY KEY,
@@ -150,6 +151,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS pinned_shout TEXT DEFAULT null`);
   await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS warmup_mode_enabled BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS shouts_enabled BOOLEAN DEFAULT true`);
+  await pool.query(`ALTER TABLE engagement_settings ADD COLUMN IF NOT EXISTS experience_flow_enabled BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE referral_conversions ADD COLUMN IF NOT EXISTS bonus_amount INTEGER DEFAULT 0`);
 
   // ── SELF-SERVE SIGNUP MIGRATIONS ─────────────────────────────────────────────
@@ -408,6 +410,31 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     contractor_id TEXT NOT NULL,
     message_text TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // ── EXPERIENCE FLOW ───────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS experience_prompts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    contractor_id TEXT NOT NULL,
+    jobber_invoice_id TEXT,
+    triggered_at TIMESTAMPTZ DEFAULT NOW(),
+    response_type TEXT NOT NULL DEFAULT 'pending',
+    completed_at TIMESTAMPTZ,
+    CHECK (response_type IN ('pending','positive','negative'))
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS experience_invite_tokens (
+    id SERIAL PRIMARY KEY,
+    token TEXT NOT NULL UNIQUE,
+    contractor_id TEXT NOT NULL,
+    jobber_client_name TEXT NOT NULL,
+    jobber_client_email TEXT,
+    jobber_client_phone TEXT,
+    jobber_invoice_id TEXT,
+    expires_at TIMESTAMPTZ NOT NULL,
+    claimed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`);
 

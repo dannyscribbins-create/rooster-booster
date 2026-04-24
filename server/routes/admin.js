@@ -535,7 +535,7 @@ router.get('/api/admin/engagement-settings', async (req, res) => {
       `SELECT leaderboard_enabled, quarterly_prizes, yearly_prizes,
               year_start_month, quarter_1_start, quarter_2_start,
               quarter_3_start, quarter_4_start,
-              warmup_mode_enabled, shouts_enabled
+              warmup_mode_enabled, shouts_enabled, experience_flow_enabled
        FROM engagement_settings WHERE contractor_id = $1`,
       ['accent-roofing']
     );
@@ -545,6 +545,7 @@ router.get('/api/admin/engagement-settings', async (req, res) => {
         year_start_month: 1, quarter_1_start: 1, quarter_2_start: 4,
         quarter_3_start: 7, quarter_4_start: 10,
         warmup_mode_enabled: false, shouts_enabled: true,
+        experience_flow_enabled: false,
       });
     }
     const row = result.rows[0];
@@ -559,6 +560,7 @@ router.get('/api/admin/engagement-settings', async (req, res) => {
       quarter_4_start: row.quarter_4_start ?? 10,
       warmup_mode_enabled: row.warmup_mode_enabled ?? false,
       shouts_enabled: row.shouts_enabled ?? true,
+      experience_flow_enabled: row.experience_flow_enabled ?? false,
     });
   } catch (err) {
     await logError({ req, error: err });
@@ -571,7 +573,7 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
   const {
     leaderboard_enabled, quarterly_prizes, yearly_prizes,
     year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
-    warmup_mode_enabled, shouts_enabled,
+    warmup_mode_enabled, shouts_enabled, experience_flow_enabled,
   } = req.body;
   if (typeof leaderboard_enabled !== 'boolean') {
     return res.status(400).json({ error: 'leaderboard_enabled must be a boolean' });
@@ -588,6 +590,9 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
   if (typeof shouts_enabled !== 'boolean') {
     return res.status(400).json({ error: 'shouts_enabled must be a boolean' });
   }
+  if (typeof experience_flow_enabled !== 'boolean') {
+    return res.status(400).json({ error: 'experience_flow_enabled must be a boolean' });
+  }
   const monthFields = { year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start };
   for (const [field, val] of Object.entries(monthFields)) {
     const n = parseInt(val);
@@ -601,19 +606,20 @@ router.post('/api/admin/engagement-settings', async (req, res) => {
       `INSERT INTO engagement_settings (
          contractor_id, leaderboard_enabled, quarterly_prizes, yearly_prizes,
          year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
-         warmup_mode_enabled, shouts_enabled, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+         warmup_mode_enabled, shouts_enabled, experience_flow_enabled, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
        ON CONFLICT (contractor_id) DO UPDATE
          SET leaderboard_enabled=$2, quarterly_prizes=$3, yearly_prizes=$4,
              year_start_month=$5, quarter_1_start=$6, quarter_2_start=$7,
              quarter_3_start=$8, quarter_4_start=$9,
-             warmup_mode_enabled=$10, shouts_enabled=$11, updated_at=NOW()`,
+             warmup_mode_enabled=$10, shouts_enabled=$11,
+             experience_flow_enabled=$12, updated_at=NOW()`,
       [
         'accent-roofing', leaderboard_enabled,
         JSON.stringify(quarterly_prizes), JSON.stringify(yearly_prizes),
         monthFields.year_start_month, monthFields.quarter_1_start, monthFields.quarter_2_start,
         monthFields.quarter_3_start, monthFields.quarter_4_start,
-        warmup_mode_enabled, shouts_enabled,
+        warmup_mode_enabled, shouts_enabled, experience_flow_enabled,
       ]
     );
     res.json({ success: true });

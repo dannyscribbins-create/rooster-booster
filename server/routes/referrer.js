@@ -1649,4 +1649,133 @@ router.get('/api/referrer/missing-referrals', async (req, res) => {
   }
 });
 
+// ── EXPERIENCE FLOW ───────────────────────────────────────────────────────────
+
+router.get('/api/referrer/experience-prompt', async (req, res) => {
+  try {
+    const token = req.headers['authorization']?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Not authorized' });
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    const result = await pool.query(
+      `SELECT ep.id, ep.response_type, ep.triggered_at, ca.google_place_id
+       FROM experience_prompts ep
+       LEFT JOIN contractor_about ca ON ca.contractor_id = ep.contractor_id
+       WHERE ep.user_id = $1 AND ep.response_type = 'pending'
+       ORDER BY ep.triggered_at DESC LIMIT 1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) return res.json({ prompt: null });
+    const row = result.rows[0];
+    res.json({ prompt: { id: row.id, response_type: row.response_type, triggered_at: row.triggered_at, google_place_id: row.google_place_id } });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/api/referrer/experience-prompt/:id/respond', async (req, res) => {
+  try {
+    const token = req.headers['authorization']?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Not authorized' });
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const userId = sessionResult.rows[0].user_id;
+
+    const { response_type, suggestion_text } = req.body;
+    if (!['positive', 'negative'].includes(response_type)) {
+      return res.status(400).json({ error: 'response_type must be positive or negative' });
+    }
+    if (response_type === 'negative') {
+      if (!suggestion_text || !suggestion_text.trim()) {
+        return res.status(400).json({ error: 'suggestion_text is required for negative responses' });
+      }
+      if (suggestion_text.length > 2000) {
+        return res.status(400).json({ error: 'suggestion_text must be 2000 characters or fewer' });
+      }
+    }
+
+    const promptResult = await pool.query(
+      'SELECT id, user_id, contractor_id, response_type FROM experience_prompts WHERE id = $1',
+      [req.params.id]
+    );
+    if (promptResult.rows.length === 0) return res.status(404).json({ error: 'Prompt not found' });
+    const prompt = promptResult.rows[0];
+    if (prompt.user_id !== userId) return res.status(403).json({ error: 'Forbidden' });
+    if (prompt.response_type !== 'pending') return res.json({ success: true, alreadyCompleted: true });
+
+    await pool.query(
+      'UPDATE experience_prompts SET response_type = $1, completed_at = NOW() WHERE id = $2',
+      [response_type, prompt.id]
+    );
+
+    if (response_type === 'negative') {
+      const submissionResult = await pool.query(
+        'INSERT INTO suggestion_box_submissions (user_id, contractor_id, message_text) VALUES ($1, $2, $3) RETURNING id',
+        [userId, prompt.contractor_id, suggestion_text]
+      );
+      const submissionId = submissionResult.rows[0].id;
+      const msgBody = suggestion_text.substring(0, 120) + (suggestion_text.length > 120 ? '...' : '');
+      await pool.query(
+        `INSERT INTO admin_messages (contractor_id, message_type, reference_id, title, body, color_code, read)
+         VALUES ($1, 'suggestion_box', $2, 'New Suggestion Submitted', $3, 'red', false)`,
+        [prompt.contractor_id, submissionId, msgBody]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/api/referrer/claim-experience-token', async (req, res) => {
+  try {
+    const { token, user_id } = req.body;
+    if (!token || !user_id) {
+      return res.status(400).json({ error: 'token and user_id are required' });
+    }
+
+    const tokenResult = await pool.query(
+      `SELECT id, contractor_id, jobber_invoice_id, expires_at, claimed_at
+       FROM experience_invite_tokens WHERE token = $1 LIMIT 1`,
+      [token]
+    );
+    if (tokenResult.rows.length === 0) return res.status(404).json({ error: 'Token not found' });
+    const inviteToken = tokenResult.rows[0];
+
+    if (new Date(inviteToken.expires_at) < new Date()) return res.status(410).json({ error: 'Token expired' });
+    if (inviteToken.claimed_at) return res.status(409).json({ error: 'Token already claimed' });
+
+    const userResult = await pool.query('SELECT id FROM users WHERE id = $1', [user_id]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    await pool.query(
+      `INSERT INTO experience_prompts (user_id, contractor_id, jobber_invoice_id, response_type)
+       VALUES ($1, $2, $3, 'pending')`,
+      [user_id, inviteToken.contractor_id, inviteToken.jobber_invoice_id]
+    );
+
+    await pool.query(
+      'UPDATE experience_invite_tokens SET claimed_at = NOW() WHERE id = $1',
+      [inviteToken.id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

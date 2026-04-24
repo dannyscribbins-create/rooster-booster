@@ -34,7 +34,10 @@
       "Bash(npm install:*)",
       "Bash(railway --version)",
       "Bash(ls .env*)",
-      "Skill(ui-designer)"
+      "Skill(ui-designer)",
+      "Bash(npm audit *)",
+      "Bash(npx npm-audit-resolver-report *)",
+      "Bash(npm ls *)"
     ]
   }
 }

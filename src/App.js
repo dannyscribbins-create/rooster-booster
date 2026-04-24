@@ -54,6 +54,10 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     return params.get('signup') || null;
   });
+  const [pendingExpToken, setPendingExpToken] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('exp') || null;
+  });
   const [signupContractorName, setSignupContractorName] = useState(null);
   const [showVerify, setShowVerify]       = useState(false);
   const [pendingUserId, setPendingUserId] = useState(null);
@@ -202,6 +206,21 @@ export default function App() {
           setPendingEmail(email);
           window.history.replaceState(null, '', window.location.pathname);
           setShowVerify(true);
+          if (pendingExpToken) {
+            const capturedToken = pendingExpToken;
+            setPendingExpToken(null);
+            (async () => {
+              try {
+                await fetch(`${BACKEND_URL}/api/referrer/claim-experience-token`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ token: capturedToken, user_id: userId }),
+                });
+              } catch {
+                // non-critical — token claim failure must never block signup
+              }
+            })();
+          }
         } else {
           // action === 'login'
           setSignupSlug(null);

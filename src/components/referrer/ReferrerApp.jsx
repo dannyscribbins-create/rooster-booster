@@ -8,6 +8,7 @@ import Profile from './ProfileTab';
 import ReferAFriendTab from './ReferAFriendTab';
 import AnnouncementPopup from './AnnouncementPopup';
 import PendingMatchPopup from './PendingMatchPopup';
+import ExperiencePopup from './ExperiencePopup';
 
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
 function BottomNav({ tab, setTab }) {
@@ -120,6 +121,8 @@ export default function ReferrerApp({
 }) {
   const [highlightReferrals, setHighlightReferrals] = useState(false);
   const [pendingMatch, setPendingMatch]             = useState(null);
+  const [experiencePrompt, setExperiencePrompt]     = useState(null);
+  const [showExperiencePopup, setShowExperiencePopup] = useState(false);
 
   // Check for unseen pending referral match once on mount after login
   useEffect(() => {
@@ -133,6 +136,28 @@ export default function ReferrerApp({
         if (!r.ok) return;
         const d = await r.json();
         if (d?.match) setPendingMatch(d.match);
+      } catch {
+        // non-critical — failure silently ignored
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Check for pending experience prompt once on mount after login
+  useEffect(() => {
+    const token = sessionStorage.getItem('rb_token');
+    if (!token) return;
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/referrer/experience-prompt`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d?.prompt) {
+          setExperiencePrompt(d.prompt);
+          setShowExperiencePopup(true);
+        }
       } catch {
         // non-critical — failure silently ignored
       }
@@ -160,12 +185,18 @@ export default function ReferrerApp({
       )}
       {screens[tab]}
       <BottomNav tab={tab} setTab={setTab} />
-      {!pendingMatch && showAnnouncement && announcement && announcementSettings?.enabled && (
+      {!pendingMatch && !showExperiencePopup && showAnnouncement && announcement && announcementSettings?.enabled && (
         <AnnouncementPopup
           announcement={announcement}
           referrerFirstName={userName.split(' ')[0]}
           onDismiss={onDismissAnnouncement}
           settings={announcementSettings}
+        />
+      )}
+      {showExperiencePopup && experiencePrompt && (
+        <ExperiencePopup
+          prompt={experiencePrompt}
+          onDismiss={() => setShowExperiencePopup(false)}
         />
       )}
     </div>

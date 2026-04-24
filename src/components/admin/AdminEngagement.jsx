@@ -188,9 +188,10 @@ export default function AdminEngagement({ setLoggedIn }) {
   const [q4Start, setQ4Start] = useState(10);
 
   // Section 1 — Leaderboard toggles
-  const [leaderboardEnabled,  setLeaderboardEnabled]  = useState(true);
-  const [warmupModeEnabled,   setWarmupModeEnabled]   = useState(false);
-  const [shoutsEnabled,       setShoutsEnabled]       = useState(true);
+  const [leaderboardEnabled,      setLeaderboardEnabled]      = useState(true);
+  const [warmupModeEnabled,       setWarmupModeEnabled]       = useState(false);
+  const [shoutsEnabled,           setShoutsEnabled]           = useState(true);
+  const [experienceFlowEnabled,   setExperienceFlowEnabled]   = useState(false);
 
   // Section 2 — Prize config
   const [quarterlyPrizes, setQuarterlyPrizes] = useState(emptyPrizes());
@@ -223,6 +224,7 @@ export default function AdminEngagement({ setLoggedIn }) {
         setLeaderboardEnabled(d.leaderboard_enabled ?? true);
         setWarmupModeEnabled(d.warmup_mode_enabled ?? false);
         setShoutsEnabled(d.shouts_enabled ?? true);
+        setExperienceFlowEnabled(d.experience_flow_enabled ?? false);
         if (Array.isArray(d.quarterly_prizes) && d.quarterly_prizes.length > 0) {
           setQuarterlyPrizes(d.quarterly_prizes.map(p => ({ amount: p.amount ?? '', description: p.description ?? '' })));
         }
@@ -278,6 +280,7 @@ export default function AdminEngagement({ setLoggedIn }) {
         quarter_4_start: q4Start,
         warmup_mode_enabled: warmupModeEnabled,
         shouts_enabled: shoutsEnabled,
+        experience_flow_enabled: experienceFlowEnabled,
       }),
     })
       .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
@@ -441,6 +444,16 @@ export default function AdminEngagement({ setLoggedIn }) {
           sublabel="Animated word bubbles appear next to referrer names on the leaderboard. Turn off for a quieter, more professional look."
           value={shoutsEnabled}
           onChange={setShoutsEnabled}
+        />
+      </div>
+
+      {/* Section 1d — Customer Experience Flow */}
+      <div style={card}>
+        <ToggleRow
+          label="Customer Experience Flow"
+          sublabel="When enabled, customers who complete a paid invoice will automatically receive a feedback prompt. Keep this OFF during development and testing — only enable when the app is live."
+          value={experienceFlowEnabled}
+          onChange={setExperienceFlowEnabled}
         />
       </div>
 
