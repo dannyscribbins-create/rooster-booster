@@ -215,12 +215,13 @@ export default function AdminEngagement({ setLoggedIn }) {
   const [bannerDismissed,    setBannerDismissed]    = useState(false);
 
   useEffect(() => {
-    fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
-      headers: { 'Authorization': `Bearer ${adminToken()}` },
-    })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => {
-        if (!d) return;
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
+          headers: { 'Authorization': `Bearer ${adminToken()}` },
+        });
+        if (r.status === 401) { on401(); return; }
+        const d = await r.json();
         setLeaderboardEnabled(d.leaderboard_enabled ?? true);
         setWarmupModeEnabled(d.warmup_mode_enabled ?? false);
         setShoutsEnabled(d.shouts_enabled ?? true);
@@ -237,19 +238,22 @@ export default function AdminEngagement({ setLoggedIn }) {
         setQ3Start(d.quarter_3_start ?? 7);
         setQ4Start(d.quarter_4_start ?? 10);
         setLoading(false);
-      })
-      .catch(() => { setLoadError('Failed to load settings.'); setLoading(false); });
+      } catch {
+        setLoadError('Failed to load settings.'); setLoading(false);
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    setLbLoading(true);
-    fetch(`${BACKEND_URL}/api/admin/leaderboard?period=${period}`, {
-      headers: { 'Authorization': `Bearer ${adminToken()}` },
-    })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => {
-        if (!d) return;
+    (async () => {
+      setLbLoading(true);
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/leaderboard?period=${period}`, {
+          headers: { 'Authorization': `Bearer ${adminToken()}` },
+        });
+        if (r.status === 401) { on401(); return; }
+        const d = await r.json();
         // Response is now { rows, warmup_just_disabled }
         const rows = Array.isArray(d.rows) ? d.rows : (Array.isArray(d) ? d : []);
         setLeaderboard(rows);
@@ -259,56 +263,60 @@ export default function AdminEngagement({ setLoggedIn }) {
           setBannerDismissed(false);
         }
         setLbLoading(false);
-      })
-      .catch(() => setLbLoading(false));
+      } catch {
+        setLbLoading(false);
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
-  function handleSave() {
+  async function handleSave() {
     setSaving(true); setSaveStatus('');
-    fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
-      body: JSON.stringify({
-        leaderboard_enabled: leaderboardEnabled,
-        quarterly_prizes: quarterlyPrizes,
-        yearly_prizes: yearlyPrizes,
-        year_start_month: yearStartMonth,
-        quarter_1_start: q1Start,
-        quarter_2_start: q2Start,
-        quarter_3_start: q3Start,
-        quarter_4_start: q4Start,
-        warmup_mode_enabled: warmupModeEnabled,
-        shouts_enabled: shoutsEnabled,
-        experience_flow_enabled: experienceFlowEnabled,
-      }),
-    })
-      .then(r => { if (r.status === 401) { on401(); return null; } return r.json(); })
-      .then(d => {
-        setSaving(false);
-        if (!d) return;
-        setSaveStatus(d.success ? 'saved' : 'error');
-        setTimeout(() => setSaveStatus(''), 2000);
-      })
-      .catch(() => { setSaving(false); setSaveStatus('error'); });
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+        body: JSON.stringify({
+          leaderboard_enabled: leaderboardEnabled,
+          quarterly_prizes: quarterlyPrizes,
+          yearly_prizes: yearlyPrizes,
+          year_start_month: yearStartMonth,
+          quarter_1_start: q1Start,
+          quarter_2_start: q2Start,
+          quarter_3_start: q3Start,
+          quarter_4_start: q4Start,
+          warmup_mode_enabled: warmupModeEnabled,
+          shouts_enabled: shoutsEnabled,
+          experience_flow_enabled: experienceFlowEnabled,
+        }),
+      });
+      if (r.status === 401) { on401(); return; }
+      const d = await r.json();
+      setSaving(false);
+      setSaveStatus(d.success ? 'saved' : 'error');
+      setTimeout(() => setSaveStatus(''), 2000);
+    } catch {
+      setSaving(false); setSaveStatus('error');
+    }
   }
 
-  function handlePreviewWinners() {
+  async function handlePreviewWinners() {
     setPreviewLoading(true);
     setPreview(null);
-    Promise.all([
-      fetch(`${BACKEND_URL}/api/admin/leaderboard?period=quarterly`, { headers: { 'Authorization': `Bearer ${adminToken()}` } }),
-      fetch(`${BACKEND_URL}/api/admin/leaderboard?period=yearly`,    { headers: { 'Authorization': `Bearer ${adminToken()}` } }),
-    ])
-      .then(async ([qRes, yRes]) => {
-        if (qRes.status === 401 || yRes.status === 401) { on401(); return; }
-        const [qData, yData] = await Promise.all([qRes.json(), yRes.json()]);
-        const qRows = Array.isArray(qData.rows) ? qData.rows : (Array.isArray(qData) ? qData : []);
-        const yRows = Array.isArray(yData.rows) ? yData.rows : (Array.isArray(yData) ? yData : []);
-        setPreview({ quarterly: qRows, yearly: yRows });
-        setPreviewLoading(false);
-      })
-      .catch(() => { setPreview({ error: 'Failed to load preview.' }); setPreviewLoading(false); });
+    try {
+      const [qRes, yRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/admin/leaderboard?period=quarterly`, { headers: { 'Authorization': `Bearer ${adminToken()}` } }),
+        fetch(`${BACKEND_URL}/api/admin/leaderboard?period=yearly`,    { headers: { 'Authorization': `Bearer ${adminToken()}` } }),
+      ]);
+      if (qRes.status === 401 || yRes.status === 401) { on401(); return; }
+      const [qData, yData] = await Promise.all([qRes.json(), yRes.json()]);
+      const qRows = Array.isArray(qData.rows) ? qData.rows : (Array.isArray(qData) ? qData : []);
+      const yRows = Array.isArray(yData.rows) ? yData.rows : (Array.isArray(yData) ? yData : []);
+      setPreview({ quarterly: qRows, yearly: yRows });
+      setPreviewLoading(false);
+    } catch {
+      setPreview({ error: 'Failed to load preview.' }); setPreviewLoading(false);
+    }
   }
 
   if (loading) {

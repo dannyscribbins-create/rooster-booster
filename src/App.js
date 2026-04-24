@@ -70,64 +70,62 @@ export default function App() {
 
   useEffect(() => {
     if (!signupSlug) return;
-    fetch(`${BACKEND_URL}/api/invite/${signupSlug}`)
-      .then(res => res.json())
-      .then(data => {
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/invite/${signupSlug}`);
+        const data = await res.json();
         if (!data.valid) {
           setSignupSlug(null);
           window.history.replaceState(null, '', window.location.pathname);
         } else {
           setSignupContractorName(data.contractorName);
         }
-      })
-      .catch(() => {
+      } catch {
         setSignupSlug(null);
-      });
+      }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (loggedIn && userName) {
-      setLoading(true);
-      fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`, {
-        headers: { "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}` },
-      })
-        .then(res => {
+      (async () => {
+        setLoading(true);
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`, {
+            headers: { "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}` },
+          });
           if (res.status === 429) {
             setPipelineRateLimited(true);
             setLoading(false);
-            return null;
-          }
-          if (res.status === 503) {
+          } else if (res.status === 503) {
             setPipelineUnavailable(true);
             setLoading(false);
-            return null;
-          }
-          return res.json();
-        })
-        .then(data => {
-          if (!data) return;
-          setPipelineRateLimited(false);
-          setPipelineUnavailable(false);
-          if (data.stale) {
-            setPipelineStale(true);
-            setPipelineStaleSince(data.stale_since || null);
           } else {
-            setPipelineStale(false);
-            setPipelineStaleSince(null);
+            const data = await res.json();
+            setPipelineRateLimited(false);
+            setPipelineUnavailable(false);
+            if (data.stale) {
+              setPipelineStale(true);
+              setPipelineStaleSince(data.stale_since || null);
+            } else {
+              setPipelineStale(false);
+              setPipelineStaleSince(null);
+            }
+            setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
+            setBalance(data.balance || 0);
+            setPaidCount(data.paidCount || 0);
+            setLoading(false);
           }
-          setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
-          setBalance(data.balance || 0);
-          setPaidCount(data.paidCount || 0);
-          setLoading(false);
-        })
-        .catch(err => { console.error(err); setLoading(false); });
-      fetch(`${BACKEND_URL}/api/profile/photo`, {
-        headers: { "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}` },
-      })
-        .then(res => res.json())
-        .then(data => { if (data.photo) setProfilePhoto(data.photo); })
-        .catch(() => {}); // non-critical — silently fail
+        } catch (err) { console.error(err); setLoading(false); }
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/profile/photo`, {
+            headers: { "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}` },
+          });
+          const data = await res.json();
+          if (data.photo) setProfilePhoto(data.photo);
+        } catch {} // non-critical — silently fail
+      })();
     }
   }, [loggedIn, userName]);
 
