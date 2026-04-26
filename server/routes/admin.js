@@ -15,7 +15,7 @@ const { runVerify } = require('../utils/restore-verify');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-const { resendShouldRetry } = require('../utils/retryHelpers');
+const { resendShouldRetry, jobberShouldRetry } = require('../utils/retryHelpers');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -308,7 +308,7 @@ router.get('/api/admin/stats', async (req, res) => {
   const { refresh } = req.query;
   try {
     if (refresh !== 'true') {
-      const cached = await pool.query('SELECT * FROM admin_cache WHERE id=1');
+      const cached = await pool.query('SELECT stats, cached_at FROM admin_cache WHERE id=1');
       if (cached.rows.length > 0) {
         const ageMin = (Date.now() - new Date(cached.rows[0].cached_at).getTime()) / 60000;
         if (ageMin < 15) return res.json({ ...cached.rows[0].stats, cachedAt: cached.rows[0].cached_at, fromCache: true });
@@ -369,7 +369,9 @@ router.get('/api/admin/about', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query(
-      "SELECT * FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1"
+      `SELECT contractor_id, enabled, booking_enabled, bio, years_in_business,
+              service_area, google_place_id, certifications, booking_email, updated_at
+       FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1`
     );
     if (result.rows.length === 0) {
       return res.json({
@@ -672,7 +674,14 @@ router.get('/api/admin/settings', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query(
-      "SELECT * FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1"
+      `SELECT contractor_id, company_name, company_phone, company_email, company_url,
+              company_address, company_city, company_state, company_zip, company_country,
+              logo_url, app_logo_url, primary_color, secondary_color, accent_color,
+              social_facebook, social_instagram, social_google, social_nextdoor, social_website,
+              review_url, review_button_text, review_message,
+              font_heading, font_body, app_display_name, tagline,
+              email_sender_name, email_footer_text, created_at, updated_at
+       FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
     );
     if (result.rows.length === 0) {
       return res.json({
@@ -773,7 +782,10 @@ router.get('/api/admin/crm/status', async (req, res) => {
   const contractorId = 'accent-roofing';
   try {
     const settingsResult = await pool.query(
-      'SELECT * FROM contractor_crm_settings WHERE contractor_id = $1',
+      `SELECT contractor_id, crm_type, crm_account_name, connection_method, api_key,
+              referrer_field_name, stage_map, connected_at, last_synced_at,
+              sync_interval_mins, is_connected, referral_start_date
+       FROM contractor_crm_settings WHERE contractor_id = $1`,
       [contractorId]
     );
     if (settingsResult.rows.length === 0) {
@@ -842,14 +854,17 @@ router.post('/api/admin/crm/test-connection', async (req, res) => {
   if (!crmType || !credential) return res.status(400).json({ error: 'crmType and credential required' });
   try {
     if (crmType === 'jobber') {
-      const accountRes = await axios.post(
-        'https://api.getjobber.com/api/graphql',
-        { query: '{ account { name } }' },
-        { headers: {
-            Authorization: `Bearer ${credential}`,
-            'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
-        } }
+      const accountRes = await retryWithBackoff(
+        () => axios.post(
+          'https://api.getjobber.com/api/graphql',
+          { query: '{ account { name } }' },
+          { headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+          } }
+        ),
+        { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
       );
       const name = accountRes.data?.data?.account?.name;
       if (name) return res.json({ success: true, accountName: name, message: 'Connected successfully' });
@@ -882,14 +897,17 @@ router.post('/api/admin/crm/connect-api-key', async (req, res) => {
   let accountName = null;
   try {
     if (crmType === 'jobber') {
-      const accountRes = await axios.post(
-        'https://api.getjobber.com/api/graphql',
-        { query: '{ account { name } }' },
-        { headers: {
-            Authorization: `Bearer ${credential}`,
-            'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
-        } }
+      const accountRes = await retryWithBackoff(
+        () => axios.post(
+          'https://api.getjobber.com/api/graphql',
+          { query: '{ account { name } }' },
+          { headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+          } }
+        ),
+        { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
       );
       accountName = accountRes.data?.data?.account?.name;
       if (!accountName) return res.json({ success: false, message: 'Could not verify credential — no account data returned' });

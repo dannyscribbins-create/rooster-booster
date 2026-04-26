@@ -3,14 +3,7 @@ const { pool } = require('../db');
 const { refreshTokenIfNeeded } = require('./jobber');
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-
-const jobberShouldRetry = (error) => {
-  const status = error?.response?.status;
-  if (!status) return true;
-  if (status === 401) return false;
-  if (status >= 500) return true;
-  return false;
-};
+const { jobberShouldRetry } = require('../utils/retryHelpers');
 
 // ── PIPELINE STATUS CLASSIFIER ────────────────────────────────────────────────
 // Input: a single Jobber client object with quotes, jobs, invoices
