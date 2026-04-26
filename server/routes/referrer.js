@@ -349,6 +349,56 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
       );
     }
 
+    // ── PEER LINK: WRITE pipeline_cache PLACEHOLDER ─────────────────────────────
+    // If this user signed up via a peer invite link, immediately write an app_user
+    // placeholder to pipeline_cache so the referring user's pipeline tab shows them
+    // at once — before any Jobber sync cycle runs.
+    // Wrapped in its own try/catch: failure here must never block or roll back the signup.
+    (async () => {
+      try {
+        const inviteResult = await pool.query(
+          'SELECT invited_by_user_id, full_name FROM users WHERE id=$1',
+          [userId]
+        );
+        const newUser = inviteResult.rows[0];
+        if (!newUser?.invited_by_user_id) return;
+
+        const inviterResult = await pool.query(
+          'SELECT full_name FROM users WHERE id=$1',
+          [newUser.invited_by_user_id]
+        );
+        const inviterName = inviterResult.rows[0]?.full_name;
+        if (!inviterName) return;
+
+        // Guard: don't write if pipeline_cache already has a row for this client name
+        // (avoids duplicates when Jobber sync already caught this user)
+        const existing = await pool.query(
+          `SELECT 1 FROM pipeline_cache
+           WHERE contractor_id = 'accent-roofing'
+             AND LOWER(client_name) = LOWER($1)
+           LIMIT 1`,
+          [newUser.full_name]
+        );
+        if (existing.rows.length > 0) return;
+
+        await pool.query(
+          `INSERT INTO pipeline_cache
+             (contractor_id, jobber_client_id, client_name, referred_by,
+              pipeline_status, pre_start_date, raw_data, last_synced_at)
+           VALUES ('accent-roofing', $1, $2, $3, 'app_user', false, $4, NOW())`,
+          [
+            'app_user_' + userId,
+            newUser.full_name,
+            inviterName,
+            JSON.stringify({ source: 'app_signup', invited_by_user_id: newUser.invited_by_user_id }),
+          ]
+        );
+      } catch (err) {
+        await logError({ req, error: err });
+        console.error('[signup] pipeline_cache write failed:', err.message);
+      }
+    })();
+
     // ── PENDING REFERRAL MATCH CHECK ────────────────────────────────────────────
     // Check if this newly verified user matches any pending referral record.
     // Runs async in background — must not block the signup response.

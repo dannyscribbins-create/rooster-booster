@@ -16,7 +16,8 @@ const { runVerify } = require('../utils/restore-verify');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-const { resendShouldRetry } = require('../utils/retryHelpers');
+const { resendShouldRetry, jobberShouldRetry } = require('../utils/retryHelpers');
+const { syncSingleClient } = require('../crm/pipelineSync');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -190,6 +191,65 @@ router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
         `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('admin', $1, $2, $3)`,
         [user.full_name, user.email, `Admin manually matched to Jobber client: ${match.id}`]
       );
+
+      // Immediately sync the matched Jobber client into pipeline_cache — do not wait for the
+      // next 30-minute background cycle. Pre-start-date status is determined by referral_start_date,
+      // not by whether linking is allowed: linking always succeeds regardless of client creation date.
+      try {
+        const settingsResult = await pool.query(
+          'SELECT referral_start_date FROM contractor_crm_settings WHERE contractor_id = $1',
+          ['accent-roofing']
+        );
+        const referralStartDate = settingsResult.rows[0]?.referral_start_date
+          ? new Date(settingsResult.rows[0].referral_start_date)
+          : null;
+
+        const fullClientResponse = await retryWithBackoff(
+          () => axios.post(
+            'https://api.getjobber.com/api/graphql',
+            {
+              query: `query GetClient($id: EncodedId!) {
+                client(id: $id) {
+                  id firstName lastName createdAt
+                  customFields { ... on CustomFieldText { label valueText } }
+                  quotes(first: 10) { nodes { id quoteStatus } }
+                  jobs(first: 10) {
+                    nodes {
+                      id jobStatus
+                      invoices(first: 5) { nodes { invoiceStatus } }
+                    }
+                  }
+                }
+              }`,
+              variables: { id: match.id },
+            },
+            {
+              headers: {
+                Authorization: `Bearer ${jobberToken}`,
+                'Content-Type': 'application/json',
+                'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+              },
+            }
+          ),
+          { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+        );
+        const fullClient = fullClientResponse.data?.data?.client;
+        if (fullClient) {
+          await syncSingleClient('accent-roofing', fullClient, referralStartDate, []);
+          // Remove app_user_ placeholder if one exists — syncSingleClient wrote the real row
+          // using the real Jobber client ID (different key), so the placeholder is a ghost duplicate.
+          await pool.query(
+            `DELETE FROM pipeline_cache
+             WHERE contractor_id = 'accent-roofing'
+               AND jobber_client_id = $1`,
+            ['app_user_' + req.params.id]
+          );
+        }
+      } catch (syncErr) {
+        await logError({ req, error: syncErr });
+        console.error('[match-jobber] post-link sync failed (non-fatal):', syncErr.message);
+      }
+
       return res.json({ matched: true, jobberClientId: match.id, message: 'Matched to Jobber client.' });
     } else {
       await pool.query(

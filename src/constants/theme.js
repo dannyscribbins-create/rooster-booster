@@ -36,6 +36,10 @@ export const R = {
   grayBg:    "#f3f4f6",
   grayText:  "#6b7280",
 
+  teal:      "#0891b2",
+  tealBg:    "#cffafe",
+  tealText:  "#0e7490",
+
   // Borders & Shadows
   border:    "rgba(0,0,0,0.08)",
   borderMed: "rgba(0,0,0,0.13)",
@@ -55,4 +59,5 @@ export const STATUS_CONFIG = {
   sold:            { label: "Sold ✓",               color: R.greenText, dot: R.green,     bg: R.greenBg },
   closed:          { label: "Not Sold",             color: "#b91c1c",   dot: "#ef4444",   bg: "#fee2e2" },
   booking_pending: { label: "Booking Sent",         color: R.amberText, dot: R.amber,     bg: R.amberBg },
+  app_user:        { label: "In App",               color: R.tealText,  dot: R.teal,      bg: R.tealBg  },
 };

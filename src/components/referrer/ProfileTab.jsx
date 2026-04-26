@@ -347,6 +347,9 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                             {ref.pre_start_date && (
                               <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888", fontStyle: "italic", fontWeight: 400 }}>Historical Record</p>
                             )}
+                            {ref.status === 'app_user' && (
+                              <p style={{ margin: "2px 0 0", fontSize: 11, color: R.tealText, fontWeight: 500 }}>Joined your network</p>
+                            )}
                           </div>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>

@@ -289,6 +289,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     UNIQUE(contractor_id, jobber_client_id)
   )`);
 
+  // Migration: raw_data column added in Session 41 for app_signup placeholder rows
+  await pool.query(`ALTER TABLE pipeline_cache ADD COLUMN IF NOT EXISTS raw_data JSONB`);
+
   await pool.query(`CREATE TABLE IF NOT EXISTS flagged_referrals (
     id SERIAL PRIMARY KEY,
     contractor_id VARCHAR(100) NOT NULL,
