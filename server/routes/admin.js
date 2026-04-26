@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 const { getCRMAdapter } = require('../crm/index');
-const { refreshTokenIfNeeded } = require('../crm/jobber'); // still used for direct Jobber client-match endpoint
 const axios = require('axios');
 const { verifyAdminSession } = require('../middleware/auth');
 const bcrypt = require('bcrypt');
@@ -16,8 +15,7 @@ const { runVerify } = require('../utils/restore-verify');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-const { resendShouldRetry, jobberShouldRetry } = require('../utils/retryHelpers');
-const { syncSingleClient } = require('../crm/pipelineSync');
+const { resendShouldRetry } = require('../utils/retryHelpers');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -165,98 +163,30 @@ router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = userResult.rows[0];
 
-    // Matches by phone (if available) or email. At scale, Jobber webhook will make this unnecessary.
-    await refreshTokenIfNeeded();
-    const tokenRes = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
-    if (!tokenRes.rows[0]?.access_token) return res.status(503).json({ error: 'Jobber not connected' });
-    const jobberToken = tokenRes.rows[0].access_token;
-
-    const gqlResponse = await axios.post(
-      'https://api.getjobber.com/api/graphql',
-      // MVP: fetches only first 100 Jobber clients — no pagination. At scale, use Jobber webhook (Stripe ACH session).
-      { query: `{ clients(first:100) { nodes { id emails { address } phoneNumbers { number } } } }` },
-      { headers: { Authorization: `Bearer ${jobberToken}`, 'Content-Type': 'application/json', 'X-JOBBER-GRAPHQL-VERSION': '2026-02-17' } }
+    // pipeline_cache is the source of truth for all referred clients — name match is reliable
+    // because syncSingleClient writes client_name from Jobber firstName + lastName.
+    const cacheResult = await pool.query(
+      `SELECT jobber_client_id, client_name FROM pipeline_cache
+       WHERE contractor_id = 'accent-roofing'
+         AND LOWER(client_name) = LOWER($1)
+       LIMIT 1`,
+      [user.full_name]
     );
 
-    const clients = gqlResponse.data.data?.clients?.nodes || [];
-    const cleanPhone = user.phone ? user.phone.replace(/\D/g, '') : null;
-    const match = clients.find(c =>
-      c.emails?.some(e => e.address.toLowerCase() === user.email.toLowerCase()) ||
-      (cleanPhone && c.phoneNumbers?.some(p => p.number.replace(/\D/g, '') === cleanPhone))
-    );
-
-    if (match) {
-      await pool.query('UPDATE users SET jobber_client_id=$1 WHERE id=$2', [match.id, user.id]);
+    if (cacheResult.rows.length > 0) {
+      const matched = cacheResult.rows[0];
+      await pool.query('UPDATE users SET jobber_client_id = $1 WHERE id = $2', [matched.jobber_client_id, user.id]);
       await pool.query(
         `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('admin', $1, $2, $3)`,
-        [user.full_name, user.email, `Admin manually matched to Jobber client: ${match.id}`]
+        [user.full_name, user.email, `Admin manually matched to Jobber client via pipeline_cache: ${matched.jobber_client_id}`]
       );
-
-      // Immediately sync the matched Jobber client into pipeline_cache — do not wait for the
-      // next 30-minute background cycle. Pre-start-date status is determined by referral_start_date,
-      // not by whether linking is allowed: linking always succeeds regardless of client creation date.
-      try {
-        const settingsResult = await pool.query(
-          'SELECT referral_start_date FROM contractor_crm_settings WHERE contractor_id = $1',
-          ['accent-roofing']
-        );
-        const referralStartDate = settingsResult.rows[0]?.referral_start_date
-          ? new Date(settingsResult.rows[0].referral_start_date)
-          : null;
-
-        const fullClientResponse = await retryWithBackoff(
-          () => axios.post(
-            'https://api.getjobber.com/api/graphql',
-            {
-              query: `query GetClient($id: EncodedId!) {
-                client(id: $id) {
-                  id firstName lastName createdAt
-                  customFields { ... on CustomFieldText { label valueText } }
-                  quotes(first: 10) { nodes { id quoteStatus } }
-                  jobs(first: 10) {
-                    nodes {
-                      id jobStatus
-                      invoices(first: 5) { nodes { invoiceStatus } }
-                    }
-                  }
-                }
-              }`,
-              variables: { id: match.id },
-            },
-            {
-              headers: {
-                Authorization: `Bearer ${jobberToken}`,
-                'Content-Type': 'application/json',
-                'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-              },
-            }
-          ),
-          { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-        );
-        const fullClient = fullClientResponse.data?.data?.client;
-        if (fullClient) {
-          await syncSingleClient('accent-roofing', fullClient, referralStartDate, []);
-          // Remove app_user_ placeholder if one exists — syncSingleClient wrote the real row
-          // using the real Jobber client ID (different key), so the placeholder is a ghost duplicate.
-          await pool.query(
-            `DELETE FROM pipeline_cache
-             WHERE contractor_id = 'accent-roofing'
-               AND jobber_client_id = $1`,
-            ['app_user_' + req.params.id]
-          );
-        }
-      } catch (syncErr) {
-        await logError({ req, error: syncErr });
-        console.error('[match-jobber] post-link sync failed (non-fatal):', syncErr.message);
-      }
-
-      return res.json({ matched: true, jobberClientId: match.id, message: 'Matched to Jobber client.' });
+      return res.json({ matched: true, jobberClientId: matched.jobber_client_id, message: 'Matched to Jobber client.' });
     } else {
       await pool.query(
         `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('admin', $1, $2, $3)`,
-        [user.full_name, user.email, 'Admin manual Jobber match: no client found by email or phone']
+        [user.full_name, user.email, 'Admin manual Jobber match: client not found in pipeline_cache — Referred By field may not be set in Jobber']
       );
-      return res.json({ matched: false, jobberClientId: null, message: 'No Jobber client found with this email or phone number.' });
+      return res.json({ matched: false, jobberClientId: null, message: 'Client not found. Make sure the Referred By field is set in Jobber for this client.' });
     }
   } catch (err) {
     await logError({ req, error: err });

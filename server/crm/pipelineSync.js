@@ -82,6 +82,26 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
      isPreStart, createdAt]
   );
 
+  // ── APP_USER_ PLACEHOLDER CLEANUP ──────────────────────────────────────────
+  // If a peer-signup placeholder row exists for this client (written at signup when
+  // no Jobber client ID was known yet), delete it now that the real Jobber row has
+  // been upserted. The placeholder keys on app_user_<userId> — a different
+  // (contractor_id, jobber_client_id) pair — so both rows coexist without this DELETE.
+  // Failure is non-fatal: the real row is already written; cleanup can be retried on
+  // the next sync cycle.
+  try {
+    await pool.query(
+      `DELETE FROM pipeline_cache
+       WHERE contractor_id = $1
+         AND LOWER(client_name) = LOWER($2)
+         AND jobber_client_id LIKE 'app_user_%'`,
+      [contractorId, clientName]
+    );
+  } catch (cleanupErr) {
+    await logError({ req: null, error: cleanupErr });
+    console.error('[pipelineSync] app_user_ placeholder cleanup failed:', cleanupErr.message);
+  }
+
   // ── PENDING REFERRAL CHECK ──────────────────────────────────────────────────
   // If this referred client's referrer has no app account, create a pending record
   // and fire an auto-invite. Runs async — must not block or throw inside syncSingleClient.
