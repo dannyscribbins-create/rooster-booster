@@ -338,6 +338,77 @@ function CuratingScreen({ pullDone, pullError, onRetryPull, onGoBack }) {
   );
 }
 
+// ── Pill multi-select ─────────────────────────────────────────────────────────
+function PillMultiSelect({ label, options, selected, onChange }) {
+  const allSelected = selected.length === options.length && options.length > 0;
+
+  function toggleItem(item) {
+    if (selected.includes(item)) {
+      onChange(selected.filter(s => s !== item));
+    } else {
+      onChange([...selected, item]);
+    }
+  }
+
+  function toggleAll() {
+    onChange(allSelected ? [] : [...options]);
+  }
+
+  const countText = selected.length === 0
+    ? 'none selected'
+    : selected.length === options.length
+      ? 'all selected'
+      : `${selected.length} selected`;
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: selected.length > 0 ? '#CC0000' : AD.border,
+            transition: 'background 0.2s', flexShrink: 0,
+          }} />
+          <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{label}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>{countText}</span>
+          <button
+            onClick={toggleAll}
+            style={{
+              fontSize: 12, color: '#CC0000', background: 'none', border: 'none',
+              cursor: 'pointer', padding: 0, fontFamily: AD.fontSans,
+            }}
+          >
+            {allSelected ? 'Deselect all' : 'Select all'}
+          </button>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {options.map(opt => {
+          const isSelected = selected.includes(opt);
+          return (
+            <button
+              key={opt}
+              onClick={() => toggleItem(opt)}
+              style={{
+                padding: '6px 12px', borderRadius: 999, fontSize: 13,
+                fontFamily: AD.fontSans, cursor: 'pointer', transition: 'all 0.15s',
+                background: isSelected ? '#CC0000' : AD.bgSurface,
+                color: isSelected ? '#fff' : AD.textSecondary,
+                border: `0.5px solid ${isSelected ? '#CC0000' : AD.borderStrong}`,
+                fontWeight: isSelected ? 500 : 400,
+              }}
+            >
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Builder drawer ────────────────────────────────────────────────────────────
 function BuilderDrawer({
   step, onClose,
@@ -515,68 +586,34 @@ function BuilderDrawer({
                 </FilterCard>
 
                 {/* Card 4 — Work Category (conditional) */}
-                {hasWorkCat && (
+                {hasWorkCat && workCategoryOptions.length > 0 && (
                   <FilterCard
                     title="Work category"
                     expanded={catExpanded}
                     onToggle={() => setCatExpanded(v => !v)}
                   >
-                    {workCategoryOptions.length > 0 ? (
-                      <select
-                        value={workCategory}
-                        onChange={e => setWorkCategory(e.target.value)}
-                        style={{ ...inputStyle, marginTop: 4, cursor: 'pointer' }}
-                        onFocus={e => e.target.style.borderColor = AD.blueLight}
-                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
-                      >
-                        <option value="">All categories</option>
-                        {workCategoryOptions.map(opt => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        value={workCategory}
-                        onChange={e => setWorkCategory(e.target.value)}
-                        placeholder="e.g. Replacement — run a pull first to see your options"
-                        style={{ ...inputStyle, marginTop: 4 }}
-                        onFocus={e => e.target.style.borderColor = AD.blueLight}
-                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
-                      />
-                    )}
+                    <PillMultiSelect
+                      label="Work category"
+                      options={workCategoryOptions}
+                      selected={workCategory}
+                      onChange={setWorkCategory}
+                    />
                   </FilterCard>
                 )}
 
                 {/* Card 5 — Job Source (conditional) */}
-                {hasJobSrc && (
+                {hasJobSrc && jobSourceOptions.length > 0 && (
                   <FilterCard
                     title="Job source"
                     expanded={sourceExpanded}
                     onToggle={() => setSourceExpanded(v => !v)}
                   >
-                    {jobSourceOptions.length > 0 ? (
-                      <select
-                        value={jobSource}
-                        onChange={e => setJobSource(e.target.value)}
-                        style={{ ...inputStyle, marginTop: 4, cursor: 'pointer' }}
-                        onFocus={e => e.target.style.borderColor = AD.blueLight}
-                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
-                      >
-                        <option value="">All sources</option>
-                        {jobSourceOptions.map(opt => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        value={jobSource}
-                        onChange={e => setJobSource(e.target.value)}
-                        placeholder="e.g. Referral — run a pull first to see your options"
-                        style={{ ...inputStyle, marginTop: 4 }}
-                        onFocus={e => e.target.style.borderColor = AD.blueLight}
-                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
-                      />
-                    )}
+                    <PillMultiSelect
+                      label="Job source"
+                      options={jobSourceOptions}
+                      selected={jobSource}
+                      onChange={setJobSource}
+                    />
                   </FilterCard>
                 )}
 
@@ -655,8 +692,8 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [dateTo,        setDateTo]        = useState('');
   const [paidOnly,      setPaidOnly]      = useState(true);
   const [minJobValue,   setMinJobValue]   = useState('');
-  const [workCategory,        setWorkCategory]        = useState('');
-  const [jobSource,           setJobSource]           = useState('');
+  const [workCategory,        setWorkCategory]        = useState([]);
+  const [jobSource,           setJobSource]           = useState([]);
   const [notInApp,            setNotInApp]            = useState(true);
   const [savingFilters,       setSavingFilters]       = useState(false);
   const [workCategoryOptions, setWorkCategoryOptions] = useState([]);
@@ -732,8 +769,8 @@ export default function AdminCampaigns({ setLoggedIn }) {
     setDateTo('');
     setPaidOnly(true);
     setMinJobValue('');
-    setWorkCategory('');
-    setJobSource('');
+    setWorkCategory([]);
+    setJobSource([]);
     setNotInApp(true);
     setSavingFilters(false);
     setPullDone(false);
@@ -785,7 +822,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
       await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/filters`, {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dateFrom, dateTo, paidOnly, minJobValue: minJobValue || null, workCategory: workCategory || null, jobSource: jobSource || null, notInApp }),
+        body: JSON.stringify({ dateFrom, dateTo, paidOnly, minJobValue: minJobValue || null, workCategory, jobSource, notInApp }),
       });
     } catch {
       // proceed — pull will surface any errors

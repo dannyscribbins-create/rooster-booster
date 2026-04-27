@@ -1997,20 +1997,20 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     }
 
     // Filter 3 — workCategory (uses field mappings)
-    if (filters.workCategory && mappings.work_category) {
+    if (Array.isArray(filters.workCategory) && filters.workCategory.length > 0 && mappings.work_category) {
       const label = mappings.work_category;
       filteredJobs = filteredJobs.filter(job => {
         const field = job.customFields.find(f => f.label === label);
-        return field?.valueDropdown === filters.workCategory;
+        return filters.workCategory.includes(field?.valueDropdown);
       });
     }
 
     // Filter 4 — jobSource (uses field mappings)
-    if (filters.jobSource && mappings.job_source) {
+    if (Array.isArray(filters.jobSource) && filters.jobSource.length > 0 && mappings.job_source) {
       const label = mappings.job_source;
       filteredJobs = filteredJobs.filter(job => {
         const field = job.customFields.find(f => f.label === label);
-        return field?.valueDropdown === filters.jobSource;
+        return filters.jobSource.includes(field?.valueDropdown);
       });
     }
 
