@@ -2011,8 +2011,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
 
     // Step E — Check app users
     const usersResult = await pool.query(
-      'SELECT email FROM users WHERE contractor_id = $1 AND deleted_at IS NULL',
-      ['accent-roofing']
+      'SELECT email FROM users WHERE deleted_at IS NULL'
     );
     const knownEmails = new Set(
       usersResult.rows.map(r => r.email?.toLowerCase()).filter(Boolean)
