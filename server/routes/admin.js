@@ -1830,24 +1830,14 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     }
     const token = tokenResult.rows[0].access_token;
 
-    const jobberHeaders = {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-    };
-
-    // Query 1 — Invoice pull with pagination
-    const invoiceNodes = [];
-    let invoiceCursor = null;
-    let invoiceHasNext = true;
-
-    const invoiceQueryWithFilter = `
-      query CampaignOutreachPull($cursor: String, $dateFrom: ISO8601DateTime, $dateTo: ISO8601DateTime) {
-        invoices(
+    // Step B — Single paginated jobs query (nested invoices — one pass, no merge step)
+    const jobsQueryWithFilter = `
+      query CampaignJobsPull($cursor: String, $dateFrom: ISO8601DateTime, $dateTo: ISO8601DateTime) {
+        jobs(
           first: 50
           after: $cursor
           filter: {
-            createdAt: {
+            completedAt: {
               after: $dateFrom
               before: $dateTo
             }
@@ -1855,15 +1845,26 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
         ) {
           nodes {
             id
-            invoiceNumber
-            invoiceStatus
-            amounts { total subtotal paymentsTotal depositAmount taxAmount }
-            createdAt
+            completedAt
+            total
+            customFields {
+              ... on CustomFieldDropdown { label valueDropdown }
+              ... on CustomFieldText { label valueText }
+              ... on CustomFieldNumeric { label valueNumeric }
+              ... on CustomFieldTrueFalse { label valueTrueFalse }
+              ... on CustomFieldLink { label valueLink { text url } }
+            }
             client {
               id
               name
               emails { address description }
               phones { number description }
+            }
+            invoices(first: 1) {
+              nodes {
+                invoiceStatus
+                amounts { total }
+              }
             }
           }
           pageInfo { hasNextPage endCursor }
@@ -1871,170 +1872,154 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       }
     `;
 
-    const invoiceQueryNoFilter = `
-      query CampaignOutreachPull($cursor: String) {
-        invoices(
+    const jobsQueryNoFilter = `
+      query CampaignJobsPull($cursor: String) {
+        jobs(
           first: 50
           after: $cursor
         ) {
           nodes {
             id
-            invoiceNumber
-            invoiceStatus
-            amounts { total subtotal paymentsTotal depositAmount taxAmount }
-            createdAt
+            completedAt
+            total
+            customFields {
+              ... on CustomFieldDropdown { label valueDropdown }
+              ... on CustomFieldText { label valueText }
+              ... on CustomFieldNumeric { label valueNumeric }
+              ... on CustomFieldTrueFalse { label valueTrueFalse }
+              ... on CustomFieldLink { label valueLink { text url } }
+            }
             client {
               id
               name
               emails { address description }
               phones { number description }
             }
+            invoices(first: 1) {
+              nodes {
+                invoiceStatus
+                amounts { total }
+              }
+            }
           }
           pageInfo { hasNextPage endCursor }
         }
       }
     `;
 
-    const hasDateFilter = filters.dateFrom || filters.dateTo;
+    const hasDateFilter = filters.dateFrom && filters.dateTo;
+    const allJobs = [];
+    let cursor = null;
+    let hasNextPage = true;
+    let pageNum = 1;
 
-    let invoicePageNum = 1;
-    while (invoiceHasNext) {
-      console.log(`[Campaign Pull] Query 1 page ${invoicePageNum}, cursor: ${invoiceCursor || 'start'}, collected: ${invoiceNodes.length}`); // diagnostic log — intentional
+    while (hasNextPage) {
+      console.log(`[Campaign Pull] page ${pageNum}, cursor: ${cursor || 'start'}, collected: ${allJobs.length}`); // diagnostic log — intentional
       const variables = hasDateFilter
-        ? { cursor: invoiceCursor, dateFrom: filters.dateFrom || null, dateTo: filters.dateTo || null }
-        : { cursor: invoiceCursor };
+        ? { cursor, dateFrom: filters.dateFrom, dateTo: filters.dateTo }
+        : { cursor };
 
-      const invoiceJson = await fetchJobberPage(
-        hasDateFilter ? invoiceQueryWithFilter : invoiceQueryNoFilter,
+      const jobJson = await fetchJobberPage(
+        hasDateFilter ? jobsQueryWithFilter : jobsQueryNoFilter,
         variables,
         token
       );
 
-      const page = invoiceJson.data?.invoices;
+      const page = jobJson.data?.jobs;
       if (!page) break;
-      invoiceNodes.push(...(page.nodes || []));
+      allJobs.push(...(page.nodes || []));
       if (page.pageInfo?.hasNextPage && !page.pageInfo?.endCursor) {
         throw new Error('Jobber returned hasNextPage=true but no endCursor — aborting pagination to prevent infinite loop');
       }
-      invoiceHasNext = page.pageInfo?.hasNextPage ?? false;
-      invoiceCursor = page.pageInfo?.endCursor ?? null;
-      invoicePageNum++;
-      if (invoiceHasNext) await new Promise(r => setTimeout(r, 200));
+      hasNextPage = page.pageInfo?.hasNextPage ?? false;
+      cursor = page.pageInfo?.endCursor ?? null;
+      pageNum++;
+      if (hasNextPage) await new Promise(r => setTimeout(r, 200));
     }
 
-    // Filter pass on Query 1
-    let filteredInvoices = invoiceNodes;
+    // Step C — Node.js filter pass
+
+    // Filter 1 — paidOnly (default ON: exclude jobs with no paid invoice)
+    let filteredJobs = allJobs;
     if (filters.paidOnly !== false) {
-      filteredInvoices = filteredInvoices.filter(n => n.invoiceStatus === 'paid');
+      filteredJobs = filteredJobs.filter(job => {
+        const invoice = job.invoices?.nodes?.[0];
+        return invoice?.invoiceStatus === 'paid';
+      });
     }
+
+    // Filter 2 — minJobValue (prefer invoice amount, fall back to job.total)
     if (filters.minJobValue && Number(filters.minJobValue) > 0) {
-      filteredInvoices = filteredInvoices.filter(n => (n.amounts?.total ?? 0) >= Number(filters.minJobValue));
+      filteredJobs = filteredJobs.filter(job => {
+        const invoice = job.invoices?.nodes?.[0];
+        const value = invoice?.amounts?.total ?? job.total;
+        return value >= Number(filters.minJobValue);
+      });
     }
 
-    // Deduplicate by client.id — keep most recent invoice per client
-    const clientMap = {};
-    for (const inv of filteredInvoices) {
-      const cid = inv.client?.id;
-      if (!cid) continue;
-      if (!clientMap[cid] || new Date(inv.createdAt) > new Date(clientMap[cid].createdAt)) {
-        clientMap[cid] = inv;
-      }
-    }
-    const dedupedInvoices = Object.values(clientMap);
-
-    // Query 2 — Job custom fields pull with pagination
-    const jobNodes = [];
-    let jobCursor = null;
-    let jobHasNext = true;
-
-    const jobQuery = `
-      query JobCustomFieldsPull($cursor: String) {
-        jobs(first: 50 after: $cursor) {
-          nodes {
-            id
-            title
-            jobType
-            customFields {
-              ... on CustomFieldText { label valueText }
-              ... on CustomFieldDropdown { label valueDropdown }
-              ... on CustomFieldNumeric { label valueNumeric }
-              ... on CustomFieldTrueFalse { label valueTrueFalse }
-              ... on CustomFieldLink { label valueLink { text url } }
-            }
-            client { id name }
-          }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-    `;
-
-    let jobPageNum = 1;
-    while (jobHasNext) {
-      console.log(`[Campaign Pull] Query 2 page ${jobPageNum}, cursor: ${jobCursor || 'start'}, collected: ${jobNodes.length}`); // diagnostic log — intentional
-      const jobJson = await fetchJobberPage(jobQuery, { cursor: jobCursor }, token);
-
-      const jobPage = jobJson.data?.jobs;
-      if (!jobPage) break;
-      jobNodes.push(...(jobPage.nodes || []));
-      if (jobPage.pageInfo?.hasNextPage && !jobPage.pageInfo?.endCursor) {
-        throw new Error('Jobber returned hasNextPage=true but no endCursor — aborting pagination to prevent infinite loop');
-      }
-      jobHasNext = jobPage.pageInfo?.hasNextPage ?? false;
-      jobCursor = jobPage.pageInfo?.endCursor ?? null;
-      jobPageNum++;
-      if (jobHasNext) await new Promise(r => setTimeout(r, 200));
+    // Filter 3 — workCategory (uses field mappings)
+    if (filters.workCategory && mappings.work_category) {
+      const label = mappings.work_category;
+      filteredJobs = filteredJobs.filter(job => {
+        const field = job.customFields.find(f => f.label === label);
+        return field?.valueDropdown === filters.workCategory;
+      });
     }
 
-    // Build custom fields lookup map: clientId → { label: value }
-    const jobFieldsByClientId = {};
-    for (const job of jobNodes) {
-      const clientId = job.client?.id;
-      if (!clientId) continue;
-      if (!jobFieldsByClientId[clientId]) jobFieldsByClientId[clientId] = {};
-      for (const field of (job.customFields || [])) {
-        jobFieldsByClientId[clientId][field.label] =
-          field.valueDropdown ?? field.valueText ?? field.valueNumeric ?? field.valueTrueFalse ?? null;
-      }
+    // Filter 4 — jobSource (uses field mappings)
+    if (filters.jobSource && mappings.job_source) {
+      const label = mappings.job_source;
+      filteredJobs = filteredJobs.filter(job => {
+        const field = job.customFields.find(f => f.label === label);
+        return field?.valueDropdown === filters.jobSource;
+      });
     }
 
-    // Merge Query 1 + Query 2
-    const merged = dedupedInvoices.map(inv => {
-      const clientId = inv.client?.id;
-      const fields = jobFieldsByClientId[clientId] || {};
+    // Filter 5 — deduplicate by client.id (most recent completedAt wins)
+    const clientMap = new Map();
+    for (const job of filteredJobs) {
+      const existing = clientMap.get(job.client.id);
+      if (!existing || new Date(job.completedAt) > new Date(existing.completedAt)) {
+        clientMap.set(job.client.id, job);
+      }
+    }
+    const dedupedJobs = Array.from(clientMap.values());
+
+    // Step D — Build contact objects
+    const getField = (fields, label) => {
+      if (!label) return null;
+      const f = fields.find(field => field.label === label);
+      return f?.valueDropdown ?? f?.valueText ?? f?.valueNumeric ?? null;
+    };
+
+    const contacts = dedupedJobs.map(job => {
+      const invoice = job.invoices?.nodes?.[0];
       return {
-        clientJobberId: clientId,
-        clientName: inv.client?.name ?? null,
-        email: inv.client?.emails?.[0]?.address ?? null,
-        phone: inv.client?.phones?.[0]?.number ?? null,
-        jobValue: inv.amounts?.total ?? null,
-        jobDate: inv.createdAt ?? null,
-        invoiceStatus: inv.invoiceStatus,
-        workCategory: mappings.work_category ? (fields[mappings.work_category] ?? null) : null,
-        jobSource: mappings.job_source ? (fields[mappings.job_source] ?? null) : null,
-        materialType: mappings.material_type ? (fields[mappings.material_type] ?? null) : null,
-        assignedRep: mappings.assigned_rep ? (fields[mappings.assigned_rep] ?? null) : null,
+        clientJobberId: job.client.id,
+        clientName: job.client.name,
+        email: job.client.emails[0]?.address ?? null,
+        phone: job.client.phones[0]?.number ?? null,
+        jobValue: invoice?.amounts?.total ?? job.total,
+        jobDate: job.completedAt,
+        invoiceStatus: invoice?.invoiceStatus ?? null,
+        workCategory: getField(job.customFields, mappings.work_category),
+        jobSource: getField(job.customFields, mappings.job_source),
+        materialType: getField(job.customFields, mappings.material_type),
+        assignedRep: getField(job.customFields, mappings.assigned_rep),
       };
     });
 
-    // Filter pass on merged results
-    let postMergeFiltered = merged;
-    if (filters.workCategory) {
-      postMergeFiltered = postMergeFiltered.filter(c => c.workCategory === filters.workCategory);
-    }
-    if (filters.jobSource) {
-      postMergeFiltered = postMergeFiltered.filter(c => c.jobSource === filters.jobSource);
-    }
-
-    // Check which contacts are already in the app
+    // Step E — Check app users
     const usersResult = await pool.query(
-      'SELECT email FROM users WHERE deleted_at IS NULL'
+      'SELECT email FROM users WHERE contractor_id = $1 AND deleted_at IS NULL',
+      ['accent-roofing']
     );
     const knownEmails = new Set(
       usersResult.rows.map(r => r.email?.toLowerCase()).filter(Boolean)
     );
-    const totalPulled = postMergeFiltered.length;
+    const totalPulled = contacts.length;
     let inAppCount = 0;
-    const withInApp = postMergeFiltered.map(c => {
+    const withInApp = contacts.map(c => {
       const inApp = c.email ? knownEmails.has(c.email.toLowerCase()) : false;
       if (inApp) inAppCount++;
       return { ...c, inApp };
@@ -2044,7 +2029,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       ? withInApp.filter(c => !c.inApp)
       : withInApp;
 
-    // Save contacts to campaign_contacts table (clear previous pull first)
+    // Step G — Save and return
     await pool.query('DELETE FROM campaign_contacts WHERE campaign_id = $1', [id]);
     for (const c of withInApp) {
       await pool.query(
@@ -2061,8 +2046,8 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       [withInApp.length, id]
     );
 
-    const workCategoryValues = [...new Set(withInApp.map(c => c.workCategory).filter(Boolean))];
-    const jobSourceValues = [...new Set(withInApp.map(c => c.jobSource).filter(Boolean))];
+    const workCategoryValues = [...new Set(withInApp.map(c => c.workCategory).filter(Boolean))].sort();
+    const jobSourceValues = [...new Set(withInApp.map(c => c.jobSource).filter(Boolean))].sort();
 
     res.json({
       campaignId: Number(id),
