@@ -4,14 +4,7 @@
 const axios = require('axios');
 const { pool } = require('../db');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-
-const jobberShouldRetry = (error) => {
-  const status = error?.response?.status;
-  if (!status) return true;   // network error — always retry
-  if (status === 401) return false; // token expired — do not retry
-  if (status >= 500) return true;   // server error — retry
-  return false;
-};
+const { jobberShouldRetry } = require('../utils/retryHelpers');
 
 let accessToken = null;
 
