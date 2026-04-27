@@ -170,6 +170,7 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
             id
             name
             __typename
+            options { label }
           }
           ... on CustomFieldConfigurationNumeric {
             id
@@ -238,12 +239,15 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
 
   for (const node of uniqueNodes) {
     const fieldType = TYPE_MAP[node.__typename] || 'other';
+    const optionsValue = (node.__typename === 'CustomFieldConfigurationDropdown' && node.options?.length)
+      ? JSON.stringify(node.options.map(o => o.label))
+      : null;
     await pool.query(
       `INSERT INTO contractor_jobber_fields (contractor_id, jobber_field_id, label, field_type, options, discovered_at)
-       VALUES ($1, $2, $3, $4, NULL, NOW())
+       VALUES ($1, $2, $3, $4, $5, NOW())
        ON CONFLICT (contractor_id, jobber_field_id) DO UPDATE SET
-         label = $3, field_type = $4, options = NULL, discovered_at = NOW()`,
-      [contractorId, node.id, node.name, fieldType]
+         label = $3, field_type = $4, options = $5, discovered_at = NOW()`,
+      [contractorId, node.id, node.name, fieldType, optionsValue]
     );
   }
 

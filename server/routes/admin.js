@@ -1759,6 +1759,45 @@ router.get('/api/admin/campaigns', async (req, res) => {
   }
 });
 
+router.get('/api/admin/campaigns/field-values', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const settingsResult = await pool.query(
+      'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
+      ['accent-roofing']
+    );
+    const mappings = settingsResult.rows[0]?.contractor_field_mappings || {};
+
+    let workCategoryValues = [];
+    let jobSourceValues = [];
+
+    if (mappings.work_category) {
+      const r = await pool.query(
+        'SELECT options FROM contractor_jobber_fields WHERE contractor_id = $1 AND label = $2 LIMIT 1',
+        ['accent-roofing', mappings.work_category]
+      );
+      if (r.rows.length > 0 && Array.isArray(r.rows[0].options)) {
+        workCategoryValues = r.rows[0].options;
+      }
+    }
+
+    if (mappings.job_source) {
+      const r = await pool.query(
+        'SELECT options FROM contractor_jobber_fields WHERE contractor_id = $1 AND label = $2 LIMIT 1',
+        ['accent-roofing', mappings.job_source]
+      );
+      if (r.rows.length > 0 && Array.isArray(r.rows[0].options)) {
+        jobSourceValues = r.rows[0].options;
+      }
+    }
+
+    res.json({ workCategoryValues, jobSourceValues });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;

@@ -347,6 +347,7 @@ function BuilderDrawer({
   paidOnly, setPaidOnly, minJobValue, setMinJobValue,
   workCategory, setWorkCategory, jobSource, setJobSource,
   notInApp, setNotInApp,
+  workCategoryOptions, jobSourceOptions,
   savingFilters, onPullFromJobber,
   pullDone, pullResult, pullError, onRetryPull, onGoBackFromCurating,
 }) {
@@ -520,14 +521,29 @@ function BuilderDrawer({
                     expanded={catExpanded}
                     onToggle={() => setCatExpanded(v => !v)}
                   >
-                    <input
-                      value={workCategory}
-                      onChange={e => setWorkCategory(e.target.value)}
-                      placeholder="e.g. Replacement"
-                      style={{ ...inputStyle, marginTop: 4 }}
-                      onFocus={e => e.target.style.borderColor = AD.blueLight}
-                      onBlur={e => e.target.style.borderColor = AD.borderStrong}
-                    />
+                    {workCategoryOptions.length > 0 ? (
+                      <select
+                        value={workCategory}
+                        onChange={e => setWorkCategory(e.target.value)}
+                        style={{ ...inputStyle, marginTop: 4, cursor: 'pointer' }}
+                        onFocus={e => e.target.style.borderColor = AD.blueLight}
+                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
+                      >
+                        <option value="">All categories</option>
+                        {workCategoryOptions.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={workCategory}
+                        onChange={e => setWorkCategory(e.target.value)}
+                        placeholder="e.g. Replacement — run a pull first to see your options"
+                        style={{ ...inputStyle, marginTop: 4 }}
+                        onFocus={e => e.target.style.borderColor = AD.blueLight}
+                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
+                      />
+                    )}
                   </FilterCard>
                 )}
 
@@ -538,14 +554,29 @@ function BuilderDrawer({
                     expanded={sourceExpanded}
                     onToggle={() => setSourceExpanded(v => !v)}
                   >
-                    <input
-                      value={jobSource}
-                      onChange={e => setJobSource(e.target.value)}
-                      placeholder="e.g. Referral"
-                      style={{ ...inputStyle, marginTop: 4 }}
-                      onFocus={e => e.target.style.borderColor = AD.blueLight}
-                      onBlur={e => e.target.style.borderColor = AD.borderStrong}
-                    />
+                    {jobSourceOptions.length > 0 ? (
+                      <select
+                        value={jobSource}
+                        onChange={e => setJobSource(e.target.value)}
+                        style={{ ...inputStyle, marginTop: 4, cursor: 'pointer' }}
+                        onFocus={e => e.target.style.borderColor = AD.blueLight}
+                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
+                      >
+                        <option value="">All sources</option>
+                        {jobSourceOptions.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={jobSource}
+                        onChange={e => setJobSource(e.target.value)}
+                        placeholder="e.g. Referral — run a pull first to see your options"
+                        style={{ ...inputStyle, marginTop: 4 }}
+                        onFocus={e => e.target.style.borderColor = AD.blueLight}
+                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
+                      />
+                    )}
                   </FilterCard>
                 )}
 
@@ -624,10 +655,12 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [dateTo,        setDateTo]        = useState('');
   const [paidOnly,      setPaidOnly]      = useState(true);
   const [minJobValue,   setMinJobValue]   = useState('');
-  const [workCategory,  setWorkCategory]  = useState('');
-  const [jobSource,     setJobSource]     = useState('');
-  const [notInApp,      setNotInApp]      = useState(true);
-  const [savingFilters, setSavingFilters] = useState(false);
+  const [workCategory,        setWorkCategory]        = useState('');
+  const [jobSource,           setJobSource]           = useState('');
+  const [notInApp,            setNotInApp]            = useState(true);
+  const [savingFilters,       setSavingFilters]       = useState(false);
+  const [workCategoryOptions, setWorkCategoryOptions] = useState([]);
+  const [jobSourceOptions,    setJobSourceOptions]    = useState([]);
 
   // Step 2 curating / pull
   const [pullDone,    setPullDone]    = useState(false);
@@ -677,6 +710,18 @@ export default function AdminCampaigns({ setLoggedIn }) {
     }
   }
 
+  async function loadFieldValues() {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/field-values`, { headers });
+      if (!r.ok) return;
+      const data = await r.json();
+      setWorkCategoryOptions(Array.isArray(data.workCategoryValues) ? data.workCategoryValues : []);
+      setJobSourceOptions(Array.isArray(data.jobSourceValues) ? data.jobSourceValues : []);
+    } catch {
+      // swallow
+    }
+  }
+
   function openBuilder() {
     setShowTypeModal(false);
     setDrawerStep(0);
@@ -694,6 +739,8 @@ export default function AdminCampaigns({ setLoggedIn }) {
     setPullDone(false);
     setPullResult(null);
     setPullError(null);
+    setWorkCategoryOptions([]);
+    setJobSourceOptions([]);
     loadFieldMappings();
     setDrawerOpen(true);
   }
@@ -724,6 +771,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
       if (data.error) { setNameError(data.error); return; }
       setCampaignId(data.id);
       setDrawerStep(1);
+      loadFieldValues();
     } catch {
       setNameError('Something went wrong. Please try again.');
     } finally {
@@ -828,6 +876,8 @@ export default function AdminCampaigns({ setLoggedIn }) {
           workCategory={workCategory} setWorkCategory={setWorkCategory}
           jobSource={jobSource} setJobSource={setJobSource}
           notInApp={notInApp} setNotInApp={setNotInApp}
+          workCategoryOptions={workCategoryOptions}
+          jobSourceOptions={jobSourceOptions}
           savingFilters={savingFilters}
           onPullFromJobber={handlePullFromJobber}
           pullDone={pullDone}
