@@ -161,9 +161,31 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
     query GetCustomFieldConfigurations {
       customFieldConfigurations {
         nodes {
-          id
-          label
-          __typename
+          ... on CustomFieldConfigurationText {
+            id
+            name
+            __typename
+          }
+          ... on CustomFieldConfigurationDropdown {
+            id
+            name
+            __typename
+          }
+          ... on CustomFieldConfigurationNumeric {
+            id
+            name
+            __typename
+          }
+          ... on CustomFieldConfigurationTrueFalse {
+            id
+            name
+            __typename
+          }
+          ... on CustomFieldConfigurationLink {
+            id
+            name
+            __typename
+          }
         }
       }
     }
@@ -197,7 +219,7 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
 
   const nodes = response.data?.data?.customFieldConfigurations?.nodes || [];
 
-  console.log('[discoverFields] Fields found:', nodes.length, nodes.map(n => n.label));
+  console.log('[discoverFields] Fields found:', nodes.length, nodes.map(n => n.name));
 
   for (const node of nodes) {
     const fieldType = TYPE_MAP[node.__typename] || 'other';
@@ -206,7 +228,7 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
        VALUES ($1, $2, $3, $4, NULL, NOW())
        ON CONFLICT (contractor_id, jobber_field_id) DO UPDATE SET
          label = $3, field_type = $4, options = NULL, discovered_at = NOW()`,
-      [contractorId, node.id, node.label, fieldType]
+      [contractorId, node.id, node.name, fieldType]
     );
   }
 
