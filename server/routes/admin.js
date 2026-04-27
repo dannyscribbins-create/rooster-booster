@@ -1860,23 +1860,24 @@ router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
 async function fetchJobberPage(query, variables, accessToken) {
   return retryWithBackoff(
     async () => {
-      const res = await fetch('https://api.jobber.com/api/graphql', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-        },
-        body: JSON.stringify({ query, variables }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.errors) {
-        const err = new Error(json.errors?.[0]?.message || `Jobber API error: ${res.status}`);
-        err.response = { status: res.status };
-        err.status = res.status;
+      const response = await axios.post(
+        'https://api.jobber.com/api/graphql',
+        { query, variables },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          }
+        }
+      );
+      if (response.data.errors) {
+        const err = new Error(response.data.errors[0]?.message || 'Jobber API error');
+        err.response = { status: response.status };
+        err.status = response.status;
         throw err;
       }
-      return json;
+      return response.data;
     },
     { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
   );
@@ -2006,7 +2007,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
         token
       );
 
-      const page = jobJson.data?.jobs;
+      const page = jobJson?.jobs;
       if (!page) break;
       allJobs.push(...(page.nodes || []));
       if (page.pageInfo?.hasNextPage && !page.pageInfo?.endCursor) {
