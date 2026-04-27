@@ -16,6 +16,7 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { resendShouldRetry, jobberShouldRetry } = require('../utils/retryHelpers');
+const { discoverJobberFields } = require('../crm/jobber');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -1617,6 +1618,104 @@ router.patch('/api/admin/messages/:id/read', async (req, res) => {
     }
 
     res.json({ success: true, unreadCount });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ADMIN: JOBBER FIELD MAPPING ───────────────────────────────────────────────
+
+const VALID_MAPPING_KEYS = ['work_category', 'job_source', 'material_type', 'assigned_rep'];
+
+// GET /api/admin/jobber/fields
+// Returns all discovered Jobber custom fields for this contractor.
+router.get('/api/admin/jobber/fields', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      `SELECT jobber_field_id, label, field_type, options, discovered_at
+       FROM contractor_jobber_fields
+       WHERE contractor_id = $1
+       ORDER BY label ASC`,
+      [contractorId]
+    );
+    res.json({ fields: result.rows });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/jobber/discover-fields
+// Runs GetCustomFieldConfigurations against Jobber, upserts results, returns full field list.
+router.post('/api/admin/jobber/discover-fields', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  try {
+    const fields = await discoverJobberFields(contractorId);
+    res.json({ fields });
+  } catch (err) {
+    await logError({ req, error: err });
+    if (err.message && err.message.includes('No Jobber token')) {
+      return res.status(400).json({ error: 'no_token', message: err.message });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/jobber/field-mappings
+// Returns the current contractor_field_mappings JSONB from contractor_settings.
+router.get('/api/admin/jobber/field-mappings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      `SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1`,
+      [contractorId]
+    );
+    const mappings = result.rows[0]?.contractor_field_mappings || {};
+    res.json({ mappings });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/admin/jobber/field-mappings
+// Accepts any subset of the four valid mapping keys. Replaces the stored mappings object
+// with the validated payload (full replacement so clearing a mapping by omission works).
+router.patch('/api/admin/jobber/field-mappings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
+  const body = req.body || {};
+
+  const invalidKeys = Object.keys(body).filter(k => !VALID_MAPPING_KEYS.includes(k));
+  if (invalidKeys.length > 0) {
+    return res.status(400).json({ error: `Invalid mapping keys: ${invalidKeys.join(', ')}. Allowed keys: ${VALID_MAPPING_KEYS.join(', ')}` });
+  }
+
+  // Build validated payload — only include keys with non-empty string values
+  const payload = {};
+  for (const key of VALID_MAPPING_KEYS) {
+    if (body[key] && typeof body[key] === 'string') {
+      payload[key] = body[key];
+    }
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO contractor_settings (contractor_id, contractor_field_mappings)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (contractor_id) DO UPDATE SET contractor_field_mappings = $2::jsonb`,
+      [contractorId, JSON.stringify(payload)]
+    );
+    res.json({ mappings: payload });
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });

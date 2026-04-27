@@ -441,6 +441,20 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`);
 
+  // ── CRM FIELD MAPPING ─────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS contractor_jobber_fields (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL,
+    jobber_field_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    field_type TEXT NOT NULL,
+    options JSONB,
+    discovered_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(contractor_id, jobber_field_id)
+  )`);
+  await pool.query(`ALTER TABLE contractor_settings
+    ADD COLUMN IF NOT EXISTS contractor_field_mappings JSONB DEFAULT '{}'::jsonb`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

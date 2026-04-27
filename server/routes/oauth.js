@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const { pool } = require('../db');
-const { setAccessToken } = require('../crm/jobber');
+const { setAccessToken, discoverJobberFields } = require('../crm/jobber');
 
 // ── JOBBER OAUTH ──────────────────────────────────────────────────────────────
 router.get('/auth/jobber', (req, res) => {
@@ -64,6 +64,10 @@ router.get('/callback', async (req, res) => {
          connected_at = NOW()`,
       [contractorId, crmAccountName]
     );
+
+    // Auto-trigger field discovery on Jobber connect — fire and forget
+    discoverJobberFields(contractorId, response.data.access_token)
+      .catch(err => console.warn('Auto field discovery failed silently:', err.message));
 
     // Redirect to admin CRM settings page
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';

@@ -12,6 +12,7 @@ export const ADMIN_NAV = [
   { id: 'engagement',   icon: 'ph-trophy',                label: 'Engagement'         },
   { id: 'about',          icon: 'ph-identification-card',   label: 'About Us & Booking' },
   { id: 'referralReview', icon: 'ph-git-branch',           label: 'Referral Review'    },
+  { id: 'crmSettings',   icon: 'ph-plugs',                 label: 'CRM Settings'       },
 ];
 
 export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount }) {

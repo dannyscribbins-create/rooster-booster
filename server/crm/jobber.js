@@ -146,4 +146,87 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
   return { pipeline, balance: totalBalance, paidCount, synced_at };
 }
 
-module.exports = { setAccessToken, refreshTokenIfNeeded, fetchPipelineForReferrer };
+// ── CRM FIELD DISCOVERY ───────────────────────────────────────────────────────
+// Runs GetCustomFieldConfigurations, upserts into contractor_jobber_fields,
+// and returns the full field list from the DB.
+// tokenOverride: pass a fresh token directly (e.g. from OAuth callback) to skip DB read.
+async function discoverJobberFields(contractorId, tokenOverride = null) {
+  let token = tokenOverride;
+  if (!token) {
+    await refreshTokenIfNeeded();
+    const tokenResult = await pool.query(
+      'SELECT access_token FROM tokens WHERE contractor_id = $1',
+      [contractorId]
+    );
+    if (tokenResult.rows.length === 0 || !tokenResult.rows[0].access_token) {
+      throw new Error('No Jobber token found. Connect your Jobber account first.');
+    }
+    token = tokenResult.rows[0].access_token;
+  }
+
+  const query = `
+    query GetCustomFieldConfigurations {
+      customFieldConfigurations {
+        nodes {
+          id
+          label
+          fieldType: __typename
+          ... on CustomFieldConfigurationDropdown {
+            options {
+              label
+              value: label
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const response = await retryWithBackoff(
+    () => axios.post(
+      'https://api.getjobber.com/api/graphql',
+      { query },
+      { headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+      } }
+    ),
+    { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+  );
+
+  const TYPE_MAP = {
+    CustomFieldConfigurationText:      'text',
+    CustomFieldConfigurationDropdown:  'dropdown',
+    CustomFieldConfigurationNumeric:   'numeric',
+    CustomFieldConfigurationTrueFalse: 'truefalse',
+    CustomFieldConfigurationLink:      'link',
+    CustomFieldConfigurationArea:      'area',
+  };
+
+  const nodes = response.data?.data?.customFieldConfigurations?.nodes || [];
+
+  for (const node of nodes) {
+    const fieldType = TYPE_MAP[node.fieldType] || 'other';
+    const options = node.options ? JSON.stringify(node.options) : null;
+    await pool.query(
+      `INSERT INTO contractor_jobber_fields (contractor_id, jobber_field_id, label, field_type, options, discovered_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (contractor_id, jobber_field_id) DO UPDATE SET
+         label = $3, field_type = $4, options = $5, discovered_at = NOW()`,
+      [contractorId, node.id, node.label, fieldType, options]
+    );
+  }
+
+  const result = await pool.query(
+    `SELECT jobber_field_id, label, field_type, options, discovered_at
+     FROM contractor_jobber_fields
+     WHERE contractor_id = $1
+     ORDER BY label ASC`,
+    [contractorId]
+  );
+
+  return result.rows;
+}
+
+module.exports = { setAccessToken, refreshTokenIfNeeded, fetchPipelineForReferrer, discoverJobberFields };
