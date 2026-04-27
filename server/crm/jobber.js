@@ -170,7 +170,7 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
             id
             name
             __typename
-            options { label }
+            dropdownOptions
           }
           ... on CustomFieldConfigurationNumeric {
             id
@@ -239,8 +239,8 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
 
   for (const node of uniqueNodes) {
     const fieldType = TYPE_MAP[node.__typename] || 'other';
-    const optionsValue = (node.__typename === 'CustomFieldConfigurationDropdown' && node.options?.length)
-      ? JSON.stringify(node.options.map(o => o.label))
+    const optionsValue = (node.__typename === 'CustomFieldConfigurationDropdown' && Array.isArray(node.dropdownOptions) && node.dropdownOptions.length)
+      ? JSON.stringify(node.dropdownOptions.filter(o => o && o.trim() !== ''))
       : null;
     await pool.query(
       `INSERT INTO contractor_jobber_fields (contractor_id, jobber_field_id, label, field_type, options, discovered_at)
