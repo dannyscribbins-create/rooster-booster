@@ -1798,6 +1798,42 @@ router.get('/api/admin/campaigns/field-values', async (req, res) => {
   }
 });
 
+router.get('/api/admin/campaigns/:id', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      'SELECT id, name, status, total_contacts, filters, created_at, updated_at FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/api/admin/campaigns/:id', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  try {
+    const check = await pool.query(
+      'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    await pool.query(
+      'DELETE FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    res.json({ deleted: true, id });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;

@@ -183,20 +183,59 @@ function TypeCard({ title, description, icon, onClick, comingSoon }) {
 }
 
 // ── Campaign list card ────────────────────────────────────────────────────────
-function CampaignCard({ campaign }) {
-  const [hov, setHov] = useState(false);
+function CampaignCard({ campaign, onOpen, onDelete }) {
+  const [hov,          setHov]          = useState(false);
+  const [trashHov,     setTrashHov]     = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
+  const [deleteError,  setDeleteError]  = useState('');
+
   const date = campaign.created_at
     ? new Date(campaign.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await onDelete(campaign.id);
+    } catch {
+      setDeleteError('Could not delete campaign');
+      setDeleting(false);
+    }
+  }
+
+  if (confirmDelete) {
+    return (
+      <div style={{
+        background: AD.bgCard, border: `1px solid ${AD.borderStrong}`,
+        borderRadius: 14, padding: '18px 22px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 16, position: 'relative',
+      }}>
+        <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+          {deleteError || 'Delete this draft?'}
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+          <Btn variant="outline" onClick={() => { setConfirmDelete(false); setDeleteError(''); }}>Cancel</Btn>
+          <Btn variant="accent" onClick={handleDelete} style={{ opacity: deleting ? 0.6 : 1 }}>
+            {deleting ? 'Deleting...' : 'Delete'}
+          </Btn>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
+      onClick={() => onOpen(campaign.id)}
       onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
+      onMouseLeave={() => { setHov(false); setTrashHov(false); }}
       style={{
         background: AD.bgCard, border: `1px solid ${hov ? AD.borderStrong : AD.border}`,
         borderRadius: 14, padding: '18px 22px', display: 'flex', alignItems: 'center',
         gap: 16, transition: 'all 0.15s', boxShadow: hov ? AD.shadowSm : 'none',
-        cursor: 'default',
+        cursor: 'pointer', position: 'relative',
       }}
     >
       <div style={{ flex: 1 }}>
@@ -207,6 +246,21 @@ function CampaignCard({ campaign }) {
         <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{campaign.total_contacts.toLocaleString()} contacts</span>
       )}
       <Badge type={STATUS_BADGE[campaign.status] || 'neutral'}>{STATUS_LABEL[campaign.status] || campaign.status}</Badge>
+      <button
+        onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
+        onMouseEnter={() => setTrashHov(true)}
+        onMouseLeave={() => setTrashHov(false)}
+        style={{
+          position: 'absolute', top: 12, right: 12,
+          background: 'none', border: 'none', cursor: 'pointer',
+          padding: 4, borderRadius: 6,
+          opacity: hov ? 1 : 0, transition: 'opacity 0.15s',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: trashHov ? '#CC0000' : AD.textSecondary,
+        }}
+      >
+        <i className="ph ph-trash" style={{ fontSize: 16 }} />
+      </button>
     </div>
   );
 }
@@ -793,9 +847,61 @@ export default function AdminCampaigns({ setLoggedIn }) {
     loadCampaigns();
   }
 
+  async function handleOpenCampaign(id) {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${id}`, { headers });
+      if (r.status === 401) { if (setLoggedIn) setLoggedIn(false); return; }
+      if (!r.ok) return;
+      const data = await r.json();
+      const f = data.filters || {};
+      setCampaignId(data.id);
+      setCampaignName(data.name);
+      setNameError('');
+      setDateFrom(f.dateFrom || '');
+      setDateTo(f.dateTo || '');
+      setPaidOnly(f.paidOnly !== undefined ? f.paidOnly : true);
+      setMinJobValue(f.minJobValue || '');
+      setWorkCategory(Array.isArray(f.workCategory) ? f.workCategory : []);
+      setJobSource(Array.isArray(f.jobSource) ? f.jobSource : []);
+      setNotInApp(f.notInApp !== undefined ? f.notInApp : true);
+      setSavingFilters(false);
+      setPullDone(false);
+      setPullResult(null);
+      setPullError(null);
+      loadFieldMappings();
+      const hasFilters = data.filters && Object.keys(data.filters).length > 0;
+      if (hasFilters) {
+        loadFieldValues();
+        setDrawerStep(1);
+      } else {
+        setWorkCategoryOptions([]);
+        setJobSourceOptions([]);
+        setDrawerStep(0);
+      }
+      setDrawerOpen(true);
+    } catch {
+      // swallow
+    }
+  }
+
+  async function handleDeleteCampaign(id) {
+    const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${id}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (!r.ok) throw new Error('Delete failed');
+    setCampaigns(prev => prev.filter(c => c.id !== id));
+  }
+
   async function handleCreateCampaign() {
     const trimmed = campaignName.trim();
     if (!trimmed) { setNameError('Campaign name is required'); return; }
+    // When reopening an existing draft at step 0, skip the POST
+    if (campaignId) {
+      setDrawerStep(1);
+      loadFieldValues();
+      return;
+    }
     setCreatingCampaign(true);
     setNameError('');
     try {
@@ -868,7 +974,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
           <EmptyState onBuild={() => setShowTypeModal(true)} />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {campaigns.map(c => <CampaignCard key={c.id} campaign={c} />)}
+            {campaigns.map(c => <CampaignCard key={c.id} campaign={c} onOpen={handleOpenCampaign} onDelete={handleDeleteCampaign} />)}
           </div>
         )}
       </div>
