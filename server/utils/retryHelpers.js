@@ -13,9 +13,10 @@ const twilioShouldRetry = (error) => {
 };
 
 const jobberShouldRetry = (error) => {
-  const status = error?.response?.status;
+  const status = error?.response?.status ?? error?.status;
   if (!status) return true;
   if (status === 401) return false;
+  if (status === 429) return true;
   if (status >= 500) return true;
   return false;
 };

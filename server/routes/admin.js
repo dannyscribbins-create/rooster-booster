@@ -1873,6 +1873,7 @@ async function fetchJobberPage(query, variables, accessToken) {
       if (!res.ok || json.errors) {
         const err = new Error(json.errors?.[0]?.message || `Jobber API error: ${res.status}`);
         err.response = { status: res.status };
+        err.status = res.status;
         throw err;
       }
       return json;
