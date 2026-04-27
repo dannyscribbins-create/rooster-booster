@@ -219,9 +219,18 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
 
   const nodes = response.data?.data?.customFieldConfigurations?.nodes || [];
 
-  console.log('[discoverFields] Fields found:', nodes.length, nodes.map(n => n.name));
+  // Deduplicate by name — Jobber returns the same field at multiple levels
+  // (job, client, quote). Keep first occurrence of each unique name only.
+  const seen = new Set();
+  const uniqueNodes = nodes.filter(node => {
+    if (!node.name || seen.has(node.name)) return false;
+    seen.add(node.name);
+    return true;
+  });
 
-  for (const node of nodes) {
+  console.log('[discoverFields] Fields found:', uniqueNodes.length, uniqueNodes.map(n => n.name));
+
+  for (const node of uniqueNodes) {
     const fieldType = TYPE_MAP[node.__typename] || 'other';
     await pool.query(
       `INSERT INTO contractor_jobber_fields (contractor_id, jobber_field_id, label, field_type, options, discovered_at)
@@ -232,7 +241,7 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
     );
   }
 
-  console.log('[discoverFields] Upsert complete. Rows processed:', nodes.length);
+  console.log('[discoverFields] Upsert complete. Rows processed:', uniqueNodes.length);
 
   const result = await pool.query(
     `SELECT jobber_field_id, label, field_type, options, discovered_at
