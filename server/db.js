@@ -455,6 +455,52 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE contractor_settings
     ADD COLUMN IF NOT EXISTS contractor_field_mappings JSONB DEFAULT '{}'::jsonb`);
 
+  // ── CAMPAIGNS ─────────────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS campaigns (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    parent_campaign_id INTEGER REFERENCES campaigns(id),
+    filters JSONB,
+    message_preset TEXT,
+    message_body TEXT,
+    ai_rapport_enabled BOOLEAN DEFAULT false,
+    cta_enabled BOOLEAN DEFAULT true,
+    outreach_method TEXT,
+    batch_cap INTEGER,
+    total_contacts INTEGER,
+    total_batches INTEGER,
+    current_batch INTEGER DEFAULT 0,
+    sent_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS campaign_contacts (
+    id SERIAL PRIMARY KEY,
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    contractor_id TEXT NOT NULL,
+    client_jobber_id TEXT NOT NULL,
+    client_name TEXT,
+    phone TEXT,
+    email TEXT,
+    job_type TEXT,
+    job_source TEXT,
+    job_date TEXT,
+    job_value NUMERIC,
+    in_app BOOLEAN DEFAULT false,
+    selected BOOLEAN DEFAULT true,
+    outreach_method TEXT,
+    opted_out BOOLEAN DEFAULT false,
+    batch_number INTEGER DEFAULT 1,
+    delivered BOOLEAN DEFAULT false,
+    opened BOOLEAN DEFAULT false,
+    clicked BOOLEAN DEFAULT false,
+    converted BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

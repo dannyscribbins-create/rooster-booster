@@ -16,7 +16,7 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { resendShouldRetry, jobberShouldRetry } = require('../utils/retryHelpers');
-const { discoverJobberFields } = require('../crm/jobber');
+const { discoverJobberFields, refreshTokenIfNeeded } = require('../crm/jobber');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -1716,6 +1716,337 @@ router.patch('/api/admin/jobber/field-mappings', async (req, res) => {
       [contractorId, JSON.stringify(payload)]
     );
     res.json({ mappings: payload });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ADMIN: CAMPAIGNS ──────────────────────────────────────────────────────────
+
+router.post('/api/admin/campaigns', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Campaign name is required' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO campaigns (contractor_id, name, status)
+       VALUES ($1, $2, 'draft')
+       RETURNING id, name, status, created_at`,
+      ['accent-roofing', name.trim()]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/api/admin/campaigns', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const result = await pool.query(
+      `SELECT id, name, status, total_contacts, created_at, updated_at
+       FROM campaigns
+       WHERE contractor_id = $1
+       ORDER BY created_at DESC`,
+      ['accent-roofing']
+    );
+    res.json(result.rows);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  const { dateFrom, dateTo, paidOnly, minJobValue, workCategory, jobSource, notInApp } = req.body;
+  try {
+    const check = await pool.query(
+      'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const filters = { dateFrom, dateTo, paidOnly, minJobValue, workCategory, jobSource, notInApp };
+    const result = await pool.query(
+      `UPDATE campaigns SET filters = $1, updated_at = NOW() WHERE id = $2
+       RETURNING id, filters`,
+      [JSON.stringify(filters), id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  try {
+    // Load campaign filters
+    const campaignResult = await pool.query(
+      'SELECT filters FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const filters = campaignResult.rows[0].filters || {};
+
+    // Load field mappings
+    const settingsResult = await pool.query(
+      'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
+      ['accent-roofing']
+    );
+    const mappings = settingsResult.rows[0]?.contractor_field_mappings || {};
+
+    // Refresh and fetch access token
+    await refreshTokenIfNeeded();
+    const tokenResult = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
+    if (tokenResult.rows.length === 0 || !tokenResult.rows[0].access_token) {
+      return res.status(503).json({ error: 'Jobber not connected' });
+    }
+    const token = tokenResult.rows[0].access_token;
+
+    const jobberHeaders = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+    };
+
+    // Query 1 — Invoice pull with pagination
+    const invoiceNodes = [];
+    let invoiceCursor = null;
+    let invoiceHasNext = true;
+
+    const invoiceQueryWithFilter = `
+      query CampaignOutreachPull($cursor: String, $dateFrom: ISO8601DateTime, $dateTo: ISO8601DateTime) {
+        invoices(
+          first: 50
+          after: $cursor
+          filter: {
+            createdAt: {
+              after: $dateFrom
+              before: $dateTo
+            }
+          }
+        ) {
+          nodes {
+            id
+            invoiceNumber
+            invoiceStatus
+            amounts { total subtotal paymentsTotal depositAmount taxAmount }
+            createdAt
+            client {
+              id
+              name
+              emails { address description }
+              phones { number description }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    `;
+
+    const invoiceQueryNoFilter = `
+      query CampaignOutreachPull($cursor: String) {
+        invoices(
+          first: 50
+          after: $cursor
+        ) {
+          nodes {
+            id
+            invoiceNumber
+            invoiceStatus
+            amounts { total subtotal paymentsTotal depositAmount taxAmount }
+            createdAt
+            client {
+              id
+              name
+              emails { address description }
+              phones { number description }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    `;
+
+    const hasDateFilter = filters.dateFrom || filters.dateTo;
+
+    while (invoiceHasNext) {
+      const variables = hasDateFilter
+        ? { cursor: invoiceCursor, dateFrom: filters.dateFrom || null, dateTo: filters.dateTo || null }
+        : { cursor: invoiceCursor };
+
+      const invoiceRes = await retryWithBackoff(
+        () => axios.post(
+          'https://api.getjobber.com/api/graphql',
+          { query: hasDateFilter ? invoiceQueryWithFilter : invoiceQueryNoFilter, variables },
+          { headers: jobberHeaders }
+        ),
+        { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+      );
+
+      const page = invoiceRes.data?.data?.invoices;
+      if (!page) break;
+      invoiceNodes.push(...(page.nodes || []));
+      invoiceHasNext = page.pageInfo?.hasNextPage ?? false;
+      invoiceCursor = page.pageInfo?.endCursor ?? null;
+    }
+
+    // Filter pass on Query 1
+    let filteredInvoices = invoiceNodes;
+    if (filters.paidOnly !== false) {
+      filteredInvoices = filteredInvoices.filter(n => n.invoiceStatus === 'paid');
+    }
+    if (filters.minJobValue && Number(filters.minJobValue) > 0) {
+      filteredInvoices = filteredInvoices.filter(n => (n.amounts?.total ?? 0) >= Number(filters.minJobValue));
+    }
+
+    // Deduplicate by client.id — keep most recent invoice per client
+    const clientMap = {};
+    for (const inv of filteredInvoices) {
+      const cid = inv.client?.id;
+      if (!cid) continue;
+      if (!clientMap[cid] || new Date(inv.createdAt) > new Date(clientMap[cid].createdAt)) {
+        clientMap[cid] = inv;
+      }
+    }
+    const dedupedInvoices = Object.values(clientMap);
+
+    // Query 2 — Job custom fields pull with pagination
+    const jobNodes = [];
+    let jobCursor = null;
+    let jobHasNext = true;
+
+    const jobQuery = `
+      query JobCustomFieldsPull($cursor: String) {
+        jobs(first: 50 after: $cursor) {
+          nodes {
+            id
+            title
+            jobType
+            customFields {
+              ... on CustomFieldText { label valueText }
+              ... on CustomFieldDropdown { label valueDropdown }
+              ... on CustomFieldNumeric { label valueNumeric }
+              ... on CustomFieldTrueFalse { label valueTrueFalse }
+              ... on CustomFieldLink { label valueLink { text url } }
+            }
+            client { id name }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    `;
+
+    while (jobHasNext) {
+      const jobRes = await retryWithBackoff(
+        () => axios.post(
+          'https://api.getjobber.com/api/graphql',
+          { query: jobQuery, variables: { cursor: jobCursor } },
+          { headers: jobberHeaders }
+        ),
+        { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+      );
+
+      const jobPage = jobRes.data?.data?.jobs;
+      if (!jobPage) break;
+      jobNodes.push(...(jobPage.nodes || []));
+      jobHasNext = jobPage.pageInfo?.hasNextPage ?? false;
+      jobCursor = jobPage.pageInfo?.endCursor ?? null;
+    }
+
+    // Build custom fields lookup map: clientId → { label: value }
+    const jobFieldsByClientId = {};
+    for (const job of jobNodes) {
+      const clientId = job.client?.id;
+      if (!clientId) continue;
+      if (!jobFieldsByClientId[clientId]) jobFieldsByClientId[clientId] = {};
+      for (const field of (job.customFields || [])) {
+        jobFieldsByClientId[clientId][field.label] =
+          field.valueDropdown ?? field.valueText ?? field.valueNumeric ?? field.valueTrueFalse ?? null;
+      }
+    }
+
+    // Merge Query 1 + Query 2
+    const merged = dedupedInvoices.map(inv => {
+      const clientId = inv.client?.id;
+      const fields = jobFieldsByClientId[clientId] || {};
+      return {
+        clientJobberId: clientId,
+        clientName: inv.client?.name ?? null,
+        email: inv.client?.emails?.[0]?.address ?? null,
+        phone: inv.client?.phones?.[0]?.number ?? null,
+        jobValue: inv.amounts?.total ?? null,
+        jobDate: inv.createdAt ?? null,
+        invoiceStatus: inv.invoiceStatus,
+        workCategory: mappings.work_category ? (fields[mappings.work_category] ?? null) : null,
+        jobSource: mappings.job_source ? (fields[mappings.job_source] ?? null) : null,
+        materialType: mappings.material_type ? (fields[mappings.material_type] ?? null) : null,
+        assignedRep: mappings.assigned_rep ? (fields[mappings.assigned_rep] ?? null) : null,
+      };
+    });
+
+    // Filter pass on merged results
+    let postMergeFiltered = merged;
+    if (filters.workCategory) {
+      postMergeFiltered = postMergeFiltered.filter(c => c.workCategory === filters.workCategory);
+    }
+    if (filters.jobSource) {
+      postMergeFiltered = postMergeFiltered.filter(c => c.jobSource === filters.jobSource);
+    }
+
+    // Check which contacts are already in the app
+    const usersResult = await pool.query(
+      'SELECT email FROM users WHERE deleted_at IS NULL'
+    );
+    const knownEmails = new Set(
+      usersResult.rows.map(r => r.email?.toLowerCase()).filter(Boolean)
+    );
+    const totalPulled = postMergeFiltered.length;
+    let inAppCount = 0;
+    const withInApp = postMergeFiltered.map(c => {
+      const inApp = c.email ? knownEmails.has(c.email.toLowerCase()) : false;
+      if (inApp) inAppCount++;
+      return { ...c, inApp };
+    });
+
+    const finalContacts = filters.notInApp !== false
+      ? withInApp.filter(c => !c.inApp)
+      : withInApp;
+
+    // Save contacts to campaign_contacts table (clear previous pull first)
+    await pool.query('DELETE FROM campaign_contacts WHERE campaign_id = $1', [id]);
+    for (const c of withInApp) {
+      await pool.query(
+        `INSERT INTO campaign_contacts
+           (campaign_id, contractor_id, client_jobber_id, client_name, phone, email,
+            job_source, job_date, job_value, in_app, selected)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true)`,
+        [id, 'accent-roofing', c.clientJobberId, c.clientName, c.phone, c.email,
+         c.jobSource, c.jobDate, c.jobValue, c.inApp]
+      );
+    }
+    await pool.query(
+      'UPDATE campaigns SET total_contacts = $1, updated_at = NOW() WHERE id = $2',
+      [withInApp.length, id]
+    );
+
+    const workCategoryValues = [...new Set(withInApp.map(c => c.workCategory).filter(Boolean))];
+    const jobSourceValues = [...new Set(withInApp.map(c => c.jobSource).filter(Boolean))];
+
+    res.json({
+      campaignId: Number(id),
+      totalPulled,
+      inAppCount,
+      contacts: finalContacts,
+      workCategoryValues,
+      jobSourceValues,
+    });
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });

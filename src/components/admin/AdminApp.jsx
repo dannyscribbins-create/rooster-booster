@@ -11,6 +11,7 @@ import AdminAnnouncementSettings from './AdminAnnouncementSettings';
 import AdminAboutUs from './AdminAboutUs';
 import AdminEngagement from './AdminEngagement';
 import AdminReferralReview from './AdminReferralReview';
+import AdminCampaigns from './AdminCampaigns';
 import AdminInboxSidebar from './AdminInboxSidebar';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
@@ -181,6 +182,7 @@ export default function AdminPanel() {
 
   const pages = {
     dashboard:     <AdminDashboard          setLoggedIn={setAuthed} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} onFlaggedBannerClick={() => { setReferralReviewTab('flagged'); setPage('referralReview'); }} />,
+    campaigns:     <AdminCampaigns          setLoggedIn={setAuthed} />,
     referrers:     <AdminReferrers          setLoggedIn={setAuthed} />,
     cashouts:      <AdminCashOuts           setLoggedIn={setAuthed} />,
     activity:      <AdminActivity           setLoggedIn={setAuthed} />,

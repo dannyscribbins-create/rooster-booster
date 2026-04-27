@@ -5,6 +5,7 @@ import AdminSettings from './AdminSettings';
 
 export const ADMIN_NAV = [
   { id: 'dashboard',    icon: 'ph-squares-four',          label: 'Dashboard'          },
+  { id: 'campaigns',    icon: 'ph-megaphone-simple',      label: 'Campaigns'          },
   { id: 'referrers',    icon: 'ph-users',                 label: 'Referrers'          },
   { id: 'cashouts',     icon: 'ph-money',                 label: 'Cash Outs'          },
   { id: 'activity',     icon: 'ph-clock-clockwise',       label: 'Activity'           },
