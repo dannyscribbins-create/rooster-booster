@@ -1861,7 +1861,7 @@ async function fetchJobberPage(query, variables, accessToken) {
   return retryWithBackoff(
     async () => {
       const response = await axios.post(
-        'https://api.jobber.com/api/graphql',
+        'https://api.getjobber.com/api/graphql',
         { query, variables },
         {
           headers: {
