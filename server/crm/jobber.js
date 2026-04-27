@@ -207,8 +207,6 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
     { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
   );
 
-  console.log('[discoverFields] Raw Jobber response:', JSON.stringify(response.data, null, 2));
-
   const TYPE_MAP = {
     CustomFieldConfigurationText:      'text',
     CustomFieldConfigurationDropdown:  'dropdown',
