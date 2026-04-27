@@ -175,6 +175,8 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
     }
   `;
 
+  console.log('[discoverFields] Starting field discovery for contractor:', contractorId);
+
   const response = await retryWithBackoff(
     () => axios.post(
       'https://api.getjobber.com/api/graphql',
@@ -188,6 +190,8 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
     { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
   );
 
+  console.log('[discoverFields] Raw Jobber response:', JSON.stringify(response.data, null, 2));
+
   const TYPE_MAP = {
     CustomFieldConfigurationText:      'text',
     CustomFieldConfigurationDropdown:  'dropdown',
@@ -198,6 +202,8 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
   };
 
   const nodes = response.data?.data?.customFieldConfigurations?.nodes || [];
+
+  console.log('[discoverFields] Fields found:', nodes.length, nodes.map(n => n.label));
 
   for (const node of nodes) {
     const fieldType = TYPE_MAP[node.fieldType] || 'other';
@@ -210,6 +216,8 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
       [contractorId, node.id, node.label, fieldType, options]
     );
   }
+
+  console.log('[discoverFields] Upsert complete. Rows processed:', nodes.length);
 
   const result = await pool.query(
     `SELECT jobber_field_id, label, field_type, options, discovered_at
