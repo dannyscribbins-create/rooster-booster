@@ -2007,6 +2007,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
         token
       );
 
+      console.log('[Campaign Pull DEBUG] jobJson keys:', jobJson ? Object.keys(jobJson) : 'null/undefined'); // diagnostic log — intentional
       const page = jobJson?.jobs;
       if (!page) break;
       allJobs.push(...(page.nodes || []));
