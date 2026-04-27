@@ -12,7 +12,6 @@ import AdminAboutUs from './AdminAboutUs';
 import AdminEngagement from './AdminEngagement';
 import AdminReferralReview from './AdminReferralReview';
 import AdminInboxSidebar from './AdminInboxSidebar';
-import AdminCRMSettings from './AdminCRMSettings';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
 function useAdminFonts() {
@@ -189,7 +188,6 @@ export default function AdminPanel() {
     engagement:    <AdminEngagement         setLoggedIn={setAuthed} />,
     about:         <AdminAboutUs            setLoggedIn={setAuthed} />,
     referralReview: <AdminReferralReview    initialTab={referralReviewTab} />,
-    crmSettings:   <AdminCRMSettings       setLoggedIn={setAuthed} />,
   };
 
   function handleNavClick(id) {

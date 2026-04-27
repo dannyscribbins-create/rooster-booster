@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import Skeleton from '../shared/Skeleton';
@@ -144,6 +144,46 @@ const STAGE_DESCRIPTIONS = {
   paid:       'The invoice has been paid — bonus is triggered',
 };
 
+// ── Campaign field mapping constants ─────────────────────────────────────────
+
+const CFM_VALID_KEYS = ['work_category', 'job_source', 'material_type', 'assigned_rep'];
+const CFM_KEY_LABELS = {
+  work_category: 'Work category',
+  job_source:    'Job source',
+  material_type: 'Material type',
+  assigned_rep:  'Assigned rep',
+};
+
+function cfmSelectionsFromMappings(fields, mappings) {
+  const reverse = {};
+  for (const [key, label] of Object.entries(mappings)) reverse[label] = key;
+  const initial = {};
+  for (const field of fields) initial[field.label] = reverse[field.label] || '';
+  return initial;
+}
+
+function CfmToast({ message, type, onDismiss }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 3500);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+  return (
+    <div style={{
+      position: 'fixed', bottom: 28, right: 28, zIndex: 999,
+      background: type === 'success' ? AD.greenBg : AD.red2Bg,
+      color: type === 'success' ? AD.greenText : AD.red2Text,
+      border: `1px solid ${(type === 'success' ? AD.green : AD.red2)}30`,
+      borderRadius: 10, padding: '12px 18px',
+      fontFamily: AD.fontSans, fontSize: 14, fontWeight: 500,
+      boxShadow: AD.shadowLg,
+      display: 'flex', alignItems: 'center', gap: 8,
+    }}>
+      <i className={`ph ${type === 'success' ? 'ph-check-circle' : 'ph-warning-circle'}`} style={{ fontSize: 16 }} />
+      {message}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function CRMSettings() {
@@ -186,10 +226,23 @@ export default function CRMSettings() {
   const [showDisconnect, setShowDisconnect] = useState(false);
   const [disconnecting, setDisconnecting]   = useState(false);
 
+  // Campaign field mapping
+  const [cfmFields, setCfmFields]           = useState([]);
+  const [cfmSelections, setCfmSelections]   = useState({});
+  const [cfmLoading, setCfmLoading]         = useState(true);
+  const [cfmDiscovering, setCfmDiscovering] = useState(false);
+  const [cfmSaving, setCfmSaving]           = useState(false);
+  const [cfmToast, setCfmToast]             = useState(null);
+  const [cfmNoToken, setCfmNoToken]         = useState(false);
+  const [cfmOpen, setCfmOpen]               = useState(false);
+
   const fieldSavedTimer     = useRef(null);
   const stageSavedTimer     = useRef(null);
   const syncMsgTimer        = useRef(null);
   const startDateMsgTimer   = useRef(null);
+
+  const cfmShowToast    = useCallback((message, type = 'success') => setCfmToast({ message, type }), []);
+  const cfmDismissToast = useCallback(() => setCfmToast(null), []);
 
   function authHeaders() {
     return { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` };
@@ -221,6 +274,29 @@ export default function CRMSettings() {
     const t = setInterval(() => setLastSyncedAt(prev => prev), 60000);
     return () => clearInterval(t);
   }, []);
+
+  async function loadCampaignFields() {
+    setCfmLoading(true);
+    try {
+      const [fieldsRes, mappingsRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/admin/jobber/fields`, { headers: authHeaders() }),
+        fetch(`${BACKEND_URL}/api/admin/jobber/field-mappings`, { headers: authHeaders() }),
+      ]);
+      const fieldsData   = await fieldsRes.json();
+      const mappingsData = await mappingsRes.json();
+      const loadedFields   = fieldsData.fields || [];
+      const loadedMappings = mappingsData.mappings || {};
+      setCfmFields(loadedFields);
+      setCfmSelections(cfmSelectionsFromMappings(loadedFields, loadedMappings));
+    } catch {
+      cfmShowToast('Failed to load field data.', 'error');
+    } finally {
+      setCfmLoading(false);
+    }
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadCampaignFields(); }, []);
 
   function openApiKeyFlow(crmType) {
     setExpandedCRM(crmType);
@@ -357,6 +433,58 @@ export default function CRMSettings() {
       loadStatus();
     } finally {
       setDisconnecting(false);
+    }
+  }
+
+  async function handleCfmDiscover() {
+    setCfmDiscovering(true);
+    setCfmNoToken(false);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/jobber/discover-fields`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === 'no_token') {
+          setCfmNoToken(true);
+        } else {
+          cfmShowToast(data.error || 'Discovery failed.', 'error');
+        }
+        return;
+      }
+      const discovered = data.fields || [];
+      const mappingsRes  = await fetch(`${BACKEND_URL}/api/admin/jobber/field-mappings`, { headers: authHeaders() });
+      const mappingsData = await mappingsRes.json();
+      setCfmFields(discovered);
+      setCfmSelections(cfmSelectionsFromMappings(discovered, mappingsData.mappings || {}));
+      cfmShowToast(`${discovered.length} field${discovered.length === 1 ? '' : 's'} discovered.`);
+    } catch {
+      cfmShowToast('Discovery request failed.', 'error');
+    } finally {
+      setCfmDiscovering(false);
+    }
+  }
+
+  async function handleCfmSave() {
+    setCfmSaving(true);
+    try {
+      const payload = {};
+      for (const [fieldLabel, key] of Object.entries(cfmSelections)) {
+        if (key && CFM_VALID_KEYS.includes(key)) payload[key] = fieldLabel;
+      }
+      const res = await fetch(`${BACKEND_URL}/api/admin/jobber/field-mappings`, {
+        method: 'PATCH',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) { cfmShowToast(data.error || 'Save failed.', 'error'); return; }
+      cfmShowToast('Mappings saved.');
+    } catch {
+      cfmShowToast('Save request failed.', 'error');
+    } finally {
+      setCfmSaving(false);
     }
   }
 
@@ -733,6 +861,145 @@ export default function CRMSettings() {
     );
   }
 
+  // ── Card 4b ── Campaign field mapping ──────────────────────────────────────
+  function renderCampaignFieldMappingCard() {
+    const mappedCount   = Object.values(cfmSelections).filter(v => v).length;
+    const isCollapsible = cfmFields.length > 0;
+    const showBody      = !isCollapsible || cfmOpen;
+
+    return (
+      <Card>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: isCollapsible ? 'pointer' : 'default', flex: 1 }}
+            onClick={() => isCollapsible && setCfmOpen(o => !o)}
+          >
+            {isCollapsible && (
+              <i
+                className={`ph ${cfmOpen ? 'ph-caret-up' : 'ph-caret-down'}`}
+                style={{ fontSize: 14, color: AD.textTertiary, flexShrink: 0 }}
+              />
+            )}
+            <div>
+              <SectionHeading>Campaign Field Mapping</SectionHeading>
+              {isCollapsible && !cfmOpen && (
+                <span style={{ fontSize: 13, color: AD.textTertiary, display: 'block', marginTop: -10, marginBottom: 4 }}>
+                  {cfmFields.length} field{cfmFields.length === 1 ? '' : 's'} discovered · {mappedCount} mapped
+                </span>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <OutlineBtn onClick={handleCfmDiscover} disabled={cfmDiscovering} style={{ padding: '7px 14px', fontSize: 13 }}>
+              <i
+                className={`ph ${cfmDiscovering ? 'ph-circle-notch' : 'ph-arrows-clockwise'}`}
+                style={{ fontSize: 13, animation: cfmDiscovering ? 'crmSpin 0.8s linear infinite' : 'none' }}
+              />
+              {cfmDiscovering ? 'Discovering...' : 'Re-run Discovery'}
+            </OutlineBtn>
+            {showBody && cfmFields.length > 0 && (
+              <PrimaryBtn onClick={handleCfmSave} loading={cfmSaving} style={{ padding: '7px 14px', fontSize: 13 }}>
+                <i className="ph ph-floppy-disk" style={{ fontSize: 13 }} />
+                {cfmSaving ? 'Saving...' : 'Save Mappings'}
+              </PrimaryBtn>
+            )}
+          </div>
+        </div>
+
+        {showBody && (
+          <div style={{ marginTop: 12 }}>
+            <p style={{ color: AD.textSecondary, fontSize: 13, margin: '0 0 16px', lineHeight: 1.6 }}>
+              Map your Jobber custom fields to RoofMiles concepts so the campaign builder knows how to filter and personalize your outreach.
+            </p>
+
+            {cfmNoToken && (
+              <div style={{
+                background: AD.amberBg, border: `1px solid ${AD.amber}30`,
+                borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+                display: 'flex', alignItems: 'center', gap: 8,
+                color: AD.amberText, fontSize: 13,
+              }}>
+                <i className="ph ph-warning" style={{ fontSize: 16, flexShrink: 0 }} />
+                Connect your Jobber account first to discover fields.
+              </div>
+            )}
+
+            {cfmLoading ? (
+              <div style={{ textAlign: 'center', padding: '24px 0', color: AD.textTertiary, fontSize: 14 }}>
+                <i className="ph ph-circle-notch" style={{ fontSize: 20, animation: 'crmSpin 0.8s linear infinite' }} />
+                <p style={{ margin: '8px 0 0' }}>Loading fields…</p>
+              </div>
+            ) : cfmFields.length === 0 ? (
+              <div style={{
+                textAlign: 'center', padding: '32px 20px',
+                background: AD.bgCardTint, borderRadius: 12,
+                border: `1px dashed ${AD.border}`,
+              }}>
+                <i className="ph ph-plugs" style={{ fontSize: 32, color: AD.textTertiary, display: 'block', marginBottom: 10 }} />
+                <p style={{ color: AD.textSecondary, margin: '0 0 14px', fontSize: 14 }}>
+                  No Jobber fields discovered yet.
+                </p>
+                <PrimaryBtn onClick={handleCfmDiscover} loading={cfmDiscovering}>
+                  <i
+                    className={`ph ${cfmDiscovering ? 'ph-circle-notch' : 'ph-magnifying-glass'}`}
+                    style={{ fontSize: 14, animation: cfmDiscovering ? 'crmSpin 0.8s linear infinite' : 'none' }}
+                  />
+                  {cfmDiscovering ? 'Discovering...' : 'Run Discovery'}
+                </PrimaryBtn>
+              </div>
+            ) : (
+              <div style={{ border: `1px solid ${AD.border}`, borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '1fr 1fr',
+                  padding: '8px 16px', background: AD.bgCardTint,
+                  borderBottom: `1px solid ${AD.border}`,
+                }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: AD.textSecondary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Your Jobber Field
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: AD.textSecondary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Maps to in RoofMiles
+                  </span>
+                </div>
+                {cfmFields.map((field, i) => (
+                  <div key={field.jobber_field_id} style={{
+                    display: 'grid', gridTemplateColumns: '1fr 1fr',
+                    padding: '10px 16px', alignItems: 'center',
+                    borderBottom: i < cfmFields.length - 1 ? `1px solid ${AD.border}` : 'none',
+                    background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                  }}>
+                    <div>
+                      <span style={{ fontSize: 14, color: AD.textPrimary }}>{field.label}</span>
+                      {field.field_type && (
+                        <span style={{ marginLeft: 8, fontSize: 11, color: AD.textTertiary }}>{field.field_type}</span>
+                      )}
+                    </div>
+                    <select
+                      value={cfmSelections[field.label] || ''}
+                      onChange={e => setCfmSelections(s => ({ ...s, [field.label]: e.target.value }))}
+                      style={{
+                        background: AD.bgCard, border: `1px solid ${AD.border}`,
+                        borderRadius: AD.radiusMd, color: AD.textPrimary,
+                        fontFamily: AD.fontSans, fontSize: 14, padding: '7px 10px',
+                        outline: 'none', cursor: 'pointer', width: '100%', maxWidth: 240,
+                      }}
+                    >
+                      <option value="">Don't use in campaigns</option>
+                      {CFM_VALID_KEYS.map(key => (
+                        <option key={key} value={key}>{CFM_KEY_LABELS[key]}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+    );
+  }
+
   // ── Card 5 ── Sync settings ─────────────────────────────────────────────────
   function renderSyncCard() {
     return (
@@ -980,6 +1247,7 @@ export default function CRMSettings() {
         <>
           {renderFieldMappingCard()}
           {renderStageMappingCard()}
+          {renderCampaignFieldMappingCard()}
           {renderSyncCard()}
           {renderStartDateCard()}
           {renderDangerCard()}
@@ -987,6 +1255,7 @@ export default function CRMSettings() {
       )}
 
       {renderDisconnectModal()}
+      {cfmToast && <CfmToast message={cfmToast.message} type={cfmToast.type} onDismiss={cfmDismissToast} />}
     </div>
   );
 }
