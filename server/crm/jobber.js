@@ -160,13 +160,10 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
   const query = `
     query GetCustomFieldConfigurations {
       customFieldConfigurations {
-        id
-        label
-        fieldType: __typename
-        ... on CustomFieldConfigurationDropdown {
-          options {
-            label
-          }
+        nodes {
+          id
+          label
+          __typename
         }
       }
     }
@@ -198,19 +195,18 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
     CustomFieldConfigurationArea:      'area',
   };
 
-  const nodes = response.data?.data?.customFieldConfigurations || [];
+  const nodes = response.data?.data?.customFieldConfigurations?.nodes || [];
 
   console.log('[discoverFields] Fields found:', nodes.length, nodes.map(n => n.label));
 
   for (const node of nodes) {
-    const fieldType = TYPE_MAP[node.fieldType] || 'other';
-    const options = node.options ? JSON.stringify(node.options) : null;
+    const fieldType = TYPE_MAP[node.__typename] || 'other';
     await pool.query(
       `INSERT INTO contractor_jobber_fields (contractor_id, jobber_field_id, label, field_type, options, discovered_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+       VALUES ($1, $2, $3, $4, NULL, NOW())
        ON CONFLICT (contractor_id, jobber_field_id) DO UPDATE SET
-         label = $3, field_type = $4, options = $5, discovered_at = NOW()`,
-      [contractorId, node.id, node.label, fieldType, options]
+         label = $3, field_type = $4, options = NULL, discovered_at = NOW()`,
+      [contractorId, node.id, node.label, fieldType]
     );
   }
 
