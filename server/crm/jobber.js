@@ -230,6 +230,12 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
 
   console.log('[discoverFields] Fields found:', uniqueNodes.length, uniqueNodes.map(n => n.name));
 
+  // Clear existing fields for this contractor before re-inserting clean set
+  await pool.query(
+    'DELETE FROM contractor_jobber_fields WHERE contractor_id = $1',
+    [contractorId]
+  );
+
   for (const node of uniqueNodes) {
     const fieldType = TYPE_MAP[node.__typename] || 'other';
     await pool.query(
