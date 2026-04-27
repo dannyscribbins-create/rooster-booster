@@ -1956,7 +1956,9 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     let pageNum = 1;
 
     while (hasNextPage) {
-      console.log(`[Campaign Pull] page ${pageNum}, cursor: ${cursor || 'start'}, collected: ${allJobs.length}`); // diagnostic log — intentional
+      if (pageNum === 1 || pageNum % 5 === 0) {
+        console.log(`[Campaign Pull] page ${pageNum}, cursor: ${cursor || 'start'}, collected: ${allJobs.length}`); // diagnostic log — intentional
+      }
       const variables = hasDateFilter
         ? { cursor, dateFrom: filters.dateFrom, dateTo: filters.dateTo }
         : { cursor };
@@ -1978,6 +1980,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       pageNum++;
       if (hasNextPage) await new Promise(r => setTimeout(r, 200));
     }
+    console.log(`[Campaign Pull] complete — ${allJobs.length} total jobs pulled across ${pageNum} pages`); // diagnostic log — intentional
 
     // Step C — Node.js filter pass
 
