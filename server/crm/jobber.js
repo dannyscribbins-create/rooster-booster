@@ -160,15 +160,12 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
   const query = `
     query GetCustomFieldConfigurations {
       customFieldConfigurations {
-        nodes {
-          id
-          label
-          fieldType: __typename
-          ... on CustomFieldConfigurationDropdown {
-            options {
-              label
-              value: label
-            }
+        id
+        label
+        fieldType: __typename
+        ... on CustomFieldConfigurationDropdown {
+          options {
+            label
           }
         }
       }
@@ -201,7 +198,7 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
     CustomFieldConfigurationArea:      'area',
   };
 
-  const nodes = response.data?.data?.customFieldConfigurations?.nodes || [];
+  const nodes = response.data?.data?.customFieldConfigurations || [];
 
   console.log('[discoverFields] Fields found:', nodes.length, nodes.map(n => n.label));
 
