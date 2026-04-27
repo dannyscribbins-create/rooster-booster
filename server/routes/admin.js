@@ -1860,7 +1860,7 @@ router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
 async function fetchJobberPage(query, variables, accessToken) {
   return retryWithBackoff(
     async () => {
-      const res = await fetch('https://api.getjobber.com/api/graphql', {
+      const res = await fetch('https://api.jobber.com/api/graphql', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
