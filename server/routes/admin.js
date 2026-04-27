@@ -1782,6 +1782,27 @@ router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
   }
 });
 
+async function fetchJobberPage(query, variables, accessToken) {
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const res = await fetch('https://api.getjobber.com/api/graphql', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const json = await res.json();
+    if (res.ok && !json.errors) return json;
+    if (attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, 1000 * attempt)); // exponential: 1s, 2s
+    }
+  }
+  throw new Error(`Jobber API failed after ${maxRetries} retries`);
+}
+
 router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
@@ -1876,25 +1897,29 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
 
     const hasDateFilter = filters.dateFrom || filters.dateTo;
 
+    let invoicePageNum = 1;
     while (invoiceHasNext) {
+      console.log(`[Campaign Pull] Query 1 page ${invoicePageNum}, cursor: ${invoiceCursor || 'start'}, collected: ${invoiceNodes.length}`); // diagnostic log — intentional
       const variables = hasDateFilter
         ? { cursor: invoiceCursor, dateFrom: filters.dateFrom || null, dateTo: filters.dateTo || null }
         : { cursor: invoiceCursor };
 
-      const invoiceRes = await retryWithBackoff(
-        () => axios.post(
-          'https://api.getjobber.com/api/graphql',
-          { query: hasDateFilter ? invoiceQueryWithFilter : invoiceQueryNoFilter, variables },
-          { headers: jobberHeaders }
-        ),
-        { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+      const invoiceJson = await fetchJobberPage(
+        hasDateFilter ? invoiceQueryWithFilter : invoiceQueryNoFilter,
+        variables,
+        token
       );
 
-      const page = invoiceRes.data?.data?.invoices;
+      const page = invoiceJson.data?.invoices;
       if (!page) break;
       invoiceNodes.push(...(page.nodes || []));
+      if (page.pageInfo?.hasNextPage && !page.pageInfo?.endCursor) {
+        throw new Error('Jobber returned hasNextPage=true but no endCursor — aborting pagination to prevent infinite loop');
+      }
       invoiceHasNext = page.pageInfo?.hasNextPage ?? false;
       invoiceCursor = page.pageInfo?.endCursor ?? null;
+      invoicePageNum++;
+      if (invoiceHasNext) await new Promise(r => setTimeout(r, 200));
     }
 
     // Filter pass on Query 1
@@ -1943,21 +1968,21 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       }
     `;
 
+    let jobPageNum = 1;
     while (jobHasNext) {
-      const jobRes = await retryWithBackoff(
-        () => axios.post(
-          'https://api.getjobber.com/api/graphql',
-          { query: jobQuery, variables: { cursor: jobCursor } },
-          { headers: jobberHeaders }
-        ),
-        { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-      );
+      console.log(`[Campaign Pull] Query 2 page ${jobPageNum}, cursor: ${jobCursor || 'start'}, collected: ${jobNodes.length}`); // diagnostic log — intentional
+      const jobJson = await fetchJobberPage(jobQuery, { cursor: jobCursor }, token);
 
-      const jobPage = jobRes.data?.data?.jobs;
+      const jobPage = jobJson.data?.jobs;
       if (!jobPage) break;
       jobNodes.push(...(jobPage.nodes || []));
+      if (jobPage.pageInfo?.hasNextPage && !jobPage.pageInfo?.endCursor) {
+        throw new Error('Jobber returned hasNextPage=true but no endCursor — aborting pagination to prevent infinite loop');
+      }
       jobHasNext = jobPage.pageInfo?.hasNextPage ?? false;
       jobCursor = jobPage.pageInfo?.endCursor ?? null;
+      jobPageNum++;
+      if (jobHasNext) await new Promise(r => setTimeout(r, 200));
     }
 
     // Build custom fields lookup map: clientId → { label: value }
