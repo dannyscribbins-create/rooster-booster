@@ -1724,6 +1724,11 @@ router.patch('/api/admin/jobber/field-mappings', async (req, res) => {
 
 // ── ADMIN: CAMPAIGNS ──────────────────────────────────────────────────────────
 
+// MVP: Pro tier batch cap — 500 contacts per batch.
+// TODO (FORA tiers): replace with DB lookup of contractor's plan batch cap.
+// Growth = 200, Pro = 500. Change this one constant when tiers ship.
+const CAMPAIGN_BATCH_CAP = 500;
+
 router.post('/api/admin/campaigns', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { name } = req.body;
@@ -1896,6 +1901,59 @@ router.patch('/api/admin/campaigns/:id/contacts/selection', async (req, res) => 
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+router.post('/api/admin/campaigns/:id/finalize-batch', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  try {
+    const campaignCheck = await pool.query(
+      'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+
+    const contactsResult = await pool.query(
+      `SELECT id FROM campaign_contacts
+       WHERE campaign_id = $1 AND contractor_id = $2 AND selected = true
+       ORDER BY client_name ASC`,
+      [id, 'accent-roofing']
+    );
+    const selectedContacts = contactsResult.rows;
+    if (selectedContacts.length === 0) return res.status(400).json({ error: 'No contacts selected' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (let i = 0; i < selectedContacts.length; i++) {
+        const batchNumber = Math.ceil((i + 1) / CAMPAIGN_BATCH_CAP);
+        await client.query(
+          'UPDATE campaign_contacts SET batch_number = $1 WHERE id = $2',
+          [batchNumber, selectedContacts[i].id]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const totalSelected = selectedContacts.length;
+    const totalBatches = Math.ceil(totalSelected / CAMPAIGN_BATCH_CAP);
+    await pool.query(
+      `UPDATE campaigns
+       SET total_contacts = $1, total_batches = $2, current_batch = 1, updated_at = NOW()
+       WHERE id = $3 AND contractor_id = $4`,
+      [totalSelected, totalBatches, id, 'accent-roofing']
+    );
+
+    res.json({ totalSelected, totalBatches });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
   }
 });
 

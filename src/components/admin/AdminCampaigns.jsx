@@ -482,10 +482,11 @@ function PillMultiSelect({ label, options, selected, onChange }) {
 
 // ── Results modal ─────────────────────────────────────────────────────────────
 function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loadingContacts, onNext, onBack, headers }) {
-  const [search,        setSearch]        = useState('');
-  const [localSelected, setLocalSelected] = useState({});
-  const [pendingSaves,  setPendingSaves]  = useState(new Set());
-  const [saving,        setSaving]        = useState(false);
+  const [search,           setSearch]           = useState('');
+  const [localSelected,    setLocalSelected]    = useState({});
+  const [pendingSaves,     setPendingSaves]     = useState(new Set());
+  const [saving,           setSaving]           = useState(false);
+  const [overflowExpanded, setOverflowExpanded] = useState(false);
 
   useEffect(() => {
     const init = {};
@@ -523,6 +524,12 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
   }
 
   const allSelected = contacts.length > 0 && contacts.every(c => localSelected[c.id] !== false);
+
+  const selectedSorted = [...contacts]
+    .filter(c => localSelected[c.id] !== false)
+    .sort((a, b) => (a.client_name || '').localeCompare(b.client_name || ''));
+  const overflowContacts = selectedSorted.slice(CAMPAIGN_BATCH_CAP);
+  const totalBatches = Math.ceil(selectedSorted.length / CAMPAIGN_BATCH_CAP);
 
   async function saveSelection() {
     setSaving(true);
@@ -713,6 +720,87 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
           })
         )}
       </div>
+
+      {/* Overflow batch section */}
+      {overflowContacts.length > 0 && (
+        <div style={{
+          borderTop: `1px solid ${AD.border}`,
+          background: AD.bgPage,
+          ...(overflowExpanded ? { flex: '0 1 auto' } : { flexShrink: 0 }),
+        }}>
+          {/* Collapse/expand header */}
+          <div
+            onClick={() => setOverflowExpanded(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 24px', cursor: 'pointer',
+              background: 'rgba(245,158,11,0.05)',
+              borderBottom: overflowExpanded ? `1px solid ${AD.border}` : 'none',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <i className="ph ph-stack" style={{ fontSize: 16, color: AD.amberText, flexShrink: 0 }} />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans, fontWeight: 500 }}>
+                  {totalBatches === 2 ? 'Batch 2' : `Batches 2–${totalBatches}`}
+                </span>
+                <span style={{ fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans }}>
+                  {overflowContacts.length} contacts — will be sent after Batch 1
+                </span>
+              </div>
+            </div>
+            <i className={`ph ${overflowExpanded ? 'ph-caret-up' : 'ph-caret-down'}`} style={{ fontSize: 14, color: AD.amberText }} />
+          </div>
+
+          {/* Expanded overflow table */}
+          {overflowExpanded && (
+            <div style={{ maxHeight: 320, overflow: 'auto', opacity: 0.8 }}>
+              {/* Header row */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px', position: 'sticky', top: 0, background: AD.bgPage, borderBottom: `1px solid ${AD.border}`, flexShrink: 0, minHeight: 40 }}>
+                <div style={{ flex: 2, ...colHeader }}>Client Name</div>
+                <div style={{ flex: 1, ...colHeader }}>Phone</div>
+                <div style={{ flex: 2, ...colHeader }}>Email</div>
+                <div style={{ width: 120, flexShrink: 0, ...colHeader }}>Job Date</div>
+                <div style={{ width: 100, flexShrink: 0, ...colHeader }}>Job Value</div>
+                <div style={{ width: 80, flexShrink: 0, ...colHeader }}>In App?</div>
+              </div>
+              {overflowContacts.map(c => (
+                <div
+                  key={c.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', padding: '0 8px',
+                    minHeight: 48, borderBottom: `1px solid ${AD.border}`,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{ flex: 2, fontWeight: 500, color: AD.textPrimary, fontSize: 14, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                    {c.client_name || '—'}
+                  </div>
+                  <div style={{ flex: 1, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                    {c.phone || '—'}
+                  </div>
+                  <div style={{ flex: 2, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                    {c.email || '—'}
+                  </div>
+                  <div style={{ width: 120, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                    {formatDate(c.job_date)}
+                  </div>
+                  <div style={{ width: 100, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                    {formatValue(c.job_value)}
+                  </div>
+                  <div style={{ width: 80, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                    {c.in_app
+                      ? <i className="ph ph-check-circle" style={{ fontSize: 16, color: AD.greenText }} />
+                      : <i className="ph ph-minus" style={{ fontSize: 16, color: AD.textTertiary }} />
+                    }
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Save selection button */}
       {pendingSaves.size > 0 && (
@@ -1103,6 +1191,24 @@ export default function AdminCampaigns({ setLoggedIn }) {
     }
   }
 
+  async function finalizeBatch(id) {
+    try {
+      const r = await fetch(
+        `${BACKEND_URL}/api/admin/campaigns/${id}/finalize-batch`,
+        {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+        }
+      );
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        console.error('[finalizeBatch] failed:', data.error);
+      }
+    } catch (err) {
+      console.error('[finalizeBatch] error:', err.message);
+    }
+  }
+
   function openBuilder() {
     setShowTypeModal(false);
     setDrawerStep(0);
@@ -1371,7 +1477,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
           campaignId={campaignId}
           contacts={contacts}
           loadingContacts={loadingContacts}
-          onNext={() => setDrawerStep(4)}
+          onNext={async () => { await finalizeBatch(campaignId); setDrawerStep(4); }}
           onBack={() => setDrawerStep(3)}
           headers={headers}
         />
