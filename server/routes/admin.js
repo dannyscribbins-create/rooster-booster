@@ -2082,12 +2082,13 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
         return value >= Number(filters.minJobValue);
       });
     }
+    console.log('[Pull Debug] after minJobValue filter — filteredJobs.length:', filteredJobs.length); // diagnostic log — intentional
 
     // Filter 3 — workCategory (uses field mappings)
     if (Array.isArray(filters.workCategory) && filters.workCategory.length > 0 && mappings.work_category) {
       const label = mappings.work_category;
       filteredJobs = filteredJobs.filter(job => {
-        const field = job.customFields.find(f => f.label === label);
+        const field = (job.customFields || []).find(f => f.label === label);
         return filters.workCategory.includes(field?.valueDropdown);
       });
     }
@@ -2096,7 +2097,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     if (Array.isArray(filters.jobSource) && filters.jobSource.length > 0 && mappings.job_source) {
       const label = mappings.job_source;
       filteredJobs = filteredJobs.filter(job => {
-        const field = job.customFields.find(f => f.label === label);
+        const field = (job.customFields || []).find(f => f.label === label);
         return filters.jobSource.includes(field?.valueDropdown);
       });
     }
@@ -2116,7 +2117,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     // Step D — Build contact objects
     const getField = (fields, label) => {
       if (!label) return null;
-      const f = fields.find(field => field.label === label);
+      const f = (fields || []).find(field => field.label === label);
       return f?.valueDropdown ?? f?.valueText ?? f?.valueNumeric ?? null;
     };
 
