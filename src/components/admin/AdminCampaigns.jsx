@@ -990,6 +990,20 @@ export default function AdminCampaigns({ setLoggedIn }) {
           }
         }
       }
+      // Flush remaining buffer after stream ends
+      if (buf.trim()) {
+        try {
+          const data = JSON.parse(buf.trim());
+          if (data.type === 'complete') {
+            setPullResult({ totalContacts: data.totalContacts, inAppCount: data.inAppCount });
+            setTimeout(() => setDrawerStep(3), 800);
+          } else if (data.type === 'error') {
+            setPullError(data.message || 'Something went wrong pulling from Jobber.');
+          }
+        } catch {
+          // ignore unparseable final fragment
+        }
+      }
     } catch (err) {
       if (err.name === 'AbortError') return;
       setPullError('Something went wrong pulling from Jobber.');

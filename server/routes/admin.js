@@ -2173,6 +2173,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     const jobSourceValues = [...new Set(withInApp.map(c => c.jobSource).filter(Boolean))].sort();
 
     emit({ type: 'complete', totalContacts: finalContacts.length, inAppCount });
+    res.write('\n');
     res.end();
   } catch (err) {
     await logError({ req, error: err });
