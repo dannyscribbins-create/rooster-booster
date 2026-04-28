@@ -2110,6 +2110,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       }
     }
     const dedupedJobs = Array.from(clientMap.values());
+    console.log('[Pull Debug] dedupedJobs.length after dedup:', dedupedJobs.length, '| sample client id:', filteredJobs[0]?.client?.id ?? 'NO_CLIENT_ID', '| sample client name:', filteredJobs[0]?.client?.name ?? 'NO_NAME'); // diagnostic log — intentional
 
     // Step D — Build contact objects
     const getField = (fields, label) => {
