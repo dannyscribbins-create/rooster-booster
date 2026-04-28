@@ -2017,6 +2017,128 @@ router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
   }
 });
 
+router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  try {
+    const campaignResult = await pool.query(
+      `SELECT id, name, status, total_contacts, total_batches, current_batch,
+              message_preset, message_body, ai_rapport_enabled, cta_enabled,
+              cta_url, sent_at
+       FROM campaigns WHERE id = $1 AND contractor_id = $2`,
+      [id, 'accent-roofing']
+    );
+    if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const campaign = campaignResult.rows[0];
+
+    const countsResult = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE selected = true AND batch_number = 1) AS batch1_selected,
+         COUNT(*) FILTER (WHERE opted_out = true) AS opted_out_count
+       FROM campaign_contacts
+       WHERE campaign_id = $1 AND contractor_id = $2`,
+      [id, 'accent-roofing']
+    );
+    const { batch1_selected, opted_out_count } = countsResult.rows[0];
+
+    const settingsResult = await pool.query(
+      `SELECT company_name FROM contractor_settings
+       WHERE contractor_id = 'accent-roofing' LIMIT 1`
+    );
+    const companyName = settingsResult.rows[0]?.company_name || 'Accent Roofing Service';
+
+    const creditsPerMessage = 1;
+    const monthlyCredits = 3000;
+    const creditsConsumed = parseInt(batch1_selected, 10) * creditsPerMessage;
+    const creditsRemaining = monthlyCredits - creditsConsumed;
+    const overage = creditsRemaining < 0 ? Math.abs(creditsRemaining) : 0;
+    const overageCost = parseFloat((overage * 0.008).toFixed(2));
+
+    res.json({
+      campaign,
+      batch1Selected: parseInt(batch1_selected, 10),
+      optedOutCount: parseInt(opted_out_count, 10),
+      companyName,
+      credits: {
+        monthlyCredits: 3000,
+        creditsConsumed,
+        creditsRemaining: Math.max(creditsRemaining, 0),
+        overage,
+        overageCost,
+        assumption: 'email_only',
+      },
+    });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/campaigns/:id/launch', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+
+  // Confirm campaign exists and is in draft status before opening transaction
+  try {
+    const checkResult = await pool.query(
+      `SELECT id, status FROM campaigns WHERE id = $1 AND contractor_id = $2`,
+      [id, 'accent-roofing']
+    );
+    if (checkResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    if (checkResult.rows[0].status !== 'draft') return res.status(400).json({ error: 'Campaign is not in draft status' });
+  } catch (err) {
+    await logError({ req, error: err });
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+
+  const client = await pool.connect();
+  try {
+    // TODO: wire real send here — iterate campaign_contacts WHERE
+    //   batch_number = 1 AND selected = true AND opted_out = false,
+    //   deliver via Twilio (SMS) or Resend (email) per contact,
+    //   update delivered = true per contact on success.
+
+    const campaignResult = await client.query(
+      `SELECT name, total_batches FROM campaigns WHERE id = $1`,
+      [id]
+    );
+    const { name, total_batches } = campaignResult.rows[0];
+
+    const batch1Result = await client.query(
+      `SELECT COUNT(*) FROM campaign_contacts
+       WHERE campaign_id = $1 AND selected = true AND batch_number = 1 AND opted_out = false`,
+      [id]
+    );
+    const batch1Count = parseInt(batch1Result.rows[0].count, 10);
+
+    await client.query('BEGIN');
+
+    const newStatus = parseInt(total_batches, 10) > 1 ? 'pending_batches' : 'active';
+    await client.query(
+      `UPDATE campaigns
+       SET status = $1, sent_at = NOW(), current_batch = 1, updated_at = NOW()
+       WHERE id = $2 AND contractor_id = $3`,
+      [newStatus, id, 'accent-roofing']
+    );
+
+    const detail = `Campaign "${name}" launched — ${batch1Count} contacts in Batch 1 of ${total_batches}`;
+    await client.query(
+      `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,
+      ['campaign_launched', detail]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({ success: true, status: newStatus, sentAt: new Date().toISOString() });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
 async function fetchJobberPage(query, variables, accessToken) {
   return retryWithBackoff(
     async () => {

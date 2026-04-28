@@ -24,6 +24,11 @@ const STEP_LABELS = ['Filters', 'Curating', 'Results', 'Message', 'Method', 'Rev
 // Growth = 200, Pro = 500. Do not hardcode per-render — change this one constant when tiers ship.
 const CAMPAIGN_BATCH_CAP = 500;
 
+// MVP: Pro tier monthly outreach credits.
+// TODO (FORA tiers): replace with DB lookup of contractor plan credits.
+// Growth = 1200, Pro = 3000. Change this one constant when tiers ship.
+const MONTHLY_CREDITS = 3000;
+
 const PRESETS = [
   {
     id: 'referral_invite',
@@ -1180,6 +1185,203 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
   );
 }
 
+// ── Review step ───────────────────────────────────────────────────────────────
+function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
+  const [summary,        setSummary]        = useState(null);
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [launching,      setLaunching]      = useState(false); // eslint-disable-line no-unused-vars
+  const [launched,       setLaunched]       = useState(false); // eslint-disable-line no-unused-vars
+  const [launchError,    setLaunchError]    = useState('');    // eslint-disable-line no-unused-vars
+
+  useEffect(() => {
+    loadSummary();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadSummary() {
+    setLoadingSummary(true);
+    try {
+      const r = await fetch(
+        `${BACKEND_URL}/api/admin/campaigns/${campaignId}/review-summary`,
+        { headers }
+      );
+      if (!r.ok) return;
+      const data = await r.json();
+      setSummary(data);
+    } catch {
+      // swallow
+    } finally {
+      setLoadingSummary(false);
+    }
+  }
+
+  function renderTokens(text) {
+    if (!text) return null;
+    return text.split(/(\[.*?\])/g).map((part, i) =>
+      /^\[.*\]$/.test(part)
+        ? <span key={i} style={{ color: AD.blueLight, fontWeight: 600 }}>{part}</span>
+        : part
+    );
+  }
+
+  const creditRows = summary ? (() => {
+    const rows = [
+      { label: 'Plan', value: `Pro — ${MONTHLY_CREDITS.toLocaleString()} credits/month` },
+      { label: 'This batch', value: `${summary.credits.creditsConsumed.toLocaleString()} credits` },
+      {
+        label: 'After send',
+        value: summary.credits.overage > 0
+          ? `0 credits + ${summary.credits.overage.toLocaleString()} overage`
+          : `${summary.credits.creditsRemaining.toLocaleString()} credits`,
+        valueColor: summary.credits.overage > 0 ? AD.amberText : AD.greenText,
+      },
+    ];
+    if (summary.credits.overage > 0) {
+      rows.push({
+        label: 'Overage charge',
+        value: `$${summary.credits.overageCost.toFixed(2)} billed to card on file`,
+        valueColor: AD.amberText,
+      });
+    }
+    return rows;
+  })() : [];
+
+  const rowStyle = { display: 'flex', alignItems: 'center', paddingTop: 10, paddingBottom: 10, borderBottom: `1px solid ${AD.border}` };
+  const rowStyleLast = { display: 'flex', alignItems: 'center', paddingTop: 10, paddingBottom: 10 };
+  const labelStyle = { fontSize: 12, color: AD.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: AD.fontSans, width: 220, flexShrink: 0 };
+  const valueStyle = { fontSize: 15, color: AD.textPrimary, fontFamily: AD.fontSans, fontWeight: 500 };
+  const cardStyle = { background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 14, padding: '20px 24px', marginBottom: 20 };
+  const sectionLabelStyle = { fontSize: 12, color: AD.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: AD.fontSans, marginBottom: 14 };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 350, background: AD.bgPage, display: 'flex', flexDirection: 'column' }}>
+
+      {/* A. Header */}
+      <div style={{ flexShrink: 0, padding: '20px 32px', borderBottom: `1px solid ${AD.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <button
+          onClick={onBack}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 13, padding: 0 }}
+        >
+          <i className="ph ph-arrow-left" style={{ fontSize: 16 }} />
+          Back to Messaging
+        </button>
+        <span style={{ fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          Step 5 — Review &amp; Launch
+        </span>
+        <div style={{ width: 150 }} />
+      </div>
+
+      {/* B. Body */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', maxWidth: 680, margin: '0 auto', width: '100%' }}>
+
+        {loadingSummary ? (
+          <p style={{ fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans, textAlign: 'center' }}>
+            Loading summary...
+          </p>
+        ) : summary ? (
+          <>
+            {/* B1. Campaign summary */}
+            <div style={cardStyle}>
+              {[
+                { label: 'Campaign',              value: summary.campaign.name },
+                { label: 'Batch',                 value: `Batch 1 of ${summary.campaign.total_batches}` },
+                { label: 'Contacts in this batch', value: `${summary.batch1Selected} contacts`, last: true },
+              ].map(({ label, value, last }) => (
+                <div key={label} style={last ? rowStyleLast : rowStyle}>
+                  <span style={labelStyle}>{label}</span>
+                  <span style={valueStyle}>{value}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* B2. Message preview */}
+            <div style={cardStyle}>
+              <p style={sectionLabelStyle}>Message</p>
+              <div style={{ fontSize: 12, color: AD.textTertiary, paddingBottom: 10, borderBottom: `1px solid ${AD.border}`, marginBottom: 12 }}>
+                From: {summary.companyName}
+              </div>
+              <div style={{ fontSize: 14, color: AD.textPrimary, lineHeight: 1.7, fontFamily: AD.fontSans, whiteSpace: 'pre-wrap' }}>
+                {renderTokens(summary.campaign.message_body)}
+              </div>
+              {summary.campaign.cta_enabled && summary.campaign.cta_url && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: 'inline-block', background: '#CC0000', color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
+                    Join Now →
+                  </div>
+                  <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontMono, marginTop: 6, display: 'block' }}>
+                    {summary.campaign.cta_url.length > 48 ? summary.campaign.cta_url.slice(0, 48) + '…' : summary.campaign.cta_url}
+                  </span>
+                </div>
+              )}
+              {summary.campaign.ai_rapport_enabled && (
+                <div style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 8, padding: '6px 12px' }}>
+                  <i className="ph ph-sparkle" style={{ fontSize: 13, color: AD.blueText }} />
+                  <span style={{ fontSize: 12, color: AD.blueText, fontFamily: AD.fontSans }}>AI Rapport enabled — messages personalized before sending</span>
+                </div>
+              )}
+            </div>
+
+            {/* B3. Credit accounting */}
+            <div style={cardStyle}>
+              <p style={sectionLabelStyle}>Credit accounting</p>
+              {creditRows.map(({ label, value, valueColor }, i) => (
+                <div key={label} style={i < creditRows.length - 1 ? rowStyle : rowStyleLast}>
+                  <span style={labelStyle}>{label}</span>
+                  <span style={{ ...valueStyle, color: valueColor || AD.textPrimary }}>{value}</span>
+                </div>
+              ))}
+              <p style={{ margin: '12px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
+                Credit estimate assumes email delivery. Final cost recalculated after outreach method selection (Phase 5).
+              </p>
+            </div>
+
+            {/* B4. Compliance */}
+            <div style={cardStyle}>
+              <div style={rowStyle}>
+                <span style={labelStyle}>Opted-out excluded</span>
+                <span style={valueStyle}>
+                  {summary.optedOutCount} contact{summary.optedOutCount !== 1 ? 's' : ''}
+                  {summary.optedOutCount === 0 && (
+                    <span style={{ fontSize: 11, color: AD.textTertiary, marginLeft: 8 }}>(opt-out system coming soon)</span>
+                  )}
+                </span>
+              </div>
+              <div style={rowStyleLast}>
+                <span style={labelStyle}>Compliance</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="ph ph-check-circle" style={{ fontSize: 16, color: AD.greenText }} />
+                  <span style={{ fontSize: 14, color: AD.greenText, fontFamily: AD.fontSans }}>CAN-SPAM / TCPA compliant footer included</span>
+                </div>
+              </div>
+            </div>
+
+            {/* B5. Confirm and send — placeholder; Phase 4B replaces with hold mechanic */}
+            <div style={{ marginTop: 8, marginBottom: 40 }}>
+              <button
+                disabled
+                style={{
+                  width: '100%', height: 60, borderRadius: 14,
+                  background: 'rgba(204,0,0,0.3)', border: 'none',
+                  color: 'rgba(255,255,255,0.5)', fontSize: 17, fontWeight: 700,
+                  fontFamily: AD.fontSans, cursor: 'not-allowed',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                }}
+              >
+                <i className="ph ph-paper-plane-tilt" style={{ fontSize: 20 }} />
+                Hold to Send Campaign
+              </button>
+            </div>
+          </>
+        ) : (
+          <p style={{ fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans, textAlign: 'center' }}>
+            Could not load summary.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Builder drawer ────────────────────────────────────────────────────────────
 function BuilderDrawer({
   step, onClose,
@@ -1193,6 +1395,7 @@ function BuilderDrawer({
   savingFilters, onPullFromJobber,
   pullResult, pullError, onRetryPull, onGoBackFromCurating, contactsSoFar,
   campaignId, contacts, loadingContacts, onNext, onNextFromMessaging, onBack, headers,
+  onLaunchComplete, onBackFromReview,
 }) {
   const [drawerIn, setDrawerIn] = useState(false);
 
@@ -1430,22 +1633,14 @@ function BuilderDrawer({
             />
           )}
 
-          {/* Step 5 — Review & Launch placeholder */}
+          {/* Step 5 — Review & Launch */}
           {step === 5 && (
-            <div style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', flex: 1, gap: 16,
-              color: AD.textSecondary, fontFamily: AD.fontSans,
-            }}>
-              <i className="ph ph-paper-plane-tilt" style={{ fontSize: 48, color: AD.textTertiary }} />
-              <p style={{ margin: 0, fontSize: 17, fontWeight: 500, color: AD.textPrimary }}>
-                Review & Launch — Coming in Phase 4
-              </p>
-              <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary }}>
-                Final summary, credit check, and Confirm and Send.
-              </p>
-              <Btn variant="outline" onClick={onBack}>← Back to Messaging</Btn>
-            </div>
+            <ReviewStep
+              campaignId={campaignId}
+              onBack={onBackFromReview}
+              onLaunchComplete={onLaunchComplete}
+              headers={headers}
+            />
           )}
 
         </div>
@@ -1845,6 +2040,8 @@ export default function AdminCampaigns({ setLoggedIn }) {
           onNextFromMessaging={() => setDrawerStep(5)}
           onBack={() => setDrawerStep(3)}
           headers={headers}
+          onLaunchComplete={closeDrawer}
+          onBackFromReview={() => setDrawerStep(4)}
         />
       )}
 
