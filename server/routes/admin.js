@@ -2059,6 +2059,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
         // If currentlyAvailable >= PAGE_COST, no delay needed — proceed immediately
       }
     }
+    console.log('[Pull Debug] allJobs.length after pull loop:', allJobs.length); // diagnostic log — intentional
     console.log(`[Campaign Pull] complete — ${allJobs.length} total jobs pulled across ${pageNum} pages`); // diagnostic log — intentional
 
     // Step C — Node.js filter pass
@@ -2132,6 +2133,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
         assignedRep: getField(job.customFields, mappings.assigned_rep),
       };
     });
+    console.log('[Pull Debug] contacts.length after Node.js filters:', contacts.length); // diagnostic log — intentional
 
     // Step E — Check app users
     const usersResult = await pool.query(
@@ -2179,6 +2181,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     const workCategoryValues = [...new Set(withInApp.map(c => c.workCategory).filter(Boolean))].sort();
     const jobSourceValues = [...new Set(withInApp.map(c => c.jobSource).filter(Boolean))].sort();
 
+    console.log('[Pull Debug] withInApp.length:', withInApp.length, '| inAppCount:', inAppCount, '| finalContacts.length:', finalContacts.length, '| filters.notInApp:', filters.notInApp); // diagnostic log — intentional
     emit({ type: 'complete', totalContacts: finalContacts.length, inAppCount });
     res.write('\n');
     res.end();
