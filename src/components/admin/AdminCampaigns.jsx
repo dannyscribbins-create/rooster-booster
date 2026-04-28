@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn, Badge } from './AdminComponents';
@@ -291,7 +291,7 @@ const CURATING_TIMINGS = [0, 800, 1400, 2200]; // when each item becomes visible
 const CHECK_TIMINGS    = [800, 1400, 2200];     // when items 0-2 get a checkmark (ms)
 const LARGE_DATASET_MS = 8000;
 
-function CuratingScreen({ pullDone, pullError, onRetryPull, onGoBack }) {
+function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar }) {
   const [phase, setPhase]           = useState(0); // 0–7: tracks visible + checked items
   const [showLarge, setShowLarge]   = useState(false);
 
@@ -335,6 +335,7 @@ function CuratingScreen({ pullDone, pullError, onRetryPull, onGoBack }) {
       <style>{`
         @keyframes curatingPulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
         @keyframes dotFade { 0%,66%,100% { opacity:0; } 33% { opacity:1; } }
+        @keyframes progressSweep { 0% { left:-40%; } 100% { left:105%; } }
       `}</style>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 0 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 36, minWidth: 280 }}>
@@ -371,6 +372,17 @@ function CuratingScreen({ pullDone, pullError, onRetryPull, onGoBack }) {
             </div>
           ))}
         </div>
+
+        <div style={{ width: 280, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden', position: 'relative', marginBottom: 12 }}>
+          <div style={{
+            position: 'absolute', top: 0, height: 4, width: '40%',
+            background: '#CC0000', borderRadius: 2,
+            animation: 'progressSweep 1.8s ease-in-out infinite',
+          }} />
+        </div>
+        <p style={{ margin: '0 0 16px', fontFamily: AD.fontSans, fontSize: 14, color: '#666', textAlign: 'center' }}>
+          {contactsSoFar > 0 ? `${contactsSoFar.toLocaleString()} contacts found so far` : 'Starting pull...'}
+        </p>
 
         <p style={{
           margin: 0, fontFamily: AD.fontSans, fontSize: 15, color: AD.textSecondary,
@@ -474,7 +486,7 @@ function BuilderDrawer({
   notInApp, setNotInApp,
   workCategoryOptions, jobSourceOptions,
   savingFilters, onPullFromJobber,
-  pullDone, pullResult, pullError, onRetryPull, onGoBackFromCurating,
+  pullResult, pullError, onRetryPull, onGoBackFromCurating, contactsSoFar,
 }) {
   const [drawerIn, setDrawerIn] = useState(false);
 
@@ -699,10 +711,10 @@ function BuilderDrawer({
           {/* Step 2 — Curating */}
           {step === 2 && (
             <CuratingScreen
-              pullDone={pullDone}
               pullError={pullError}
               onRetryPull={onRetryPull}
               onGoBack={onGoBackFromCurating}
+              contactsSoFar={contactsSoFar}
             />
           )}
 
@@ -712,7 +724,7 @@ function BuilderDrawer({
               <i className="ph ph-check-circle" style={{ fontSize: 48, color: AD.greenText }} />
               <p style={{ margin: 0, fontSize: 17, fontWeight: 500, color: AD.textPrimary }}>Results ready</p>
               <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary }}>
-                {pullResult?.contacts?.length ?? 0} contacts found · Step 3 coming in Phase 2
+                {pullResult?.totalContacts ?? 0} contacts found · Step 3 coming in Phase 2
               </p>
             </div>
           )}
@@ -754,25 +766,21 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [jobSourceOptions,    setJobSourceOptions]    = useState([]);
 
   // Step 2 curating / pull
-  const [pullDone,    setPullDone]    = useState(false);
-  const [pullResult,  setPullResult]  = useState(null);
-  const [pullError,   setPullError]   = useState(null);
+  const [pullResult,    setPullResult]    = useState(null);
+  const [pullError,     setPullError]     = useState(null);
+  const [contactsSoFar, setContactsSoFar] = useState(0);
+  const abortRef = useRef(null);
 
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
 
-  // Advance to step 3 when pull completes
-  useEffect(() => {
-    if (pullDone && drawerStep === 2) {
-      // Brief delay so animation reaches item 4 if pull was very fast
-      const t = setTimeout(() => setDrawerStep(3), 500);
-      return () => clearTimeout(t);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pullDone]);
-
   useEffect(() => {
     loadCampaigns();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    return () => { if (abortRef.current) abortRef.current.abort(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -827,9 +835,9 @@ export default function AdminCampaigns({ setLoggedIn }) {
     setJobSource([]);
     setNotInApp(true);
     setSavingFilters(false);
-    setPullDone(false);
     setPullResult(null);
     setPullError(null);
+    setContactsSoFar(0);
     setWorkCategoryOptions([]);
     setJobSourceOptions([]);
     loadFieldMappings();
@@ -865,9 +873,9 @@ export default function AdminCampaigns({ setLoggedIn }) {
       setJobSource(Array.isArray(f.jobSource) ? f.jobSource : []);
       setNotInApp(f.notInApp !== undefined ? f.notInApp : true);
       setSavingFilters(false);
-      setPullDone(false);
       setPullResult(null);
       setPullError(null);
+      setContactsSoFar(0);
       loadFieldMappings();
       const hasFilters = data.filters && Object.keys(data.filters).length > 0;
       if (hasFilters) {
@@ -941,18 +949,52 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
   async function triggerPull() {
     setPullError(null);
-    setPullDone(false);
+    setContactsSoFar(0);
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/pull`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
+        signal: controller.signal,
       });
-      const data = await r.json();
-      if (!r.ok) { setPullError(data.error || 'Something went wrong pulling from Jobber.'); return; }
-      setPullResult(data);
-      setPullDone(true);
-    } catch {
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        setPullError(data.error || 'Something went wrong pulling from Jobber.');
+        return;
+      }
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.type === 'progress') {
+              setContactsSoFar(data.contactsSoFar);
+            } else if (data.type === 'complete') {
+              setPullResult({ totalContacts: data.totalContacts, inAppCount: data.inAppCount });
+              setTimeout(() => setDrawerStep(3), 800);
+            } else if (data.type === 'error') {
+              setPullError(data.message || 'Something went wrong pulling from Jobber.');
+            }
+          } catch {
+            // ignore unparseable chunks
+          }
+        }
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') return;
       setPullError('Something went wrong pulling from Jobber.');
+    } finally {
+      abortRef.current = null;
     }
   }
 
@@ -1023,11 +1065,16 @@ export default function AdminCampaigns({ setLoggedIn }) {
           jobSourceOptions={jobSourceOptions}
           savingFilters={savingFilters}
           onPullFromJobber={handlePullFromJobber}
-          pullDone={pullDone}
           pullResult={pullResult}
           pullError={pullError}
           onRetryPull={triggerPull}
-          onGoBackFromCurating={() => { setPullError(null); setDrawerStep(1); }}
+          contactsSoFar={contactsSoFar}
+          onGoBackFromCurating={() => {
+            if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+            setPullError(null);
+            setContactsSoFar(0);
+            setDrawerStep(1);
+          }}
         />
       )}
 

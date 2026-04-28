@@ -1871,7 +1871,7 @@ async function fetchJobberPage(query, variables, accessToken) {
           }
         }
       );
-      if (response.data.errors) {
+      if (response.data.errors && response.data.errors[0]?.message !== 'Throttled') {
         const err = new Error(response.data.errors[0]?.message || 'Jobber API error');
         err.response = { status: response.status };
         err.status = response.status;
@@ -1909,6 +1909,14 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       return res.status(503).json({ error: 'Jobber not connected' });
     }
     const token = tokenResult.rows[0].access_token;
+
+    // Chunked streaming response — client reads via response.body.getReader()
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const emit = (obj) => res.write(JSON.stringify(obj) + '\n');
 
     // Step B — Single paginated jobs query (nested invoices — one pass, no merge step)
     const jobsQueryWithFilter = `
@@ -1989,6 +1997,9 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
 
     const hasDateFilter = filters.dateFrom && filters.dateTo;
     const allJobs = [];
+    const seenClientIds = new Set();
+    const PAGE_COST = 1493;
+    const RESTORE_RATE = 500;
     let cursor = null;
     let hasNextPage = true;
     let pageNum = 1;
@@ -2001,22 +2012,52 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
         ? { cursor, dateFrom: filters.dateFrom, dateTo: filters.dateTo }
         : { cursor };
 
-      const jobJson = await fetchJobberPage(
-        hasDateFilter ? jobsQueryWithFilter : jobsQueryNoFilter,
-        variables,
-        token
-      );
+      let jobJson;
+      let throttleRetries = 0;
+      while (true) {
+        jobJson = await fetchJobberPage(
+          hasDateFilter ? jobsQueryWithFilter : jobsQueryNoFilter,
+          variables,
+          token
+        );
+        if (jobJson.errors?.[0]?.message === 'Throttled') {
+          throttleRetries++;
+          if (throttleRetries > 3) {
+            throw new Error(`Throttled after 3 retries on page ${pageNum}`);
+          }
+          const throttleStatus = jobJson.extensions?.cost?.throttleStatus;
+          const currentlyAvailable = throttleStatus?.currentlyAvailable ?? 0;
+          const waitMs = Math.ceil(((PAGE_COST - currentlyAvailable) / RESTORE_RATE) * 1000) + 200;
+          console.log(`[Campaign Pull] Throttled on page ${pageNum} — waiting ${waitMs}ms before retry ${throttleRetries}/3`); // diagnostic log — intentional
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+        break;
+      }
 
       const page = jobJson?.data?.jobs;
       if (!page) break;
       allJobs.push(...(page.nodes || []));
+      for (const job of (page.nodes || [])) {
+        seenClientIds.add(job.client.id);
+      }
+      emit({ type: 'progress', contactsSoFar: seenClientIds.size });
       if (page.pageInfo?.hasNextPage && !page.pageInfo?.endCursor) {
         throw new Error('Jobber returned hasNextPage=true but no endCursor — aborting pagination to prevent infinite loop');
       }
       hasNextPage = page.pageInfo?.hasNextPage ?? false;
       cursor = page.pageInfo?.endCursor ?? null;
       pageNum++;
-      if (hasNextPage) await new Promise(r => setTimeout(r, 200));
+      if (hasNextPage) {
+        const throttleStatus = jobJson?.extensions?.cost?.throttleStatus;
+        const currentlyAvailable = throttleStatus?.currentlyAvailable ?? 10000;
+        if (currentlyAvailable < PAGE_COST) {
+          const waitMs = Math.ceil(((PAGE_COST - currentlyAvailable) / RESTORE_RATE) * 1000) + 200;
+          // MVP shortcut: fixed PAGE_COST estimate — scalable path: read requestedQueryCost dynamically per page
+          await new Promise(r => setTimeout(r, waitMs));
+        }
+        // If currentlyAvailable >= PAGE_COST, no delay needed — proceed immediately
+      }
     }
     console.log(`[Campaign Pull] complete — ${allJobs.length} total jobs pulled across ${pageNum} pages`); // diagnostic log — intentional
 
@@ -2131,17 +2172,16 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     const workCategoryValues = [...new Set(withInApp.map(c => c.workCategory).filter(Boolean))].sort();
     const jobSourceValues = [...new Set(withInApp.map(c => c.jobSource).filter(Boolean))].sort();
 
-    res.json({
-      campaignId: Number(id),
-      totalPulled,
-      inAppCount,
-      contacts: finalContacts,
-      workCategoryValues,
-      jobSourceValues,
-    });
+    emit({ type: 'complete', totalContacts: finalContacts.length, inAppCount });
+    res.end();
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    if (res.headersSent) {
+      try { res.write(JSON.stringify({ type: 'error', message: err.message || 'Pull failed' }) + '\n'); } catch {}
+      try { res.end(); } catch {}
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
