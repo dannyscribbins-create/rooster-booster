@@ -2104,6 +2104,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     // Filter 5 — deduplicate by client.id (most recent completedAt wins)
     const clientMap = new Map();
     for (const job of filteredJobs) {
+      if (!job.client?.id) continue; // skip jobs with no client — defensive guard
       const existing = clientMap.get(job.client.id);
       if (!existing || new Date(job.completedAt) > new Date(existing.completedAt)) {
         clientMap.set(job.client.id, job);
@@ -2119,7 +2120,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       return f?.valueDropdown ?? f?.valueText ?? f?.valueNumeric ?? null;
     };
 
-    const contacts = dedupedJobs.map(job => {
+    const contacts = dedupedJobs.filter(job => job.client?.id).map(job => {
       const invoice = job.invoices?.nodes?.[0];
       return {
         clientJobberId: job.client.id,
