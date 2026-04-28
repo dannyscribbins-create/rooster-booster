@@ -2039,7 +2039,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       if (!page) break;
       allJobs.push(...(page.nodes || []));
       for (const job of (page.nodes || [])) {
-        seenClientIds.add(job.client.id);
+        if (job.client?.id) seenClientIds.add(job.client.id);
       }
       emit({ type: 'progress', contactsSoFar: seenClientIds.size });
       if (page.pageInfo?.hasNextPage && !page.pageInfo?.endCursor) {
