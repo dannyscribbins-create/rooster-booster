@@ -2154,14 +2154,21 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
 
     // Step G — Save and return
     await pool.query('DELETE FROM campaign_contacts WHERE campaign_id = $1', [id]);
-    for (const c of withInApp) {
+    if (withInApp.length > 0) {
+      const valuePlaceholders = withInApp.map((_, i) => {
+        const base = i * 11;
+        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11})`;
+      }).join(',');
+      const flatValues = withInApp.flatMap(c => [
+        id, 'accent-roofing', c.clientJobberId, c.clientName, c.phone, c.email,
+        c.jobType, c.jobSource, c.jobDate, c.jobValue, c.inApp
+      ]);
       await pool.query(
         `INSERT INTO campaign_contacts
            (campaign_id, contractor_id, client_jobber_id, client_name, phone, email,
-            job_source, job_date, job_value, in_app, selected)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true)`,
-        [id, 'accent-roofing', c.clientJobberId, c.clientName, c.phone, c.email,
-         c.jobSource, c.jobDate, c.jobValue, c.inApp]
+            job_type, job_source, job_date, job_value, in_app)
+         VALUES ${valuePlaceholders}`,
+        flatValues
       );
     }
     await pool.query(
