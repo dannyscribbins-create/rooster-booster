@@ -1769,7 +1769,6 @@ router.get('/api/admin/campaigns/field-values', async (req, res) => {
     const mappings = settingsResult.rows[0]?.contractor_field_mappings || {};
 
     let workCategoryValues = [];
-    let jobSourceValues = [];
 
     if (mappings.work_category) {
       const r = await pool.query(
@@ -1781,17 +1780,7 @@ router.get('/api/admin/campaigns/field-values', async (req, res) => {
       }
     }
 
-    if (mappings.job_source) {
-      const r = await pool.query(
-        'SELECT options FROM contractor_jobber_fields WHERE contractor_id = $1 AND label = $2 LIMIT 1',
-        ['accent-roofing', mappings.job_source]
-      );
-      if (r.rows.length > 0 && Array.isArray(r.rows[0].options)) {
-        jobSourceValues = r.rows[0].options;
-      }
-    }
-
-    res.json({ workCategoryValues, jobSourceValues });
+    res.json({ workCategoryValues });
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });
@@ -2093,14 +2082,8 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       });
     }
 
-    // Filter 4 — jobSource (uses field mappings)
-    if (Array.isArray(filters.jobSource) && filters.jobSource.length > 0 && mappings.job_source) {
-      const label = mappings.job_source;
-      filteredJobs = filteredJobs.filter(job => {
-        const field = (job.customFields || []).find(f => f.label === label);
-        return filters.jobSource.includes(field?.valueDropdown);
-      });
-    }
+    // Filter 4 — jobSource removed: job source lives on Jobber client records, not job records.
+    // Cannot be filtered at pull time. Future: filter post-pull if client custom fields become queryable.
 
     // Filter 5 — deduplicate by client.id (most recent completedAt wins)
     const clientMap = new Map();
@@ -2183,7 +2166,6 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     );
 
     const workCategoryValues = [...new Set(withInApp.map(c => c.workCategory).filter(Boolean))].sort();
-    const jobSourceValues = [...new Set(withInApp.map(c => c.jobSource).filter(Boolean))].sort();
 
     console.log('[Pull Debug] withInApp.length:', withInApp.length, '| inAppCount:', inAppCount, '| finalContacts.length:', finalContacts.length, '| filters.notInApp:', filters.notInApp); // diagnostic log — intentional
     emit({ type: 'complete', totalContacts: finalContacts.length, inAppCount });

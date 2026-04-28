@@ -482,9 +482,9 @@ function BuilderDrawer({
   fieldMappings,
   dateFrom, setDateFrom, dateTo, setDateTo,
   paidOnly, setPaidOnly, minJobValue, setMinJobValue,
-  workCategory, setWorkCategory, jobSource, setJobSource,
+  workCategory, setWorkCategory,
   notInApp, setNotInApp,
-  workCategoryOptions, jobSourceOptions,
+  workCategoryOptions,
   savingFilters, onPullFromJobber,
   pullResult, pullError, onRetryPull, onGoBackFromCurating, contactsSoFar,
 }) {
@@ -494,7 +494,6 @@ function BuilderDrawer({
   const [dateExpanded,     setDateExpanded]     = useState(false);
   const [valueExpanded,    setValueExpanded]     = useState(false);
   const [catExpanded,      setCatExpanded]       = useState(false);
-  const [sourceExpanded,   setSourceExpanded]    = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDrawerIn(true), 20);
@@ -510,7 +509,6 @@ function BuilderDrawer({
   };
 
   const hasWorkCat = fieldMappings?.work_category;
-  const hasJobSrc  = fieldMappings?.job_source;
 
   return (
     <div style={{
@@ -667,23 +665,7 @@ function BuilderDrawer({
                   </FilterCard>
                 )}
 
-                {/* Card 5 — Job Source (conditional) */}
-                {hasJobSrc && jobSourceOptions.length > 0 && (
-                  <FilterCard
-                    title="Job source"
-                    expanded={sourceExpanded}
-                    onToggle={() => setSourceExpanded(v => !v)}
-                  >
-                    <PillMultiSelect
-                      label="Job source"
-                      options={jobSourceOptions}
-                      selected={jobSource}
-                      onChange={setJobSource}
-                    />
-                  </FilterCard>
-                )}
-
-                {/* Card 6 — Not Yet in App */}
+                {/* Card 5 — Not Yet in App */}
                 <FilterCard
                   title="Exclude existing app users"
                   noExpand
@@ -759,11 +741,9 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [paidOnly,      setPaidOnly]      = useState(true);
   const [minJobValue,   setMinJobValue]   = useState('');
   const [workCategory,        setWorkCategory]        = useState([]);
-  const [jobSource,           setJobSource]           = useState([]);
   const [notInApp,            setNotInApp]            = useState(true);
   const [savingFilters,       setSavingFilters]       = useState(false);
   const [workCategoryOptions, setWorkCategoryOptions] = useState([]);
-  const [jobSourceOptions,    setJobSourceOptions]    = useState([]);
 
   // Step 2 curating / pull
   const [pullResult,    setPullResult]    = useState(null);
@@ -815,7 +795,6 @@ export default function AdminCampaigns({ setLoggedIn }) {
       if (!r.ok) return;
       const data = await r.json();
       setWorkCategoryOptions(Array.isArray(data.workCategoryValues) ? data.workCategoryValues : []);
-      setJobSourceOptions(Array.isArray(data.jobSourceValues) ? data.jobSourceValues : []);
     } catch {
       // swallow
     }
@@ -832,14 +811,12 @@ export default function AdminCampaigns({ setLoggedIn }) {
     setPaidOnly(true);
     setMinJobValue('');
     setWorkCategory([]);
-    setJobSource([]);
     setNotInApp(true);
     setSavingFilters(false);
     setPullResult(null);
     setPullError(null);
     setContactsSoFar(0);
     setWorkCategoryOptions([]);
-    setJobSourceOptions([]);
     loadFieldMappings();
     setDrawerOpen(true);
   }
@@ -870,7 +847,6 @@ export default function AdminCampaigns({ setLoggedIn }) {
       setPaidOnly(f.paidOnly !== undefined ? f.paidOnly : true);
       setMinJobValue(f.minJobValue || '');
       setWorkCategory(Array.isArray(f.workCategory) ? f.workCategory : []);
-      setJobSource(Array.isArray(f.jobSource) ? f.jobSource : []);
       setNotInApp(f.notInApp !== undefined ? f.notInApp : true);
       setSavingFilters(false);
       setPullResult(null);
@@ -883,7 +859,6 @@ export default function AdminCampaigns({ setLoggedIn }) {
         setDrawerStep(1);
       } else {
         setWorkCategoryOptions([]);
-        setJobSourceOptions([]);
         setDrawerStep(0);
       }
       setDrawerOpen(true);
@@ -936,7 +911,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
       await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/filters`, {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dateFrom, dateTo, paidOnly, minJobValue: minJobValue || null, workCategory, jobSource, notInApp }),
+        body: JSON.stringify({ dateFrom, dateTo, paidOnly, minJobValue: minJobValue || null, workCategory, notInApp }),
       });
     } catch {
       // proceed — pull will surface any errors
@@ -1075,10 +1050,8 @@ export default function AdminCampaigns({ setLoggedIn }) {
           paidOnly={paidOnly} setPaidOnly={setPaidOnly}
           minJobValue={minJobValue} setMinJobValue={setMinJobValue}
           workCategory={workCategory} setWorkCategory={setWorkCategory}
-          jobSource={jobSource} setJobSource={setJobSource}
           notInApp={notInApp} setNotInApp={setNotInApp}
           workCategoryOptions={workCategoryOptions}
-          jobSourceOptions={jobSourceOptions}
           savingFilters={savingFilters}
           onPullFromJobber={handlePullFromJobber}
           pullResult={pullResult}
