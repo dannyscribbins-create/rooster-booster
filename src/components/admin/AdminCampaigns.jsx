@@ -1189,12 +1189,20 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
 function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
   const [summary,        setSummary]        = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
-  const [launching,      setLaunching]      = useState(false); // eslint-disable-line no-unused-vars
-  const [launched,       setLaunched]       = useState(false); // eslint-disable-line no-unused-vars
-  const [launchError,    setLaunchError]    = useState('');    // eslint-disable-line no-unused-vars
+  const [launching,      setLaunching]      = useState(false);
+  const [launched,       setLaunched]       = useState(false);
+  const [launchError,    setLaunchError]    = useState('');
+  const [holdProgress,   setHoldProgress]   = useState(0);
+  const [holdActive,     setHoldActive]     = useState(false);
+  const holdInterval = useRef(null);
 
   useEffect(() => {
     loadSummary();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    return () => { clearInterval(holdInterval.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1213,6 +1221,54 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
     } finally {
       setLoadingSummary(false);
     }
+  }
+
+  async function triggerLaunch() {
+    setLaunching(true);
+    setLaunchError('');
+    try {
+      const r = await fetch(
+        `${BACKEND_URL}/api/admin/campaigns/${campaignId}/launch`,
+        {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+        }
+      );
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        setLaunchError(data.error || 'Launch failed. Please try again.');
+        setLaunching(false);
+        setHoldProgress(0);
+        return;
+      }
+      setLaunched(true);
+    } catch {
+      setLaunchError('Something went wrong. Please try again.');
+      setLaunching(false);
+      setHoldProgress(0);
+    }
+  }
+
+  function startHold() {
+    if (launching || launched) return;
+    setHoldActive(true);
+    const startTime = Date.now();
+    holdInterval.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(elapsed / 4000, 1);
+      const eased = (1 - Math.pow(1 - t, 3)) * 100;
+      setHoldProgress(eased);
+      if (eased >= 100) {
+        clearInterval(holdInterval.current);
+        triggerLaunch();
+      }
+    }, 50);
+  }
+
+  function releaseHold() {
+    clearInterval(holdInterval.current);
+    setHoldActive(false);
+    setHoldProgress(0);
   }
 
   function renderTokens(text) {
@@ -1252,6 +1308,67 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
   const valueStyle = { fontSize: 15, color: AD.textPrimary, fontFamily: AD.fontSans, fontWeight: 500 };
   const cardStyle = { background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 14, padding: '20px 24px', marginBottom: 20 };
   const sectionLabelStyle = { fontSize: 12, color: AD.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: AD.fontSans, marginBottom: 14 };
+
+  if (launched) {
+    return (
+      <>
+        <style>{`
+          @keyframes launchFloat {
+            0%, 100% { transform: translateY(0) rotate(-15deg); }
+            50%       { transform: translateY(-12px) rotate(-15deg); }
+          }
+          @keyframes launchPulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.4; }
+          }
+        `}</style>
+        <div
+          onClick={onLaunchComplete}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 350,
+            background: AD.bgPage,
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            gap: 0, cursor: 'pointer',
+            fontFamily: AD.fontSans,
+          }}
+        >
+          <i
+            className="ph ph-paper-plane-tilt"
+            style={{
+              fontSize: 72, color: '#CC0000', display: 'block',
+              marginBottom: 24,
+              animation: 'launchFloat 2s ease-in-out infinite',
+            }}
+          />
+          <h2 style={{
+            margin: '0 0 12px', fontSize: 32, fontWeight: 700,
+            fontFamily: AD.fontDisplay, color: AD.textPrimary, textAlign: 'center',
+          }}>
+            Campaign Landed!
+          </h2>
+          <p style={{
+            margin: '0 0 8px', fontSize: 16,
+            color: AD.textSecondary, textAlign: 'center',
+          }}>
+            {summary?.campaign?.name}
+          </p>
+          <p style={{
+            margin: '0 0 48px', fontSize: 14,
+            color: AD.textTertiary, textAlign: 'center',
+          }}>
+            Batch 1 — {summary?.batch1Selected} contacts reached
+          </p>
+          <p style={{
+            fontSize: 13, color: AD.textTertiary,
+            animation: 'launchPulse 2s ease-in-out infinite',
+          }}>
+            Tap anywhere to return to Campaigns
+          </p>
+        </div>
+      </>
+    );
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 350, background: AD.bgPage, display: 'flex', flexDirection: 'column' }}>
@@ -1355,21 +1472,58 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
               </div>
             </div>
 
-            {/* B5. Confirm and send — placeholder; Phase 4B replaces with hold mechanic */}
+            {/* B5. Confirm and send — hold mechanic */}
             <div style={{ marginTop: 8, marginBottom: 40 }}>
-              <button
-                disabled
-                style={{
-                  width: '100%', height: 60, borderRadius: 14,
-                  background: 'rgba(204,0,0,0.3)', border: 'none',
-                  color: 'rgba(255,255,255,0.5)', fontSize: 17, fontWeight: 700,
-                  fontFamily: AD.fontSans, cursor: 'not-allowed',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                }}
-              >
-                <i className="ph ph-paper-plane-tilt" style={{ fontSize: 20 }} />
-                Hold to Send Campaign
-              </button>
+              {launchError && (
+                <p style={{
+                  fontSize: 13, color: AD.red2Text, fontFamily: AD.fontSans,
+                  marginBottom: 12, textAlign: 'center',
+                }}>
+                  {launchError}
+                </p>
+              )}
+              <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 14, width: '100%', height: 60 }}>
+                {/* Sliding highlight fill */}
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, height: '100%',
+                  width: `${holdProgress}%`,
+                  background: '#990000',
+                  borderRadius: 14,
+                  pointerEvents: 'none',
+                  zIndex: 0,
+                  transition: holdActive ? 'width 0.05s linear' : 'width 0.3s ease-out',
+                }} />
+                {/* Button */}
+                <button
+                  onMouseDown={startHold}
+                  onMouseUp={releaseHold}
+                  onMouseLeave={releaseHold}
+                  onTouchStart={startHold}
+                  onTouchEnd={releaseHold}
+                  onTouchCancel={releaseHold}
+                  disabled={launching || launched}
+                  style={{
+                    position: 'relative', zIndex: 1,
+                    width: '100%', height: 60,
+                    background: '#CC0000',
+                    border: 'none', borderRadius: 14,
+                    fontFamily: AD.fontSans, fontSize: 17, fontWeight: 700,
+                    color: '#fff',
+                    cursor: (launching || launched) ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                    opacity: launching ? 0.7 : 1,
+                    userSelect: 'none', WebkitUserSelect: 'none',
+                  }}
+                >
+                  <i className="ph ph-paper-plane-tilt" style={{ fontSize: 20 }} />
+                  {launching
+                    ? 'Launching...'
+                    : holdActive && holdProgress > 0
+                      ? `Hold... ${Math.round(holdProgress)}%`
+                      : 'Hold to Send Campaign'
+                  }
+                </button>
+              </div>
             </div>
           </>
         ) : (
@@ -1924,7 +2078,6 @@ export default function AdminCampaigns({ setLoggedIn }) {
             if (data.type === 'progress') {
               setContactsSoFar(data.contactsSoFar);
             } else if (data.type === 'complete') {
-              console.log('[triggerPull] complete event received, totalContacts:', data.totalContacts);
               setPullResult({ totalContacts: data.totalContacts, inAppCount: data.inAppCount });
               setTimeout(() => { setDrawerStep(3); loadContacts(campaignId); }, 1200);
             } else if (data.type === 'error') {
@@ -1940,7 +2093,6 @@ export default function AdminCampaigns({ setLoggedIn }) {
         try {
           const data = JSON.parse(buf.trim());
           if (data.type === 'complete') {
-            console.log('[triggerPull] complete event received, totalContacts:', data.totalContacts);
             setPullResult({ totalContacts: data.totalContacts, inAppCount: data.inAppCount });
             setTimeout(() => { setDrawerStep(3); loadContacts(campaignId); }, 1200);
           } else if (data.type === 'error') {
