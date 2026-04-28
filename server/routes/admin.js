@@ -1957,6 +1957,66 @@ router.post('/api/admin/campaigns/:id/finalize-batch', async (req, res) => {
   }
 });
 
+router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  try {
+    const campaignCheck = await pool.query(
+      'SELECT message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const saved = campaignCheck.rows[0];
+
+    const settingsResult = await pool.query(
+      'SELECT company_url, social_facebook, social_instagram, social_google, social_nextdoor, social_website FROM contractor_settings WHERE contractor_id = $1 LIMIT 1',
+      ['accent-roofing']
+    );
+    const row = settingsResult.rows[0];
+    const ctaOptions = {
+      appSignup:  process.env.FRONTEND_URL || '',
+      website:    row?.company_url       || null,
+      facebook:   row?.social_facebook   || null,
+      instagram:  row?.social_instagram  || null,
+      google:     row?.social_google     || null,
+      nextdoor:   row?.social_nextdoor   || null,
+    };
+
+    res.json({ saved, ctaOptions });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url } = req.body;
+
+  const validPresets = ['referral_invite', 're_engagement', 'seasonal', 'thank_you', 'write_own'];
+  if (!validPresets.includes(message_preset)) return res.status(400).json({ error: 'Invalid message_preset' });
+  if (typeof ai_rapport_enabled !== 'boolean') return res.status(400).json({ error: 'ai_rapport_enabled must be boolean' });
+  if (typeof cta_enabled !== 'boolean') return res.status(400).json({ error: 'cta_enabled must be boolean' });
+  if (cta_url !== null && cta_url !== undefined && typeof cta_url !== 'string') return res.status(400).json({ error: 'cta_url must be string or null' });
+  if (message_body !== null && message_body !== undefined && typeof message_body === 'string' && message_body.length > 1000) return res.status(400).json({ error: 'message_body exceeds 1000 characters' });
+
+  try {
+    const result = await pool.query(
+      `UPDATE campaigns
+       SET message_preset = $1, message_body = $2, ai_rapport_enabled = $3,
+           cta_enabled = $4, cta_url = $5, updated_at = NOW()
+       WHERE id = $6 AND contractor_id = $7`,
+      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, id, 'accent-roofing']
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Campaign not found' });
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 async function fetchJobberPage(query, variables, accessToken) {
   return retryWithBackoff(
     async () => {

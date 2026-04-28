@@ -24,6 +24,45 @@ const STEP_LABELS = ['Filters', 'Curating', 'Results', 'Message', 'Method', 'Rev
 // Growth = 200, Pro = 500. Do not hardcode per-render — change this one constant when tiers ship.
 const CAMPAIGN_BATCH_CAP = 500;
 
+const PRESETS = [
+  {
+    id: 'referral_invite',
+    label: 'Referral program invite',
+    icon: 'ph-gift',
+    body: `Hi [First Name], it's the team at [Company]. We wanted to personally invite you to join our referral rewards program — refer a neighbor who needs roofing work and earn cash rewards when we complete their job. It takes 30 seconds to sign up and there's no limit to what you can earn.`,
+  },
+  {
+    id: 're_engagement',
+    label: 'Re-engagement',
+    icon: 'ph-hand-waving',
+    body: `Hi [First Name], it's been a while since we worked together on your roof and we just wanted to check in. If you know anyone in the area who needs roofing work, we'd love the referral — and we'll reward you for it.`,
+  },
+  {
+    id: 'seasonal',
+    label: 'Seasonal outreach',
+    icon: 'ph-sun',
+    body: `Hi [First Name], as we head into the season, it's a great time to make sure your roof is in great shape — and a great time to refer neighbors who might need work done. Join our rewards program and earn cash for every referral that becomes a job.`,
+  },
+  {
+    id: 'thank_you',
+    label: 'Thank you + invite',
+    icon: 'ph-heart',
+    body: `Hi [First Name], thank you for trusting us with your home. It means a lot to our team. We wanted to invite you to our referral rewards program — refer a friend or neighbor and earn cash rewards when we complete their job.`,
+  },
+  {
+    id: 'write_own',
+    label: 'Write my own',
+    icon: 'ph-pencil-simple',
+    body: '',
+  },
+];
+
+const AI_RAPPORT_EXPLAINER = `AI will personalize each message using: first name, job type, and month and year of service.`;
+
+// Simulated AI Rapport preview suffix — real Haiku call wired in dedicated AI session
+// TODO: replace SIMULATED_AI_SUFFIX with live Anthropic Haiku API call per contact
+const SIMULATED_AI_SUFFIX = ` Since we completed your [Job Type] back in [Month Year], we've been grateful for clients like you.`;
+
 // ── Step indicator ────────────────────────────────────────────────────────────
 function StepIndicator({ currentStep }) {
   const stepIndex = currentStep - 1;
@@ -826,6 +865,321 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
   );
 }
 
+// ── Messaging step ────────────────────────────────────────────────────────────
+function MessagingStep({ campaignId, onNext, onBack, headers }) {
+  const [selectedPreset, setSelectedPreset] = useState('referral_invite');
+  const [messageBody,    setMessageBody]    = useState(PRESETS[0].body);
+  const [aiRapport,      setAiRapport]      = useState(false);
+  const [ctaEnabled,     setCtaEnabled]     = useState(false);
+  const [ctaUrl,         setCtaUrl]         = useState('');
+  const [ctaOptions,     setCtaOptions]     = useState({});
+  const [loadingContext, setLoadingContext] = useState(true);
+  const [saving,         setSaving]         = useState(false);
+  const [previewMode,    setPreviewMode]    = useState('without');
+
+  useEffect(() => {
+    loadMessagingContext();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadMessagingContext() {
+    setLoadingContext(true);
+    try {
+      const r = await fetch(
+        `${BACKEND_URL}/api/admin/campaigns/${campaignId}/messaging-context`,
+        { headers }
+      );
+      if (!r.ok) return;
+      const data = await r.json();
+      setCtaOptions(data.ctaOptions || {});
+      const s = data.saved;
+      if (s?.message_preset) {
+        setSelectedPreset(s.message_preset);
+        const match = PRESETS.find(p => p.id === s.message_preset);
+        setMessageBody(s.message_body || match?.body || '');
+      }
+      if (typeof s?.ai_rapport_enabled === 'boolean') setAiRapport(s.ai_rapport_enabled);
+      if (typeof s?.cta_enabled === 'boolean') setCtaEnabled(s.cta_enabled);
+      if (s?.cta_url) setCtaUrl(s.cta_url);
+      else if (data.ctaOptions?.appSignup) setCtaUrl(data.ctaOptions.appSignup);
+    } catch {
+      // swallow
+    } finally {
+      setLoadingContext(false);
+    }
+  }
+
+  async function saveMessaging() {
+    setSaving(true);
+    try {
+      await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/messaging`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message_preset: selectedPreset,
+          message_body: messageBody || PRESETS.find(p => p.id === selectedPreset)?.body || '',
+          ai_rapport_enabled: aiRapport,
+          cta_enabled: ctaEnabled,
+          cta_url: ctaEnabled ? ctaUrl : null,
+        }),
+      });
+    } catch (err) {
+      console.error('[saveMessaging] error:', err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleNext() {
+    await saveMessaging();
+    onNext();
+  }
+
+  const base = messageBody || PRESETS.find(p => p.id === selectedPreset)?.body || '';
+  const previewBody = (previewMode === 'with' && aiRapport) ? base + SIMULATED_AI_SUFFIX : base;
+
+  function renderPreviewBody(text) {
+    const parts = text.split(/(\[.*?\])/g);
+    return parts.map((part, i) => {
+      if (/^\[.*\]$/.test(part)) {
+        return <span key={i} style={{ color: AD.blueLight, fontWeight: 600 }}>{part}</span>;
+      }
+      return part;
+    });
+  }
+
+  const ctaOptionsList = [
+    { label: 'Join the app',    value: ctaOptions.appSignup, alwaysShow: true },
+    { label: 'Our website',     value: ctaOptions.website },
+    { label: 'Facebook',        value: ctaOptions.facebook },
+    { label: 'Instagram',       value: ctaOptions.instagram },
+    { label: 'Google profile',  value: ctaOptions.google },
+    { label: 'Nextdoor',        value: ctaOptions.nextdoor },
+  ].filter(o => o.alwaysShow || (o.value && o.value.trim() !== ''));
+
+  const sectionLabel = {
+    fontSize: 11, color: AD.textTertiary, letterSpacing: '0.06em',
+    textTransform: 'uppercase', fontFamily: AD.fontSans, margin: '0 0 14px',
+  };
+  const divider = { marginTop: 24, marginBottom: 24, borderTop: `1px solid ${AD.border}` };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 350, background: AD.bgPage, display: 'flex', flexDirection: 'column' }}>
+
+      {/* Header */}
+      <div style={{ flexShrink: 0, padding: '20px 32px', borderBottom: `1px solid ${AD.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <button
+          onClick={onBack}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 13, padding: 0 }}
+        >
+          <i className="ph ph-arrow-left" style={{ fontSize: 16 }} />
+          Back to Results
+        </button>
+        <span style={{ fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          Step 4 — Messaging
+        </span>
+        <Btn
+          variant="accent"
+          onClick={handleNext}
+          style={{ opacity: (saving || loadingContext) ? 0.6 : 1 }}
+          disabled={saving || loadingContext}
+        >
+          Next: Review →
+        </Btn>
+      </div>
+
+      {/* Body — two-panel layout */}
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', gap: 0 }}>
+
+        {/* Left panel */}
+        <div style={{ flex: 1, maxWidth: 480, borderRight: `1px solid ${AD.border}`, overflow: 'auto', padding: '28px 32px' }}>
+
+          {/* B1 — Section label */}
+          <p style={sectionLabel}>Choose a message template</p>
+
+          {/* B2 — Preset selector */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {PRESETS.map(p => {
+              const isSelected = selectedPreset === p.id;
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => {
+                    setSelectedPreset(p.id);
+                    setMessageBody(p.id === 'write_own' ? '' : p.body);
+                    setPreviewMode('without');
+                  }}
+                  style={{
+                    background: isSelected ? AD.navy : AD.bgCard,
+                    border: `1px solid ${isSelected ? AD.blueLight : AD.border}`,
+                    borderRadius: 10, padding: '12px 16px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <i className={`ph ${p.icon}`} style={{ fontSize: 18, color: isSelected ? AD.blueLight : AD.textTertiary }} />
+                  <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 400, color: isSelected ? AD.textPrimary : AD.textSecondary, fontFamily: AD.fontSans }}>
+                    {p.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* B3 — Write own textarea */}
+          {selectedPreset === 'write_own' && (
+            <div style={{ marginTop: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>Your message</label>
+              <textarea
+                value={messageBody}
+                onChange={e => setMessageBody(e.target.value.slice(0, 1000))}
+                style={{
+                  width: '100%', minHeight: 120, padding: '10px 14px',
+                  background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                  borderRadius: 10, fontFamily: AD.fontSans, fontSize: 14,
+                  color: AD.textPrimary, resize: 'vertical', boxSizing: 'border-box',
+                  outline: 'none',
+                }}
+              />
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, textAlign: 'right' }}>
+                {messageBody.length}/1000
+              </p>
+            </div>
+          )}
+
+          {/* B4 — Divider */}
+          <div style={divider} />
+
+          {/* B5 — AI Rapport toggle */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>AI Rapport</p>
+              <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>Personalize each message with client data.</p>
+              {aiRapport && (
+                <div style={{ marginTop: 8, background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 8, padding: '8px 12px', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                  <i className="ph ph-sparkle" style={{ fontSize: 14, color: AD.blueText, flexShrink: 0, marginTop: 1 }} />
+                  <span style={{ fontSize: 12, color: AD.blueText, fontFamily: AD.fontSans, lineHeight: 1.5 }}>{AI_RAPPORT_EXPLAINER}</span>
+                </div>
+              )}
+            </div>
+            <Toggle
+              on={aiRapport}
+              onChange={val => { setAiRapport(val); setPreviewMode(val ? 'with' : 'without'); }}
+            />
+          </div>
+
+          {/* B6 — Divider */}
+          <div style={divider} />
+
+          {/* B7 — CTA link toggle */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>Include a link</p>
+              <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>Add a call-to-action link to your message.</p>
+            </div>
+            <Toggle on={ctaEnabled} onChange={setCtaEnabled} />
+          </div>
+
+          {ctaEnabled && (
+            <div style={{ marginTop: 16 }}>
+              <p style={{ margin: '0 0 10px', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>Send recipients to:</p>
+              {ctaOptionsList.map(opt => {
+                const isSelected = ctaUrl === opt.value;
+                return (
+                  <div
+                    key={opt.label}
+                    onClick={() => setCtaUrl(opt.value)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 12px', borderRadius: 8, cursor: 'pointer', marginBottom: 4,
+                      background: isSelected ? 'rgba(204,0,0,0.08)' : 'transparent',
+                      border: `1px solid ${isSelected ? '#CC0000' : 'transparent'}`,
+                    }}
+                  >
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, border: `2px solid ${isSelected ? '#CC0000' : AD.borderStrong}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {isSelected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#CC0000' }} />}
+                    </div>
+                    <span style={{ fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans }}>{opt.label}</span>
+                    {opt.value && (
+                      <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontMono, marginLeft: 'auto', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {opt.value}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right panel */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '28px 32px' }}>
+
+          {/* R1 — Section label */}
+          <p style={sectionLabel}>Message preview</p>
+
+          {/* R2 — Preview mode toggle (when aiRapport ON) */}
+          {aiRapport && (
+            <div style={{ display: 'flex', gap: 0, marginBottom: 16 }}>
+              {[
+                { id: 'without', label: 'Without AI Rapport' },
+                { id: 'with',    label: 'With AI Rapport' },
+              ].map((m, i) => {
+                const isActive = previewMode === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => setPreviewMode(m.id)}
+                    style={{
+                      background: isActive ? AD.navy : AD.bgSurface,
+                      border: `1px solid ${isActive ? AD.blueLight : AD.border}`,
+                      color: isActive ? AD.blueLight : AD.textSecondary,
+                      borderRadius: i === 0 ? '8px 0 0 8px' : '0 8px 8px 0',
+                      fontSize: 12, padding: '6px 14px', cursor: 'pointer',
+                      fontFamily: AD.fontSans,
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* R3 — Preview card */}
+          <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 14, padding: '20px 24px', fontFamily: AD.fontSans }}>
+            <div style={{ fontSize: 12, color: AD.textTertiary, marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${AD.border}` }}>
+              From: Accent Roofing Service
+              {/* TODO: pass company name through messaging-context response */}
+            </div>
+            <div style={{ fontSize: 14, color: AD.textPrimary, lineHeight: 1.7 }}>
+              {renderPreviewBody(previewBody)}
+            </div>
+            {ctaEnabled && ctaUrl && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: 'inline-block', background: '#CC0000', color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
+                  Join Now →
+                  {/* TODO: configurable CTA button label in future session */}
+                </div>
+                <p style={{ margin: '6px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontMono }}>
+                  {ctaUrl.length > 48 ? ctaUrl.slice(0, 48) + '…' : ctaUrl}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* R4 — AI Rapport disclaimer */}
+          {aiRapport && (
+            <p style={{ margin: '12px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
+              Preview shown with sample data. AI personalizes each message individually before sending.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Builder drawer ────────────────────────────────────────────────────────────
 function BuilderDrawer({
   step, onClose,
@@ -838,7 +1192,7 @@ function BuilderDrawer({
   workCategoryOptions,
   savingFilters, onPullFromJobber,
   pullResult, pullError, onRetryPull, onGoBackFromCurating, contactsSoFar,
-  campaignId, contacts, loadingContacts, onNext, onBack, headers,
+  campaignId, contacts, loadingContacts, onNext, onNextFromMessaging, onBack, headers,
 }) {
   const [drawerIn, setDrawerIn] = useState(false);
 
@@ -1066,21 +1420,31 @@ function BuilderDrawer({
             />
           )}
 
-          {/* Step 4 — Messaging placeholder */}
+          {/* Step 4 — Messaging */}
           {step === 4 && (
+            <MessagingStep
+              campaignId={campaignId}
+              onNext={onNextFromMessaging}
+              onBack={onBack}
+              headers={headers}
+            />
+          )}
+
+          {/* Step 5 — Review & Launch placeholder */}
+          {step === 5 && (
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
               justifyContent: 'center', flex: 1, gap: 16,
               color: AD.textSecondary, fontFamily: AD.fontSans,
             }}>
-              <i className="ph ph-hammer" style={{ fontSize: 48, color: AD.textTertiary }} />
+              <i className="ph ph-paper-plane-tilt" style={{ fontSize: 48, color: AD.textTertiary }} />
               <p style={{ margin: 0, fontSize: 17, fontWeight: 500, color: AD.textPrimary }}>
-                Messaging — Coming in Phase 3
+                Review & Launch — Coming in Phase 4
               </p>
               <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary }}>
-                Preset messages, AI Rapport, and CTA options are next.
+                Final summary, credit check, and Confirm and Send.
               </p>
-              <Btn variant="outline" onClick={onBack}>← Back to Results</Btn>
+              <Btn variant="outline" onClick={onBack}>← Back to Messaging</Btn>
             </div>
           )}
 
@@ -1478,6 +1842,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
           contacts={contacts}
           loadingContacts={loadingContacts}
           onNext={async () => { await finalizeBatch(campaignId); setDrawerStep(4); }}
+          onNextFromMessaging={() => setDrawerStep(5)}
           onBack={() => setDrawerStep(3)}
           headers={headers}
         />
