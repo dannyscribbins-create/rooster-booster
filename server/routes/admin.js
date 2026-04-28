@@ -1846,6 +1846,59 @@ router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
   }
 });
 
+router.get('/api/admin/campaigns/:id/contacts', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  try {
+    const check = await pool.query(
+      'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const result = await pool.query(
+      `SELECT id, client_name, phone, email, job_type, job_date, job_value, in_app, selected
+       FROM campaign_contacts WHERE campaign_id = $1 AND contractor_id = $2 ORDER BY client_name ASC`,
+      [id, 'accent-roofing']
+    );
+    res.json({ contacts: result.rows });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/api/admin/campaigns/:id/contacts/selection', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  const { updates } = req.body;
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return res.status(400).json({ error: 'updates must be a non-empty array' });
+  }
+  for (const u of updates) {
+    if (typeof u.id !== 'number' || typeof u.selected !== 'boolean') {
+      return res.status(400).json({ error: 'Each update must have numeric id and boolean selected' });
+    }
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const u of updates) {
+      await client.query(
+        'UPDATE campaign_contacts SET selected = $1 WHERE id = $2 AND campaign_id = $3',
+        [u.selected, u.id, id]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ updated: updates.length });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 async function fetchJobberPage(query, variables, accessToken) {
   return retryWithBackoff(
     async () => {

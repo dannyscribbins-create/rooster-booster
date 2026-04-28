@@ -19,6 +19,11 @@ const STATUS_LABEL = {
 
 const STEP_LABELS = ['Filters', 'Curating', 'Results', 'Message', 'Method', 'Review', 'Launch'];
 
+// MVP: Pro tier batch cap — 500 contacts per batch.
+// TODO (FORA tiers): replace with DB lookup of contractor's plan batch cap.
+// Growth = 200, Pro = 500. Do not hardcode per-render — change this one constant when tiers ship.
+const CAMPAIGN_BATCH_CAP = 500;
+
 // ── Step indicator ────────────────────────────────────────────────────────────
 function StepIndicator({ currentStep }) {
   const stepIndex = currentStep - 1;
@@ -475,6 +480,264 @@ function PillMultiSelect({ label, options, selected, onChange }) {
   );
 }
 
+// ── Results modal ─────────────────────────────────────────────────────────────
+function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loadingContacts, onNext, onBack, headers }) {
+  const [search,        setSearch]        = useState('');
+  const [localSelected, setLocalSelected] = useState({});
+  const [pendingSaves,  setPendingSaves]  = useState(new Set());
+  const [saving,        setSaving]        = useState(false);
+
+  useEffect(() => {
+    const init = {};
+    contacts.forEach(c => { init[c.id] = c.selected !== false; });
+    setLocalSelected(init);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contacts]);
+
+  const lowerSearch = search.toLowerCase();
+  const localFilteredContacts = search
+    ? contacts.filter(c =>
+        (c.client_name || '').toLowerCase().includes(lowerSearch) ||
+        (c.phone || '').toLowerCase().includes(lowerSearch) ||
+        (c.email || '').toLowerCase().includes(lowerSearch)
+      )
+    : contacts;
+
+  function toggleContact(id) {
+    setLocalSelected(prev => ({ ...prev, [id]: !prev[id] }));
+    setPendingSaves(prev => { const next = new Set(prev); next.add(id); return next; });
+  }
+
+  function selectAll() {
+    const next = {};
+    contacts.forEach(c => { next[c.id] = true; });
+    setLocalSelected(next);
+    setPendingSaves(new Set(contacts.map(c => c.id)));
+  }
+
+  function deselectAll() {
+    const next = {};
+    contacts.forEach(c => { next[c.id] = false; });
+    setLocalSelected(next);
+    setPendingSaves(new Set(contacts.map(c => c.id)));
+  }
+
+  const allSelected = contacts.length > 0 && contacts.every(c => localSelected[c.id] !== false);
+
+  async function saveSelection() {
+    setSaving(true);
+    try {
+      const updates = contacts
+        .filter(c => pendingSaves.has(c.id))
+        .map(c => ({ id: c.id, selected: localSelected[c.id] ?? true }));
+      await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/contacts/selection`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates }),
+      });
+      setPendingSaves(new Set());
+    } catch (err) {
+      console.error('[ResultsModal] saveSelection error:', err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function formatDate(val) {
+    if (!val) return '—';
+    try {
+      return new Date(val).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return '—';
+    }
+  }
+
+  function formatValue(val) {
+    if (val == null) return '—';
+    return '$' + Number(val).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  const colHeader = { fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.06em', textTransform: 'uppercase' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 350, background: AD.bgPage, display: 'flex', flexDirection: 'column' }}>
+
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: `1px solid ${AD.border}`, flexShrink: 0, gap: 16 }}>
+        <button
+          onClick={onBack}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 13, padding: 0 }}
+        >
+          <i className="ph ph-arrow-left" style={{ fontSize: 16 }} />
+          Back to Filters
+        </button>
+        <p style={{ margin: 0, fontSize: 15, fontFamily: AD.fontSans, color: AD.textPrimary, fontWeight: 500 }}>
+          {totalContacts.toLocaleString()} contact{totalContacts !== 1 ? 's' : ''} · {inAppCount} in app
+        </p>
+        <button
+          onClick={onNext}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: '#CC0000', color: '#fff', border: 'none', borderRadius: 8,
+            padding: '8px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 500,
+            fontFamily: AD.fontSans,
+          }}
+        >
+          Next: Messaging <i className="ph ph-arrow-right" style={{ fontSize: 14 }} />
+        </button>
+      </div>
+
+      {/* Search bar */}
+      <div style={{ flexShrink: 0, padding: '16px 24px' }}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, phone, or email..."
+          style={{
+            width: '100%', padding: '10px 14px', background: AD.bgSurface,
+            border: `1px solid ${AD.borderStrong}`, borderRadius: 10,
+            fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary,
+            outline: 'none', boxSizing: 'border-box',
+          }}
+        />
+      </div>
+
+      {/* Select all bar */}
+      <div style={{ flexShrink: 0, padding: '0 24px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+          Showing {localFilteredContacts.length.toLocaleString()} of {contacts.length.toLocaleString()} contacts
+        </span>
+        <button
+          onClick={allSelected ? deselectAll : selectAll}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#CC0000', fontFamily: AD.fontSans, padding: 0 }}
+        >
+          {allSelected ? 'Deselect All' : 'Select All'}
+        </button>
+      </div>
+
+      {/* In-app exclusion banner */}
+      {inAppCount > 0 && (
+        <div style={{ flexShrink: 0, padding: '10px 24px', background: 'rgba(37,99,235,0.08)', borderBottom: `1px solid rgba(37,99,235,0.15)`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <i className="ph ph-info" style={{ fontSize: 16, color: AD.blueText, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: AD.blueText, fontFamily: AD.fontSans }}>
+            {inAppCount} contact{inAppCount !== 1 ? 's' : ''} already in the app — excluded automatically
+          </span>
+        </div>
+      )}
+
+      {/* Batch cap banner */}
+      {totalContacts > CAMPAIGN_BATCH_CAP && (
+        <div style={{ flexShrink: 0, padding: '10px 24px', background: 'rgba(245,158,11,0.08)', borderBottom: `1px solid rgba(245,158,11,0.2)`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <i className="ph ph-warning" style={{ fontSize: 16, color: AD.amberText, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans }}>
+            {totalContacts.toLocaleString()} clients matched. Your plan sends up to {CAMPAIGN_BATCH_CAP} per batch. Batch 1 of {Math.ceil(totalContacts / CAMPAIGN_BATCH_CAP)} will be sent now.
+          </span>
+        </div>
+      )}
+
+      {/* Contact table */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px', position: 'sticky', top: 0, background: AD.bgPage, borderBottom: `1px solid ${AD.border}`, flexShrink: 0, minHeight: 40 }}>
+          <div style={{ width: 40, flexShrink: 0 }} />
+          <div style={{ flex: 2, ...colHeader }}>Client Name</div>
+          <div style={{ flex: 1, ...colHeader }}>Phone</div>
+          <div style={{ flex: 2, ...colHeader }}>Email</div>
+          <div style={{ width: 120, flexShrink: 0, ...colHeader }}>Job Date</div>
+          <div style={{ width: 100, flexShrink: 0, ...colHeader }}>Job Value</div>
+          <div style={{ width: 80, flexShrink: 0, ...colHeader }}>In App?</div>
+        </div>
+
+        {/* Data rows */}
+        {loadingContacts ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48, color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 14 }}>
+            Loading contacts...
+          </div>
+        ) : localFilteredContacts.length === 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48, color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 14 }}>
+            No contacts match your search.
+          </div>
+        ) : (
+          localFilteredContacts.map(c => {
+            const isSelected = localSelected[c.id] !== false;
+            return (
+              <div
+                key={c.id}
+                style={{
+                  display: 'flex', alignItems: 'center', padding: '0 8px',
+                  minHeight: 48, borderBottom: `1px solid ${AD.border}`,
+                  opacity: isSelected ? 1 : 0.45,
+                  cursor: 'default',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                {/* Checkbox */}
+                <div style={{ width: 40, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div
+                    onClick={() => toggleContact(c.id)}
+                    style={{
+                      width: 18, height: 18, borderRadius: 4, cursor: 'pointer',
+                      border: `1.5px solid ${isSelected ? '#CC0000' : AD.borderStrong}`,
+                      background: isSelected ? '#CC0000' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {isSelected && <i className="ph ph-check" style={{ fontSize: 11, color: '#fff' }} />}
+                  </div>
+                </div>
+                <div style={{ flex: 2, fontWeight: 500, color: AD.textPrimary, fontSize: 14, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                  {c.client_name || '—'}
+                </div>
+                <div style={{ flex: 1, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                  {c.phone || '—'}
+                </div>
+                <div style={{ flex: 2, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                  {c.email || '—'}
+                </div>
+                <div style={{ width: 120, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                  {formatDate(c.job_date)}
+                </div>
+                <div style={{ width: 100, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                  {formatValue(c.job_value)}
+                </div>
+                <div style={{ width: 80, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                  {c.in_app
+                    ? <i className="ph ph-check-circle" style={{ fontSize: 16, color: AD.greenText }} />
+                    : <i className="ph ph-minus" style={{ fontSize: 16, color: AD.textTertiary }} />
+                  }
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Save selection button */}
+      {pendingSaves.size > 0 && (
+        <div style={{ flexShrink: 0, padding: '12px 24px', borderTop: `1px solid ${AD.border}` }}>
+          <button
+            onClick={saveSelection}
+            disabled={saving}
+            style={{
+              background: '#CC0000', color: '#fff', border: 'none', borderRadius: 8,
+              padding: '10px 20px', cursor: saving ? 'default' : 'pointer',
+              fontSize: 14, fontWeight: 500, fontFamily: AD.fontSans,
+              opacity: saving ? 0.6 : 1,
+            }}
+          >
+            {saving
+              ? 'Saving...'
+              : `Save Selection (${pendingSaves.size} change${pendingSaves.size !== 1 ? 's' : ''})`
+            }
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Builder drawer ────────────────────────────────────────────────────────────
 function BuilderDrawer({
   step, onClose,
@@ -487,6 +750,7 @@ function BuilderDrawer({
   workCategoryOptions,
   savingFilters, onPullFromJobber,
   pullResult, pullError, onRetryPull, onGoBackFromCurating, contactsSoFar,
+  campaignId, contacts, loadingContacts, onNext, onBack, headers,
 }) {
   const [drawerIn, setDrawerIn] = useState(false);
 
@@ -700,14 +964,35 @@ function BuilderDrawer({
             />
           )}
 
-          {/* Step 3 — Results placeholder */}
+          {/* Step 3 — Results modal */}
           {step === 3 && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 16, color: AD.textSecondary, fontFamily: AD.fontSans }}>
-              <i className="ph ph-check-circle" style={{ fontSize: 48, color: AD.greenText }} />
-              <p style={{ margin: 0, fontSize: 17, fontWeight: 500, color: AD.textPrimary }}>Results ready</p>
-              <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary }}>
-                {pullResult?.totalContacts ?? 0} contacts found · Step 3 coming in Phase 2
+            <ResultsModal
+              campaignId={campaignId}
+              totalContacts={pullResult?.totalContacts ?? 0}
+              inAppCount={pullResult?.inAppCount ?? 0}
+              contacts={contacts}
+              loadingContacts={loadingContacts}
+              onNext={onNext}
+              onBack={onGoBackFromCurating}
+              headers={headers}
+            />
+          )}
+
+          {/* Step 4 — Messaging placeholder */}
+          {step === 4 && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', flex: 1, gap: 16,
+              color: AD.textSecondary, fontFamily: AD.fontSans,
+            }}>
+              <i className="ph ph-hammer" style={{ fontSize: 48, color: AD.textTertiary }} />
+              <p style={{ margin: 0, fontSize: 17, fontWeight: 500, color: AD.textPrimary }}>
+                Messaging — Coming in Phase 3
               </p>
+              <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary }}>
+                Preset messages, AI Rapport, and CTA options are next.
+              </p>
+              <Btn variant="outline" onClick={onBack}>← Back to Results</Btn>
             </div>
           )}
 
@@ -750,6 +1035,10 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [pullError,     setPullError]     = useState(null);
   const [contactsSoFar, setContactsSoFar] = useState(0);
   const abortRef = useRef(null);
+
+  // Step 3 contacts
+  const [contacts,        setContacts]        = useState([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
 
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
@@ -800,6 +1089,20 @@ export default function AdminCampaigns({ setLoggedIn }) {
     }
   }
 
+  async function loadContacts(id) {
+    setLoadingContacts(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${id}/contacts`, { headers });
+      if (!r.ok) return;
+      const data = await r.json();
+      setContacts(Array.isArray(data.contacts) ? data.contacts : []);
+    } catch {
+      // swallow
+    } finally {
+      setLoadingContacts(false);
+    }
+  }
+
   function openBuilder() {
     setShowTypeModal(false);
     setDrawerStep(0);
@@ -816,6 +1119,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
     setPullResult(null);
     setPullError(null);
     setContactsSoFar(0);
+    setContacts([]);
     setWorkCategoryOptions([]);
     loadFieldMappings();
     setDrawerOpen(true);
@@ -957,7 +1261,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
             } else if (data.type === 'complete') {
               console.log('[triggerPull] complete event received, totalContacts:', data.totalContacts);
               setPullResult({ totalContacts: data.totalContacts, inAppCount: data.inAppCount });
-              setTimeout(() => setDrawerStep(3), 1200);
+              setTimeout(() => { setDrawerStep(3); loadContacts(campaignId); }, 1200);
             } else if (data.type === 'error') {
               setPullError(data.message || 'Something went wrong pulling from Jobber.');
             }
@@ -973,7 +1277,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
           if (data.type === 'complete') {
             console.log('[triggerPull] complete event received, totalContacts:', data.totalContacts);
             setPullResult({ totalContacts: data.totalContacts, inAppCount: data.inAppCount });
-            setTimeout(() => setDrawerStep(3), 1200);
+            setTimeout(() => { setDrawerStep(3); loadContacts(campaignId); }, 1200);
           } else if (data.type === 'error') {
             setPullError(data.message || 'Something went wrong pulling from Jobber.');
           }
@@ -1064,6 +1368,12 @@ export default function AdminCampaigns({ setLoggedIn }) {
             setContactsSoFar(0);
             setDrawerStep(1);
           }}
+          campaignId={campaignId}
+          contacts={contacts}
+          loadingContacts={loadingContacts}
+          onNext={() => setDrawerStep(4)}
+          onBack={() => setDrawerStep(3)}
+          headers={headers}
         />
       )}
 
