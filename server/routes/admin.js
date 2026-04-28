@@ -2072,6 +2072,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
         return invoice?.invoiceStatus === 'paid';
       });
     }
+    console.log('[Pull Debug] after paidOnly filter — filteredJobs.length:', filteredJobs.length, '| filters.paidOnly:', filters.paidOnly, '| sample invoice status:', allJobs[0]?.invoices?.nodes?.[0]?.invoiceStatus ?? 'NO_INVOICE'); // diagnostic log — intentional
 
     // Filter 2 — minJobValue (prefer invoice amount, fall back to job.total)
     if (filters.minJobValue && Number(filters.minJobValue) > 0) {
