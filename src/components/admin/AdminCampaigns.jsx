@@ -980,8 +980,9 @@ export default function AdminCampaigns({ setLoggedIn }) {
             if (data.type === 'progress') {
               setContactsSoFar(data.contactsSoFar);
             } else if (data.type === 'complete') {
+              console.log('[triggerPull] complete event received, totalContacts:', data.totalContacts);
               setPullResult({ totalContacts: data.totalContacts, inAppCount: data.inAppCount });
-              setTimeout(() => setDrawerStep(3), 800);
+              setTimeout(() => setDrawerStep(3), 1200);
             } else if (data.type === 'error') {
               setPullError(data.message || 'Something went wrong pulling from Jobber.');
             }
@@ -995,8 +996,9 @@ export default function AdminCampaigns({ setLoggedIn }) {
         try {
           const data = JSON.parse(buf.trim());
           if (data.type === 'complete') {
+            console.log('[triggerPull] complete event received, totalContacts:', data.totalContacts);
             setPullResult({ totalContacts: data.totalContacts, inAppCount: data.inAppCount });
-            setTimeout(() => setDrawerStep(3), 800);
+            setTimeout(() => setDrawerStep(3), 1200);
           } else if (data.type === 'error') {
             setPullError(data.message || 'Something went wrong pulling from Jobber.');
           }
