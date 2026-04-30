@@ -11,6 +11,7 @@ const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../../utils/retryHelpers');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
+const { evaluateReferral } = require('../../referralRules');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -306,8 +307,9 @@ router.post('/jobber/client-update', async (req, res) => {
 });
 
 // POST /webhooks/jobber/invoice-paid
-// Fires when a Jobber invoice is marked paid. Checks if experience flow is enabled,
-// then either creates an in-app prompt (for matched users) or sends an invite email.
+// Fires when a Jobber invoice is marked paid.
+// Experience flow (in-app prompts / invite emails) runs only if experience_flow_enabled.
+// Referral rules engine runs unconditionally — independent of experience flow.
 router.post('/jobber/invoice-paid', async (req, res) => {
   if (!verifyJobberWebhookSignature(req, res)) return;
 
@@ -318,14 +320,15 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       const payload = JSON.parse(req.body.toString());
       const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
 
-      // STEP 2 — Feature flag check — must be first
+      // STEP 2 — Feature flag check (experience flow only)
+      // Does NOT exit — referral engine runs unconditionally regardless of this flag.
       const flagResult = await pool.query(
         'SELECT experience_flow_enabled FROM engagement_settings WHERE contractor_id = $1',
         [contractorId]
       );
-      if (!flagResult.rows[0] || !flagResult.rows[0].experience_flow_enabled) {
+      const experienceFlowEnabled = !!(flagResult.rows[0]?.experience_flow_enabled);
+      if (!experienceFlowEnabled) {
         console.log('[invoice-paid] experience flow disabled for contractor:', contractorId);
-        return;
       }
 
       // STEP 3 — Extract client ID from payload
@@ -350,120 +353,205 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       const clientEmail = fullClient.emails?.[0]?.address || null;
       const clientPhone = fullClient.phones?.[0]?.number || null;
 
-      // STEP 5 — Match against app users (name → email → phone)
-      let matchedUser = null;
-      const nameResult = await pool.query(
-        'SELECT id FROM users WHERE LOWER(full_name) = LOWER($1) LIMIT 1',
-        [clientName]
+      // Extract "Referred by" custom field from the full client record
+      const referredByField = (fullClient.customFields || []).find(
+        f => f.label && f.label.toLowerCase() === 'referred by'
       );
-      matchedUser = nameResult.rows[0] || null;
-      if (!matchedUser && clientEmail) {
-        const emailResult = await pool.query(
-          'SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
-          [clientEmail]
-        );
-        matchedUser = emailResult.rows[0] || null;
-      }
-      if (!matchedUser && clientPhone) {
-        const phoneResult = await pool.query(
-          "SELECT id FROM users WHERE REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = REGEXP_REPLACE($1, '[^0-9]', '', 'g') LIMIT 1",
-          [clientPhone]
-        );
-        matchedUser = phoneResult.rows[0] || null;
-      }
+      const referredBy = referredByField?.valueText?.trim() || null;
 
-      // STEP 6 — 30-day cooldown check (only if matched)
-      if (matchedUser) {
-        const cooldownResult = await pool.query(
-          `SELECT id FROM experience_prompts
-           WHERE user_id = $1 AND contractor_id = $2
-             AND triggered_at > NOW() - INTERVAL '30 days'
-           LIMIT 1`,
-          [matchedUser.id, contractorId]
-        );
-        if (cooldownResult.rows.length > 0) {
-          console.log('[invoice-paid] skipping — within 30-day cooldown for user:', matchedUser.id);
-          return;
+      // ── REFERRAL RULES ENGINE SETUP ───────────────────────────────────────────────
+      // Fetch invoice + job data needed for referral classification.
+      // Separate from fetchFullClient() — fetchFullClient() provides client contact data
+      // for experience flow. fetchInvoiceWithJobs() provides invoice amounts and job type
+      // custom fields for payout calculation.
+      const invoiceId = payload?.data?.invoice?.id;
+      let invoiceWithJobs = null;
+      if (invoiceId && referredBy) {
+        try {
+          invoiceWithJobs = await fetchInvoiceWithJobs(invoiceId, token);
+        } catch (err) {
+          console.warn(`[invoice-paid] fetchInvoiceWithJobs failed for invoice ${invoiceId}:`, err.message);
+          // Non-fatal — referral engine will be skipped, experience flow continues
         }
       }
 
-      if (matchedUser) {
-        // STEP 7A — App user path
-        await pool.query(
-          `INSERT INTO experience_prompts (user_id, contractor_id, jobber_invoice_id, response_type)
-           VALUES ($1, $2, $3, 'pending')`,
-          [matchedUser.id, contractorId, fullClient.id]
+      // ── EXPERIENCE FLOW (gated by feature flag) ────────────────────────────────
+      if (experienceFlowEnabled) {
+        // STEP 5 — Match against app users (name → email → phone)
+        let matchedUser = null;
+        const nameResult = await pool.query(
+          'SELECT id FROM users WHERE LOWER(full_name) = LOWER($1) LIMIT 1',
+          [clientName]
         );
-        console.log('[invoice-paid] experience prompt created for user:', matchedUser.id);
-        // PUSH NOTIFICATION STUB — not built yet (requires App Store/Play Store registration)
-        // TODO: fire push notification to user matchedUser.id when push infrastructure is ready
-        // Message: "Thanks for working with us! We'd love your feedback — open the app to share."
-      } else {
-        // STEP 7B — Non-app-user path
-        if (!clientEmail) {
-          console.log('[invoice-paid] no app user match and no email — skipping');
-          return;
+        matchedUser = nameResult.rows[0] || null;
+        if (!matchedUser && clientEmail) {
+          const emailResult = await pool.query(
+            'SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+            [clientEmail]
+          );
+          matchedUser = emailResult.rows[0] || null;
         }
-        const inviteToken = crypto.randomBytes(32).toString('hex');
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-        await pool.query(
-          `INSERT INTO experience_invite_tokens
-             (token, contractor_id, jobber_client_name, jobber_client_email, jobber_client_phone, jobber_invoice_id, expires_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [inviteToken, contractorId, clientName, clientEmail, clientPhone, fullClient.id, expiresAt]
-        );
+        if (!matchedUser && clientPhone) {
+          const phoneResult = await pool.query(
+            "SELECT id FROM users WHERE REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = REGEXP_REPLACE($1, '[^0-9]', '', 'g') LIMIT 1",
+            [clientPhone]
+          );
+          matchedUser = phoneResult.rows[0] || null;
+        }
 
-        const brandResult = await pool.query(
-          'SELECT app_display_name, email_sender_name, email_footer_text FROM contractor_settings WHERE contractor_id = $1',
-          [contractorId]
-        );
-        const brandRow = brandResult.rows[0] || {};
-        const appDisplayName = brandRow.app_display_name || 'Rooster Booster';
-        const emailSenderName = brandRow.email_sender_name || 'Accent Roofing Service';
-        const emailFooterText = brandRow.email_footer_text || 'Accent Roofing Service · Powered by Rooster Booster';
+        // STEP 6 — 30-day cooldown check (only if matched)
+        // Uses flag instead of early return so STEP 9 (referral engine) always executes
+        let experienceFlowBlocked = false;
+        if (matchedUser) {
+          const cooldownResult = await pool.query(
+            `SELECT id FROM experience_prompts
+             WHERE user_id = $1 AND contractor_id = $2
+               AND triggered_at > NOW() - INTERVAL '30 days'
+             LIMIT 1`,
+            [matchedUser.id, contractorId]
+          );
+          if (cooldownResult.rows.length > 0) {
+            console.log('[invoice-paid] skipping — within 30-day cooldown for user:', matchedUser.id);
+            experienceFlowBlocked = true;
+          }
+        }
 
-        const firstName = clientName.split(' ')[0] || clientName;
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        const ctaUrl = `${frontendUrl}?exp=${inviteToken}`;
+        if (!experienceFlowBlocked) {
+          let experienceActionTaken = false;
 
-        await retryWithBackoff(
-          () => resend.emails.send({
-            from: `${emailSenderName} <noreply@roofmiles.com>`,
-            to: clientEmail,
-            subject: `Thank you for choosing us, ${firstName}!`,
-            html: `
-              <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;">
-                <p style="font-size:16px;color:#1a1a1a;margin:0 0 16px;">Hi ${firstName},</p>
-                <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 28px;">
-                  Thank you for trusting us with your project. We'd love to hear how it went — and as a bonus,
-                  you can join our rewards app to earn cash for referring friends and neighbors.
-                </p>
-                <a href="${ctaUrl}"
-                   style="display:inline-block;background:#012854;color:#fff;text-decoration:none;
-                          border-radius:10px;padding:14px 28px;font-size:15px;font-weight:600;">
-                  Share Your Experience
-                </a>
-                <p style="font-size:12px;color:#999;margin:32px 0 0;">${emailFooterText}</p>
-              </div>
-            `,
-          }),
-          { retries: 2, initialDelayMs: 500, shouldRetry: resendShouldRetry }
-        );
+          if (matchedUser) {
+            // STEP 7A — App user path
+            await pool.query(
+              `INSERT INTO experience_prompts (user_id, contractor_id, jobber_invoice_id, response_type)
+               VALUES ($1, $2, $3, 'pending')`,
+              [matchedUser.id, contractorId, fullClient.id]
+            );
+            console.log('[invoice-paid] experience prompt created for user:', matchedUser.id);
+            // PUSH NOTIFICATION STUB — not built yet (requires App Store/Play Store registration)
+            // TODO: fire push notification to user matchedUser.id when push infrastructure is ready
+            // Message: "Thanks for working with us! We'd love your feedback — open the app to share."
+            experienceActionTaken = true;
+          } else if (clientEmail) {
+            // STEP 7B — Non-app-user path (has email)
+            const inviteToken = crypto.randomBytes(32).toString('hex');
+            const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+            await pool.query(
+              `INSERT INTO experience_invite_tokens
+                 (token, contractor_id, jobber_client_name, jobber_client_email, jobber_client_phone, jobber_invoice_id, expires_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [inviteToken, contractorId, clientName, clientEmail, clientPhone, fullClient.id, expiresAt]
+            );
 
-        console.log('[invoice-paid] invite token created, email sent to:', clientEmail);
+            const brandResult = await pool.query(
+              'SELECT app_display_name, email_sender_name, email_footer_text FROM contractor_settings WHERE contractor_id = $1',
+              [contractorId]
+            );
+            const brandRow = brandResult.rows[0] || {};
+            const appDisplayName = brandRow.app_display_name || 'Rooster Booster';
+            const emailSenderName = brandRow.email_sender_name || 'Accent Roofing Service';
+            const emailFooterText = brandRow.email_footer_text || 'Accent Roofing Service · Powered by Rooster Booster';
+
+            const firstName = clientName.split(' ')[0] || clientName;
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            const ctaUrl = `${frontendUrl}?exp=${inviteToken}`;
+
+            await retryWithBackoff(
+              () => resend.emails.send({
+                from: `${emailSenderName} <noreply@roofmiles.com>`,
+                to: clientEmail,
+                subject: `Thank you for choosing us, ${firstName}!`,
+                html: `
+                  <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;">
+                    <p style="font-size:16px;color:#1a1a1a;margin:0 0 16px;">Hi ${firstName},</p>
+                    <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 28px;">
+                      Thank you for trusting us with your project. We'd love to hear how it went — and as a bonus,
+                      you can join our rewards app to earn cash for referring friends and neighbors.
+                    </p>
+                    <a href="${ctaUrl}"
+                       style="display:inline-block;background:#012854;color:#fff;text-decoration:none;
+                              border-radius:10px;padding:14px 28px;font-size:15px;font-weight:600;">
+                      Share Your Experience
+                    </a>
+                    <p style="font-size:12px;color:#999;margin:32px 0 0;">${emailFooterText}</p>
+                  </div>
+                `,
+              }),
+              { retries: 2, initialDelayMs: 500, shouldRetry: resendShouldRetry }
+            );
+
+            console.log('[invoice-paid] invite token created, email sent to:', clientEmail);
+            experienceActionTaken = true;
+          } else {
+            console.log('[invoice-paid] no app user match and no email — skipping experience flow');
+          }
+
+          // STEP 8 — Activity log (own try/catch — must not block main flow)
+          if (experienceActionTaken) {
+            try {
+              const detail = matchedUser
+                ? `experience prompt created for user ${matchedUser.id} (${clientName})`
+                : `experience invite email sent to ${clientEmail} (${clientName})`;
+              await pool.query(
+                `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,
+                ['invoice_paid_experience_trigger', detail]
+              );
+            } catch (logErr) {
+              console.error('[invoice-paid] activity log failed:', logErr.message);
+            }
+          }
+        }
       }
 
-      // STEP 8 — Activity log (own try/catch — must not block main flow)
-      try {
-        const detail = matchedUser
-          ? `experience prompt created for user ${matchedUser.id} (${clientName})`
-          : `experience invite email sent to ${clientEmail} (${clientName})`;
-        await pool.query(
-          `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,
-          ['invoice_paid_experience_trigger', detail]
-        );
-      } catch (logErr) {
-        console.error('[invoice-paid] activity log failed:', logErr.message);
+      // ── STEP 9 — REFERRAL RULES ENGINE ───────────────────────────────────────
+      // Runs unconditionally — independent of experience flow flag and result.
+      // Only fires if: client has a referred_by value AND invoice data was fetched.
+      if (referredBy && invoiceWithJobs) {
+        try {
+          const result = await evaluateReferral(contractorId, invoiceWithJobs, referredBy);
+
+          if (result.qualified) {
+            // Write conversion record — UNIQUE constraint is the DB-level safety net
+            await pool.query(
+              `INSERT INTO referral_conversions
+                 (user_id, contractor_id, jobber_client_id, converted_at, bonus_amount)
+               VALUES ($1, $2, $3, NOW(), $4)
+               ON CONFLICT (user_id, jobber_client_id) DO NOTHING`,
+              [result.referrerId, contractorId, result.jobberClientId, result.bonusAmount]
+            );
+
+            // Update referrer's paid_count cache
+            await pool.query(
+              `UPDATE users SET paid_count = paid_count + 1, paid_count_updated_at = NOW()
+               WHERE id = $1`,
+              [result.referrerId]
+            );
+
+            // Activity log for qualified conversion
+            await pool.query(
+              `INSERT INTO activity_log (event_type, detail)
+               VALUES ($1, $2)`,
+              [
+                'referral_conversion',
+                `Referral bonus $${result.bonusAmount} — schedule: ${result.scheduleName} — referrer user_id: ${result.referrerId} — client: ${clientName}`,
+              ]
+            );
+
+            console.log(
+              `[invoice-paid] Referral conversion recorded — user ${result.referrerId}, ` +
+              `$${result.bonusAmount}, schedule: ${result.scheduleName}, client: ${clientName}`
+            );
+          } else {
+            // Not qualified — log reason and exit cleanly. No action needed.
+            console.log(
+              `[invoice-paid] Referral not qualified — reason: ${result.reason}, ` +
+              `client: ${clientName}, referred_by: "${referredBy}"`
+            );
+          }
+        } catch (err) {
+          // Referral engine failure must never affect experience flow or crash the handler
+          console.error('[invoice-paid] Referral rules engine error:', err.message);
+          await logError({ req, error: err });
+        }
       }
 
     } catch (err) {
