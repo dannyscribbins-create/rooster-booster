@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ShareNetwork, X, Lock, DownloadSimple } from '@phosphor-icons/react';
 import { R } from '../../constants/theme';
-import { BOOST_TABLE, getNextPayout } from '../../constants/boostSchedule';
+import { getNextPayout } from '../../constants/boostSchedule';
+import RewardScheduleCard from './RewardScheduleCard';
 import { CONTRACTOR_CONFIG, BACKEND_URL } from '../../config/contractor';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
@@ -364,79 +365,10 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
         </AnimCard>
       </div>
 
-      {/* Reward Schedule Table */}
+      {/* Reward Schedule — dynamic, driven by referral_schedules table */}
       <div style={{ padding: "16px 20px 0" }}>
         <AnimCard delay={280} screenKey="dashboard">
-          <p style={{
-            margin: "0 0 10px", fontSize: 12, color: R.textMuted,
-            fontFamily: R.fontMono, letterSpacing: "0.1em", textTransform: "uppercase",
-          }}>Reward Schedule</p>
-          <div style={{
-            background: R.bgCard, border: `1px solid ${R.border}`,
-            borderRadius: 16, overflow: "hidden", boxShadow: R.shadow,
-          }}>
-            {/* Header row */}
-            <div style={{
-              display: "flex", padding: "8px 16px",
-              borderBottom: `1px solid ${R.border}`,
-              background: R.bgCardTint,
-            }}>
-              {["Referral", "Base", "Boost", "Total"].map((h, i) => (
-                <span key={h} style={{
-                  flex: i === 0 ? 1.2 : 1, fontSize: 12, color: R.textMuted,
-                  fontFamily: R.fontMono, textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  textAlign: i === 3 ? "right" : i === 0 ? "left" : "center",
-                }}>{h}</span>
-              ))}
-            </div>
-
-            {BOOST_TABLE.map((row, i) => {
-              const isCurrent = (i + 1) === soldCount;
-              const isNext    = (i + 1) === soldCount + 1 || (soldCount >= 7 && i === 6);
-              const isPast    = (i + 1) < soldCount;
-              return (
-                <div key={i} style={{
-                  display: "flex", alignItems: "center", padding: "12px 16px",
-                  borderBottom: i < BOOST_TABLE.length - 1 ? `1px solid ${R.border}` : "none",
-                  background: isNext ? "#fff7f7" : "transparent",
-                  borderLeft: isNext ? `3px solid ${R.red}` : "3px solid transparent",
-                  opacity: isPast ? 0.4 : 1,
-                  transition: "background 0.2s",
-                }}>
-                  <span style={{
-                    flex: 1.2, fontSize: 15, fontWeight: 700,
-                    color: isCurrent ? R.green : isNext ? R.red : R.textSecondary,
-                    fontFamily: R.fontMono,
-                    display: "flex", alignItems: "center", gap: 8,
-                  }}>
-                    {row.label}
-                    {isCurrent && <span style={{ fontSize: 12, color: R.green, background: R.greenBg, padding: "2px 6px", borderRadius: 99 }}>✓ done</span>}
-                    {isNext && <span style={{ fontSize: 12, color: R.red, background: "#fee2e2", padding: "2px 6px", borderRadius: 99 }}>next</span>}
-                  </span>
-                  <span style={{ flex: 1, fontSize: 15, color: R.textSecondary, fontFamily: R.fontMono, textAlign: "center" }}>${row.base}</span>
-                  <span style={{
-                    flex: 1, fontSize: 15, textAlign: "center",
-                    color: row.boost > 0 ? R.red : R.textMuted,
-                    fontFamily: R.fontMono, fontWeight: row.boost > 0 ? 700 : 400,
-                  }}>
-                    {row.boost > 0 ? `+$${row.boost}` : "—"}
-                  </span>
-                  <span style={{
-                    flex: 1, fontSize: 15, fontWeight: 900, textAlign: "right",
-                    color: isNext ? R.navy : R.textSecondary,
-                    fontFamily: R.fontMono,
-                  }}>${row.total}</span>
-                </div>
-              );
-            })}
-          </div>
-          <p style={{
-            margin: "8px 0 0", fontSize: 12, color: R.textMuted,
-            fontFamily: R.fontMono, textAlign: "center",
-          }}>
-            * Qualifying roofs must be 28 squares or more. Resets Jan 1 each year.
-          </p>
+          <RewardScheduleCard sessionToken={sessionToken} />
         </AnimCard>
       </div>
 

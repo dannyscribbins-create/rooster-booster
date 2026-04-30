@@ -45,6 +45,12 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
   const [shoutRank,       setShoutRank]       = useState(null); // userRank from leaderboard, for bucket selection
   const [shoutSettingsLoading, setShoutSettingsLoading] = useState(true);
 
+  // Conversions data — shared between earnings history (Task 4) and pipeline detail (Task 5)
+  const [conversions, setConversions] = useState(null);
+
+  // Inline expand for converted pipeline cards
+  const [expandedId, setExpandedId] = useState(null);
+
   // Missing referral reports
   const [showMissingModal,   setShowMissingModal]   = useState(false);
   const [missingReports,     setMissingReports]     = useState([]);
@@ -136,6 +142,37 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
   useEffect(() => {
     fetchMissingReports();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/referrer/conversions`, {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+        });
+        const data = await r.json();
+        setConversions(Array.isArray(data.conversions) ? data.conversions : []);
+      } catch {
+        setConversions([]);
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Parses schedule name from activity_log detail string.
+  // Format: "Referral bonus $700 — schedule: Full Roof Replacement — referrer user_id: 12 — ..."
+  function parseScheduleName(detail) {
+    if (!detail) return null;
+    const match = detail.match(/schedule:\s*(.+?)\s*—\s*referrer/);
+    return match ? match[1] : null;
+  }
+
+  // Lookup map: jobber_client_id → schedule name (built once from conversions)
+  const conversionScheduleMap = {};
+  if (conversions) {
+    for (const c of conversions) {
+      const name = parseScheduleName(c.conversion_detail);
+      if (name) conversionScheduleMap[c.jobber_client_id] = name;
+    }
+  }
 
   const saveShoutSettings = safeAsync(async (optOut, pinned) => {
     try {
@@ -321,6 +358,10 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
                 {filtered.map(ref => {
                   const s = STATUS_CONFIG[ref.status];
+                  // ref.id is jobber_client_id — matches conversionScheduleMap keys
+                  const scheduleNameForCard = ref.bonusEarned ? (conversionScheduleMap[ref.id] || null) : null;
+                  const isExpanded = expandedId === ref.id;
+                  const isTappable = ref.bonusEarned && !!scheduleNameForCard;
                   return (
                     <div key={ref.id} style={{
                       background: R.bgPage, borderRadius: 12,
@@ -328,7 +369,9 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                       borderLeft: `3px solid ${s.dot}`,
                       boxShadow: R.shadow,
                       transition: "box-shadow 0.2s, transform 0.2s",
+                      cursor: isTappable ? "pointer" : "default",
                     }}
+                      onClick={isTappable ? () => setExpandedId(isExpanded ? null : ref.id) : undefined}
                       onMouseEnter={e => { e.currentTarget.style.boxShadow = R.shadowMd; e.currentTarget.style.transform = "translateX(3px)"; }}
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = R.shadow; e.currentTarget.style.transform = "translateX(0)"; }}
                     >
@@ -359,8 +402,21 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                               +${ref.payout}
                             </span>
                           )}
+                          {isTappable && (
+                            <i className={`ph ph-caret-${isExpanded ? 'up' : 'down'}`} style={{ fontSize: 13, color: R.textMuted }} />
+                          )}
                         </div>
                       </div>
+                      {isExpanded && scheduleNameForCard && (
+                        <div style={{
+                          marginTop: 10, paddingTop: 10,
+                          borderTop: `1px solid ${R.border}`,
+                        }}>
+                          <p style={{ margin: 0, fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>
+                            {scheduleNameForCard}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -400,35 +456,44 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                   </p>
                 </div>
               ) : (
-                earned.map(item => (
-                  <div key={item.id} style={{
-                    background: R.bgPage, borderRadius: 12,
-                    padding: "14px 16px",
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    boxShadow: R.shadow,
-                    transition: "box-shadow 0.2s",
-                  }}
-                    onMouseEnter={e => e.currentTarget.style.boxShadow = R.shadowMd}
-                    onMouseLeave={e => e.currentTarget.style.boxShadow = R.shadow}
-                  >
-                    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                      <div style={{
-                        width: 38, height: 38, borderRadius: 10,
-                        background: R.greenBg, display: "flex",
-                        alignItems: "center", justifyContent: "center",
-                      }}>
-                        <i className="ph ph-money" style={{ fontSize: 20, color: R.green }} />
+                earned.map(item => {
+                  // item.id is jobber_client_id — matches conversionScheduleMap keys
+                  const scheduleName = conversionScheduleMap[item.id] || null;
+                  return (
+                    <div key={item.id} style={{
+                      background: R.bgPage, borderRadius: 12,
+                      padding: "14px 16px",
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      boxShadow: R.shadow,
+                      transition: "box-shadow 0.2s",
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.boxShadow = R.shadowMd}
+                      onMouseLeave={e => e.currentTarget.style.boxShadow = R.shadow}
+                    >
+                      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                        <div style={{
+                          width: 38, height: 38, borderRadius: 10,
+                          background: R.greenBg, display: "flex",
+                          alignItems: "center", justifyContent: "center",
+                        }}>
+                          <i className="ph ph-money" style={{ fontSize: 20, color: R.green }} />
+                        </div>
+                        <div>
+                          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: R.textPrimary }}>{item.desc}</p>
+                          <p style={{ margin: "3px 0 0", fontSize: 12, color: R.textMuted }}>Paid referral bonus</p>
+                          {scheduleName && (
+                            <p style={{ margin: "2px 0 0", fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>
+                              {scheduleName}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: R.textPrimary }}>{item.desc}</p>
-                        <p style={{ margin: "3px 0 0", fontSize: 12, color: R.textMuted }}>Paid referral bonus</p>
-                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 900, color: R.green, fontFamily: R.fontMono }}>
+                        +${item.amount.toLocaleString()}
+                      </span>
                     </div>
-                    <span style={{ fontSize: 14, fontWeight: 900, color: R.green, fontFamily: R.fontMono }}>
-                      +${item.amount.toLocaleString()}
-                    </span>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
