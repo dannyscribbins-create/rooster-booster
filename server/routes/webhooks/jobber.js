@@ -83,6 +83,69 @@ async function fetchFullClient(clientId, token) {
   return response.data.data.client;
 }
 
+// ── INVOICE + JOBS FETCH (Referral Rules Engine) ──────────────────────────────
+// Fetches a single invoice with full job data, custom fields, and invoice amounts.
+// Used exclusively by the referral rules engine inside the invoice-paid handler.
+// fetchFullClient() is intentionally NOT modified — this is a separate fetch.
+//
+// GraphQL field names verified via live Jobber GraphQL explorer on 2026-04-30:
+//   - amounts.total = whole dollars (NOT cents). 3595 = $3,595. Do NOT divide by 100.
+//   - waitingForFinancedPayment = boolean — defer processing if true
+//   - Job Type lives at label === "Job Type" → valueDropdown (CustomFieldDropdown)
+//   - archivedJobs must be fetched alongside jobs — archived jobs still carry job type
+async function fetchInvoiceWithJobs(invoiceId, token) {
+  const response = await retryWithBackoff(
+    () => axios.post(
+      'https://api.getjobber.com/api/graphql',
+      {
+        query: `query GetInvoiceWithJobs($id: EncodedId!) {
+          invoice(id: $id) {
+            id
+            invoiceNumber
+            invoiceStatus
+            issuedDate
+            waitingForFinancedPayment
+            amounts { total }
+            client { id name }
+            jobs(first: 10) {
+              nodes {
+                id
+                customFields {
+                  ... on CustomFieldText { label valueText }
+                  ... on CustomFieldDropdown { label valueDropdown }
+                }
+              }
+            }
+            archivedJobs(first: 10) {
+              nodes {
+                id
+                customFields {
+                  ... on CustomFieldText { label valueText }
+                  ... on CustomFieldDropdown { label valueDropdown }
+                }
+              }
+            }
+          }
+        }`,
+        variables: { id: invoiceId },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+        },
+      }
+    ),
+    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+  );
+
+  if (!response.data?.data?.invoice) {
+    throw new Error(`fetchInvoiceWithJobs: no invoice returned for id ${invoiceId}`);
+  }
+  return response.data.data.invoice;
+}
+
 // POST /webhooks/jobber/disconnect
 // Called by Jobber when a contractor removes Rooster Booster from their Jobber account.
 // Jobber expects a 200 response or it will retry — we always return 200, even on DB failure.
