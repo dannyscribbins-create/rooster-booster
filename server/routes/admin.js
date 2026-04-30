@@ -2469,4 +2469,237 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
   }
 });
 
+
+// ── REFERRAL SCHEDULE CRUD ────────────────────────────────────────────────────
+
+router.get('/schedules', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: contractor_id hardcoded; derive from session token at FORA scale
+  const contractorId = 'accent-roofing';
+  try {
+    const schedulesResult = await pool.query(
+      `SELECT id, name, is_active, payout_model, minimum_invoice, reset_period,
+              escalating_steps, tier_brackets, flat_amount, percentage_rate,
+              percentage_max_cap, invoice_window_days, created_at, updated_at
+       FROM referral_schedules WHERE contractor_id = $1 ORDER BY created_at ASC`,
+      [contractorId]
+    );
+
+    const schedules = await Promise.all(schedulesResult.rows.map(async s => {
+      const jt = await pool.query(
+        'SELECT jobber_label FROM referral_schedule_job_types WHERE schedule_id = $1 ORDER BY jobber_label ASC',
+        [s.id]
+      );
+      return { ...s, job_types: jt.rows.map(r => r.jobber_label) };
+    }));
+
+    // Collect all known job type labels from the work_category field's options
+    let all_labels = [];
+    const settingsResult = await pool.query(
+      'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
+      [contractorId]
+    );
+    const mappings = settingsResult.rows[0]?.contractor_field_mappings || {};
+    if (mappings.work_category) {
+      const fieldResult = await pool.query(
+        'SELECT options FROM contractor_jobber_fields WHERE contractor_id = $1 AND label = $2 LIMIT 1',
+        [contractorId, mappings.work_category]
+      );
+      if (Array.isArray(fieldResult.rows[0]?.options)) {
+        all_labels = fieldResult.rows[0].options;
+      }
+    }
+    // Fallback: union of all labels already in schedules
+    if (all_labels.length === 0) {
+      const allJt = await pool.query(
+        'SELECT DISTINCT jobber_label FROM referral_schedule_job_types WHERE contractor_id = $1 ORDER BY jobber_label ASC',
+        [contractorId]
+      );
+      all_labels = allJt.rows.map(r => r.jobber_label);
+    }
+
+    const assignedSet = new Set(schedules.flatMap(s => s.job_types));
+    const unassigned_labels = all_labels.filter(l => !assignedSet.has(l));
+
+    res.json({ schedules, all_labels, unassigned_labels });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to load schedules' });
+  }
+});
+
+router.post('/schedules', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const {
+    name, payout_model, is_active, minimum_invoice, invoice_window_days,
+    escalating_steps, tier_brackets, flat_amount, percentage_rate, percentage_max_cap,
+    job_types,
+  } = req.body;
+
+  if (!name || !payout_model) {
+    return res.status(400).json({ error: 'name and payout_model are required' });
+  }
+
+  // reset_period: 'annual' for escalating, 'none' for all others
+  const reset_period = payout_model === 'escalating' ? 'annual' : 'none';
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const insertResult = await client.query(
+      `INSERT INTO referral_schedules
+         (contractor_id, name, is_active, payout_model, minimum_invoice, reset_period,
+          escalating_steps, tier_brackets, flat_amount, percentage_rate, percentage_max_cap,
+          invoice_window_days, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())
+       RETURNING id, name, is_active, payout_model, minimum_invoice, reset_period,
+                 escalating_steps, tier_brackets, flat_amount, percentage_rate,
+                 percentage_max_cap, invoice_window_days, created_at, updated_at`,
+      [
+        contractorId, name, is_active ?? true, payout_model,
+        minimum_invoice || null, reset_period,
+        escalating_steps ? JSON.stringify(escalating_steps) : null,
+        tier_brackets    ? JSON.stringify(tier_brackets)    : null,
+        flat_amount      ?? null,
+        percentage_rate  ?? null,
+        percentage_max_cap ?? null,
+        invoice_window_days || 20,
+      ]
+    );
+
+    const schedule = insertResult.rows[0];
+
+    if (Array.isArray(job_types) && job_types.length > 0) {
+      for (const label of job_types) {
+        await client.query(
+          `INSERT INTO referral_schedule_job_types (schedule_id, contractor_id, jobber_label)
+           VALUES ($1, $2, $3) ON CONFLICT (contractor_id, jobber_label) DO UPDATE SET schedule_id = EXCLUDED.schedule_id`,
+          [schedule.id, contractorId, label]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    const jt = await pool.query(
+      'SELECT jobber_label FROM referral_schedule_job_types WHERE schedule_id = $1 ORDER BY jobber_label ASC',
+      [schedule.id]
+    );
+    res.status(201).json({ ...schedule, job_types: jt.rows.map(r => r.jobber_label) });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to create schedule' });
+  } finally {
+    client.release();
+  }
+});
+
+router.put('/schedules/:id', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const scheduleId = parseInt(req.params.id, 10);
+  const {
+    name, payout_model, is_active, minimum_invoice, invoice_window_days,
+    escalating_steps, tier_brackets, flat_amount, percentage_rate, percentage_max_cap,
+    job_types,
+  } = req.body;
+
+  if (!name || !payout_model) {
+    return res.status(400).json({ error: 'name and payout_model are required' });
+  }
+
+  const reset_period = payout_model === 'escalating' ? 'annual' : 'none';
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const updateResult = await client.query(
+      `UPDATE referral_schedules
+       SET name=$1, is_active=$2, payout_model=$3, minimum_invoice=$4, reset_period=$5,
+           escalating_steps=$6, tier_brackets=$7, flat_amount=$8, percentage_rate=$9,
+           percentage_max_cap=$10, invoice_window_days=$11, updated_at=NOW()
+       WHERE id=$12 AND contractor_id=$13
+       RETURNING id, name, is_active, payout_model, minimum_invoice, reset_period,
+                 escalating_steps, tier_brackets, flat_amount, percentage_rate,
+                 percentage_max_cap, invoice_window_days, created_at, updated_at`,
+      [
+        name, is_active ?? true, payout_model,
+        minimum_invoice || null, reset_period,
+        escalating_steps ? JSON.stringify(escalating_steps) : null,
+        tier_brackets    ? JSON.stringify(tier_brackets)    : null,
+        flat_amount      ?? null,
+        percentage_rate  ?? null,
+        percentage_max_cap ?? null,
+        invoice_window_days || 20,
+        scheduleId, contractorId,
+      ]
+    );
+
+    if (updateResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Schedule not found' });
+    }
+
+    const schedule = updateResult.rows[0];
+
+    await client.query(
+      'DELETE FROM referral_schedule_job_types WHERE schedule_id = $1',
+      [scheduleId]
+    );
+
+    if (Array.isArray(job_types) && job_types.length > 0) {
+      for (const label of job_types) {
+        await client.query(
+          `INSERT INTO referral_schedule_job_types (schedule_id, contractor_id, jobber_label)
+           VALUES ($1, $2, $3) ON CONFLICT (contractor_id, jobber_label) DO UPDATE SET schedule_id = EXCLUDED.schedule_id`,
+          [scheduleId, contractorId, label]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    const jt = await pool.query(
+      'SELECT jobber_label FROM referral_schedule_job_types WHERE schedule_id = $1 ORDER BY jobber_label ASC',
+      [schedule.id]
+    );
+    res.json({ ...schedule, job_types: jt.rows.map(r => r.jobber_label) });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to update schedule' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/schedules/:id/toggle', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const scheduleId = parseInt(req.params.id, 10);
+  const { is_active } = req.body;
+
+  if (typeof is_active !== 'boolean') {
+    return res.status(400).json({ error: 'is_active must be a boolean' });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE referral_schedules SET is_active=$1, updated_at=NOW()
+       WHERE id=$2 AND contractor_id=$3
+       RETURNING id, is_active`,
+      [is_active, scheduleId, contractorId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Schedule not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to toggle schedule' });
+  }
+});
+
 module.exports = router;

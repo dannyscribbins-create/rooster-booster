@@ -4,6 +4,7 @@ import { BACKEND_URL } from '../../config/contractor';
 import CompanyDetailsSettings from './CompanyDetailsSettings';
 import BrandingProfileSettings from './BrandingProfileSettings';
 import CRMSettings from './CRMSettings';
+import ReferralProgramSettings from './ReferralProgramSettings';
 
 const SETTINGS_NAV = [
   { id: 'company',  icon: 'ph-buildings',    label: 'Company Details'  },
@@ -12,6 +13,7 @@ const SETTINGS_NAV = [
   { id: 'accounts', icon: 'ph-receipt',      label: 'Account Keeping'  },
   { id: 'team',     icon: 'ph-users-three',  label: 'Manage Team'      },
   { id: 'crm',      icon: 'ph-plugs',        label: 'CRM'              },
+  { id: 'referral', icon: 'ph-users-three',  label: 'Referral Program' },
   { id: 'system',   icon: 'ph-hard-drives',  label: 'System'           },
 ];
 
@@ -41,12 +43,14 @@ const SETTINGS_TITLES = {
   accounts: 'Account Keeping',
   team:     'Manage Team',
   crm:      'CRM',
+  referral: 'Referral Program',
   system:   'System',
 };
 
 const SETTINGS_DESCRIPTIONS = {
   company:  'Your company\'s core contact information and physical address.',
   branding: 'Customize how your referral app looks and feels to referrers.',
+  referral: 'Define payout schedules, qualifying job types, and bonus tiers.',
   system:   'Database maintenance and infrastructure tools.',
 };
 
@@ -228,6 +232,7 @@ const SETTINGS_PAGES = {
   accounts: <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
   team:     <ComingSoonCard icon="ph-users-three" label="Manage Team"      description="Add team members, manage recruitment links, and set permissions." />,
   crm:      <CRMSettings />,
+  referral: <ReferralProgramSettings />,
   system:   <SystemSettings />,
 };
 
