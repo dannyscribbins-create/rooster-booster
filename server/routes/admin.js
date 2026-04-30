@@ -2500,11 +2500,17 @@ router.get('/schedules', async (req, res) => {
       [contractorId]
     );
     const mappings = settingsResult.rows[0]?.contractor_field_mappings || {};
+    console.log('[schedules] settingsResult.rows[0]:', JSON.stringify(settingsResult.rows[0])); // diagnostic log — intentional
+    console.log('[schedules] mappings:', JSON.stringify(mappings)); // diagnostic log — intentional
+    console.log('[schedules] mappings.work_category:', mappings.work_category); // diagnostic log — intentional
     if (mappings.work_category) {
       const fieldResult = await pool.query(
         'SELECT options FROM contractor_jobber_fields WHERE contractor_id = $1 AND label = $2 LIMIT 1',
         [contractorId, mappings.work_category]
       );
+      console.log('[schedules] fieldResult.rows[0]:', JSON.stringify(fieldResult.rows[0])); // diagnostic log — intentional
+      console.log('[schedules] fieldResult.rows[0]?.options:', JSON.stringify(fieldResult.rows[0]?.options)); // diagnostic log — intentional
+      console.log('[schedules] Array.isArray(options):', Array.isArray(fieldResult.rows[0]?.options)); // diagnostic log — intentional
       if (Array.isArray(fieldResult.rows[0]?.options)) {
         all_labels = fieldResult.rows[0].options;
       }
