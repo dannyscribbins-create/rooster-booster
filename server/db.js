@@ -526,8 +526,20 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     percentage_max_cap  NUMERIC(10,2),
     invoice_window_days INTEGER NOT NULL DEFAULT 20,
     created_at          TIMESTAMPTZ DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ DEFAULT NOW()
+    updated_at          TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (contractor_id, name)
   )`);
+  // Migration: add unique constraint to existing tables that predate this column
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'referral_schedules_contractor_id_name_unique'
+      ) THEN
+        ALTER TABLE referral_schedules ADD CONSTRAINT referral_schedules_contractor_id_name_unique UNIQUE (contractor_id, name);
+      END IF;
+    END $$;
+  `);
 
   // 1C — Maps Jobber job type labels to schedules (many-to-one)
   await pool.query(`CREATE TABLE IF NOT EXISTS referral_schedule_job_types (
@@ -562,7 +574,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       ]'::jsonb,
       20
     )
-    ON CONFLICT DO NOTHING
+    ON CONFLICT (contractor_id, name) DO NOTHING
   `);
 
   await pool.query(`
@@ -600,7 +612,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       ]'::jsonb,
       20
     )
-    ON CONFLICT DO NOTHING
+    ON CONFLICT (contractor_id, name) DO NOTHING
   `);
 
   await pool.query(`
