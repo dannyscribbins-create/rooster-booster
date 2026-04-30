@@ -503,6 +503,126 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS cta_url TEXT`);
 
+  // ── REFERRAL RULES ENGINE MIGRATIONS ──────────────────────────────────────────
+
+  // 1A — Widen bonus_amount from INTEGER to NUMERIC(10,2) for tiered/percentage models
+  await pool.query(`ALTER TABLE referral_conversions
+    ALTER COLUMN bonus_amount TYPE NUMERIC(10,2)
+    USING bonus_amount::NUMERIC(10,2)`);
+
+  // 1B — Referral schedules: defines payout rules per contractor
+  await pool.query(`CREATE TABLE IF NOT EXISTS referral_schedules (
+    id                  SERIAL PRIMARY KEY,
+    contractor_id       TEXT NOT NULL,
+    name                TEXT NOT NULL,
+    is_active           BOOLEAN DEFAULT true,
+    payout_model        TEXT NOT NULL CHECK (payout_model IN ('escalating','tiered','flat','percentage')),
+    minimum_invoice     NUMERIC(10,2),
+    reset_period        TEXT NOT NULL DEFAULT 'none' CHECK (reset_period IN ('annual','lifetime','none')),
+    escalating_steps    JSONB,
+    tier_brackets       JSONB,
+    flat_amount         NUMERIC(10,2),
+    percentage_rate     NUMERIC(6,4),
+    percentage_max_cap  NUMERIC(10,2),
+    invoice_window_days INTEGER NOT NULL DEFAULT 20,
+    created_at          TIMESTAMPTZ DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // 1C — Maps Jobber job type labels to schedules (many-to-one)
+  await pool.query(`CREATE TABLE IF NOT EXISTS referral_schedule_job_types (
+    id            SERIAL PRIMARY KEY,
+    schedule_id   INTEGER NOT NULL REFERENCES referral_schedules(id) ON DELETE CASCADE,
+    contractor_id TEXT NOT NULL,
+    jobber_label  TEXT NOT NULL,
+    UNIQUE(contractor_id, jobber_label)
+  )`);
+
+  // ── ACCENT ROOFING SEED DATA ──────────────────────────────────────────────────
+  // Schedule A — Full Roof Replacement (escalating, annual reset, $9,500 minimum)
+  await pool.query(`
+    INSERT INTO referral_schedules
+      (contractor_id, name, is_active, payout_model, minimum_invoice, reset_period,
+       escalating_steps, invoice_window_days)
+    VALUES (
+      'accent-roofing',
+      'Full Roof Replacement',
+      true,
+      'escalating',
+      9500,
+      'annual',
+      '[
+        {"referral_number": 1, "payout_amount": 500},
+        {"referral_number": 2, "payout_amount": 600},
+        {"referral_number": 3, "payout_amount": 700},
+        {"referral_number": 4, "payout_amount": 750},
+        {"referral_number": 5, "payout_amount": 800},
+        {"referral_number": 6, "payout_amount": 850},
+        {"referral_number": 7, "payout_amount": 900}
+      ]'::jsonb,
+      20
+    )
+    ON CONFLICT DO NOTHING
+  `);
+
+  await pool.query(`
+    INSERT INTO referral_schedule_job_types (schedule_id, contractor_id, jobber_label)
+    SELECT s.id, 'accent-roofing', v.label
+    FROM referral_schedules s,
+    (VALUES
+      ('Out of Pocket'),
+      ('Insurance'),
+      ('Finance'),
+      ('New Construction')
+    ) AS v(label)
+    WHERE s.contractor_id = 'accent-roofing'
+      AND s.name = 'Full Roof Replacement'
+    ON CONFLICT (contractor_id, jobber_label) DO NOTHING
+  `);
+
+  // Schedule B — Repair (tiered, no reset, $950 minimum floor)
+  await pool.query(`
+    INSERT INTO referral_schedules
+      (contractor_id, name, is_active, payout_model, minimum_invoice, reset_period,
+       tier_brackets, invoice_window_days)
+    VALUES (
+      'accent-roofing',
+      'Repair',
+      true,
+      'tiered',
+      950,
+      'none',
+      '[
+        {"min": 951,  "max": 1200, "payout_amount": 50},
+        {"min": 1201, "max": 2500, "payout_amount": 100},
+        {"min": 2501, "max": 4000, "payout_amount": 150},
+        {"min": 4001, "max": null, "payout_amount": 200}
+      ]'::jsonb,
+      20
+    )
+    ON CONFLICT DO NOTHING
+  `);
+
+  await pool.query(`
+    INSERT INTO referral_schedule_job_types (schedule_id, contractor_id, jobber_label)
+    SELECT s.id, 'accent-roofing', v.label
+    FROM referral_schedules s,
+    (VALUES
+      ('Repair'),
+      ('Repair Attempt'),
+      ('Chimney Cap Install'),
+      ('Skylight Install'),
+      ('Rain Pan Install'),
+      ('Gutter Install'),
+      ('Gutter Cover Install'),
+      ('Side Work'),
+      ('Restoration')
+    ) AS v(label)
+    WHERE s.contractor_id = 'accent-roofing'
+      AND s.name = 'Repair'
+    ON CONFLICT (contractor_id, jobber_label) DO NOTHING
+  `);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');
