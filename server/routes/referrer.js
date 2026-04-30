@@ -1828,4 +1828,96 @@ router.post('/api/referrer/claim-experience-token', async (req, res) => {
   }
 });
 
+// GET /api/referrer/schedules
+// Returns active referral schedules for the contractor in homeowner-facing format.
+// Used by the dynamic Reward Schedule card on the referrer dashboard.
+router.get('/api/referrer/schedules', async (req, res) => {
+  try {
+    const sessionToken = req.headers.authorization?.replace('Bearer ', '');
+    if (!sessionToken) return res.status(401).json({ error: 'No session token' });
+
+    const sessionResult = await pool.query(
+      `SELECT u.id
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.token = $1 AND s.role = 'referrer' AND s.expires_at > NOW()`,
+      [sessionToken]
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Invalid session' });
+
+    // MVP: contractor_id hardcoded — pull from session at FORA scale
+    const contractorId = 'accent-roofing';
+
+    const result = await pool.query(
+      `SELECT s.id, s.name, s.payout_model, s.minimum_invoice, s.reset_period,
+              s.escalating_steps, s.tier_brackets, s.flat_amount,
+              s.percentage_rate, s.percentage_max_cap,
+              array_agg(jt.jobber_label ORDER BY jt.jobber_label) AS job_type_labels
+       FROM referral_schedules s
+       JOIN referral_schedule_job_types jt ON jt.schedule_id = s.id
+       WHERE s.contractor_id = $1 AND s.is_active = true
+       GROUP BY s.id
+       ORDER BY s.payout_model = 'escalating' DESC, s.name ASC`,
+      [contractorId]
+    );
+
+    res.json({ schedules: result.rows });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to load schedules' });
+  }
+});
+
+// GET /api/referrer/conversions
+// Returns all referral_conversions for the logged-in referrer with schedule attribution.
+// Used by earnings history display and pipeline detail view for converted clients.
+router.get('/api/referrer/conversions', async (req, res) => {
+  try {
+    const sessionToken = req.headers.authorization?.replace('Bearer ', '');
+    if (!sessionToken) return res.status(401).json({ error: 'No session token' });
+
+    const sessionResult = await pool.query(
+      `SELECT u.id
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.token = $1 AND s.role = 'referrer' AND s.expires_at > NOW()`,
+      [sessionToken]
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Invalid session' });
+
+    const userId = sessionResult.rows[0].id;
+    // MVP: contractor_id hardcoded — pull from session at FORA scale
+    const contractorId = 'accent-roofing';
+
+    // DISTINCT ON (rc.id) prevents duplicate rows when multiple activity_log entries
+    // reference the same jobber_client_id. MVP: add schedule_id column to
+    // referral_conversions at FORA scale to make schedule attribution a direct join.
+    const result = await pool.query(
+      `SELECT DISTINCT ON (rc.id)
+         rc.id,
+         rc.jobber_client_id,
+         rc.converted_at,
+         rc.bonus_amount,
+         pc.client_name,
+         al.detail AS conversion_detail
+       FROM referral_conversions rc
+       LEFT JOIN pipeline_cache pc
+         ON pc.jobber_client_id = rc.jobber_client_id
+        AND pc.contractor_id = rc.contractor_id
+       LEFT JOIN activity_log al
+         ON al.event_type = 'referral_conversion'
+        AND al.detail LIKE '%' || rc.jobber_client_id || '%'
+       WHERE rc.user_id = $1
+         AND rc.contractor_id = $2
+       ORDER BY rc.id, rc.converted_at DESC`,
+      [userId, contractorId]
+    );
+
+    res.json({ conversions: result.rows });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to load conversions' });
+  }
+});
+
 module.exports = router;
