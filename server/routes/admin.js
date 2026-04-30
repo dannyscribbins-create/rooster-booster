@@ -2472,7 +2472,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
 
 // ── REFERRAL SCHEDULE CRUD ────────────────────────────────────────────────────
 
-router.get('/schedules', async (req, res) => {
+router.get('/api/admin/schedules', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   // MVP: contractor_id hardcoded; derive from session token at FORA scale
   const contractorId = 'accent-roofing';
@@ -2534,7 +2534,7 @@ router.get('/schedules', async (req, res) => {
   }
 });
 
-router.post('/schedules', async (req, res) => {
+router.post('/api/admin/schedules', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const contractorId = 'accent-roofing';
   const {
@@ -2603,7 +2603,7 @@ router.post('/schedules', async (req, res) => {
   }
 });
 
-router.put('/schedules/:id', async (req, res) => {
+router.put('/api/admin/schedules/:id', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const contractorId = 'accent-roofing';
   const scheduleId = parseInt(req.params.id, 10);
@@ -2683,7 +2683,7 @@ router.put('/schedules/:id', async (req, res) => {
   }
 });
 
-router.patch('/schedules/:id/toggle', async (req, res) => {
+router.patch('/api/admin/schedules/:id/toggle', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const contractorId = 'accent-roofing';
   const scheduleId = parseInt(req.params.id, 10);
