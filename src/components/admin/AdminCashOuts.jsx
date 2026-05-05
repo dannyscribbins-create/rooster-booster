@@ -5,6 +5,30 @@ import { AdminPageHeader, Badge, Btn } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
 import { safeAsync } from '../../utils/clientErrorReporter';
 
+const METHOD_CONFIG = {
+  stripe_ach: { icon: 'ph-bank',           label: 'Stripe ACH',    bg: AD.blueBg,                    color: AD.blueText,      border: `${AD.blue}30` },
+  check:      { icon: 'ph-envelope-simple', label: 'Check by Mail', bg: 'rgba(255,255,255,0.06)',      color: AD.textSecondary, border: AD.border },
+  venmo:      { icon: 'ph-device-mobile',  label: 'Venmo',         bg: 'rgba(255,255,255,0.06)',      color: AD.textSecondary, border: AD.border },
+  zelle:      { icon: 'ph-lightning',      label: 'Zelle',         bg: 'rgba(255,255,255,0.06)',      color: AD.textSecondary, border: AD.border },
+};
+const UNKNOWN_METHOD = { icon: 'ph-question', label: 'Unknown', bg: 'rgba(255,255,255,0.06)', color: AD.textTertiary, border: AD.border };
+
+function MethodBadge({ method }) {
+  const cfg = METHOD_CONFIG[method] || UNKNOWN_METHOD;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '3px 8px', borderRadius: 6,
+      background: cfg.bg, color: cfg.color,
+      border: `1px solid ${cfg.border}`,
+      fontSize: 11, fontWeight: 500, fontFamily: AD.fontSans, flexShrink: 0,
+    }}>
+      <i className={`ph ${cfg.icon}`} style={{ fontSize: 12 }} />
+      {cfg.label}
+    </span>
+  );
+}
+
 export default function AdminCashOuts({ setLoggedIn }) {
   const adminToken = () => sessionStorage.getItem('rb_admin_token');
   const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
@@ -28,7 +52,8 @@ export default function AdminCashOuts({ setLoggedIn }) {
   useEffect(() => { load(); }, []);
 
   const handleAction = safeAsync(async (id, status) => {
-    if (!window.confirm(`${status === 'approved' ? 'Approve' : 'Deny'} this request?`)) return;
+    const msgs = { approved: 'Approve this request?', denied: 'Deny this request?', paid: 'Mark this request as paid?' };
+    if (!window.confirm(msgs[status] || 'Confirm?')) return;
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/cashouts/${id}`, {
         method: 'PATCH',
@@ -43,15 +68,88 @@ export default function AdminCashOuts({ setLoggedIn }) {
     }
   }, 'AdminCashOuts');
 
+  const noteStyle = { margin: '8px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans };
+
+  function renderActions(c) {
+    const isStripeACH = c.payout_method === 'stripe_ach';
+
+    if (c.status === 'pending') {
+      if (isStripeACH) {
+        return (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn onClick={() => handleAction(c.id, 'approved')} variant="success">
+                <i className="ph ph-bank" /> Approve & Transfer
+              </Btn>
+              <Btn onClick={() => handleAction(c.id, 'denied')} variant="danger">
+                <i className="ph ph-x" /> Deny
+              </Btn>
+            </div>
+            {/* TODO: wire Stripe ACH transfer here after Stripe Connect registration — approval currently sets status to 'approved' only */}
+            <p style={noteStyle}>Stripe ACH transfer will fire automatically upon approval.</p>
+          </div>
+        );
+      }
+      return (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn onClick={() => handleAction(c.id, 'paid')} variant="success">
+              <i className="ph ph-check" /> Mark as Paid
+            </Btn>
+            <Btn onClick={() => handleAction(c.id, 'denied')} variant="danger">
+              <i className="ph ph-x" /> Deny
+            </Btn>
+          </div>
+          <p style={noteStyle}>Send payment manually, then mark as paid.</p>
+        </div>
+      );
+    }
+
+    if (c.status === 'approved') {
+      return (
+        <div style={{ marginTop: 16 }}>
+          <Btn onClick={() => handleAction(c.id, 'paid')} variant="success">
+            <i className="ph ph-check" /> Mark as Paid
+          </Btn>
+        </div>
+      );
+    }
+
+    if (c.status === 'paid') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
+          <i className="ph-fill ph-check-circle" style={{ color: AD.greenText, fontSize: 18 }} />
+          <span style={{ color: AD.greenText, fontWeight: 600, fontSize: 13, fontFamily: AD.fontSans }}>Paid</span>
+          {c.paid_at && (
+            <span style={{ color: AD.textTertiary, fontSize: 12, fontFamily: AD.fontSans }}>
+              {new Date(c.paid_at).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    if (c.status === 'denied') {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
+          <i className="ph-fill ph-x-circle" style={{ color: AD.red2Text, fontSize: 18 }} />
+          <span style={{ color: AD.red2Text, fontWeight: 600, fontSize: 13, fontFamily: AD.fontSans }}>Denied</span>
+        </div>
+      );
+    }
+
+    return null;
+  }
+
   const filtered = filter === 'all' ? cashouts : cashouts.filter(c => c.status === filter);
   const pendingCount = cashouts.filter(c => c.status === 'pending').length;
-  const badgeType = { pending: 'warning', approved: 'success', denied: 'danger' };
+  const badgeType = { pending: 'warning', approved: 'info', paid: 'success', denied: 'danger' };
 
   return (
     <>
       <AdminPageHeader title="Cash Outs" subtitle={pendingCount > 0 ? `${pendingCount} pending review` : 'All requests reviewed'} />
       <div style={{ display: 'flex', gap: 4, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, padding: 3, marginBottom: 20, width: 'fit-content', boxShadow: AD.shadowSm }}>
-        {['all', 'pending', 'approved', 'denied'].map(f => (
+        {['all', 'pending', 'approved', 'paid', 'denied'].map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: filter === f ? AD.bgSurface : 'transparent', color: filter === f ? AD.textPrimary : AD.textSecondary, fontSize: 12, fontWeight: filter === f ? 600 : 400, fontFamily: AD.fontSans, textTransform: 'capitalize', boxShadow: filter === f ? AD.shadowSm : 'none', transition: 'background 0.15s, color 0.15s, box-shadow 0.15s' }}>
             {f}{f === 'pending' && pendingCount > 0 ? ` (${pendingCount})` : ''}
           </button>
@@ -59,9 +157,7 @@ export default function AdminCashOuts({ setLoggedIn }) {
       </div>
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[0, 1, 2].map(i => (
-            <Skeleton key={i} height="120px" borderRadius="16px" />
-          ))}
+          {[0, 1, 2].map(i => <Skeleton key={i} height="120px" borderRadius="16px" />)}
         </div>
       ) : filtered.length === 0 ? (
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '32px', textAlign: 'center' }}>
@@ -78,16 +174,18 @@ export default function AdminCashOuts({ setLoggedIn }) {
                     {c.full_name.split(' ').map(n => n[0]).join('')}
                   </div>
                   <div>
-                    <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary }}>{c.full_name}</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary }}>{c.full_name}</p>
+                      <MethodBadge method={c.payout_method} />
+                    </div>
                     <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace" }}>{c.email}</p>
                   </div>
                 </div>
                 <Badge type={badgeType[c.status] || 'neutral'}>{c.status}</Badge>
               </div>
-              <div style={{ display: 'flex', gap: 28, marginBottom: c.status === 'pending' ? 16 : 0 }}>
+              <div style={{ display: 'flex', gap: 28 }}>
                 {[
                   { label: 'Amount', val: `$${parseFloat(c.amount).toLocaleString()}`, mono: true, big: true },
-                  { label: 'Method', val: c.method || '—' },
                   { label: 'Submitted', val: new Date(c.requested_at).toLocaleDateString() },
                 ].map(({ label, val, mono, big }) => (
                   <div key={label}>
@@ -96,12 +194,7 @@ export default function AdminCashOuts({ setLoggedIn }) {
                   </div>
                 ))}
               </div>
-              {c.status === 'pending' && (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Btn onClick={() => handleAction(c.id, 'approved')} variant="success"><i className="ph ph-check" /> Approve</Btn>
-                  <Btn onClick={() => handleAction(c.id, 'denied')}   variant="danger"><i className="ph ph-x" /> Deny</Btn>
-                </div>
-              )}
+              {renderActions(c)}
             </div>
           ))}
         </div>

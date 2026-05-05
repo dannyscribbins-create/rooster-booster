@@ -235,7 +235,7 @@ router.get('/api/admin/referrer/:name', async (req, res) => {
 router.get('/api/admin/cashouts', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
-    const result = await pool.query('SELECT id, user_id, full_name, email, amount, method, status, requested_at FROM cashout_requests ORDER BY requested_at DESC');
+    const result = await pool.query('SELECT id, user_id, full_name, email, amount, method, payout_method, status, requested_at, paid_at FROM cashout_requests ORDER BY requested_at DESC');
     res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });
@@ -245,15 +245,15 @@ router.get('/api/admin/cashouts', async (req, res) => {
 router.patch('/api/admin/cashouts/:id', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { status } = req.body;
-  if (!['approved','denied'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  if (!['approved','denied','paid'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
 
-    const result = await client.query(
-      'UPDATE cashout_requests SET status=$1 WHERE id=$2 RETURNING *',
-      [status, req.params.id]
-    );
+    const updateSql = status === 'paid'
+      ? 'UPDATE cashout_requests SET status=$1, paid_at=NOW() WHERE id=$2 RETURNING *'
+      : 'UPDATE cashout_requests SET status=$1 WHERE id=$2 RETURNING *';
+    const result = await client.query(updateSql, [status, req.params.id]);
     if (result.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Not found' });
@@ -266,8 +266,9 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
        `Cash out request #${req.params.id} ${status} ($${cashout.amount})`]
     );
 
-    if (status === 'approved') {
+    if (status === 'approved' || status === 'paid') {
       // SCALABLE: wrap Stripe ACH call inside this transaction before committing approved status
+      // For 'paid': ON CONFLICT DO NOTHING handles the case where announcement was already created at approval
       if (cashout.user_id == null) {
         await logError({ req, error: { message: `Payout announcement skipped: cashout_request #${req.params.id} has no user_id`, severity: 'INFO' } });
       } else {

@@ -471,6 +471,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS referral_conversion_id INTEGER REFERENCES referral_conversions(id) ON DELETE SET NULL`);
   // Which payout methods the contractor has enabled; defaults to all four
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS enabled_payout_methods TEXT[] DEFAULT ARRAY['stripe_ach','check','venmo','zelle']`);
+  // Set when admin marks a cashout request as paid
+  await pool.query(`ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP`);
 
   // ── CAMPAIGNS ─────────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS campaigns (
