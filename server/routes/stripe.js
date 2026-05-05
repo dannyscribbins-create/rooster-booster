@@ -7,27 +7,41 @@ const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { stripeShouldRetry } = require('../utils/retryHelpers');
 
 const router = express.Router();
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 const CONTRACTOR_ID = 'accent-roofing'; // MVP: pull from session at multi-contractor scale
+
+function getStripeClient() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY is not configured');
+  }
+  return Stripe(process.env.STRIPE_SECRET_KEY);
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 async function getStripeRow() {
-  const r = await pool.query(
-    'SELECT stripe_account_id, stripe_connect_status FROM contractor_settings WHERE contractor_id = $1',
-    [CONTRACTOR_ID]
-  );
-  return r.rows[0] || { stripe_account_id: null, stripe_connect_status: 'not_connected' };
+  try {
+    const r = await pool.query(
+      'SELECT stripe_account_id, stripe_connect_status FROM contractor_settings WHERE contractor_id = $1',
+      [CONTRACTOR_ID]
+    );
+    return r.rows[0] || { stripe_account_id: null, stripe_connect_status: 'not_connected' };
+  } catch (err) {
+    throw err;
+  }
 }
 
 async function upsertStripeAccount(stripeAccountId, status) {
-  await pool.query(
-    `INSERT INTO contractor_settings (contractor_id, stripe_account_id, stripe_connect_status)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (contractor_id) DO UPDATE
-       SET stripe_account_id = $2, stripe_connect_status = $3, updated_at = NOW()`,
-    [CONTRACTOR_ID, stripeAccountId, status]
-  );
+  try {
+    await pool.query(
+      `INSERT INTO contractor_settings (contractor_id, stripe_account_id, stripe_connect_status)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (contractor_id) DO UPDATE
+         SET stripe_account_id = $2, stripe_connect_status = $3, updated_at = NOW()`,
+      [CONTRACTOR_ID, stripeAccountId, status]
+    );
+  } catch (err) {
+    throw err;
+  }
 }
 
 // ── Route 1: POST /api/admin/stripe/create-account-link ───────────────────────
@@ -35,6 +49,7 @@ async function upsertStripeAccount(stripeAccountId, status) {
 router.post('/api/admin/stripe/create-account-link', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
+    const stripe = getStripeClient();
     const row = await getStripeRow();
     let stripeAccountId = row.stripe_account_id;
 
@@ -46,6 +61,7 @@ router.post('/api/admin/stripe/create-account-link', async (req, res) => {
       stripeAccountId = account.id;
       await upsertStripeAccount(stripeAccountId, 'pending');
     }
+    // Status not updated here — confirm-connection (Route 2) is the canonical status updater after onboarding
 
     const frontendUrl = process.env.FRONTEND_URL || '';
     const accountLink = await retryWithBackoff(
@@ -75,6 +91,7 @@ router.post('/api/admin/stripe/confirm-connection', async (req, res) => {
       return res.status(400).json({ error: 'No Stripe account linked' });
     }
 
+    const stripe = getStripeClient();
     const account = await retryWithBackoff(
       () => stripe.accounts.retrieve(row.stripe_account_id),
       { retries: 2, shouldRetry: stripeShouldRetry }
@@ -121,6 +138,7 @@ router.get('/api/admin/stripe/connection-status', async (req, res) => {
 router.post('/api/admin/stripe/disconnect', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
+    // MVP: local-only clear. Stripe Standard accounts require manual deauthorization via Stripe dashboard.
     await pool.query(
       `UPDATE contractor_settings
          SET stripe_account_id = NULL, stripe_connect_status = 'not_connected', updated_at = NOW()
