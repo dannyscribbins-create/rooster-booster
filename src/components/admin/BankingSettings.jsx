@@ -43,28 +43,87 @@ export default function BankingSettings() {
   const [methodsError, setMethodsError]             = useState(null);
   const [lastEnabledError, setLastEnabledError]     = useState(false);
 
+  const [stripeStatus, setStripeStatus]             = useState('not_connected');
+  const [stripeAccountId, setStripeAccountId]       = useState(null);
+  const [stripeConnecting, setStripeConnecting]     = useState(false);
+  const [stripeConfirming, setStripeConfirming]     = useState(false);
+  const [stripeBanner, setStripeBanner]             = useState(null);
+  const [stripeDisconnecting, setStripeDisconnecting] = useState(false);
+
   useEffect(() => {
     async function fetchSettings() {
       try {
-        const [autoRes, methodsRes] = await Promise.all([
+        const [autoRes, methodsRes, stripeRes] = await Promise.all([
           fetch(`${BACKEND_URL}/api/admin/payout-automation`, {
             headers: { 'Authorization': `Bearer ${adminToken()}` },
           }),
           fetch(`${BACKEND_URL}/api/admin/payout-methods`, {
             headers: { 'Authorization': `Bearer ${adminToken()}` },
           }),
+          fetch(`${BACKEND_URL}/api/admin/stripe/connection-status`, {
+            headers: { 'Authorization': `Bearer ${adminToken()}` },
+          }),
         ]);
         const autoData    = await autoRes.json();
         const methodsData = await methodsRes.json();
+        const stripeData  = stripeRes.ok ? await stripeRes.json() : {};
         setAutomation(autoData.payout_automation || 'manual_all');
         setThreshold(autoData.payout_review_threshold != null ? String(autoData.payout_review_threshold) : '');
         setMethods(methodsData.enabled_payout_methods || ['stripe_ach', 'check', 'venmo', 'zelle']);
+        setStripeStatus(stripeData.stripe_connect_status || 'not_connected');
+        setStripeAccountId(stripeData.stripe_account_id_masked || null);
       } catch {
         // silent — defaults remain in place
       } finally {
         setInitLoading(false);
       }
     }
+
+    async function handleStripeUrlParam() {
+      const params = new URLSearchParams(window.location.search);
+      const stripeParam = params.get('stripe_connect');
+      if (!stripeParam) return;
+
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete('stripe_connect');
+      window.history.replaceState({}, '', clean.toString());
+
+      if (stripeParam === 'success') {
+        setStripeConfirming(true);
+        try {
+          const r = await fetch(`${BACKEND_URL}/api/admin/stripe/confirm-connection`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${adminToken()}` },
+          });
+          const d = await r.json();
+          if (r.ok) {
+            setStripeStatus(d.status);
+            setStripeBanner({ type: 'success', text: 'Stripe account connected successfully!' });
+            setTimeout(() => setStripeBanner(null), 4000);
+          }
+        } catch {
+          // silent
+        } finally {
+          setStripeConfirming(false);
+        }
+      } else if (stripeParam === 'cancelled') {
+        setStripeBanner({ type: 'warning', text: 'Stripe connection cancelled — you can connect anytime.' });
+        setTimeout(() => setStripeBanner(null), 4000);
+      } else if (stripeParam === 'refresh') {
+        try {
+          const r = await fetch(`${BACKEND_URL}/api/admin/stripe/create-account-link`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${adminToken()}` },
+          });
+          const d = await r.json();
+          if (r.ok && d.url) window.location.href = d.url;
+        } catch {
+          // silent
+        }
+      }
+    }
+
+    handleStripeUrlParam();
     fetchSettings();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -136,6 +195,42 @@ export default function BankingSettings() {
     }
   }
 
+  async function handleStripeConnect() {
+    setStripeConnecting(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/stripe/create-account-link`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${adminToken()}` },
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to start Stripe onboarding');
+      window.location.href = d.url;
+    } catch (err) {
+      setStripeBanner({ type: 'warning', text: err.message || 'Failed to connect Stripe' });
+      setTimeout(() => setStripeBanner(null), 4000);
+      setStripeConnecting(false);
+    }
+  }
+
+  async function handleStripeDisconnect() {
+    if (!window.confirm('Disconnect your Stripe account? ACH payouts will be disabled.')) return;
+    setStripeDisconnecting(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/stripe/disconnect`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${adminToken()}` },
+      });
+      if (!r.ok) throw new Error('Disconnect failed');
+      setStripeStatus('not_connected');
+      setStripeAccountId(null);
+    } catch (err) {
+      setStripeBanner({ type: 'warning', text: err.message || 'Disconnect failed' });
+      setTimeout(() => setStripeBanner(null), 4000);
+    } finally {
+      setStripeDisconnecting(false);
+    }
+  }
+
   if (initLoading) {
     return (
       <div style={{ maxWidth: 560 }}>
@@ -153,25 +248,124 @@ export default function BankingSettings() {
   return (
     <div style={{ maxWidth: 560 }}>
 
-      {/* ── Section 1: Stripe Account ── */}
+      {/* ── Section 1: Stripe Connect ── */}
       <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-        Stripe Account
+        Stripe Connect
       </h2>
-      <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusLg, padding: '20px 22px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <i className="ph ph-credit-card" style={{ fontSize: 18, color: AD.textTertiary, flexShrink: 0 }} />
-          <span style={{ fontSize: 13, fontWeight: 500, color: AD.textSecondary, fontFamily: AD.fontSans }}>Connection Status</span>
-        </div>
-        <span style={{
-          display: 'inline-block', padding: '3px 10px', borderRadius: AD.radiusPill,
-          background: AD.bgCardTint, border: `1px solid ${AD.border}`,
-          color: AD.textSecondary, fontSize: 12, fontFamily: AD.fontSans, marginBottom: 14,
+
+      {stripeBanner && (
+        <div style={{
+          marginBottom: 16, padding: '12px 16px', borderRadius: AD.radiusMd,
+          background: stripeBanner.type === 'success' ? AD.greenBg : AD.amberBg,
+          border: `1px solid ${stripeBanner.type === 'success' ? AD.green : AD.amber}`,
+          color: stripeBanner.type === 'success' ? AD.greenText : AD.amberText,
+          fontSize: 13, fontFamily: AD.fontSans, display: 'flex', alignItems: 'center', gap: 8,
         }}>
-          Not Connected
-        </span>
-        <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.6 }}>
-          Stripe Connect setup will be available in a future update. Once connected, approved Stripe ACH cashout requests will be transferred automatically to your referrers' bank accounts.
-        </p>
+          <i className={`ph ${stripeBanner.type === 'success' ? 'ph-check-circle' : 'ph-warning'}`} style={{ fontSize: 16 }} />
+          {stripeBanner.text}
+        </div>
+      )}
+
+      <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusLg, padding: '20px 22px' }}>
+
+        {stripeStatus === 'not_connected' && (
+          <>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.6 }}>
+              Connect your Stripe account to enable automatic ACH payouts for referrers who choose Stripe ACH.
+            </p>
+            <button
+              onClick={handleStripeConnect}
+              disabled={stripeConnecting || stripeConfirming}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '10px 20px', borderRadius: AD.radiusMd, border: 'none',
+                background: stripeConnecting ? AD.bgCardTint : AD.navy,
+                color: stripeConnecting ? AD.textSecondary : '#fff',
+                fontSize: 14, fontWeight: 500, fontFamily: AD.fontSans,
+                cursor: stripeConnecting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <i className="ph ph-plugs" style={{ fontSize: 16 }} />
+              {stripeConnecting ? 'Connecting…' : 'Connect Stripe'}
+            </button>
+          </>
+        )}
+
+        {stripeStatus === 'pending' && (
+          <>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: AD.radiusPill, background: AD.amberBg, border: `1px solid ${AD.amber}`, marginBottom: 14 }}>
+              <i className="ph ph-clock" style={{ fontSize: 14, color: AD.amberText }} />
+              <span style={{ fontSize: 12, fontWeight: 500, color: AD.amberText, fontFamily: AD.fontSans }}>Stripe Connection Pending</span>
+            </div>
+            {stripeAccountId && (
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>
+                Account: {stripeAccountId}
+              </p>
+            )}
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.6 }}>
+              Complete your Stripe onboarding to activate ACH payouts.
+            </p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                onClick={handleStripeConnect}
+                disabled={stripeConnecting}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '10px 20px', borderRadius: AD.radiusMd, border: 'none',
+                  background: stripeConnecting ? AD.bgCardTint : AD.navy,
+                  color: stripeConnecting ? AD.textSecondary : '#fff',
+                  fontSize: 14, fontWeight: 500, fontFamily: AD.fontSans,
+                  cursor: stripeConnecting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <i className="ph ph-plugs" style={{ fontSize: 16 }} />
+                {stripeConnecting ? 'Loading…' : 'Resume Onboarding'}
+              </button>
+              <button
+                onClick={handleStripeDisconnect}
+                disabled={stripeDisconnecting}
+                style={{
+                  padding: '8px 14px', borderRadius: AD.radiusMd,
+                  border: `1px solid ${AD.border}`, background: 'transparent',
+                  color: AD.textSecondary, fontSize: 13, fontFamily: AD.fontSans,
+                  cursor: stripeDisconnecting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {stripeDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {stripeStatus === 'active' && (
+          <>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', borderRadius: AD.radiusPill, background: AD.greenBg, border: `1px solid ${AD.green}`, marginBottom: 14 }}>
+              <i className="ph ph-check-circle" style={{ fontSize: 14, color: AD.greenText }} />
+              <span style={{ fontSize: 12, fontWeight: 500, color: AD.greenText, fontFamily: AD.fontSans }}>Stripe Connected</span>
+            </div>
+            {stripeAccountId && (
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace" }}>
+                Account: {stripeAccountId}
+              </p>
+            )}
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.6 }}>
+              ACH payouts are active. Referrers can be paid automatically via Stripe.
+            </p>
+            <button
+              onClick={handleStripeDisconnect}
+              disabled={stripeDisconnecting}
+              style={{
+                padding: '8px 14px', borderRadius: AD.radiusMd,
+                border: `1px solid ${AD.border}`, background: 'transparent',
+                color: AD.textSecondary, fontSize: 13, fontFamily: AD.fontSans,
+                cursor: stripeDisconnecting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {stripeDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+            </button>
+          </>
+        )}
+
       </div>
 
       {/* ── Divider ── */}
