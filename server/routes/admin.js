@@ -291,66 +291,6 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
   }
 });
 
-// ── ADMIN: PAYOUT QUEUE ───────────────────────────────────────────────────────
-router.get('/api/admin/payout-queue', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // TODO: pull contractorId from admin session token when multi-contractor is live
-  const contractorId = 'accent-roofing';
-  try {
-    const result = await pool.query(`
-      SELECT
-        rc.id,
-        u.full_name  AS referrer_name,
-        u.email      AS referrer_email,
-        pc.client_name AS referred_client_name,
-        rc.job_type,
-        rc.bonus_amount,
-        rc.converted_at,
-        rc.payout_status
-      FROM referral_conversions rc
-      JOIN users u ON u.id = rc.user_id
-      LEFT JOIN pipeline_cache pc
-        ON  pc.jobber_client_id = rc.jobber_client_id
-        AND pc.contractor_id    = rc.contractor_id
-      WHERE rc.payout_status = 'pending_review'
-        AND rc.contractor_id  = $1
-      ORDER BY rc.converted_at DESC
-    `, [contractorId]);
-    res.json(result.rows);
-  } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
-  }
-});
-router.patch('/api/admin/payout-queue/:id', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // TODO: pull contractorId from admin session token when multi-contractor is live
-  const contractorId = 'accent-roofing';
-  const { action } = req.body;
-  if (!['approve', 'deny'].includes(action)) {
-    return res.status(400).json({ error: 'action must be "approve" or "deny"' });
-  }
-  const newStatus = action === 'approve' ? 'approved' : 'denied';
-  try {
-    const result = await pool.query(
-      `UPDATE referral_conversions
-       SET payout_status = $1
-       WHERE id             = $2
-         AND contractor_id  = $3
-         AND payout_status  = 'pending_review'
-       RETURNING id, payout_status, bonus_amount, converted_at, job_type`,
-      [newStatus, req.params.id, contractorId]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Conversion not found or already processed' });
-    }
-    res.json(result.rows[0]);
-  } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ── ADMIN: ACTIVITY LOG ───────────────────────────────────────────────────────
 router.get('/api/admin/activity', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
