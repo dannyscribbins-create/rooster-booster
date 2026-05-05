@@ -123,8 +123,11 @@ export default function BankingSettings() {
       }
     }
 
-    handleStripeUrlParam();
-    fetchSettings();
+    async function run() {
+      await handleStripeUrlParam();
+      fetchSettings();
+    }
+    run();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
