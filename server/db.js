@@ -474,6 +474,10 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // Set when admin marks a cashout request as paid
   await pool.query(`ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP`);
 
+  // ── STRIPE CONNECT ────────────────────────────────────────────────────────────
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS stripe_account_id VARCHAR(255)`);
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS stripe_connect_status VARCHAR(20) NOT NULL DEFAULT 'not_connected'`);
+
   // ── CAMPAIGNS ─────────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS campaigns (
     id SERIAL PRIMARY KEY,
