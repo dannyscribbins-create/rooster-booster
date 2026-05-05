@@ -35,6 +35,8 @@ export default function AdminCashOuts({ setLoggedIn }) {
   const [cashouts, setCashouts] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');
+  const [transferringId, setTransferringId]   = useState(null);
+  const [transferErrors, setTransferErrors]   = useState({});
 
   async function load() {
     setLoading(true);
@@ -68,6 +70,38 @@ export default function AdminCashOuts({ setLoggedIn }) {
     }
   }, 'AdminCashOuts');
 
+  const handleStripeTransfer = safeAsync(async (c) => {
+    if (!window.confirm('Approve and send Stripe ACH transfer?')) return;
+    setTransferringId(c.id);
+    setTransferErrors(prev => ({ ...prev, [c.id]: null }));
+    try {
+      const amountCents = Math.round(parseFloat(c.amount) * 100);
+      const transferRes = await fetch(`${BACKEND_URL}/api/admin/stripe/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+        body: JSON.stringify({ cashout_request_id: c.id, amount_cents: amountCents }),
+      });
+      if (transferRes.status === 401) { on401(); return; }
+      const transferData = await transferRes.json();
+      if (!transferRes.ok) {
+        const msg = transferData.message || transferData.error || 'Transfer failed';
+        setTransferErrors(prev => ({ ...prev, [c.id]: msg }));
+        return;
+      }
+      const approveRes = await fetch(`${BACKEND_URL}/api/admin/cashouts/${c.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+        body: JSON.stringify({ status: 'approved' }),
+      });
+      if (approveRes.status === 401) { on401(); return; }
+      load();
+    } catch {
+      setTransferErrors(prev => ({ ...prev, [c.id]: 'Unexpected error during transfer' }));
+    } finally {
+      setTransferringId(null);
+    }
+  }, 'AdminCashOuts');
+
   const noteStyle = { margin: '8px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans };
 
   function renderActions(c) {
@@ -75,18 +109,27 @@ export default function AdminCashOuts({ setLoggedIn }) {
 
     if (c.status === 'pending') {
       if (isStripeACH) {
+        const isTransferring = transferringId === c.id;
+        const transferError = transferErrors[c.id];
         return (
           <div style={{ marginTop: 16 }}>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Btn onClick={() => handleAction(c.id, 'approved')} variant="success">
-                <i className="ph ph-bank" /> Approve & Transfer
+              <Btn onClick={() => !isTransferring && handleStripeTransfer(c)} variant="success" disabled={isTransferring}>
+                <i className="ph ph-bank" /> {isTransferring ? 'Transferring…' : 'Approve & Transfer'}
               </Btn>
-              <Btn onClick={() => handleAction(c.id, 'denied')} variant="danger">
+              <Btn onClick={() => handleAction(c.id, 'denied')} variant="danger" disabled={isTransferring}>
                 <i className="ph ph-x" /> Deny
               </Btn>
             </div>
-            {/* TODO: wire Stripe ACH transfer here after Stripe Connect registration — approval currently sets status to 'approved' only */}
-            <p style={noteStyle}>Stripe ACH transfer will fire automatically upon approval.</p>
+            {transferError && (
+              <p style={{ ...noteStyle, color: AD.red2Text, marginTop: 8 }}>
+                <i className="ph ph-warning-circle" style={{ marginRight: 4 }} />
+                {transferError}
+              </p>
+            )}
+            {!transferError && (
+              <p style={noteStyle}>Stripe ACH transfer fires before approval is recorded.</p>
+            )}
           </div>
         );
       }
