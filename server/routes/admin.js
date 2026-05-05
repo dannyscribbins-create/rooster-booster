@@ -322,6 +322,34 @@ router.get('/api/admin/payout-queue', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+router.patch('/api/admin/payout-queue/:id', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // TODO: pull contractorId from admin session token when multi-contractor is live
+  const contractorId = 'accent-roofing';
+  const { action } = req.body;
+  if (!['approve', 'deny'].includes(action)) {
+    return res.status(400).json({ error: 'action must be "approve" or "deny"' });
+  }
+  const newStatus = action === 'approve' ? 'approved' : 'denied';
+  try {
+    const result = await pool.query(
+      `UPDATE referral_conversions
+       SET payout_status = $1
+       WHERE id             = $2
+         AND contractor_id  = $3
+         AND payout_status  = 'pending_review'
+       RETURNING id, payout_status, bonus_amount, converted_at, job_type`,
+      [newStatus, req.params.id, contractorId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Conversion not found or already processed' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── ADMIN: ACTIVITY LOG ───────────────────────────────────────────────────────
 router.get('/api/admin/activity', async (req, res) => {
