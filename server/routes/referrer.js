@@ -692,6 +692,25 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
   }
 });
 
+// ── REFERRER: ENABLED PAYOUT METHODS (public — no auth required) ─────────────
+router.get('/api/referrer/enabled-payout-methods/:contractorId', async (req, res) => {
+  const { contractorId } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT enabled_payout_methods FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+      [contractorId]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ enabled_payout_methods: ['stripe_ach', 'check', 'venmo', 'zelle'] });
+    }
+    const { enabled_payout_methods } = result.rows[0];
+    res.json({ enabled_payout_methods: enabled_payout_methods || ['stripe_ach', 'check', 'venmo', 'zelle'] });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── REFERRER: CASH OUT ────────────────────────────────────────────────────────
 router.post('/api/cashout', cashoutLimiter, [
   body('amount').isNumeric().withMessage('Amount must be a number')
@@ -709,9 +728,16 @@ router.post('/api/cashout', cashoutLimiter, [
     [token, 'referrer']
   );
   if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-  const { amount, method } = req.body;
+  const { amount, method, payout_method, referral_conversion_id } = req.body;
   if (parseFloat(amount) < 20) {
     return res.status(400).json({ error: 'Minimum cashout amount is $20' });
+  }
+  const VALID_PAYOUT_METHODS = ['stripe_ach', 'check', 'venmo', 'zelle'];
+  if (!payout_method || !VALID_PAYOUT_METHODS.includes(payout_method)) {
+    return res.status(400).json({ error: 'payout_method must be one of: stripe_ach, check, venmo, zelle' });
+  }
+  if (referral_conversion_id != null && !Number.isInteger(Number(referral_conversion_id))) {
+    return res.status(400).json({ error: 'referral_conversion_id must be an integer' });
   }
   try {
     const userId = sessionResult.rows[0].user_id;
@@ -727,9 +753,9 @@ router.post('/api/cashout', cashoutLimiter, [
       return res.status(400).json({ error: 'Requested amount exceeds your available balance' });
     }
     await pool.query(
-      `INSERT INTO cashout_requests (user_id,full_name,email,amount,method,status,requested_at)
-       VALUES ($1,$2,$3,$4,$5,'pending',NOW())`,
-      [userId, full_name, email, amount, method || null]
+      `INSERT INTO cashout_requests (user_id,full_name,email,amount,method,payout_method,referral_conversion_id,status,requested_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',NOW())`,
+      [userId, full_name, email, amount, method || null, payout_method, referral_conversion_id != null ? parseInt(referral_conversion_id, 10) : null]
     );
     await pool.query(
       `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('cashout',$1,$2,$3)`,

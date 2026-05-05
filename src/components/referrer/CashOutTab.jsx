@@ -1,12 +1,27 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
-import { BACKEND_URL } from '../../config/contractor';
+import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import Skeleton from '../shared/Skeleton';
+
+// id values must match contractor_settings.enabled_payout_methods valid set
+const ALL_METHODS = [
+  { id: 'stripe_ach', icon: 'ph-bank',           label: 'Stripe ACH',     sub: 'Direct bank transfer'  },
+  { id: 'zelle',      icon: 'ph-lightning',       label: 'Zelle',          sub: 'Sent within 24 hrs'    },
+  { id: 'venmo',      icon: 'ph-device-mobile',   label: 'Venmo',          sub: 'Sent within 24 hrs'    },
+  { id: 'check',      icon: 'ph-envelope-simple', label: 'Check by Mail',  sub: '5–7 business days'     },
+];
+
+const DETAIL_LABELS = {
+  stripe_ach: 'Bank account linked via Stripe',
+  zelle:      'Zelle phone or email',
+  venmo:      'Venmo username',
+  check:      'Mailing address',
+};
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
 export default function CashOut({ pipeline, loading, userName, userEmail }) {
@@ -19,6 +34,21 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
   const [amountPunching, setAmountPunching] = useState(false);
   const [cardVisible, setCardVisible] = useState(false);
   const [logosVisible, setLogosVisible] = useState(false);
+
+  const [enabledMethods, setEnabledMethods] = useState(['stripe_ach', 'check', 'venmo', 'zelle']);
+
+  useEffect(() => {
+    async function fetchEnabledMethods() {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/referrer/enabled-payout-methods/${CONTRACTOR_CONFIG.contractorId}`);
+        const d = await r.json();
+        if (d.enabled_payout_methods) setEnabledMethods(d.enabled_payout_methods);
+      } catch {
+        // silent — default (all methods) remains in place
+      }
+    }
+    fetchEnabledMethods();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const advanceStep = (n) => {
     setStep(n);
@@ -55,12 +85,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
 
   const balance = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
 
-  const methods = [
-    { id: "zelle",  icon: "ph-lightning",      label: "Zelle",         sub: "Sent within 24 hrs" },
-    { id: "venmo",  icon: "ph-device-mobile",   label: "Venmo",         sub: "Sent within 24 hrs" },
-    { id: "paypal", icon: "ph-globe",           label: "PayPal",        sub: "1–3 business days"  },
-    { id: "check",  icon: "ph-envelope-simple", label: "Check by Mail", sub: "5–7 business days"  },
-  ];
+  const filteredMethods = ALL_METHODS.filter(m => enabledMethods.includes(m.id));
 
   // Step indicator
   const steps = ["Method", "Amount", "Confirm"];
@@ -118,7 +143,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
               ${displayAmount.toLocaleString()}
             </p>
             <p style={{ margin: "0 0 16px", fontSize: 14, color: R.textSecondary, fontFamily: R.fontSans }}>
-              via {methods.find(m => m.id === method)?.label}
+              via {ALL_METHODS.find(m => m.id === method)?.label}
             </p>
 
             {/* Logo lockup */}
@@ -218,7 +243,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
               1. Choose payout method
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {methods.map(m => (
+              {filteredMethods.map(m => (
                 <button key={m.id} onClick={() => { setMethod(m.id); if (step === 1) advanceStep(2); }} style={{
                   background: method === m.id ? "#fff7f7" : R.bgCard,
                   border: `1.5px solid ${method === m.id ? R.red : R.border}`,
@@ -300,13 +325,12 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
               display: "block", fontSize: 12, fontWeight: 500,
               color: R.textSecondary, marginBottom: 8, fontFamily: R.fontBody,
             }}>
-              {{ zelle: "Zelle phone or email", venmo: "Venmo username",
-                 paypal: "PayPal email", check: "Mailing address" }[method]}
+              {DETAIL_LABELS[method]}
             </label>
             <div style={{ marginTop: 12 }}>
               <input
                 value={detail} onChange={e => setDetail(e.target.value)}
-                placeholder={method === "check" ? "Mailing address" : `Your ${methods.find(m => m.id === method)?.label} handle / email`}
+                placeholder={method === "check" ? "Mailing address" : `Your ${ALL_METHODS.find(m => m.id === method)?.label} handle / email`}
                 style={{
                   width: "100%", background: R.bgCard,
                   border: `1.5px solid ${R.border}`, borderRadius: 12,
@@ -346,7 +370,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
               </p>
               {[
                 ["Amount",    `$${parseFloat(amount).toLocaleString()}`],
-                ["Method",    methods.find(m => m.id === method)?.label],
+                ["Method",    ALL_METHODS.find(m => m.id === method)?.label],
                 ["Sent to",   detail || "—"],
                 ["Remaining", `$${(balance - parseFloat(amount)).toLocaleString()}`],
               ].map(([k, v]) => (
@@ -380,8 +404,10 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
                       "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}`,
                     },
                     body: JSON.stringify({
-                      user_id: null, full_name: userName,
-                      email: userEmail, amount: parseFloat(amount), method,
+                      amount: parseFloat(amount),
+                      method,
+                      payout_method: method,
+                      // TODO: wire referral_conversion_id once conversion data is available on this screen
                     }),
                   });
                   const data = await res.json();
@@ -392,8 +418,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
                   }
                   setSubmitting(false);
                   setStep(4);
-                } catch (err) {
-                  console.error("Cash out error:", err);
+                } catch {
                   setSubmitError("Connection error. Please check your connection and try again.");
                   setSubmitting(false);
                 }
