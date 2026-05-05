@@ -773,6 +773,57 @@ router.put('/api/admin/settings', async (req, res) => {
   }
 });
 
+// ── ADMIN: PAYOUT AUTOMATION SETTINGS ────────────────────────────────────────
+router.get('/api/admin/payout-automation', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // TODO: pull contractorId from admin session token when multi-contractor is live
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      `SELECT payout_automation, payout_review_threshold
+       FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+      [contractorId]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ payout_automation: 'manual_all', payout_review_threshold: null });
+    }
+    const { payout_automation, payout_review_threshold } = result.rows[0];
+    res.json({ payout_automation, payout_review_threshold });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/api/admin/payout-automation', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // TODO: pull contractorId from admin session token when multi-contractor is live
+  const contractorId = 'accent-roofing';
+  const { payout_automation } = req.body;
+  let { payout_review_threshold } = req.body;
+  if (!['manual_all', 'full_auto', 'threshold'].includes(payout_automation)) {
+    return res.status(400).json({ error: 'payout_automation must be manual_all, full_auto, or threshold' });
+  }
+  if (payout_automation !== 'threshold') payout_review_threshold = null;
+  try {
+    const result = await pool.query(
+      `INSERT INTO contractor_settings (contractor_id, payout_automation, payout_review_threshold)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (contractor_id) DO UPDATE SET
+         payout_automation = EXCLUDED.payout_automation,
+         payout_review_threshold = EXCLUDED.payout_review_threshold,
+         updated_at = NOW()
+       RETURNING payout_automation, payout_review_threshold`,
+      [contractorId, payout_automation, payout_review_threshold ?? null]
+    );
+    const row = result.rows[0];
+    res.json({ payout_automation: row.payout_automation, payout_review_threshold: row.payout_review_threshold });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── ADMIN: CRM SETTINGS ───────────────────────────────────────────────────────
 
 // GET /api/admin/crm/status
