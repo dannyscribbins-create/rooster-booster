@@ -824,6 +824,61 @@ router.put('/api/admin/payout-automation', async (req, res) => {
   }
 });
 
+// ── ADMIN: PAYOUT METHOD SETTINGS ────────────────────────────────────────────
+router.get('/api/admin/payout-methods', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // TODO: pull contractorId from admin session token when multi-contractor is live
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      `SELECT enabled_payout_methods FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+      [contractorId]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ enabled_payout_methods: ['stripe_ach', 'check', 'venmo', 'zelle'] });
+    }
+    const { enabled_payout_methods } = result.rows[0];
+    res.json({ enabled_payout_methods: enabled_payout_methods || ['stripe_ach', 'check', 'venmo', 'zelle'] });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/api/admin/payout-methods', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // TODO: pull contractorId from admin session token when multi-contractor is live
+  const contractorId = 'accent-roofing';
+  const { enabled_payout_methods } = req.body;
+  const VALID_METHODS = ['stripe_ach', 'check', 'venmo', 'zelle'];
+  if (!Array.isArray(enabled_payout_methods)) {
+    return res.status(400).json({ error: 'enabled_payout_methods must be an array' });
+  }
+  if (enabled_payout_methods.length === 0) {
+    return res.status(400).json({ error: 'At least one payout method must be enabled' });
+  }
+  const invalid = enabled_payout_methods.filter(m => !VALID_METHODS.includes(m));
+  if (invalid.length > 0) {
+    return res.status(400).json({ error: `Invalid payout method(s): ${invalid.join(', ')}` });
+  }
+  try {
+    const result = await pool.query(
+      `INSERT INTO contractor_settings (contractor_id, enabled_payout_methods)
+       VALUES ($1, $2)
+       ON CONFLICT (contractor_id) DO UPDATE SET
+         enabled_payout_methods = EXCLUDED.enabled_payout_methods,
+         updated_at = NOW()
+       RETURNING enabled_payout_methods`,
+      [contractorId, enabled_payout_methods]
+    );
+    const row = result.rows[0];
+    res.json({ success: true, enabled_payout_methods: row.enabled_payout_methods });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── ADMIN: CRM SETTINGS ───────────────────────────────────────────────────────
 
 // GET /api/admin/crm/status

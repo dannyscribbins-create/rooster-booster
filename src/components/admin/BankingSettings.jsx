@@ -20,25 +20,45 @@ const OPTIONS = [
   },
 ];
 
+const METHODS = [
+  { key: 'stripe_ach',  label: 'Stripe ACH',     description: 'Direct bank transfer. Requires Stripe Connect setup.',                                 icon: 'ph-bank' },
+  { key: 'check',       label: 'Check by Mail',   description: 'Contractor mails a physical check. Always requires manual approval.',                  icon: 'ph-envelope-simple' },
+  { key: 'venmo',       label: 'Venmo',           description: 'Contractor sends payment manually via Venmo. Always requires manual approval.',         icon: 'ph-device-mobile' },
+  { key: 'zelle',       label: 'Zelle',           description: 'Contractor sends payment manually via Zelle. Always requires manual approval.',         icon: 'ph-lightning' },
+];
+
 export default function BankingSettings() {
   const adminToken = () => sessionStorage.getItem('rb_admin_token');
 
-  const [initLoading, setInitLoading] = useState(true);
-  const [automation, setAutomation]   = useState('manual_all');
-  const [threshold, setThreshold]     = useState('');
-  const [saving, setSaving]           = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [saveError, setSaveError]     = useState(null);
+  const [initLoading, setInitLoading]   = useState(true);
+  const [automation, setAutomation]     = useState('manual_all');
+  const [threshold, setThreshold]       = useState('');
+  const [saving, setSaving]             = useState(false);
+  const [saveSuccess, setSaveSuccess]   = useState(false);
+  const [saveError, setSaveError]       = useState(null);
+
+  const [methods, setMethods]                       = useState(['stripe_ach', 'check', 'venmo', 'zelle']);
+  const [methodsSaving, setMethodsSaving]           = useState(false);
+  const [methodsSuccess, setMethodsSuccess]         = useState(false);
+  const [methodsError, setMethodsError]             = useState(null);
+  const [lastEnabledError, setLastEnabledError]     = useState(false);
 
   useEffect(() => {
     async function fetchSettings() {
       try {
-        const r = await fetch(`${BACKEND_URL}/api/admin/payout-automation`, {
-          headers: { 'Authorization': `Bearer ${adminToken()}` },
-        });
-        const d = await r.json();
-        setAutomation(d.payout_automation || 'manual_all');
-        setThreshold(d.payout_review_threshold != null ? String(d.payout_review_threshold) : '');
+        const [autoRes, methodsRes] = await Promise.all([
+          fetch(`${BACKEND_URL}/api/admin/payout-automation`, {
+            headers: { 'Authorization': `Bearer ${adminToken()}` },
+          }),
+          fetch(`${BACKEND_URL}/api/admin/payout-methods`, {
+            headers: { 'Authorization': `Bearer ${adminToken()}` },
+          }),
+        ]);
+        const autoData    = await autoRes.json();
+        const methodsData = await methodsRes.json();
+        setAutomation(autoData.payout_automation || 'manual_all');
+        setThreshold(autoData.payout_review_threshold != null ? String(autoData.payout_review_threshold) : '');
+        setMethods(methodsData.enabled_payout_methods || ['stripe_ach', 'check', 'venmo', 'zelle']);
       } catch {
         // silent — defaults remain in place
       } finally {
@@ -78,6 +98,41 @@ export default function BankingSettings() {
       setSaveError(err.message || 'Failed to save settings');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleMethodToggle(key) {
+    const isEnabled = methods.includes(key);
+    if (isEnabled && methods.length === 1) {
+      setLastEnabledError(true);
+      setTimeout(() => setLastEnabledError(false), 3000);
+      return;
+    }
+    const prev = methods;
+    const next = isEnabled ? methods.filter(m => m !== key) : [...methods, key];
+    setMethods(next);
+    setMethodsSaving(true);
+    setMethodsError(null);
+    setMethodsSuccess(false);
+    setLastEnabledError(false);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/payout-methods`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken()}`,
+        },
+        body: JSON.stringify({ enabled_payout_methods: next }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Save failed');
+      setMethodsSuccess(true);
+      setTimeout(() => setMethodsSuccess(false), 3000);
+    } catch (err) {
+      setMethods(prev);
+      setMethodsError(err.message || 'Failed to save payout methods');
+    } finally {
+      setMethodsSaving(false);
     }
   }
 
@@ -230,6 +285,100 @@ export default function BankingSettings() {
           </p>
         )}
       </div>
+
+      {/* ── Divider ── */}
+      <div style={{ borderTop: `1px solid ${AD.border}`, margin: '28px 0' }} />
+
+      {/* ── Section 3: Payout Methods ── */}
+      <h2 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+        Payout Methods
+      </h2>
+      <p style={{ margin: '0 0 20px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+        Choose which payout options are available to your referrers.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {METHODS.map(method => {
+          const enabled = methods.includes(method.key);
+          return (
+            <div
+              key={method.key}
+              style={{
+                background: AD.bgCard,
+                border: `1px solid ${AD.border}`,
+                borderRadius: AD.radiusLg,
+                padding: '14px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                opacity: methodsSaving ? 0.6 : 1,
+                transition: 'opacity 0.15s',
+              }}
+            >
+              <i
+                className={`ph ${method.icon}`}
+                style={{ fontSize: 20, color: enabled ? AD.greenText : AD.textTertiary, flexShrink: 0, transition: 'color 0.2s' }}
+              />
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: '0 0 3px', fontSize: 14, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                  {method.label}
+                </p>
+                <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+                  {method.description}
+                </p>
+              </div>
+              <button
+                onClick={() => !methodsSaving && handleMethodToggle(method.key)}
+                disabled={methodsSaving}
+                aria-label={`${enabled ? 'Disable' : 'Enable'} ${method.label}`}
+                style={{
+                  flexShrink: 0,
+                  width: 44,
+                  height: 24,
+                  borderRadius: AD.radiusPill,
+                  border: 'none',
+                  background: enabled ? AD.green : AD.bgCardTint,
+                  cursor: methodsSaving ? 'not-allowed' : 'pointer',
+                  position: 'relative',
+                  transition: 'background 0.2s',
+                  padding: 0,
+                }}
+              >
+                <span style={{
+                  position: 'absolute',
+                  top: 3,
+                  left: enabled ? 23 : 3,
+                  width: 18,
+                  height: 18,
+                  borderRadius: '50%',
+                  background: '#fff',
+                  transition: 'left 0.2s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                }} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {lastEnabledError && (
+        <p style={{ margin: '12px 0 0', fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans }}>
+          <i className="ph ph-warning" style={{ marginRight: 6 }} />
+          At least one payout method must be enabled.
+        </p>
+      )}
+      {methodsSuccess && (
+        <p style={{ margin: '12px 0 0', fontSize: 13, color: AD.greenText, fontFamily: AD.fontSans }}>
+          <i className="ph ph-check-circle" style={{ marginRight: 6 }} />
+          Payout methods saved.
+        </p>
+      )}
+      {methodsError && (
+        <p style={{ margin: '12px 0 0', fontSize: 13, color: AD.red2Text, fontFamily: AD.fontSans }}>
+          <i className="ph ph-warning-circle" style={{ marginRight: 6 }} />
+          {methodsError}
+        </p>
+      )}
 
     </div>
   );
