@@ -162,6 +162,10 @@ router.post('/api/admin/stripe/transfer', async (req, res) => {
     if (!cashout_request_id || !amount_cents) {
       return res.status(400).json({ error: 'cashout_request_id and amount_cents are required' });
     }
+    const amountInt = parseInt(amount_cents, 10);
+    if (!Number.isInteger(amountInt) || amountInt <= 0) {
+      return res.status(400).json({ error: 'amount_cents must be a positive integer' });
+    }
 
     const destinationAccountId = process.env.STRIPE_TEST_ACCOUNT_ID || null;
 
@@ -176,7 +180,7 @@ router.post('/api/admin/stripe/transfer', async (req, res) => {
 
     const transfer = await retryWithBackoff(
       () => stripe.transfers.create({
-        amount: amount_cents,
+        amount: amountInt,
         currency: 'usd',
         destination: destinationAccountId,
       }),
@@ -186,7 +190,7 @@ router.post('/api/admin/stripe/transfer', async (req, res) => {
     await pool.query(
       `INSERT INTO activity_log (event_type, detail, created_at)
        VALUES ('stripe_transfer', $1, NOW())`,
-      [`Transfer ${transfer.id} for cashout #${cashout_request_id} — $${(amount_cents / 100).toFixed(2)}`]
+      [`Transfer ${transfer.id} for cashout #${cashout_request_id} — $${(amountInt / 100).toFixed(2)}`]
     );
 
     res.json({ success: true, transfer_id: transfer.id });
