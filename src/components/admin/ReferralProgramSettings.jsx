@@ -36,6 +36,48 @@ function JobTypeChip({ label }) {
   );
 }
 
+function formatPayoutSummary(schedule) {
+  const { payout_model } = schedule;
+
+  if (payout_model === 'escalating') {
+    const steps = schedule.escalating_steps;
+    if (!Array.isArray(steps) || steps.length === 0) return 'Escalating — no steps configured';
+    const parts = steps.map(s => {
+      const amt = `$${Number(s.payout_amount).toLocaleString()}`;
+      return s.is_catch_all ? `${amt}+` : amt;
+    });
+    return `${parts.join(' → ')} per referral (resets annually)`;
+  }
+
+  if (payout_model === 'tiered') {
+    const brackets = schedule.tier_brackets;
+    if (!Array.isArray(brackets) || brackets.length === 0) return 'Tiered — no brackets configured';
+    const parts = brackets.map(b => {
+      const amt = `$${Number(b.payout_amount).toLocaleString()}`;
+      const range = b.max == null
+        ? `$${Number(b.min).toLocaleString()}+`
+        : `$${Number(b.min).toLocaleString()}–$${Number(b.max).toLocaleString()}`;
+      return `${amt} for ${range}`;
+    });
+    return parts.join(' · ');
+  }
+
+  if (payout_model === 'flat') {
+    if (schedule.flat_amount == null) return 'Flat — no amount configured';
+    return `$${Number(schedule.flat_amount).toLocaleString()} flat per referral`;
+  }
+
+  if (payout_model === 'percentage') {
+    if (schedule.percentage_rate == null) return 'Percentage — no rate configured';
+    const capStr = schedule.percentage_max_cap != null
+      ? `, capped at $${Number(schedule.percentage_max_cap).toLocaleString()}`
+      : ', no cap';
+    return `${Number(schedule.percentage_rate)}% of invoice total${capStr}`;
+  }
+
+  return '';
+}
+
 function ScheduleCard({ schedule, onEdit, onToggle, dimmed }) {
   const [toggling, setToggling] = useState(false);
 
@@ -73,6 +115,17 @@ function ScheduleCard({ schedule, onEdit, onToggle, dimmed }) {
               Min invoice: ${Number(schedule.minimum_invoice).toLocaleString()}
             </div>
           )}
+
+          {(() => {
+            const summary = formatPayoutSummary(schedule);
+            if (!summary) return null;
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 6, fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                <i className="ph ph-receipt" style={{ fontSize: 13, flexShrink: 0 }} />
+                {summary}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Right: controls */}

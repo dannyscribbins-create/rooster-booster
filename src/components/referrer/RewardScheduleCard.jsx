@@ -145,7 +145,7 @@ function SchedulePane({ schedule }) {
       ? `, up to ${formatCurrency(schedule.percentage_max_cap)}`
       : '';
     const rate = schedule.percentage_rate != null
-      ? `${(Number(schedule.percentage_rate) * 100).toFixed(1)}%`
+      ? `${Number(schedule.percentage_rate)}%`
       : '';
     return (
       <>

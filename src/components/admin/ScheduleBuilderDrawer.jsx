@@ -727,6 +727,32 @@ function initFormFromSchedule(schedule) {
   };
 }
 
+function checkUnusualValues(form) {
+  if (form.payout_model === 'escalating') {
+    const steps = form.escalating_steps || [];
+    if (steps.some(s => parseFloat(s.payout_amount) > 1000)) {
+      return 'One or more referral steps exceed $1,000. Are you sure these amounts are correct?';
+    }
+  }
+  if (form.payout_model === 'tiered') {
+    const brackets = form.tier_brackets || [];
+    if (brackets.some(b => parseFloat(b.payout_amount) > 1000)) {
+      return 'One or more brackets exceed $1,000. Are you sure these amounts are correct?';
+    }
+  }
+  if (form.payout_model === 'flat') {
+    if (parseFloat(form.flat_amount) > 1000) {
+      return 'This flat bonus exceeds $1,000. Are you sure this amount is correct?';
+    }
+  }
+  if (form.payout_model === 'percentage') {
+    if (parseFloat(form.percentage_rate) > 10) {
+      return 'This rate exceeds 10%. Are you sure this percentage is correct?';
+    }
+  }
+  return null;
+}
+
 // ── Main Drawer ────────────────────────────────────────────────────────────────
 export default function ScheduleBuilderDrawer({ schedule, allLabels, onSave, onClose }) {
   const isEdit = !!schedule;
@@ -734,6 +760,7 @@ export default function ScheduleBuilderDrawer({ schedule, allLabels, onSave, onC
   const [form, setForm]   = useState(() => initFormFromSchedule(schedule));
   const [saving, setSaving] = useState(false); // false | 'draft' | 'active'
   const [error, setError]   = useState(null);
+  const [pendingConfirm, setPendingConfirm] = useState(null);
 
   const TOTAL_STEPS = 5;
   const canNext = canAdvance(step, form);
@@ -835,6 +862,42 @@ export default function ScheduleBuilderDrawer({ schedule, allLabels, onSave, onC
               {error}
             </div>
           )}
+
+          {pendingConfirm && (
+            <div style={{
+              marginTop: 20, padding: '16px', borderRadius: AD.radiusMd,
+              background: AD.amberBg, border: `1px solid rgba(217,119,6,0.3)`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
+                <i className="ph ph-warning" style={{ fontSize: 18, color: AD.amberText, flexShrink: 0, marginTop: 1 }} />
+                <p style={{ margin: 0, fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+                  {pendingConfirm}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setPendingConfirm(null)}
+                  style={{
+                    flex: 1, padding: '8px 14px', borderRadius: AD.radiusMd,
+                    background: 'transparent', border: `1px solid rgba(217,119,6,0.4)`,
+                    color: AD.amberText, fontSize: 13, fontFamily: AD.fontSans, cursor: 'pointer',
+                  }}
+                >
+                  Go Back and Review
+                </button>
+                <button
+                  onClick={() => { setPendingConfirm(null); setStep(s => Math.min(TOTAL_STEPS, s + 1)); }}
+                  style={{
+                    flex: 1, padding: '8px 14px', borderRadius: AD.radiusMd,
+                    background: AD.navy, border: `1px solid rgba(255,255,255,0.15)`,
+                    color: '#fff', fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans, cursor: 'pointer',
+                  }}
+                >
+                  Yes, I'm Sure
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer nav (steps 1-4 only) */}
@@ -859,7 +922,13 @@ export default function ScheduleBuilderDrawer({ schedule, allLabels, onSave, onC
             </button>
 
             <button
-              onClick={() => setStep(s => Math.min(TOTAL_STEPS, s + 1))}
+              onClick={() => {
+                if (step === 4) {
+                  const warning = checkUnusualValues(form);
+                  if (warning) { setPendingConfirm(warning); return; }
+                }
+                setStep(s => Math.min(TOTAL_STEPS, s + 1));
+              }}
               disabled={!canNext}
               style={{
                 padding: '8px 24px', borderRadius: AD.radiusMd,
