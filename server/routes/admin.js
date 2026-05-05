@@ -266,16 +266,11 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
        `Cash out request #${req.params.id} ${status} ($${cashout.amount})`]
     );
 
-    if (status === 'approved' || status === 'paid') {
+    if (status === 'approved') {
       // SCALABLE: wrap Stripe ACH call inside this transaction before committing approved status
-      // For 'paid': ON CONFLICT DO NOTHING handles the case where announcement was already created at approval
-      if (cashout.user_id == null) {
-        await logError({ req, error: { message: `Payout announcement skipped: cashout_request #${req.params.id} has no user_id`, severity: 'INFO' } });
-      } else {
+      if (cashout.user_id != null) {
         await client.query(
-          `INSERT INTO payout_announcements (cashout_request_id, user_id)
-           VALUES ($1, $2)
-           ON CONFLICT (cashout_request_id) DO NOTHING`,
+          `INSERT INTO payout_announcements (cashout_request_id, user_id) VALUES ($1, $2)`,
           [req.params.id, cashout.user_id]
         );
       }
