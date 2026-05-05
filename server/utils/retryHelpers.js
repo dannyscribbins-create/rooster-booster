@@ -21,4 +21,12 @@ const jobberShouldRetry = (error) => {
   return false;
 };
 
-module.exports = { resendShouldRetry, twilioShouldRetry, jobberShouldRetry };
+const stripeShouldRetry = (error) => {
+  const status = error?.statusCode || error?.status;
+  if (!status) return true;
+  if (status === 429) return true;
+  if (status >= 500) return true;
+  return false;
+};
+
+module.exports = { resendShouldRetry, twilioShouldRetry, jobberShouldRetry, stripeShouldRetry };
