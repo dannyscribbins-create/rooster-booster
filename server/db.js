@@ -465,6 +465,12 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // Payouts at or above this amount require manual review
   // Nullable — null means threshold mode has not been configured
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS payout_review_threshold NUMERIC(10,2)`);
+  // Valid values: stripe_ach | check | venmo | zelle — populated on cashout request submission
+  await pool.query(`ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS payout_method VARCHAR(20)`);
+  // Links cashout back to the conversion that generated the balance; SET NULL if conversion is removed
+  await pool.query(`ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS referral_conversion_id INTEGER REFERENCES referral_conversions(id) ON DELETE SET NULL`);
+  // Which payout methods the contractor has enabled; defaults to all four
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS enabled_payout_methods TEXT[] DEFAULT ARRAY['stripe_ach','check','venmo','zelle']`);
 
   // ── CAMPAIGNS ─────────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS campaigns (

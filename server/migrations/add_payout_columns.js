@@ -13,6 +13,18 @@ const steps = [
     name: 'referral_conversions.payout_status',
     sql: `ALTER TABLE referral_conversions ADD COLUMN IF NOT EXISTS payout_status VARCHAR(20) NOT NULL DEFAULT 'pending_review'`,
   },
+  {
+    name: 'cashout_requests.payout_method',
+    sql: `ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS payout_method VARCHAR(20)`,
+  },
+  {
+    name: 'cashout_requests.referral_conversion_id',
+    sql: `ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS referral_conversion_id INTEGER REFERENCES referral_conversions(id) ON DELETE SET NULL`,
+  },
+  {
+    name: 'contractor_settings.enabled_payout_methods',
+    sql: `ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS enabled_payout_methods TEXT[] DEFAULT ARRAY['stripe_ach','check','venmo','zelle']`,
+  },
 ];
 
 async function migrate() {
