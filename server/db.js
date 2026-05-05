@@ -138,6 +138,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     contractor_id TEXT NOT NULL,
     jobber_client_id TEXT NOT NULL,
     converted_at TIMESTAMPTZ DEFAULT NOW(),
+    payout_status VARCHAR(20) NOT NULL DEFAULT 'pending_review',
     UNIQUE(user_id, jobber_client_id)
   )`);
 
@@ -206,7 +207,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     review_button_text  VARCHAR(255),
     review_message      TEXT,
     created_at          TIMESTAMP DEFAULT NOW(),
-    updated_at          TIMESTAMP DEFAULT NOW()
+    updated_at          TIMESTAMP DEFAULT NOW(),
+    payout_automation         VARCHAR(20) NOT NULL DEFAULT 'manual_all',
+    payout_review_threshold   NUMERIC(10,2)
   )`);
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS font_heading VARCHAR(100)`);
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS font_body VARCHAR(100)`);
@@ -455,6 +458,14 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE contractor_settings
     ADD COLUMN IF NOT EXISTS contractor_field_mappings JSONB DEFAULT '{}'::jsonb`);
 
+  // 'full_auto' | 'manual_all' | 'threshold' — controls payout approval flow
+  // Defaults to manual_all (safest default — no money moves without review)
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS payout_automation VARCHAR(20) NOT NULL DEFAULT 'manual_all'`);
+  // Only used when payout_automation = 'threshold'
+  // Payouts at or above this amount require manual review
+  // Nullable — null means threshold mode has not been configured
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS payout_review_threshold NUMERIC(10,2)`);
+
   // ── CAMPAIGNS ─────────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS campaigns (
     id SERIAL PRIMARY KEY,
@@ -509,6 +520,11 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE referral_conversions
     ALTER COLUMN bonus_amount TYPE NUMERIC(10,2)
     USING bonus_amount::NUMERIC(10,2)`);
+
+  // Payout lifecycle state for this conversion
+  // 'pending_review' | 'approved' | 'denied' | 'paid' | 'not_applicable'
+  // Defaults to pending_review — no payout moves without explicit approval
+  await pool.query(`ALTER TABLE referral_conversions ADD COLUMN IF NOT EXISTS payout_status VARCHAR(20) NOT NULL DEFAULT 'pending_review'`);
 
   // 1B — Referral schedules: defines payout rules per contractor
   await pool.query(`CREATE TABLE IF NOT EXISTS referral_schedules (
