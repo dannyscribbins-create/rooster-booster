@@ -94,6 +94,12 @@ export default function AdminCashOuts({ setLoggedIn }) {
         body: JSON.stringify({ status: 'approved' }),
       });
       if (approveRes.status === 401) { on401(); return; }
+      if (!approveRes.ok) {
+        const approveData = await approveRes.json().catch(() => ({}));
+        const msg = approveData.error || 'Transfer succeeded but approval failed — please approve manually.';
+        setTransferErrors(prev => ({ ...prev, [c.id]: msg }));
+        return;
+      }
       load();
     } catch {
       setTransferErrors(prev => ({ ...prev, [c.id]: 'Unexpected error during transfer' }));

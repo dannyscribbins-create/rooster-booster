@@ -208,8 +208,8 @@ export function Badge({ type, children }) {
   );
 }
 
-export function Btn({ onClick, children, variant = 'primary', size = 'md', style: extraStyle = {} }) {
-  const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: 'none', cursor: 'pointer', fontFamily: AD.fontSans, fontWeight: 500, transition: 'background 0.15s, opacity 0.15s, transform 0.15s', borderRadius: 10, whiteSpace: 'nowrap', lineHeight: 1 };
+export function Btn({ onClick, children, variant = 'primary', size = 'md', style: extraStyle = {}, disabled = false }) {
+  const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: AD.fontSans, fontWeight: 500, transition: 'background 0.15s, opacity 0.15s, transform 0.15s', borderRadius: 10, whiteSpace: 'nowrap', lineHeight: 1, opacity: disabled ? 0.5 : 1 };
   const sizes = { sm: { padding: '6px 12px', fontSize: 12 }, md: { padding: '8px 16px', fontSize: 15 }, lg: { padding: '13px 28px', fontSize: 15 } };
   const variants = {
     primary: { background: AD.navy,  color: '#fff' },
@@ -220,9 +220,9 @@ export function Btn({ onClick, children, variant = 'primary', size = 'md', style
     danger:  { background: AD.red2Bg,  color: AD.red2Text,  border: `1px solid ${AD.red2}30` },
   };
   return (
-    <button onClick={onClick} style={{ ...base, ...sizes[size], ...variants[variant], ...extraStyle }}
-      onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-      onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(0)'; }}
+    <button onClick={onClick} disabled={disabled} style={{ ...base, ...sizes[size], ...variants[variant], ...extraStyle }}
+      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'translateY(-1px)'; } }}
+      onMouseLeave={e => { if (!disabled) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(0)'; } }}
     >{children}</button>
   );
 }
