@@ -651,6 +651,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     ON CONFLICT (contractor_id, jobber_label) DO NOTHING
   `);
 
+  // job_type captured at conversion time — null for rows created before Session 49
+  await pool.query(`ALTER TABLE referral_conversions ADD COLUMN IF NOT EXISTS job_type TEXT`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');
