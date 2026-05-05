@@ -152,4 +152,48 @@ router.post('/api/admin/stripe/disconnect', async (req, res) => {
   }
 });
 
+// ── Route 5: POST /api/admin/stripe/transfer ──────────────────────────────────
+
+router.post('/api/admin/stripe/transfer', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const { cashout_request_id, amount_cents } = req.body;
+
+    if (!cashout_request_id || !amount_cents) {
+      return res.status(400).json({ error: 'cashout_request_id and amount_cents are required' });
+    }
+
+    const destinationAccountId = process.env.STRIPE_TEST_ACCOUNT_ID || null;
+
+    if (!destinationAccountId) {
+      return res.status(422).json({
+        error: 'no_destination_account',
+        message: 'Referrer does not have a connected Stripe account yet.',
+      });
+    }
+
+    const stripe = getStripeClient();
+
+    const transfer = await retryWithBackoff(
+      () => stripe.transfers.create({
+        amount: amount_cents,
+        currency: 'usd',
+        destination: destinationAccountId,
+      }),
+      { retries: 2, shouldRetry: stripeShouldRetry }
+    );
+
+    await pool.query(
+      `INSERT INTO activity_log (event_type, detail, created_at)
+       VALUES ('stripe_transfer', $1, NOW())`,
+      [`Transfer ${transfer.id} for cashout #${cashout_request_id} — $${(amount_cents / 100).toFixed(2)}`]
+    );
+
+    res.json({ success: true, transfer_id: transfer.id });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Stripe transfer failed', message: err.message });
+  }
+});
+
 module.exports = router;
