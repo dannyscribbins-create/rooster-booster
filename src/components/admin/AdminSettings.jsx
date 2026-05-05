@@ -5,6 +5,7 @@ import CompanyDetailsSettings from './CompanyDetailsSettings';
 import BrandingProfileSettings from './BrandingProfileSettings';
 import CRMSettings from './CRMSettings';
 import ReferralProgramSettings from './ReferralProgramSettings';
+import BankingSettings from './BankingSettings';
 
 const SETTINGS_NAV = [
   { id: 'company',  icon: 'ph-buildings',    label: 'Company Details'  },
@@ -228,7 +229,7 @@ function SystemSettings() {
 const SETTINGS_PAGES = {
   company:  <CompanyDetailsSettings />,
   branding: <BrandingProfileSettings />,
-  banking:  <ComingSoonCard icon="ph-bank"        label="Banking Settings" description="Connect your bank account and configure payout settings." />,
+  banking:  <BankingSettings />,
   accounts: <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
   team:     <ComingSoonCard icon="ph-users-three" label="Manage Team"      description="Add team members, manage recruitment links, and set permissions." />,
   crm:      <CRMSettings />,
