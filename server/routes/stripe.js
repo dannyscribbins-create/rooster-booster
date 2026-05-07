@@ -67,8 +67,8 @@ router.post('/api/admin/stripe/create-account-link', async (req, res) => {
     const accountLink = await retryWithBackoff(
       () => stripe.accountLinks.create({
         account: stripeAccountId,
-        refresh_url: `${frontendUrl}/admin/banking?stripe_connect=refresh`,
-        return_url: `${frontendUrl}/admin/banking?stripe_connect=success`,
+        refresh_url: `${frontendUrl}?admin=true&stripe_connect=refresh`,
+        return_url: `${frontendUrl}?admin=true&stripe_connect=success`,
         type: 'account_onboarding',
       }),
       { retries: 2, shouldRetry: stripeShouldRetry }
