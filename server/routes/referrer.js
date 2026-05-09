@@ -14,6 +14,8 @@ const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../utils/dateUtils');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
+const { sendAdminNotification } = require('../utils/notificationEmail');
+const { executeStripeTransfer } = require('../utils/stripeTransfer');
 
 const resendShouldRetry = (error) => {
   const status = error?.response?.status || error?.statusCode;
@@ -752,27 +754,147 @@ router.post('/api/cashout', cashoutLimiter, [
     if (parseFloat(amount) > available) {
       return res.status(400).json({ error: 'Requested amount exceeds your available balance' });
     }
-    await pool.query(
+    const cashoutInsert = await pool.query(
       `INSERT INTO cashout_requests (user_id,full_name,email,amount,method,payout_method,referral_conversion_id,status,requested_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',NOW())`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',NOW()) RETURNING id`,
       [userId, full_name, email, amount, method || null, payout_method, referral_conversion_id != null ? parseInt(referral_conversion_id, 10) : null]
     );
+    const newCashoutId = cashoutInsert.rows[0].id;
     await pool.query(
       `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('cashout',$1,$2,$3)`,
       [full_name, email, `Requested $${amount} via ${method || 'unknown'}`]
     );
-    await retryWithBackoff(
-      () => resend.emails.send({
-        from: 'Rooster Booster <noreply@roofmiles.com>', to: process.env.RESEND_TO_EMAIL,
-        subject: 'New Cash Out Request - Rooster Booster',
-        html: `<h2>New Cash Out Request</h2><p><strong>Name:</strong> ${full_name}</p>
-               <p><strong>Email:</strong> ${email}</p><p><strong>Amount:</strong> $${amount}</p>
-               <p><strong>Method:</strong> ${method || 'Not specified'}</p>
-               <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`,
-      }),
-      { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+    await sendAdminNotification(
+      pool,
+      'payouts',
+      'New Cash Out Request - Rooster Booster',
+      `<h2>New Cash Out Request</h2><p><strong>Name:</strong> ${full_name}</p>
+       <p><strong>Email:</strong> ${email}</p><p><strong>Amount:</strong> $${amount}</p>
+       <p><strong>Method:</strong> ${method || 'Not specified'}</p>
+       <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`
     );
-    res.json({ success: true });
+
+    // ── AUTO-FIRE CHECK ──────────────────────────────────────────────────────
+    // Read contractor payout automation setting and decide whether to auto-fire
+    // an ACH transfer or leave in queue for manual review.
+    // Only applies to stripe_ach payment method.
+    const responseData = { success: true };
+    try {
+      const settingsResult = await pool.query(
+        'SELECT payout_automation, payout_review_threshold FROM contractor_settings WHERE contractor_id = $1',
+        ['accent-roofing']
+      );
+      const settings = settingsResult.rows[0] || {};
+      const { payout_automation, payout_review_threshold } = settings;
+
+      const shouldAutoFire = (
+        payout_method === 'stripe_ach' &&
+        (
+          payout_automation === 'full_auto' ||
+          (payout_automation === 'threshold' &&
+           parseFloat(amount) < parseFloat(payout_review_threshold))
+        )
+      );
+
+      if (shouldAutoFire) {
+        try {
+          await executeStripeTransfer(pool, {
+            userId,
+            cashoutRequestId: newCashoutId,
+            bonusAmount: parseFloat(amount)
+          });
+          await pool.query(
+            'UPDATE cashout_requests SET status = $1 WHERE id = $2',
+            ['paid', newCashoutId]
+          );
+          responseData.auto_processed = true;
+        } catch (transferErr) {
+          if (transferErr.code === 'no_bank_account') {
+            await pool.query(
+              'UPDATE cashout_requests SET bank_connection_blocked_reason = $1 WHERE id = $2',
+              ['Auto-fire blocked — referrer has no bank account connected. Awaiting manual review.', newCashoutId]
+            );
+            try {
+              await retryWithBackoff(
+                () => resend.emails.send({
+                  from: 'noreply@roofmiles.com',
+                  to: email,
+                  subject: 'Action Required: Connect Your Bank to Receive Your Bonus',
+                  html: `<div style="font-family: Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #012854;">
+                    <h2 style="color: #012854;">You have a bonus waiting!</h2>
+                    <p>Great news — a cashout of <strong>$${amount}</strong> has been approved for you.</p>
+                    <p>To receive your payment, you need to connect your bank account in the app.</p>
+                    <p><strong>Once connected, your contractor will be notified to complete the transfer.</strong></p>
+                    <p style="margin-top: 24px;">
+                      <a href="${process.env.FRONTEND_URL}?section=manage-account&stripe_bank=connect"
+                         style="background: #CC0000; color: white; padding: 12px 24px;
+                                text-decoration: none; border-radius: 6px; font-weight: bold;">
+                        Connect Your Bank Account
+                      </a>
+                    </p>
+                    <p style="margin-top: 24px; font-size: 13px; color: #666;">
+                      Your banking information is encrypted and never shared with your
+                      contractor or anyone else. It is used only to deliver your
+                      earnings directly to your account.
+                    </p>
+                  </div>`
+                }),
+                { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+              );
+            } catch (referrerEmailErr) {
+              // do not crash the cashout flow on referrer email failure
+            }
+            await sendAdminNotification(
+              pool,
+              'payouts',
+              'Auto-Fire Blocked — Bank Account Not Connected',
+              `<div style="font-family: Roboto, sans-serif; max-width: 600px; margin: 0 auto; color: #012854;">
+                <h2 style="color: #CC0000;">Auto-Fire Cashout Blocked</h2>
+                <p>A cashout could not be automatically processed because the referrer
+                   has no bank account connected.</p>
+                <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
+                  <tr>
+                    <td style="padding: 8px; border: 1px solid #D3E3F0; font-weight: bold;">Referrer</td>
+                    <td style="padding: 8px; border: 1px solid #D3E3F0;">${full_name}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px; border: 1px solid #D3E3F0; font-weight: bold;">Amount</td>
+                    <td style="padding: 8px; border: 1px solid #D3E3F0;">$${amount}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px; border: 1px solid #D3E3F0; font-weight: bold;">Cashout ID</td>
+                    <td style="padding: 8px; border: 1px solid #D3E3F0;">${newCashoutId}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px; border: 1px solid #D3E3F0; font-weight: bold;">Status</td>
+                    <td style="padding: 8px; border: 1px solid #D3E3F0;">Pending — awaiting bank connection</td>
+                  </tr>
+                </table>
+                <p style="margin-top: 16px;">
+                  This cashout will remain in your queue marked as pending.
+                  Once the referrer connects their bank, you will need to manually
+                  approve the transfer from the admin cashout queue.
+                </p>
+                <p style="margin-top: 8px; font-size: 13px; color: #666;">
+                  The referrer has been automatically notified by email to connect
+                  their bank account.
+                </p>
+              </div>`
+            );
+          } else {
+            await pool.query(
+              'UPDATE cashout_requests SET bank_connection_blocked_reason = $1 WHERE id = $2',
+              ['Auto-fire attempted but Stripe transfer failed: ' + transferErr.message, newCashoutId]
+            );
+            await logError({ req, error: transferErr });
+          }
+        }
+      }
+    } catch (autoFireErr) {
+      await logError({ req, error: autoFireErr });
+    }
+
+    res.json(responseData);
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: 'Failed to save cash out request' });

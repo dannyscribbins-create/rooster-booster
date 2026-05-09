@@ -6,6 +6,7 @@ const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { stripeShouldRetry } = require('../utils/retryHelpers');
 const { encrypt, decrypt } = require('../utils/encryption');
+const { executeStripeTransfer } = require('../utils/stripeTransfer');
 
 const router = express.Router();
 const CONTRACTOR_ID = 'accent-roofing'; // MVP: pull from session at multi-contractor scale
@@ -154,50 +155,32 @@ router.post('/api/admin/stripe/disconnect', async (req, res) => {
 });
 
 // ── Route 5: POST /api/admin/stripe/transfer ──────────────────────────────────
+// TODO: Danny to remove STRIPE_TEST_ACCOUNT_ID from Railway env vars — no longer used
 
 router.post('/api/admin/stripe/transfer', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
+  const { cashoutRequestId, userId, bonusAmount } = req.body;
+  if (!cashoutRequestId || !userId || !bonusAmount) {
+    return res.status(400).json({ error: 'cashoutRequestId, userId, and bonusAmount are required' });
+  }
   try {
-    const { cashout_request_id, amount_cents } = req.body;
-
-    if (!cashout_request_id || !amount_cents) {
-      return res.status(400).json({ error: 'cashout_request_id and amount_cents are required' });
-    }
-    const amountInt = parseInt(amount_cents, 10);
-    if (!Number.isInteger(amountInt) || amountInt <= 0) {
-      return res.status(400).json({ error: 'amount_cents must be a positive integer' });
-    }
-
-    const destinationAccountId = process.env.STRIPE_TEST_ACCOUNT_ID || null;
-
-    if (!destinationAccountId) {
-      return res.status(422).json({
-        error: 'no_destination_account',
-        message: 'Referrer does not have a connected Stripe account yet.',
+    const result = await executeStripeTransfer(pool, { userId, cashoutRequestId, bonusAmount });
+    return res.json({ success: true, transferId: result.transferId });
+  } catch (err) {
+    if (err.code === 'no_bank_account') {
+      return res.status(400).json({
+        error: 'no_bank_account',
+        message: 'Referrer has no bank account connected'
       });
     }
-
-    const stripe = getStripeClient();
-
-    const transfer = await retryWithBackoff(
-      () => stripe.transfers.create({
-        amount: amountInt,
-        currency: 'usd',
-        destination: destinationAccountId,
-      }),
-      { retries: 2, shouldRetry: stripeShouldRetry }
-    );
-
-    await pool.query(
-      `INSERT INTO activity_log (event_type, detail, created_at)
-       VALUES ('stripe_transfer', $1, NOW())`,
-      [`Transfer ${transfer.id} for cashout #${cashout_request_id} — $${(amountInt / 100).toFixed(2)}`]
-    );
-
-    res.json({ success: true, transfer_id: transfer.id });
-  } catch (err) {
+    if (err.message === 'no_contractor_stripe_account') {
+      return res.status(400).json({
+        error: 'no_stripe_account',
+        message: 'Contractor Stripe account not connected'
+      });
+    }
     await logError({ req, error: err });
-    res.status(500).json({ error: 'Stripe transfer failed', message: err.message });
+    return res.status(500).json({ error: 'transfer_failed', message: err.message });
   }
 });
 
