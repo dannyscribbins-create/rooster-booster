@@ -5,6 +5,7 @@ const { verifyAdminSession } = require('../middleware/auth');
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { stripeShouldRetry } = require('../utils/retryHelpers');
+const { encrypt, decrypt } = require('../utils/encryption');
 
 const router = express.Router();
 const CONTRACTOR_ID = 'accent-roofing'; // MVP: pull from session at multi-contractor scale
@@ -197,6 +198,156 @@ router.post('/api/admin/stripe/transfer', async (req, res) => {
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: 'Stripe transfer failed', message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// REFERRER BANK CONNECTION ROUTES
+// Protected by referrer session auth (same pattern as referrer.js)
+// Sensitive values: never log payment method IDs, bank tokens,
+// Financial Connections account IDs, or decrypted values anywhere
+// ─────────────────────────────────────────────────────────────
+
+// ── Route 6: POST /api/referrer/stripe/create-financial-connections-session ───
+
+router.post('/api/referrer/stripe/create-financial-connections-session', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const user_id = sessionResult.rows[0].user_id;
+
+    const userResult = await pool.query(
+      'SELECT id, full_name, email, stripe_customer_id FROM users WHERE id = $1',
+      [user_id]
+    );
+    if (!userResult.rows.length) return res.status(404).json({ error: 'User not found' });
+    const user = userResult.rows[0];
+
+    const stripe = getStripeClient();
+    let customerId = user.stripe_customer_id;
+
+    if (!customerId) {
+      const customer = await retryWithBackoff(
+        () => stripe.customers.create({
+          name: user.full_name,
+          email: user.email,
+          metadata: { roofmiles_user_id: String(user.id), contractor_id: 'accent-roofing' }
+        }),
+        { retries: 2, shouldRetry: stripeShouldRetry }
+      );
+      customerId = customer.id;
+      await pool.query(
+        'UPDATE users SET stripe_customer_id = $1 WHERE id = $2',
+        [customerId, user_id]
+      );
+    }
+
+    const session = await retryWithBackoff(
+      () => stripe.financialConnections.sessions.create({
+        account_holder: { type: 'customer', customer: customerId },
+        filters: { countries: ['US'] },
+        permissions: ['payment_method', 'balances'],
+        return_url: process.env.FRONTEND_URL + '/profile?section=manage-account&stripe_bank=complete'
+      }),
+      { retries: 2, shouldRetry: stripeShouldRetry }
+    );
+
+    res.json({ clientSecret: session.client_secret });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to create bank connection session' });
+  }
+});
+
+// ── Route 7: POST /api/referrer/stripe/save-bank-account ─────────────────────
+
+router.post('/api/referrer/stripe/save-bank-account', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const user_id = sessionResult.rows[0].user_id;
+
+    const { financialConnectionsAccountId } = req.body;
+    if (!financialConnectionsAccountId) {
+      return res.status(400).json({ error: 'financialConnectionsAccountId is required' });
+    }
+
+    const stripe = getStripeClient();
+    const paymentMethod = await retryWithBackoff(
+      () => stripe.paymentMethods.create({
+        type: 'us_bank_account',
+        us_bank_account: { financial_connections_account: financialConnectionsAccountId }
+      }),
+      { retries: 2, shouldRetry: stripeShouldRetry }
+    );
+    const paymentMethodId = paymentMethod.id;
+    const encrypted = encrypt(paymentMethodId);
+
+    await pool.query(
+      'UPDATE users SET stripe_bank_account_token = $1 WHERE id = $2',
+      [encrypted, user_id]
+    );
+
+    const bankName = paymentMethod.us_bank_account?.bank_name || null;
+    const last4 = paymentMethod.us_bank_account?.last4 || null;
+
+    console.log('[stripe] bank account saved for user', user_id); // diagnostic log — intentional
+
+    res.json({ success: true, bankName, last4 });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to save bank account' });
+  }
+});
+
+// ── Route 8: GET /api/referrer/stripe/bank-status ────────────────────────────
+
+router.get('/api/referrer/stripe/bank-status', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const user_id = sessionResult.rows[0].user_id;
+
+    const result = await pool.query(
+      'SELECT stripe_bank_account_token FROM users WHERE id = $1',
+      [user_id]
+    );
+    if (!result.rows.length || !result.rows[0].stripe_bank_account_token) {
+      return res.json({ connected: false });
+    }
+
+    const paymentMethodId = decrypt(result.rows[0].stripe_bank_account_token);
+    const stripe = getStripeClient();
+    try {
+      const pm = await retryWithBackoff(
+        () => stripe.paymentMethods.retrieve(paymentMethodId),
+        { retries: 2, shouldRetry: stripeShouldRetry }
+      );
+      const bankName = pm.us_bank_account?.bank_name || null;
+      const last4 = pm.us_bank_account?.last4 || null;
+      return res.json({ connected: true, bankName, last4 });
+    } catch {
+      // Graceful degradation — stale/invalid token, do not crash
+      return res.json({ connected: false, stale: true });
+    }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to fetch bank status' });
   }
 });
 
