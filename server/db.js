@@ -665,7 +665,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   `);
 
   // ── REFERRER BANK ACCOUNT COLUMNS ─────────────────────────────────────────────
-  await addReferrerBankColumns();
+  await addReferrerBankColumns(pool);
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {

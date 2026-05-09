@@ -1,5 +1,3 @@
-const { pool } = require('../db');
-
 // SECURITY: stripe_bank_account_token stores AES-256-GCM ciphertext written by the application layer.
 // Never log this column's value in any console.log, error log, or Railway log output — ever.
 
@@ -19,7 +17,8 @@ const steps = [
   },
 ];
 
-async function addReferrerBankColumns() {
+async function addReferrerBankColumns(pool) {
+  if (!pool) throw new Error('addReferrerBankColumns: pool is required');
   for (const step of steps) {
     try {
       await pool.query(step.sql);
