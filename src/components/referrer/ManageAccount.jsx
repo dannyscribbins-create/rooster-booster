@@ -27,7 +27,7 @@ function Toggle({ on, onToggle, disabled }) {
   );
 }
 
-export default function ManageAccount({ userEmail, userName, onNameUpdate, onLogout }) {
+export default function ManageAccount({ userEmail, userName, onNameUpdate, onLogout, bankStatus, refreshBankStatus, autoOpen, onAutoOpenDone }) {
   const [open, setOpen]         = useState(false);
   const [tab, setTab]           = useState('personal');
   const [acct, setAcct]         = useState(null);
@@ -75,13 +75,9 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
   const [deleteLoading, setDeleteLoading]     = useState(false);
   const [deleteError, setDeleteError]         = useState('');
 
-  // ── Bank connection ────────────────────────────────────────────────────────
-  // bankStatus shape: null (loading) | { connected: false } |
-  //                   { connected: true, bankName: string, last4: string } |
-  //                   { connected: false, stale: true }
-  const [bankStatus, setBankStatus]       = useState(null);
-  const [bankLoading, setBankLoading]     = useState(false);
-  const [bankError, setBankError]         = useState(null);
+  // ── Bank connection UI state (bankStatus data comes from parent via prop) ──
+  const [bankLoading, setBankLoading]         = useState(false);
+  const [bankError, setBankError]             = useState(null);
   const [bankInterrupted, setBankInterrupted] = useState(false);
 
   // ── Load account data on first open ───────────────────────────────────────
@@ -123,11 +119,14 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
     })();
   }, [tab, open]);
 
-  // ── Fetch bank status on mount ─────────────────────────────────────────────
+  // ── Auto-open when navigated from a bank warning banner ───────────────────
   useEffect(() => {
-    fetchBankStatus();
+    if (autoOpen) {
+      setOpen(true);
+      if (onAutoOpenDone) onAutoOpenDone();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [autoOpen]);
 
   // ── Handle return from Financial Connections redirect flow ─────────────────
   useEffect(() => {
@@ -375,18 +374,6 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
 
   // ── Bank connection handlers ───────────────────────────────────────────────
 
-  async function fetchBankStatus() {
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/referrer/stripe/bank-status`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` }
-      });
-      const data = await res.json();
-      setBankStatus(data);
-    } catch {
-      setBankStatus({ connected: false });
-    }
-  }
-
   async function handleConnectBank() {
     setBankLoading(true);
     setBankError(null);
@@ -445,7 +432,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save bank account');
-      await fetchBankStatus();
+      await refreshBankStatus();
       setBankLoading(false);
     } catch {
       setBankError('Failed to save bank account. Please try again.');
@@ -475,7 +462,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
         }
         throw new Error(data.error || 'Failed to disconnect');
       }
-      await fetchBankStatus();
+      await refreshBankStatus();
       setBankLoading(false);
     } catch {
       setBankError('Failed to disconnect. Please try again.');

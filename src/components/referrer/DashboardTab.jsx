@@ -13,7 +13,7 @@ import ContractorAboutModal from './ContractorAboutModal';
 import BookingFormModal from './BookingFormModal';
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals }) {
+export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals, bankStatus, onOpenBankSetup }) {
   const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
   const progressPct = Math.min((soldCount / 7) * 100, 100);
@@ -66,10 +66,14 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
 
   function markAboutModalSeen() {
     if (!sessionToken) return;
-    fetch(`${BACKEND_URL}/api/referrer/about/seen`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${sessionToken}` },
-    }).catch(() => {});
+    (async () => {
+      try {
+        await fetch(`${BACKEND_URL}/api/referrer/about/seen`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${sessionToken}` },
+        });
+      } catch {}
+    })();
   }
 
   function handleAboutContinue() {
@@ -122,6 +126,50 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
 
   return (
     <Screen>
+      {/* Bank account warning banner */}
+      {bankStatus && !bankStatus.connected && (
+        <div style={{ padding: '12px 20px 4px' }}>
+          <div
+            onClick={onOpenBankSetup}
+            style={{
+              backgroundColor: '#1a0a00',
+              border: '1px solid #ff8c00',
+              borderRadius: 10,
+              padding: '12px 16px',
+              marginBottom: 12,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              cursor: 'pointer'
+            }}
+          >
+            <i className="ph-fill ph-warning"
+               style={{ fontSize: 20, color: '#ff8c00', flexShrink: 0 }} />
+            <div>
+              <div style={{
+                fontFamily: 'Montserrat, sans-serif',
+                fontWeight: 700,
+                fontSize: 13,
+                color: '#ff8c00',
+                marginBottom: 2
+              }}>
+                Connect Your Bank Account
+              </div>
+              <div style={{
+                fontFamily: 'Roboto, sans-serif',
+                fontSize: 12,
+                color: '#cc7700'
+              }}>
+                You won't be able to cash out until your bank is connected.
+                Tap to set up now.
+              </div>
+            </div>
+            <i className="ph ph-caret-right"
+               style={{ fontSize: 16, color: '#ff8c00', marginLeft: 'auto', flexShrink: 0 }} />
+          </div>
+        </div>
+      )}
+
       {/* Hero header — navy gradient with brand feel */}
       <div style={{
         background: `linear-gradient(145deg, ${R.navy} 0%, ${R.navyDark} 100%)`,

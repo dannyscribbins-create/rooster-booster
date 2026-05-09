@@ -123,6 +123,33 @@ export default function ReferrerApp({
   const [pendingMatch, setPendingMatch]             = useState(null);
   const [experiencePrompt, setExperiencePrompt]     = useState(null);
   const [showExperiencePopup, setShowExperiencePopup] = useState(false);
+  const [bankStatus, setBankStatus]                 = useState(null);
+  const [openManageAccount, setOpenManageAccount]   = useState(false);
+
+  async function fetchBankStatus() {
+    const token = sessionStorage.getItem('rb_token');
+    if (!token) return;
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/referrer/stripe/bank-status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await r.json();
+      setBankStatus(data);
+    } catch {
+      setBankStatus({ connected: false });
+    }
+  }
+
+  function handleOpenBankSetup() {
+    setTab('profile');
+    setOpenManageAccount(true);
+  }
+
+  // Fetch bank connection status on mount — shared across Dashboard, CashOut, ManageAccount
+  useEffect(() => {
+    fetchBankStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Check for unseen pending referral match once on mount after login
   useEffect(() => {
@@ -166,11 +193,11 @@ export default function ReferrerApp({
   }, []);
 
   const screens = {
-    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited} pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} onViewAllReferrals={() => { setTab("profile"); setHighlightReferrals(true); }} />,
-    cashout:   <CashOut pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} />,
+    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited} pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} onViewAllReferrals={() => { setTab("profile"); setHighlightReferrals(true); }} bankStatus={bankStatus} onOpenBankSetup={handleOpenBankSetup} />,
+    cashout:   <CashOut pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} bankStatus={bankStatus} setTab={setTab} onOpenBankSetup={handleOpenBankSetup} />,
     refer:     <ReferAFriendTab userName={userName} token={sessionStorage.getItem('rb_token')} />,
     rankings:  <Rankings token={sessionStorage.getItem('rb_token')} />,
-    profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} onNameUpdate={onNameUpdate} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} highlightReferrals={highlightReferrals} onResetHighlight={() => setHighlightReferrals(false)} />,
+    profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} onNameUpdate={onNameUpdate} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} highlightReferrals={highlightReferrals} onResetHighlight={() => setHighlightReferrals(false)} bankStatus={bankStatus} refreshBankStatus={fetchBankStatus} openManageAccount={openManageAccount} onResetOpenManageAccount={() => setOpenManageAccount(false)} />,
   };
 
   return (

@@ -24,7 +24,7 @@ const DETAIL_LABELS = {
 };
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
-export default function CashOut({ pipeline, loading, userName, userEmail }) {
+export default function CashOut({ pipeline, loading, userName, userEmail, bankStatus, setTab, onOpenBankSetup }) {
   const [method, setMethod] = useState(null);
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
@@ -178,6 +178,50 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
 
   return (
     <Screen>
+      {/* Bank account warning banner */}
+      {bankStatus && !bankStatus.connected && (
+        <div style={{ padding: '12px 20px 0' }}>
+          <div
+            onClick={onOpenBankSetup}
+            style={{
+              backgroundColor: '#1a0a00',
+              border: '1px solid #ff8c00',
+              borderRadius: 10,
+              padding: '12px 16px',
+              marginBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              cursor: 'pointer'
+            }}
+          >
+            <i className="ph-fill ph-warning"
+               style={{ fontSize: 20, color: '#ff8c00', flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontFamily: 'Montserrat, sans-serif',
+                fontWeight: 700,
+                fontSize: 13,
+                color: '#ff8c00',
+                marginBottom: 2
+              }}>
+                Bank Account Required
+              </div>
+              <div style={{
+                fontFamily: 'Roboto, sans-serif',
+                fontSize: 12,
+                color: '#cc7700'
+              }}>
+                Connect your bank account to initiate cashouts.
+                Tap to connect now.
+              </div>
+            </div>
+            <i className="ph ph-caret-right"
+               style={{ fontSize: 16, color: '#ff8c00', marginLeft: 'auto', flexShrink: 0 }} />
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{
         background: `linear-gradient(145deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
@@ -394,6 +438,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
                 </div>
               )}
               <button onClick={safeAsync(async () => {
+                if (!bankStatus?.connected) return;  // guard — belt and suspenders
                 setSubmitting(true);
                 setSubmitError("");
                 try {
@@ -422,20 +467,36 @@ export default function CashOut({ pipeline, loading, userName, userEmail }) {
                   setSubmitError("Connection error. Please check your connection and try again.");
                   setSubmitting(false);
                 }
-              }, 'CashOutTab')} style={{
-                width: "100%", marginTop: 4,
-                background: `linear-gradient(135deg, ${R.green} 0%, #15803d 100%)`,
-                border: "none", borderRadius: 12, padding: "16px",
-                color: "#fff", fontSize: 15, fontWeight: 700,
-                fontFamily: R.fontSans, cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                boxShadow: "0 4px 14px rgba(22,163,74,0.3)",
-              }}>
+              }, 'CashOutTab')}
+                disabled={!bankStatus?.connected}
+                style={{
+                  width: "100%", marginTop: 4,
+                  background: `linear-gradient(135deg, ${R.green} 0%, #15803d 100%)`,
+                  border: "none", borderRadius: 12, padding: "16px",
+                  color: "#fff", fontSize: 15, fontWeight: 700,
+                  fontFamily: R.fontSans,
+                  cursor: !bankStatus?.connected ? "not-allowed" : "pointer",
+                  opacity: !bankStatus?.connected ? 0.45 : 1,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  boxShadow: "0 4px 14px rgba(22,163,74,0.3)",
+                }}
+              >
                 {submitting
                   ? <><i className="ph ph-circle-notch" style={{ fontSize: 16, animation: "spin 0.8s linear infinite" }} /> Submitting...</>
                   : <><i className="ph ph-check-circle" style={{ fontSize: 17 }} /> Submit Payout Request</>
                 }
               </button>
+              {bankStatus && !bankStatus.connected && (
+                <p style={{
+                  textAlign: 'center',
+                  fontSize: 12,
+                  color: '#cc7700',
+                  marginTop: 8,
+                  fontFamily: 'Roboto, sans-serif'
+                }}>
+                  Connect your bank account to enable cashouts
+                </p>
+              )}
               <button onClick={() => { setStep(2); setSubmitError(""); }} style={{
                 width: "100%", marginTop: 10, background: "none",
                 border: `1.5px solid ${R.border}`, borderRadius: 12,

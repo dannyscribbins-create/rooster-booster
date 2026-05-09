@@ -24,7 +24,7 @@ const CHANNEL_LABEL_MAP = {
 };
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
-export default function Profile({ onLogout, pipeline, loading, userName, userEmail, onNameUpdate, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight }) {
+export default function Profile({ onLogout, pipeline, loading, userName, userEmail, onNameUpdate, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight, bankStatus, refreshBankStatus, openManageAccount, onResetOpenManageAccount }) {
   const soldCount  = pipeline.filter(p => p.status === "sold").length;
   const balance    = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
   const nextPayout = getNextPayout(soldCount);
@@ -768,6 +768,10 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             userName={userName}
             onNameUpdate={onNameUpdate}
             onLogout={onLogout}
+            bankStatus={bankStatus}
+            refreshBankStatus={refreshBankStatus}
+            autoOpen={openManageAccount}
+            onAutoOpenDone={onResetOpenManageAccount}
           />
         </AnimCard>
 
