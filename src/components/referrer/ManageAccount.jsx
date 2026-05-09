@@ -123,17 +123,20 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
 
   // ── Auto-open when navigated from a bank warning banner ───────────────────
   useEffect(() => {
-    if (autoOpen) {
-      setOpen(true);
-      if (onAutoOpenDone) onAutoOpenDone();
-      const scrollTimer = setTimeout(() => {
-        bankCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!autoOpen) return;
+    setOpen(true);
+    const scrollTimer = setTimeout(() => {
+      if (bankCardRef.current) {
+        bankCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
         setBankCardHighlighted(true);
-        const highlightTimer = setTimeout(() => setBankCardHighlighted(false), 2000);
+        const highlightTimer = setTimeout(() => {
+          setBankCardHighlighted(false);
+          if (onAutoOpenDone) onAutoOpenDone();
+        }, 2000);
         return () => clearTimeout(highlightTimer);
-      }, 350);
-      return () => clearTimeout(scrollTimer);
-    }
+      }
+    }, 600);
+    return () => clearTimeout(scrollTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpen]);
 
@@ -1025,8 +1028,8 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                     padding: '16px',
                     marginTop: 12,
                     border: bankCardHighlighted ? '2px solid #ff8c00' : '2px solid transparent',
-                    transition: 'border-color 0.3s ease',
-                    boxShadow: bankCardHighlighted ? '0 0 12px rgba(255, 140, 0, 0.4)' : 'none',
+                    boxShadow: bankCardHighlighted ? '0 0 16px rgba(255, 140, 0, 0.5)' : 'none',
+                    transition: 'border-color 0.3s ease, box-shadow 0.3s ease',
                   }}>
                     <div style={{
                       display: 'flex',
