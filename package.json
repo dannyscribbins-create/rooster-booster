@@ -5,6 +5,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1032.0",
     "@phosphor-icons/react": "^2.1.10",
+    "@stripe/stripe-js": "^9.4.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

@@ -75,16 +75,22 @@ export default function AdminCashOuts({ setLoggedIn }) {
     setTransferringId(c.id);
     setTransferErrors(prev => ({ ...prev, [c.id]: null }));
     try {
-      const amountCents = Math.round(parseFloat(c.amount) * 100);
       const transferRes = await fetch(`${BACKEND_URL}/api/admin/stripe/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
-        body: JSON.stringify({ cashout_request_id: c.id, amount_cents: amountCents }),
+        body: JSON.stringify({ cashoutRequestId: c.id, userId: c.user_id, bonusAmount: parseFloat(c.amount) }),
       });
       if (transferRes.status === 401) { on401(); return; }
       const transferData = await transferRes.json();
       if (!transferRes.ok) {
-        const msg = transferData.message || transferData.error || 'Transfer failed';
+        let msg;
+        if (transferData.error === 'no_bank_account') {
+          msg = 'This referrer has not connected a bank account yet. They have been notified — check back once they connect.';
+        } else if (transferData.error === 'no_stripe_account') {
+          msg = 'Contractor Stripe account is not connected. Go to Banking Settings to complete setup.';
+        } else {
+          msg = transferData.message || 'Transfer failed. Please try again.';
+        }
         setTransferErrors(prev => ({ ...prev, [c.id]: msg }));
         return;
       }

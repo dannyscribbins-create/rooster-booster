@@ -1,6 +1,10 @@
 // ─── Config ───────────────────────────────────────────────────────────────────
 export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:4000";
 
+// TODO: Danny to add REACT_APP_STRIPE_PUBLISHABLE_KEY to Vercel environment variables
+// Get value from Stripe Dashboard → Developers → API Keys → Publishable key
+export const STRIPE_PUBLISHABLE_KEY = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || '';
+
 // ─── Contractor Config (white-label) ──────────────────────────────────────────
 export const CONTRACTOR_CONFIG = {
   contractorId:     'accent-roofing',

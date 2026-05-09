@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { R } from '../../constants/theme';
-import { BACKEND_URL } from '../../config/contractor';
+import { BACKEND_URL, STRIPE_PUBLISHABLE_KEY } from '../../config/contractor';
 
 // Defined outside ManageAccount so it's a stable reference across renders
 function Toggle({ on, onToggle, disabled }) {
@@ -75,22 +75,32 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
   const [deleteLoading, setDeleteLoading]     = useState(false);
   const [deleteError, setDeleteError]         = useState('');
 
+  // ── Bank connection ────────────────────────────────────────────────────────
+  // bankStatus shape: null (loading) | { connected: false } |
+  //                   { connected: true, bankName: string, last4: string } |
+  //                   { connected: false, stale: true }
+  const [bankStatus, setBankStatus]       = useState(null);
+  const [bankLoading, setBankLoading]     = useState(false);
+  const [bankError, setBankError]         = useState(null);
+  const [bankInterrupted, setBankInterrupted] = useState(false);
+
   // ── Load account data on first open ───────────────────────────────────────
   useEffect(() => {
     if (!open || loaded.current) return;
     loaded.current = true;
     setAcctLoading(true);
-    fetch(`${BACKEND_URL}/api/account/me`, {
-      headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
-    })
-      .then(r => r.json())
-      .then(data => {
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/account/me`, {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+        });
+        const data = await r.json();
         setAcct(data);
         setRecoveryPhone(data.recovery_phone || '');
         setRecoveryEmail(data.recovery_email || '');
-      })
-      .catch(() => {})
-      .finally(() => setAcctLoading(false));
+      } catch {}
+      finally { setAcctLoading(false); }
+    })();
   }, [open]);
 
   // ── Load sessions on first Security tab view ───────────────────────────────
@@ -98,14 +108,45 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
     if (tab !== 'security' || !open || sessionsFetched.current) return;
     sessionsFetched.current = true;
     setSessionsLoading(true);
-    fetch(`${BACKEND_URL}/api/account/sessions`, {
-      headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
-    })
-      .then(r => r.json())
-      .then(data => setSessions(Array.isArray(data) ? data : []))
-      .catch(() => setSessions([]))
-      .finally(() => setSessionsLoading(false));
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/account/sessions`, {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+        });
+        const data = await r.json();
+        setSessions(Array.isArray(data) ? data : []);
+      } catch {
+        setSessions([]);
+      } finally {
+        setSessionsLoading(false);
+      }
+    })();
   }, [tab, open]);
+
+  // ── Fetch bank status on mount ─────────────────────────────────────────────
+  useEffect(() => {
+    fetchBankStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Handle return from Financial Connections redirect flow ─────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('stripe_bank') === 'complete') {
+      const fcAccountId = params.get('linked_account');
+      if (fcAccountId) {
+        saveBankAccount(fcAccountId);
+      } else {
+        setBankInterrupted(true);
+      }
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (params.get('stripe_bank') === 'interrupted') {
+      setBankInterrupted(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Shared helpers ─────────────────────────────────────────────────────────
   function authHeaders() {
@@ -330,6 +371,116 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
       onLogout();
     } catch { setDeleteError('Failed to delete account'); }
     finally { setDeleteLoading(false); }
+  }
+
+  // ── Bank connection handlers ───────────────────────────────────────────────
+
+  async function fetchBankStatus() {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/referrer/stripe/bank-status`, {
+        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` }
+      });
+      const data = await res.json();
+      setBankStatus(data);
+    } catch {
+      setBankStatus({ connected: false });
+    }
+  }
+
+  async function handleConnectBank() {
+    setBankLoading(true);
+    setBankError(null);
+    setBankInterrupted(false);
+    try {
+      const { loadStripe } = await import('@stripe/stripe-js');
+      const stripe = await loadStripe(STRIPE_PUBLISHABLE_KEY);
+      if (!stripe) throw new Error('Stripe failed to load');
+
+      const res = await fetch(
+        `${BACKEND_URL}/api/referrer/stripe/create-financial-connections-session`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`
+          }
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start bank connection');
+
+      const result = await stripe.collectBankAccountToken({
+        clientSecret: data.clientSecret
+      });
+
+      if (result.error) {
+        setBankInterrupted(true);
+        setBankLoading(false);
+        return;
+      }
+
+      if (result.token) {
+        await saveBankAccount(result.token.bank_account?.financial_connections_account);
+      }
+    } catch {
+      setBankError('Something went wrong. Please try again.');
+      setBankLoading(false);
+    }
+  }
+
+  async function saveBankAccount(financialConnectionsAccountId) {
+    if (!financialConnectionsAccountId) {
+      setBankInterrupted(true);
+      setBankLoading(false);
+      return;
+    }
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/referrer/stripe/save-bank-account`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`
+        },
+        body: JSON.stringify({ financialConnectionsAccountId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save bank account');
+      await fetchBankStatus();
+      setBankLoading(false);
+    } catch {
+      setBankError('Failed to save bank account. Please try again.');
+      setBankLoading(false);
+    }
+  }
+
+  async function handleDisconnectBank() {
+    setBankLoading(true);
+    setBankError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/referrer/stripe/disconnect-bank`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === 'pending_cashouts') {
+          setBankError(
+            'You have a pending cashout request. Please wait for it to be processed before disconnecting your bank account.'
+          );
+          setBankLoading(false);
+          return;
+        }
+        throw new Error(data.error || 'Failed to disconnect');
+      }
+      await fetchBankStatus();
+      setBankLoading(false);
+    } catch {
+      setBankError('Failed to disconnect. Please try again.');
+      setBankLoading(false);
+    }
   }
 
   const TAB_LABELS = { personal: 'Personal Info', security: 'Security', privacy: 'Privacy' };
@@ -868,6 +1019,157 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                   >
                     Delete Account
                   </button>
+                </div>
+
+                {/* ── Payout Method ─────────────────────────── */}
+                <div style={{ padding: '0 18px 18px' }}>
+                  <div style={{
+                    backgroundColor: R.cardBg || '#0a1f3d',
+                    borderRadius: 12,
+                    padding: '16px',
+                    marginTop: 12
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      marginBottom: 8
+                    }}>
+                      <i className="ph ph-bank" style={{ fontSize: 18, color: R.accent || '#CC0000' }} />
+                      <span style={{
+                        fontFamily: 'Montserrat, sans-serif',
+                        fontWeight: 700,
+                        fontSize: 14,
+                        color: R.textPrimary || '#fff'
+                      }}>
+                        Payout Method
+                      </span>
+                    </div>
+
+                    {/* Interrupted notice */}
+                    {bankInterrupted && (
+                      <div style={{
+                        backgroundColor: '#331a00',
+                        border: '1px solid #ff8c00',
+                        borderRadius: 8,
+                        padding: '10px 12px',
+                        marginBottom: 10,
+                        fontSize: 13,
+                        color: '#ff8c00'
+                      }}>
+                        Bank connection was interrupted. Tap below to try again.
+                      </div>
+                    )}
+
+                    {/* Error notice */}
+                    {bankError && (
+                      <div style={{
+                        backgroundColor: '#2d0a0a',
+                        border: '1px solid #CC0000',
+                        borderRadius: 8,
+                        padding: '10px 12px',
+                        marginBottom: 10,
+                        fontSize: 13,
+                        color: '#ff6b6b'
+                      }}>
+                        {bankError}
+                      </div>
+                    )}
+
+                    {/* Not connected state */}
+                    {bankStatus && !bankStatus.connected && !bankLoading && (
+                      <div>
+                        <p style={{
+                          fontSize: 13,
+                          color: R.textSecondary || '#8899aa',
+                          margin: '0 0 12px 0'
+                        }}>
+                          Connect your bank account to receive cashout payments directly.
+                          Your information is encrypted and never shared with anyone.
+                        </p>
+                        <button
+                          onClick={handleConnectBank}
+                          style={{
+                            backgroundColor: R.accent || '#CC0000',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: 8,
+                            padding: '10px 20px',
+                            fontFamily: 'Montserrat, sans-serif',
+                            fontWeight: 700,
+                            fontSize: 13,
+                            cursor: 'pointer',
+                            width: '100%'
+                          }}
+                        >
+                          Connect Bank Account
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Loading state */}
+                    {bankLoading && (
+                      <div style={{
+                        textAlign: 'center',
+                        padding: '12px 0',
+                        fontSize: 13,
+                        color: R.textSecondary || '#8899aa'
+                      }}>
+                        Connecting...
+                      </div>
+                    )}
+
+                    {/* Connected state */}
+                    {bankStatus?.connected && !bankLoading && (
+                      <div>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          marginBottom: 12
+                        }}>
+                          <i className="ph-fill ph-check-circle"
+                             style={{ fontSize: 18, color: '#22c55e' }} />
+                          <span style={{
+                            fontSize: 14,
+                            color: R.textPrimary || '#fff',
+                            fontWeight: 600
+                          }}>
+                            {bankStatus.bankName || 'Bank'} ••••{bankStatus.last4}
+                          </span>
+                        </div>
+                        <button
+                          onClick={handleDisconnectBank}
+                          style={{
+                            backgroundColor: 'transparent',
+                            color: R.textSecondary || '#8899aa',
+                            border: '1px solid #334466',
+                            borderRadius: 8,
+                            padding: '8px 16px',
+                            fontFamily: 'Roboto, sans-serif',
+                            fontSize: 12,
+                            cursor: 'pointer',
+                            width: '100%'
+                          }}
+                        >
+                          Disconnect Bank Account
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Pending notice — shown after referrer connects bank post-blocked cashout */}
+                    {bankStatus?.connected && (
+                      <div style={{
+                        marginTop: 10,
+                        fontSize: 12,
+                        color: R.textSecondary || '#8899aa',
+                        textAlign: 'center'
+                      }}>
+                        Have a pending cashout? Your contractor has been notified
+                        and will process your transfer shortly.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}

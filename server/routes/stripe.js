@@ -334,4 +334,42 @@ router.get('/api/referrer/stripe/bank-status', async (req, res) => {
   }
 });
 
+// ── Route 9: POST /api/referrer/stripe/disconnect-bank ───────────────────────
+
+router.post('/api/referrer/stripe/disconnect-bank', async (req, res) => {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'referrer']
+    );
+    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const user_id = sessionResult.rows[0].user_id;
+
+    const pendingResult = await pool.query(
+      `SELECT COUNT(*) FROM cashout_requests
+       WHERE user_id = $1 AND status IN ('pending', 'approved')`,
+      [user_id]
+    );
+    if (parseInt(pendingResult.rows[0].count) > 0) {
+      return res.status(400).json({
+        error: 'pending_cashouts',
+        message: 'Cannot disconnect bank while a cashout is pending'
+      });
+    }
+
+    // Clear only the bank token — keep stripe_customer_id so it can be reused on reconnect
+    await pool.query(
+      'UPDATE users SET stripe_bank_account_token = NULL WHERE id = $1',
+      [user_id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to disconnect bank account' });
+  }
+});
+
 module.exports = router;
