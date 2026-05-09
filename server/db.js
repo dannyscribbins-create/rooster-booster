@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 require('dotenv').config();
+const addReferrerBankColumns = require('./migrations/add_referrer_bank_columns');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -662,6 +663,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       AND s.name = 'Repair'
     ON CONFLICT (contractor_id, jobber_label) DO NOTHING
   `);
+
+  // ── REFERRER BANK ACCOUNT COLUMNS ─────────────────────────────────────────────
+  await addReferrerBankColumns();
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
