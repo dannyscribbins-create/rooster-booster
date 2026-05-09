@@ -235,7 +235,7 @@ router.get('/api/admin/referrer/:name', async (req, res) => {
 router.get('/api/admin/cashouts', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
-    const result = await pool.query('SELECT id, user_id, full_name, email, amount, method, payout_method, status, requested_at, paid_at FROM cashout_requests ORDER BY requested_at DESC');
+    const result = await pool.query('SELECT id, user_id, full_name, email, amount, method, payout_method, status, requested_at, paid_at, bank_connection_blocked_reason FROM cashout_requests ORDER BY requested_at DESC');
     res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });

@@ -79,6 +79,8 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
   const [bankLoading, setBankLoading]         = useState(false);
   const [bankError, setBankError]             = useState(null);
   const [bankInterrupted, setBankInterrupted] = useState(false);
+  const [bankCardHighlighted, setBankCardHighlighted] = useState(false);
+  const bankCardRef = useRef(null);
 
   // ── Load account data on first open ───────────────────────────────────────
   useEffect(() => {
@@ -124,6 +126,13 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
     if (autoOpen) {
       setOpen(true);
       if (onAutoOpenDone) onAutoOpenDone();
+      const scrollTimer = setTimeout(() => {
+        bankCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setBankCardHighlighted(true);
+        const highlightTimer = setTimeout(() => setBankCardHighlighted(false), 2000);
+        return () => clearTimeout(highlightTimer);
+      }, 350);
+      return () => clearTimeout(scrollTimer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpen]);
@@ -1010,11 +1019,14 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
 
                 {/* ── Payout Method ─────────────────────────── */}
                 <div style={{ padding: '0 18px 18px' }}>
-                  <div style={{
+                  <div ref={bankCardRef} style={{
                     backgroundColor: R.cardBg || '#0a1f3d',
                     borderRadius: 12,
                     padding: '16px',
-                    marginTop: 12
+                    marginTop: 12,
+                    border: bankCardHighlighted ? '2px solid #ff8c00' : '2px solid transparent',
+                    transition: 'border-color 0.3s ease',
+                    boxShadow: bankCardHighlighted ? '0 0 12px rgba(255, 140, 0, 0.4)' : 'none',
                   }}>
                     <div style={{
                       display: 'flex',

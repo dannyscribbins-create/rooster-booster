@@ -249,6 +249,40 @@ export default function AdminCashOuts({ setLoggedIn }) {
                   </div>
                 ))}
               </div>
+              {c.bank_connection_blocked_reason && (
+                <div style={{
+                  backgroundColor: '#1a0a00',
+                  border: '1px solid #ff8c00',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  margin: '10px 0',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8
+                }}>
+                  <i className="ph-fill ph-warning"
+                     style={{ fontSize: 16, color: '#ff8c00', flexShrink: 0, marginTop: 1 }} />
+                  <div>
+                    <div style={{
+                      fontFamily: 'Montserrat, sans-serif',
+                      fontWeight: 700,
+                      fontSize: 12,
+                      color: '#ff8c00',
+                      marginBottom: 3
+                    }}>
+                      Transfer Blocked
+                    </div>
+                    <div style={{
+                      fontFamily: 'Roboto, sans-serif',
+                      fontSize: 12,
+                      color: '#cc7700',
+                      lineHeight: 1.4
+                    }}>
+                      {c.bank_connection_blocked_reason}
+                    </div>
+                  </div>
+                </div>
+              )}
               {renderActions(c)}
             </div>
           ))}
