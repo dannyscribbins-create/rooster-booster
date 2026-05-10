@@ -53,6 +53,18 @@ export default function CompanyDetailsSettings() {
   const [dirty, setDirty]           = useState(false);
   const statusTimer                 = useRef(null);
 
+  const EMPTY_NOTIF = {
+    notification_email_payouts: '',
+    notification_email_general: '',
+    booking_email: '',
+  };
+
+  const [notifData, setNotifData]         = useState(EMPTY_NOTIF);
+  const [notifLoading, setNotifLoading]   = useState(true);
+  const [notifSaving, setNotifSaving]     = useState(false);
+  const [notifStatus, setNotifStatus]     = useState(null); // null | 'success' | 'error'
+  const notifTimer                        = useRef(null);
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/admin/settings`, {
@@ -74,6 +86,23 @@ export default function CompanyDetailsSettings() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/api/admin/notification-settings`, {
+      headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+    })
+      .then(r => r.json())
+      .then(d => {
+        setNotifData({
+          notification_email_payouts: d.notification_email_payouts || '',
+          notification_email_general: d.notification_email_general || '',
+          booking_email:              d.booking_email              || '',
+        });
+        setNotifLoading(false);
+      })
+      .catch(() => setNotifLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleChange(field, value) {
@@ -104,6 +133,31 @@ export default function CompanyDetailsSettings() {
         setSaveStatus('error');
         if (statusTimer.current) clearTimeout(statusTimer.current);
         statusTimer.current = setTimeout(() => setSaveStatus(null), 3000);
+      });
+  }
+
+  function handleNotifSave() {
+    setNotifSaving(true);
+    fetch(`${BACKEND_URL}/api/admin/notification-settings`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(notifData),
+    })
+      .then(r => r.json())
+      .then(d => {
+        setNotifSaving(false);
+        setNotifStatus(d.success ? 'success' : 'error');
+        if (notifTimer.current) clearTimeout(notifTimer.current);
+        notifTimer.current = setTimeout(() => setNotifStatus(null), 3000);
+      })
+      .catch(() => {
+        setNotifSaving(false);
+        setNotifStatus('error');
+        if (notifTimer.current) clearTimeout(notifTimer.current);
+        notifTimer.current = setTimeout(() => setNotifStatus(null), 3000);
       });
   }
 
@@ -205,6 +259,90 @@ export default function CompanyDetailsSettings() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── Section 3: Notification Settings ── */}
+      <div style={{
+        background: AD.bgSurface, border: `1px solid ${AD.border}`,
+        borderRadius: AD.radiusLg, padding: 32, marginBottom: 20,
+      }}>
+        <SectionHeading>Notification Settings</SectionHeading>
+        {notifLoading ? (
+          <div style={{ color: AD.textSecondary, fontSize: 14 }}>Loading…</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            <div>
+              <SettingsInput
+                label="Payout Notifications Email"
+                value={notifData.notification_email_payouts}
+                onChange={v => setNotifData(prev => ({ ...prev, notification_email_payouts: v }))}
+                placeholder="Leave blank to use your company email"
+                type="email"
+              />
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: AD.textTertiary }}>
+                Cashout requests and ACH transfer alerts are sent here.
+              </p>
+            </div>
+
+            <div>
+              <SettingsInput
+                label="General Notifications Email"
+                value={notifData.notification_email_general}
+                onChange={v => setNotifData(prev => ({ ...prev, notification_email_general: v }))}
+                placeholder="Leave blank to use your company email"
+                type="email"
+              />
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: AD.textTertiary }}>
+                New referrer signups, account alerts, and general platform notifications are sent here.
+              </p>
+            </div>
+
+            <div>
+              <SettingsInput
+                label="Booking Notifications Email"
+                value={notifData.booking_email}
+                onChange={v => setNotifData(prev => ({ ...prev, booking_email: v }))}
+                placeholder="Leave blank to use your company email"
+                type="email"
+              />
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: AD.textTertiary }}>
+                Booking form submissions from referrers are sent here.
+              </p>
+            </div>
+
+            <p style={{ margin: 0, fontSize: 11, color: AD.textTertiary, fontStyle: 'italic' }}>
+              All notification emails fall back to your Company Email above if left blank.
+            </p>
+
+            {/* Notification save row */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+              {notifStatus === 'success' && (
+                <span style={{ fontSize: 13, color: AD.greenText, fontFamily: AD.fontSans }}>✓ Saved</span>
+              )}
+              {notifStatus === 'error' && (
+                <span style={{ fontSize: 13, color: AD.red2Text, fontFamily: AD.fontSans }}>Save failed — try again</span>
+              )}
+              <button
+                onClick={handleNotifSave}
+                disabled={notifSaving}
+                style={{
+                  padding: '9px 24px', borderRadius: AD.radiusMd, border: 'none',
+                  cursor: notifSaving ? 'not-allowed' : 'pointer',
+                  background: '#CC0000', color: '#fff',
+                  fontFamily: AD.fontSans, fontSize: 14, fontWeight: 500,
+                  opacity: notifSaving ? 0.45 : 1,
+                  transition: 'opacity 0.15s',
+                }}
+                onMouseEnter={e => { if (!notifSaving) e.currentTarget.style.opacity = '0.85'; }}
+                onMouseLeave={e => { if (!notifSaving) e.currentTarget.style.opacity = '1'; }}
+              >
+                {notifSaving ? 'Saving…' : 'Save Notification Settings'}
+              </button>
+            </div>
+
+          </div>
+        )}
       </div>
 
       {/* ── Save row ── */}

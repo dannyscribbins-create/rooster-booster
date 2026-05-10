@@ -51,7 +51,6 @@ export default function AdminAboutUs({ setLoggedIn }) {
 
   // Booking fields
   const [bookingEnabled, setBookingEnabled] = useState(false);
-  const [bookingEmail, setBookingEmail]     = useState('');
 
   // Save states
   const [savingAbout, setSavingAbout]           = useState(false);
@@ -82,7 +81,6 @@ export default function AdminAboutUs({ setLoggedIn }) {
                        : { id: award.id, enabled: false, years: [] };
         }));
         setBookingEnabled(d.booking_enabled ?? false);
-        setBookingEmail(d.booking_email || '');
         setLoading(false);
       })
       .catch(() => { setLoadError('Failed to load settings.'); setLoading(false); });
@@ -98,7 +96,7 @@ export default function AdminAboutUs({ setLoggedIn }) {
       service_area: serviceArea || null,
       google_place_id: googlePlaceId || null,
       certifications: certifications.filter(c => c.enabled),
-      booking_email: bookingEmail || null,
+      booking_email: null,
     };
   }
 
@@ -517,25 +515,6 @@ export default function AdminAboutUs({ setLoggedIn }) {
             transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
           }} />
         </button>
-      </div>
-
-      {/* Booking email */}
-      <div style={sectionCard}>
-        <div style={fieldWrap}>
-          <label style={labelStyle}>Booking Notification Email</label>
-          <input
-            type="text"
-            value={bookingEmail}
-            onChange={e => setBookingEmail(e.target.value)}
-            placeholder="Leave blank to use your default notification email"
-            style={inputStyle}
-            onFocus={e => e.target.style.borderColor = AD.blueLight}
-            onBlur={e => e.target.style.borderColor = AD.borderStrong}
-          />
-          <p style={helperStyle}>
-            Booking form submissions will be emailed here. Leave blank to use your default notification email.
-          </p>
-        </div>
       </div>
 
       {/* Save Booking */}

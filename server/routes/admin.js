@@ -769,6 +769,78 @@ router.put('/api/admin/settings', async (req, res) => {
   }
 });
 
+// ── ADMIN: NOTIFICATION SETTINGS ─────────────────────────────────────────────
+router.get('/api/admin/notification-settings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  try {
+    const [settingsResult, aboutResult] = await Promise.all([
+      pool.query(
+        `SELECT notification_email_payouts, notification_email_general
+         FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+        [contractorId]
+      ),
+      pool.query(
+        `SELECT booking_email FROM contractor_about WHERE contractor_id = $1 LIMIT 1`,
+        [contractorId]
+      ),
+    ]);
+    res.json({
+      notification_email_payouts:  settingsResult.rows[0]?.notification_email_payouts  || null,
+      notification_email_general:  settingsResult.rows[0]?.notification_email_general  || null,
+      booking_email:               aboutResult.rows[0]?.booking_email                  || null,
+    });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/api/admin/notification-settings', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const { notification_email_payouts, notification_email_general, booking_email } = req.body;
+
+  // Basic email validation — allow null/empty (clears the field), reject malformed strings
+  const emailFields = { notification_email_payouts, notification_email_general, booking_email };
+  for (const [field, value] of Object.entries(emailFields)) {
+    if (value && typeof value === 'string' && value.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(value.trim())) {
+        return res.status(400).json({ error: `Invalid email address for ${field}` });
+      }
+    }
+  }
+
+  const payouts  = notification_email_payouts?.trim()  || null;
+  const general  = notification_email_general?.trim()  || null;
+  const booking  = booking_email?.trim()               || null;
+
+  try {
+    await Promise.all([
+      pool.query(
+        `INSERT INTO contractor_settings (contractor_id, notification_email_payouts, notification_email_general)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (contractor_id) DO UPDATE SET
+           notification_email_payouts = EXCLUDED.notification_email_payouts,
+           notification_email_general = EXCLUDED.notification_email_general,
+           updated_at = NOW()`,
+        [contractorId, payouts, general]
+      ),
+      pool.query(
+        `INSERT INTO contractor_about (contractor_id, booking_email)
+         VALUES ($1, $2)
+         ON CONFLICT (contractor_id) DO UPDATE SET booking_email = EXCLUDED.booking_email`,
+        [contractorId, booking]
+      ),
+    ]);
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── ADMIN: PAYOUT AUTOMATION SETTINGS ────────────────────────────────────────
 router.get('/api/admin/payout-automation', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
