@@ -4,32 +4,81 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 /**
- * Sends an admin notification email to the contractor's configured address.
- * Falls back to platform default if no contractor email is configured.
- * @param {object} pool - DB pool for looking up contractor email
- * @param {string} type - 'payouts' or 'general'
+ * Resolves the recipient email for a given notification type.
+ * Fallback chain:
+ *   payouts:  notification_email_payouts → company_email → admin1@roofmiles.com
+ *   general:  notification_email_general → company_email → admin1@roofmiles.com
+ *   booking:  booking_email (contractor_about) → company_email (contractor_settings) → admin1@roofmiles.com
+ *
+ * @param {object} pool - DB pool
+ * @param {string} type - 'payouts' | 'general' | 'booking'
+ * @returns {Promise<string>} resolved recipient email
+ */
+async function resolveNotificationRecipient(pool, type) {
+  const PLATFORM_DEFAULT = 'admin1@roofmiles.com';
+  const contractorId = 'accent-roofing';
+
+  try {
+    // For booking type: check contractor_about.booking_email first
+    if (type === 'booking') {
+      const aboutResult = await pool.query(
+        `SELECT booking_email FROM contractor_about WHERE contractor_id = $1 LIMIT 1`,
+        [contractorId]
+      );
+      const bookingEmail = aboutResult.rows[0]?.booking_email || null;
+      if (bookingEmail) return bookingEmail;
+    }
+
+    // For payouts/general: check the specific column in contractor_settings
+    // Also always fetch company_email as the fallback in the same query
+    const column = type === 'payouts'
+      ? 'notification_email_payouts'
+      : type === 'general'
+        ? 'notification_email_general'
+        : null; // booking type skips this block
+
+    if (column) {
+      const result = await pool.query(
+        `SELECT ${column}, company_email FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+        [contractorId]
+      );
+      const specificEmail = result.rows[0]?.[column] || null;
+      if (specificEmail) return specificEmail;
+
+      const companyEmail = result.rows[0]?.company_email || null;
+      if (companyEmail) return companyEmail;
+    } else {
+      // booking type: specific check done above, now check company_email fallback
+      const result = await pool.query(
+        `SELECT company_email FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+        [contractorId]
+      );
+      const companyEmail = result.rows[0]?.company_email || null;
+      if (companyEmail) return companyEmail;
+    }
+
+    console.warn(
+      `[notificationEmail] No ${type} notification email configured for contractor ${contractorId}. ` +
+      `Falling back to platform default: ${PLATFORM_DEFAULT}`
+    );
+    return PLATFORM_DEFAULT;
+
+  } catch (err) {
+    console.error('[notificationEmail] Error resolving recipient:', err.message);
+    return PLATFORM_DEFAULT;
+  }
+}
+
+/**
+ * Sends an admin notification email to the resolved recipient for this notification type.
+ * @param {object} pool - DB pool
+ * @param {string} type - 'payouts' | 'general' | 'booking'
  * @param {string} subject - Email subject line
  * @param {string} html - Email HTML body
  */
 async function sendAdminNotification(pool, type, subject, html) {
   try {
-    const column = type === 'payouts'
-      ? 'notification_email_payouts'
-      : 'notification_email_general';
-
-    const result = await pool.query(
-      `SELECT ${column} FROM contractor_settings WHERE contractor_id = 'accent-roofing'`
-    );
-
-    let recipient = result.rows[0]?.[column] || null;
-
-    if (!recipient) {
-      console.warn(
-        `[notificationEmail] No ${type} notification email configured for contractor accent-roofing. ` +
-        'Falling back to platform default: admin1@roofmiles.com'
-      );
-      recipient = 'admin1@roofmiles.com';
-    }
+    const recipient = await resolveNotificationRecipient(pool, type);
 
     await resend.emails.send({
       from: 'noreply@roofmiles.com',
@@ -46,4 +95,4 @@ async function sendAdminNotification(pool, type, subject, html) {
   }
 }
 
-module.exports = { sendAdminNotification };
+module.exports = { sendAdminNotification, resolveNotificationRecipient };
