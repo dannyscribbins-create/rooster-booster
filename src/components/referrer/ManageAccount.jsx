@@ -412,6 +412,11 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
         clientSecret: data.clientSecret
       });
 
+      console.log('[stripe-debug] full result:', JSON.stringify(result)); // diagnostic log — intentional
+      console.log('[stripe-debug] result.token:', result?.token); // diagnostic log — intentional
+      console.log('[stripe-debug] bank_account:', result?.token?.bank_account); // diagnostic log — intentional
+      console.log('[stripe-debug] fc_account:', result?.token?.bank_account?.financial_connections_account); // diagnostic log — intentional
+
       if (result.error) {
         setBankInterrupted(true);
         setBankLoading(false);
