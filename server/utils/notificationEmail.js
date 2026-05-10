@@ -2,6 +2,9 @@
 
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
+const { retryWithBackoff } = require('./retryWithBackoff');
+const { resendShouldRetry } = require('./retryHelpers');
+const { logError } = require('../middleware/errorLogger');
 
 /**
  * Resolves the recipient email for a given notification type.
@@ -80,17 +83,21 @@ async function sendAdminNotification(pool, type, subject, html) {
   try {
     const recipient = await resolveNotificationRecipient(pool, type);
 
-    await resend.emails.send({
-      from: 'noreply@roofmiles.com',
-      to: recipient,
-      subject,
-      html
-    });
+    await retryWithBackoff(
+      () => resend.emails.send({
+        from: 'noreply@roofmiles.com',
+        to: recipient,
+        subject,
+        html
+      }),
+      { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+    );
 
     console.log(`[notificationEmail] ${type} notification sent to ${recipient}`);
   } catch (err) {
     // Log but do not throw — a failed notification email must never
     // crash the cashout flow or block the referrer's experience
+    await logError({ req: null, error: err, source: 'sendAdminNotification' });
     console.error('[notificationEmail] Failed to send admin notification:', err.message);
   }
 }
