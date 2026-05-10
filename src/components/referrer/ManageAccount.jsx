@@ -408,14 +408,9 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to start bank connection');
 
-      const result = await stripe.collectBankAccountToken({
+      const result = await stripe.collectFinancialConnectionsAccounts({
         clientSecret: data.clientSecret
       });
-
-      console.log('[stripe-debug] full result:', JSON.stringify(result)); // diagnostic log — intentional
-      console.log('[stripe-debug] result.token:', result?.token); // diagnostic log — intentional
-      console.log('[stripe-debug] bank_account:', result?.token?.bank_account); // diagnostic log — intentional
-      console.log('[stripe-debug] fc_account:', result?.token?.bank_account?.financial_connections_account); // diagnostic log — intentional
 
       if (result.error) {
         setBankInterrupted(true);
@@ -423,8 +418,12 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
         return;
       }
 
-      if (result.token) {
-        await saveBankAccount(result.token.bank_account?.financial_connections_account);
+      const accounts = result.financialConnectionsSession?.accounts;
+      if (accounts && accounts.length > 0) {
+        await saveBankAccount(accounts[0].id);
+      } else {
+        setBankInterrupted(true);
+        setBankLoading(false);
       }
     } catch {
       setBankError('Something went wrong. Please try again.');
