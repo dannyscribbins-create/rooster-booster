@@ -370,6 +370,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         try {
           invoiceWithJobs = await fetchInvoiceWithJobs(invoiceId, token);
         } catch (err) {
+          await logError({ req, error: err, source: 'POST /webhooks/jobber/invoice-paid — fetchInvoiceWithJobs' });
           console.warn(`[invoice-paid] fetchInvoiceWithJobs failed for invoice ${invoiceId}:`, err.message);
           // Non-fatal — referral engine will be skipped, experience flow continues
         }
@@ -496,6 +497,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                 ['invoice_paid_experience_trigger', detail]
               );
             } catch (logErr) {
+              await logError({ req, error: logErr, source: 'POST /webhooks/jobber/invoice-paid — activity_log insert' });
               console.error('[invoice-paid] activity log failed:', logErr.message);
             }
           }

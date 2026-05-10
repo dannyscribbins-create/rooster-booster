@@ -610,6 +610,7 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
           return res.json({ pipeline, balance: totalBalance, paidCount, stale: true, stale_since: maxSyncedAt });
         }
       } catch (cacheErr) {
+        await logError({ req, error: cacheErr, source: 'GET /api/pipeline' });
         console.error('[pipeline] Stale cache fallback also failed:', cacheErr.message);
       }
     }
@@ -837,6 +838,7 @@ router.post('/api/cashout', cashoutLimiter, [
                 { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
               );
             } catch (referrerEmailErr) {
+              await logError({ req, error: referrerEmailErr, source: 'POST /api/cashout' });
               // do not crash the cashout flow on referrer email failure
             }
             await sendAdminNotification(
@@ -1193,6 +1195,7 @@ router.get('/api/referrer/about', async (req, res) => {
           }
         }
       } catch (e) {
+        await logError({ req, error: e, source: 'GET /api/referrer/about' });
         console.error('Google Places API error:', e.message);
       }
     }

@@ -4,6 +4,7 @@ const router = express.Router();
 const axios = require('axios');
 const { pool } = require('../db');
 const { setAccessToken, discoverJobberFields } = require('../crm/jobber');
+const { logError } = require('../middleware/errorLogger');
 
 // ── JOBBER OAUTH ──────────────────────────────────────────────────────────────
 router.get('/auth/jobber', (req, res) => {
@@ -48,6 +49,7 @@ router.get('/callback', async (req, res) => {
         crmAccountName = accountRes.data.data.account.name;
       }
     } catch (accountErr) {
+      await logError({ req, error: accountErr, source: 'GET /callback — Jobber account name fetch' });
       console.warn('Could not fetch Jobber account name:', accountErr.message);
     }
 
@@ -72,7 +74,10 @@ router.get('/callback', async (req, res) => {
     // Redirect to admin CRM settings page
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     res.redirect(`${frontendUrl}?admin=true&section=crm`);
-  } catch (err) { res.status(500).send('Authorization failed: ' + err.message); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /callback' });
+    res.status(500).send('Authorization failed. Please try again.');
+  }
 });
 
 module.exports = router;
