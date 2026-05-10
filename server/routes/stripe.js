@@ -265,11 +265,19 @@ router.post('/api/referrer/stripe/save-bank-account', async (req, res) => {
       return res.status(400).json({ error: 'financialConnectionsAccountId is required' });
     }
 
+    const userResult = await pool.query(
+      'SELECT stripe_bank_account_token, full_name FROM users WHERE id = $1',
+      [user_id]
+    );
+    if (!userResult.rows.length) return res.status(404).json({ error: 'User not found' });
+    const userRow = userResult.rows[0];
+
     const stripe = getStripeClient();
     const paymentMethod = await retryWithBackoff(
       () => stripe.paymentMethods.create({
         type: 'us_bank_account',
-        us_bank_account: { financial_connections_account: financialConnectionsAccountId }
+        us_bank_account: { financial_connections_account: financialConnectionsAccountId },
+        billing_details: { name: userRow.full_name }
       }),
       { retries: 2, shouldRetry: stripeShouldRetry }
     );
