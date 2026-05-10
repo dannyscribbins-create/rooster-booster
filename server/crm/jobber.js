@@ -18,7 +18,7 @@ function setAccessToken(token) { accessToken = token; }
 // (single-contractor pattern). Once all callers go through getCRMAdapter(), replace with
 // a contractorId-aware version and remove this function.
 async function refreshTokenIfNeeded() {
-  const result = await pool.query('SELECT * FROM tokens WHERE id = 1');
+  const result = await pool.query('SELECT refresh_token, expires_at FROM tokens WHERE id = 1');
   if (result.rows.length === 0) throw new Error('No token - visit /auth/jobber');
   const { refresh_token, expires_at } = result.rows[0];
   const fiveMin = new Date(Date.now() + 5 * 60 * 1000);

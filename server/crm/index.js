@@ -10,7 +10,7 @@ const { pool } = require('../db');
 // Throws if no CRM is connected for the contractorId.
 async function getCRMAdapter(contractorId) {
   const settingsResult = await pool.query(
-    'SELECT * FROM contractor_crm_settings WHERE contractor_id = $1',
+    'SELECT crm_type, connection_method, referrer_field_name, stage_map, api_key, referral_start_date, connected_at, is_connected FROM contractor_crm_settings WHERE contractor_id = $1',
     [contractorId]
   );
 
