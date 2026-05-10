@@ -14,8 +14,9 @@ const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../utils/dateUtils');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-const { sendAdminNotification } = require('../utils/notificationEmail');
+const { sendAdminNotification, resolveNotificationRecipient } = require('../utils/notificationEmail');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
+const { verifyReferrerSession } = require('../middleware/auth');
 
 const resendShouldRetry = (error) => {
   const status = error?.response?.status || error?.statusCode;
@@ -23,6 +24,16 @@ const resendShouldRetry = (error) => {
   if (status >= 500) return true; // Resend server error — retry
   return false;               // 4xx (bad address, invalid key) — do not retry
 };
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 const clientErrorLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -1274,37 +1285,28 @@ router.post('/api/referrer/booking', bookingLimiter, [
   if (!errors.isEmpty()) {
     return res.status(422).json({ errors: errors.array() });
   }
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
+  const session = await verifyReferrerSession(req, res);
+  if (!session) return;
+  const { userId } = session;
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
-
     const { name, phone, email, address, notes } = req.body;
     if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required' });
 
     await pool.query('UPDATE users SET booking_submitted = true WHERE id = $1', [userId]);
 
-    const aboutResult = await pool.query(
-      "SELECT booking_email FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1"
-    );
-    const toEmail = aboutResult.rows[0]?.booking_email || process.env.RESEND_TO_EMAIL;
+    const toEmail = await resolveNotificationRecipient(pool, 'booking');
 
     await retryWithBackoff(
       () => resend.emails.send({
         from: 'Rooster Booster <noreply@roofmiles.com>',
         to: toEmail,
-        subject: `New Inspection Booking Request — ${name}`,
+        subject: `New Inspection Booking Request — ${escapeHtml(name)}`,
         html: `<h2>New Inspection Booking Request</h2>
-               <p><strong>Name:</strong> ${name}</p>
-               <p><strong>Phone:</strong> ${phone}</p>
-               ${email ? `<p><strong>Email:</strong> ${email}</p>` : ''}
-               ${address ? `<p><strong>Address:</strong> ${address}</p>` : ''}
-               ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
+               <p><strong>Name:</strong> ${escapeHtml(name)}</p>
+               <p><strong>Phone:</strong> ${escapeHtml(phone)}</p>
+               ${email ? `<p><strong>Email:</strong> ${escapeHtml(email)}</p>` : ''}
+               ${address ? `<p><strong>Address:</strong> ${escapeHtml(address)}</p>` : ''}
+               ${notes ? `<p><strong>Notes:</strong> ${escapeHtml(notes)}</p>` : ''}
                <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`,
       }),
       { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
