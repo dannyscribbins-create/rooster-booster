@@ -7,6 +7,9 @@ const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
+const { resendShouldRetry } = require('../utils/retryHelpers');
+const { logError } = require('../middleware/errorLogger');
+const { sendAdminNotification } = require('../utils/notificationEmail');
 
 const twilioShouldRetry = (error) => {
   const code = error?.code;
@@ -48,6 +51,16 @@ async function verifyReferrerSession(req, res) {
   }
 
   return { userId, sessionId, token };
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // ── GET /api/account/me ───────────────────────────────────────────────────────
@@ -405,36 +418,43 @@ router.delete('/me', async (req, res) => {
     // TODO: cron job to permanently purge users where deleted_at < NOW() - INTERVAL '30 days'
 
     // Confirmation to user
-    await resend.emails.send({
-      from: 'Rooster Booster <noreply@roofmiles.com>',
-      to: email,
-      subject: 'Your account has been scheduled for deletion',
-      html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
-          <h2 style="color:#012854;margin:0 0 8px;">Account deletion requested</h2>
-          <p style="color:#444;margin:0 0 16px;line-height:1.6;">
-            Hi ${full_name}, we've received your request to delete your Rooster Booster account.
-          </p>
-          <p style="color:#444;margin:0 0 16px;line-height:1.6;">
-            Your account will be permanently deleted in 30 days. If you change your mind, contact us before then.
-          </p>
-          <p style="color:#888;font-size:13px;margin:0;">If you didn't request this, contact us immediately at hello@roofmiles.com.</p>
-        </div>
-      `,
-    }).catch(() => {}); // non-blocking
+    try {
+      await retryWithBackoff(
+        () => resend.emails.send({
+          from: 'Rooster Booster <noreply@roofmiles.com>',
+          to: email,
+          subject: 'Your account has been scheduled for deletion',
+          html: `
+            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
+              <h2 style="color:#012854;margin:0 0 8px;">Account deletion requested</h2>
+              <p style="color:#444;margin:0 0 16px;line-height:1.6;">
+                Hi ${escapeHtml(full_name)}, we've received your request to delete your Rooster Booster account.
+              </p>
+              <p style="color:#444;margin:0 0 16px;line-height:1.6;">
+                Your account will be permanently deleted in 30 days. If you change your mind, contact us before then.
+              </p>
+              <p style="color:#888;font-size:13px;margin:0;">If you didn't request this, contact us immediately at hello@roofmiles.com.</p>
+            </div>
+          `,
+        }),
+        { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+      );
+    } catch (emailErr) {
+      await logError({ req, error: emailErr });
+    }
 
     // Admin notification
-    await resend.emails.send({
-      from: 'Rooster Booster <noreply@roofmiles.com>',
-      to: 'hello@roofmiles.com',
-      subject: `Account deletion requested — ${full_name}`,
-      html: `
-        <p><strong>Name:</strong> ${full_name}</p>
-        <p><strong>Email:</strong> ${email}</p>
+    await sendAdminNotification(
+      pool,
+      'general',
+      `Account deletion requested — ${escapeHtml(full_name)}`,
+      `
+        <p><strong>Name:</strong> ${escapeHtml(full_name)}</p>
+        <p><strong>Email:</strong> ${escapeHtml(email)}</p>
         <p><strong>Requested at:</strong> ${new Date().toLocaleString()}</p>
         <p>Account will be purged in 30 days unless the cron job is implemented.</p>
-      `,
-    }).catch(() => {}); // non-blocking
+      `
+    );
 
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
