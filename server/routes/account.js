@@ -54,7 +54,10 @@ router.get('/me', async (req, res) => {
       recovery_phone: u.recovery_phone || null,
       recovery_email: u.recovery_email || null,
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/account/me' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── PUT /api/account/name ─────────────────────────────────────────────────────
@@ -68,7 +71,10 @@ router.put('/name', async (req, res) => {
 
     await pool.query('UPDATE users SET full_name=$1 WHERE id=$2', [name.trim(), session.userId]);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'PUT /api/account/name' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/account/send-phone-verification ─────────────────────────────────
@@ -101,7 +107,10 @@ router.post('/send-phone-verification', async (req, res) => {
     );
 
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/account/send-phone-verification' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/account/verify-phone ────────────────────────────────────────────
@@ -128,7 +137,10 @@ router.post('/verify-phone', async (req, res) => {
     );
 
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/account/verify-phone' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/account/send-email-verification ─────────────────────────────────
@@ -196,7 +208,10 @@ router.post('/verify-email', async (req, res) => {
     await pool.query('UPDATE users SET email_verified=true WHERE id=$1', [session.userId]);
 
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/account/verify-email' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/account/totp/setup ──────────────────────────────────────────────
@@ -217,7 +232,10 @@ router.post('/totp/setup', async (req, res) => {
     const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
 
     res.json({ secret: secret.base32, qrCodeUrl });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/account/totp/setup' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/account/totp/confirm ────────────────────────────────────────────
@@ -242,7 +260,10 @@ router.post('/totp/confirm', async (req, res) => {
       [secret, session.userId]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/account/totp/confirm' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/account/totp/disable ────────────────────────────────────────────
@@ -256,7 +277,10 @@ router.post('/totp/disable', async (req, res) => {
       [session.userId]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/account/totp/disable' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/account/totp/reset ─────────────────────────────────────────────
@@ -270,7 +294,10 @@ router.post('/totp/reset', async (req, res) => {
       [session.userId]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/account/totp/reset' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── PUT /api/account/sms-2fa ──────────────────────────────────────────────────
@@ -291,7 +318,10 @@ router.put('/sms-2fa', async (req, res) => {
 
     await pool.query('UPDATE users SET sms_2fa_enabled=$1 WHERE id=$2', [enabled, session.userId]);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'PUT /api/account/sms-2fa' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── PUT /api/account/recovery ─────────────────────────────────────────────────
@@ -306,7 +336,10 @@ router.put('/recovery', async (req, res) => {
       [recovery_phone || null, recovery_email || null, session.userId]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'PUT /api/account/recovery' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── GET /api/account/sessions ─────────────────────────────────────────────────
@@ -330,7 +363,10 @@ router.get('/sessions', async (req, res) => {
     }));
 
     res.json(sessions);
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/account/sessions' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/account/sessions/sign-out-others ────────────────────────────────
@@ -344,7 +380,10 @@ router.post('/sessions/sign-out-others', async (req, res) => {
       [session.userId, session.sessionId]
     );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/account/sessions/sign-out-others' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── DELETE /api/account/me ────────────────────────────────────────────────────

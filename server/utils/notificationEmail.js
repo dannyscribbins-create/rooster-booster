@@ -93,7 +93,7 @@ async function sendAdminNotification(pool, type, subject, html) {
       { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
     );
 
-    console.log(`[notificationEmail] ${type} notification sent to ${recipient}`);
+    console.log(`[notificationEmail] ${type} notification sent to ${recipient}`); // diagnostic log — intentional
   } catch (err) {
     // Log but do not throw — a failed notification email must never
     // crash the cashout flow or block the referrer's experience
