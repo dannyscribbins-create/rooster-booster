@@ -14,16 +14,10 @@ const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../utils/dateUtils');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
+const { resendShouldRetry } = require('../utils/retryHelpers');
 const { sendAdminNotification, resolveNotificationRecipient } = require('../utils/notificationEmail');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { verifyReferrerSession } = require('../middleware/auth');
-
-const resendShouldRetry = (error) => {
-  const status = error?.response?.status || error?.statusCode;
-  if (!status) return true;   // network error — retry
-  if (status >= 500) return true; // Resend server error — retry
-  return false;               // 4xx (bad address, invalid key) — do not retry
-};
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -439,14 +433,9 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
   let referrerName;
   let userId;
   try {
-    const token = req.headers['authorization']?.replace('Bearer ', '');
-    if (!token) return res.status(401).json({ error: 'Not authorized' });
-    const sessionResult = await pool.query(
-      'SELECT * FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    userId = session.userId;
     const userNameResult = await pool.query('SELECT full_name FROM users WHERE id=$1', [userId]);
     if (!userNameResult.rows[0]?.full_name) return res.status(404).json({ error: 'User not found' });
     referrerName = userNameResult.rows[0].full_name;
@@ -734,13 +723,8 @@ router.post('/api/cashout', cashoutLimiter, [
   if (!errors.isEmpty()) {
     return res.status(422).json({ errors: errors.array() });
   }
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
-  const sessionResult = await pool.query(
-    'SELECT * FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-    [token, 'referrer']
-  );
-  if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+  const session = await verifyReferrerSession(req, res);
+  if (!session) return;
   const { amount, method, payout_method, referral_conversion_id } = req.body;
   if (parseFloat(amount) < 20) {
     return res.status(400).json({ error: 'Minimum cashout amount is $20' });
@@ -753,7 +737,7 @@ router.post('/api/cashout', cashoutLimiter, [
     return res.status(400).json({ error: 'referral_conversion_id must be an integer' });
   }
   try {
-    const userId = sessionResult.rows[0].user_id;
+    const userId = session.userId;
     const userResult = await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const { full_name, email } = userResult.rows[0];
@@ -914,15 +898,10 @@ router.post('/api/cashout', cashoutLimiter, [
 
 // ── REFERRER: GET PROFILE PHOTO ───────────────────────────────────────────────
 router.get('/api/profile/photo', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
     const result = await pool.query('SELECT profile_photo FROM users WHERE id=$1', [userId]);
     res.json({ photo: result.rows[0]?.profile_photo || null });
   } catch (err) {
@@ -933,20 +912,15 @@ router.get('/api/profile/photo', async (req, res) => {
 
 // ── REFERRER: SAVE PROFILE PHOTO ──────────────────────────────────────────────
 router.post('/api/profile/photo', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
     const { photo } = req.body;
     if (!photo) return res.status(400).json({ error: 'No photo provided' });
     if (typeof photo !== 'string' || !photo.startsWith('data:image/') || photo.length > 3 * 1024 * 1024) {
       return res.status(400).json({ error: 'Invalid photo' });
     }
-    const userId = sessionResult.rows[0].user_id;
+    const userId = session.userId;
     await pool.query('UPDATE users SET profile_photo=$1 WHERE id=$2', [photo, userId]);
     res.json({ success: true });
   } catch (err) {
@@ -1099,15 +1073,10 @@ router.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
 
 // ── REFERRER: DISMISS REVIEW CARD ─────────────────────────────────────────────
 router.post('/api/review/dismiss', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
     await pool.query(
       'UPDATE users SET review_dismissed_login = login_count WHERE id = $1',
       [userId]
@@ -1121,15 +1090,10 @@ router.post('/api/review/dismiss', async (req, res) => {
 
 // ── REFERRER: QR CODE ─────────────────────────────────────────────────────────
 router.get('/api/referrer/qr-code', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
     const referralUrl = `https://leaksmith.com/refer?ref=${userId}&contractor=accent-roofing`;
     const qrCodeDataUrl = await QRCode.toDataURL(referralUrl);
     res.json({ qrCodeDataUrl });
@@ -1142,15 +1106,10 @@ router.get('/api/referrer/qr-code', async (req, res) => {
 // ── REFERRER: PERSONAL INVITE LINK ────────────────────────────────────────────
 // Lazy-generates a peer invite link for this referrer on first request.
 router.get('/api/referrer/my-invite-link', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     // Check if peer link already exists for this user
     let linkResult = await pool.query(
@@ -1190,15 +1149,10 @@ router.get('/api/referrer/my-invite-link', async (req, res) => {
 
 // ── REFERRER: ABOUT ───────────────────────────────────────────────────────────
 router.get('/api/referrer/about', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     const aboutResult = await pool.query(
       "SELECT * FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1"
@@ -1257,15 +1211,10 @@ router.get('/api/referrer/about', async (req, res) => {
 
 // ── REFERRER: MARK ABOUT MODAL SEEN ───────────────────────────────────────────
 router.patch('/api/referrer/about/seen', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
     await pool.query('UPDATE users SET about_modal_seen = true WHERE id = $1', [userId]);
     res.json({ success: true });
   } catch (err) {
@@ -1334,15 +1283,10 @@ router.post('/api/referrer/booking', bookingLimiter, [
 
 // ── REFERRER: MARK ANNOUNCEMENT SEEN ──────────────────────────────────────────
 router.post('/api/announcement/seen', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
     const { announcementId } = req.body;
     if (!announcementId) return res.status(400).json({ error: 'announcementId is required' });
     await pool.query(
@@ -1371,15 +1315,10 @@ const BADGES_MASTER = [
 ];
 
 router.get('/api/referrer/badges', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     const earnedResult = await pool.query(
       'SELECT badge_id, earned_at, seen FROM user_badges WHERE user_id=$1',
@@ -1410,15 +1349,10 @@ router.get('/api/referrer/badges', async (req, res) => {
 });
 
 router.post('/api/referrer/badges/acknowledge', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     const { badgeIds } = req.body;
     if (!Array.isArray(badgeIds) || badgeIds.length === 0) return res.status(400).json({ error: 'badgeIds must be a non-empty array' });
@@ -1451,15 +1385,10 @@ function pickDisplayBadge(earnedSet) {
 }
 
 router.get('/api/referrer/leaderboard', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     const [settingsResult, userShoutResult] = await Promise.all([
       pool.query(
@@ -1667,15 +1596,10 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
 
 // ── REFERRER: SHOUT SETTINGS ───────────────────────────────────────────────────
 router.patch('/api/referrer/shout-settings', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     const { shout_opt_out, pinned_shout } = req.body;
     if (typeof shout_opt_out !== 'boolean') {
@@ -1702,14 +1626,9 @@ router.patch('/api/referrer/shout-settings', async (req, res) => {
 // Returns the pending record if matched_at is set and match_seen_at is null.
 router.get('/api/referral/pending/match-check', async (req, res) => {
   try {
-    const token = req.headers['authorization']?.replace('Bearer ', '');
-    if (!token) return res.status(401).json({ error: 'Not authorized' });
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
     const result = await pool.query(
       `SELECT id, client_name, referred_by_name, matched_at
        FROM pending_referrals
@@ -1730,14 +1649,9 @@ router.get('/api/referral/pending/match-check', async (req, res) => {
 router.put('/api/referral/pending/:id/seen', async (req, res) => {
   if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'Invalid id.' });
   try {
-    const token = req.headers['authorization']?.replace('Bearer ', '');
-    if (!token) return res.status(401).json({ error: 'Not authorized' });
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
     await pool.query(
       'UPDATE pending_referrals SET match_seen_at=NOW() WHERE id=$1 AND matched_user_id=$2',
       [req.params.id, userId]
@@ -1761,15 +1675,10 @@ const CHANNEL_LABELS = {
 };
 
 router.post('/api/referrer/missing-referral', missingReferralLimiter, async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     const userResult = await pool.query('SELECT full_name FROM users WHERE id=$1 AND deleted_at IS NULL', [userId]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -1824,15 +1733,10 @@ router.post('/api/referrer/missing-referral', missingReferralLimiter, async (req
 });
 
 router.get('/api/referrer/missing-referrals', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     const result = await pool.query(
       `SELECT id, referred_name, referred_contact, channel, approximate_date,
@@ -1853,14 +1757,9 @@ router.get('/api/referrer/missing-referrals', async (req, res) => {
 
 router.get('/api/referrer/experience-prompt', async (req, res) => {
   try {
-    const token = req.headers['authorization']?.replace('Bearer ', '');
-    if (!token) return res.status(401).json({ error: 'Not authorized' });
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     const result = await pool.query(
       `SELECT ep.id, ep.response_type, ep.triggered_at, ca.google_place_id
@@ -1882,14 +1781,9 @@ router.get('/api/referrer/experience-prompt', async (req, res) => {
 
 router.post('/api/referrer/experience-prompt/:id/respond', async (req, res) => {
   try {
-    const token = req.headers['authorization']?.replace('Bearer ', '');
-    if (!token) return res.status(401).json({ error: 'Not authorized' });
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const userId = sessionResult.rows[0].user_id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
 
     const { response_type, suggestion_text } = req.body;
     if (!['positive', 'negative'].includes(response_type)) {
@@ -1983,17 +1877,8 @@ router.post('/api/referrer/claim-experience-token', async (req, res) => {
 // Used by the dynamic Reward Schedule card on the referrer dashboard.
 router.get('/api/referrer/schedules', async (req, res) => {
   try {
-    const sessionToken = req.headers.authorization?.replace('Bearer ', '');
-    if (!sessionToken) return res.status(401).json({ error: 'No session token' });
-
-    const sessionResult = await pool.query(
-      `SELECT u.id
-       FROM sessions s
-       JOIN users u ON u.id = s.user_id
-       WHERE s.token = $1 AND s.role = 'referrer' AND s.expires_at > NOW()`,
-      [sessionToken]
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Invalid session' });
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
 
     // MVP: contractor_id hardcoded — pull from session at FORA scale
     const contractorId = 'accent-roofing';
@@ -2023,19 +1908,9 @@ router.get('/api/referrer/schedules', async (req, res) => {
 // Used by earnings history display and pipeline detail view for converted clients.
 router.get('/api/referrer/conversions', async (req, res) => {
   try {
-    const sessionToken = req.headers.authorization?.replace('Bearer ', '');
-    if (!sessionToken) return res.status(401).json({ error: 'No session token' });
-
-    const sessionResult = await pool.query(
-      `SELECT u.id
-       FROM sessions s
-       JOIN users u ON u.id = s.user_id
-       WHERE s.token = $1 AND s.role = 'referrer' AND s.expires_at > NOW()`,
-      [sessionToken]
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Invalid session' });
-
-    const userId = sessionResult.rows[0].id;
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
     // MVP: contractor_id hardcoded — pull from session at FORA scale
     const contractorId = 'accent-roofing';
 
