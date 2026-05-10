@@ -7,16 +7,10 @@ const crypto = require('crypto');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-const { resendShouldRetry } = require('../utils/retryHelpers');
+const { resendShouldRetry, twilioShouldRetry } = require('../utils/retryHelpers');
 const { logError } = require('../middleware/errorLogger');
 const { sendAdminNotification } = require('../utils/notificationEmail');
-
-const twilioShouldRetry = (error) => {
-  const code = error?.code;
-  if (!code) return true;
-  if (String(code).startsWith('2')) return true;
-  return false;
-};
+const { verifyReferrerSession } = require('../middleware/auth');
 
 // Twilio is optional — only initialised when credentials are present so the
 // server doesn't crash in environments where Twilio isn't yet configured.
@@ -24,33 +18,6 @@ function getTwilioClient() {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null;
   return require('twilio')(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-}
-
-// ── SESSION VERIFICATION ──────────────────────────────────────────────────────
-// Returns { userId, sessionId } on success, or sends 401/403 and returns null.
-async function verifyReferrerSession(req, res) {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) { res.status(401).json({ error: 'Not authorized' }); return null; }
-
-  const sessionResult = await pool.query(
-    'SELECT * FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-    [token, 'referrer']
-  );
-  if (sessionResult.rows.length === 0) {
-    res.status(401).json({ error: 'Session expired. Please log in again.' });
-    return null;
-  }
-
-  const { user_id: userId, id: sessionId } = sessionResult.rows[0];
-
-  // Block soft-deleted accounts
-  const userCheck = await pool.query('SELECT deleted_at FROM users WHERE id=$1', [userId]);
-  if (userCheck.rows[0]?.deleted_at) {
-    res.status(403).json({ error: 'Account scheduled for deletion' });
-    return null;
-  }
-
-  return { userId, sessionId, token };
 }
 
 function escapeHtml(str) {
@@ -181,11 +148,12 @@ router.post('/send-email-verification', async (req, res) => {
       [session.userId, code, expiresAt]
     );
 
-    await resend.emails.send({
-      from: 'Rooster Booster <noreply@roofmiles.com>',
-      to: email,
-      subject: 'Verify your email — Rooster Booster',
-      html: `
+    await retryWithBackoff(
+      () => resend.emails.send({
+        from: 'Rooster Booster <noreply@roofmiles.com>',
+        to: email,
+        subject: 'Verify your email — Rooster Booster',
+        html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
           <h2 style="color:#012854;margin:0 0 8px;">Verify your email</h2>
           <p style="color:#444;margin:0 0 24px;line-height:1.6;">Enter the code below to verify your email address.</p>
@@ -196,10 +164,15 @@ router.post('/send-email-verification', async (req, res) => {
           <p style="color:#888;font-size:13px;margin:0;">Expires in 10 minutes. If you didn't request this, you can ignore it.</p>
         </div>
       `,
-    });
+      }),
+      { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+    );
 
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err, source: 'send-email-verification OTP' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/account/verify-email ────────────────────────────────────────────
@@ -457,7 +430,10 @@ router.delete('/me', async (req, res) => {
     );
 
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

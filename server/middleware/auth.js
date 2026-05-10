@@ -46,7 +46,7 @@ async function verifyReferrerSession(req, res) {
       res.status(401).json({ error: 'Session expired. Please log in again.' });
       return null;
     }
-    return { userId: result.rows[0].user_id };
+    return { userId: result.rows[0].user_id, sessionId: result.rows[0].session_id };
   } catch (err) {
     res.status(500).json({ error: 'Auth check failed' });
     return null;
