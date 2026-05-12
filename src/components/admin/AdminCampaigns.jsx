@@ -1775,6 +1775,10 @@ function CsvMappingStep({ previewData, columnMapping, onMappingChange, onConfirm
         We detected your columns automatically. Adjust if anything looks off.
       </p>
 
+      <p style={{ margin: '0 0 16px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+        Match each column from your file to the correct field below. At minimum, assign a name and either a phone number or email address for each contact to be included.
+      </p>
+
       {/* Column mapping dropdowns */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
         {fieldLabels.map(({ key, label }) => (

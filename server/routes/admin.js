@@ -2886,7 +2886,7 @@ router.post('/api/admin/campaigns/:id/upload-image',
       const insertResult = await pool.query(
         `INSERT INTO campaign_images (campaign_id, contractor_id, filename, b2_key, public_url, file_size_bytes)
          VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, public_url, filename`,
+         RETURNING id, public_url, filename, file_size_bytes`,
         [campaignId, contractorId, req.file.originalname, b2Key, publicUrl, req.file.size]
       );
 
@@ -2952,6 +2952,12 @@ router.post('/api/admin/campaigns/:id/upload-csv',
         [campaignId, contractorId]
       );
       if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+
+      // Delete any existing CSV contacts before re-parse to prevent duplicates on re-upload
+      await pool.query(
+        'DELETE FROM campaign_contacts WHERE campaign_id = $1 AND source = $2',
+        [campaignId, 'csv']
+      );
 
       const csvText = req.file.buffer.toString('utf8');
       const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
