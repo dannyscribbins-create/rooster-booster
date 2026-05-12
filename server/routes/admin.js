@@ -2700,10 +2700,26 @@ router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
     // MVP: lazy expiry on detail fetch — replace with a scheduled job before multi-contractor scale
     if (campaign.campaign_expires_at && new Date(campaign.campaign_expires_at) < new Date()) {
       await pool.query(
-        `UPDATE campaigns SET status = 'closed' WHERE id = $1 AND status = 'active' AND campaign_expires_at < NOW()`,
+        `UPDATE campaigns SET status = 'closed'
+         WHERE id = $1 AND status = 'active'
+           AND campaign_expires_at IS NOT NULL
+           AND campaign_expires_at < NOW()`,
         [campaignId]
       );
       campaign.status = 'closed';
+    }
+
+    // MVP note: one-time heal for campaigns launched before campaign_expires_at column existed
+    // Reopens any campaign incorrectly closed due to NULL campaign_expires_at (safe to run on every fetch)
+    const healResult = await pool.query(
+      `UPDATE campaigns SET status = 'active', completed_at = NULL
+       WHERE id = $1 AND status = 'closed' AND campaign_expires_at IS NULL
+       RETURNING id`,
+      [campaignId]
+    );
+    if (healResult.rows.length > 0) {
+      campaign.status = 'active';
+      campaign.completed_at = null;
     }
 
     const batchStatsResult = await pool.query(
