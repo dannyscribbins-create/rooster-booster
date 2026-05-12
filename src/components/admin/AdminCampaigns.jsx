@@ -280,7 +280,7 @@ function CampaignCard({ campaign, onOpen, onDelete }) {
 
   return (
     <div
-      onClick={() => onOpen(campaign.id)}
+      onClick={() => onOpen(campaign.id, campaign.status)}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => { setHov(false); setTrashHov(false); }}
       style={{
@@ -2334,16 +2334,16 @@ export default function AdminCampaigns({ setLoggedIn }) {
     loadCampaigns();
   }
 
-  async function handleOpenCampaign(id) {
+  async function handleOpenCampaign(id, status) {
+    if (status !== 'draft') {
+      setSelectedCampaignId(id);
+      return;
+    }
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${id}`, { headers });
       if (r.status === 401) { if (setLoggedIn) setLoggedIn(false); return; }
       if (!r.ok) return;
       const data = await r.json();
-      if (data.status !== 'draft') {
-        setSelectedCampaignId(id);
-        return;
-      }
       const f = data.filters || {};
       setCampaignId(data.id);
       setCampaignName(data.name);
