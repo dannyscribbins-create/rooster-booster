@@ -2872,8 +2872,11 @@ router.post('/api/admin/campaigns/:id/upload-image',
     const campaignId = parseInt(req.params.id, 10);
     // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
     const contractorId = 'accent-roofing';
+    console.log('[upload-image] endpoint hit, campaign:', req.params.id); // diagnostic log — intentional
     try {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+      console.log('[upload-image] file received:', req.file?.originalname, req.file?.size); // diagnostic log — intentional
 
       const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
       if (!allowedTypes.includes(req.file.mimetype)) {
@@ -2891,16 +2894,19 @@ router.post('/api/admin/campaigns/:id/upload-image',
 
       const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
       const b2Key = `campaigns/${campaignId}/${Date.now()}-${safeName}`;
+      const publicUrl = buildB2PublicUrl(b2Key);
+      console.log('[upload-image] b2Key:', b2Key, 'publicUrl:', publicUrl); // diagnostic log — intentional
+      console.log('[upload-image] B2_BUCKET_NAME:', process.env.B2_BUCKET_NAME, 'B2_MEDIA_BUCKET_NAME:', process.env.B2_MEDIA_BUCKET_NAME); // diagnostic log — intentional
+
       const s3 = getCampaignS3Client();
-      await s3.send(new PutObjectCommand({
+      const result = await s3.send(new PutObjectCommand({
         Bucket: process.env.B2_BUCKET_NAME,
         Key: b2Key,
         Body: req.file.buffer,
         ContentType: req.file.mimetype,
         ContentLength: req.file.size,
       }));
-
-      const publicUrl = buildB2PublicUrl(b2Key);
+      console.log('[upload-image] B2 upload result:', JSON.stringify(result)); // diagnostic log — intentional
 
       // One image per campaign — replace if one already exists
       await pool.query('DELETE FROM campaign_images WHERE campaign_id = $1', [campaignId]);
@@ -2914,6 +2920,7 @@ router.post('/api/admin/campaigns/:id/upload-image',
 
       res.json({ success: true, ...insertResult.rows[0] });
     } catch (err) {
+      console.error('[upload-image] error:', err.message, err.stack); // diagnostic log — intentional
       await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/upload-image' });
       res.status(500).json({ error: 'Internal server error' });
     }
