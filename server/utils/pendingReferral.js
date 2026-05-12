@@ -36,10 +36,11 @@ function getPrimaryEmail(client) {
   return (typeof client.email === 'string' && client.email.trim()) ? client.email.trim() : null;
 }
 
+// Auth: API Key (SK...) — more secure than Auth Token, revocable without account impact
 function getTwilioClient() {
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null;
-  return require('twilio')(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+  const { TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET } = process.env;
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY_SID || !TWILIO_API_KEY_SECRET) return null;
+  return require('twilio')(TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, { accountSid: TWILIO_ACCOUNT_SID });
 }
 
 // ── SEND PENDING INVITE EMAIL ─────────────────────────────────────────────────
