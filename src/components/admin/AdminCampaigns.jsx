@@ -1283,13 +1283,11 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
               {/* TODO: pass company name through messaging-context response */}
             </div>
             {imageUrl && (
-              <div style={{ marginBottom: 16 }}>
-                <img
-                  src={imageUrl}
-                  alt="email attachment preview"
-                  style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8, border: `1px solid ${AD.border}` }}
-                />
-              </div>
+              <img
+                src={imageUrl}
+                alt="Campaign image"
+                style={{ maxWidth: '100%', borderRadius: 6, marginBottom: 12, display: 'block' }}
+              />
             )}
             <div style={{ fontSize: 14, color: AD.textPrimary, lineHeight: 1.7 }}>
               {renderPreviewBody(previewBody)}
@@ -1551,6 +1549,18 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
               <div style={{ fontSize: 12, color: AD.textTertiary, paddingBottom: 10, borderBottom: `1px solid ${AD.border}`, marginBottom: 12 }}>
                 From: {summary.companyName}
               </div>
+              {summary.imageUrl && (
+                <>
+                  <p style={{ margin: '0 0 6px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Attached image:
+                  </p>
+                  <img
+                    src={summary.imageUrl}
+                    alt="Campaign image"
+                    style={{ maxWidth: '100%', borderRadius: 6, marginBottom: 12, display: 'block' }}
+                  />
+                </>
+              )}
               <div style={{ fontSize: 14, color: AD.textPrimary, lineHeight: 1.7, fontFamily: AD.fontSans, whiteSpace: 'pre-wrap' }}>
                 {renderTokens(summary.campaign.message_body)}
               </div>

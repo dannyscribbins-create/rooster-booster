@@ -53,7 +53,10 @@ function useCountdown(targetMs) {
   const intervalRef = useRef(null);
 
   useEffect(() => {
-    if (!targetMs || msLeft <= 0) return;
+    if (!targetMs) return;
+    const initial = Math.max(0, targetMs - Date.now());
+    setMsLeft(initial);
+    if (initial <= 0) return;
     intervalRef.current = setInterval(() => {
       const remaining = Math.max(0, targetMs - Date.now());
       setMsLeft(remaining);

@@ -2247,6 +2247,11 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
     );
     const companyName = settingsResult.rows[0]?.company_name || 'Accent Roofing Service';
 
+    const imageResult = await pool.query(
+      'SELECT public_url FROM campaign_images WHERE campaign_id = $1 LIMIT 1',
+      [id]
+    );
+
     const creditsPerMessage = 1;
     const monthlyCredits = 3000;
     const creditsConsumed = parseInt(batch1_selected, 10) * creditsPerMessage;
@@ -2259,6 +2264,7 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
       batch1Selected: parseInt(batch1_selected, 10),
       optedOutCount: parseInt(opted_out_count, 10),
       companyName,
+      imageUrl: imageResult.rows[0]?.public_url || null,
       credits: {
         monthlyCredits: 3000,
         creditsConsumed,
