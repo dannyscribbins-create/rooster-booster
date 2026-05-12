@@ -91,7 +91,7 @@ function formatCountdown(ms) {
 function BatchPill({ status }) {
   const config = {
     sent:    { bg: AD.greenBg,  color: AD.greenText,  label: 'Sent' },
-    active:  { bg: AD.red2Bg,   color: AD.red2Text,   label: 'Active' },
+    active:  { bg: AD.redBg,    color: AD.red,        label: 'Active' },
     pending: { bg: AD.amberBg,  color: AD.amberText,  label: 'Pending' },
   }[status] || { bg: 'rgba(255,255,255,0.06)', color: AD.textSecondary, label: status };
 
@@ -224,7 +224,6 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
   const totalBatches = campaign?.total_batches || 1;
   const batchesSent  = combined?.batches_sent ?? 0;
   const isClosed     = campaign?.status === 'closed';
-  const isActive     = ['active', 'pending_batches'].includes(campaign?.status);
 
   const currentBatchData = batches.find(b => b.batch_number === currentBatch);
   const contactsInNextBatch = currentBatchData?.total_contacts ?? 0;
@@ -327,22 +326,8 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
       {/* ── BATCHES TAB ── */}
       {activeTab === 'batches' && (
         <div>
-          {/* All batches sent banner */}
-          {isClosed && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              background: AD.greenBg, border: `1px solid rgba(45,139,95,0.3)`,
-              borderRadius: AD.radiusMd, padding: '14px 20px', marginBottom: 24,
-            }}>
-              <i className="ph ph-check-circle" style={{ fontSize: 20, color: AD.greenText, flexShrink: 0 }} />
-              <span style={{ fontSize: 15, color: AD.greenText, fontFamily: AD.fontSans, fontWeight: 500 }}>
-                All batches sent — campaign complete
-              </span>
-            </div>
-          )}
-
-          {/* Current / next batch send card */}
-          {isActive && (
+          {/* Next batch card — or all-sent banner when no batches remain */}
+          {currentBatch <= totalBatches && !isClosed ? (
             <div style={{
               background: AD.bgCard, border: `1px solid ${AD.borderStrong}`,
               borderRadius: AD.radiusLg, padding: '24px 28px', marginBottom: 24,
@@ -378,6 +363,17 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
                 </button>
               </div>
             </div>
+          ) : (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              background: AD.greenBg, border: `1px solid rgba(45,139,95,0.3)`,
+              borderRadius: AD.radiusMd, padding: '14px 20px', marginBottom: 24,
+            }}>
+              <i className="ph ph-check-circle" style={{ fontSize: 20, color: AD.greenText, flexShrink: 0 }} />
+              <span style={{ fontSize: 15, color: AD.greenText, fontFamily: AD.fontSans, fontWeight: 500 }}>
+                ✓ All batches sent
+              </span>
+            </div>
           )}
 
           {/* Batch list */}
@@ -386,59 +382,64 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
             <p style={{ fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>No batches yet.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {batches.map(b => (
-                <div
-                  key={b.batch_number}
-                  style={{
-                    background: AD.bgCard, border: `1px solid ${AD.border}`,
-                    borderRadius: AD.radiusMd, padding: '16px 20px',
-                    display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-                  }}
-                >
-                  {/* Batch label */}
-                  <div style={{ minWidth: 80 }}>
-                    <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                      Batch {b.batch_number}
-                    </p>
-                    <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>
-                      {b.total_contacts.toLocaleString()} contacts
-                    </p>
-                  </div>
-
-                  <BatchPill status={b.status} />
-
-                  {/* Sent stats */}
-                  {b.status === 'sent' && (
-                    <div style={{ display: 'flex', gap: 20, marginLeft: 'auto' }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Delivered</p>
-                        <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                          {b.sent_count.toLocaleString()}
-                        </p>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Open rate</p>
-                        <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                          {b.sent_count > 0 ? `${Math.round((b.opened_count / b.sent_count) * 1000) / 10}%` : '—'}
-                        </p>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Click rate</p>
-                        <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                          {b.sent_count > 0 ? `${Math.round((b.clicked_count / b.sent_count) * 1000) / 10}%` : '—'}
-                        </p>
-                      </div>
+              {batches.map(b => {
+                const batchStatus = isClosed || b.batch_number < currentBatch ? 'sent'
+                  : b.batch_number === currentBatch ? 'active'
+                  : 'pending';
+                return (
+                  <div
+                    key={b.batch_number}
+                    style={{
+                      background: AD.bgCard, border: `1px solid ${AD.border}`,
+                      borderRadius: AD.radiusMd, padding: '16px 20px',
+                      display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+                    }}
+                  >
+                    {/* Batch label */}
+                    <div style={{ minWidth: 80 }}>
+                      <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                        Batch {b.batch_number}
+                      </p>
+                      <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                        {b.total_contacts.toLocaleString()} contacts
+                      </p>
                     </div>
-                  )}
 
-                  {/* Pending note */}
-                  {b.status === 'pending' && (
-                    <span style={{ marginLeft: 'auto', fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-                      Not scheduled
-                    </span>
-                  )}
-                </div>
-              ))}
+                    <BatchPill status={batchStatus} />
+
+                    {/* Sent stats */}
+                    {batchStatus === 'sent' && (
+                      <div style={{ display: 'flex', gap: 20, marginLeft: 'auto' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Delivered</p>
+                          <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                            {b.sent_count.toLocaleString()}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Open rate</p>
+                          <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                            {b.sent_count > 0 ? `${Math.round((b.opened_count / b.sent_count) * 1000) / 10}%` : '—'}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Click rate</p>
+                          <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                            {b.sent_count > 0 ? `${Math.round((b.clicked_count / b.sent_count) * 1000) / 10}%` : '—'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pending note */}
+                    {batchStatus === 'pending' && (
+                      <span style={{ marginLeft: 'auto', fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                        Not scheduled
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

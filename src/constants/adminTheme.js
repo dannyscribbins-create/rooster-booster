@@ -10,6 +10,7 @@ export const AD = {
   navyDark:   '#041D3E',
   red:        '#CC0000',
   redDark:    '#8C0000',
+  redBg:      'rgba(204,0,0,0.12)',
   blueLight:  '#D3E3F0',
   textPrimary:   '#f0ede8',
   textSecondary: 'rgba(240,237,232,0.55)',
