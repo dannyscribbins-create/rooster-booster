@@ -2316,7 +2316,9 @@ router.post('/api/admin/campaigns/:id/launch', async (req, res) => {
     const newStatus = parseInt(total_batches, 10) > 1 ? 'pending_batches' : 'active';
     await client.query(
       `UPDATE campaigns
-       SET status = $1, sent_at = NOW(), current_batch = 1, updated_at = NOW()
+       SET status = $1, sent_at = NOW(), current_batch = current_batch + 1,
+           last_batch_sent_at = NOW(), campaign_expires_at = NOW() + INTERVAL '90 days',
+           updated_at = NOW()
        WHERE id = $2 AND contractor_id = $3`,
       [newStatus, id, 'accent-roofing']
     );
@@ -2682,12 +2684,21 @@ router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
       `SELECT id, contractor_id, name, status, filters, message_preset, message_body,
               ai_rapport_enabled, cta_enabled, cta_url, outreach_method, batch_cap,
               total_contacts, total_batches, current_batch, sent_at, last_batch_sent_at,
-              completed_at, created_at, updated_at
+              campaign_expires_at, completed_at, created_at, updated_at
        FROM campaigns WHERE id = $1 AND contractor_id = $2`,
       [campaignId, contractorId]
     );
     if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const campaign = campaignResult.rows[0];
+
+    // MVP: lazy expiry on detail fetch — replace with a scheduled job before multi-contractor scale
+    if (campaign.campaign_expires_at && new Date(campaign.campaign_expires_at) < new Date()) {
+      await pool.query(
+        `UPDATE campaigns SET status = 'closed' WHERE id = $1 AND status = 'active' AND campaign_expires_at < NOW()`,
+        [campaignId]
+      );
+      campaign.status = 'closed';
+    }
 
     const batchStatsResult = await pool.query(
       `SELECT
@@ -2807,24 +2818,13 @@ router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
     // TODO: Update delivered = true per contact after confirmed send in Session B
 
     const newBatch = batchNumber + 1;
-    const isFinal = newBatch > campaign.total_batches;
 
-    if (isFinal) {
-      await pool.query(
-        `UPDATE campaigns
-         SET current_batch = $1, last_batch_sent_at = NOW(),
-             status = 'closed', completed_at = NOW(), updated_at = NOW()
-         WHERE id = $2 AND contractor_id = $3`,
-        [newBatch, campaignId, contractorId]
-      );
-    } else {
-      await pool.query(
-        `UPDATE campaigns
-         SET current_batch = $1, last_batch_sent_at = NOW(), updated_at = NOW()
-         WHERE id = $2 AND contractor_id = $3`,
-        [newBatch, campaignId, contractorId]
-      );
-    }
+    await pool.query(
+      `UPDATE campaigns
+       SET current_batch = $1, last_batch_sent_at = NOW(), updated_at = NOW()
+       WHERE id = $2 AND contractor_id = $3`,
+      [newBatch, campaignId, contractorId]
+    );
 
     await pool.query(
       `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,

@@ -536,6 +536,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE campaign_contacts ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'jobber'`);
   // CSV contacts have no Jobber ID — drop NOT NULL to allow nullable; existing rows unaffected
   await pool.query(`ALTER TABLE campaign_contacts ALTER COLUMN client_jobber_id DROP NOT NULL`);
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS campaign_expires_at TIMESTAMPTZ`);
   await pool.query(`CREATE TABLE IF NOT EXISTS campaign_images (
     id SERIAL PRIMARY KEY,
     campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,

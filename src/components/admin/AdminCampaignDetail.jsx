@@ -1,20 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
-import { Badge } from './AdminComponents';
-
-const STATUS_BADGE = {
-  draft:           'neutral',
-  active:          'success',
-  pending_batches: 'warning',
-  in_review:       'warning',
-  closed:          'neutral',
-};
-
-const STATUS_LABEL = {
-  draft: 'Draft', active: 'Active', pending_batches: 'Pending Batches',
-  in_review: 'In Review', closed: 'Closed',
-};
 
 // ── Small modal wrapper ───────────────────────────────────────────────────────
 function Modal({ onClose, children }) {
@@ -277,9 +263,38 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
             {campaign.name}
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <Badge type={STATUS_BADGE[campaign.status] || 'neutral'}>
-              {STATUS_LABEL[campaign.status] || campaign.status}
-            </Badge>
+            {/* Pill 1 — batch progress */}
+            {totalBatches > 0 && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center',
+                padding: '4px 12px', borderRadius: AD.radiusPill,
+                background: (currentBatch > totalBatches || isClosed) ? AD.greenBg : AD.amberBg,
+                color:      (currentBatch > totalBatches || isClosed) ? AD.greenText : AD.amberText,
+                fontSize: 12, fontWeight: 600, fontFamily: AD.fontSans,
+              }}>
+                {(currentBatch > totalBatches || isClosed) ? 'All Batches Sent' : 'Pending Batches'}
+              </span>
+            )}
+            {/* Pill 2 — campaign lifecycle */}
+            {(() => {
+              const lc = {
+                draft:           { bg: AD.grayBg,      color: AD.gray,       label: 'Draft' },
+                active:          { bg: AD.greenBg,     color: AD.greenText,  label: 'Active' },
+                pending_batches: { bg: AD.greenBg,     color: AD.greenText,  label: 'Active' },
+                closed:          { bg: AD.grayMutedBg, color: AD.grayMuted,  label: 'Closed' },
+              }[campaign.status] || { bg: 'rgba(255,255,255,0.06)', color: AD.textSecondary, label: campaign.status };
+              return (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center',
+                  padding: '4px 12px', borderRadius: AD.radiusPill,
+                  background: lc.bg, color: lc.color,
+                  fontSize: 12, fontWeight: 600, fontFamily: AD.fontSans,
+                }}>
+                  {lc.label}
+                </span>
+              );
+            })()}
+            {/* Batch counter */}
             {totalBatches > 0 && (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
