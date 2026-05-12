@@ -1285,7 +1285,7 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
             {imageUrl && (
               <img
                 src={imageUrl}
-                alt="Campaign image"
+                alt=""
                 style={{ maxWidth: '100%', borderRadius: 6, marginBottom: 12, display: 'block' }}
               />
             )}
@@ -1556,7 +1556,7 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
                   </p>
                   <img
                     src={summary.imageUrl}
-                    alt="Campaign image"
+                    alt=""
                     style={{ maxWidth: '100%', borderRadius: 6, marginBottom: 12, display: 'block' }}
                   />
                 </>
