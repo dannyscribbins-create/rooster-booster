@@ -17,6 +17,27 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { resendShouldRetry, jobberShouldRetry } = require('../utils/retryHelpers');
 const { discoverJobberFields, refreshTokenIfNeeded } = require('../crm/jobber');
+const multer = require('multer');
+const Papa = require('papaparse');
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// B2 helpers for campaign image uploads — same client pattern as server/utils/backup.js
+function getCampaignS3Client() {
+  const endpoint = process.env.B2_ENDPOINT;
+  if (!endpoint) throw new Error('B2_ENDPOINT environment variable is required');
+  return new S3Client({
+    endpoint: endpoint.startsWith('https://') ? endpoint : `https://${endpoint}`,
+    region: 'us-east-1',
+    credentials: { accessKeyId: process.env.B2_KEY_ID, secretAccessKey: process.env.B2_APPLICATION_KEY },
+    forcePathStyle: true,
+  });
+}
+function buildB2PublicUrl(b2Key) {
+  const base = process.env.B2_PUBLIC_URL_BASE
+    || `https://f005.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}`;
+  return `${base}/${b2Key}`;
+}
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -2156,7 +2177,12 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
       nextdoor:   row?.social_nextdoor   || null,
     };
 
-    res.json({ saved, ctaOptions });
+    const imageResult = await pool.query(
+      'SELECT public_url, filename, file_size_bytes FROM campaign_images WHERE campaign_id = $1 LIMIT 1',
+      [id]
+    );
+
+    res.json({ saved, ctaOptions, image: imageResult.rows[0] || null });
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });
@@ -2643,6 +2669,441 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
   }
 });
 
+
+// ── CAMPAIGN DETAIL + BATCH MANAGEMENT + IMAGE + CSV ─────────────────────────
+
+router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const campaignId = parseInt(req.params.id, 10);
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+  try {
+    const campaignResult = await pool.query(
+      `SELECT id, contractor_id, name, status, filters, message_preset, message_body,
+              ai_rapport_enabled, cta_enabled, cta_url, outreach_method, batch_cap,
+              total_contacts, total_batches, current_batch, sent_at, last_batch_sent_at,
+              completed_at, created_at, updated_at
+       FROM campaigns WHERE id = $1 AND contractor_id = $2`,
+      [campaignId, contractorId]
+    );
+    if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const campaign = campaignResult.rows[0];
+
+    const batchStatsResult = await pool.query(
+      `SELECT
+         batch_number,
+         COUNT(*) FILTER (WHERE selected = true)    AS total_contacts,
+         COUNT(*) FILTER (WHERE delivered = true)   AS sent_count,
+         COUNT(*) FILTER (WHERE opened = true)      AS opened_count,
+         COUNT(*) FILTER (WHERE clicked = true)     AS clicked_count,
+         COUNT(*) FILTER (WHERE converted = true)   AS converted_count,
+         COUNT(*) FILTER (WHERE opted_out = true)   AS opted_out_count
+       FROM campaign_contacts
+       WHERE campaign_id = $1 AND contractor_id = $2
+       GROUP BY batch_number
+       ORDER BY batch_number ASC`,
+      [campaignId, contractorId]
+    );
+
+    const currentBatch = campaign.current_batch || 1;
+    const batches = batchStatsResult.rows.map(row => {
+      let batchStatus;
+      if (campaign.status === 'closed') {
+        batchStatus = 'sent';
+      } else if (row.batch_number < currentBatch) {
+        batchStatus = 'sent';
+      } else if (row.batch_number === currentBatch) {
+        batchStatus = 'active';
+      } else {
+        batchStatus = 'pending';
+      }
+      return {
+        batch_number:    row.batch_number,
+        total_contacts:  parseInt(row.total_contacts, 10),
+        sent_count:      parseInt(row.sent_count, 10),
+        opened_count:    parseInt(row.opened_count, 10),
+        clicked_count:   parseInt(row.clicked_count, 10),
+        converted_count: parseInt(row.converted_count, 10),
+        opted_out_count: parseInt(row.opted_out_count, 10),
+        status: batchStatus,
+      };
+    });
+
+    const totalSelected  = batches.reduce((s, b) => s + b.total_contacts, 0);
+    const totalSent      = batches.reduce((s, b) => s + b.sent_count, 0);
+    const totalOpened    = batches.reduce((s, b) => s + b.opened_count, 0);
+    const totalClicked   = batches.reduce((s, b) => s + b.clicked_count, 0);
+    const totalConverted = batches.reduce((s, b) => s + b.converted_count, 0);
+    const totalOptedOut  = batches.reduce((s, b) => s + b.opted_out_count, 0);
+    const batchesSent    = campaign.status === 'closed'
+      ? (campaign.total_batches || 0)
+      : Math.max(0, currentBatch - 1);
+
+    const combined_metrics = {
+      total_selected:  totalSelected,
+      total_sent:      totalSent,
+      total_opened:    totalOpened,
+      total_clicked:   totalClicked,
+      total_converted: totalConverted,
+      total_opted_out: totalOptedOut,
+      open_rate:       totalSent > 0 ? Math.round((totalOpened / totalSent) * 1000) / 10 : 0,
+      click_rate:      totalSent > 0 ? Math.round((totalClicked / totalSent) * 1000) / 10 : 0,
+      conversion_rate: totalSent > 0 ? Math.round((totalConverted / totalSent) * 1000) / 10 : 0,
+      batches_sent:    batchesSent,
+      batches_pending: (campaign.total_batches || 0) - batchesSent,
+    };
+
+    const imageResult = await pool.query(
+      'SELECT public_url, filename FROM campaign_images WHERE campaign_id = $1 LIMIT 1',
+      [campaignId]
+    );
+
+    res.json({ campaign, batches, combined_metrics, image: imageResult.rows[0] || null });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/detail' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const campaignId = parseInt(req.params.id, 10);
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+  try {
+    const campaignResult = await pool.query(
+      `SELECT id, name, status, total_batches, current_batch, last_batch_sent_at
+       FROM campaigns WHERE id = $1 AND contractor_id = $2`,
+      [campaignId, contractorId]
+    );
+    if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const campaign = campaignResult.rows[0];
+
+    if (!['active', 'pending_batches'].includes(campaign.status)) {
+      return res.status(400).json({ error: 'Campaign is not in an active state' });
+    }
+
+    if (campaign.last_batch_sent_at) {
+      const msSinceLast = Date.now() - new Date(campaign.last_batch_sent_at).getTime();
+      if (msSinceLast < 24 * 60 * 60 * 1000) {
+        const availableAt = new Date(new Date(campaign.last_batch_sent_at).getTime() + 24 * 60 * 60 * 1000);
+        return res.status(429).json({
+          error: 'Batches must be spaced at least 24 hours apart',
+          next_batch_available_at: availableAt.toISOString(),
+        });
+      }
+    }
+
+    const batchNumber = campaign.current_batch;
+    const contactsResult = await pool.query(
+      `SELECT id FROM campaign_contacts
+       WHERE campaign_id = $1 AND contractor_id = $2
+         AND batch_number = $3 AND selected = true AND opted_out = false`,
+      [campaignId, contractorId, batchNumber]
+    );
+    const contactCount = contactsResult.rows.length;
+
+    // TODO: Wire real Twilio SMS and Resend email sends here in Session B (send infrastructure session)
+    // TODO: Update delivered = true per contact after confirmed send in Session B
+
+    const newBatch = batchNumber + 1;
+    const isFinal = newBatch > campaign.total_batches;
+
+    if (isFinal) {
+      await pool.query(
+        `UPDATE campaigns
+         SET current_batch = $1, last_batch_sent_at = NOW(),
+             status = 'closed', completed_at = NOW(), updated_at = NOW()
+         WHERE id = $2 AND contractor_id = $3`,
+        [newBatch, campaignId, contractorId]
+      );
+    } else {
+      await pool.query(
+        `UPDATE campaigns
+         SET current_batch = $1, last_batch_sent_at = NOW(), updated_at = NOW()
+         WHERE id = $2 AND contractor_id = $3`,
+        [newBatch, campaignId, contractorId]
+      );
+    }
+
+    await pool.query(
+      `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,
+      ['campaign_batch_sent', JSON.stringify({ campaign_id: campaignId, batch_number: batchNumber, contact_count: contactCount })]
+    );
+
+    res.json({
+      success: true,
+      batch_number: batchNumber,
+      contact_count: contactCount,
+      next_batch_available_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/send-batch' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/campaigns/:id/upload-image',
+  upload.single('image'),
+  async (req, res) => {
+    if (!await verifyAdminSession(req, res)) return;
+    const campaignId = parseInt(req.params.id, 10);
+    // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+    const contractorId = 'accent-roofing';
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(req.file.mimetype)) {
+        return res.status(400).json({ error: 'File must be JPG, PNG, GIF, or WEBP' });
+      }
+      if (req.file.size > 2 * 1024 * 1024) {
+        return res.status(400).json({ error: 'File size must be 2MB or smaller' });
+      }
+
+      const campaignCheck = await pool.query(
+        'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
+        [campaignId, contractorId]
+      );
+      if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+
+      const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const b2Key = `campaigns/${campaignId}/${Date.now()}-${safeName}`;
+      const s3 = getCampaignS3Client();
+      await s3.send(new PutObjectCommand({
+        Bucket: process.env.B2_BUCKET_NAME,
+        Key: b2Key,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+        ContentLength: req.file.size,
+      }));
+
+      const publicUrl = buildB2PublicUrl(b2Key);
+
+      // One image per campaign — replace if one already exists
+      await pool.query('DELETE FROM campaign_images WHERE campaign_id = $1', [campaignId]);
+
+      const insertResult = await pool.query(
+        `INSERT INTO campaign_images (campaign_id, contractor_id, filename, b2_key, public_url, file_size_bytes)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, public_url, filename`,
+        [campaignId, contractorId, req.file.originalname, b2Key, publicUrl, req.file.size]
+      );
+
+      res.json({ success: true, ...insertResult.rows[0] });
+    } catch (err) {
+      await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/upload-image' });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+router.delete('/api/admin/campaigns/:id/image', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const campaignId = parseInt(req.params.id, 10);
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+  try {
+    const campaignCheck = await pool.query(
+      'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [campaignId, contractorId]
+    );
+    if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+
+    const imageResult = await pool.query(
+      'SELECT id, b2_key FROM campaign_images WHERE campaign_id = $1',
+      [campaignId]
+    );
+    if (imageResult.rows.length === 0) return res.status(404).json({ error: 'No image for this campaign' });
+
+    const s3 = getCampaignS3Client();
+    await s3.send(new DeleteObjectCommand({
+      Bucket: process.env.B2_BUCKET_NAME,
+      Key: imageResult.rows[0].b2_key,
+    }));
+
+    await pool.query('DELETE FROM campaign_images WHERE campaign_id = $1', [campaignId]);
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err, source: 'DELETE /api/admin/campaigns/:id/image' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/campaigns/:id/upload-csv',
+  upload.single('csv'),
+  async (req, res) => {
+    if (!await verifyAdminSession(req, res)) return;
+    const campaignId = parseInt(req.params.id, 10);
+    // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+    const contractorId = 'accent-roofing';
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+      const isAllowedType = ['text/csv', 'application/vnd.ms-excel', 'text/plain', 'application/csv']
+        .includes(req.file.mimetype);
+      const isAllowedExt = req.file.originalname.toLowerCase().endsWith('.csv');
+      if (!isAllowedType && !isAllowedExt) {
+        return res.status(400).json({ error: 'File must be a CSV' });
+      }
+
+      const campaignCheck = await pool.query(
+        'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
+        [campaignId, contractorId]
+      );
+      if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+
+      const csvText = req.file.buffer.toString('utf8');
+      const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+
+      if (!parsed.data || parsed.data.length === 0) {
+        return res.status(400).json({ error: 'CSV is empty or could not be parsed' });
+      }
+
+      const rawHeaders = parsed.meta.fields || [];
+      const normHeaders = rawHeaders.map(h => h.toLowerCase().trim());
+
+      function detectCol(patterns) {
+        for (const p of patterns) {
+          const idx = normHeaders.indexOf(p);
+          if (idx !== -1) return rawHeaders[idx];
+        }
+        return null;
+      }
+
+      const detected = {
+        firstName: detectCol(['first name', 'firstname', 'first', 'fname']),
+        lastName:  detectCol(['last name', 'lastname', 'last', 'lname']),
+        fullName:  detectCol(['full name', 'fullname', 'name', 'client name', 'customer name']),
+        phone:     detectCol(['phone', 'phone number', 'mobile', 'cell', 'telephone', 'sms']),
+        email:     detectCol(['email', 'email address', 'e-mail', 'emailaddress']),
+      };
+
+      const seenPhones = new Set();
+      const seenEmails = new Set();
+      let validCount = 0;
+      let invalidCount = 0;
+      let duplicateCount = 0;
+      const preview = [];
+
+      for (let i = 0; i < parsed.data.length; i++) {
+        const row = parsed.data[i];
+        const firstName = detected.firstName ? (row[detected.firstName] || '').trim() : '';
+        const lastName  = detected.lastName  ? (row[detected.lastName]  || '').trim() : '';
+        const fullName  = detected.fullName  ? (row[detected.fullName]  || '').trim() : '';
+        const phone     = detected.phone     ? (row[detected.phone]     || '').trim() : '';
+        const email     = detected.email     ? (row[detected.email]     || '').trim() : '';
+
+        const hasName    = !!(firstName || fullName);
+        const hasContact = !!(phone || email);
+        const isValid    = hasName && hasContact;
+
+        let reason = null;
+        if (!hasName) reason = 'Missing name';
+        else if (!hasContact) reason = 'Missing phone and email';
+
+        let isDuplicate = false;
+        if (isValid) {
+          const cleanPhone = phone.replace(/\D/g, '');
+          const cleanEmail = email.toLowerCase();
+          if ((cleanPhone && seenPhones.has(cleanPhone)) || (cleanEmail && seenEmails.has(cleanEmail))) {
+            isDuplicate = true;
+            duplicateCount++;
+          } else {
+            if (cleanPhone) seenPhones.add(cleanPhone);
+            if (cleanEmail) seenEmails.add(cleanEmail);
+          }
+        }
+
+        if (isValid && !isDuplicate) validCount++;
+        else if (!isValid) invalidCount++;
+
+        if (i < 5) {
+          preview.push({ firstName, lastName, fullName, phone, email, valid: isValid && !isDuplicate, duplicate: isDuplicate, reason: isDuplicate ? 'Duplicate phone or email' : reason });
+        }
+      }
+
+      // Store raw CSV so confirm-csv can re-parse without a second upload
+      await pool.query(
+        'UPDATE campaigns SET csv_raw = $1, updated_at = NOW() WHERE id = $2',
+        [csvText, campaignId]
+      );
+
+      res.json({ detected_columns: detected, total_rows: parsed.data.length, valid_rows: validCount, invalid_rows: invalidCount, duplicate_rows: duplicateCount, preview, raw_headers: rawHeaders });
+    } catch (err) {
+      await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/upload-csv' });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
+
+router.post('/api/admin/campaigns/:id/confirm-csv', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const campaignId = parseInt(req.params.id, 10);
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+  const { column_mapping, confirmed } = req.body;
+
+  if (!confirmed) return res.status(400).json({ error: 'confirmed must be true' });
+  if (!column_mapping) return res.status(400).json({ error: 'column_mapping is required' });
+
+  try {
+    const campaignResult = await pool.query(
+      'SELECT id, csv_raw FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [campaignId, contractorId]
+    );
+    if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const { csv_raw } = campaignResult.rows[0];
+    if (!csv_raw) return res.status(400).json({ error: 'No CSV found — please re-upload the file' });
+
+    const parsed = Papa.parse(csv_raw, { header: true, skipEmptyLines: true });
+    const { firstName: fnCol, lastName: lnCol, fullName: fullCol, phone: phoneCol, email: emailCol } = column_mapping;
+
+    const seenPhones = new Set();
+    const seenEmails = new Set();
+    const toInsert = [];
+    let skipped = 0;
+
+    for (const row of parsed.data) {
+      const firstName = fnCol   ? (row[fnCol]   || '').trim() : '';
+      const lastName  = lnCol   ? (row[lnCol]   || '').trim() : '';
+      const fullName  = fullCol ? (row[fullCol] || '').trim() : '';
+      const phone     = phoneCol ? (row[phoneCol] || '').replace(/\D/g, '') : '';
+      const email     = emailCol ? (row[emailCol] || '').toLowerCase().trim() : '';
+
+      const clientName = fullName || [firstName, lastName].filter(Boolean).join(' ');
+      if (!clientName || (!phone && !email)) { skipped++; continue; }
+      if (phone && seenPhones.has(phone)) { skipped++; continue; }
+      if (email && seenEmails.has(email)) { skipped++; continue; }
+      if (phone) seenPhones.add(phone);
+      if (email) seenEmails.add(email);
+      toInsert.push({ clientName, phone: phone || null, email: email || null });
+    }
+
+    if (toInsert.length > 0) {
+      const valuePlaceholders = toInsert.map((_, i) => {
+        const b = i * 7;
+        return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7})`;
+      }).join(',');
+      await pool.query(
+        `INSERT INTO campaign_contacts
+           (campaign_id, contractor_id, client_name, phone, email, batch_number, source)
+         VALUES ${valuePlaceholders}`,
+        toInsert.flatMap(r => [campaignId, contractorId, r.clientName, r.phone, r.email, 1, 'csv'])
+      );
+    }
+
+    await pool.query(
+      'UPDATE campaigns SET total_contacts = $1, csv_raw = NULL, updated_at = NOW() WHERE id = $2',
+      [toInsert.length, campaignId]
+    );
+
+    res.json({ success: true, contacts_imported: toInsert.length, skipped });
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/confirm-csv' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // ── REFERRAL SCHEDULE CRUD ────────────────────────────────────────────────────
 

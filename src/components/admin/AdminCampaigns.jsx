@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn, Badge } from './AdminComponents';
+import AdminCampaignDetail from './AdminCampaignDetail';
 
 const STATUS_BADGE = {
   draft:           'neutral',
@@ -17,7 +18,8 @@ const STATUS_LABEL = {
   in_review: 'In Review', closed: 'Closed', branched: 'Branched',
 };
 
-const STEP_LABELS = ['Filters', 'Curating', 'Results', 'Message', 'Method', 'Review', 'Launch'];
+const STEP_LABELS     = ['Filters', 'Curating', 'Results', 'Message', 'Method', 'Review', 'Launch'];
+const STEP_LABELS_CSV = ['Upload CSV', 'Map & Preview', 'Results', 'Message', 'Method', 'Review', 'Launch'];
 
 // MVP: Pro tier batch cap — 500 contacts per batch.
 // TODO (FORA tiers): replace with DB lookup of contractor's plan batch cap.
@@ -69,11 +71,12 @@ const AI_RAPPORT_EXPLAINER = `AI will personalize each message using: first name
 const SIMULATED_AI_SUFFIX = ` Since we completed your [Job Type] back in [Month Year], we've been grateful for clients like you.`;
 
 // ── Step indicator ────────────────────────────────────────────────────────────
-function StepIndicator({ currentStep }) {
+function StepIndicator({ currentStep, isCsvFlow }) {
   const stepIndex = currentStep - 1;
+  const labels = isCsvFlow ? STEP_LABELS_CSV : STEP_LABELS;
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 0, marginBottom: 32 }}>
-      {STEP_LABELS.map((label, i) => {
+      {labels.map((label, i) => {
         const isActive = i === stepIndex;
         const isPast   = i < stepIndex;
         const isLocked = i > stepIndex;
@@ -881,6 +884,12 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
   const [loadingContext, setLoadingContext] = useState(true);
   const [saving,         setSaving]         = useState(false);
   const [previewMode,    setPreviewMode]    = useState('without');
+  const [imageUrl,       setImageUrl]       = useState(null);
+  const [imageFilename,  setImageFilename]  = useState(null);
+  const [imageSizeBytes, setImageSizeBytes] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError,     setImageError]     = useState('');
+  const imageInputRef = useRef(null);
 
   useEffect(() => {
     loadMessagingContext();
@@ -907,11 +916,54 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
       if (typeof s?.cta_enabled === 'boolean') setCtaEnabled(s.cta_enabled);
       if (s?.cta_url) setCtaUrl(s.cta_url);
       else if (data.ctaOptions?.appSignup) setCtaUrl(data.ctaOptions.appSignup);
+      if (data.image) {
+        setImageUrl(data.image.public_url);
+        setImageFilename(data.image.filename);
+        setImageSizeBytes(data.image.file_size_bytes);
+      }
     } catch {
       // swallow
     } finally {
       setLoadingContext(false);
     }
+  }
+
+  async function handleImageUpload(file) {
+    setImageError('');
+    setImageUploading(true);
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/upload-image`, {
+        method: 'POST',
+        headers,
+        body: form,
+      });
+      const data = await r.json();
+      if (!r.ok) { setImageError(data.error || 'Upload failed'); return; }
+      setImageUrl(data.public_url);
+      setImageFilename(data.filename);
+      setImageSizeBytes(data.file_size_bytes);
+    } catch (err) {
+      setImageError('Upload failed. Please try again.');
+    } finally {
+      setImageUploading(false);
+    }
+  }
+
+  async function handleImageRemove() {
+    setImageError('');
+    try {
+      await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/image`, {
+        method: 'DELETE',
+        headers,
+      });
+    } catch {
+      // swallow — clear UI regardless
+    }
+    setImageUrl(null);
+    setImageFilename(null);
+    setImageSizeBytes(null);
   }
 
   async function saveMessaging() {
@@ -1115,6 +1167,79 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
               })}
             </div>
           )}
+
+          {/* B8 — Divider */}
+          <div style={divider} />
+
+          {/* B9 — Image attachment */}
+          <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>Attach Image</p>
+          <p style={{ margin: '0 0 14px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>Email only — one image per campaign. JPEG, PNG, GIF, or WebP, max 2 MB.</p>
+
+          {imageUrl ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: 10, padding: '10px 14px' }}>
+              <img
+                src={imageUrl}
+                alt="attached"
+                style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6, flexShrink: 0, border: `1px solid ${AD.border}` }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {imageFilename}
+                </p>
+                {imageSizeBytes && (
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                    {(imageSizeBytes / 1024).toFixed(0)} KB
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleImageRemove}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: AD.textTertiary, padding: 4, display: 'flex', alignItems: 'center' }}
+                title="Remove image"
+              >
+                <i className="ph ph-x" style={{ fontSize: 16 }} />
+              </button>
+            </div>
+          ) : (
+            <div
+              onClick={() => imageInputRef.current?.click()}
+              style={{
+                border: `2px dashed ${AD.border}`, borderRadius: 10, padding: '20px 16px',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+                cursor: imageUploading ? 'default' : 'pointer',
+                background: AD.bgSurface, transition: 'border-color 0.15s',
+              }}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault();
+                const file = e.dataTransfer.files[0];
+                if (file) handleImageUpload(file);
+              }}
+            >
+              {imageUploading ? (
+                <span style={{ fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>Uploading…</span>
+              ) : (
+                <>
+                  <i className="ph ph-image" style={{ fontSize: 28, color: AD.textTertiary }} />
+                  <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>Click or drag to attach an image</span>
+                </>
+              )}
+            </div>
+          )}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const file = e.target.files[0];
+              if (file) handleImageUpload(file);
+              e.target.value = '';
+            }}
+          />
+          {imageError && (
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#CC0000', fontFamily: AD.fontSans }}>{imageError}</p>
+          )}
         </div>
 
         {/* Right panel */}
@@ -1157,6 +1282,15 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
               From: Accent Roofing Service
               {/* TODO: pass company name through messaging-context response */}
             </div>
+            {imageUrl && (
+              <div style={{ marginBottom: 16 }}>
+                <img
+                  src={imageUrl}
+                  alt="email attachment preview"
+                  style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8, border: `1px solid ${AD.border}` }}
+                />
+              </div>
+            )}
             <div style={{ fontSize: 14, color: AD.textPrimary, lineHeight: 1.7 }}>
               {renderPreviewBody(previewBody)}
             </div>
@@ -1536,6 +1670,206 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
   );
 }
 
+// ── CSV upload step ───────────────────────────────────────────────────────────
+function CsvUploadStep({ csvFile, onFileSelect, onUpload, uploading, error, onBack }) {
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = { current: null };
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) onFileSelect(file);
+  }
+
+  const inputStyle = {
+    width: '100%', padding: '10px 14px', background: AD.bgSurface,
+    border: `1px solid ${AD.borderStrong}`, borderRadius: 10,
+    fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary,
+    outline: 'none', boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <h3 style={{ margin: '0 0 8px', fontFamily: AD.fontSans, fontSize: 20, fontWeight: 600, color: AD.textPrimary }}>Upload your CSV</h3>
+      <p style={{ margin: '0 0 24px', color: AD.textSecondary, fontSize: 14, fontFamily: AD.fontSans }}>Upload a CSV file with contact names plus phone or email. We'll detect your columns automatically.</p>
+
+      {/* Drop zone */}
+      <div
+        onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+        style={{
+          border: `2px dashed ${isDragging ? '#CC0000' : AD.borderStrong}`,
+          borderRadius: 14, padding: '44px 32px', textAlign: 'center',
+          cursor: 'pointer', background: isDragging ? 'rgba(204,0,0,0.04)' : AD.bgSurface,
+          transition: 'border-color 0.15s, background 0.15s', marginBottom: 16,
+        }}
+      >
+        <input
+          ref={el => { fileInputRef.current = el; }}
+          type="file"
+          accept=".csv"
+          style={{ display: 'none' }}
+          onChange={e => { if (e.target.files[0]) onFileSelect(e.target.files[0]); }}
+        />
+        <i className="ph ph-upload-simple" style={{ fontSize: 40, color: isDragging ? '#CC0000' : AD.textTertiary, display: 'block', marginBottom: 14 }} />
+        <p style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+          Drag a CSV here, or click to browse
+        </p>
+        <p style={{ margin: 0, fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>Only .csv files accepted</p>
+      </div>
+
+      {/* Selected file */}
+      {csvFile && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+          background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, marginBottom: 16,
+        }}>
+          <i className="ph ph-file-csv" style={{ fontSize: 20, color: AD.greenText, flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 14, color: AD.textPrimary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{csvFile.name}</span>
+          <button
+            onClick={e => { e.stopPropagation(); onFileSelect(null); }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: AD.textTertiary }}
+          >
+            <i className="ph ph-x" style={{ fontSize: 14 }} />
+          </button>
+        </div>
+      )}
+
+      {error && <p style={{ margin: '0 0 16px', fontSize: 13, color: AD.red2Text, fontFamily: AD.fontSans }}>{error}</p>}
+
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Btn variant="outline" onClick={onBack}>Back</Btn>
+        <Btn
+          variant="accent" size="lg"
+          onClick={() => { if (csvFile) onUpload(csvFile); }}
+          style={{ opacity: (!csvFile || uploading) ? 0.6 : 1, cursor: (!csvFile || uploading) ? 'not-allowed' : 'pointer' }}
+        >
+          {uploading ? 'Uploading...' : <>Upload & Preview <i className="ph ph-arrow-right" /></>}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── CSV mapping + preview step ────────────────────────────────────────────────
+function CsvMappingStep({ previewData, columnMapping, onMappingChange, onConfirm, onBack, confirming, error }) {
+  if (!previewData) return null;
+  const { detected_columns, total_rows, valid_rows, invalid_rows, duplicate_rows, preview, raw_headers } = previewData;
+
+  const fieldLabels = [
+    { key: 'firstName', label: 'First Name' },
+    { key: 'lastName',  label: 'Last Name' },
+    { key: 'fullName',  label: 'Full Name' },
+    { key: 'phone',     label: 'Phone' },
+    { key: 'email',     label: 'Email' },
+  ];
+
+  const selectStyle = {
+    padding: '8px 12px', background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+    borderRadius: 8, fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary,
+    outline: 'none', cursor: 'pointer', minWidth: 160,
+  };
+
+  const colHeader = { fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.06em', textTransform: 'uppercase' };
+
+  return (
+    <div style={{ maxWidth: 700 }}>
+      <h3 style={{ margin: '0 0 8px', fontFamily: AD.fontSans, fontSize: 20, fontWeight: 600, color: AD.textPrimary }}>Map your columns</h3>
+      <p style={{ margin: '0 0 24px', color: AD.textSecondary, fontSize: 14, fontFamily: AD.fontSans }}>
+        We detected your columns automatically. Adjust if anything looks off.
+      </p>
+
+      {/* Column mapping dropdowns */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
+        {fieldLabels.map(({ key, label }) => (
+          <div key={key}>
+            <p style={{ margin: '0 0 6px', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>{label}</p>
+            <select
+              value={columnMapping[key] || ''}
+              onChange={e => onMappingChange({ ...columnMapping, [key]: e.target.value || null })}
+              style={selectStyle}
+            >
+              <option value="">— None —</option>
+              {raw_headers.map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+
+      {/* Summary */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{ background: AD.greenBg, border: `1px solid rgba(45,139,95,0.3)`, borderRadius: 10, padding: '10px 16px' }}>
+          <span style={{ fontSize: 13, color: AD.greenText, fontFamily: AD.fontSans, fontWeight: 500 }}>
+            <i className="ph ph-check-circle" style={{ fontSize: 14, marginRight: 6 }} />
+            {valid_rows.toLocaleString()} contacts ready
+          </span>
+        </div>
+        {invalid_rows > 0 && (
+          <div style={{ background: AD.amberBg, border: `1px solid rgba(217,119,6,0.3)`, borderRadius: 10, padding: '10px 16px' }}>
+            <span style={{ fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans, fontWeight: 500 }}>
+              <i className="ph ph-warning" style={{ fontSize: 14, marginRight: 6 }} />
+              {invalid_rows.toLocaleString()} rows skipped (missing required fields)
+            </span>
+          </div>
+        )}
+        {duplicate_rows > 0 && (
+          <div style={{ background: AD.amberBg, border: `1px solid rgba(217,119,6,0.3)`, borderRadius: 10, padding: '10px 16px' }}>
+            <span style={{ fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans, fontWeight: 500 }}>
+              <i className="ph ph-copy" style={{ fontSize: 14, marginRight: 6 }} />
+              {duplicate_rows.toLocaleString()} duplicates removed
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Preview table */}
+      <p style={{ margin: '0 0 10px', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+        Preview (first {preview.length} rows)
+      </p>
+      <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 12, overflow: 'hidden', marginBottom: 24 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', padding: '10px 16px', borderBottom: `1px solid ${AD.border}`, background: AD.bgSurface }}>
+          <div style={{ flex: 2, ...colHeader }}>Name</div>
+          <div style={{ flex: 1, ...colHeader }}>Phone</div>
+          <div style={{ flex: 2, ...colHeader }}>Email</div>
+          <div style={{ width: 80, flexShrink: 0, ...colHeader }}>Status</div>
+        </div>
+        {preview.map((row, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: i < preview.length - 1 ? `1px solid ${AD.border}` : 'none', opacity: row.valid ? 1 : 0.55 }}>
+            <div style={{ flex: 2, fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+              {row.fullName || [row.firstName, row.lastName].filter(Boolean).join(' ') || '—'}
+            </div>
+            <div style={{ flex: 1, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{row.phone || '—'}</div>
+            <div style={{ flex: 2, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>{row.email || '—'}</div>
+            <div style={{ width: 80, flexShrink: 0 }}>
+              {row.valid
+                ? <i className="ph ph-check-circle" style={{ fontSize: 15, color: AD.greenText }} />
+                : <span style={{ fontSize: 11, color: AD.amberText, fontFamily: AD.fontSans }}>{row.reason || 'Invalid'}</span>
+              }
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {error && <p style={{ margin: '0 0 16px', fontSize: 13, color: AD.red2Text, fontFamily: AD.fontSans }}>{error}</p>}
+
+      <div style={{ display: 'flex', gap: 12 }}>
+        <Btn variant="outline" onClick={onBack}>Back</Btn>
+        <Btn
+          variant="accent" size="lg"
+          onClick={onConfirm}
+          style={{ opacity: (confirming || valid_rows === 0) ? 0.6 : 1, cursor: (confirming || valid_rows === 0) ? 'not-allowed' : 'pointer' }}
+        >
+          {confirming ? 'Importing...' : <>Confirm Import — {valid_rows.toLocaleString()} contacts <i className="ph ph-arrow-right" /></>}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 // ── Builder drawer ────────────────────────────────────────────────────────────
 function BuilderDrawer({
   step, onClose,
@@ -1550,6 +1884,10 @@ function BuilderDrawer({
   pullResult, pullError, onRetryPull, onGoBackFromCurating, contactsSoFar,
   campaignId, contacts, loadingContacts, onNext, onNextFromMessaging, onBack, headers,
   onLaunchComplete, onBackFromReview,
+  // CSV flow props
+  isCsvFlow,
+  csvFile, onCsvFileSelect, csvUploading, csvUploadError, onCsvUpload,
+  csvPreviewData, csvColumnMapping, onCsvMappingChange, csvConfirming, csvConfirmError, onCsvConfirm,
 }) {
   const [drawerIn, setDrawerIn] = useState(false);
 
@@ -1608,7 +1946,7 @@ function BuilderDrawer({
         {/* Step indicator (shown from step 1+) */}
         {step >= 1 && (
           <div style={{ padding: '24px 32px 0', flexShrink: 0 }}>
-            <StepIndicator currentStep={step} />
+            <StepIndicator currentStep={step} isCsvFlow={isCsvFlow} />
           </div>
         )}
 
@@ -1640,8 +1978,20 @@ function BuilderDrawer({
             </div>
           )}
 
-          {/* Step 1 — Filter Stage */}
-          {step === 1 && (
+          {/* Step 1 — CSV Upload (CSV flow) */}
+          {step === 1 && isCsvFlow && (
+            <CsvUploadStep
+              csvFile={csvFile}
+              onFileSelect={onCsvFileSelect}
+              onUpload={onCsvUpload}
+              uploading={csvUploading}
+              error={csvUploadError}
+              onBack={onGoBackFromCurating}
+            />
+          )}
+
+          {/* Step 1 — Filter Stage (Jobber flow) */}
+          {step === 1 && !isCsvFlow && (
             <div style={{ maxWidth: 620 }}>
               <h3 style={{ margin: '0 0 6px', fontFamily: AD.fontSans, fontSize: 20, fontWeight: 600, color: AD.textPrimary }}>Set your filters</h3>
               <p style={{ margin: '0 0 20px', color: AD.textSecondary, fontSize: 14, fontFamily: AD.fontSans }}>Your results will include clients who match all filters you set.</p>
@@ -1753,8 +2103,21 @@ function BuilderDrawer({
             </div>
           )}
 
-          {/* Step 2 — Curating */}
-          {step === 2 && (
+          {/* Step 2 — CSV Mapping + Preview (CSV flow) */}
+          {step === 2 && isCsvFlow && (
+            <CsvMappingStep
+              previewData={csvPreviewData}
+              columnMapping={csvColumnMapping}
+              onMappingChange={onCsvMappingChange}
+              onConfirm={onCsvConfirm}
+              onBack={() => onGoBackFromCurating()}
+              confirming={csvConfirming}
+              error={csvConfirmError}
+            />
+          )}
+
+          {/* Step 2 — Curating (Jobber flow) */}
+          {step === 2 && !isCsvFlow && (
             <CuratingScreen
               pullError={pullError}
               onRetryPull={onRetryPull}
@@ -1841,6 +2204,20 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [contacts,        setContacts]        = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
 
+  // CSV flow state
+  const [isCsvFlow,         setIsCsvFlow]         = useState(false);
+  const [typeModalStep,     setTypeModalStep]     = useState(0); // 0 = type select, 1 = source select
+  const [csvFile,           setCsvFile]           = useState(null);
+  const [csvUploading,      setCsvUploading]      = useState(false);
+  const [csvUploadError,    setCsvUploadError]    = useState('');
+  const [csvPreviewData,    setCsvPreviewData]    = useState(null);
+  const [csvColumnMapping,  setCsvColumnMapping]  = useState({});
+  const [csvConfirming,     setCsvConfirming]     = useState(false);
+  const [csvConfirmError,   setCsvConfirmError]   = useState('');
+
+  // Detail page navigation
+  const [selectedCampaignId, setSelectedCampaignId] = useState(null);
+
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -1922,8 +2299,17 @@ export default function AdminCampaigns({ setLoggedIn }) {
     }
   }
 
-  function openBuilder() {
+  function openBuilder(mode = 'jobber') {
+    setIsCsvFlow(mode === 'csv');
     setShowTypeModal(false);
+    setTypeModalStep(0);
+    setCsvFile(null);
+    setCsvUploading(false);
+    setCsvUploadError('');
+    setCsvPreviewData(null);
+    setCsvColumnMapping({});
+    setCsvConfirming(false);
+    setCsvConfirmError('');
     setDrawerStep(0);
     setCampaignId(null);
     setCampaignName('');
@@ -1961,6 +2347,10 @@ export default function AdminCampaigns({ setLoggedIn }) {
       if (r.status === 401) { if (setLoggedIn) setLoggedIn(false); return; }
       if (!r.ok) return;
       const data = await r.json();
+      if (data.status !== 'draft') {
+        setSelectedCampaignId(id);
+        return;
+      }
       const f = data.filters || {};
       setCampaignId(data.id);
       setCampaignName(data.name);
@@ -2004,8 +2394,8 @@ export default function AdminCampaigns({ setLoggedIn }) {
     if (!trimmed) { setNameError('Campaign name is required'); return; }
     // When reopening an existing draft at step 0, skip the POST
     if (campaignId) {
+      if (!isCsvFlow) loadFieldValues();
       setDrawerStep(1);
-      loadFieldValues();
       return;
     }
     setCreatingCampaign(true);
@@ -2019,12 +2409,56 @@ export default function AdminCampaigns({ setLoggedIn }) {
       const data = await r.json();
       if (data.error) { setNameError(data.error); return; }
       setCampaignId(data.id);
+      if (!isCsvFlow) loadFieldValues();
       setDrawerStep(1);
-      loadFieldValues();
     } catch {
       setNameError('Something went wrong. Please try again.');
     } finally {
       setCreatingCampaign(false);
+    }
+  }
+
+  async function handleCsvUpload(file) {
+    setCsvUploading(true);
+    setCsvUploadError('');
+    try {
+      const formData = new FormData();
+      formData.append('csv', file);
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/upload-csv`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      const data = await r.json();
+      if (!r.ok) { setCsvUploadError(data.error || 'Upload failed'); return; }
+      setCsvPreviewData(data);
+      setCsvColumnMapping(data.detected_columns || {});
+      setDrawerStep(2);
+    } catch {
+      setCsvUploadError('Upload failed. Please try again.');
+    } finally {
+      setCsvUploading(false);
+    }
+  }
+
+  async function handleCsvConfirm() {
+    setCsvConfirming(true);
+    setCsvConfirmError('');
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/confirm-csv`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ column_mapping: csvColumnMapping, confirmed: true }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setCsvConfirmError(data.error || 'Import failed'); return; }
+      setPullResult({ totalContacts: data.contacts_imported, inAppCount: 0 });
+      await loadContacts(campaignId);
+      setDrawerStep(3);
+    } catch {
+      setCsvConfirmError('Import failed. Please try again.');
+    } finally {
+      setCsvConfirming(false);
     }
   }
 
@@ -2110,6 +2544,16 @@ export default function AdminCampaigns({ setLoggedIn }) {
     }
   }
 
+  if (selectedCampaignId) {
+    return (
+      <AdminCampaignDetail
+        campaignId={selectedCampaignId}
+        headers={headers}
+        onBack={() => { setSelectedCampaignId(null); loadCampaigns(); }}
+      />
+    );
+  }
+
   return (
     <>
       {/* Campaign list page */}
@@ -2135,23 +2579,52 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
       {/* Type selector modal */}
       {showTypeModal && (
-        <CenteredModal onClose={() => setShowTypeModal(false)}>
-          <h2 style={{ margin: '0 0 6px', fontFamily: AD.fontDisplay, fontSize: 26, fontWeight: 400, color: AD.textPrimary }}>Choose campaign type</h2>
-          <p style={{ margin: '0 0 24px', color: AD.textSecondary, fontSize: 15, fontFamily: AD.fontSans }}>What kind of campaign would you like to build?</p>
-          <div style={{ display: 'flex', gap: 16 }}>
-            <TypeCard
-              title="Outreach Campaign"
-              description="Reach past Jobber clients not yet in the app."
-              icon="ph-envelope-simple"
-              onClick={openBuilder}
-            />
-            <TypeCard
-              title="Boost Campaign"
-              description="Re-engage your existing referrers."
-              icon="ph-rocket-launch"
-              comingSoon
-            />
-          </div>
+        <CenteredModal onClose={() => { setShowTypeModal(false); setTypeModalStep(0); }}>
+          {typeModalStep === 0 ? (
+            <>
+              <h2 style={{ margin: '0 0 6px', fontFamily: AD.fontDisplay, fontSize: 26, fontWeight: 400, color: AD.textPrimary }}>Choose campaign type</h2>
+              <p style={{ margin: '0 0 24px', color: AD.textSecondary, fontSize: 15, fontFamily: AD.fontSans }}>What kind of campaign would you like to build?</p>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <TypeCard
+                  title="Outreach Campaign"
+                  description="Reach past clients with a personalized message."
+                  icon="ph-envelope-simple"
+                  onClick={() => setTypeModalStep(1)}
+                />
+                <TypeCard
+                  title="Boost Campaign"
+                  description="Re-engage your existing referrers."
+                  icon="ph-rocket-launch"
+                  comingSoon
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setTypeModalStep(0)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 13, padding: 0, marginBottom: 20 }}
+              >
+                <i className="ph ph-arrow-left" style={{ fontSize: 14 }} /> Back
+              </button>
+              <h2 style={{ margin: '0 0 6px', fontFamily: AD.fontDisplay, fontSize: 26, fontWeight: 400, color: AD.textPrimary }}>Outreach Campaign</h2>
+              <p style={{ margin: '0 0 24px', color: AD.textSecondary, fontSize: 15, fontFamily: AD.fontSans }}>How would you like to build your contact list?</p>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <TypeCard
+                  title="Pull from Jobber"
+                  description="Filter your Jobber client history and pull matching contacts."
+                  icon="ph-network"
+                  onClick={() => openBuilder('jobber')}
+                />
+                <TypeCard
+                  title="Upload a CSV"
+                  description="Import a contact list from a spreadsheet or export."
+                  icon="ph-upload-simple"
+                  onClick={() => openBuilder('csv')}
+                />
+              </div>
+            </>
+          )}
         </CenteredModal>
       )}
 
@@ -2194,6 +2667,18 @@ export default function AdminCampaigns({ setLoggedIn }) {
           headers={headers}
           onLaunchComplete={closeDrawer}
           onBackFromReview={() => setDrawerStep(4)}
+          isCsvFlow={isCsvFlow}
+          csvFile={csvFile}
+          onCsvFileSelect={setCsvFile}
+          csvUploading={csvUploading}
+          csvUploadError={csvUploadError}
+          onCsvUpload={handleCsvUpload}
+          csvPreviewData={csvPreviewData}
+          csvColumnMapping={csvColumnMapping}
+          onCsvMappingChange={setCsvColumnMapping}
+          csvConfirming={csvConfirming}
+          csvConfirmError={csvConfirmError}
+          onCsvConfirm={handleCsvConfirm}
         />
       )}
 

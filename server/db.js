@@ -528,6 +528,25 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS cta_url TEXT`);
 
+  // ── CAMPAIGN SESSION A MIGRATIONS ────────────────────────────────────────────
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_batch_sent_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS csv_raw TEXT`);
+  await pool.query(`ALTER TABLE campaign_contacts ADD COLUMN IF NOT EXISTS image_url TEXT`);
+  await pool.query(`ALTER TABLE campaign_contacts ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'jobber'`);
+  // CSV contacts have no Jobber ID — drop NOT NULL to allow nullable; existing rows unaffected
+  await pool.query(`ALTER TABLE campaign_contacts ALTER COLUMN client_jobber_id DROP NOT NULL`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS campaign_images (
+    id SERIAL PRIMARY KEY,
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    contractor_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    b2_key TEXT NOT NULL,
+    public_url TEXT NOT NULL,
+    file_size_bytes INTEGER,
+    uploaded_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
   // ── REFERRAL RULES ENGINE MIGRATIONS ──────────────────────────────────────────
 
   // 1A — Widen bonus_amount from INTEGER to NUMERIC(10,2) for tiered/percentage models
