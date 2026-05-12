@@ -1682,13 +1682,6 @@ function CsvUploadStep({ csvFile, onFileSelect, onUpload, uploading, error, onBa
     if (file) onFileSelect(file);
   }
 
-  const inputStyle = {
-    width: '100%', padding: '10px 14px', background: AD.bgSurface,
-    border: `1px solid ${AD.borderStrong}`, borderRadius: 10,
-    fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary,
-    outline: 'none', boxSizing: 'border-box',
-  };
-
   return (
     <div style={{ maxWidth: 560 }}>
       <h3 style={{ margin: '0 0 8px', fontFamily: AD.fontSans, fontSize: 20, fontWeight: 600, color: AD.textPrimary }}>Upload your CSV</h3>
@@ -1757,7 +1750,7 @@ function CsvUploadStep({ csvFile, onFileSelect, onUpload, uploading, error, onBa
 // ── CSV mapping + preview step ────────────────────────────────────────────────
 function CsvMappingStep({ previewData, columnMapping, onMappingChange, onConfirm, onBack, confirming, error }) {
   if (!previewData) return null;
-  const { detected_columns, total_rows, valid_rows, invalid_rows, duplicate_rows, preview, raw_headers } = previewData;
+  const { valid_rows, invalid_rows, duplicate_rows, preview, raw_headers } = previewData;
 
   const fieldLabels = [
     { key: 'firstName', label: 'First Name' },
