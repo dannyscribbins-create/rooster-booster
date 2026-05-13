@@ -35,7 +35,7 @@ function getCampaignS3Client() {
 }
 function buildB2PublicUrl(b2Key) {
   const base = process.env.B2_PUBLIC_URL_BASE
-    || `https://f005.backblazeb2.com/file/${process.env.B2_BUCKET_NAME}`;
+    || `https://f005.backblazeb2.com/file/${process.env.B2_MEDIA_BUCKET_NAME}`;
   return `${base}/${b2Key}`;
 }
 
@@ -2900,7 +2900,7 @@ router.post('/api/admin/campaigns/:id/upload-image',
 
       const s3 = getCampaignS3Client();
       const result = await s3.send(new PutObjectCommand({
-        Bucket: process.env.B2_BUCKET_NAME,
+        Bucket: process.env.B2_MEDIA_BUCKET_NAME,
         Key: b2Key,
         Body: req.file.buffer,
         ContentType: req.file.mimetype,
@@ -2947,7 +2947,7 @@ router.delete('/api/admin/campaigns/:id/image', async (req, res) => {
 
     const s3 = getCampaignS3Client();
     await s3.send(new DeleteObjectCommand({
-      Bucket: process.env.B2_BUCKET_NAME,
+      Bucket: process.env.B2_MEDIA_BUCKET_NAME,
       Key: imageResult.rows[0].b2_key,
     }));
 
