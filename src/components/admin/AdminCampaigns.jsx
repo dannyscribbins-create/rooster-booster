@@ -528,7 +528,7 @@ function PillMultiSelect({ label, options, selected, onChange }) {
 }
 
 // ── Results modal ─────────────────────────────────────────────────────────────
-function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loadingContacts, onNext, onBack, headers }) {
+function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loadingContacts, onNext, onBack, onSaveExit, headers }) {
   const [search,           setSearch]           = useState('');
   const [localSelected,    setLocalSelected]    = useState({});
   const [pendingSaves,     setPendingSaves]     = useState(new Set());
@@ -628,17 +628,29 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
         <p style={{ margin: 0, fontSize: 15, fontFamily: AD.fontSans, color: AD.textPrimary, fontWeight: 500 }}>
           {totalContacts.toLocaleString()} contact{totalContacts !== 1 ? 's' : ''} · {inAppCount} in app
         </p>
-        <button
-          onClick={onNext}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: '#CC0000', color: '#fff', border: 'none', borderRadius: 8,
-            padding: '8px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 500,
-            fontFamily: AD.fontSans,
-          }}
-        >
-          Next: Messaging <i className="ph ph-arrow-right" style={{ fontSize: 14 }} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={onSaveExit}
+            style={{
+              background: 'none', border: `1px solid ${AD.border}`, borderRadius: 8,
+              padding: '7px 14px', cursor: 'pointer', fontFamily: AD.fontSans,
+              fontSize: 13, color: AD.textSecondary,
+            }}
+          >
+            Save &amp; Exit
+          </button>
+          <button
+            onClick={onNext}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#CC0000', color: '#fff', border: 'none', borderRadius: 8,
+              padding: '8px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 500,
+              fontFamily: AD.fontSans,
+            }}
+          >
+            Next: Messaging <i className="ph ph-arrow-right" style={{ fontSize: 14 }} />
+          </button>
+        </div>
       </div>
 
       {/* Search bar */}
@@ -874,7 +886,7 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
 }
 
 // ── Messaging step ────────────────────────────────────────────────────────────
-function MessagingStep({ campaignId, onNext, onBack, headers }) {
+function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   const [selectedPreset, setSelectedPreset] = useState('referral_invite');
   const [messageBody,    setMessageBody]    = useState(PRESETS[0].body);
   const [aiRapport,      setAiRapport]      = useState(false);
@@ -1035,14 +1047,26 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
         <span style={{ fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
           Step 4 — Messaging
         </span>
-        <Btn
-          variant="accent"
-          onClick={handleNext}
-          style={{ opacity: (saving || loadingContext) ? 0.6 : 1 }}
-          disabled={saving || loadingContext}
-        >
-          Next: Review →
-        </Btn>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={async () => { await saveMessaging(); onSaveExit(); }}
+            style={{
+              background: 'none', border: `1px solid ${AD.border}`, borderRadius: 8,
+              padding: '7px 14px', cursor: 'pointer', fontFamily: AD.fontSans,
+              fontSize: 13, color: AD.textSecondary,
+            }}
+          >
+            Save &amp; Exit
+          </button>
+          <Btn
+            variant="accent"
+            onClick={handleNext}
+            style={{ opacity: (saving || loadingContext) ? 0.6 : 1 }}
+            disabled={saving || loadingContext}
+          >
+            Next: Review →
+          </Btn>
+        </div>
       </div>
 
       {/* Body — two-panel layout */}
@@ -1318,7 +1342,7 @@ function MessagingStep({ campaignId, onNext, onBack, headers }) {
 }
 
 // ── Review step ───────────────────────────────────────────────────────────────
-function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
+function ReviewStep({ campaignId, onBack, onLaunchComplete, onSaveExit, headers }) {
   const [summary,        setSummary]        = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [launching,      setLaunching]      = useState(false);
@@ -1517,7 +1541,16 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, headers }) {
         <span style={{ fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
           Step 5 — Review &amp; Launch
         </span>
-        <div style={{ width: 150 }} />
+        <button
+          onClick={onSaveExit}
+          style={{
+            background: 'none', border: `1px solid ${AD.border}`, borderRadius: 8,
+            padding: '7px 14px', cursor: 'pointer', fontFamily: AD.fontSans,
+            fontSize: 13, color: AD.textSecondary,
+          }}
+        >
+          Save &amp; Exit
+        </button>
       </div>
 
       {/* B. Body */}
@@ -1879,7 +1912,7 @@ function CsvMappingStep({ previewData, columnMapping, onMappingChange, onConfirm
 
 // ── Builder drawer ────────────────────────────────────────────────────────────
 function BuilderDrawer({
-  step, onClose,
+  step, onClose, onSaveExit,
   campaignName, setCampaignName, nameError, creatingCampaign, onCreateCampaign,
   fieldMappings,
   dateFrom, setDateFrom, dateTo, setDateTo,
@@ -1942,12 +1975,24 @@ function BuilderDrawer({
             <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Campaign Builder</p>
             <h2 style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 400, fontFamily: AD.fontDisplay, color: AD.textPrimary }}>Outreach Campaign</h2>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, color: AD.textSecondary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <i className="ph ph-x" style={{ fontSize: 22 }} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onClick={onSaveExit}
+              style={{
+                background: 'none', border: `1px solid ${AD.border}`, borderRadius: 8,
+                padding: '7px 14px', cursor: 'pointer', fontFamily: AD.fontSans,
+                fontSize: 13, color: AD.textSecondary,
+              }}
+            >
+              Save &amp; Exit
+            </button>
+            <button
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, color: AD.textSecondary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <i className="ph ph-x" style={{ fontSize: 22 }} />
+            </button>
+          </div>
         </div>
 
         {/* Step indicator (shown from step 1+) */}
@@ -2143,6 +2188,7 @@ function BuilderDrawer({
               loadingContacts={loadingContacts}
               onNext={onNext}
               onBack={onGoBackFromCurating}
+              onSaveExit={onSaveExit}
               headers={headers}
             />
           )}
@@ -2153,6 +2199,7 @@ function BuilderDrawer({
               campaignId={campaignId}
               onNext={onNextFromMessaging}
               onBack={onBack}
+              onSaveExit={onSaveExit}
               headers={headers}
             />
           )}
@@ -2163,6 +2210,7 @@ function BuilderDrawer({
               campaignId={campaignId}
               onBack={onBackFromReview}
               onLaunchComplete={onLaunchComplete}
+              onSaveExit={onSaveExit}
               headers={headers}
             />
           )}
@@ -2184,6 +2232,8 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [drawerStep,      setDrawerStep]      = useState(0);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [campaignId,      setCampaignId]      = useState(null);
+  const [isReopening,      setIsReopening]      = useState(false);
+  const [reopenHasFilters, setReopenHasFilters] = useState(false);
   const [fieldMappings,   setFieldMappings]   = useState({});
 
   // Step 0
@@ -2338,13 +2388,24 @@ export default function AdminCampaigns({ setLoggedIn }) {
   }
 
   function requestClose() {
-    if (drawerStep > 0) setShowExitConfirm(true);
+    if (drawerStep > 0 || campaignId) setShowExitConfirm(true);
     else closeDrawer();
   }
 
-  function closeDrawer() {
+  async function closeDrawer() {
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+    if (drawerStep === 1 && !isCsvFlow && campaignId) {
+      try {
+        await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/filters`, {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dateFrom, dateTo, paidOnly, minJobValue: minJobValue || null, workCategory, notInApp }),
+        });
+      } catch { /* swallow */ }
+    }
     setDrawerOpen(false);
     setShowExitConfirm(false);
+    setIsReopening(false);
     loadCampaigns();
   }
 
@@ -2359,6 +2420,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
       if (!r.ok) return;
       const data = await r.json();
       const f = data.filters || {};
+      const hasFilters = data.filters && Object.keys(data.filters).length > 0;
       setCampaignId(data.id);
       setCampaignName(data.name);
       setNameError('');
@@ -2372,19 +2434,67 @@ export default function AdminCampaigns({ setLoggedIn }) {
       setPullResult(null);
       setPullError(null);
       setContactsSoFar(0);
+      setCsvFile(null);
+      setCsvPreviewData(null);
+      setCsvColumnMapping({});
       loadFieldMappings();
-      const hasFilters = data.filters && Object.keys(data.filters).length > 0;
-      if (hasFilters) {
-        loadFieldValues();
-        setDrawerStep(1);
+
+      if (data.builder_path === 'jobber') {
+        setIsCsvFlow(false);
+        if (hasFilters) {
+          loadFieldValues();
+          setDrawerStep(1);
+        } else {
+          setWorkCategoryOptions([]);
+          setDrawerStep(0);
+        }
+        setDrawerOpen(true);
       } else {
-        setWorkCategoryOptions([]);
-        setDrawerStep(0);
+        // CSV or null — show source selector so admin can confirm or switch
+        setReopenHasFilters(hasFilters);
+        setIsReopening(true);
+        setTypeModalStep(1);
+        setShowTypeModal(true);
       }
-      setDrawerOpen(true);
     } catch {
       // swallow
     }
+  }
+
+  async function patchBuilderPath(id, path) {
+    try {
+      await fetch(`${BACKEND_URL}/api/admin/campaigns/${id}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ builder_path: path }),
+      });
+    } catch { /* swallow */ }
+  }
+
+  async function handleReopenJobber() {
+    await patchBuilderPath(campaignId, 'jobber');
+    setIsCsvFlow(false);
+    setIsReopening(false);
+    setShowTypeModal(false);
+    setTypeModalStep(0);
+    if (reopenHasFilters) {
+      loadFieldValues();
+      setDrawerStep(1);
+    } else {
+      setWorkCategoryOptions([]);
+      setDrawerStep(0);
+    }
+    setDrawerOpen(true);
+  }
+
+  async function handleReopenCsv() {
+    await patchBuilderPath(campaignId, 'csv');
+    setIsCsvFlow(true);
+    setIsReopening(false);
+    setShowTypeModal(false);
+    setTypeModalStep(0);
+    setDrawerStep(1);
+    setDrawerOpen(true);
   }
 
   async function handleDeleteCampaign(id) {
@@ -2411,7 +2521,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
       const r = await fetch(`${BACKEND_URL}/api/admin/campaigns`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, builder_path: isCsvFlow ? 'csv' : 'jobber' }),
       });
       const data = await r.json();
       if (data.error) { setNameError(data.error); return; }
@@ -2586,7 +2696,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
       {/* Type selector modal */}
       {showTypeModal && (
-        <CenteredModal onClose={() => { setShowTypeModal(false); setTypeModalStep(0); }}>
+        <CenteredModal onClose={() => { setShowTypeModal(false); setTypeModalStep(0); setIsReopening(false); }}>
           {typeModalStep === 0 ? (
             <>
               <h2 style={{ margin: '0 0 6px', fontFamily: AD.fontDisplay, fontSize: 26, fontWeight: 400, color: AD.textPrimary }}>Choose campaign type</h2>
@@ -2621,13 +2731,13 @@ export default function AdminCampaigns({ setLoggedIn }) {
                   title="Pull from Jobber"
                   description="Filter your Jobber client history and pull matching contacts."
                   icon="ph-network"
-                  onClick={() => openBuilder('jobber')}
+                  onClick={isReopening ? handleReopenJobber : () => openBuilder('jobber')}
                 />
                 <TypeCard
                   title="Upload a CSV"
                   description="Import a contact list from a spreadsheet or export."
                   icon="ph-upload-simple"
-                  onClick={() => openBuilder('csv')}
+                  onClick={isReopening ? handleReopenCsv : () => openBuilder('csv')}
                 />
               </div>
             </>
@@ -2640,6 +2750,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
         <BuilderDrawer
           step={drawerStep}
           onClose={requestClose}
+          onSaveExit={requestClose}
           campaignName={campaignName}
           setCampaignName={setCampaignName}
           nameError={nameError}
@@ -2692,11 +2803,11 @@ export default function AdminCampaigns({ setLoggedIn }) {
       {/* Exit confirmation overlay */}
       {showExitConfirm && (
         <CenteredModal onClose={() => setShowExitConfirm(false)} maxWidth={400}>
-          <p style={{ margin: '0 0 8px', fontFamily: AD.fontDisplay, fontSize: 22, color: AD.textPrimary }}>Exit builder?</p>
-          <p style={{ margin: '0 0 28px', color: AD.textSecondary, fontSize: 15, fontFamily: AD.fontSans }}>Your draft has been saved. Exit builder?</p>
+          <p style={{ margin: '0 0 8px', fontFamily: AD.fontDisplay, fontSize: 22, color: AD.textPrimary }}>Save as draft and exit?</p>
+          <p style={{ margin: '0 0 28px', color: AD.textSecondary, fontSize: 15, fontFamily: AD.fontSans }}>Your progress will be saved. You can continue this campaign anytime from the Campaigns page.</p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
             <Btn variant="outline" onClick={() => setShowExitConfirm(false)}>Cancel</Btn>
-            <Btn variant="accent" onClick={closeDrawer}>Exit</Btn>
+            <Btn variant="accent" onClick={closeDrawer}>Save &amp; Exit</Btn>
           </div>
         </CenteredModal>
       )}
