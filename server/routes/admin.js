@@ -15,7 +15,7 @@ const { runVerify } = require('../utils/restore-verify');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-const { resendShouldRetry, jobberShouldRetry } = require('../utils/retryHelpers');
+const { resendShouldRetry, jobberShouldRetry, anthropicShouldRetry } = require('../utils/retryHelpers');
 const { discoverJobberFields, refreshTokenIfNeeded } = require('../crm/jobber');
 const multer = require('multer');
 const Papa = require('papaparse');
@@ -3447,6 +3447,9 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
   if (!Array.isArray(contacts) || contacts.length === 0) {
     return res.status(400).json({ error: 'contacts must be a non-empty array' });
   }
+  if (contacts.length > 50) {
+    return res.status(400).json({ error: 'contacts array must not exceed 50 items' });
+  }
   if (!tone || typeof tone !== 'string') {
     return res.status(400).json({ error: 'tone is required' });
   }
@@ -3477,36 +3480,36 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
     const messages = [];
     try {
       for (const contact of contacts) {
+        const name = (contact.name || '').toString().trim().slice(0, 100);
+        const jobType = (contact.job_type || '').toString().trim().slice(0, 100);
         const prompt =
           `You are writing a personalized outreach message for a roofing contractor.\n` +
-          `Contact name: ${contact.name}\n` +
-          `Last job type: ${contact.job_type}\n` +
+          `Contact name: ${name}\n` +
+          `Last job type: ${jobType}\n` +
           `Tone: ${tone}\n` +
           `Goal: ${cta}\n` +
           `Write a short, conversational message (2-3 sentences max) that feels personal, not spammy. Use their first name. Reference their job type naturally if relevant. End with a soft call to action. Return only the message text, nothing else.`;
 
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': process.env.ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01'
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 300,
-            messages: [{ role: 'user', content: prompt }]
-          })
-        });
-        if (!response.ok) {
-          throw new Error(`Anthropic API error: ${response.status}`);
-        }
-        const data = await response.json();
-        if (!data.content?.[0]?.text) {
-          throw new Error('Unexpected Anthropic response shape');
-        }
-        const result = data.content[0].text.trim();
-        messages.push(result);
+        const message = await retryWithBackoff(async () => {
+          const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 300,
+              messages: [{ role: 'user', content: prompt }]
+            })
+          });
+          if (!response.ok) throw new Error(`Anthropic API error: ${response.status}`);
+          const data = await response.json();
+          if (!data.content?.[0]?.text) throw new Error('Unexpected Anthropic response shape');
+          return data.content[0].text.trim();
+        }, { maxRetries: 2, shouldRetry: anthropicShouldRetry });
+        messages.push(message);
       }
     } catch (err) {
       await logError({ req, error: err });
@@ -3514,8 +3517,8 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
     }
 
     await pool.query(
-      'UPDATE campaigns SET ai_rapport_generations = ai_rapport_generations + 1 WHERE id = $1',
-      [id]
+      'UPDATE campaigns SET ai_rapport_generations = ai_rapport_generations + 1 WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
     );
 
     const newCount = currentGenerations + 1;

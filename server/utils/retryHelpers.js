@@ -29,4 +29,10 @@ const stripeShouldRetry = (error) => {
   return false;
 };
 
-module.exports = { resendShouldRetry, twilioShouldRetry, jobberShouldRetry, stripeShouldRetry };
+const anthropicShouldRetry = (error, attempt, maxRetries) => {
+  if (attempt >= maxRetries) return false;
+  if (error?.status >= 400 && error?.status < 500) return false; // skip on 4xx
+  return true;
+};
+
+module.exports = { resendShouldRetry, twilioShouldRetry, jobberShouldRetry, stripeShouldRetry, anthropicShouldRetry };
