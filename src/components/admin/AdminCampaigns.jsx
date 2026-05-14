@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
-import { BACKEND_URL } from '../../config/contractor';
+import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import { AdminPageHeader, Btn, Badge } from './AdminComponents';
 import AdminCampaignDetail from './AdminCampaignDetail';
 
@@ -912,6 +912,27 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    async function syncGenerationCount() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/messaging-context`, { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        const count = data.saved?.ai_rapport_generations ?? 0;
+        setAiGenerationsUsed(count);
+        if (count >= 5) setAiLimitReached(true);
+      } catch {
+        // swallow
+      }
+    }
+    syncGenerationCount();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId]);
+
+  useEffect(() => {
+    setAiMessages([]);
+  }, [selectedPreset]);
+
   async function loadMessagingContext() {
     setLoadingContext(true);
     try {
@@ -997,13 +1018,23 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
         name: c.client_name || c.name || '',
         job_type: c.job_type || '',
       }));
+      const presetTypeMap = { referral_invite: 'referral_program_invite', re_engagement: 'reengagement', seasonal: 'seasonal_outreach', thank_you: 'thank_you_invite', write_own: 'write_my_own' };
+      const ctaTypeFromUrl = [
+        { url: ctaOptions.appSignup, type: 'join_app' },
+        { url: ctaOptions.website,   type: 'website' },
+        { url: ctaOptions.facebook,  type: 'facebook' },
+        { url: ctaOptions.google,    type: 'google_profile' },
+      ].find(m => m.url && m.url === ctaUrl)?.type || 'join_app';
       const res = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/ai-rapport`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contacts: contactsPayload,
-          tone: 'friendly',
-          cta: 'schedule a free inspection',
+          messageType: presetTypeMap[selectedPreset] || selectedPreset,
+          ctaType: ctaTypeFromUrl,
+          contractorName: CONTRACTOR_CONFIG.name || '',
+          senderName: CONTRACTOR_CONFIG.name || '',
+          customMessage: selectedPreset === 'write_own' ? (messageBody || '') : '',
         }),
       });
       if (res.status === 429) {

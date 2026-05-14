@@ -2214,7 +2214,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
   const { id } = req.params;
   try {
     const campaignCheck = await pool.query(
-      'SELECT message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      'SELECT message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations FROM campaigns WHERE id = $1 AND contractor_id = $2',
       [id, 'accent-roofing']
     );
     if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
@@ -3443,18 +3443,12 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
   const id = parseInt(req.params.id, 10);
   if (!id || id < 1) return res.status(400).json({ error: 'Invalid campaign ID' });
 
-  const { contacts, tone, cta } = req.body;
+  const { contacts, messageType, ctaType, contractorName = '', senderName = '', customMessage = '' } = req.body;
   if (!Array.isArray(contacts) || contacts.length === 0) {
     return res.status(400).json({ error: 'contacts must be a non-empty array' });
   }
   if (contacts.length > 50) {
     return res.status(400).json({ error: 'contacts array must not exceed 50 items' });
-  }
-  if (!tone || typeof tone !== 'string') {
-    return res.status(400).json({ error: 'tone is required' });
-  }
-  if (!cta || typeof cta !== 'string') {
-    return res.status(400).json({ error: 'cta is required' });
   }
 
   try {
@@ -3477,20 +3471,61 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
       });
     }
 
+    const messageTypeMission = {
+      referral_program_invite: "Invite the recipient to join or participate in the referral program. Emphasize appreciation, trust, and the simplicity of referring someone. Make the recipient feel like a valued part of the business's network.",
+      reengagement: "Reconnect with the recipient in a warm, low-pressure way. Remind them the business is still active, still available, and still values the relationship. Avoid guilt-based language.",
+      seasonal_outreach: "Use the current season as a natural, timely reason to stay top of mind. Keep it helpful and relevant. Do not force a service appointment angle.",
+      thank_you_invite: "Lead with genuine gratitude for the recipient's support, business, or trust. Then softly invite them to take the CTA action. Do not sound transactional.",
+      write_my_own: "The contractor has written a draft message. Personalize it for this specific recipient using their first name and job type where it fits naturally. Lightly rewrite it for clarity, warmth, and quality while preserving the contractor's voice and intent."
+    };
+
+    const ctaGoal = {
+      join_app: "Encourage the recipient to join, accept the invite, or get connected through the app. End with a sentence that leads naturally into a 'Join the App' button.",
+      website: "Encourage the recipient to visit the website to learn more, view services, or reconnect. End with a sentence that leads naturally into a 'Visit Our Website' button.",
+      facebook: "Encourage the recipient to follow or visit the business on Facebook for updates, project photos, tips, or community content. End with a sentence that leads naturally into a 'Visit Us on Facebook' button.",
+      google_profile: "Encourage the recipient to view the Google profile, read reviews, or leave honest feedback. End with a sentence that leads naturally into a 'View Our Google Profile' button. Do not pressure for a 5-star review. Do not imply any incentive for leaving a review."
+    };
+
     const messages = [];
     try {
-      const safeTone = tone.trim().slice(0, 100);
-      const safeCta  = cta.trim().slice(0, 200);
+      const systemPrompt = `You are an expert email marketing copywriter for a contractor-to-homeowner referral and relationship-building platform.
+
+Your job is to write a short, personalized email message body for a single recipient based on the campaign mission and CTA goal provided.
+
+Rules you must always follow:
+- Never mention inspections, free estimates, roof checks, appointments, or "coming out to take a look" unless the contractor's own draft message specifically includes those ideas.
+- Always include the business name naturally somewhere in the message.
+- Always address the recipient by their first name.
+- Reference the recipient's job type naturally and organically where it makes sense — do not force it or make it sound awkward.
+- Do not invent specific rewards, dollar amounts, discount offers, or program details that were not provided.
+- Do not use hype, urgency, or pressure language.
+- Do not write markdown. No asterisks, no headers, no bullet points.
+- Do not write multiple versions.
+- Do not include a subject line.
+- Do not include a CTA button or URL.
+- Keep the message under 80 words and between 3 and 5 sentences.
+- The final sentence should lead naturally into the CTA button without writing the button itself.
+
+Tone: warm, trustworthy, relationship-focused, clear, and professional but human. Not cheesy. Not overly casual. Not corporate.`;
+
       for (const contact of contacts) {
         const name = (contact.name || '').toString().trim().slice(0, 100);
         const jobType = (contact.job_type || '').toString().trim().slice(0, 100);
-        const prompt =
-          `You are writing a personalized outreach message for a roofing contractor.\n` +
-          `Contact name: ${name}\n` +
-          `Last job type: ${jobType}\n` +
-          `Tone: ${safeTone}\n` +
-          `Goal: ${safeCta}\n` +
-          `Write a short, conversational message (2-3 sentences max) that feels personal, not spammy. Use their first name. Reference their job type naturally if relevant. End with a soft call to action. Return only the message text, nothing else.`;
+        const customMessageSafe = (customMessage || '').toString().trim().slice(0, 2000);
+        const userPrompt = `Generate one email message body for the following recipient.
+
+Recipient first name: ${name}
+Recipient job type: ${jobType}
+Business name: ${contractorName || 'the business'}
+Sender name: ${senderName || ''}
+
+Campaign mission: ${messageTypeMission[messageType] || 'Write a warm, relationship-focused message that feels personal and avoids generic contractor language.'}
+
+CTA goal: ${ctaGoal[ctaType] || 'End with a sentence that leads naturally into the CTA button.'}
+
+${messageType === 'write_my_own' && customMessageSafe ? `The contractor has written this draft message. Use it as the foundation. Personalize it for this recipient, lightly rewrite for quality and warmth, and align the closing sentence to the CTA goal:\n\n"${customMessageSafe}"` : ''}
+
+Output: One email message body only. No subject line. No preview text. No button. No markdown. Under 80 words. 3 to 5 sentences.`;
 
         const message = await retryWithBackoff(async () => {
           const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -3503,7 +3538,8 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
             body: JSON.stringify({
               model: 'claude-haiku-4-5-20251001',
               max_tokens: 300,
-              messages: [{ role: 'user', content: prompt }]
+              system: systemPrompt,
+              messages: [{ role: 'user', content: userPrompt }]
             })
           });
           if (!response.ok) {
