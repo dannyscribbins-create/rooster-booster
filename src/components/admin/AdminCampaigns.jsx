@@ -1006,13 +1006,13 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           cta: 'schedule a free inspection',
         }),
       });
-      const data = await res.json();
       if (res.status === 429) {
         setAiLimitReached(true);
         setAiGenerationsUsed(5);
         setAiError("You've used all 5 generations for this campaign");
         return;
       }
+      const data = await res.json();
       if (!res.ok) {
         setAiError(data.error || 'Failed to generate messages');
         return;
@@ -1086,6 +1086,8 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   const divider = { marginTop: 24, marginBottom: 24, borderTop: `1px solid ${AD.border}` };
 
   return (
+    <>
+    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     <div style={{ position: 'fixed', inset: 0, zIndex: 350, background: AD.bgPage, display: 'flex', flexDirection: 'column' }}>
 
       {/* Header */}
@@ -1249,10 +1251,10 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                   <p style={{ margin: '0 0 10px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                     Generated messages
                   </p>
-                  {contacts.filter(c => c.selected !== false).slice(0, 3).map((c, i) => {
-                    const msg = aiMessages[i];
-                    if (!msg) return null;
-                    const name = c.client_name || c.name || 'Contact';
+                  {aiMessages.slice(0, 3).map((msg, i) => {
+                    const selectedContacts = contacts.filter(c => c.selected !== false);
+                    const contact = selectedContacts[i];
+                    const name = contact?.client_name || contact?.name || 'Contact';
                     return (
                       <div key={i} style={{ marginBottom: i < 2 ? 10 : 0, paddingBottom: i < 2 ? 10 : 0, borderBottom: i < 2 ? `1px solid ${AD.border}` : 'none' }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>{name}: </span>
@@ -1262,9 +1264,9 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                       </div>
                     );
                   })}
-                  {contacts.filter(c => c.selected !== false).length > 3 && (
+                  {aiMessages.length > 3 && (
                     <p style={{ margin: '10px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-                      +{contacts.filter(c => c.selected !== false).length - 3} more
+                      +{aiMessages.length - 3} more
                     </p>
                   )}
                 </div>
@@ -1461,6 +1463,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
