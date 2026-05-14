@@ -66,10 +66,6 @@ const PRESETS = [
 
 const AI_RAPPORT_EXPLAINER = `AI will personalize each message using: first name, job type, and month and year of service.`;
 
-// Simulated AI Rapport preview suffix — real Haiku call wired in dedicated AI session
-// TODO: replace SIMULATED_AI_SUFFIX with live Anthropic Haiku API call per contact
-const SIMULATED_AI_SUFFIX = ` Since we completed your [Job Type] back in [Month Year], we've been grateful for clients like you.`;
-
 // ── Step indicator ────────────────────────────────────────────────────────────
 function StepIndicator({ currentStep, isCsvFlow }) {
   const stepIndex = currentStep - 1;
@@ -903,6 +899,14 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   const [imageError,     setImageError]     = useState('');
   const imageInputRef = useRef(null);
 
+  // AI Rapport state
+  const [contacts,            setContacts]            = useState([]);
+  const [aiMessages,          setAiMessages]          = useState([]);
+  const [aiGenerating,        setAiGenerating]        = useState(false);
+  const [aiGenerationsUsed,   setAiGenerationsUsed]   = useState(0);
+  const [aiLimitReached,      setAiLimitReached]      = useState(false);
+  const [aiError,             setAiError]             = useState(null);
+
   useEffect(() => {
     loadMessagingContext();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -911,27 +915,32 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   async function loadMessagingContext() {
     setLoadingContext(true);
     try {
-      const r = await fetch(
-        `${BACKEND_URL}/api/admin/campaigns/${campaignId}/messaging-context`,
-        { headers }
-      );
-      if (!r.ok) return;
-      const data = await r.json();
-      setCtaOptions(data.ctaOptions || {});
-      const s = data.saved;
-      if (s?.message_preset) {
-        setSelectedPreset(s.message_preset);
-        const match = PRESETS.find(p => p.id === s.message_preset);
-        setMessageBody(s.message_body || match?.body || '');
+      const [contextRes, contactsRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/messaging-context`, { headers }),
+        fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/contacts`, { headers }),
+      ]);
+      if (contextRes.ok) {
+        const data = await contextRes.json();
+        setCtaOptions(data.ctaOptions || {});
+        const s = data.saved;
+        if (s?.message_preset) {
+          setSelectedPreset(s.message_preset);
+          const match = PRESETS.find(p => p.id === s.message_preset);
+          setMessageBody(s.message_body || match?.body || '');
+        }
+        if (typeof s?.ai_rapport_enabled === 'boolean') setAiRapport(s.ai_rapport_enabled);
+        if (typeof s?.cta_enabled === 'boolean') setCtaEnabled(s.cta_enabled);
+        if (s?.cta_url) setCtaUrl(s.cta_url);
+        else if (data.ctaOptions?.appSignup) setCtaUrl(data.ctaOptions.appSignup);
+        if (data.image) {
+          setImageUrl(data.image.public_url);
+          setImageFilename(data.image.filename);
+          setImageSizeBytes(data.image.file_size_bytes);
+        }
       }
-      if (typeof s?.ai_rapport_enabled === 'boolean') setAiRapport(s.ai_rapport_enabled);
-      if (typeof s?.cta_enabled === 'boolean') setCtaEnabled(s.cta_enabled);
-      if (s?.cta_url) setCtaUrl(s.cta_url);
-      else if (data.ctaOptions?.appSignup) setCtaUrl(data.ctaOptions.appSignup);
-      if (data.image) {
-        setImageUrl(data.image.public_url);
-        setImageFilename(data.image.filename);
-        setImageSizeBytes(data.image.file_size_bytes);
+      if (contactsRes.ok) {
+        const contactsData = await contactsRes.json();
+        setContacts(Array.isArray(contactsData.contacts) ? contactsData.contacts : []);
       }
     } catch {
       // swallow
@@ -978,6 +987,46 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
     setImageSizeBytes(null);
   }
 
+  async function handleGenerateAiRapport() {
+    setAiGenerating(true);
+    setAiError(null);
+    try {
+      // MVP: tier gate pending — always treat as Growth tier
+      const selectedContacts = contacts.filter(c => c.selected !== false);
+      const contactsPayload = selectedContacts.slice(0, 50).map(c => ({
+        name: c.client_name || c.name || '',
+        job_type: c.job_type || '',
+      }));
+      const res = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/ai-rapport`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contacts: contactsPayload,
+          tone: 'friendly',
+          cta: 'schedule a free inspection',
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 429) {
+        setAiLimitReached(true);
+        setAiGenerationsUsed(5);
+        setAiError("You've used all 5 generations for this campaign");
+        return;
+      }
+      if (!res.ok) {
+        setAiError(data.error || 'Failed to generate messages');
+        return;
+      }
+      setAiMessages(data.messages);
+      setAiGenerationsUsed(data.generations_used);
+      if (data.generations_remaining === 0) setAiLimitReached(true);
+    } catch {
+      setAiError('Failed to generate messages. Please try again.');
+    } finally {
+      setAiGenerating(false);
+    }
+  }
+
   async function saveMessaging() {
     setSaving(true);
     try {
@@ -1005,7 +1054,11 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   }
 
   const base = messageBody || PRESETS.find(p => p.id === selectedPreset)?.body || '';
-  const previewBody = (previewMode === 'with' && aiRapport) ? base + SIMULATED_AI_SUFFIX : base;
+  const previewBody = (previewMode === 'with' && aiRapport)
+    ? (aiMessages.length > 0
+        ? aiMessages[0]
+        : base + ' [AI message will appear here after generation]')
+    : base;
 
   function renderPreviewBody(text) {
     const parts = text.split(/(\[.*?\])/g);
@@ -1145,9 +1198,79 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
             </div>
             <Toggle
               on={aiRapport}
-              onChange={val => { setAiRapport(val); setPreviewMode(val ? 'with' : 'without'); }}
+              onChange={val => {
+                setAiRapport(val);
+                setPreviewMode(val ? 'with' : 'without');
+                if (!val) { setAiMessages([]); setAiError(null); }
+              }}
             />
           </div>
+
+          {/* B5b — AI Rapport generate button + results */}
+          {aiRapport && (
+            <div style={{ marginTop: 16 }}>
+              <button
+                onClick={handleGenerateAiRapport}
+                disabled={aiGenerating || aiLimitReached}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: (aiGenerating || aiLimitReached) ? AD.bgSurface : AD.navy,
+                  border: `1px solid ${(aiGenerating || aiLimitReached) ? AD.border : AD.blueLight}`,
+                  borderRadius: 8, padding: '9px 16px', cursor: (aiGenerating || aiLimitReached) ? 'not-allowed' : 'pointer',
+                  fontFamily: AD.fontSans, fontSize: 13, fontWeight: 500,
+                  color: (aiGenerating || aiLimitReached) ? AD.textTertiary : AD.blueLight,
+                  opacity: (aiGenerating || aiLimitReached) ? 0.7 : 1,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {aiGenerating && (
+                  <span style={{
+                    width: 12, height: 12, borderRadius: '50%', flexShrink: 0,
+                    border: `2px solid ${AD.blueLight}`, borderTopColor: 'transparent',
+                    display: 'inline-block', animation: 'spin 0.7s linear infinite',
+                  }} />
+                )}
+                <i className="ph ph-sparkle" style={{ fontSize: 14 }} />
+                {aiGenerating ? 'Generating...' : aiLimitReached ? 'Generation limit reached' : 'Generate Messages'}
+              </button>
+
+              <p style={{ margin: '8px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                Generations used: {aiGenerationsUsed} / 5
+              </p>
+
+              {aiError && (
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: '#CC0000', fontFamily: AD.fontSans }}>
+                  {aiError}
+                </p>
+              )}
+
+              {aiMessages.length > 0 && (
+                <div style={{ marginTop: 14, background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: 10, padding: '12px 14px' }}>
+                  <p style={{ margin: '0 0 10px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                    Generated messages
+                  </p>
+                  {contacts.filter(c => c.selected !== false).slice(0, 3).map((c, i) => {
+                    const msg = aiMessages[i];
+                    if (!msg) return null;
+                    const name = c.client_name || c.name || 'Contact';
+                    return (
+                      <div key={i} style={{ marginBottom: i < 2 ? 10 : 0, paddingBottom: i < 2 ? 10 : 0, borderBottom: i < 2 ? `1px solid ${AD.border}` : 'none' }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>{name}: </span>
+                        <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
+                          &ldquo;{msg.length > 120 ? msg.slice(0, 120) + '…' : msg}&rdquo;
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {contacts.filter(c => c.selected !== false).length > 3 && (
+                    <p style={{ margin: '10px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                      +{contacts.filter(c => c.selected !== false).length - 3} more
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* B6 — Divider */}
           <div style={divider} />
