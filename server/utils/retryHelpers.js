@@ -29,9 +29,8 @@ const stripeShouldRetry = (error) => {
   return false;
 };
 
-const anthropicShouldRetry = (error, attempt, maxRetries) => {
-  if (attempt >= maxRetries) return false;
-  if (error?.status >= 400 && error?.status < 500) return false; // skip on 4xx
+const anthropicShouldRetry = (error) => {
+  if (error?.status >= 400 && error?.status < 500) return false;
   return true;
 };
 

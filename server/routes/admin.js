@@ -3479,6 +3479,8 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
 
     const messages = [];
     try {
+      const safeTone = tone.trim().slice(0, 100);
+      const safeCta  = cta.trim().slice(0, 200);
       for (const contact of contacts) {
         const name = (contact.name || '').toString().trim().slice(0, 100);
         const jobType = (contact.job_type || '').toString().trim().slice(0, 100);
@@ -3486,8 +3488,8 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
           `You are writing a personalized outreach message for a roofing contractor.\n` +
           `Contact name: ${name}\n` +
           `Last job type: ${jobType}\n` +
-          `Tone: ${tone}\n` +
-          `Goal: ${cta}\n` +
+          `Tone: ${safeTone}\n` +
+          `Goal: ${safeCta}\n` +
           `Write a short, conversational message (2-3 sentences max) that feels personal, not spammy. Use their first name. Reference their job type naturally if relevant. End with a soft call to action. Return only the message text, nothing else.`;
 
         const message = await retryWithBackoff(async () => {
@@ -3504,11 +3506,15 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
               messages: [{ role: 'user', content: prompt }]
             })
           });
-          if (!response.ok) throw new Error(`Anthropic API error: ${response.status}`);
+          if (!response.ok) {
+            const err = new Error(`Anthropic API error: ${response.status}`);
+            err.status = response.status;
+            throw err;
+          }
           const data = await response.json();
           if (!data.content?.[0]?.text) throw new Error('Unexpected Anthropic response shape');
           return data.content[0].text.trim();
-        }, { maxRetries: 2, shouldRetry: anthropicShouldRetry });
+        }, { retries: 2, shouldRetry: anthropicShouldRetry });
         messages.push(message);
       }
     } catch (err) {
