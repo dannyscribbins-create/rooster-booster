@@ -52,12 +52,6 @@ const adminLoginLimiter = rateLimit({
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' }
 });
 
-const aiRapportLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: { error: 'Too many AI generation requests. Please try again in a minute.' }
-});
-
 if (!process.env.ADMIN_PASSWORD) throw new Error('ADMIN_PASSWORD environment variable is required');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
@@ -3433,6 +3427,12 @@ router.patch('/api/admin/schedules/:id/toggle', async (req, res) => {
 });
 
 // ── ADMIN: CAMPAIGNS — AI RAPPORT ────────────────────────────────────────────
+const aiRapportLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Too many AI generation requests. Please try again in a minute.' }
+});
+
 router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
 
@@ -3440,72 +3440,94 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
     return res.status(500).json({ error: 'AI Rapport is not configured' });
   }
 
-  const campaignId = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id, 10);
+  if (!id || id < 1) return res.status(400).json({ error: 'Invalid campaign ID' });
+
   const { contacts, tone, cta } = req.body;
-
-  const campaignResult = await pool.query(
-    'SELECT id, contractor_id, ai_rapport_generations FROM campaigns WHERE id = $1',
-    [campaignId]
-  );
-  if (campaignResult.rows.length === 0) {
-    return res.status(404).json({ error: 'Campaign not found' });
+  if (!Array.isArray(contacts) || contacts.length === 0) {
+    return res.status(400).json({ error: 'contacts must be a non-empty array' });
+  }
+  if (!tone || typeof tone !== 'string') {
+    return res.status(400).json({ error: 'tone is required' });
+  }
+  if (!cta || typeof cta !== 'string') {
+    return res.status(400).json({ error: 'cta is required' });
   }
 
-  const campaign = campaignResult.rows[0];
-  const currentGenerations = campaign.ai_rapport_generations || 0;
-
-  if (currentGenerations >= 5) {
-    return res.status(429).json({
-      error: 'Generation limit reached',
-      generations_used: 5,
-      generations_remaining: 0
-    });
-  }
-
-  const messages = [];
   try {
-    for (const contact of contacts) {
-      const prompt =
-        `You are writing a personalized outreach message for a roofing contractor.\n` +
-        `Contact name: ${contact.name}\n` +
-        `Last job type: ${contact.job_type}\n` +
-        `Tone: ${tone}\n` +
-        `Goal: ${cta}\n` +
-        `Write a short, conversational message (2-3 sentences max) that feels personal, not spammy. Use their first name. Reference their job type naturally if relevant. End with a soft call to action. Return only the message text, nothing else.`;
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 300,
-          messages: [{ role: 'user', content: prompt }]
-        })
-      });
-      const data = await response.json();
-      const result = data.content[0].text.trim();
-      messages.push(result);
+    const campaignResult = await pool.query(
+      'SELECT id, contractor_id, ai_rapport_generations FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    if (campaignResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Campaign not found' });
     }
+
+    const campaign = campaignResult.rows[0];
+    const currentGenerations = campaign.ai_rapport_generations || 0;
+
+    if (currentGenerations >= 5) {
+      return res.status(429).json({
+        error: 'Generation limit reached',
+        generations_used: 5,
+        generations_remaining: 0
+      });
+    }
+
+    const messages = [];
+    try {
+      for (const contact of contacts) {
+        const prompt =
+          `You are writing a personalized outreach message for a roofing contractor.\n` +
+          `Contact name: ${contact.name}\n` +
+          `Last job type: ${contact.job_type}\n` +
+          `Tone: ${tone}\n` +
+          `Goal: ${cta}\n` +
+          `Write a short, conversational message (2-3 sentences max) that feels personal, not spammy. Use their first name. Reference their job type naturally if relevant. End with a soft call to action. Return only the message text, nothing else.`;
+
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 300,
+            messages: [{ role: 'user', content: prompt }]
+          })
+        });
+        if (!response.ok) {
+          throw new Error(`Anthropic API error: ${response.status}`);
+        }
+        const data = await response.json();
+        if (!data.content?.[0]?.text) {
+          throw new Error('Unexpected Anthropic response shape');
+        }
+        const result = data.content[0].text.trim();
+        messages.push(result);
+      }
+    } catch (err) {
+      await logError({ req, error: err });
+      return res.status(500).json({ error: 'Failed to generate messages' });
+    }
+
+    await pool.query(
+      'UPDATE campaigns SET ai_rapport_generations = ai_rapport_generations + 1 WHERE id = $1',
+      [id]
+    );
+
+    const newCount = currentGenerations + 1;
+    return res.json({
+      messages,
+      generations_used: newCount,
+      generations_remaining: 5 - newCount
+    });
   } catch (err) {
     await logError({ req, error: err });
-    return res.status(500).json({ error: 'Failed to generate messages' });
+    return res.status(500).json({ error: 'Something went wrong' });
   }
-
-  await pool.query(
-    'UPDATE campaigns SET ai_rapport_generations = ai_rapport_generations + 1 WHERE id = $1',
-    [campaignId]
-  );
-
-  const newCount = currentGenerations + 1;
-  res.json({
-    messages,
-    generations_used: newCount,
-    generations_remaining: 5 - newCount
-  });
 });
 
 module.exports = router;
