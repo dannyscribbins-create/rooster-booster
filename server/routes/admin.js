@@ -22,17 +22,16 @@ const Papa = require('papaparse');
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-// B2 helpers for campaign image uploads — same client pattern as server/utils/backup.js
-function getCampaignS3Client() {
-  const endpoint = process.env.B2_ENDPOINT;
-  if (!endpoint) throw new Error('B2_ENDPOINT environment variable is required');
-  return new S3Client({
-    endpoint: endpoint.startsWith('https://') ? endpoint : `https://${endpoint}`,
-    region: 'us-east-1',
-    credentials: { accessKeyId: process.env.B2_KEY_ID, secretAccessKey: process.env.B2_APPLICATION_KEY },
-    forcePathStyle: true,
-  });
-}
+// Separate S3 client for media uploads — scoped to Roofmiles-email-media-assets bucket only
+const mediaS3Client = new S3Client({
+  endpoint: process.env.B2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.B2_MEDIA_KEY_ID,
+    secretAccessKey: process.env.B2_MEDIA_APPLICATION_KEY,
+  },
+  region: 'us-east-005',
+  forcePathStyle: true,
+});
 function buildB2PublicUrl(b2Key) {
   const base = process.env.B2_PUBLIC_URL_BASE
     || `https://f005.backblazeb2.com/file/${process.env.B2_MEDIA_BUCKET_NAME}`;
@@ -2898,7 +2897,7 @@ router.post('/api/admin/campaigns/:id/upload-image',
       console.log('[upload-image] b2Key:', b2Key, 'publicUrl:', publicUrl); // diagnostic log — intentional
       console.log('[upload-image] B2_BUCKET_NAME:', process.env.B2_BUCKET_NAME, 'B2_MEDIA_BUCKET_NAME:', process.env.B2_MEDIA_BUCKET_NAME); // diagnostic log — intentional
 
-      const s3 = getCampaignS3Client();
+      const s3 = mediaS3Client;
       const result = await s3.send(new PutObjectCommand({
         Bucket: process.env.B2_MEDIA_BUCKET_NAME,
         Key: b2Key,
@@ -2945,7 +2944,7 @@ router.delete('/api/admin/campaigns/:id/image', async (req, res) => {
     );
     if (imageResult.rows.length === 0) return res.status(404).json({ error: 'No image for this campaign' });
 
-    const s3 = getCampaignS3Client();
+    const s3 = mediaS3Client;
     await s3.send(new DeleteObjectCommand({
       Bucket: process.env.B2_MEDIA_BUCKET_NAME,
       Key: imageResult.rows[0].b2_key,
