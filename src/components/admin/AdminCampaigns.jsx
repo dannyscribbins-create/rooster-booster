@@ -2328,11 +2328,13 @@ export default function AdminCampaigns({ setLoggedIn }) {
     setLoadingContacts(true);
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${id}/contacts`, { headers });
-      if (!r.ok) return;
+      if (!r.ok) return [];
       const data = await r.json();
-      setContacts(Array.isArray(data.contacts) ? data.contacts : []);
+      const list = Array.isArray(data.contacts) ? data.contacts : [];
+      setContacts(list);
+      return list;
     } catch {
-      // swallow
+      return [];
     } finally {
       setLoadingContacts(false);
     }
@@ -2394,14 +2396,24 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
   async function closeDrawer() {
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
-    if (drawerStep === 1 && !isCsvFlow && campaignId) {
-      try {
-        await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/filters`, {
+    if (campaignId) {
+      // Step 2 (curating/mapping) is transient — save last_step as 1 so reopen lands at filters/upload
+      const stepToSave = drawerStep === 2 ? 1 : drawerStep;
+      const saves = [
+        fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}`, {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ last_step: stepToSave }),
+        }),
+      ];
+      if (drawerStep === 1 && !isCsvFlow) {
+        saves.push(fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/filters`, {
           method: 'PATCH',
           headers: { ...headers, 'Content-Type': 'application/json' },
           body: JSON.stringify({ dateFrom, dateTo, paidOnly, minJobValue: minJobValue || null, workCategory, notInApp }),
-        });
-      } catch { /* swallow */ }
+        }));
+      }
+      await Promise.all(saves).catch(() => {});
     }
     setDrawerOpen(false);
     setShowExitConfirm(false);
@@ -2420,7 +2432,10 @@ export default function AdminCampaigns({ setLoggedIn }) {
       if (!r.ok) return;
       const data = await r.json();
       const f = data.filters || {};
+      const lastStep = typeof data.last_step === 'number' ? data.last_step : 0;
       const hasFilters = data.filters && Object.keys(data.filters).length > 0;
+
+      // Hydrate all filter state from saved data
       setCampaignId(data.id);
       setCampaignName(data.name);
       setNameError('');
@@ -2441,16 +2456,40 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
       if (data.builder_path === 'jobber') {
         setIsCsvFlow(false);
-        if (hasFilters) {
+        if (lastStep >= 3) {
+          // Resume at results, messaging, or review — load contacts for results display
+          loadFieldValues();
+          const list = await loadContacts(id);
+          const inAppCount = list.filter(c => c.in_app).length;
+          setPullResult({ totalContacts: data.total_contacts || 0, inAppCount });
+          setDrawerStep(Math.min(lastStep, 5));
+          setDrawerOpen(true);
+        } else if (lastStep === 1 || lastStep === 2) {
+          // Step 2 (curating) is transient — land at filters
           loadFieldValues();
           setDrawerStep(1);
+          setDrawerOpen(true);
         } else {
-          setWorkCategoryOptions([]);
-          setDrawerStep(0);
+          // lastStep === 0: use hasFilters for backwards compat with old drafts
+          if (hasFilters) {
+            loadFieldValues();
+            setDrawerStep(1);
+          } else {
+            setWorkCategoryOptions([]);
+            setDrawerStep(0);
+          }
+          setDrawerOpen(true);
         }
+      } else if (data.builder_path === 'csv' && lastStep >= 3) {
+        // CSV draft advanced past upload — skip source selector, restore at saved step
+        setIsCsvFlow(true);
+        const list = await loadContacts(id);
+        const inAppCount = list.filter(c => c.in_app).length;
+        setPullResult({ totalContacts: data.total_contacts || 0, inAppCount });
+        setDrawerStep(Math.min(lastStep, 5));
         setDrawerOpen(true);
       } else {
-        // CSV or null — show source selector so admin can confirm or switch
+        // CSV or null with lastStep < 3 — show source selector to confirm or switch
         setReopenHasFilters(hasFilters);
         setIsReopening(true);
         setTypeModalStep(1);

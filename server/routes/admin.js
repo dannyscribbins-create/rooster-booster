@@ -2000,11 +2000,21 @@ router.get('/api/admin/campaigns/:id', async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query(
-      'SELECT id, name, status, total_contacts, filters, builder_path, created_at, updated_at FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      `SELECT id, name, status, total_contacts, total_batches, current_batch,
+              filters, builder_path, last_step,
+              message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url,
+              created_at, updated_at
+       FROM campaigns WHERE id = $1 AND contractor_id = $2`,
       [id, 'accent-roofing']
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
-    res.json(result.rows[0]);
+    const campaign = result.rows[0];
+    const imgResult = await pool.query(
+      'SELECT public_url, filename FROM campaign_images WHERE campaign_id = $1 ORDER BY uploaded_at DESC LIMIT 1',
+      [id]
+    );
+    campaign.image = imgResult.rows[0] || null;
+    res.json(campaign);
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });
@@ -2014,9 +2024,12 @@ router.get('/api/admin/campaigns/:id', async (req, res) => {
 router.patch('/api/admin/campaigns/:id', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
-  const { builder_path } = req.body;
+  const { builder_path, last_step } = req.body;
   if (builder_path !== undefined && !['jobber', 'csv'].includes(builder_path)) {
     return res.status(400).json({ error: 'builder_path must be jobber or csv' });
+  }
+  if (last_step !== undefined && (typeof last_step !== 'number' || !Number.isInteger(last_step) || last_step < 0 || last_step > 5)) {
+    return res.status(400).json({ error: 'last_step must be an integer 0–5' });
   }
   try {
     const check = await pool.query(
@@ -2030,10 +2043,14 @@ router.patch('/api/admin/campaigns/:id', async (req, res) => {
       params.push(builder_path);
       updates.push(`builder_path = $${params.length}`);
     }
+    if (last_step !== undefined) {
+      params.push(last_step);
+      updates.push(`last_step = $${params.length}`);
+    }
     if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
     params.push(id);
     const result = await pool.query(
-      `UPDATE campaigns SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length} AND contractor_id = 'accent-roofing' RETURNING id, builder_path`,
+      `UPDATE campaigns SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length} AND contractor_id = 'accent-roofing' RETURNING id, builder_path, last_step`,
       params
     );
     res.json(result.rows[0]);
