@@ -1110,6 +1110,14 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
     { label: 'Nextdoor',        value: ctaOptions.nextdoor },
   ].filter(o => o.alwaysShow || (o.value && o.value.trim() !== ''));
 
+  const ctaButtonLabel = (() => {
+    if (!ctaUrl) return 'Learn More';
+    if (ctaUrl.includes('rooster-booster') || ctaUrl.includes('roofmiles')) return 'Join the App';
+    if (ctaUrl.includes('facebook.com')) return 'Visit Us on Facebook';
+    if (ctaUrl.includes('share.google') || ctaUrl.includes('google.com')) return 'View Our Google Profile';
+    return 'Visit Our Website';
+  })();
+
   const sectionLabel = {
     fontSize: 11, color: AD.textTertiary, letterSpacing: '0.06em',
     textTransform: 'uppercase', fontFamily: AD.fontSans, margin: '0 0 14px',
@@ -1475,8 +1483,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
             {ctaEnabled && ctaUrl && (
               <div style={{ marginTop: 16 }}>
                 <div style={{ display: 'inline-block', background: '#CC0000', color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
-                  Join Now →
-                  {/* TODO: configurable CTA button label in future session */}
+                  {ctaButtonLabel}
                 </div>
                 <p style={{ margin: '6px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontMono }}>
                   {ctaUrl.length > 48 ? ctaUrl.slice(0, 48) + '…' : ctaUrl}
