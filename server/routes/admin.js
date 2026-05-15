@@ -3486,7 +3486,12 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
       google_profile: "Encourage the recipient to view the Google profile, read reviews, or leave honest feedback. End with a sentence that leads naturally into a 'View Our Google Profile' button. Do not pressure for a 5-star review. Do not imply any incentive for leaving a review."
     };
 
-    const messages = [];
+    const previewContact = contacts[0];
+    if (!previewContact) {
+      return res.status(400).json({ error: 'No contacts provided for preview' });
+    }
+
+    let generatedMessage;
     try {
       const systemPrompt = `You are an expert email marketing copywriter for a contractor-to-homeowner referral and relationship-building platform.
 
@@ -3508,11 +3513,10 @@ Rules you must always follow:
 
 Tone: warm, trustworthy, relationship-focused, clear, and professional but human. Not cheesy. Not overly casual. Not corporate.`;
 
-      for (const contact of contacts) {
-        const name = (contact.name || '').toString().trim().slice(0, 100);
-        const jobType = (contact.job_type || '').toString().trim().slice(0, 100);
-        const customMessageSafe = (customMessage || '').toString().trim().slice(0, 2000);
-        const userPrompt = `Generate one email message body for the following recipient.
+      const name = (previewContact.name || '').toString().trim().slice(0, 100);
+      const jobType = (previewContact.job_type || '').toString().trim().slice(0, 100);
+      const customMessageSafe = (customMessage || '').toString().trim().slice(0, 2000);
+      const userPrompt = `Generate one email message body for the following recipient.
 
 Recipient first name: ${name}
 Recipient job type: ${jobType}
@@ -3527,32 +3531,30 @@ ${messageType === 'write_my_own' && customMessageSafe ? `The contractor has writ
 
 Output: One email message body only. No subject line. No preview text. No button. No markdown. Under 80 words. 3 to 5 sentences.`;
 
-        const message = await retryWithBackoff(async () => {
-          const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': process.env.ANTHROPIC_API_KEY,
-              'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 300,
-              system: systemPrompt,
-              messages: [{ role: 'user', content: userPrompt }]
-            })
-          });
-          if (!response.ok) {
-            const err = new Error(`Anthropic API error: ${response.status}`);
-            err.status = response.status;
-            throw err;
-          }
-          const data = await response.json();
-          if (!data.content?.[0]?.text) throw new Error('Unexpected Anthropic response shape');
-          return data.content[0].text.trim();
-        }, { retries: 2, shouldRetry: anthropicShouldRetry });
-        messages.push(message);
-      }
+      generatedMessage = await retryWithBackoff(async () => {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 300,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }]
+          })
+        });
+        if (!response.ok) {
+          const err = new Error(`Anthropic API error: ${response.status}`);
+          err.status = response.status;
+          throw err;
+        }
+        const data = await response.json();
+        if (!data.content?.[0]?.text) throw new Error('Unexpected Anthropic response shape');
+        return data.content[0].text.trim();
+      }, { retries: 2, shouldRetry: anthropicShouldRetry });
     } catch (err) {
       await logError({ req, error: err });
       return res.status(500).json({ error: 'Failed to generate messages' });
@@ -3565,7 +3567,7 @@ Output: One email message body only. No subject line. No preview text. No button
 
     const newCount = currentGenerations + 1;
     return res.json({
-      messages,
+      messages: [{ name: previewContact.name, message: generatedMessage }],
       generations_used: newCount,
       generations_remaining: 5 - newCount
     });

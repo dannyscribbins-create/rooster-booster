@@ -1014,10 +1014,8 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
     try {
       // MVP: tier gate pending — always treat as Growth tier
       const selectedContacts = contacts.filter(c => c.selected !== false);
-      const contactsPayload = selectedContacts.slice(0, 50).map(c => ({
-        name: c.client_name || c.name || '',
-        job_type: c.job_type || '',
-      }));
+      const previewContact = selectedContacts[0];
+      if (!previewContact) return;
       const presetTypeMap = { referral_invite: 'referral_program_invite', re_engagement: 'reengagement', seasonal: 'seasonal_outreach', thank_you: 'thank_you_invite', write_own: 'write_my_own' };
       const ctaTypeFromUrl = [
         { url: ctaOptions.appSignup, type: 'join_app' },
@@ -1029,7 +1027,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contacts: contactsPayload,
+          contacts: [{ name: previewContact.client_name || previewContact.name || '', job_type: previewContact.job_type || '' }],
           messageType: presetTypeMap[selectedPreset] || selectedPreset,
           ctaType: ctaTypeFromUrl,
           contractorName: CONTRACTOR_CONFIG.name || '',
@@ -1087,7 +1085,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   const base = messageBody || PRESETS.find(p => p.id === selectedPreset)?.body || '';
   const previewBody = (previewMode === 'with' && aiRapport)
     ? (aiMessages.length > 0
-        ? aiMessages[0]
+        ? aiMessages[0].message
         : base + ' [AI message will appear here after generation]')
     : base;
 
@@ -1290,24 +1288,12 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                   <p style={{ margin: '0 0 10px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                     Generated messages
                   </p>
-                  {aiMessages.slice(0, 3).map((msg, i) => {
-                    const selectedContacts = contacts.filter(c => c.selected !== false);
-                    const contact = selectedContacts[i];
-                    const name = contact?.client_name || contact?.name || 'Contact';
-                    return (
-                      <div key={i} style={{ marginBottom: i < 2 ? 10 : 0, paddingBottom: i < 2 ? 10 : 0, borderBottom: i < 2 ? `1px solid ${AD.border}` : 'none' }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>{name}: </span>
-                        <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
-                          &ldquo;{msg.length > 120 ? msg.slice(0, 120) + '…' : msg}&rdquo;
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {aiMessages.length > 3 && (
-                    <p style={{ margin: '10px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-                      +{aiMessages.length - 3} more
-                    </p>
-                  )}
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>{aiMessages[0].name || 'Contact'}: </span>
+                    <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
+                      &ldquo;{aiMessages[0].message.length > 120 ? aiMessages[0].message.slice(0, 120) + '…' : aiMessages[0].message}&rdquo;
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
