@@ -907,6 +907,12 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   const [aiLimitReached,      setAiLimitReached]      = useState(false);
   const [aiError,             setAiError]             = useState(null);
 
+  // Subject line state
+  const [subjectLine,        setSubjectLine]        = useState('');
+  const [subjectLineOptions, setSubjectLineOptions] = useState([]);
+  const [subjectLineLoading, setSubjectLineLoading] = useState(false);
+  const [subjectLineOpen,    setSubjectLineOpen]    = useState(true);
+
   useEffect(() => {
     loadMessagingContext();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -953,6 +959,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
         if (typeof s?.cta_enabled === 'boolean') setCtaEnabled(s.cta_enabled);
         if (s?.cta_url) setCtaUrl(s.cta_url);
         else if (data.ctaOptions?.appSignup) setCtaUrl(data.ctaOptions.appSignup);
+        if (s?.subject_line) setSubjectLine(s.subject_line);
         if (data.image) {
           setImageUrl(data.image.public_url);
           setImageFilename(data.image.filename);
@@ -1056,6 +1063,33 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
     }
   }
 
+  async function handleGenerateSubjectLines() {
+    if (subjectLineLoading) return;
+    setSubjectLineLoading(true);
+    const presetTypeMap = { referral_invite: 'referral_program_invite', re_engagement: 'reengagement', seasonal: 'seasonal_outreach', thank_you: 'thank_you_invite', write_own: 'write_my_own' };
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/generate-subject-lines`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageType: presetTypeMap[selectedPreset] || selectedPreset,
+          contractorName: CONTRACTOR_CONFIG.name || '',
+          senderName: CONTRACTOR_CONFIG.name || '',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('[handleGenerateSubjectLines] error:', data.error);
+        return;
+      }
+      setSubjectLineOptions(data.subjectLines);
+    } catch (err) {
+      console.error('[handleGenerateSubjectLines] error:', err.message);
+    } finally {
+      setSubjectLineLoading(false);
+    }
+  }
+
   async function saveMessaging() {
     setSaving(true);
     try {
@@ -1068,6 +1102,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           ai_rapport_enabled: aiRapport,
           cta_enabled: ctaEnabled,
           cta_url: ctaEnabled ? ctaUrl : null,
+          subject_line: subjectLine || null,
         }),
       });
     } catch (err) {
@@ -1221,6 +1256,99 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           )}
 
           {/* B4 — Divider */}
+          <div style={divider} />
+
+          {/* B4b — Subject Line section */}
+          <div>
+            {/* Header row */}
+            <button
+              onClick={() => setSubjectLineOpen(o => !o)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: subjectLineOpen ? 14 : 0,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>Subject Line</p>
+                {!subjectLineOpen && subjectLine && (
+                  <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    — {subjectLine}
+                  </span>
+                )}
+              </div>
+              <i className={`ph ${subjectLineOpen ? 'ph-caret-up' : 'ph-caret-down'}`} style={{ fontSize: 14, color: AD.textSecondary }} />
+            </button>
+
+            {subjectLineOpen && (
+              <div>
+                {/* Editable input */}
+                <input
+                  type="text"
+                  value={subjectLine}
+                  onChange={e => setSubjectLine(e.target.value)}
+                  placeholder="Write or generate a subject line..."
+                  style={{
+                    width: '100%', padding: '10px 14px',
+                    background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                    borderRadius: 10, fontFamily: AD.fontSans, fontSize: 14,
+                    color: AD.textPrimary, boxSizing: 'border-box', outline: 'none',
+                  }}
+                />
+
+                {/* Generate button */}
+                <button
+                  onClick={handleGenerateSubjectLines}
+                  disabled={subjectLineLoading}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
+                    background: subjectLineLoading ? AD.bgSurface : AD.navy,
+                    border: `1px solid ${subjectLineLoading ? AD.border : AD.blueLight}`,
+                    borderRadius: 8, padding: '9px 16px', cursor: subjectLineLoading ? 'not-allowed' : 'pointer',
+                    fontFamily: AD.fontSans, fontSize: 13, fontWeight: 500,
+                    color: subjectLineLoading ? AD.textTertiary : AD.blueLight,
+                    opacity: subjectLineLoading ? 0.7 : 1,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {subjectLineLoading && (
+                    <span style={{
+                      width: 12, height: 12, borderRadius: '50%', flexShrink: 0,
+                      border: `2px solid ${AD.blueLight}`, borderTopColor: 'transparent',
+                      display: 'inline-block', animation: 'spin 0.7s linear infinite',
+                    }} />
+                  )}
+                  <i className="ph ph-sparkle" style={{ fontSize: 14 }} />
+                  {subjectLineLoading ? 'Generating...' : 'Generate Subject Lines'}
+                </button>
+
+                {/* Generated options */}
+                {subjectLineOptions.length > 0 && (
+                  <div style={{ marginTop: 12, opacity: subjectLineLoading ? 0.3 : 1, transition: 'opacity 0.3s ease' }}>
+                    {subjectLineOptions.map((option, i) => {
+                      const isSelected = option === subjectLine;
+                      return (
+                        <div
+                          key={i}
+                          onClick={() => setSubjectLine(option)}
+                          style={{
+                            marginBottom: 6, padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
+                            background: isSelected ? 'rgba(211,227,240,0.08)' : AD.bgSurface,
+                            border: `1px solid ${isSelected ? AD.blueLight : AD.border}`,
+                            borderLeft: `3px solid ${isSelected ? AD.blueLight : 'transparent'}`,
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <span style={{ fontSize: 13, color: isSelected ? AD.textPrimary : AD.textSecondary, fontFamily: AD.fontSans }}>{option}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* B4c — Divider */}
           <div style={divider} />
 
           {/* B5 — AI Rapport toggle */}
@@ -1732,6 +1860,12 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, onSaveExit, headers 
               <div style={{ fontSize: 12, color: AD.textTertiary, paddingBottom: 10, borderBottom: `1px solid ${AD.border}`, marginBottom: 12 }}>
                 From: {summary.companyName}
               </div>
+              {summary.campaign.subject_line && (
+                <div style={{ marginBottom: 12 }}>
+                  <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Subject: </span>
+                  <span style={{ fontSize: 14, color: AD.textPrimary, fontFamily: AD.fontSans, fontWeight: 500 }}>{summary.campaign.subject_line}</span>
+                </div>
+              )}
               {summary.imageUrl && (
                 <>
                   <p style={{ margin: '0 0 6px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: '0.06em' }}>

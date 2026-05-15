@@ -2214,7 +2214,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
   const { id } = req.params;
   try {
     const campaignCheck = await pool.query(
-      'SELECT message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      'SELECT message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations, subject_line FROM campaigns WHERE id = $1 AND contractor_id = $2',
       [id, 'accent-roofing']
     );
     if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
@@ -2249,7 +2249,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
 router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
-  const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url } = req.body;
+  const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, subject_line } = req.body;
 
   const validPresets = ['referral_invite', 're_engagement', 'seasonal', 'thank_you', 'write_own'];
   if (!validPresets.includes(message_preset)) return res.status(400).json({ error: 'Invalid message_preset' });
@@ -2257,14 +2257,15 @@ router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
   if (typeof cta_enabled !== 'boolean') return res.status(400).json({ error: 'cta_enabled must be boolean' });
   if (cta_url !== null && cta_url !== undefined && typeof cta_url !== 'string') return res.status(400).json({ error: 'cta_url must be string or null' });
   if (message_body !== null && message_body !== undefined && typeof message_body === 'string' && message_body.length > 1000) return res.status(400).json({ error: 'message_body exceeds 1000 characters' });
+  if (subject_line !== null && subject_line !== undefined && typeof subject_line === 'string' && subject_line.length > 200) return res.status(400).json({ error: 'subject_line exceeds 200 characters' });
 
   try {
     const result = await pool.query(
       `UPDATE campaigns
        SET message_preset = $1, message_body = $2, ai_rapport_enabled = $3,
-           cta_enabled = $4, cta_url = $5, updated_at = NOW()
-       WHERE id = $6 AND contractor_id = $7`,
-      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, id, 'accent-roofing']
+           cta_enabled = $4, cta_url = $5, subject_line = $6, updated_at = NOW()
+       WHERE id = $7 AND contractor_id = $8`,
+      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, subject_line || null, id, 'accent-roofing']
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Campaign not found' });
     res.json({ success: true });
@@ -2281,7 +2282,7 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
     const campaignResult = await pool.query(
       `SELECT id, name, status, total_contacts, total_batches, current_batch,
               message_preset, message_body, ai_rapport_enabled, cta_enabled,
-              cta_url, sent_at
+              cta_url, subject_line, sent_at
        FROM campaigns WHERE id = $1 AND contractor_id = $2`,
       [id, 'accent-roofing']
     );
@@ -3574,6 +3575,101 @@ Output: One email message body only. No subject line. No preview text. No button
   } catch (err) {
     await logError({ req, error: err });
     return res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+router.post('/api/admin/campaigns/:id/generate-subject-lines', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'AI features are not configured' });
+  }
+
+  const id = parseInt(req.params.id, 10);
+  if (!id || id < 1) return res.status(400).json({ error: 'Invalid campaign ID' });
+
+  const { messageType = '', contractorName = '', senderName = '' } = req.body;
+
+  try {
+    const campaignResult = await pool.query(
+      'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, 'accent-roofing']
+    );
+    if (campaignResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    const systemPrompt = `You are an expert email marketing copywriter for a contractor-to-homeowner referral and relationship platform.
+
+Your job is to generate exactly 3 email subject lines for a campaign message.
+
+Rules you must always follow:
+- Every subject line must include the sender's name or business name naturally — not bolted on at the end, but written into the subject line as part of the phrase. For example: "Danny at Accent Roofing wanted to reach out" or "A quick note from Accent Roofing Service"
+- Subject lines must be concise — between 6 and 12 words
+- Do not use clickbait, hype, urgency, or pressure language
+- Do not use emoji
+- Do not use ALL CAPS
+- Do not number the options
+- Do not include quotation marks around the subject lines
+- Do not include any explanation or preamble
+- Return exactly 3 subject lines, one per line, nothing else`;
+
+    const userPrompt = `Generate 3 email subject lines for the following campaign.
+
+Sender name: ${senderName || 'the sender'}
+Business name: ${contractorName || 'the business'}
+Message type: ${messageType || 'general outreach'}
+
+Message type guidance:
+- referral_program_invite: Subject should hint at an invitation or opportunity to be part of something
+- reengagement: Subject should feel like a warm, natural check-in
+- seasonal_outreach: Subject should reference staying connected or a timely hello
+- thank_you_invite: Subject should lead with appreciation or gratitude
+- write_my_own: Subject should be warm and relationship-focused
+
+Output: exactly 3 subject lines, one per line, no numbering, no quotes, no explanation.`;
+
+    let generatedText;
+    try {
+      generatedText = await retryWithBackoff(async () => {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 200,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }]
+          })
+        });
+        if (!response.ok) {
+          const err = new Error(`Anthropic API error: ${response.status}`);
+          err.status = response.status;
+          throw err;
+        }
+        const data = await response.json();
+        if (!data.content?.[0]?.text) throw new Error('Unexpected Anthropic response shape');
+        return data.content[0].text.trim();
+      }, { retries: 2, shouldRetry: anthropicShouldRetry });
+    } catch (err) {
+      await logError({ req, error: err });
+      return res.status(500).json({ error: 'Failed to generate subject lines' });
+    }
+
+    const subjectLines = generatedText
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .slice(0, 3);
+
+    return res.json({ subjectLines });
+  } catch (err) {
+    await logError({ req, error: err });
+    return res.status(500).json({ error: 'Failed to generate subject lines' });
   }
 });
 
