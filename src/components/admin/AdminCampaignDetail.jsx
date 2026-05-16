@@ -444,7 +444,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
       {activeTab === 'batches' && (
         <div>
           {/* Next batch card — or all-sent banner when no batches remain */}
-          {currentBatch <= totalBatches && !isClosed ? (
+          {currentBatch > 1 && currentBatch <= totalBatches && !isClosed ? (
             <div style={{
               background: AD.bgCard, border: `1px solid ${AD.borderStrong}`,
               borderRadius: AD.radiusLg, padding: '24px 28px', marginBottom: 24,

@@ -193,6 +193,129 @@ async function sendEmailViaResend(contact, personalizedBody, campaignData) {
   }
 }
 
+async function executeBatchSend(campaignId, req) {
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+
+  const campaignResult = await pool.query(
+    `SELECT c.id, c.name, c.status, c.total_batches, c.current_batch, c.last_batch_sent_at,
+            c.message_body, c.subject_line, c.cta_enabled, c.cta_url,
+            c.ai_rapport_enabled, c.selected_tone, c.message_preset, c.contractor_id,
+            ci.public_url AS image_url
+     FROM campaigns c
+     LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
+     WHERE c.id = $1 AND c.contractor_id = $2
+     LIMIT 1`,
+    [campaignId, contractorId]
+  );
+  if (campaignResult.rows.length === 0) throw new Error('Campaign not found');
+  const campaign = campaignResult.rows[0];
+
+  const batchNumber = campaign.current_batch;
+  // MVP: contractor name hardcoded — replace with session lookup at multi-contractor scale
+  const contractorName = 'Accent Roofing Service';
+  const campaignData = { ...campaign, contractor_name: contractorName };
+
+  const contactsResult = await pool.query(
+    `SELECT id, client_name, email, phone, job_type
+     FROM campaign_contacts
+     WHERE campaign_id = $1 AND contractor_id = $2
+       AND batch_number = $3 AND selected = true AND opted_out = false`,
+    [campaignId, contractorId, batchNumber]
+  );
+  const allContacts = contactsResult.rows;
+
+  const hasEmail = allContacts.filter(c => c.email && c.email.trim());
+  const noEmail  = allContacts.filter(c => !c.email || !c.email.trim());
+
+  for (const c of noEmail) {
+    await pool.query(
+      `INSERT INTO campaign_send_log (campaign_id, batch_number, contact_id, contact_name, email, phone, status, sent_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'skipped', NOW())`,
+      [campaignId, batchNumber, c.id, c.client_name, c.email || null, c.phone || null]
+    );
+  }
+
+  let personalizedMessages = [];
+  if (campaign.ai_rapport_enabled && process.env.ANTHROPIC_API_KEY) {
+    const chunks = chunkArray(hasEmail, 50);
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkMsgs = await Promise.all(
+        chunks[i].map(c => generatePersonalizedMessage(c, campaignData, req))
+      );
+      personalizedMessages.push(...chunkMsgs);
+      if (i < chunks.length - 1) await sleep(150);
+    }
+  } else {
+    personalizedMessages = hasEmail.map(() => campaign.message_body);
+  }
+
+  const sendResults = [];
+  const emailChunks = chunkArray(hasEmail, 50);
+  for (let i = 0; i < emailChunks.length; i++) {
+    const chunk = emailChunks[i];
+    const chunkOffset = i * 50;
+    const chunkResults = await Promise.all(
+      chunk.map((contact, j) =>
+        sendEmailViaResend(contact, personalizedMessages[chunkOffset + j], campaignData)
+      )
+    );
+    for (let j = 0; j < chunk.length; j++) {
+      sendResults.push({ contact: chunk[j], ...chunkResults[j] });
+    }
+    if (i < emailChunks.length - 1) await sleep(150);
+  }
+
+  const successfulIds = [];
+  for (const result of sendResults) {
+    const status = result.success ? 'delivered' : 'failed';
+    await pool.query(
+      `INSERT INTO campaign_send_log (campaign_id, batch_number, contact_id, contact_name, email, phone, status, error_code, error_message, sent_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+      [campaignId, batchNumber, result.contact.id, result.contact.client_name,
+       result.contact.email, result.contact.phone || null,
+       status, result.errorCode || null, result.errorMessage || null]
+    );
+    if (result.success) successfulIds.push(result.contact.id);
+  }
+
+  if (successfulIds.length > 0) {
+    await pool.query(
+      `UPDATE campaign_contacts SET delivered = true WHERE id = ANY($1::int[])`,
+      [successfulIds]
+    );
+  }
+
+  const sent    = sendResults.filter(r => r.success).length;
+  const failed  = sendResults.filter(r => !r.success).length;
+  const skipped = noEmail.length;
+
+  await pool.query(
+    `INSERT INTO campaign_batches (campaign_id, contractor_id, batch_number, sent_count, failed_count, skipped_count, sent_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+     ON CONFLICT (campaign_id, batch_number) DO UPDATE SET
+       sent_count    = EXCLUDED.sent_count,
+       failed_count  = EXCLUDED.failed_count,
+       skipped_count = EXCLUDED.skipped_count,
+       sent_at       = EXCLUDED.sent_at`,
+    [campaignId, contractorId, batchNumber, sent, failed, skipped]
+  );
+
+  await pool.query(
+    `UPDATE campaigns
+     SET current_batch = $1, last_batch_sent_at = NOW(), updated_at = NOW()
+     WHERE id = $2 AND contractor_id = $3`,
+    [batchNumber + 1, campaignId, contractorId]
+  );
+
+  await pool.query(
+    `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,
+    ['campaign_batch_sent', JSON.stringify({ campaign_id: campaignId, batch_number: batchNumber, sent, failed, skipped })]
+  );
+
+  return { sent, failed, skipped, batch_number: batchNumber };
+}
+
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 router.post('/api/admin/login', adminLoginLimiter, [
   body('password').notEmpty().withMessage('Password is required').isString().isLength({ max: 200 }).withMessage('Password too long'),
@@ -2482,67 +2605,49 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
 router.post('/api/admin/campaigns/:id/launch', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
-
-  // Confirm campaign exists and is in draft status before opening transaction
+  const campaignId = parseInt(id, 10);
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
   try {
     const checkResult = await pool.query(
-      `SELECT id, status FROM campaigns WHERE id = $1 AND contractor_id = $2`,
-      [id, 'accent-roofing']
+      `SELECT id, status, name, total_batches FROM campaigns WHERE id = $1 AND contractor_id = $2`,
+      [id, contractorId]
     );
     if (checkResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
-    if (checkResult.rows[0].status !== 'draft') return res.status(400).json({ error: 'Campaign is not in draft status' });
-  } catch (err) {
-    await logError({ req, error: err });
-    return res.status(500).json({ error: 'Internal server error' });
-  }
+    const { status, name, total_batches } = checkResult.rows[0];
+    if (status !== 'draft') return res.status(400).json({ error: 'Campaign already launched' });
 
-  const client = await pool.connect();
-  try {
-    // TODO: wire real send here — iterate campaign_contacts WHERE
-    //   batch_number = 1 AND selected = true AND opted_out = false,
-    //   deliver via Twilio (SMS) or Resend (email) per contact,
-    //   update delivered = true per contact on success.
-
-    const campaignResult = await client.query(
-      `SELECT name, total_batches FROM campaigns WHERE id = $1`,
-      [id]
-    );
-    const { name, total_batches } = campaignResult.rows[0];
-
-    const batch1Result = await client.query(
-      `SELECT COUNT(*) FROM campaign_contacts
-       WHERE campaign_id = $1 AND selected = true AND batch_number = 1 AND opted_out = false`,
-      [id]
-    );
-    const batch1Count = parseInt(batch1Result.rows[0].count, 10);
-
-    await client.query('BEGIN');
-
+    // Mark campaign active — executeBatchSend handles current_batch and last_batch_sent_at
     const newStatus = parseInt(total_batches, 10) > 1 ? 'pending_batches' : 'active';
-    await client.query(
+    await pool.query(
       `UPDATE campaigns
-       SET status = $1, sent_at = NOW(), current_batch = current_batch + 1,
-           last_batch_sent_at = NOW(), campaign_expires_at = NOW() + INTERVAL '90 days',
-           updated_at = NOW()
+       SET status = $1, sent_at = NOW(), campaign_expires_at = NOW() + INTERVAL '90 days', updated_at = NOW()
        WHERE id = $2 AND contractor_id = $3`,
-      [newStatus, id, 'accent-roofing']
+      [newStatus, id, contractorId]
     );
 
-    const detail = `Campaign "${name}" launched — ${batch1Count} contacts in Batch 1 of ${total_batches}`;
-    await client.query(
+    await pool.query(
       `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,
-      ['campaign_launched', detail]
+      ['campaign_launched', `Campaign "${name}" launched — sending Batch 1 of ${total_batches}`]
     );
 
-    await client.query('COMMIT');
+    // Send batch 1 — executeBatchSend loads contacts, sends emails, logs, and advances current_batch
+    const result = await executeBatchSend(campaignId, req);
 
-    res.json({ success: true, status: newStatus, sentAt: new Date().toISOString() });
+    res.json({ success: true, status: newStatus, ...result });
   } catch (err) {
-    await client.query('ROLLBACK');
-    await logError({ req, error: err });
-    res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
+    // Revert to draft so admin can retry — only triggered by unexpected errors, not individual send failures
+    try {
+      await pool.query(
+        `UPDATE campaigns SET status = 'draft', sent_at = NULL, campaign_expires_at = NULL, updated_at = NOW()
+         WHERE id = $1 AND contractor_id = $2`,
+        [id, contractorId]
+      );
+    } catch (revertErr) {
+      await logError({ req, error: revertErr, source: 'POST /api/admin/campaigns/:id/launch (revert)' });
+    }
+    await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/launch' });
+    res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
 
@@ -3021,29 +3126,20 @@ router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
   // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
   const contractorId = 'accent-roofing';
   try {
-    // 1. Load campaign with all fields + image_url
-    const campaignResult = await pool.query(
-      `SELECT c.id, c.name, c.status, c.total_batches, c.current_batch, c.last_batch_sent_at,
-              c.message_body, c.subject_line, c.cta_enabled, c.cta_url,
-              c.ai_rapport_enabled, c.selected_tone, c.message_preset, c.contractor_id,
-              ci.public_url AS image_url
-       FROM campaigns c
-       LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
-       WHERE c.id = $1 AND c.contractor_id = $2
-       LIMIT 1`,
+    const guardResult = await pool.query(
+      `SELECT id, status, last_batch_sent_at FROM campaigns WHERE id = $1 AND contractor_id = $2`,
       [campaignId, contractorId]
     );
-    if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
-    const campaign = campaignResult.rows[0];
+    if (guardResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const { status, last_batch_sent_at } = guardResult.rows[0];
 
-    if (!['active', 'pending_batches'].includes(campaign.status)) {
+    if (!['active', 'pending_batches'].includes(status)) {
       return res.status(400).json({ error: 'Campaign is not in an active state' });
     }
-
-    if (campaign.last_batch_sent_at) {
-      const msSinceLast = Date.now() - new Date(campaign.last_batch_sent_at).getTime();
+    if (last_batch_sent_at) {
+      const msSinceLast = Date.now() - new Date(last_batch_sent_at).getTime();
       if (msSinceLast < 24 * 60 * 60 * 1000) {
-        const availableAt = new Date(new Date(campaign.last_batch_sent_at).getTime() + 24 * 60 * 60 * 1000);
+        const availableAt = new Date(new Date(last_batch_sent_at).getTime() + 24 * 60 * 60 * 1000);
         return res.status(429).json({
           error: 'Batches must be spaced at least 24 hours apart',
           next_batch_available_at: availableAt.toISOString(),
@@ -3051,124 +3147,10 @@ router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
       }
     }
 
-    const batchNumber = campaign.current_batch;
-
-    // 2. Load contractor name — MVP: hardcoded, replace with session lookup at multi-contractor scale
-    const contractorName = 'Accent Roofing Service';
-    const campaignData = { ...campaign, contractor_name: contractorName };
-
-    // 3. Load selected contacts for this batch
-    const contactsResult = await pool.query(
-      `SELECT id, client_name, email, phone, job_type
-       FROM campaign_contacts
-       WHERE campaign_id = $1 AND contractor_id = $2
-         AND batch_number = $3 AND selected = true AND opted_out = false`,
-      [campaignId, contractorId, batchNumber]
-    );
-    const allContacts = contactsResult.rows;
-
-    // 4. Split by email availability
-    const hasEmail = allContacts.filter(c => c.email && c.email.trim());
-    const noEmail  = allContacts.filter(c => !c.email || !c.email.trim());
-
-    // 5. Insert skipped rows for contacts with no email
-    for (const c of noEmail) {
-      await pool.query(
-        `INSERT INTO campaign_send_log (campaign_id, batch_number, contact_id, contact_name, email, phone, status, sent_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'skipped', NOW())`,
-        [campaignId, batchNumber, c.id, c.client_name, c.email || null, c.phone || null]
-      );
-    }
-
-    // 6. Build personalized messages
-    let personalizedMessages = [];
-    if (campaign.ai_rapport_enabled && process.env.ANTHROPIC_API_KEY) {
-      const chunks = chunkArray(hasEmail, 50);
-      for (let i = 0; i < chunks.length; i++) {
-        const chunkMsgs = await Promise.all(
-          chunks[i].map(c => generatePersonalizedMessage(c, campaignData, req))
-        );
-        personalizedMessages.push(...chunkMsgs);
-        if (i < chunks.length - 1) await sleep(150);
-      }
-    } else {
-      personalizedMessages = hasEmail.map(() => campaign.message_body);
-    }
-
-    // 7. Send emails in chunks of 50
-    const sendResults = [];
-    const emailChunks = chunkArray(hasEmail, 50);
-    for (let i = 0; i < emailChunks.length; i++) {
-      const chunk = emailChunks[i];
-      const chunkOffset = i * 50;
-      const chunkResults = await Promise.all(
-        chunk.map((contact, j) =>
-          sendEmailViaResend(contact, personalizedMessages[chunkOffset + j], campaignData)
-        )
-      );
-      for (let j = 0; j < chunk.length; j++) {
-        sendResults.push({ contact: chunk[j], ...chunkResults[j] });
-      }
-      if (i < emailChunks.length - 1) await sleep(150);
-    }
-
-    // 8. Insert send log rows and update delivered flag for hasEmail contacts
-    const successfulIds = [];
-    for (const result of sendResults) {
-      const status = result.success ? 'delivered' : 'failed';
-      await pool.query(
-        `INSERT INTO campaign_send_log (campaign_id, batch_number, contact_id, contact_name, email, phone, status, error_code, error_message, sent_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
-        [campaignId, batchNumber, result.contact.id, result.contact.client_name,
-         result.contact.email, result.contact.phone || null,
-         status, result.errorCode || null, result.errorMessage || null]
-      );
-      if (result.success) successfulIds.push(result.contact.id);
-    }
-
-    if (successfulIds.length > 0) {
-      await pool.query(
-        `UPDATE campaign_contacts SET delivered = true WHERE id = ANY($1::int[])`,
-        [successfulIds]
-      );
-    }
-
-    const sent    = sendResults.filter(r => r.success).length;
-    const failed  = sendResults.filter(r => !r.success).length;
-    const skipped = noEmail.length;
-
-    // 9. Upsert campaign_batches row
-    await pool.query(
-      `INSERT INTO campaign_batches (campaign_id, contractor_id, batch_number, sent_count, failed_count, skipped_count, sent_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       ON CONFLICT (campaign_id, batch_number) DO UPDATE SET
-         sent_count    = EXCLUDED.sent_count,
-         failed_count  = EXCLUDED.failed_count,
-         skipped_count = EXCLUDED.skipped_count,
-         sent_at       = EXCLUDED.sent_at`,
-      [campaignId, contractorId, batchNumber, sent, failed, skipped]
-    );
-
-    // 10. Advance campaign batch pointer
-    const newBatch = batchNumber + 1;
-    await pool.query(
-      `UPDATE campaigns
-       SET current_batch = $1, last_batch_sent_at = NOW(), updated_at = NOW()
-       WHERE id = $2 AND contractor_id = $3`,
-      [newBatch, campaignId, contractorId]
-    );
-
-    await pool.query(
-      `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,
-      ['campaign_batch_sent', JSON.stringify({ campaign_id: campaignId, batch_number: batchNumber, sent, failed, skipped })]
-    );
-
+    const result = await executeBatchSend(campaignId, req);
     res.json({
       success: true,
-      batch_number: batchNumber,
-      sent,
-      failed,
-      skipped,
+      ...result,
       next_batch_available_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     });
   } catch (err) {
