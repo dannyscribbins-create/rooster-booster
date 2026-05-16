@@ -553,6 +553,33 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     uploaded_at TIMESTAMPTZ DEFAULT NOW()
   )`);
 
+  // ── CAMPAIGN SESSION B MIGRATIONS ─────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS campaign_batches (
+    id SERIAL PRIMARY KEY,
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    contractor_id TEXT NOT NULL,
+    batch_number INTEGER NOT NULL,
+    UNIQUE (campaign_id, batch_number)
+  )`);
+  await pool.query(`ALTER TABLE campaign_batches ADD COLUMN IF NOT EXISTS sent_count INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE campaign_batches ADD COLUMN IF NOT EXISTS failed_count INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE campaign_batches ADD COLUMN IF NOT EXISTS skipped_count INTEGER DEFAULT 0`);
+  await pool.query(`ALTER TABLE campaign_batches ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS campaign_send_log (
+    id SERIAL PRIMARY KEY,
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id),
+    batch_number INTEGER NOT NULL,
+    contact_id INTEGER,
+    contact_name TEXT,
+    email TEXT,
+    phone TEXT,
+    status TEXT NOT NULL,
+    error_code TEXT,
+    error_message TEXT,
+    sent_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
   // ── REFERRAL RULES ENGINE MIGRATIONS ──────────────────────────────────────────
 
   // 1A — Widen bonus_amount from INTEGER to NUMERIC(10,2) for tiered/percentage models

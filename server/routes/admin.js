@@ -55,6 +55,144 @@ const adminLoginLimiter = rateLimit({
 if (!process.env.ADMIN_PASSWORD) throw new Error('ADMIN_PASSWORD environment variable is required');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
+// ── CAMPAIGN SEND HELPERS ─────────────────────────────────────────────────────
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function chunkArray(arr, size) {
+  const chunks = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
+const _campaignMessageTypeMission = {
+  referral_program_invite: "Invite the recipient to join or participate in the referral program. Emphasize appreciation, trust, and the simplicity of referring someone. Make the recipient feel like a valued part of the business's network.",
+  reengagement: "Reconnect with the recipient in a warm, low-pressure way. Remind them the business is still active, still available, and still values the relationship. Avoid guilt-based language.",
+  seasonal_outreach: "Use the current season as a natural, timely reason to stay top of mind. Keep it helpful and relevant. Do not force a service appointment angle.",
+  thank_you_invite: "Lead with genuine gratitude for the recipient's support, business, or trust. Then softly invite them to take the CTA action. Do not sound transactional.",
+  write_my_own: "The contractor has written a draft message. Personalize it for this specific recipient using their first name and job type where it fits naturally. Lightly rewrite it for clarity, warmth, and quality while preserving the contractor's voice and intent.",
+};
+
+const _campaignToneInstructions = {
+  friendly:     'Write in a warm, approachable, conversational tone. Feel like a neighbor talking to a neighbor.',
+  professional: 'Write in a polished, respectful, business-appropriate tone. Confident but not stiff.',
+  warm:         'Write with genuine emotional warmth. Lead with appreciation and care.',
+  casual:       'Write in a relaxed, natural tone. Like a text from someone you know well.',
+};
+
+const _campaignBaseSystemPrompt = `You are an expert email marketing copywriter for a contractor-to-homeowner referral and relationship-building platform.
+
+Your job is to write a short, personalized email message body for a single recipient based on the campaign mission provided.
+
+Rules you must always follow:
+- Never mention inspections, free estimates, roof checks, appointments, or "coming out to take a look" unless the contractor's own draft message specifically includes those ideas.
+- Always include the business name naturally somewhere in the message.
+- Always address the recipient by their first name.
+- Reference the recipient's job type naturally and organically where it makes sense — do not force it or make it sound awkward.
+- Do not invent specific rewards, dollar amounts, discount offers, or program details that were not provided.
+- Do not use hype, urgency, or pressure language.
+- Do not write markdown. No asterisks, no headers, no bullet points.
+- Do not write multiple versions.
+- Do not include a subject line.
+- Do not include a CTA button or URL.
+- Keep the message under 80 words and between 3 and 5 sentences.
+- The final sentence should lead naturally into a CTA button without writing the button itself.
+
+Tone: warm, trustworthy, relationship-focused, clear, and professional but human. Not cheesy. Not overly casual. Not corporate.`;
+
+async function generatePersonalizedMessage(contact, campaignData, req) {
+  try {
+    const tone = campaignData.selected_tone || 'friendly';
+    const messageType = campaignData.message_preset || 'write_my_own';
+    const contractorName = campaignData.contractor_name || 'the business';
+    const name = (contact.client_name || '').toString().trim().slice(0, 100);
+    const jobType = (contact.job_type || '').toString().trim().slice(0, 100);
+    const customMessage = (campaignData.message_body || '').toString().trim().slice(0, 2000);
+
+    const systemPrompt = _campaignBaseSystemPrompt + `\n\nTone instruction: ${_campaignToneInstructions[tone] || _campaignToneInstructions.friendly}`;
+    const userPrompt = `Generate one email message body for the following recipient.
+
+Recipient first name: ${name}
+Recipient job type: ${jobType}
+Business name: ${contractorName}
+
+Campaign mission: ${_campaignMessageTypeMission[messageType] || 'Write a warm, relationship-focused message that feels personal and avoids generic contractor language.'}
+
+${messageType === 'write_my_own' && customMessage ? `The contractor has written this draft message. Use it as the foundation. Personalize it for this recipient, lightly rewrite for quality and warmth, and align the closing sentence to lead into a CTA button:\n\n"${customMessage}"` : ''}
+
+Output: One email message body only. No subject line. No preview text. No button. No markdown. Under 80 words. 3 to 5 sentences.`;
+
+    const text = await retryWithBackoff(async () => {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 300,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }],
+        }),
+      });
+      if (!response.ok) {
+        const err = new Error(`Anthropic API error: ${response.status}`);
+        err.status = response.status;
+        throw err;
+      }
+      const data = await response.json();
+      if (!data.content?.[0]?.text) throw new Error('Unexpected Anthropic response shape');
+      return data.content[0].text.trim();
+    }, { retries: 2, shouldRetry: anthropicShouldRetry });
+
+    return text;
+  } catch (err) {
+    await logError({ req, error: err, source: 'generatePersonalizedMessage' });
+    return campaignData.message_body;
+  }
+}
+
+function buildEmailHtml(body, campaignData) {
+  const ctaHtml = campaignData.cta_enabled && campaignData.cta_url
+    ? `<a href="${campaignData.cta_url}" style="display:inline-block;background:#CC0000;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:24px;">${campaignData.cta_label || 'Learn More'}</a>`
+    : '';
+  const contractorName = campaignData.contractor_name || 'the business';
+  const bodyEscaped = (body || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#ffffff;">
+  <p style="font-size:15px;line-height:1.7;color:#1a1a1a;white-space:pre-wrap;">${bodyEscaped}</p>
+  ${ctaHtml}
+  <p style="font-size:11px;color:#999999;margin-top:40px;border-top:1px solid #eeeeee;padding-top:16px;">You are receiving this message because you are a past client of ${contractorName}. To opt out of future messages, reply STOP.</p>
+</div>`;
+}
+
+async function sendEmailViaResend(contact, personalizedBody, campaignData) {
+  try {
+    const subject = campaignData.subject_line || `A message from ${campaignData.contractor_name || 'us'}`;
+    const html = buildEmailHtml(personalizedBody, campaignData);
+
+    await retryWithBackoff(async () => {
+      const payload = {
+        to: contact.email,
+        from: 'noreply@roofmiles.com',
+        subject,
+        html,
+      };
+      await resend.emails.send(payload);
+    }, { retries: 2, shouldRetry: resendShouldRetry });
+
+    return { success: true, errorCode: null, errorMessage: null };
+  } catch (err) {
+    const errorCode   = err?.statusCode?.toString() || err?.response?.status?.toString() || null;
+    const errorMessage = err?.message || 'Send failed';
+    return { success: false, errorCode, errorMessage };
+  }
+}
+
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 router.post('/api/admin/login', adminLoginLimiter, [
   body('password').notEmpty().withMessage('Password is required').isString().isLength({ max: 200 }).withMessage('Password too long'),
@@ -2783,21 +2921,35 @@ router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
       campaign.completed_at = null;
     }
 
-    const batchStatsResult = await pool.query(
-      `SELECT
-         batch_number,
-         COUNT(*) FILTER (WHERE selected = true)    AS total_contacts,
-         COUNT(*) FILTER (WHERE delivered = true)   AS sent_count,
-         COUNT(*) FILTER (WHERE opened = true)      AS opened_count,
-         COUNT(*) FILTER (WHERE clicked = true)     AS clicked_count,
-         COUNT(*) FILTER (WHERE converted = true)   AS converted_count,
-         COUNT(*) FILTER (WHERE opted_out = true)   AS opted_out_count
-       FROM campaign_contacts
-       WHERE campaign_id = $1 AND contractor_id = $2
-       GROUP BY batch_number
-       ORDER BY batch_number ASC`,
-      [campaignId, contractorId]
-    );
+    const [batchStatsResult, batchRecordsResult] = await Promise.all([
+      pool.query(
+        `SELECT
+           batch_number,
+           COUNT(*) FILTER (WHERE selected = true)    AS total_contacts,
+           COUNT(*) FILTER (WHERE delivered = true)   AS sent_count,
+           COUNT(*) FILTER (WHERE opened = true)      AS opened_count,
+           COUNT(*) FILTER (WHERE clicked = true)     AS clicked_count,
+           COUNT(*) FILTER (WHERE converted = true)   AS converted_count,
+           COUNT(*) FILTER (WHERE opted_out = true)   AS opted_out_count
+         FROM campaign_contacts
+         WHERE campaign_id = $1 AND contractor_id = $2
+         GROUP BY batch_number
+         ORDER BY batch_number ASC`,
+        [campaignId, contractorId]
+      ),
+      pool.query(
+        `SELECT batch_number, sent_count, failed_count, skipped_count, sent_at
+         FROM campaign_batches
+         WHERE campaign_id = $1
+         ORDER BY batch_number ASC`,
+        [campaignId]
+      ),
+    ]);
+
+    const batchRecordMap = {};
+    for (const br of batchRecordsResult.rows) {
+      batchRecordMap[br.batch_number] = br;
+    }
 
     const currentBatch = campaign.current_batch || 1;
     const batches = batchStatsResult.rows.map(row => {
@@ -2811,6 +2963,7 @@ router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
       } else {
         batchStatus = 'pending';
       }
+      const br = batchRecordMap[row.batch_number] || {};
       return {
         batch_number:    row.batch_number,
         total_contacts:  parseInt(row.total_contacts, 10),
@@ -2819,7 +2972,10 @@ router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
         clicked_count:   parseInt(row.clicked_count, 10),
         converted_count: parseInt(row.converted_count, 10),
         opted_out_count: parseInt(row.opted_out_count, 10),
-        status: batchStatus,
+        failed_count:    parseInt(br.failed_count || 0, 10),
+        skipped_count:   parseInt(br.skipped_count || 0, 10),
+        sent_at:         br.sent_at || null,
+        status:          batchStatus,
       };
     });
 
@@ -2865,9 +3021,16 @@ router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
   // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
   const contractorId = 'accent-roofing';
   try {
+    // 1. Load campaign with all fields + image_url
     const campaignResult = await pool.query(
-      `SELECT id, name, status, total_batches, current_batch, last_batch_sent_at
-       FROM campaigns WHERE id = $1 AND contractor_id = $2`,
+      `SELECT c.id, c.name, c.status, c.total_batches, c.current_batch, c.last_batch_sent_at,
+              c.message_body, c.subject_line, c.cta_enabled, c.cta_url,
+              c.ai_rapport_enabled, c.selected_tone, c.message_preset, c.contractor_id,
+              ci.public_url AS image_url
+       FROM campaigns c
+       LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
+       WHERE c.id = $1 AND c.contractor_id = $2
+       LIMIT 1`,
       [campaignId, contractorId]
     );
     if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
@@ -2889,19 +3052,105 @@ router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
     }
 
     const batchNumber = campaign.current_batch;
+
+    // 2. Load contractor name — MVP: hardcoded, replace with session lookup at multi-contractor scale
+    const contractorName = 'Accent Roofing Service';
+    const campaignData = { ...campaign, contractor_name: contractorName };
+
+    // 3. Load selected contacts for this batch
     const contactsResult = await pool.query(
-      `SELECT id FROM campaign_contacts
+      `SELECT id, client_name, email, phone, job_type
+       FROM campaign_contacts
        WHERE campaign_id = $1 AND contractor_id = $2
          AND batch_number = $3 AND selected = true AND opted_out = false`,
       [campaignId, contractorId, batchNumber]
     );
-    const contactCount = contactsResult.rows.length;
+    const allContacts = contactsResult.rows;
 
-    // TODO: Wire real Twilio SMS and Resend email sends here in Session B (send infrastructure session)
-    // TODO: Update delivered = true per contact after confirmed send in Session B
+    // 4. Split by email availability
+    const hasEmail = allContacts.filter(c => c.email && c.email.trim());
+    const noEmail  = allContacts.filter(c => !c.email || !c.email.trim());
 
+    // 5. Insert skipped rows for contacts with no email
+    for (const c of noEmail) {
+      await pool.query(
+        `INSERT INTO campaign_send_log (campaign_id, batch_number, contact_id, contact_name, email, phone, status, sent_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'skipped', NOW())`,
+        [campaignId, batchNumber, c.id, c.client_name, c.email || null, c.phone || null]
+      );
+    }
+
+    // 6. Build personalized messages
+    let personalizedMessages = [];
+    if (campaign.ai_rapport_enabled && process.env.ANTHROPIC_API_KEY) {
+      const chunks = chunkArray(hasEmail, 50);
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkMsgs = await Promise.all(
+          chunks[i].map(c => generatePersonalizedMessage(c, campaignData, req))
+        );
+        personalizedMessages.push(...chunkMsgs);
+        if (i < chunks.length - 1) await sleep(150);
+      }
+    } else {
+      personalizedMessages = hasEmail.map(() => campaign.message_body);
+    }
+
+    // 7. Send emails in chunks of 50
+    const sendResults = [];
+    const emailChunks = chunkArray(hasEmail, 50);
+    for (let i = 0; i < emailChunks.length; i++) {
+      const chunk = emailChunks[i];
+      const chunkOffset = i * 50;
+      const chunkResults = await Promise.all(
+        chunk.map((contact, j) =>
+          sendEmailViaResend(contact, personalizedMessages[chunkOffset + j], campaignData)
+        )
+      );
+      for (let j = 0; j < chunk.length; j++) {
+        sendResults.push({ contact: chunk[j], ...chunkResults[j] });
+      }
+      if (i < emailChunks.length - 1) await sleep(150);
+    }
+
+    // 8. Insert send log rows and update delivered flag for hasEmail contacts
+    const successfulIds = [];
+    for (const result of sendResults) {
+      const status = result.success ? 'delivered' : 'failed';
+      await pool.query(
+        `INSERT INTO campaign_send_log (campaign_id, batch_number, contact_id, contact_name, email, phone, status, error_code, error_message, sent_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [campaignId, batchNumber, result.contact.id, result.contact.client_name,
+         result.contact.email, result.contact.phone || null,
+         status, result.errorCode || null, result.errorMessage || null]
+      );
+      if (result.success) successfulIds.push(result.contact.id);
+    }
+
+    if (successfulIds.length > 0) {
+      await pool.query(
+        `UPDATE campaign_contacts SET delivered = true WHERE id = ANY($1::int[])`,
+        [successfulIds]
+      );
+    }
+
+    const sent    = sendResults.filter(r => r.success).length;
+    const failed  = sendResults.filter(r => !r.success).length;
+    const skipped = noEmail.length;
+
+    // 9. Upsert campaign_batches row
+    await pool.query(
+      `INSERT INTO campaign_batches (campaign_id, contractor_id, batch_number, sent_count, failed_count, skipped_count, sent_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT (campaign_id, batch_number) DO UPDATE SET
+         sent_count    = EXCLUDED.sent_count,
+         failed_count  = EXCLUDED.failed_count,
+         skipped_count = EXCLUDED.skipped_count,
+         sent_at       = EXCLUDED.sent_at`,
+      [campaignId, contractorId, batchNumber, sent, failed, skipped]
+    );
+
+    // 10. Advance campaign batch pointer
     const newBatch = batchNumber + 1;
-
     await pool.query(
       `UPDATE campaigns
        SET current_batch = $1, last_batch_sent_at = NOW(), updated_at = NOW()
@@ -2911,17 +3160,173 @@ router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
 
     await pool.query(
       `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,
-      ['campaign_batch_sent', JSON.stringify({ campaign_id: campaignId, batch_number: batchNumber, contact_count: contactCount })]
+      ['campaign_batch_sent', JSON.stringify({ campaign_id: campaignId, batch_number: batchNumber, sent, failed, skipped })]
     );
 
     res.json({
       success: true,
       batch_number: batchNumber,
-      contact_count: contactCount,
+      sent,
+      failed,
+      skipped,
       next_batch_available_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     });
   } catch (err) {
     await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/send-batch' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const campaignId = parseInt(req.params.id, 10);
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+  const { batch_number } = req.body;
+  if (!batch_number || typeof batch_number !== 'number') {
+    return res.status(400).json({ error: 'batch_number is required and must be a number' });
+  }
+  try {
+    // Load failed rows from campaign_send_log
+    const failedResult = await pool.query(
+      `SELECT id, contact_id, contact_name, email, phone
+       FROM campaign_send_log
+       WHERE campaign_id = $1 AND batch_number = $2 AND status = 'failed'`,
+      [campaignId, batch_number]
+    );
+    if (failedResult.rows.length === 0) {
+      return res.json({ success: true, retried: 0, message: 'No failed contacts to retry' });
+    }
+
+    // Load campaign for message data — do NOT regenerate AI Rapport, use base message_body
+    const campaignResult = await pool.query(
+      `SELECT c.message_body, c.subject_line, c.cta_enabled, c.cta_url, c.contractor_id,
+              c.selected_tone, c.message_preset, ci.public_url AS image_url
+       FROM campaigns c
+       LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
+       WHERE c.id = $1 AND c.contractor_id = $2 LIMIT 1`,
+      [campaignId, contractorId]
+    );
+    if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const campaign = campaignResult.rows[0];
+    // MVP: contractor name hardcoded — replace with session lookup at multi-contractor scale
+    const campaignData = { ...campaign, contractor_name: 'Accent Roofing Service' };
+
+    const contacts = failedResult.rows;
+    const chunks = chunkArray(contacts, 50);
+    const retryResults = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const chunkResults = await Promise.all(
+        chunk.map(c =>
+          sendEmailViaResend(
+            { email: c.email, phone: c.phone, client_name: c.contact_name },
+            campaign.message_body,
+            campaignData
+          )
+        )
+      );
+      for (let j = 0; j < chunk.length; j++) {
+        retryResults.push({ logId: chunk[j].id, ...chunkResults[j] });
+      }
+      if (i < chunks.length - 1) await sleep(150);
+    }
+
+    // Update existing campaign_send_log rows
+    for (const result of retryResults) {
+      await pool.query(
+        `UPDATE campaign_send_log
+         SET status = $1, error_code = $2, error_message = $3, sent_at = NOW()
+         WHERE id = $4`,
+        [
+          result.success ? 'delivered' : 'failed',
+          result.errorCode || null,
+          result.errorMessage || null,
+          result.logId,
+        ]
+      );
+    }
+
+    const delivered   = retryResults.filter(r => r.success).length;
+    const stillFailed = retryResults.filter(r => !r.success).length;
+
+    // Recalculate and update campaign_batches counts
+    const countsResult = await pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status = 'delivered') AS sent_count,
+         COUNT(*) FILTER (WHERE status = 'failed')    AS failed_count,
+         COUNT(*) FILTER (WHERE status = 'skipped')   AS skipped_count
+       FROM campaign_send_log
+       WHERE campaign_id = $1 AND batch_number = $2`,
+      [campaignId, batch_number]
+    );
+    const counts = countsResult.rows[0];
+    await pool.query(
+      `UPDATE campaign_batches
+       SET sent_count = $1, failed_count = $2, skipped_count = $3
+       WHERE campaign_id = $4 AND batch_number = $5`,
+      [parseInt(counts.sent_count, 10), parseInt(counts.failed_count, 10),
+       parseInt(counts.skipped_count, 10), campaignId, batch_number]
+    );
+
+    // Note: last_batch_sent_at is NOT updated — retry sends are exempt from the 24-hour throttle
+
+    res.json({ success: true, retried: contacts.length, delivered, stillFailed });
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/retry-batch' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/api/admin/campaigns/:id/failed-contacts/:batchNumber', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const campaignId  = parseInt(req.params.id, 10);
+  const batchNumber = parseInt(req.params.batchNumber, 10);
+  try {
+    const result = await pool.query(
+      `SELECT contact_name, email, phone, error_code, error_message, sent_at
+       FROM campaign_send_log
+       WHERE campaign_id = $1 AND batch_number = $2 AND status = 'failed'
+       ORDER BY sent_at ASC`,
+      [campaignId, batchNumber]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/failed-contacts/:batchNumber' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/api/admin/campaigns/:id/export-failed/:batchNumber', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const campaignId  = parseInt(req.params.id, 10);
+  const batchNumber = parseInt(req.params.batchNumber, 10);
+  try {
+    const result = await pool.query(
+      `SELECT contact_name, email, phone, error_code, error_message
+       FROM campaign_send_log
+       WHERE campaign_id = $1 AND batch_number = $2 AND status = 'failed'
+       ORDER BY sent_at ASC`,
+      [campaignId, batchNumber]
+    );
+
+    const header = 'First Name,Last Name,Email,Phone,Error Code,Error Message\n';
+    const rows = result.rows.map(row => {
+      const nameParts  = (row.contact_name || '').split(' ');
+      const firstName  = nameParts[0] || '';
+      const lastName   = nameParts.slice(1).join(' ');
+      const escape = v => `"${(v || '').replace(/"/g, '""')}"`;
+      return [firstName, lastName, row.email, row.phone, row.error_code, row.error_message]
+        .map(escape).join(',');
+    });
+
+    const csv = header + rows.join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="failed-contacts-batch-${batchNumber}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/export-failed/:batchNumber' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

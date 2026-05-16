@@ -28,7 +28,8 @@ function Modal({ onClose, children }) {
 }
 
 // ── Metric card ───────────────────────────────────────────────────────────────
-function MetricCard({ label, value, sub }) {
+function MetricCard({ label, value, sub, failedChip }) {
+  const [chipHover, setChipHover] = useState(false);
   return (
     <div style={{
       background: AD.bgCard, border: `1px solid ${AD.border}`,
@@ -42,6 +43,25 @@ function MetricCard({ label, value, sub }) {
       </p>
       {sub && (
         <p style={{ margin: '4px 0 0', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{sub}</p>
+      )}
+      {failedChip && failedChip.count > 0 && (
+        <div
+          onClick={failedChip.onClick}
+          onMouseEnter={() => setChipHover(true)}
+          onMouseLeave={() => setChipHover(false)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            marginTop: 8, cursor: 'pointer', userSelect: 'none',
+            color: chipHover ? '#f59e0b' : '#d97706',
+            fontSize: 12, fontFamily: AD.fontSans, fontWeight: 500,
+            transform: chipHover ? 'translateY(-2px)' : 'translateY(0)',
+            transition: 'transform 0.15s, color 0.15s',
+          }}
+        >
+          <i className="ph ph-warning" style={{ fontSize: 13 }} />
+          {failedChip.count} not delivered
+          <i className="ph ph-arrow-up-right" style={{ fontSize: 12 }} />
+        </div>
       )}
     </div>
   );
@@ -97,11 +117,19 @@ function BatchPill({ status }) {
 }
 
 // ── Metrics grid ──────────────────────────────────────────────────────────────
-function MetricsGrid({ metrics }) {
+function MetricsGrid({ metrics, onOpenFailedPanel }) {
   if (!metrics) return null;
   const cards = [
     { label: 'Total Contacts', value: (metrics.total_selected || metrics.total_contacts || 0).toLocaleString() },
-    { label: 'Delivered', value: (metrics.total_sent || metrics.sent_count || 0).toLocaleString() },
+    {
+      label: 'Delivered',
+      value: (metrics.total_sent || metrics.sent_count || 0).toLocaleString(),
+      failedChip: {
+        count: metrics.failed_count || 0,
+        batchNumber: metrics.batch_number,
+        onClick: () => onOpenFailedPanel && onOpenFailedPanel(metrics.batch_number),
+      },
+    },
     {
       label: 'Opened',
       value: (metrics.total_opened || metrics.opened_count || 0).toLocaleString(),
@@ -141,14 +169,22 @@ function MetricsGrid({ metrics }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AdminCampaignDetail({ campaignId, onBack }) {
-  const [detail,         setDetail]         = useState(null);
-  const [loading,        setLoading]        = useState(true);
-  const [loadError,      setLoadError]      = useState('');
-  const [activeTab,      setActiveTab]      = useState('batches');
-  const [metricsBatch,   setMetricsBatch]   = useState('all');
-  const [showSendModal,  setShowSendModal]  = useState(false);
-  const [sending,        setSending]        = useState(false);
-  const [sendError,      setSendError]      = useState('');
+  const [detail,           setDetail]           = useState(null);
+  const [loading,          setLoading]          = useState(true);
+  const [loadError,        setLoadError]        = useState('');
+  const [activeTab,        setActiveTab]        = useState('batches');
+  const [metricsBatch,     setMetricsBatch]     = useState('all');
+  const [showSendModal,    setShowSendModal]    = useState(false);
+  const [sending,          setSending]          = useState(false);
+  const [sendError,        setSendError]        = useState('');
+  const [showFailedPanel,  setShowFailedPanel]  = useState(false);
+  const [failedBatchNumber,setFailedBatchNumber]= useState(null);
+  const [failedContacts,   setFailedContacts]   = useState([]);
+  const [loadingFailed,    setLoadingFailed]    = useState(false);
+  const [retrying,         setRetrying]         = useState(false);
+  const [retryConfirming,  setRetryConfirming]  = useState(false);
+  const [retryResult,      setRetryResult]      = useState(null);
+  const [exportingCsv,     setExportingCsv]     = useState(false);
 
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
@@ -193,6 +229,69 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
       setSendError('Something went wrong. Please try again.');
     } finally {
       setSending(false);
+    }
+  }
+
+  async function openFailedPanel(batchNumber) {
+    setFailedBatchNumber(batchNumber);
+    setLoadingFailed(true);
+    setShowFailedPanel(true);
+    setRetryResult(null);
+    setRetryConfirming(false);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/failed-contacts/${batchNumber}`, { headers });
+      if (r.ok) setFailedContacts(await r.json());
+    } catch {
+      setFailedContacts([]);
+    } finally {
+      setLoadingFailed(false);
+    }
+  }
+
+  async function handleExportCsv() {
+    setExportingCsv(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/export-failed/${failedBatchNumber}`, { headers });
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `failed-contacts-batch-${failedBatchNumber}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setExportingCsv(false);
+    }
+  }
+
+  async function handleRetryConfirm() {
+    setRetrying(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/retry-batch`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch_number: failedBatchNumber }),
+      });
+      const data = await r.json();
+      if (r.ok) {
+        setRetryResult({ delivered: data.delivered, stillFailed: data.stillFailed });
+        await fetchDetail();
+        try {
+          const r2 = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/failed-contacts/${failedBatchNumber}`, { headers });
+          if (r2.ok) setFailedContacts(await r2.json());
+        } catch {
+          // refresh best-effort — panel already shows result summary
+        }
+      }
+    } catch {
+      // silently fail — retryResult stays null
+    } finally {
+      setRetrying(false);
+      setRetryConfirming(false);
     }
   }
 
@@ -501,9 +600,9 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
 
           {/* Metrics grid */}
           {metricsBatch === 'all' ? (
-            <MetricsGrid metrics={combined} />
+            <MetricsGrid metrics={combined} onOpenFailedPanel={openFailedPanel} />
           ) : (
-            <MetricsGrid metrics={batches.find(b => b.batch_number === metricsBatch)} />
+            <MetricsGrid metrics={batches.find(b => b.batch_number === metricsBatch)} onOpenFailedPanel={openFailedPanel} />
           )}
         </div>
       )}
@@ -547,6 +646,156 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
           </div>
         </Modal>
       )}
+
+      {/* ── Failed Contacts Panel ── */}
+      <div
+        style={{
+          position: 'fixed', right: 0, top: 0, bottom: 0,
+          width: '100%', maxWidth: 480,
+          background: AD.bgCard, borderLeft: `1px solid ${AD.border}`,
+          zIndex: 600, overflowY: 'auto', padding: 28,
+          transform: showFailedPanel ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.25s ease',
+          boxSizing: 'border-box',
+        }}
+      >
+        {/* Close button */}
+        <button
+          onClick={() => { setShowFailedPanel(false); setRetryConfirming(false); setRetryResult(null); }}
+          style={{
+            position: 'absolute', top: 20, right: 20,
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: AD.textSecondary, padding: 4,
+          }}
+        >
+          <i className="ph ph-x" style={{ fontSize: 20 }} />
+        </button>
+
+        <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans, paddingRight: 32 }}>
+          {failedContacts.length} contact{failedContacts.length !== 1 ? 's' : ''} not delivered
+          {failedBatchNumber ? ` in Batch ${failedBatchNumber}` : ''}
+        </h2>
+        <p style={{ margin: '0 0 24px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+          These contacts did not receive the campaign message.
+        </p>
+
+        {/* Contact list */}
+        {loadingFailed ? (
+          <p style={{ fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>Loading...</p>
+        ) : failedContacts.length === 0 ? (
+          <p style={{ fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>No failed contacts found.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28 }}>
+            {failedContacts.map((c, i) => (
+              <div
+                key={i}
+                style={{
+                  background: AD.bgPage || 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${AD.border}`,
+                  borderRadius: AD.radiusMd, padding: '12px 16px',
+                }}
+              >
+                <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                  {c.contact_name || 'Unknown'}
+                </p>
+                <p style={{ margin: '0 0 6px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                  {[c.email, c.phone].filter(Boolean).join(' · ') || '—'}
+                </p>
+                <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                  {c.error_code || c.error_message
+                    ? `Error: ${[c.error_code, c.error_message].filter(Boolean).join(' — ')}`
+                    : 'Reason unavailable'}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Retry result summary */}
+        {retryResult && (
+          <div style={{
+            background: AD.greenBg, border: `1px solid rgba(45,139,95,0.3)`,
+            borderRadius: AD.radiusMd, padding: '10px 14px', marginBottom: 20,
+            fontSize: 13, color: AD.greenText, fontFamily: AD.fontSans,
+          }}>
+            Retry complete — Delivered: {retryResult.delivered} · Still failed: {retryResult.stillFailed}
+          </div>
+        )}
+
+        {/* Footer actions */}
+        {!loadingFailed && (
+          <div>
+            {retryConfirming ? (
+              <div>
+                <div style={{
+                  background: AD.amberBg, border: `1px solid rgba(217,119,6,0.3)`,
+                  borderRadius: AD.radiusMd, padding: '12px 16px', marginBottom: 14,
+                  fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans, lineHeight: 1.6,
+                }}>
+                  This sub-batch will attempt delivery to {failedContacts.length} contact{failedContacts.length !== 1 ? 's' : ''}. The same message contents already built for this campaign will be used. The 24-hour send window does not apply to retry sends.
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => setRetryConfirming(false)}
+                    disabled={retrying}
+                    style={{
+                      flex: 1, padding: '10px 0', borderRadius: 8,
+                      border: `1px solid ${AD.border}`, background: 'none',
+                      color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 14,
+                      cursor: retrying ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRetryConfirm}
+                    disabled={retrying}
+                    style={{
+                      flex: 1, padding: '10px 0', borderRadius: 8, border: 'none',
+                      background: retrying ? 'rgba(204,0,0,0.5)' : '#CC0000',
+                      color: '#fff', fontFamily: AD.fontSans, fontSize: 14, fontWeight: 600,
+                      cursor: retrying ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {retrying ? 'Retrying...' : 'Confirm Retry'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={handleExportCsv}
+                  disabled={exportingCsv || failedContacts.length === 0}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 8,
+                    border: `1px solid ${AD.border}`, background: 'none',
+                    color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 14,
+                    cursor: (exportingCsv || failedContacts.length === 0) ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <i className="ph ph-download-simple" style={{ fontSize: 15 }} />
+                  {exportingCsv ? 'Exporting...' : 'Download CSV'}
+                </button>
+                <button
+                  onClick={() => setRetryConfirming(true)}
+                  disabled={failedContacts.length === 0}
+                  style={{
+                    flex: 1, padding: '10px 0', borderRadius: 8, border: 'none',
+                    background: failedContacts.length === 0 ? 'rgba(204,0,0,0.3)' : '#CC0000',
+                    color: '#fff', fontFamily: AD.fontSans, fontSize: 14, fontWeight: 600,
+                    cursor: failedContacts.length === 0 ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                >
+                  <i className="ph ph-arrow-clockwise" style={{ fontSize: 15 }} />
+                  Retry Send
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
