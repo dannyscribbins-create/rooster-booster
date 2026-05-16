@@ -541,6 +541,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS last_step INTEGER DEFAULT 0`);
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS ai_rapport_generations INT DEFAULT 0`);
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS subject_line TEXT`);
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS selected_tone TEXT DEFAULT 'friendly'`);
   await pool.query(`CREATE TABLE IF NOT EXISTS campaign_images (
     id SERIAL PRIMARY KEY,
     campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,

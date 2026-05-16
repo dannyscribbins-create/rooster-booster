@@ -2214,7 +2214,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
   const { id } = req.params;
   try {
     const campaignCheck = await pool.query(
-      'SELECT message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations, subject_line FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      'SELECT message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations, subject_line, selected_tone FROM campaigns WHERE id = $1 AND contractor_id = $2',
       [id, 'accent-roofing']
     );
     if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
@@ -2249,23 +2249,26 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
 router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
-  const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, subject_line } = req.body;
+  const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, subject_line, selected_tone } = req.body;
 
   const validPresets = ['referral_invite', 're_engagement', 'seasonal', 'thank_you', 'write_own'];
+  const validTones = ['friendly', 'professional', 'warm', 'casual'];
   if (!validPresets.includes(message_preset)) return res.status(400).json({ error: 'Invalid message_preset' });
   if (typeof ai_rapport_enabled !== 'boolean') return res.status(400).json({ error: 'ai_rapport_enabled must be boolean' });
   if (typeof cta_enabled !== 'boolean') return res.status(400).json({ error: 'cta_enabled must be boolean' });
   if (cta_url !== null && cta_url !== undefined && typeof cta_url !== 'string') return res.status(400).json({ error: 'cta_url must be string or null' });
   if (message_body !== null && message_body !== undefined && typeof message_body === 'string' && message_body.length > 1000) return res.status(400).json({ error: 'message_body exceeds 1000 characters' });
   if (subject_line !== null && subject_line !== undefined && typeof subject_line === 'string' && subject_line.length > 200) return res.status(400).json({ error: 'subject_line exceeds 200 characters' });
+  if (selected_tone !== null && selected_tone !== undefined && !validTones.includes(selected_tone)) return res.status(400).json({ error: 'Invalid selected_tone' });
 
   try {
     const result = await pool.query(
       `UPDATE campaigns
        SET message_preset = $1, message_body = $2, ai_rapport_enabled = $3,
-           cta_enabled = $4, cta_url = $5, subject_line = $6, updated_at = NOW()
-       WHERE id = $7 AND contractor_id = $8`,
-      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, subject_line || null, id, 'accent-roofing']
+           cta_enabled = $4, cta_url = $5, subject_line = $6,
+           selected_tone = COALESCE($7, selected_tone), updated_at = NOW()
+       WHERE id = $8 AND contractor_id = $9`,
+      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, subject_line || null, selected_tone || null, id, 'accent-roofing']
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Campaign not found' });
     res.json({ success: true });
@@ -3492,9 +3495,14 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
       return res.status(400).json({ error: 'No contacts provided for preview' });
     }
 
-    let generatedMessage;
-    try {
-      const systemPrompt = `You are an expert email marketing copywriter for a contractor-to-homeowner referral and relationship-building platform.
+    const toneInstructions = {
+      friendly:     'Write in a warm, approachable, conversational tone. Feel like a neighbor talking to a neighbor.',
+      professional: 'Write in a polished, respectful, business-appropriate tone. Confident but not stiff.',
+      warm:         'Write with genuine emotional warmth. Lead with appreciation and care.',
+      casual:       'Write in a relaxed, natural tone. Like a text from someone you know well.'
+    };
+
+    const baseSystemPrompt = `You are an expert email marketing copywriter for a contractor-to-homeowner referral and relationship-building platform.
 
 Your job is to write a short, personalized email message body for a single recipient based on the campaign mission and CTA goal provided.
 
@@ -3514,10 +3522,10 @@ Rules you must always follow:
 
 Tone: warm, trustworthy, relationship-focused, clear, and professional but human. Not cheesy. Not overly casual. Not corporate.`;
 
-      const name = (previewContact.name || '').toString().trim().slice(0, 100);
-      const jobType = (previewContact.job_type || '').toString().trim().slice(0, 100);
-      const customMessageSafe = (customMessage || '').toString().trim().slice(0, 2000);
-      const userPrompt = `Generate one email message body for the following recipient.
+    const name = (previewContact.name || '').toString().trim().slice(0, 100);
+    const jobType = (previewContact.job_type || '').toString().trim().slice(0, 100);
+    const customMessageSafe = (customMessage || '').toString().trim().slice(0, 2000);
+    const userPrompt = `Generate one email message body for the following recipient.
 
 Recipient first name: ${name}
 Recipient job type: ${jobType}
@@ -3532,33 +3540,46 @@ ${messageType === 'write_my_own' && customMessageSafe ? `The contractor has writ
 
 Output: One email message body only. No subject line. No preview text. No button. No markdown. Under 80 words. 3 to 5 sentences.`;
 
-      generatedMessage = await retryWithBackoff(async () => {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': process.env.ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01'
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 300,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userPrompt }]
-          })
-        });
-        if (!response.ok) {
-          const err = new Error(`Anthropic API error: ${response.status}`);
-          err.status = response.status;
-          throw err;
-        }
-        const data = await response.json();
-        if (!data.content?.[0]?.text) throw new Error('Unexpected Anthropic response shape');
-        return data.content[0].text.trim();
-      }, { retries: 2, shouldRetry: anthropicShouldRetry });
-    } catch (err) {
-      await logError({ req, error: err });
-      return res.status(500).json({ error: 'Failed to generate messages' });
+    async function generateForTone(tone) {
+      const systemPrompt = baseSystemPrompt + `\n\nTone instruction: ${toneInstructions[tone]}`;
+      try {
+        const text = await retryWithBackoff(async () => {
+          const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.ANTHROPIC_API_KEY,
+              'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 300,
+              system: systemPrompt,
+              messages: [{ role: 'user', content: userPrompt }]
+            })
+          });
+          if (!response.ok) {
+            const err = new Error(`Anthropic API error: ${response.status}`);
+            err.status = response.status;
+            throw err;
+          }
+          const data = await response.json();
+          if (!data.content?.[0]?.text) throw new Error('Unexpected Anthropic response shape');
+          return data.content[0].text.trim();
+        }, { retries: 2, shouldRetry: anthropicShouldRetry });
+        return { tone, message: text };
+      } catch (err) {
+        await logError({ req, error: err });
+        return { tone, message: null };
+      }
+    }
+
+    const tones = ['friendly', 'professional', 'warm', 'casual'];
+    const results = await Promise.all(tones.map(tone => generateForTone(tone)));
+
+    const toneVariants = {};
+    for (const { tone, message } of results) {
+      toneVariants[tone] = message;
     }
 
     await pool.query(
@@ -3568,7 +3589,8 @@ Output: One email message body only. No subject line. No preview text. No button
 
     const newCount = currentGenerations + 1;
     return res.json({
-      messages: [{ name: previewContact.name, message: generatedMessage }],
+      toneVariants,
+      contactName: previewContact.name,
       generations_used: newCount,
       generations_remaining: 5 - newCount
     });

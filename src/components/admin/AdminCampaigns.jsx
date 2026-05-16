@@ -901,11 +901,13 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
 
   // AI Rapport state
   const [contacts,            setContacts]            = useState([]);
-  const [aiMessages,          setAiMessages]          = useState([]);
   const [aiGenerating,        setAiGenerating]        = useState(false);
   const [aiGenerationsUsed,   setAiGenerationsUsed]   = useState(0);
   const [aiLimitReached,      setAiLimitReached]      = useState(false);
   const [aiError,             setAiError]             = useState(null);
+  const [selectedTone,        setSelectedTone]        = useState('friendly');
+  const [toneVariants,        setToneVariants]        = useState(null);
+  const [toneContactName,     setToneContactName]     = useState('');
 
   // Subject line state
   const [subjectLine,        setSubjectLine]        = useState('');
@@ -936,7 +938,8 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   }, [campaignId]);
 
   useEffect(() => {
-    setAiMessages([]);
+    setToneVariants(null);
+    setToneContactName('');
   }, [selectedPreset]);
 
   async function loadMessagingContext() {
@@ -960,6 +963,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
         if (s?.cta_url) setCtaUrl(s.cta_url);
         else if (data.ctaOptions?.appSignup) setCtaUrl(data.ctaOptions.appSignup);
         if (s?.subject_line) setSubjectLine(s.subject_line);
+        if (s?.selected_tone) setSelectedTone(s.selected_tone);
         if (data.image) {
           setImageUrl(data.image.public_url);
           setImageFilename(data.image.filename);
@@ -1040,6 +1044,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           contractorName: CONTRACTOR_CONFIG.name || '',
           senderName: CONTRACTOR_CONFIG.name || '',
           customMessage: selectedPreset === 'write_own' ? (messageBody || '') : '',
+          selectedTone,
         }),
       });
       if (res.status === 429) {
@@ -1053,7 +1058,8 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
         setAiError(data.error || 'Failed to generate messages');
         return;
       }
-      setAiMessages(data.messages);
+      setToneVariants(data.toneVariants);
+      setToneContactName(data.contactName || '');
       setAiGenerationsUsed(data.generations_used);
       if (data.generations_remaining === 0) setAiLimitReached(true);
     } catch {
@@ -1103,6 +1109,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           cta_enabled: ctaEnabled,
           cta_url: ctaEnabled ? ctaUrl : null,
           subject_line: subjectLine || null,
+          selected_tone: selectedTone,
         }),
       });
     } catch (err) {
@@ -1119,8 +1126,8 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
 
   const base = messageBody || PRESETS.find(p => p.id === selectedPreset)?.body || '';
   const previewBody = (previewMode === 'with' && aiRapport)
-    ? (aiMessages.length > 0
-        ? aiMessages[0].message
+    ? (toneVariants && toneVariants[selectedTone]
+        ? toneVariants[selectedTone]
         : base + ' [AI message will appear here after generation]')
     : base;
 
@@ -1368,14 +1375,43 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
               onChange={val => {
                 setAiRapport(val);
                 setPreviewMode(val ? 'with' : 'without');
-                if (!val) { setAiMessages([]); setAiError(null); }
+                if (!val) { setToneVariants(null); setToneContactName(''); setAiError(null); }
               }}
             />
           </div>
 
-          {/* B5b — AI Rapport generate button + results */}
+          {/* B5b — AI Rapport tone selector + generate button + results */}
           {aiRapport && (
             <div style={{ marginTop: 16 }}>
+              {/* Tone pill row */}
+              <p style={{ margin: '0 0 6px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.07em', textTransform: 'uppercase', fontWeight: 600 }}>Tone</p>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                {[
+                  { id: 'friendly',     label: 'Friendly' },
+                  { id: 'professional', label: 'Professional' },
+                  { id: 'warm',         label: 'Warm' },
+                  { id: 'casual',       label: 'Casual' },
+                ].map(({ id, label }) => {
+                  const isActive = selectedTone === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setSelectedTone(id)}
+                      style={{
+                        flex: 1, padding: '7px 4px', borderRadius: 7,
+                        border: `1px solid ${isActive ? AD.blueLight : AD.borderStrong}`,
+                        background: isActive ? 'rgba(211,227,240,0.12)' : 'transparent',
+                        color: isActive ? AD.blueLight : AD.textSecondary,
+                        fontFamily: AD.fontSans, fontSize: 12, fontWeight: isActive ? 600 : 400,
+                        cursor: 'pointer', transition: 'all 0.12s',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <button
                 onClick={handleGenerateAiRapport}
                 disabled={aiGenerating || aiLimitReached}
@@ -1411,16 +1447,24 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                 </p>
               )}
 
-              {aiMessages.length > 0 && (
+              {toneVariants && (
                 <div style={{ marginTop: 14, background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: 10, padding: '12px 14px' }}>
                   <p style={{ margin: '0 0 10px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                    Generated messages
+                    Generated message
                   </p>
                   <div>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>{aiMessages[0].name || 'Contact'}: </span>
-                    <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
-                      &ldquo;{aiMessages[0].message.length > 120 ? aiMessages[0].message.slice(0, 120) + '…' : aiMessages[0].message}&rdquo;
-                    </span>
+                    {toneVariants[selectedTone] ? (
+                      <>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>{toneContactName || 'Contact'}: </span>
+                        <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
+                          &ldquo;{toneVariants[selectedTone].length > 120 ? toneVariants[selectedTone].slice(0, 120) + '…' : toneVariants[selectedTone]}&rdquo;
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
+                        Could not generate {selectedTone.charAt(0).toUpperCase() + selectedTone.slice(1)} version — try regenerating.
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
