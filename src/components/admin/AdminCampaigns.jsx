@@ -249,6 +249,7 @@ function CampaignCard({ campaign, onOpen, onDelete }) {
       await onDelete(campaign.id);
     } catch {
       setDeleteError('Could not delete campaign');
+    } finally {
       setDeleting(false);
     }
   }
@@ -278,6 +279,7 @@ function CampaignCard({ campaign, onOpen, onDelete }) {
     <div
       onClick={() => onOpen(campaign.id, campaign.status)}
       onMouseEnter={() => setHov(true)}
+      onMouseMove={() => { if (!hov) setHov(true); }}
       onMouseLeave={() => { setHov(false); setTrashHov(false); }}
       style={{
         background: AD.bgCard, border: `1px solid ${hov ? AD.borderStrong : AD.border}`,
