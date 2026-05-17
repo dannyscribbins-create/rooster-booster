@@ -28,7 +28,7 @@ function Modal({ onClose, children }) {
 }
 
 // ── Metric card ───────────────────────────────────────────────────────────────
-function MetricCard({ label, value, sub, failedChip }) {
+function MetricCard({ label, value, sub, caveat, failedChip }) {
   const [chipHover, setChipHover] = useState(false);
   return (
     <div style={{
@@ -43,6 +43,9 @@ function MetricCard({ label, value, sub, failedChip }) {
       </p>
       {sub && (
         <p style={{ margin: '4px 0 0', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{sub}</p>
+      )}
+      {caveat && (
+        <p style={{ margin: '4px 0 0', fontSize: 10, color: AD.textTertiary, fontFamily: AD.fontSans }}>{caveat}</p>
       )}
       {failedChip && failedChip.count > 0 && (
         <div
@@ -119,11 +122,17 @@ function BatchPill({ status }) {
 // ── Metrics grid ──────────────────────────────────────────────────────────────
 function MetricsGrid({ metrics, onOpenFailedPanel }) {
   if (!metrics) return null;
+  const sentCount    = metrics.total_sent    || metrics.sent_count    || 0;
+  const openedCount  = metrics.total_opened  || metrics.opened_count  || 0;
+  const clickedCount = metrics.total_clicked || metrics.clicked_count || 0;
+  const openRate     = sentCount > 0 ? (openedCount  / sentCount) * 100 : 0;
+  const clickRate    = sentCount > 0 ? (clickedCount / sentCount) * 100 : 0;
+
   const cards = [
     { label: 'Total Contacts', value: (metrics.total_selected || metrics.total_contacts || 0).toLocaleString() },
     {
       label: 'Delivered',
-      value: (metrics.total_sent || metrics.sent_count || 0).toLocaleString(),
+      value: sentCount.toLocaleString(),
       failedChip: {
         count: metrics.failed_count || 0,
         batchNumber: metrics.batch_number,
@@ -132,13 +141,14 @@ function MetricsGrid({ metrics, onOpenFailedPanel }) {
     },
     {
       label: 'Opened',
-      value: (metrics.total_opened || metrics.opened_count || 0).toLocaleString(),
-      sub: `${(metrics.open_rate ?? 0).toFixed(1)}% open rate`,
+      value: openedCount.toLocaleString(),
+      sub: `${openRate.toFixed(1)}% open rate`,
+      caveat: 'Gmail & Apple Mail may affect accuracy',
     },
     {
       label: 'Clicked',
-      value: (metrics.total_clicked || metrics.clicked_count || 0).toLocaleString(),
-      sub: `${(metrics.click_rate ?? 0).toFixed(1)}% click rate`,
+      value: clickedCount.toLocaleString(),
+      sub: `${clickRate.toFixed(1)}% click rate`,
     },
     {
       label: 'Converted',
@@ -149,21 +159,9 @@ function MetricsGrid({ metrics, onOpenFailedPanel }) {
   ];
 
   return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-        {cards.map(c => <MetricCard key={c.label} {...c} />)}
-      </div>
-      <div style={{
-        background: AD.blueBg, border: `1px solid rgba(37,99,235,0.2)`,
-        borderRadius: AD.radiusMd, padding: '12px 16px',
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <i className="ph ph-info" style={{ fontSize: 16, color: AD.blueText, flexShrink: 0 }} />
-        <span style={{ fontSize: 13, color: AD.blueText, fontFamily: AD.fontSans }}>
-          Delivery metrics populate in real time as messages are sent.
-        </span>
-      </div>
-    </>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      {cards.map(c => <MetricCard key={c.label} {...c} />)}
+    </div>
   );
 }
 
@@ -185,14 +183,33 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
   const [retryConfirming,  setRetryConfirming]  = useState(false);
   const [retryResult,      setRetryResult]      = useState(null);
   const [exportingCsv,     setExportingCsv]     = useState(false);
+  const [refreshing,       setRefreshing]       = useState(false);
 
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
 
   useEffect(() => {
     fetchDetail();
+    fetchMetrics();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
+
+  async function fetchMetrics() {
+    try {
+      await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/metrics`, { headers });
+    } catch {
+      // silently fail
+    }
+  }
+
+  async function handleRefreshMetrics() {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchDetail(), fetchMetrics()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   async function fetchDetail() {
     setLoading(true);
@@ -413,7 +430,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
       </div>
 
       {/* ── Tab bar ── */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 28, borderBottom: `1px solid ${AD.border}` }}>
+      <div style={{ display: 'flex', marginBottom: 28, borderBottom: `1px solid ${AD.border}` }}>
         {[
           { id: 'batches', label: 'Batches', icon: 'ph-stack' },
           { id: 'metrics', label: 'Metrics', icon: 'ph-chart-bar' },
@@ -438,6 +455,24 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
             </button>
           );
         })}
+        {activeTab === 'metrics' && (
+          <button
+            onClick={handleRefreshMetrics}
+            disabled={refreshing}
+            style={{
+              marginLeft: 'auto', alignSelf: 'center',
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'none', border: `1px solid ${AD.border}`,
+              borderRadius: 8, padding: '6px 12px',
+              cursor: refreshing ? 'not-allowed' : 'pointer',
+              color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 13,
+              opacity: refreshing ? 0.6 : 1, transition: 'opacity 0.15s',
+            }}
+          >
+            <i className="ph ph-arrows-clockwise" style={{ fontSize: 16 }} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+        )}
       </div>
 
       {/* ── BATCHES TAB ── */}
