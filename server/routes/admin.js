@@ -2414,19 +2414,30 @@ router.patch('/api/admin/campaigns/:id', async (req, res) => {
 router.delete('/api/admin/campaigns/:id', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
+  const contractorId = 'accent-roofing';
   try {
     const check = await pool.query(
       'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
-    await pool.query(
-      'DELETE FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
-    );
+
+    await pool.query('BEGIN');
+    try {
+      await pool.query('DELETE FROM campaign_send_log WHERE campaign_id = $1', [id]);
+      await pool.query('DELETE FROM campaign_batches WHERE campaign_id = $1', [id]);
+      await pool.query('DELETE FROM campaign_contacts WHERE campaign_id = $1', [id]);
+      await pool.query('DELETE FROM campaign_images WHERE campaign_id = $1', [id]);
+      await pool.query('DELETE FROM campaigns WHERE id = $1 AND contractor_id = $2', [id, contractorId]);
+      await pool.query('COMMIT');
+    } catch (err) {
+      await pool.query('ROLLBACK');
+      throw err;
+    }
+
     res.json({ deleted: true, id });
   } catch (err) {
-    await logError({ req, error: err });
+    await logError({ req, error: err, source: 'DELETE /api/admin/campaigns/:id' });
     res.status(500).json({ error: err.message });
   }
 });
