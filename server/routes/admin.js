@@ -437,6 +437,18 @@ async function executeBatchSend(campaignId, req) {
     })
   );
 
+  function replaceMessageTokens(body, contact, contractorSettings) {
+    if (!body) return body;
+    const firstName = (contact.client_name || '').split(' ')[0].trim() || '';
+    const companyName = contractorSettings.company_name || '';
+    let result = body;
+    // Replace [First Name] — if no name available, use 'there'
+    result = result.replace(/\[First Name\]/gi, firstName || 'there');
+    // Replace [Company] with actual contractor company name
+    result = result.replace(/\[Company\]/gi, companyName);
+    return result;
+  }
+
   let personalizedMessages = [];
   if (campaign.ai_rapport_enabled && process.env.ANTHROPIC_API_KEY) {
     const chunks = chunkArray(tokenRows, 50);
@@ -448,7 +460,7 @@ async function executeBatchSend(campaignId, req) {
       if (i < chunks.length - 1) await sleep(150);
     }
   } else {
-    personalizedMessages = tokenRows.map(() => campaign.message_body);
+    personalizedMessages = tokenRows.map(({ contact }) => replaceMessageTokens(campaign.message_body, contact, contractorSettings));
   }
 
   const sendResults = [];
