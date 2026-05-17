@@ -10,6 +10,7 @@ import ReferrerApp from './components/referrer/ReferrerApp';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfService from './components/TermsOfService';
 import ContractorTerms from './components/ContractorTerms';
+import EmailPreferences from './components/EmailPreferences';
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
 function useReferrerFonts() {
@@ -177,6 +178,7 @@ export default function App() {
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />;
   if (window.location.pathname === '/terms') return <TermsOfService />;
   if (window.location.pathname === '/contractor-terms') return <ContractorTerms />;
+  if (window.location.pathname === '/email-preferences') return <EmailPreferences />;
   if (isAdmin) return <AdminPanel />;
   if (resetToken) return <ResetPinScreen token={resetToken} />;
   if (showVerify) return (

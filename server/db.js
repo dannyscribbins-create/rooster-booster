@@ -610,6 +610,45 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_campaign_events_campaign
     ON campaign_events(campaign_id, batch_number, event_type)`);
 
+  // ── UNSUBSCRIBE / EMAIL PREFERENCES TABLES ────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS unsubscribe_tokens (
+    id SERIAL PRIMARY KEY,
+    token VARCHAR(128) NOT NULL UNIQUE,
+    contractor_id VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    campaign_id INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+    batch_number INTEGER,
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP,
+    pixel_fired_at TIMESTAMP,
+    is_expired BOOLEAN GENERATED ALWAYS AS (NOW() > expires_at) STORED
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_unsubscribe_tokens_token ON unsubscribe_tokens(token)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_unsubscribe_tokens_email ON unsubscribe_tokens(contractor_id, email)`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS email_opt_outs (
+    id SERIAL PRIMARY KEY,
+    contractor_id VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    opt_out_campaigns BOOLEAN NOT NULL DEFAULT FALSE,
+    opt_out_sms BOOLEAN NOT NULL DEFAULT FALSE,
+    opt_out_all BOOLEAN NOT NULL DEFAULT FALSE,
+    referral_only BOOLEAN NOT NULL DEFAULT FALSE,
+    opted_out_at TIMESTAMP DEFAULT NOW(),
+    resubscribed_at TIMESTAMP,
+    resubscribe_source VARCHAR(50),
+    token_used VARCHAR(128),
+    campaign_id INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+    source VARCHAR(50) NOT NULL DEFAULT 'unsubscribe_page',
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    notes TEXT,
+    CONSTRAINT uq_opt_out_contractor_email UNIQUE (contractor_id, email)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_email_opt_outs_lookup ON email_opt_outs(contractor_id, email)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_email_opt_outs_campaign ON email_opt_outs(campaign_id)`);
+
   // ── REFERRAL RULES ENGINE MIGRATIONS ──────────────────────────────────────────
 
   // 1A — Widen bonus_amount from INTEGER to NUMERIC(10,2) for tiered/percentage models

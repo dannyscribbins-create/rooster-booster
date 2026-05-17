@@ -242,7 +242,7 @@ Output: One email message body only. No subject line. No preview text. No button
   }
 }
 
-function buildEmailHtml(body, campaignData, token, contractorSettings = {}) {
+function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsubscribeUrl = null) {
   const cs = contractorSettings;
   function esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
@@ -303,6 +303,11 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}) {
   // 9. Legal links
   const legalHtml = `<p style="text-align:center;font-size:11px;color:#aaaaaa;margin:0 0 12px;"><a href="https://roofmiles.com/terms" style="color:#aaaaaa;">Terms of Use</a> · <a href="https://roofmiles.com/privacy" style="color:#aaaaaa;">Privacy Policy</a></p>`;
 
+  // 9b. Unsubscribe link (CAN-SPAM required)
+  const unsubHtml = unsubscribeUrl
+    ? `<p style="text-align:center;margin:8px 0 0 0;font-size:12px;color:#999999;font-family:Arial,sans-serif;"><a href="${unsubscribeUrl}" style="color:#999999;text-decoration:underline;">Unsubscribe or manage email preferences</a></p>`
+    : `<p style="text-align:center;margin:8px 0 0 0;font-size:12px;color:#999999;font-family:Arial,sans-serif;">To unsubscribe, reply to this email with "UNSUBSCRIBE" in the subject line.</p>`;
+
   // 10. Physical address (CAN-SPAM required)
   const addressParts = [cs.company_address, cs.company_city, cs.company_state, cs.company_zip]
     .filter(p => p && p.trim() !== '');
@@ -328,16 +333,17 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}) {
   ${socialHtml}
   ${doNotReplyHtml}
   ${legalHtml}
+  ${unsubHtml}
   ${addressHtml}
   ${copyrightHtml}
   ${pixelHtml}
 </div>`;
 }
 
-async function sendEmailViaResend(contact, personalizedBody, campaignData, token, senderName = 'RoofMiles', contractorSettings = {}) {
+async function sendEmailViaResend(contact, personalizedBody, campaignData, token, senderName = 'RoofMiles', contractorSettings = {}, unsubscribeUrl = null) {
   try {
     const subject = campaignData.subject_line || `A message from ${campaignData.contractor_name || 'us'}`;
-    const html = buildEmailHtml(personalizedBody, campaignData, token, contractorSettings);
+    const html = buildEmailHtml(personalizedBody, campaignData, token, contractorSettings, unsubscribeUrl);
     const plainText = html.replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
 
     await retryWithBackoff(async () => {
@@ -449,6 +455,30 @@ async function executeBatchSend(campaignId, req) {
     return result;
   }
 
+  function generateUnsubscribeToken() {
+    return crypto.randomBytes(48).toString('hex');
+  }
+
+  async function isEmailSuppressed(cId, email, type = 'campaigns') {
+    try {
+      const result = await pool.query(
+        `SELECT opt_out_campaigns, opt_out_sms, opt_out_all
+         FROM email_opt_outs
+         WHERE contractor_id = $1 AND email = $2`,
+        [cId, email]
+      );
+      if (result.rows.length === 0) return false;
+      const prefs = result.rows[0];
+      if (prefs.opt_out_all) return true;
+      if (type === 'campaigns' && prefs.opt_out_campaigns) return true;
+      if (type === 'sms' && prefs.opt_out_sms) return true;
+      return false;
+    } catch (err) {
+      await logError({ req, error: err, source: 'isEmailSuppressed' });
+      return false; // fail open — never suppress on DB error
+    }
+  }
+
   let personalizedMessages = [];
   if (campaign.ai_rapport_enabled && process.env.ANTHROPIC_API_KEY) {
     const chunks = chunkArray(tokenRows, 50);
@@ -463,14 +493,54 @@ async function executeBatchSend(campaignId, req) {
     personalizedMessages = tokenRows.map(({ contact }) => replaceMessageTokens(campaign.message_body, contact, contractorSettings));
   }
 
+  // Suppression check + unsubscribe token generation (sequential per contact)
+  const sendItems = [];
+  const suppressedContacts = [];
+  for (let idx = 0; idx < tokenRows.length; idx++) {
+    const { contact, token: trackingToken } = tokenRows[idx];
+
+    const suppressed = await isEmailSuppressed(contractorId, contact.email, 'campaigns');
+    if (suppressed) {
+      console.log(`[executeBatchSend] Suppressed: ${contact.email}`);
+      suppressedContacts.push(contact);
+      continue;
+    }
+
+    let unsubscribeUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/email-preferences` : null;
+    try {
+      const unsubToken = generateUnsubscribeToken();
+      const tokenExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      await pool.query(
+        `INSERT INTO unsubscribe_tokens (token, contractor_id, email, campaign_id, batch_number, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (token) DO NOTHING`,
+        [unsubToken, contractorId, contact.email, campaignId, batchNumber, tokenExpiresAt]
+      );
+      unsubscribeUrl = `${process.env.FRONTEND_URL}/email-preferences?token=${unsubToken}`;
+    } catch (err) {
+      await logError({ req, error: err });
+      // unsubscribeUrl falls back to generic /email-preferences URL (CAN-SPAM fallback shown in footer)
+    }
+
+    sendItems.push({ contact, token: trackingToken, personalizedMessage: personalizedMessages[idx], unsubscribeUrl });
+  }
+
+  // Log suppressed contacts
+  for (const c of suppressedContacts) {
+    await pool.query(
+      `INSERT INTO campaign_send_log (campaign_id, batch_number, contact_id, contact_name, email, phone, status, sent_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'suppressed', NOW())`,
+      [campaignId, batchNumber, c.id, c.client_name, c.email || null, c.phone || null]
+    );
+  }
+
   const sendResults = [];
-  const emailChunks = chunkArray(tokenRows, 50);
+  const emailChunks = chunkArray(sendItems, 50);
   for (let i = 0; i < emailChunks.length; i++) {
     const chunk = emailChunks[i];
-    const chunkOffset = i * 50;
     const chunkResults = await Promise.all(
-      chunk.map((item, j) =>
-        sendEmailViaResend(item.contact, personalizedMessages[chunkOffset + j], campaignData, item.token, campaign.sender_name, contractorSettings)
+      chunk.map((item) =>
+        sendEmailViaResend(item.contact, item.personalizedMessage, campaignData, item.token, campaign.sender_name, contractorSettings, item.unsubscribeUrl)
       )
     );
     for (let j = 0; j < chunk.length; j++) {
@@ -499,9 +569,10 @@ async function executeBatchSend(campaignId, req) {
     );
   }
 
-  const sent    = sendResults.filter(r => r.success).length;
-  const failed  = sendResults.filter(r => !r.success).length;
-  const skipped = noEmail.length;
+  const sent       = sendResults.filter(r => r.success).length;
+  const failed     = sendResults.filter(r => !r.success).length;
+  const skipped    = noEmail.length;
+  const suppressed = suppressedContacts.length;
 
   await pool.query(
     `INSERT INTO campaign_batches (campaign_id, contractor_id, batch_number, sent_count, failed_count, skipped_count, sent_at)
@@ -523,10 +594,10 @@ async function executeBatchSend(campaignId, req) {
 
   await pool.query(
     `INSERT INTO activity_log (event_type, detail) VALUES ($1, $2)`,
-    ['campaign_batch_sent', JSON.stringify({ campaign_id: campaignId, batch_number: batchNumber, sent, failed, skipped })]
+    ['campaign_batch_sent', JSON.stringify({ campaign_id: campaignId, batch_number: batchNumber, sent, failed, skipped, suppressed })]
   );
 
-  return { sent, failed, skipped, batch_number: batchNumber };
+  return { sent, failed, skipped, suppressed, batch_number: batchNumber };
 }
 
 const TRACKING_PIXEL = Buffer.from(
@@ -3419,12 +3490,42 @@ router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
       batches_pending: (campaign.total_batches || 0) - batchesSent,
     };
 
-    const imageResult = await pool.query(
-      'SELECT public_url, filename FROM campaign_images WHERE campaign_id = $1 LIMIT 1',
-      [campaignId]
-    );
+    const [imageResult, optOutResult] = await Promise.all([
+      pool.query(
+        'SELECT public_url, filename FROM campaign_images WHERE campaign_id = $1 LIMIT 1',
+        [campaignId]
+      ),
+      pool.query(
+        `SELECT
+           COUNT(*) AS total_opt_outs,
+           COUNT(*) FILTER (WHERE opt_out_campaigns) AS opted_out_campaigns,
+           COUNT(*) FILTER (WHERE opt_out_sms) AS opted_out_sms,
+           COUNT(*) FILTER (WHERE opt_out_all) AS opted_out_all,
+           COALESCE(json_agg(json_build_object(
+             'email', email,
+             'opted_out_at', opted_out_at,
+             'opt_out_campaigns', opt_out_campaigns,
+             'opt_out_sms', opt_out_sms,
+             'opt_out_all', opt_out_all,
+             'referral_only', referral_only
+           )) FILTER (WHERE email IS NOT NULL), '[]') AS opt_out_contacts
+         FROM email_opt_outs
+         WHERE campaign_id = $1`,
+        [campaignId]
+      ),
+    ]);
 
-    res.json({ campaign, batches, combined_metrics, image: imageResult.rows[0] || null });
+    const optOutData = optOutResult.rows[0]
+      ? {
+          total_opt_outs:       parseInt(optOutResult.rows[0].total_opt_outs, 10),
+          opted_out_campaigns:  parseInt(optOutResult.rows[0].opted_out_campaigns, 10),
+          opted_out_sms:        parseInt(optOutResult.rows[0].opted_out_sms, 10),
+          opted_out_all:        parseInt(optOutResult.rows[0].opted_out_all, 10),
+          opt_out_contacts:     optOutResult.rows[0].opt_out_contacts || [],
+        }
+      : { total_opt_outs: 0, opted_out_campaigns: 0, opted_out_sms: 0, opted_out_all: 0, opt_out_contacts: [] };
+
+    res.json({ campaign, batches, combined_metrics, opt_out_data: optOutData, image: imageResult.rows[0] || null });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/detail' });
     res.status(500).json({ error: 'Internal server error' });

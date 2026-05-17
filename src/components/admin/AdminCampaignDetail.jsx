@@ -120,13 +120,17 @@ function BatchPill({ status }) {
 }
 
 // ── Metrics grid ──────────────────────────────────────────────────────────────
-function MetricsGrid({ metrics, onOpenFailedPanel }) {
+function MetricsGrid({ metrics, onOpenFailedPanel, optOutData }) {
   if (!metrics) return null;
   const sentCount    = metrics.total_sent    || metrics.sent_count    || 0;
   const openedCount  = metrics.total_opened  || metrics.opened_count  || 0;
   const clickedCount = metrics.total_clicked || metrics.clicked_count || 0;
   const openRate     = sentCount > 0 ? (openedCount  / sentCount) * 100 : 0;
   const clickRate    = sentCount > 0 ? (clickedCount / sentCount) * 100 : 0;
+
+  const optOutCount = optOutData != null
+    ? (optOutData.total_opt_outs || 0)
+    : (metrics.total_opted_out || metrics.opted_out_count || 0);
 
   const cards = [
     { label: 'Total Contacts', value: (metrics.total_selected || metrics.total_contacts || 0).toLocaleString() },
@@ -155,12 +159,52 @@ function MetricsGrid({ metrics, onOpenFailedPanel }) {
       value: (metrics.total_converted || metrics.converted_count || 0).toLocaleString(),
       sub: `${(metrics.conversion_rate ?? 0).toFixed(1)}% conversion rate`,
     },
-    { label: 'Opted Out', value: (metrics.total_opted_out || metrics.opted_out_count || 0).toLocaleString() },
+    { label: 'Opted Out', value: optOutCount.toLocaleString() },
   ];
 
+  const optOutContacts = optOutData?.opt_out_contacts || [];
+
+  const pillStyle = (bg, color) => ({
+    fontSize: 11, background: bg, color, padding: '2px 8px',
+    borderRadius: 20, fontFamily: AD.fontSans, whiteSpace: 'nowrap',
+  });
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-      {cards.map(c => <MetricCard key={c.label} {...c} />)}
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        {cards.map(c => <MetricCard key={c.label} {...c} />)}
+      </div>
+      {optOutContacts.length > 0 && (
+        <div style={{
+          marginTop: 16, background: AD.bgCard, border: `1px solid ${AD.border}`,
+          borderRadius: AD.radiusMd, padding: '16px 20px',
+        }}>
+          <p style={{ margin: '0 0 10px', fontSize: 11, color: AD.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: AD.fontSans }}>
+            Opt-Out Details
+          </p>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {optOutContacts.map((c, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                  padding: '7px 0',
+                  borderBottom: i < optOutContacts.length - 1 ? `1px solid ${AD.border}` : 'none',
+                }}
+              >
+                <span style={{ fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans, marginRight: 4 }}>{c.email}</span>
+                <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                  {new Date(c.opted_out_at).toLocaleDateString()}
+                </span>
+                {c.opt_out_campaigns && <span style={pillStyle('#fee2e2', '#991b1b')}>No Campaigns</span>}
+                {c.opt_out_sms       && <span style={pillStyle('#fef3c7', '#92400e')}>No SMS</span>}
+                {c.opt_out_all       && <span style={pillStyle('#021428', '#ffffff')}>All Blocked</span>}
+                {c.referral_only     && <span style={pillStyle('#dbeafe', '#1d4ed8')}>Referral Only</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -645,7 +689,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
 
           {/* Metrics grid */}
           {metricsBatch === 'all' ? (
-            <MetricsGrid metrics={combined} onOpenFailedPanel={openFailedPanel} />
+            <MetricsGrid metrics={combined} onOpenFailedPanel={openFailedPanel} optOutData={detail?.opt_out_data} />
           ) : (
             <MetricsGrid metrics={batches.find(b => b.batch_number === metricsBatch)} onOpenFailedPanel={openFailedPanel} />
           )}

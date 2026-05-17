@@ -8,6 +8,7 @@ const adminRoutes = require('./server/routes/admin');
 const stripeRoutes = require('./server/routes/stripe');
 const jobberWebhooks = require('./server/routes/webhooks/jobber');
 const accountRoutes = require('./server/routes/account');
+const unsubscribeRoutes = require('./server/routes/unsubscribe');
 const { runScheduledSync } = require('./server/crm/pipelineSync');
 const { expressErrorHandler } = require('./server/middleware/errorLogger');
 const helmet = require('helmet');
@@ -47,6 +48,8 @@ app.use('/', adminRoutes);
 app.use('/', stripeRoutes);
 // Manage Account routes
 app.use('/api/account', accountRoutes);
+// Unsubscribe / email preferences — public, no auth middleware
+app.use('/', unsubscribeRoutes);
 
 // Background sync: 60s startup delay, then every 30 minutes. Logic in pipelineSync.js.
 setTimeout(() => {
