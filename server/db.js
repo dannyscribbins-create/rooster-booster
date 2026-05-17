@@ -581,6 +581,34 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     sent_at TIMESTAMPTZ DEFAULT NOW()
   )`);
 
+  // ── CAMPAIGN TRACKING TABLES ──────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS campaign_tracking_tokens (
+    token UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id),
+    contractor_id TEXT NOT NULL,
+    contact_email TEXT NOT NULL,
+    contact_name TEXT,
+    batch_number INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tracking_tokens_campaign
+    ON campaign_tracking_tokens(campaign_id, batch_number)`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS campaign_events (
+    id SERIAL PRIMARY KEY,
+    token UUID NOT NULL REFERENCES campaign_tracking_tokens(token),
+    campaign_id INTEGER NOT NULL,
+    contractor_id TEXT NOT NULL,
+    batch_number INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN ('open', 'click')),
+    cta_url TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    occurred_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_campaign_events_campaign
+    ON campaign_events(campaign_id, batch_number, event_type)`);
+
   // ── REFERRAL RULES ENGINE MIGRATIONS ──────────────────────────────────────────
 
   // 1A — Widen bonus_amount from INTEGER to NUMERIC(10,2) for tiered/percentage models

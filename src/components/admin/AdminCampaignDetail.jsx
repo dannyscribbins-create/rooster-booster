@@ -185,12 +185,14 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
   const [retryConfirming,  setRetryConfirming]  = useState(false);
   const [retryResult,      setRetryResult]      = useState(null);
   const [exportingCsv,     setExportingCsv]     = useState(false);
+  const [trackingMetrics,  setTrackingMetrics]  = useState(null);
 
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
 
   useEffect(() => {
     fetchDetail();
+    fetchMetrics();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
@@ -206,6 +208,17 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
       setLoadError('Network error loading campaign.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchMetrics() {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/metrics`, { headers });
+      if (!r.ok) return;
+      const data = await r.json();
+      setTrackingMetrics(data);
+    } catch {
+      // non-blocking — metrics are supplemental
     }
   }
 
@@ -526,25 +539,35 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
 
                     {/* Sent stats */}
                     {batchStatus === 'sent' && (
-                      <div style={{ display: 'flex', gap: 20, marginLeft: 'auto' }}>
-                        <div style={{ textAlign: 'right' }}>
-                          <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Delivered</p>
-                          <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                            {b.sent_count.toLocaleString()}
-                          </p>
+                      <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 20 }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Delivered</p>
+                            <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                              {b.sent_count.toLocaleString()}
+                            </p>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Open rate</p>
+                            <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                              {b.sent_count > 0 ? `${Math.round((b.opened_count / b.sent_count) * 1000) / 10}%` : '—'}
+                            </p>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Click rate</p>
+                            <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                              {b.sent_count > 0 ? `${Math.round((b.clicked_count / b.sent_count) * 1000) / 10}%` : '—'}
+                            </p>
+                          </div>
                         </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Open rate</p>
-                          <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                            {b.sent_count > 0 ? `${Math.round((b.opened_count / b.sent_count) * 1000) / 10}%` : '—'}
+                        {(b.opened_count > 0 || b.clicked_count > 0) && (
+                          <p style={{ margin: '6px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                            {[
+                              b.opened_count > 0 && `${b.opened_count} open${b.opened_count !== 1 ? 's' : ''}`,
+                              b.clicked_count > 0 && `${b.clicked_count} click${b.clicked_count !== 1 ? 's' : ''}`,
+                            ].filter(Boolean).join(' · ')}
                           </p>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Click rate</p>
-                          <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                            {b.sent_count > 0 ? `${Math.round((b.clicked_count / b.sent_count) * 1000) / 10}%` : '—'}
-                          </p>
-                        </div>
+                        )}
                       </div>
                     )}
 

@@ -242,28 +242,35 @@ Output: One email message body only. No subject line. No preview text. No button
   }
 }
 
-function buildEmailHtml(body, campaignData) {
+function buildEmailHtml(body, campaignData, token) {
+  const ctaHref = token && process.env.BACKEND_URL
+    ? `${process.env.BACKEND_URL}/api/track/click/${token}`
+    : campaignData.cta_url;
   const ctaHtml = campaignData.cta_enabled && campaignData.cta_url
-    ? `<a href="${campaignData.cta_url}" style="display:inline-block;background:#CC0000;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:24px;">${deriveCTALabel(campaignData.cta_url)}</a>`
+    ? `<a href="${ctaHref}" style="display:inline-block;background:#CC0000;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:24px;">${deriveCTALabel(campaignData.cta_url)}</a>`
     : '';
   const imageHtml = campaignData.image_url
     ? `<img src="${campaignData.image_url}" alt="" style="display:block;max-width:100%;border-radius:8px;margin-top:24px;" />`
     : '';
   const contractorName = campaignData.contractor_name || 'the business';
   const bodyEscaped = (body || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const pixelHtml = token && process.env.BACKEND_URL
+    ? `<img src="${process.env.BACKEND_URL}/api/track/open/${token}" width="1" height="1" style="display:block;width:1px;height:1px;border:0;" alt="" />`
+    : '';
 
   return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#ffffff;">
   <p style="font-size:15px;line-height:1.7;color:#1a1a1a;white-space:pre-wrap;">${bodyEscaped}</p>
   ${imageHtml}
   ${ctaHtml}
   <p style="font-size:11px;color:#999999;margin-top:40px;border-top:1px solid #eeeeee;padding-top:16px;">You are receiving this message because you are a past client of ${contractorName}. To opt out of future messages, reply STOP.</p>
+  ${pixelHtml}
 </div>`;
 }
 
-async function sendEmailViaResend(contact, personalizedBody, campaignData) {
+async function sendEmailViaResend(contact, personalizedBody, campaignData, token) {
   try {
     const subject = campaignData.subject_line || `A message from ${campaignData.contractor_name || 'us'}`;
-    const html = buildEmailHtml(personalizedBody, campaignData);
+    const html = buildEmailHtml(personalizedBody, campaignData, token);
 
     await retryWithBackoff(async () => {
       const payload = {
@@ -326,32 +333,45 @@ async function executeBatchSend(campaignId, req) {
     );
   }
 
+  const tokenRows = await Promise.all(
+    hasEmail.map(async (contact) => {
+      const r = await pool.query(
+        `INSERT INTO campaign_tracking_tokens
+         (campaign_id, contractor_id, contact_email, contact_name, batch_number)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING token`,
+        [campaignId, contractorId, contact.email, contact.client_name || null, batchNumber]
+      );
+      return { contact, token: r.rows[0].token };
+    })
+  );
+
   let personalizedMessages = [];
   if (campaign.ai_rapport_enabled && process.env.ANTHROPIC_API_KEY) {
-    const chunks = chunkArray(hasEmail, 50);
+    const chunks = chunkArray(tokenRows, 50);
     for (let i = 0; i < chunks.length; i++) {
       const chunkMsgs = await Promise.all(
-        chunks[i].map(c => generatePersonalizedMessage(c, campaignData, req))
+        chunks[i].map(({ contact: c }) => generatePersonalizedMessage(c, campaignData, req))
       );
       personalizedMessages.push(...chunkMsgs);
       if (i < chunks.length - 1) await sleep(150);
     }
   } else {
-    personalizedMessages = hasEmail.map(() => campaign.message_body);
+    personalizedMessages = tokenRows.map(() => campaign.message_body);
   }
 
   const sendResults = [];
-  const emailChunks = chunkArray(hasEmail, 50);
+  const emailChunks = chunkArray(tokenRows, 50);
   for (let i = 0; i < emailChunks.length; i++) {
     const chunk = emailChunks[i];
     const chunkOffset = i * 50;
     const chunkResults = await Promise.all(
-      chunk.map((contact, j) =>
-        sendEmailViaResend(contact, personalizedMessages[chunkOffset + j], campaignData)
+      chunk.map((item, j) =>
+        sendEmailViaResend(item.contact, personalizedMessages[chunkOffset + j], campaignData, item.token)
       )
     );
     for (let j = 0; j < chunk.length; j++) {
-      sendResults.push({ contact: chunk[j], ...chunkResults[j] });
+      sendResults.push({ contact: chunk[j].contact, ...chunkResults[j] });
     }
     if (i < emailChunks.length - 1) await sleep(150);
   }
@@ -405,6 +425,89 @@ async function executeBatchSend(campaignId, req) {
 
   return { sent, failed, skipped, batch_number: batchNumber };
 }
+
+const TRACKING_PIXEL = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64'
+);
+
+// ── PUBLIC: EMAIL TRACKING ────────────────────────────────────────────────────
+
+router.get('/api/track/open/:token', async (req, res) => {
+  res.set({ 'Content-Type': 'image/gif', 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' });
+  try {
+    const { token } = req.params;
+    const tokenResult = await pool.query(
+      `SELECT campaign_id, contractor_id, batch_number FROM campaign_tracking_tokens WHERE token = $1`,
+      [token]
+    );
+    if (tokenResult.rows.length === 0) {
+      return res.send(TRACKING_PIXEL);
+    }
+    const { campaign_id, contractor_id, batch_number } = tokenResult.rows[0];
+    const existing = await pool.query(
+      `SELECT 1 FROM campaign_events WHERE token = $1 AND event_type = 'open' LIMIT 1`,
+      [token]
+    );
+    if (existing.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO campaign_events (token, campaign_id, contractor_id, batch_number, event_type, ip_address, user_agent)
+         VALUES ($1, $2, $3, $4, 'open', $5, $6)`,
+        [token, campaign_id, contractor_id, batch_number, req.ip || null, req.headers['user-agent'] || null]
+      );
+      await pool.query(
+        `UPDATE campaign_contacts SET opened = true
+         WHERE campaign_id = $1 AND contractor_id = $2 AND email = (
+           SELECT contact_email FROM campaign_tracking_tokens WHERE token = $3
+         )`,
+        [campaign_id, contractor_id, token]
+      );
+    }
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/track/open/:token' });
+  }
+  res.send(TRACKING_PIXEL);
+});
+
+router.get('/api/track/click/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const tokenResult = await pool.query(
+      `SELECT t.campaign_id, t.contractor_id, t.batch_number, c.cta_url
+       FROM campaign_tracking_tokens t
+       JOIN campaigns c ON c.id = t.campaign_id
+       WHERE t.token = $1`,
+      [token]
+    );
+    if (tokenResult.rows.length === 0) {
+      return res.redirect(process.env.FRONTEND_URL || '/');
+    }
+    const { campaign_id, contractor_id, batch_number, cta_url } = tokenResult.rows[0];
+    const existing = await pool.query(
+      `SELECT 1 FROM campaign_events WHERE token = $1 AND event_type = 'click' LIMIT 1`,
+      [token]
+    );
+    if (existing.rows.length === 0) {
+      await pool.query(
+        `INSERT INTO campaign_events (token, campaign_id, contractor_id, batch_number, event_type, cta_url, ip_address, user_agent)
+         VALUES ($1, $2, $3, $4, 'click', $5, $6, $7)`,
+        [token, campaign_id, contractor_id, batch_number, cta_url || null,
+         req.ip || null, req.headers['user-agent'] || null]
+      );
+      await pool.query(
+        `UPDATE campaign_contacts SET clicked = true
+         WHERE campaign_id = $1 AND contractor_id = $2 AND email = (
+           SELECT contact_email FROM campaign_tracking_tokens WHERE token = $3
+         )`,
+        [campaign_id, contractor_id, token]
+      );
+    }
+    return res.redirect(cta_url || process.env.FRONTEND_URL || '/');
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/track/click/:token' });
+    return res.redirect(process.env.FRONTEND_URL || '/');
+  }
+});
 
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 router.post('/api/admin/login', adminLoginLimiter, [
@@ -3223,6 +3326,34 @@ router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
   }
 });
 
+router.get('/api/admin/campaigns/:id/metrics', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const campaignId = parseInt(req.params.id, 10);
+  try {
+    const [byBatchResult, totalsResult] = await Promise.all([
+      pool.query(
+        `SELECT batch_number, event_type, COUNT(*) AS count
+         FROM campaign_events
+         WHERE campaign_id = $1
+         GROUP BY batch_number, event_type
+         ORDER BY batch_number`,
+        [campaignId]
+      ),
+      pool.query(
+        `SELECT event_type, COUNT(DISTINCT token) AS unique_count
+         FROM campaign_events
+         WHERE campaign_id = $1
+         GROUP BY event_type`,
+        [campaignId]
+      ),
+    ]);
+    res.json({ byBatch: byBatchResult.rows, totals: totalsResult.rows });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/metrics' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const campaignId = parseInt(req.params.id, 10);
@@ -3308,7 +3439,8 @@ router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
           sendEmailViaResend(
             { email: c.email, phone: c.phone, client_name: c.contact_name },
             campaign.message_body,
-            campaignData
+            campaignData,
+            null
           )
         )
       );
