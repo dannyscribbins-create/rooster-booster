@@ -1112,6 +1112,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           cta_url: ctaEnabled ? ctaUrl : null,
           subject_line: subjectLine || null,
           selected_tone: selectedTone,
+          approved_message: (aiRapport && toneVariants && toneVariants[selectedTone]) ? toneVariants[selectedTone] : null,
         }),
       });
     } catch (err) {

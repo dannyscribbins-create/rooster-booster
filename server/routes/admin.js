@@ -129,6 +129,64 @@ Tone: warm, trustworthy, relationship-focused, clear, and professional but human
 
 async function generatePersonalizedMessage(contact, campaignData, req) {
   try {
+    const approvedMessage = (campaignData.approved_message || '').trim();
+
+    if (approvedMessage) {
+      // Personalize mode: weave contact details into the pre-approved message
+      const firstName = (contact.client_name || '').toString().trim().split(/\s+/)[0].slice(0, 50);
+      const jobType = (contact.job_type || '').toString().trim().slice(0, 100);
+      let serviceDate = '';
+      if (contact.job_date) {
+        const d = new Date(contact.job_date);
+        if (!isNaN(d.getTime())) {
+          serviceDate = `${d.toLocaleString('default', { month: 'long' })} ${d.getFullYear()}`;
+        }
+      }
+
+      const systemPrompt = `You are personalizing a pre-approved email message for a roofing company's outreach campaign.
+
+Your job is to naturally weave in the recipient's personal details into the approved message below. Do NOT rewrite the message. Do NOT change the tone, structure, or intent. Only personalize it by incorporating the recipient's first name, job type (if available), and month and year of service (if available) where they fit naturally.
+
+Return only the personalized message text. No subject line, no greeting label, no explanation. No markdown.`;
+
+      const userPrompt = `Approved message:
+"${approvedMessage}"
+
+Recipient first name: ${firstName || 'not specified'}
+Job type: ${jobType || 'not specified'}
+Month and year of service: ${serviceDate || 'not available'}
+
+Return the personalized message only.`;
+
+      const text = await retryWithBackoff(async () => {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 300,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+          }),
+        });
+        if (!response.ok) {
+          const err = new Error(`Anthropic API error: ${response.status}`);
+          err.status = response.status;
+          throw err;
+        }
+        const data = await response.json();
+        if (!data.content?.[0]?.text) throw new Error('Unexpected Anthropic response shape');
+        return data.content[0].text.trim();
+      }, { retries: 2, shouldRetry: anthropicShouldRetry });
+
+      return text;
+    }
+
+    // Generation mode: no approved message — generate fresh from campaign parameters
     const tone = campaignData.selected_tone || 'friendly';
     const messageType = campaignData.message_preset || 'write_my_own';
     const contractorName = campaignData.contractor_name || 'the business';
@@ -180,7 +238,7 @@ Output: One email message body only. No subject line. No preview text. No button
     return text;
   } catch (err) {
     await logError({ req, error: err, source: 'generatePersonalizedMessage' });
-    return campaignData.message_body;
+    return campaignData.approved_message || campaignData.message_body;
   }
 }
 
@@ -233,7 +291,7 @@ async function executeBatchSend(campaignId, req) {
     `SELECT c.id, c.name, c.status, c.total_batches, c.current_batch, c.last_batch_sent_at,
             c.message_body, c.subject_line, c.cta_enabled, c.cta_url,
             c.ai_rapport_enabled, c.selected_tone, c.message_preset, c.contractor_id,
-            ci.public_url AS image_url
+            c.approved_message, ci.public_url AS image_url
      FROM campaigns c
      LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
      WHERE c.id = $1 AND c.contractor_id = $2
@@ -249,7 +307,7 @@ async function executeBatchSend(campaignId, req) {
   const campaignData = { ...campaign, contractor_name: contractorName };
 
   const contactsResult = await pool.query(
-    `SELECT id, client_name, email, phone, job_type
+    `SELECT id, client_name, email, phone, job_type, job_date
      FROM campaign_contacts
      WHERE campaign_id = $1 AND contractor_id = $2
        AND batch_number = $3 AND selected = true AND opted_out = false`,
@@ -2542,7 +2600,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
 router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
-  const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, subject_line, selected_tone } = req.body;
+  const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, subject_line, selected_tone, approved_message } = req.body;
 
   const validPresets = ['referral_invite', 're_engagement', 'seasonal', 'thank_you', 'write_own'];
   const validTones = ['friendly', 'professional', 'warm', 'casual'];
@@ -2553,20 +2611,22 @@ router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
   if (message_body !== null && message_body !== undefined && typeof message_body === 'string' && message_body.length > 1000) return res.status(400).json({ error: 'message_body exceeds 1000 characters' });
   if (subject_line !== null && subject_line !== undefined && typeof subject_line === 'string' && subject_line.length > 200) return res.status(400).json({ error: 'subject_line exceeds 200 characters' });
   if (selected_tone !== null && selected_tone !== undefined && !validTones.includes(selected_tone)) return res.status(400).json({ error: 'Invalid selected_tone' });
+  if (approved_message !== null && approved_message !== undefined && typeof approved_message === 'string' && approved_message.length > 2000) return res.status(400).json({ error: 'approved_message exceeds 2000 characters' });
 
   try {
     const result = await pool.query(
       `UPDATE campaigns
        SET message_preset = $1, message_body = $2, ai_rapport_enabled = $3,
            cta_enabled = $4, cta_url = $5, subject_line = $6,
-           selected_tone = COALESCE($7, selected_tone), updated_at = NOW()
+           selected_tone = COALESCE($7, selected_tone),
+           approved_message = $10, updated_at = NOW()
        WHERE id = $8 AND contractor_id = $9`,
-      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, subject_line || null, selected_tone || null, id, 'accent-roofing']
+      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, subject_line || null, selected_tone || null, id, 'accent-roofing', approved_message || null]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Campaign not found' });
     res.json({ success: true });
   } catch (err) {
-    await logError({ req, error: err });
+    await logError({ req, error: err, source: 'PATCH /api/admin/campaigns/:id/messaging' });
     res.status(500).json({ error: err.message });
   }
 });
