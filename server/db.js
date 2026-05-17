@@ -543,6 +543,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS subject_line TEXT`);
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS selected_tone TEXT DEFAULT 'friendly'`);
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS approved_message TEXT`);
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS email_header TEXT`);
   await pool.query(`CREATE TABLE IF NOT EXISTS campaign_images (
     id SERIAL PRIMARY KEY,
     campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,

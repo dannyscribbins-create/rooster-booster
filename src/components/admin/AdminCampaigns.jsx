@@ -896,6 +896,7 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
 function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   const [selectedPreset, setSelectedPreset] = useState('referral_invite');
   const [messageBody,    setMessageBody]    = useState(PRESETS[0].body);
+  const [emailHeader,    setEmailHeader]    = useState('');
   const [aiRapport,      setAiRapport]      = useState(false);
   const [ctaEnabled,     setCtaEnabled]     = useState(false);
   const [ctaUrl,         setCtaUrl]         = useState('');
@@ -981,6 +982,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
             [s.selected_tone]: s.approved_message,
           }));
         }
+        if (s?.email_header) setEmailHeader(s.email_header);
         if (data.image) {
           setImageUrl(data.image.public_url);
           setImageFilename(data.image.filename);
@@ -1128,6 +1130,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           subject_line: subjectLine || null,
           selected_tone: selectedTone,
           approved_message: (aiRapport && toneVariants && toneVariants[selectedTone]) ? toneVariants[selectedTone] : null,
+          email_header: emailHeader || null,
         }),
       });
     } catch (err) {
@@ -1376,6 +1379,33 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           {/* B4c — Divider */}
           <div style={divider} />
 
+          {/* B4d — Email Header */}
+          <div>
+            <label style={{ display: 'block', fontSize: 15, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans, marginBottom: 6 }}>
+              Email Header
+            </label>
+            <input
+              type="text"
+              value={emailHeader}
+              onChange={e => setEmailHeader(e.target.value.slice(0, 100))}
+              placeholder="e.g. We wanted to reach out personally..."
+              style={{
+                width: '100%', padding: '10px 14px',
+                background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                borderRadius: 10, fontFamily: AD.fontSans, fontSize: 14,
+                color: AD.textPrimary, boxSizing: 'border-box', outline: 'none',
+              }}
+            />
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+              This is the main hook your clients will see when they open your email.
+            </p>
+            <p style={{ margin: '2px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, textAlign: 'right' }}>
+              {emailHeader.length}/100
+            </p>
+          </div>
+
+          <div style={divider} />
+
           {/* B5 — AI Rapport toggle */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
             <div style={{ flex: 1 }}>
@@ -1537,7 +1567,12 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
 
           {/* B9 — Image attachment */}
           <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>Attach Image</p>
-          <p style={{ margin: '0 0 14px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>Email only — one image per campaign. JPEG, PNG, GIF, or WebP, max 2 MB.</p>
+          <p style={{ margin: '0 0 4px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+            Email only — one image per campaign.
+          </p>
+          <p style={{ margin: '0 0 14px', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+            Best results: JPEG or PNG, under 1MB, 600px wide. Max file size 2MB.
+          </p>
 
           {imageUrl ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: 10, padding: '10px 14px' }}>
@@ -1652,6 +1687,14 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                 alt=""
                 style={{ maxWidth: '100%', borderRadius: 6, marginBottom: 12, display: 'block' }}
               />
+            )}
+            {emailHeader && (
+              <div style={{
+                fontSize: 22, fontWeight: 700, color: AD.textPrimary,
+                fontFamily: AD.fontSans, marginBottom: 12, lineHeight: 1.3,
+              }}>
+                {emailHeader}
+              </div>
             )}
             <div style={{ fontSize: 14, color: AD.textPrimary, lineHeight: 1.7 }}>
               {renderPreviewBody(previewBody)}
@@ -1939,6 +1982,14 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, onSaveExit, headers 
                     style={{ maxWidth: '100%', borderRadius: 6, marginBottom: 12, display: 'block' }}
                   />
                 </>
+              )}
+              {summary.campaign.email_header && (
+                <div style={{
+                  fontSize: 20, fontWeight: 700, color: AD.textPrimary,
+                  fontFamily: AD.fontSans, marginBottom: 12, lineHeight: 1.3,
+                }}>
+                  {summary.campaign.email_header}
+                </div>
               )}
               <div style={{ fontSize: 14, color: AD.textPrimary, lineHeight: 1.7, fontFamily: AD.fontSans, whiteSpace: 'pre-wrap' }}>
                 {renderTokens(summary.campaign.approved_message || summary.campaign.message_body)}

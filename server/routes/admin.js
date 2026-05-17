@@ -242,35 +242,103 @@ Output: One email message body only. No subject line. No preview text. No button
   }
 }
 
-function buildEmailHtml(body, campaignData, token) {
+function buildEmailHtml(body, campaignData, token, contractorSettings = {}) {
+  const cs = contractorSettings;
+  function esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
   const ctaHref = token && process.env.BACKEND_URL
     ? `${process.env.BACKEND_URL}/api/track/click/${token}`
     : campaignData.cta_url;
-  const ctaHtml = campaignData.cta_enabled && campaignData.cta_url
-    ? `<a href="${ctaHref}" style="display:inline-block;background:#CC0000;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:24px;">${deriveCTALabel(campaignData.cta_url)}</a>`
+  const bodyEscaped = esc(body);
+
+  // 1. Header
+  const headerHtml = campaignData.email_header
+    ? `<h1 style="font-family:${esc(cs.font_heading) || 'Georgia, serif'};font-size:28px;font-weight:700;color:#1a1a1a;margin:0 0 20px 0;">${esc(campaignData.email_header)}</h1>`
     : '';
+
+  // 2. Campaign image
+  const imageAlt = esc(campaignData.name || 'Campaign image');
   const imageHtml = campaignData.image_url
-    ? `<img src="${campaignData.image_url}" alt="" style="display:block;max-width:100%;border-radius:8px;margin-top:24px;" />`
+    ? `<img src="${campaignData.image_url}" alt="${imageAlt}" style="display:block;max-width:100%;width:100%;border-radius:8px;margin:0 auto 24px auto;" />`
     : '';
-  const contractorName = campaignData.contractor_name || 'the business';
-  const bodyEscaped = (body || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // 3. Message body
+  const bodyHtml = `<p style="font-family:${esc(cs.font_body) || 'Arial, sans-serif'};font-size:16px;line-height:1.8;color:#1a1a1a;white-space:pre-wrap;margin:0;">${bodyEscaped}</p>`;
+
+  // 4. CTA button
+  const ctaHtml = campaignData.cta_enabled && campaignData.cta_url
+    ? `<div style="text-align:center;margin-top:32px;"><a href="${ctaHref}" style="display:inline-block;background:#CC0000;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">${deriveCTALabel(campaignData.cta_url)}</a></div>`
+    : '';
+
+  // 5. Footer divider
+  const dividerHtml = `<hr style="border:none;border-top:1px solid #eeeeee;margin:40px 0 24px;" />`;
+
+  // 6. Logo + powered by
+  const logoHtml = cs.logo_url
+    ? `<img src="${cs.logo_url}" alt="${esc(cs.company_name) || 'Company logo'}" style="display:block;max-height:48px;max-width:160px;margin:0 auto 8px;" />`
+    : '';
+  const poweredByHtml = `<p style="text-align:center;font-size:11px;color:#aaaaaa;margin:0 0 16px;">${esc(cs.company_name) || ''}${cs.company_name ? '<br/>' : ''}Powered by RoofMiles</p>`;
+
+  // 7. Social icons (only non-empty fields)
+  const socialLinks = [
+    { url: cs.social_facebook,  label: 'Facebook' },
+    { url: cs.social_instagram, label: 'Instagram' },
+    { url: cs.social_google,    label: 'Google' },
+    { url: cs.social_website,   label: 'Website' },
+  ].filter(s => s.url && s.url.trim() !== '');
+  const socialHtml = socialLinks.length > 0
+    ? `<p style="text-align:center;margin:0 0 16px;">${
+        socialLinks.map(s =>
+          `<a href="${s.url}" style="display:inline-block;margin:0 4px;font-size:11px;color:#555555;text-decoration:none;padding:3px 8px;border:1px solid #dddddd;border-radius:12px;">${s.label}</a>`
+        ).join('')
+      }</p>`
+    : '';
+
+  // 8. Do not reply notice
+  const contactLink = cs.company_email
+    ? `<a href="mailto:${esc(cs.company_email)}" style="color:#555555;">${esc(cs.company_email)}</a>`
+    : 'contact your service provider';
+  const doNotReplyHtml = `<p style="font-size:12px;color:#777777;text-align:center;line-height:1.7;margin:0 0 16px;">Please do not reply to this email — replies cannot be received.<br/>For questions about your account or rewards: ${contactLink}<br/>For platform support: <a href="mailto:hello@roofmiles.com" style="color:#555555;">hello@roofmiles.com</a></p>`;
+
+  // 9. Legal links
+  const legalHtml = `<p style="text-align:center;font-size:11px;color:#aaaaaa;margin:0 0 12px;"><a href="https://roofmiles.com/terms" style="color:#aaaaaa;">Terms of Use</a> · <a href="https://roofmiles.com/privacy" style="color:#aaaaaa;">Privacy Policy</a></p>`;
+
+  // 10. Physical address (CAN-SPAM required)
+  const addressParts = [cs.company_address, cs.company_city, cs.company_state, cs.company_zip]
+    .filter(p => p && p.trim() !== '');
+  const addressStr = addressParts.length > 0 ? esc(addressParts.join(', ')) : 'Address on file';
+  const addressHtml = `<p style="font-size:11px;color:#aaaaaa;text-align:center;margin:0 0 12px;">${addressStr}</p>`;
+
+  // 11. Copyright
+  const copyrightHtml = `<p style="font-size:11px;color:#aaaaaa;text-align:center;margin:0 0 24px;">© ${new Date().getFullYear()} ${esc(cs.company_name) || 'RoofMiles'}. All rights reserved.</p>`;
+
+  // 12. Tracking pixel (display:none — not display:block)
   const pixelHtml = token && process.env.BACKEND_URL
-    ? `<img src="${process.env.BACKEND_URL}/api/track/open/${token}" width="1" height="1" style="display:block;width:1px;height:1px;border:0;" alt="" />`
+    ? `<img src="${process.env.BACKEND_URL}/api/track/open/${token}" width="1" height="1" style="display:none;width:1px;height:1px;border:0;" alt="" />`
     : '';
 
   return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#ffffff;">
-  <p style="font-size:15px;line-height:1.7;color:#1a1a1a;white-space:pre-wrap;">${bodyEscaped}</p>
+  ${headerHtml}
   ${imageHtml}
+  ${bodyHtml}
   ${ctaHtml}
-  <p style="font-size:11px;color:#999999;margin-top:40px;border-top:1px solid #eeeeee;padding-top:16px;">You are receiving this message because you are a past client of ${contractorName}. To opt out of future messages, reply STOP.</p>
+  ${dividerHtml}
+  ${logoHtml}
+  ${poweredByHtml}
+  ${socialHtml}
+  ${doNotReplyHtml}
+  ${legalHtml}
+  ${addressHtml}
+  ${copyrightHtml}
   ${pixelHtml}
 </div>`;
 }
 
-async function sendEmailViaResend(contact, personalizedBody, campaignData, token, senderName = 'RoofMiles') {
+async function sendEmailViaResend(contact, personalizedBody, campaignData, token, senderName = 'RoofMiles', contractorSettings = {}) {
   try {
     const subject = campaignData.subject_line || `A message from ${campaignData.contractor_name || 'us'}`;
-    const html = buildEmailHtml(personalizedBody, campaignData, token);
+    const html = buildEmailHtml(personalizedBody, campaignData, token, contractorSettings);
+    const plainText = html.replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
 
     await retryWithBackoff(async () => {
       const payload = {
@@ -278,6 +346,7 @@ async function sendEmailViaResend(contact, personalizedBody, campaignData, token
         from: `${senderName} <noreply@roofmiles.com>`,
         subject,
         html,
+        text: plainText,
       };
       await resend.emails.send(payload);
     }, { retries: 2, shouldRetry: resendShouldRetry });
@@ -298,8 +367,12 @@ async function executeBatchSend(campaignId, req) {
     `SELECT c.id, c.name, c.status, c.total_batches, c.current_batch, c.last_batch_sent_at,
             c.message_body, c.subject_line, c.cta_enabled, c.cta_url,
             c.ai_rapport_enabled, c.selected_tone, c.message_preset, c.contractor_id,
-            c.approved_message, ci.public_url AS image_url,
-            COALESCE(cs.email_sender_name, cs.company_name, 'RoofMiles') AS sender_name
+            c.approved_message, c.email_header, ci.public_url AS image_url,
+            COALESCE(cs.email_sender_name, cs.company_name, 'RoofMiles') AS sender_name,
+            cs.font_heading, cs.font_body, cs.company_name, cs.email_sender_name,
+            cs.company_address, cs.company_city, cs.company_state, cs.company_zip,
+            cs.company_email, cs.logo_url, cs.social_facebook, cs.social_instagram,
+            cs.social_google, cs.social_website
      FROM campaigns c
      LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
      LEFT JOIN contractor_settings cs ON cs.contractor_id = c.contractor_id
@@ -314,6 +387,22 @@ async function executeBatchSend(campaignId, req) {
   // MVP: contractor name hardcoded — replace with session lookup at multi-contractor scale
   const contractorName = 'Accent Roofing Service';
   const campaignData = { ...campaign, contractor_name: contractorName };
+  const contractorSettings = {
+    font_heading:      campaign.font_heading,
+    font_body:         campaign.font_body,
+    company_name:      campaign.company_name,
+    email_sender_name: campaign.email_sender_name,
+    company_address:   campaign.company_address,
+    company_city:      campaign.company_city,
+    company_state:     campaign.company_state,
+    company_zip:       campaign.company_zip,
+    company_email:     campaign.company_email,
+    logo_url:          campaign.logo_url,
+    social_facebook:   campaign.social_facebook,
+    social_instagram:  campaign.social_instagram,
+    social_google:     campaign.social_google,
+    social_website:    campaign.social_website,
+  };
 
   const contactsResult = await pool.query(
     `SELECT id, client_name, email, phone, job_type, job_date
@@ -369,7 +458,7 @@ async function executeBatchSend(campaignId, req) {
     const chunkOffset = i * 50;
     const chunkResults = await Promise.all(
       chunk.map((item, j) =>
-        sendEmailViaResend(item.contact, personalizedMessages[chunkOffset + j], campaignData, item.token, campaign.sender_name)
+        sendEmailViaResend(item.contact, personalizedMessages[chunkOffset + j], campaignData, item.token, campaign.sender_name, contractorSettings)
       )
     );
     for (let j = 0; j < chunk.length; j++) {
@@ -2682,7 +2771,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
   const { id } = req.params;
   try {
     const campaignCheck = await pool.query(
-      'SELECT message_preset, message_body, approved_message, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations, subject_line, selected_tone FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      'SELECT message_preset, message_body, approved_message, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations, subject_line, selected_tone, email_header FROM campaigns WHERE id = $1 AND contractor_id = $2',
       [id, 'accent-roofing']
     );
     if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
@@ -2717,7 +2806,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
 router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
-  const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, subject_line, selected_tone, approved_message } = req.body;
+  const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, subject_line, selected_tone, approved_message, email_header } = req.body;
 
   const validPresets = ['referral_invite', 're_engagement', 'seasonal', 'thank_you', 'write_own'];
   const validTones = ['friendly', 'professional', 'warm', 'casual'];
@@ -2729,6 +2818,7 @@ router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
   if (subject_line !== null && subject_line !== undefined && typeof subject_line === 'string' && subject_line.length > 200) return res.status(400).json({ error: 'subject_line exceeds 200 characters' });
   if (selected_tone !== null && selected_tone !== undefined && !validTones.includes(selected_tone)) return res.status(400).json({ error: 'Invalid selected_tone' });
   if (approved_message !== null && approved_message !== undefined && typeof approved_message === 'string' && approved_message.length > 2000) return res.status(400).json({ error: 'approved_message exceeds 2000 characters' });
+  const emailHeaderTrimmed = (email_header && typeof email_header === 'string') ? email_header.trim().slice(0, 100) : null;
 
   try {
     const result = await pool.query(
@@ -2736,9 +2826,9 @@ router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
        SET message_preset = $1, message_body = $2, ai_rapport_enabled = $3,
            cta_enabled = $4, cta_url = $5, subject_line = $6,
            selected_tone = COALESCE($7, selected_tone),
-           approved_message = $10, updated_at = NOW()
+           approved_message = $10, email_header = $11, updated_at = NOW()
        WHERE id = $8 AND contractor_id = $9`,
-      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, subject_line || null, selected_tone || null, id, 'accent-roofing', approved_message || null]
+      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, subject_line || null, selected_tone || null, id, 'accent-roofing', approved_message || null, emailHeaderTrimmed || null]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Campaign not found' });
     res.json({ success: true });
@@ -2755,7 +2845,7 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
     const campaignResult = await pool.query(
       `SELECT id, name, status, total_contacts, total_batches, current_batch,
               message_preset, message_body, approved_message, ai_rapport_enabled, cta_enabled,
-              cta_url, subject_line, sent_at
+              cta_url, subject_line, email_header, sent_at
        FROM campaigns WHERE id = $1 AND contractor_id = $2`,
       [id, 'accent-roofing']
     );
@@ -3420,8 +3510,12 @@ router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
     // Load campaign for message data — do NOT regenerate AI Rapport, use base message_body
     const campaignResult = await pool.query(
       `SELECT c.message_body, c.subject_line, c.cta_enabled, c.cta_url, c.contractor_id,
-              c.selected_tone, c.message_preset, ci.public_url AS image_url,
-              COALESCE(cs.email_sender_name, cs.company_name, 'RoofMiles') AS sender_name
+              c.selected_tone, c.message_preset, c.email_header, ci.public_url AS image_url,
+              COALESCE(cs.email_sender_name, cs.company_name, 'RoofMiles') AS sender_name,
+              cs.font_heading, cs.font_body, cs.company_name, cs.email_sender_name,
+              cs.company_address, cs.company_city, cs.company_state, cs.company_zip,
+              cs.company_email, cs.logo_url, cs.social_facebook, cs.social_instagram,
+              cs.social_google, cs.social_website
        FROM campaigns c
        LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
        LEFT JOIN contractor_settings cs ON cs.contractor_id = c.contractor_id
@@ -3432,6 +3526,22 @@ router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
     const campaign = campaignResult.rows[0];
     // MVP: contractor name hardcoded — replace with session lookup at multi-contractor scale
     const campaignData = { ...campaign, contractor_name: 'Accent Roofing Service' };
+    const contractorSettings = {
+      font_heading:      campaign.font_heading,
+      font_body:         campaign.font_body,
+      company_name:      campaign.company_name,
+      email_sender_name: campaign.email_sender_name,
+      company_address:   campaign.company_address,
+      company_city:      campaign.company_city,
+      company_state:     campaign.company_state,
+      company_zip:       campaign.company_zip,
+      company_email:     campaign.company_email,
+      logo_url:          campaign.logo_url,
+      social_facebook:   campaign.social_facebook,
+      social_instagram:  campaign.social_instagram,
+      social_google:     campaign.social_google,
+      social_website:    campaign.social_website,
+    };
 
     const contacts = failedResult.rows;
     const chunks = chunkArray(contacts, 50);
@@ -3446,7 +3556,8 @@ router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
             campaign.message_body,
             campaignData,
             null,
-            campaign.sender_name
+            campaign.sender_name,
+            contractorSettings
           )
         )
       );
