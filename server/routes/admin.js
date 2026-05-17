@@ -267,7 +267,7 @@ function buildEmailHtml(body, campaignData, token) {
 </div>`;
 }
 
-async function sendEmailViaResend(contact, personalizedBody, campaignData, token) {
+async function sendEmailViaResend(contact, personalizedBody, campaignData, token, senderName = 'RoofMiles') {
   try {
     const subject = campaignData.subject_line || `A message from ${campaignData.contractor_name || 'us'}`;
     const html = buildEmailHtml(personalizedBody, campaignData, token);
@@ -275,7 +275,7 @@ async function sendEmailViaResend(contact, personalizedBody, campaignData, token
     await retryWithBackoff(async () => {
       const payload = {
         to: contact.email,
-        from: 'noreply@roofmiles.com',
+        from: `${senderName} <noreply@roofmiles.com>`,
         subject,
         html,
       };
@@ -298,9 +298,11 @@ async function executeBatchSend(campaignId, req) {
     `SELECT c.id, c.name, c.status, c.total_batches, c.current_batch, c.last_batch_sent_at,
             c.message_body, c.subject_line, c.cta_enabled, c.cta_url,
             c.ai_rapport_enabled, c.selected_tone, c.message_preset, c.contractor_id,
-            c.approved_message, ci.public_url AS image_url
+            c.approved_message, ci.public_url AS image_url,
+            COALESCE(cs.email_sender_name, cs.company_name, 'RoofMiles') AS sender_name
      FROM campaigns c
      LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
+     LEFT JOIN contractor_settings cs ON cs.contractor_id = c.contractor_id
      WHERE c.id = $1 AND c.contractor_id = $2
      LIMIT 1`,
     [campaignId, contractorId]
@@ -367,7 +369,7 @@ async function executeBatchSend(campaignId, req) {
     const chunkOffset = i * 50;
     const chunkResults = await Promise.all(
       chunk.map((item, j) =>
-        sendEmailViaResend(item.contact, personalizedMessages[chunkOffset + j], campaignData, item.token)
+        sendEmailViaResend(item.contact, personalizedMessages[chunkOffset + j], campaignData, item.token, campaign.sender_name)
       )
     );
     for (let j = 0; j < chunk.length; j++) {
@@ -2160,9 +2162,10 @@ router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
 
     if (referrer?.email) {
       try {
+        // TODO: pass contractor sender_name when contractor_id is available in this scope
         await retryWithBackoff(
           () => resend.emails.send({
-            from: 'Rooster Booster <noreply@roofmiles.com>',
+            from: 'RoofMiles <noreply@roofmiles.com>',
             to: referrer.email,
             subject: 'Your Missing Referral Was Found! 🎉',
             html: `
@@ -3417,9 +3420,11 @@ router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
     // Load campaign for message data — do NOT regenerate AI Rapport, use base message_body
     const campaignResult = await pool.query(
       `SELECT c.message_body, c.subject_line, c.cta_enabled, c.cta_url, c.contractor_id,
-              c.selected_tone, c.message_preset, ci.public_url AS image_url
+              c.selected_tone, c.message_preset, ci.public_url AS image_url,
+              COALESCE(cs.email_sender_name, cs.company_name, 'RoofMiles') AS sender_name
        FROM campaigns c
        LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
+       LEFT JOIN contractor_settings cs ON cs.contractor_id = c.contractor_id
        WHERE c.id = $1 AND c.contractor_id = $2 LIMIT 1`,
       [campaignId, contractorId]
     );
@@ -3440,7 +3445,8 @@ router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
             { email: c.email, phone: c.phone, client_name: c.contact_name },
             campaign.message_body,
             campaignData,
-            null
+            null,
+            campaign.sender_name
           )
         )
       );
