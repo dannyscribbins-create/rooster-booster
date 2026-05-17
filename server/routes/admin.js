@@ -75,6 +75,31 @@ const _campaignMessageTypeMission = {
   write_my_own: "The contractor has written a draft message. Personalize it for this specific recipient using their first name and job type where it fits naturally. Lightly rewrite it for clarity, warmth, and quality while preserving the contractor's voice and intent.",
 };
 
+const _campaignCtaGoal = {
+  join_app:      "Encourage the recipient to join, accept the invite, or get connected through the app. End with a sentence that leads naturally into a 'Join the App' button.",
+  website:       "Encourage the recipient to visit the website to learn more, view services, or reconnect. End with a sentence that leads naturally into a 'Visit Our Website' button.",
+  facebook:      "Encourage the recipient to follow or visit the business on Facebook for updates, project photos, tips, or community content. End with a sentence that leads naturally into a 'Visit Us on Facebook' button.",
+  google_profile:"Encourage the recipient to view the Google profile, read reviews, or leave honest feedback. End with a sentence that leads naturally into a 'View Our Google Profile' button. Do not pressure for a 5-star review. Do not imply any incentive for leaving a review.",
+};
+
+function deriveCTAType(ctaUrl) {
+  if (!ctaUrl) return 'website';
+  const url = ctaUrl.toLowerCase();
+  if (url.includes('rooster-booster') || url.includes('roofmiles')) return 'join_app';
+  if (url.includes('facebook.com')) return 'facebook';
+  if (url.includes('google')) return 'google_profile';
+  return 'website';
+}
+
+function deriveCTALabel(ctaUrl) {
+  if (!ctaUrl) return 'Visit Our Website';
+  const url = ctaUrl.toLowerCase();
+  if (url.includes('rooster-booster') || url.includes('roofmiles')) return 'Join the App';
+  if (url.includes('facebook.com')) return 'Visit Us on Facebook';
+  if (url.includes('google')) return 'View Our Google Profile';
+  return 'Visit Our Website';
+}
+
 const _campaignToneInstructions = {
   friendly:     'Write in a warm, approachable, conversational tone. Feel like a neighbor talking to a neighbor.',
   professional: 'Write in a polished, respectful, business-appropriate tone. Confident but not stiff.',
@@ -84,7 +109,7 @@ const _campaignToneInstructions = {
 
 const _campaignBaseSystemPrompt = `You are an expert email marketing copywriter for a contractor-to-homeowner referral and relationship-building platform.
 
-Your job is to write a short, personalized email message body for a single recipient based on the campaign mission provided.
+Your job is to write a short, personalized email message body for a single recipient based on the campaign mission and CTA goal provided.
 
 Rules you must always follow:
 - Never mention inspections, free estimates, roof checks, appointments, or "coming out to take a look" unless the contractor's own draft message specifically includes those ideas.
@@ -107,6 +132,7 @@ async function generatePersonalizedMessage(contact, campaignData, req) {
     const tone = campaignData.selected_tone || 'friendly';
     const messageType = campaignData.message_preset || 'write_my_own';
     const contractorName = campaignData.contractor_name || 'the business';
+    const ctaType = deriveCTAType(campaignData.cta_url);
     const name = (contact.client_name || '').toString().trim().slice(0, 100);
     const jobType = (contact.job_type || '').toString().trim().slice(0, 100);
     const customMessage = (campaignData.message_body || '').toString().trim().slice(0, 2000);
@@ -120,7 +146,9 @@ Business name: ${contractorName}
 
 Campaign mission: ${_campaignMessageTypeMission[messageType] || 'Write a warm, relationship-focused message that feels personal and avoids generic contractor language.'}
 
-${messageType === 'write_my_own' && customMessage ? `The contractor has written this draft message. Use it as the foundation. Personalize it for this recipient, lightly rewrite for quality and warmth, and align the closing sentence to lead into a CTA button:\n\n"${customMessage}"` : ''}
+CTA goal: ${_campaignCtaGoal[ctaType] || 'End with a sentence that leads naturally into the CTA button.'}
+
+${messageType === 'write_my_own' && customMessage ? `The contractor has written this draft message. Use it as the foundation. Personalize it for this recipient, lightly rewrite for quality and warmth, and align the closing sentence to the CTA goal:\n\n"${customMessage}"` : ''}
 
 Output: One email message body only. No subject line. No preview text. No button. No markdown. Under 80 words. 3 to 5 sentences.`;
 
@@ -158,13 +186,17 @@ Output: One email message body only. No subject line. No preview text. No button
 
 function buildEmailHtml(body, campaignData) {
   const ctaHtml = campaignData.cta_enabled && campaignData.cta_url
-    ? `<a href="${campaignData.cta_url}" style="display:inline-block;background:#CC0000;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:24px;">${campaignData.cta_label || 'Learn More'}</a>`
+    ? `<a href="${campaignData.cta_url}" style="display:inline-block;background:#CC0000;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;margin-top:24px;">${deriveCTALabel(campaignData.cta_url)}</a>`
+    : '';
+  const imageHtml = campaignData.image_url
+    ? `<img src="${campaignData.image_url}" alt="" style="display:block;max-width:100%;border-radius:8px;margin-top:24px;" />`
     : '';
   const contractorName = campaignData.contractor_name || 'the business';
   const bodyEscaped = (body || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#ffffff;">
   <p style="font-size:15px;line-height:1.7;color:#1a1a1a;white-space:pre-wrap;">${bodyEscaped}</p>
+  ${imageHtml}
   ${ctaHtml}
   <p style="font-size:11px;color:#999999;margin-top:40px;border-top:1px solid #eeeeee;padding-top:16px;">You are receiving this message because you are a past client of ${contractorName}. To opt out of future messages, reply STOP.</p>
 </div>`;
