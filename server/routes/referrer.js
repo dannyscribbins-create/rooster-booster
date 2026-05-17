@@ -81,7 +81,7 @@ router.post('/api/log-client-error', clientErrorLimiter, async (req, res) => {
 
     res.status(200).json({ ok: true })
   } catch (err) {
-    logError({ req, error: err, source: 'POST /api/log-client-error' });
+    await logError({ req, error: err, source: 'POST /api/log-client-error' });
     console.error('[log-client-error] Failed to log client error:', err);
     res.status(500).json({ error: 'Failed to log error' });
   }
