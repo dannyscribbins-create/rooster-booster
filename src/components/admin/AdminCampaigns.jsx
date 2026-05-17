@@ -31,6 +31,15 @@ const CAMPAIGN_BATCH_CAP = 500;
 // Growth = 1200, Pro = 3000. Change this one constant when tiers ship.
 const MONTHLY_CREDITS = 3000;
 
+function deriveCTALabel(ctaUrl) {
+  if (!ctaUrl) return 'Visit Our Website';
+  const url = ctaUrl.toLowerCase();
+  if (url.includes('rooster-booster') || url.includes('roofmiles')) return 'Join the App';
+  if (url.includes('facebook.com')) return 'Visit Us on Facebook';
+  if (url.includes('google')) return 'View Our Google Profile';
+  return 'Visit Our Website';
+}
+
 const PRESETS = [
   {
     id: 'referral_invite',
@@ -966,6 +975,12 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
         else if (data.ctaOptions?.appSignup) setCtaUrl(data.ctaOptions.appSignup);
         if (s?.subject_line) setSubjectLine(s.subject_line);
         if (s?.selected_tone) setSelectedTone(s.selected_tone);
+        if (s?.approved_message && s?.selected_tone) {
+          setToneVariants(prev => ({
+            ...(prev || {}),
+            [s.selected_tone]: s.approved_message,
+          }));
+        }
         if (data.image) {
           setImageUrl(data.image.public_url);
           setImageFilename(data.image.filename);
@@ -1926,12 +1941,12 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, onSaveExit, headers 
                 </>
               )}
               <div style={{ fontSize: 14, color: AD.textPrimary, lineHeight: 1.7, fontFamily: AD.fontSans, whiteSpace: 'pre-wrap' }}>
-                {renderTokens(summary.campaign.message_body)}
+                {renderTokens(summary.campaign.approved_message || summary.campaign.message_body)}
               </div>
               {summary.campaign.cta_enabled && summary.campaign.cta_url && (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: 'inline-block', background: '#CC0000', color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
-                    Join Now →
+                    {deriveCTALabel(summary.campaign.cta_url)}
                   </div>
                   <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontMono, marginTop: 6, display: 'block' }}>
                     {summary.campaign.cta_url.length > 48 ? summary.campaign.cta_url.slice(0, 48) + '…' : summary.campaign.cta_url}

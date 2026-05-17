@@ -2565,7 +2565,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
   const { id } = req.params;
   try {
     const campaignCheck = await pool.query(
-      'SELECT message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations, subject_line, selected_tone FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      'SELECT message_preset, message_body, approved_message, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations, subject_line, selected_tone FROM campaigns WHERE id = $1 AND contractor_id = $2',
       [id, 'accent-roofing']
     );
     if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
@@ -2592,7 +2592,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
 
     res.json({ saved, ctaOptions, image: imageResult.rows[0] || null });
   } catch (err) {
-    await logError({ req, error: err });
+    await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/messaging-context' });
     res.status(500).json({ error: err.message });
   }
 });
@@ -2637,7 +2637,7 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
   try {
     const campaignResult = await pool.query(
       `SELECT id, name, status, total_contacts, total_batches, current_batch,
-              message_preset, message_body, ai_rapport_enabled, cta_enabled,
+              message_preset, message_body, approved_message, ai_rapport_enabled, cta_enabled,
               cta_url, subject_line, sent_at
        FROM campaigns WHERE id = $1 AND contractor_id = $2`,
       [id, 'accent-roofing']
@@ -2689,7 +2689,7 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
       },
     });
   } catch (err) {
-    await logError({ req, error: err });
+    await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/review-summary' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
