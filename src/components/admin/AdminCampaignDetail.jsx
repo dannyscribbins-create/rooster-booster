@@ -185,14 +185,12 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
   const [retryConfirming,  setRetryConfirming]  = useState(false);
   const [retryResult,      setRetryResult]      = useState(null);
   const [exportingCsv,     setExportingCsv]     = useState(false);
-  const [trackingMetrics,  setTrackingMetrics]  = useState(null);
 
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
 
   useEffect(() => {
     fetchDetail();
-    fetchMetrics();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
@@ -208,17 +206,6 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
       setLoadError('Network error loading campaign.');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function fetchMetrics() {
-    try {
-      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/metrics`, { headers });
-      if (!r.ok) return;
-      const data = await r.json();
-      setTrackingMetrics(data);
-    } catch {
-      // non-blocking — metrics are supplemental
     }
   }
 
