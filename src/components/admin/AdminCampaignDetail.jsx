@@ -119,6 +119,178 @@ function BatchPill({ status }) {
   );
 }
 
+// ── Contact pill (batch contact list) ────────────────────────────────────────
+function ContactPill({ bg, color, label }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      background: bg, color,
+      padding: '3px 5px', borderRadius: 4,
+      fontSize: 10, fontFamily: AD.fontSans, fontWeight: 500,
+      whiteSpace: 'nowrap',
+    }}>
+      {label}
+    </span>
+  );
+}
+
+// ── Batch card with collapsible contact list ──────────────────────────────────
+function BatchCard({ b, batchStatus, campaignId, headers }) {
+  const [isOpen,      setIsOpen]      = useState(false);
+  const [contactList, setContactList] = useState({ loading: false, data: null, error: null });
+
+  async function handleToggle() {
+    const willOpen = !isOpen;
+    setIsOpen(willOpen);
+    if (willOpen && !contactList.data && !contactList.loading) {
+      setContactList({ loading: true, data: null, error: null });
+      try {
+        const r = await fetch(
+          `${BACKEND_URL}/api/admin/campaigns/${campaignId}/batches/${b.batch_number}/contacts`,
+          { headers }
+        );
+        if (!r.ok) throw new Error('Failed');
+        const data = await r.json();
+        setContactList({ loading: false, data, error: null });
+      } catch {
+        setContactList({ loading: false, data: null, error: 'Could not load contacts.' });
+      }
+    }
+  }
+
+  return (
+    <div style={{
+      background: AD.bgCard, border: `1px solid ${AD.border}`,
+      borderRadius: AD.radiusMd, padding: '16px 20px',
+      display: 'flex', flexDirection: 'column',
+    }}>
+      {/* Top row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 80 }}>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+            Batch {b.batch_number}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+            {b.total_contacts.toLocaleString()} contacts
+          </p>
+        </div>
+
+        <BatchPill status={batchStatus} />
+
+        {batchStatus === 'sent' && (
+          <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+            <div style={{ display: 'flex', gap: 20 }}>
+              <div style={{ textAlign: 'right' }}>
+                <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Delivered</p>
+                <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                  {b.sent_count.toLocaleString()}
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Open rate</p>
+                <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                  {b.sent_count > 0 ? `${Math.round((b.opened_count / b.sent_count) * 1000) / 10}%` : '—'}
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Click rate</p>
+                <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                  {b.sent_count > 0 ? `${Math.round((b.clicked_count / b.sent_count) * 1000) / 10}%` : '—'}
+                </p>
+              </div>
+            </div>
+            {(b.opened_count > 0 || b.clicked_count > 0) && (
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                {[
+                  b.opened_count > 0 && `${b.opened_count} open${b.opened_count !== 1 ? 's' : ''}`,
+                  b.clicked_count > 0 && `${b.clicked_count} click${b.clicked_count !== 1 ? 's' : ''}`,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </div>
+        )}
+
+        {batchStatus === 'pending' && (
+          <span style={{ marginLeft: 'auto', fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+            Not scheduled
+          </span>
+        )}
+      </div>
+
+      {/* Collapsible contact list — only for sent batches */}
+      {batchStatus === 'sent' && (
+        <>
+          <div
+            onClick={handleToggle}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              marginTop: 12, paddingTop: 10, cursor: 'pointer', userSelect: 'none',
+              borderTop: `1px solid ${AD.border}`,
+              color: AD.blueLight, fontSize: 12, fontFamily: AD.fontSans,
+            }}
+          >
+            View Batch Contact List
+            <i className={isOpen ? 'ph ph-caret-up' : 'ph ph-caret-down'} style={{ fontSize: 12 }} />
+          </div>
+
+          {isOpen && (
+            <div style={{
+              marginTop: 10, background: AD.bgSurface,
+              border: `1px solid ${AD.borderStrong}`,
+              borderRadius: 8, padding: 12,
+            }}>
+              {contactList.loading && (
+                <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                  Loading...
+                </p>
+              )}
+              {contactList.error && (
+                <p style={{ margin: 0, fontSize: 13, color: AD.red2Text, fontFamily: AD.fontSans }}>
+                  {contactList.error}
+                </p>
+              )}
+              {!contactList.loading && !contactList.error && contactList.data?.length === 0 && (
+                <p style={{ margin: 0, fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                  No contacts found for this batch.
+                </p>
+              )}
+              {!contactList.loading && contactList.data?.length > 0 && contactList.data.map((c, idx) => (
+                <div
+                  key={c.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    paddingTop: idx === 0 ? 0 : 8,
+                    paddingBottom: idx === contactList.data.length - 1 ? 0 : 8,
+                    borderBottom: idx < contactList.data.length - 1 ? `1px solid ${AD.border}` : 'none',
+                  }}
+                >
+                  <div>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: AD.blueLight, fontFamily: "'Montserrat', sans-serif" }}>
+                      {c.name || '—'}
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                      {c.email}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '55%' }}>
+                    {c.delivered          && <ContactPill bg="#E6F4EA" color="#1E7E34" label="Delivered" />}
+                    {c.opened             && <ContactPill bg="#E3F2FD" color="#0D47A1" label="Opened" />}
+                    {c.clicked_cta        && <ContactPill bg="#F3E5F5" color="#6A1B9A" label="Clicked CTA" />}
+                    {c.opted_out          && <ContactPill bg="#FFEBEE" color="#C62828" label="Opted Out" />}
+                    {c.sms_status === 'sent'   && <ContactPill bg="#E0F7FA" color="#00695C" label="SMS Sent" />}
+                    {c.sms_status === 'failed' && <ContactPill bg="#FFF3E0" color="#E65100" label="SMS Failed" />}
+                    {c.suppressed         && <ContactPill bg="#F5F5F5" color="#757575" label="Suppressed" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Metrics grid ──────────────────────────────────────────────────────────────
 function MetricsGrid({ metrics, onOpenFailedPanel, optOutData }) {
   if (!metrics) return null;
@@ -583,67 +755,13 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
                   : b.batch_number === currentBatch ? 'active'
                   : 'pending';
                 return (
-                  <div
+                  <BatchCard
                     key={b.batch_number}
-                    style={{
-                      background: AD.bgCard, border: `1px solid ${AD.border}`,
-                      borderRadius: AD.radiusMd, padding: '16px 20px',
-                      display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-                    }}
-                  >
-                    {/* Batch label */}
-                    <div style={{ minWidth: 80 }}>
-                      <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                        Batch {b.batch_number}
-                      </p>
-                      <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>
-                        {b.total_contacts.toLocaleString()} contacts
-                      </p>
-                    </div>
-
-                    <BatchPill status={batchStatus} />
-
-                    {/* Sent stats */}
-                    {batchStatus === 'sent' && (
-                      <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: 20 }}>
-                          <div style={{ textAlign: 'right' }}>
-                            <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Delivered</p>
-                            <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                              {b.sent_count.toLocaleString()}
-                            </p>
-                          </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Open rate</p>
-                            <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                              {b.sent_count > 0 ? `${Math.round((b.opened_count / b.sent_count) * 1000) / 10}%` : '—'}
-                            </p>
-                          </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>Click rate</p>
-                            <p style={{ margin: '2px 0 0', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                              {b.sent_count > 0 ? `${Math.round((b.clicked_count / b.sent_count) * 1000) / 10}%` : '—'}
-                            </p>
-                          </div>
-                        </div>
-                        {(b.opened_count > 0 || b.clicked_count > 0) && (
-                          <p style={{ margin: '6px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-                            {[
-                              b.opened_count > 0 && `${b.opened_count} open${b.opened_count !== 1 ? 's' : ''}`,
-                              b.clicked_count > 0 && `${b.clicked_count} click${b.clicked_count !== 1 ? 's' : ''}`,
-                            ].filter(Boolean).join(' · ')}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Pending note */}
-                    {batchStatus === 'pending' && (
-                      <span style={{ marginLeft: 'auto', fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-                        Not scheduled
-                      </span>
-                    )}
-                  </div>
+                    b={b}
+                    batchStatus={batchStatus}
+                    campaignId={campaignId}
+                    headers={headers}
+                  />
                 );
               })}
             </div>

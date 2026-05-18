@@ -3,6 +3,7 @@ import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import { AdminPageHeader, Btn, Badge } from './AdminComponents';
 import AdminCampaignDetail from './AdminCampaignDetail';
+import AdminContactsTab from './AdminContactsTab';
 
 const STATUS_BADGE = {
   draft:           'neutral',
@@ -2623,6 +2624,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [campaigns,        setCampaigns]        = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [showTypeModal,    setShowTypeModal]    = useState(false);
+  const [campaignsTab,     setCampaignsTab]     = useState('campaigns');
 
   // Builder state
   const [drawerOpen,      setDrawerOpen]      = useState(false);
@@ -3114,19 +3116,55 @@ export default function AdminCampaigns({ setLoggedIn }) {
         <AdminPageHeader
           title="Campaigns"
           action={
-            <Btn variant="accent" onClick={() => setShowTypeModal(true)}>
-              <i className="ph ph-megaphone-simple" /> Build a Campaign
-            </Btn>
+            campaignsTab === 'campaigns' ? (
+              <Btn variant="accent" onClick={() => setShowTypeModal(true)}>
+                <i className="ph ph-megaphone-simple" /> Build a Campaign
+              </Btn>
+            ) : null
           }
         />
-        {loadingCampaigns ? (
-          <p style={{ color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 15 }}>Loading campaigns...</p>
-        ) : campaigns.length === 0 ? (
-          <EmptyState onBuild={() => setShowTypeModal(true)} />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {campaigns.map(c => <CampaignCard key={c.id} campaign={c} onOpen={handleOpenCampaign} onDelete={handleDeleteCampaign} />)}
-          </div>
+
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+          {[{ id: 'campaigns', label: 'Campaigns' }, { id: 'contacts', label: 'Contacts' }].map(tab => {
+            const active = tab.id === campaignsTab;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setCampaignsTab(tab.id)}
+                style={{
+                  padding: '8px 16px', borderRadius: 6,
+                  background: active ? AD.navy : 'transparent',
+                  color: active ? '#fff' : AD.textSecondary,
+                  border: `1px solid ${active ? AD.navy : AD.border}`,
+                  fontSize: 12, fontFamily: "'Montserrat', sans-serif",
+                  fontWeight: active ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Campaigns tab content */}
+        {campaignsTab === 'campaigns' && (
+          loadingCampaigns ? (
+            <p style={{ color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 15 }}>Loading campaigns...</p>
+          ) : campaigns.length === 0 ? (
+            <EmptyState onBuild={() => setShowTypeModal(true)} />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {campaigns.map(c => <CampaignCard key={c.id} campaign={c} onOpen={handleOpenCampaign} onDelete={handleDeleteCampaign} />)}
+            </div>
+          )
+        )}
+
+        {/* Contacts tab content */}
+        {campaignsTab === 'contacts' && (
+          <AdminContactsTab headers={headers} />
         )}
       </div>
 
