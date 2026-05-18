@@ -648,6 +648,41 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_email_opt_outs_lookup ON email_opt_outs(contractor_id, email)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_email_opt_outs_campaign ON email_opt_outs(campaign_id)`);
 
+  // ── CONTACTS + SEND HISTORY ───────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS contacts (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    contractor_id   VARCHAR(100) NOT NULL,
+    email           VARCHAR(255) NOT NULL,
+    name            VARCHAR(255),
+    phone           VARCHAR(50),
+    is_app_user     BOOLEAN DEFAULT false,
+    jobber_client_id VARCHAR(255),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (contractor_id, email)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_contractor
+    ON contacts(contractor_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_contractor_email
+    ON contacts(contractor_id, email)`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS contact_send_history (
+    id             SERIAL PRIMARY KEY,
+    contact_id     UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    contractor_id  VARCHAR(100) NOT NULL,
+    campaign_id    INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+    batch_number   INTEGER,
+    sent_at        TIMESTAMPTZ DEFAULT NOW(),
+    channel        VARCHAR(20) NOT NULL,
+    status         VARCHAR(50) DEFAULT 'sent',
+    message_type   VARCHAR(50),
+    subject        VARCHAR(500)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_contact_send_history_contact
+    ON contact_send_history(contact_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_contact_send_history_contractor_campaign
+    ON contact_send_history(contractor_id, campaign_id)`);
+
   // ── REFERRAL RULES ENGINE MIGRATIONS ──────────────────────────────────────────
 
   // 1A — Widen bonus_amount from INTEGER to NUMERIC(10,2) for tiered/percentage models

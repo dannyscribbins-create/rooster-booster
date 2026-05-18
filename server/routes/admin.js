@@ -340,7 +340,7 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsu
 </div>`;
 }
 
-async function sendEmailViaResend(contact, personalizedBody, campaignData, token, senderName = 'RoofMiles', contractorSettings = {}, unsubscribeUrl = null) {
+async function sendEmailViaResend(contact, personalizedBody, campaignData, token, senderName = 'RoofMiles', contractorSettings = {}, unsubscribeUrl = null, req = null) {
   try {
     const subject = campaignData.subject_line || `A message from ${campaignData.contractor_name || 'us'}`;
     const html = buildEmailHtml(personalizedBody, campaignData, token, contractorSettings, unsubscribeUrl);
@@ -359,6 +359,7 @@ async function sendEmailViaResend(contact, personalizedBody, campaignData, token
 
     return { success: true, errorCode: null, errorMessage: null };
   } catch (err) {
+    await logError({ req, error: err, source: 'sendEmailViaResend' });
     const errorCode   = err?.statusCode?.toString() || err?.response?.status?.toString() || null;
     const errorMessage = err?.message || 'Send failed';
     return { success: false, errorCode, errorMessage };
@@ -393,6 +394,7 @@ async function executeBatchSend(campaignId, req) {
   // MVP: contractor name hardcoded — replace with session lookup at multi-contractor scale
   const contractorName = 'Accent Roofing Service';
   const campaignData = { ...campaign, contractor_name: contractorName };
+  const emailSubject = campaign.subject_line || `A message from ${contractorName || 'us'}`;
   const contractorSettings = {
     font_heading:      campaign.font_heading,
     font_body:         campaign.font_body,
@@ -525,6 +527,41 @@ async function executeBatchSend(campaignId, req) {
     sendItems.push({ contact, token: trackingToken, personalizedMessage: personalizedMessages[idx], unsubscribeUrl });
   }
 
+  async function upsertContactRecord(email, name, status) {
+    try {
+      const upsertRes = await pool.query(
+        `INSERT INTO contacts (contractor_id, email, name)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (contractor_id, email) DO UPDATE SET
+           updated_at = NOW(),
+           name = COALESCE(EXCLUDED.name, contacts.name)
+         RETURNING id`,
+        [contractorId, email, name || null]
+      );
+      const contactId = upsertRes.rows[0].id;
+
+      const appUserRes = await pool.query(
+        `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+        [email]
+      );
+      if (appUserRes.rows.length > 0) {
+        await pool.query(
+          `UPDATE contacts SET is_app_user = true WHERE id = $1`,
+          [contactId]
+        );
+      }
+
+      await pool.query(
+        `INSERT INTO contact_send_history
+           (contact_id, contractor_id, campaign_id, batch_number, channel, status, message_type, subject)
+         VALUES ($1, $2, $3, $4, 'email', $5, 'campaign', $6)`,
+        [contactId, contractorId, campaignId, batchNumber, status, emailSubject]
+      );
+    } catch (err) {
+      await logError({ req, error: err, source: 'executeBatchSend contact upsert' });
+    }
+  }
+
   // Log suppressed contacts
   for (const c of suppressedContacts) {
     await pool.query(
@@ -532,6 +569,7 @@ async function executeBatchSend(campaignId, req) {
        VALUES ($1, $2, $3, $4, $5, $6, 'suppressed', NOW())`,
       [campaignId, batchNumber, c.id, c.client_name, c.email || null, c.phone || null]
     );
+    await upsertContactRecord(c.email, c.client_name, 'suppressed');
   }
 
   const sendResults = [];
@@ -540,7 +578,7 @@ async function executeBatchSend(campaignId, req) {
     const chunk = emailChunks[i];
     const chunkResults = await Promise.all(
       chunk.map((item) =>
-        sendEmailViaResend(item.contact, item.personalizedMessage, campaignData, item.token, campaign.sender_name, contractorSettings, item.unsubscribeUrl)
+        sendEmailViaResend(item.contact, item.personalizedMessage, campaignData, item.token, campaign.sender_name, contractorSettings, item.unsubscribeUrl, req)
       )
     );
     for (let j = 0; j < chunk.length; j++) {
@@ -560,6 +598,7 @@ async function executeBatchSend(campaignId, req) {
        status, result.errorCode || null, result.errorMessage || null]
     );
     if (result.success) successfulIds.push(result.contact.id);
+    await upsertContactRecord(result.contact.email, result.contact.client_name, result.success ? 'sent' : 'failed');
   }
 
   if (successfulIds.length > 0) {
