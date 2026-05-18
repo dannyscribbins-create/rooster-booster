@@ -4586,4 +4586,178 @@ Output: exactly 3 subject lines, one per line, no numbering, no quotes, no expla
   }
 });
 
+// ── BATCH CONTACT LIST ────────────────────────────────────────────────────────
+
+router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const campaignId  = parseInt(req.params.campaignId,  10);
+  const batchNumber = parseInt(req.params.batchNumber, 10);
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+
+  if (isNaN(campaignId) || isNaN(batchNumber)) {
+    return res.status(400).json({ error: 'Invalid campaignId or batchNumber' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT
+         c.id,
+         c.name,
+         c.email,
+         c.is_app_user,
+         (SELECT csh_e.status
+          FROM contact_send_history csh_e
+          WHERE csh_e.contact_id = c.id
+            AND csh_e.campaign_id = $1
+            AND csh_e.batch_number = $2
+            AND csh_e.channel = 'email'
+          LIMIT 1) AS email_status,
+         (SELECT csh_s.status
+          FROM contact_send_history csh_s
+          WHERE csh_s.contact_id = c.id
+            AND csh_s.campaign_id = $1
+            AND csh_s.batch_number = $2
+            AND csh_s.channel = 'sms'
+          LIMIT 1) AS sms_status,
+         eoo.opt_out_campaigns,
+         eoo.opt_out_sms,
+         eoo.opt_out_all,
+         eoo.referral_only
+       FROM contacts c
+       LEFT JOIN email_opt_outs eoo
+         ON eoo.email = c.email
+         AND eoo.contractor_id = c.contractor_id
+       WHERE c.contractor_id = $3
+         AND EXISTS (
+           SELECT 1 FROM contact_send_history
+           WHERE contact_id = c.id
+             AND campaign_id = $1
+             AND batch_number = $2
+             AND contractor_id = $3
+         )
+       ORDER BY c.name ASC`,
+      [campaignId, batchNumber, contractorId]
+    );
+
+    function deriveOptOutType(row) {
+      if (!row.opt_out_campaigns && !row.opt_out_sms && !row.opt_out_all && !row.referral_only) return null;
+      if (row.opt_out_all)      return 'all';
+      if (row.opt_out_campaigns) return 'campaigns';
+      if (row.opt_out_sms)      return 'sms';
+      if (row.referral_only)    return 'referral_only';
+      return null;
+    }
+
+    const contacts = result.rows.map(row => ({
+      id:           row.id,
+      name:         row.name,
+      email:        row.email,
+      is_app_user:  row.is_app_user,
+      delivered:    row.email_status === 'sent',
+      opened:       false,
+      clicked_cta:  false,
+      opted_out:    !!(row.opt_out_campaigns || row.opt_out_all),
+      opt_out_type: deriveOptOutType(row),
+      sms_status:   row.sms_status || null,
+      suppressed:   row.email_status === 'suppressed',
+    }));
+
+    res.json(contacts);
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/campaigns/:campaignId/batches/:batchNumber/contacts' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GLOBAL CONTACT LIST ───────────────────────────────────────────────────────
+
+router.get('/api/admin/contacts', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+
+  const { filter } = req.query;
+  const ALLOWED_FILTERS = ['opted_out', 'app_user'];
+  if (filter !== undefined && !ALLOWED_FILTERS.includes(filter)) {
+    return res.status(400).json({ error: 'Invalid filter value' });
+  }
+
+  const rawLimit  = parseInt(req.query.limit,  10);
+  const rawOffset = parseInt(req.query.offset, 10);
+  const limit  = (!isNaN(rawLimit)  && rawLimit  > 0 && rawLimit  <= 200) ? rawLimit  : 100;
+  const offset = (!isNaN(rawOffset) && rawOffset >= 0)                    ? rawOffset : 0;
+
+  let extraWhere = '';
+  if (filter === 'opted_out') {
+    extraWhere = `AND (eoo.opt_out_campaigns = true OR eoo.opt_out_all = true OR eoo.opt_out_sms = true)`;
+  } else if (filter === 'app_user') {
+    extraWhere = `AND c.is_app_user = true`;
+  }
+
+  try {
+    const baseWhere = `
+      FROM contacts c
+      LEFT JOIN email_opt_outs eoo
+        ON eoo.email = c.email
+        AND eoo.contractor_id = c.contractor_id
+      WHERE c.contractor_id = $1
+      ${extraWhere}`;
+
+    const [countResult, rowsResult] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) AS total ${baseWhere}`,
+        [contractorId]
+      ),
+      pool.query(
+        `SELECT
+           c.id,
+           c.name,
+           c.email,
+           c.is_app_user,
+           c.created_at,
+           eoo.opt_out_campaigns,
+           eoo.opt_out_sms,
+           eoo.opt_out_all,
+           eoo.referral_only,
+           (SELECT COUNT(*) FROM contact_send_history WHERE contact_id = c.id) AS total_sends,
+           (SELECT MAX(sent_at) FROM contact_send_history WHERE contact_id = c.id) AS last_sent_at
+         ${baseWhere}
+         ORDER BY c.updated_at DESC
+         LIMIT $2 OFFSET $3`,
+        [contractorId, limit, offset]
+      ),
+    ]);
+
+    function deriveOptOutType(row) {
+      if (!row.opt_out_campaigns && !row.opt_out_sms && !row.opt_out_all && !row.referral_only) return null;
+      if (row.opt_out_all)      return 'all';
+      if (row.opt_out_campaigns) return 'campaigns';
+      if (row.opt_out_sms)      return 'sms';
+      if (row.referral_only)    return 'referral_only';
+      return null;
+    }
+
+    const contacts = rowsResult.rows.map(row => ({
+      id:           row.id,
+      name:         row.name,
+      email:        row.email,
+      is_app_user:  row.is_app_user,
+      created_at:   row.created_at,
+      opted_out:    !!(row.opt_out_campaigns || row.opt_out_sms || row.opt_out_all || row.referral_only),
+      opt_out_type: deriveOptOutType(row),
+      total_sends:  parseInt(row.total_sends, 10),
+      last_sent_at: row.last_sent_at || null,
+    }));
+
+    res.json({
+      total_count: parseInt(countResult.rows[0].total, 10),
+      contacts,
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/contacts' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
