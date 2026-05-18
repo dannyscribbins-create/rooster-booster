@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import AdminContactDetailDrawer from './AdminContactDetailDrawer';
 
 // ── Small modal wrapper ───────────────────────────────────────────────────────
 function Modal({ onClose, children }) {
@@ -134,10 +135,57 @@ function ContactPill({ bg, color, label }) {
   );
 }
 
+// ── Batch contact row (with hover + click) ────────────────────────────────────
+function BatchContactRow({ c, idx, total, onClick }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        paddingTop: idx === 0 ? 4 : 8,
+        paddingBottom: idx === total - 1 ? 4 : 8,
+        paddingLeft: 4,
+        paddingRight: 4,
+        borderBottom: idx < total - 1 ? `1px solid ${AD.border}` : 'none',
+        cursor: 'pointer',
+        borderRadius: 4,
+        background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+        transition: 'background 0.1s',
+        margin: '0 -4px',
+      }}
+    >
+      <div>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: AD.blueLight, fontFamily: "'Montserrat', sans-serif" }}>
+          {c.name || '—'}
+        </p>
+        <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+          {c.email}
+        </p>
+      </div>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '55%' }}>
+        {c.delivered          && <ContactPill bg="#E6F4EA" color="#1E7E34" label="Delivered" />}
+        {c.opened             && <ContactPill bg="#E3F2FD" color="#0D47A1" label="Opened" />}
+        {c.clicked_cta        && <ContactPill bg="#F3E5F5" color="#6A1B9A" label="Clicked CTA" />}
+        {c.opted_out          && <ContactPill bg="#FFEBEE" color="#C62828" label="Opted Out" />}
+        {c.sms_status === 'sent'   && <ContactPill bg="#E0F7FA" color="#00695C" label="SMS Sent" />}
+        {c.sms_status === 'failed' && <ContactPill bg="#FFF3E0" color="#E65100" label="SMS Failed" />}
+        {c.suppressed         && <ContactPill bg="#F5F5F5" color="#757575" label="Suppressed" />}
+      </div>
+    </div>
+  );
+}
+
 // ── Batch card with collapsible contact list ──────────────────────────────────
 function BatchCard({ b, batchStatus, campaignId, headers }) {
-  const [isOpen,      setIsOpen]      = useState(false);
-  const [contactList, setContactList] = useState({ loading: false, data: null, error: null });
+  const [isOpen,            setIsOpen]            = useState(false);
+  const [contactList,       setContactList]       = useState({ loading: false, data: null, error: null });
+  const [selectedContactId, setSelectedContactId] = useState(null);
+
+  // Extract token from headers for the drawer
+  const drawerToken = headers?.Authorization?.replace('Bearer ', '') || null;
 
   async function handleToggle() {
     const willOpen = !isOpen;
@@ -218,6 +266,12 @@ function BatchCard({ b, batchStatus, campaignId, headers }) {
       </div>
 
       {/* Collapsible contact list — only for sent batches */}
+      <AdminContactDetailDrawer
+        contactId={selectedContactId}
+        onClose={() => setSelectedContactId(null)}
+        token={drawerToken}
+      />
+
       {batchStatus === 'sent' && (
         <>
           <div
@@ -255,33 +309,13 @@ function BatchCard({ b, batchStatus, campaignId, headers }) {
                 </p>
               )}
               {!contactList.loading && contactList.data?.length > 0 && contactList.data.map((c, idx) => (
-                <div
+                <BatchContactRow
                   key={c.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    paddingTop: idx === 0 ? 0 : 8,
-                    paddingBottom: idx === contactList.data.length - 1 ? 0 : 8,
-                    borderBottom: idx < contactList.data.length - 1 ? `1px solid ${AD.border}` : 'none',
-                  }}
-                >
-                  <div>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: AD.blueLight, fontFamily: "'Montserrat', sans-serif" }}>
-                      {c.name || '—'}
-                    </p>
-                    <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-                      {c.email}
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '55%' }}>
-                    {c.delivered          && <ContactPill bg="#E6F4EA" color="#1E7E34" label="Delivered" />}
-                    {c.opened             && <ContactPill bg="#E3F2FD" color="#0D47A1" label="Opened" />}
-                    {c.clicked_cta        && <ContactPill bg="#F3E5F5" color="#6A1B9A" label="Clicked CTA" />}
-                    {c.opted_out          && <ContactPill bg="#FFEBEE" color="#C62828" label="Opted Out" />}
-                    {c.sms_status === 'sent'   && <ContactPill bg="#E0F7FA" color="#00695C" label="SMS Sent" />}
-                    {c.sms_status === 'failed' && <ContactPill bg="#FFF3E0" color="#E65100" label="SMS Failed" />}
-                    {c.suppressed         && <ContactPill bg="#F5F5F5" color="#757575" label="Suppressed" />}
-                  </div>
-                </div>
+                  c={c}
+                  idx={idx}
+                  total={contactList.data.length}
+                  onClick={() => setSelectedContactId(c.id)}
+                />
               ))}
             </div>
           )}

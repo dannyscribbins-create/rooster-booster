@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import AdminContactDetailDrawer from './AdminContactDetailDrawer';
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
@@ -35,18 +36,20 @@ const COL_STYLES = {
   lastSent: { width: '14%', textAlign: 'right' },
 };
 
-function ContactRow({ c, isLast }) {
+function ContactRow({ c, isLast, onClick }) {
   const [hovered, setHovered] = useState(false);
   const hasStatus = c.is_app_user || c.opted_out;
 
   return (
     <tr
+      onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
         borderBottom: isLast ? 'none' : `1px solid ${AD.border}`,
         transition: 'background 0.1s',
+        cursor: 'pointer',
       }}
     >
       <td style={{ ...COL_STYLES.name, padding: '12px 12px 12px 0' }}>
@@ -84,11 +87,15 @@ function ContactRow({ c, isLast }) {
 }
 
 export default function AdminContactsTab({ headers }) {
-  const [contacts,     setContacts]     = useState([]);
-  const [totalCount,   setTotalCount]   = useState(0);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [contacts,          setContacts]          = useState([]);
+  const [totalCount,        setTotalCount]        = useState(0);
+  const [loading,           setLoading]           = useState(true);
+  const [error,             setError]             = useState('');
+  const [activeFilter,      setActiveFilter]      = useState('all');
+  const [selectedContactId, setSelectedContactId] = useState(null);
+
+  // Extract token from headers for the drawer (headers is { Authorization: 'Bearer ...' })
+  const drawerToken = headers?.Authorization?.replace('Bearer ', '') || null;
 
   const fetchContacts = useCallback(async (filter) => {
     setLoading(true);
@@ -208,11 +215,22 @@ export default function AdminContactsTab({ headers }) {
           </thead>
           <tbody>
             {contacts.map((c, idx) => (
-              <ContactRow key={c.id} c={c} isLast={idx === contacts.length - 1} />
+              <ContactRow
+                key={c.id}
+                c={c}
+                isLast={idx === contacts.length - 1}
+                onClick={() => setSelectedContactId(c.id)}
+              />
             ))}
           </tbody>
         </table>
       )}
+
+      <AdminContactDetailDrawer
+        contactId={selectedContactId}
+        onClose={() => setSelectedContactId(null)}
+        token={drawerToken}
+      />
     </div>
   );
 }

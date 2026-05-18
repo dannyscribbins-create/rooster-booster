@@ -413,7 +413,7 @@ async function executeBatchSend(campaignId, req) {
   };
 
   const contactsResult = await pool.query(
-    `SELECT id, client_name, email, phone, job_type, job_date
+    `SELECT id, client_name, email, phone, job_type, job_date, client_jobber_id
      FROM campaign_contacts
      WHERE campaign_id = $1 AND contractor_id = $2
        AND batch_number = $3 AND selected = true AND opted_out = false`,
@@ -527,7 +527,7 @@ async function executeBatchSend(campaignId, req) {
     sendItems.push({ contact, token: trackingToken, personalizedMessage: personalizedMessages[idx], unsubscribeUrl });
   }
 
-  async function upsertContactRecord(email, name, status) {
+  async function upsertContactRecord(email, name, status, jobberClientId) {
     try {
       const upsertRes = await pool.query(
         `INSERT INTO contacts (contractor_id, email, name)
@@ -551,6 +551,21 @@ async function executeBatchSend(campaignId, req) {
         );
       }
 
+      // Non-fatal: jobber_client_id is enrichment only — never block the email send.
+      if (jobberClientId) {
+        try {
+          await pool.query(
+            `UPDATE contacts
+             SET jobber_client_id = $1
+             WHERE id = $2
+               AND jobber_client_id IS NULL`,
+            [jobberClientId, contactId]
+          );
+        } catch (linkErr) {
+          await logError({ req, error: linkErr, source: 'upsertContactRecord jobber_client_id link' });
+        }
+      }
+
       await pool.query(
         `INSERT INTO contact_send_history
            (contact_id, contractor_id, campaign_id, batch_number, channel, status, message_type, subject)
@@ -569,7 +584,7 @@ async function executeBatchSend(campaignId, req) {
        VALUES ($1, $2, $3, $4, $5, $6, 'suppressed', NOW())`,
       [campaignId, batchNumber, c.id, c.client_name, c.email || null, c.phone || null]
     );
-    await upsertContactRecord(c.email, c.client_name, 'suppressed');
+    await upsertContactRecord(c.email, c.client_name, 'suppressed', c.client_jobber_id || null);
   }
 
   const sendResults = [];
@@ -598,7 +613,7 @@ async function executeBatchSend(campaignId, req) {
        status, result.errorCode || null, result.errorMessage || null]
     );
     if (result.success) successfulIds.push(result.contact.id);
-    await upsertContactRecord(result.contact.email, result.contact.client_name, result.success ? 'sent' : 'failed');
+    await upsertContactRecord(result.contact.email, result.contact.client_name, result.success ? 'sent' : 'failed', result.contact.client_jobber_id || null);
   }
 
   if (successfulIds.length > 0) {
@@ -4589,6 +4604,16 @@ Output: exactly 3 subject lines, one per line, no numbering, no quotes, no expla
   }
 });
 
+// Shared by batch contacts, global contacts, and contact detail routes.
+function deriveOptOutType(row) {
+  if (!row.opt_out_campaigns && !row.opt_out_sms && !row.opt_out_all && !row.referral_only) return null;
+  if (row.opt_out_all)       return 'all';
+  if (row.opt_out_campaigns) return 'campaigns';
+  if (row.opt_out_sms)       return 'sms';
+  if (row.referral_only)     return 'referral_only';
+  return null;
+}
+
 // ── BATCH CONTACT LIST ────────────────────────────────────────────────────────
 
 router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', async (req, res) => {
@@ -4643,15 +4668,6 @@ router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', asy
       [campaignId, batchNumber, contractorId]
     );
 
-    function deriveOptOutType(row) {
-      if (!row.opt_out_campaigns && !row.opt_out_sms && !row.opt_out_all && !row.referral_only) return null;
-      if (row.opt_out_all)      return 'all';
-      if (row.opt_out_campaigns) return 'campaigns';
-      if (row.opt_out_sms)      return 'sms';
-      if (row.referral_only)    return 'referral_only';
-      return null;
-    }
-
     const contacts = result.rows.map(row => ({
       id:           row.id,
       name:         row.name,
@@ -4660,7 +4676,7 @@ router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', asy
       delivered:    row.email_status === 'sent',
       opened:       false,
       clicked_cta:  false,
-      opted_out:    !!(row.opt_out_campaigns || row.opt_out_all),
+      opted_out:    !!(row.opt_out_campaigns || row.opt_out_sms || row.opt_out_all || row.referral_only),
       opt_out_type: deriveOptOutType(row),
       sms_status:   row.sms_status || null,
       suppressed:   row.email_status === 'suppressed',
@@ -4732,15 +4748,6 @@ router.get('/api/admin/contacts', async (req, res) => {
       ),
     ]);
 
-    function deriveOptOutType(row) {
-      if (!row.opt_out_campaigns && !row.opt_out_sms && !row.opt_out_all && !row.referral_only) return null;
-      if (row.opt_out_all)      return 'all';
-      if (row.opt_out_campaigns) return 'campaigns';
-      if (row.opt_out_sms)      return 'sms';
-      if (row.referral_only)    return 'referral_only';
-      return null;
-    }
-
     const contacts = rowsResult.rows.map(row => ({
       id:           row.id,
       name:         row.name,
@@ -4759,6 +4766,121 @@ router.get('/api/admin/contacts', async (req, res) => {
     });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/contacts' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── CONTACT DETAIL ────────────────────────────────────────────────────────────
+
+router.get('/api/admin/contacts/:contactId', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+  const { contactId } = req.params;
+
+  try {
+    // ── 1. Contact row + opt-out join ─────────────────────────────────────────
+    const contactResult = await pool.query(
+      `SELECT
+         c.id,
+         c.name,
+         c.email,
+         c.phone,
+         c.is_app_user,
+         c.jobber_client_id,
+         c.created_at,
+         eoo.opt_out_campaigns,
+         eoo.opt_out_sms,
+         eoo.opt_out_all,
+         eoo.referral_only
+       FROM contacts c
+       LEFT JOIN email_opt_outs eoo
+         ON eoo.email = c.email
+         AND eoo.contractor_id = c.contractor_id
+       WHERE c.id = $1
+         AND c.contractor_id = $2`,
+      [contactId, contractorId]
+    );
+
+    if (contactResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    const row = contactResult.rows[0];
+
+    const contact = {
+      id:               row.id,
+      name:             row.name,
+      email:            row.email,
+      phone:            row.phone || null,
+      is_app_user:      row.is_app_user,
+      jobber_client_id: row.jobber_client_id || null,
+      created_at:       row.created_at,
+      opted_out:        !!(row.opt_out_campaigns || row.opt_out_sms || row.opt_out_all || row.referral_only),
+      opt_out_type:     deriveOptOutType(row),
+    };
+
+    // ── 2. Send history ───────────────────────────────────────────────────────
+    const historyResult = await pool.query(
+      `SELECT
+         csh.campaign_id,
+         cam.name AS campaign_name,
+         csh.batch_number,
+         csh.sent_at,
+         csh.channel,
+         csh.status,
+         csh.subject
+       FROM contact_send_history csh
+       LEFT JOIN campaigns cam
+         ON cam.id = csh.campaign_id
+       WHERE csh.contact_id = $1
+         AND csh.contractor_id = $2
+       ORDER BY csh.sent_at DESC`,
+      [contactId, contractorId]
+    );
+
+    const sendHistory = historyResult.rows.map(h => ({
+      campaign_id:   h.campaign_id,
+      campaign_name: h.campaign_name || null,
+      batch_number:  h.batch_number,
+      sent_at:       h.sent_at,
+      channel:       h.channel,
+      status:        h.status,
+      subject:       h.subject || null,
+    }));
+
+    // ── 3. Jobber profile ─────────────────────────────────────────────────────
+    let jobberProfile = null;
+    if (contact.jobber_client_id) {
+      const pipelineResult = await pool.query(
+        `SELECT
+           pipeline_status,
+           referred_by,
+           raw_data
+         FROM pipeline_cache
+         WHERE jobber_client_id = $1
+           AND contractor_id = $2
+         LIMIT 1`,
+        [contact.jobber_client_id, contractorId]
+      );
+      if (pipelineResult.rows.length > 0) {
+        const pr = pipelineResult.rows[0];
+        jobberProfile = {
+          pipeline_status: pr.pipeline_status || null,
+          referred_by:     pr.referred_by || null,
+          // work_category is not a pipeline_cache column — extracted from raw_data JSONB if present
+          work_category:   pr.raw_data?.work_category || null,
+        };
+      }
+    }
+
+    res.json({
+      contact,
+      send_history: sendHistory,
+      jobber_profile: jobberProfile,
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/contacts/:contactId' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
