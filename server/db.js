@@ -621,8 +621,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     created_at TIMESTAMP DEFAULT NOW(),
     expires_at TIMESTAMP NOT NULL,
     used_at TIMESTAMP,
-    pixel_fired_at TIMESTAMP,
-    is_expired BOOLEAN GENERATED ALWAYS AS (NOW() > expires_at) STORED
+    pixel_fired_at TIMESTAMP
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_unsubscribe_tokens_token ON unsubscribe_tokens(token)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_unsubscribe_tokens_email ON unsubscribe_tokens(contractor_id, email)`);
