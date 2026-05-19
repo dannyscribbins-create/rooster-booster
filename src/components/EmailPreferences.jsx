@@ -8,6 +8,9 @@ export default function EmailPreferences() {
   const [data, setData]               = useState(null);
   const [submitting, setSubmitting]   = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [hasExistingRecord, setHasExistingRecord] = useState(false);
+  const [initialPrefs, setInitialPrefs]           = useState({ opt_out_campaigns: false, opt_out_sms: false, opt_out_all: false, referral_only: false });
+  const [successMsg, setSuccessMsg]               = useState('');
 
   const [optOutCampaigns, setOptOutCampaigns] = useState(false);
   const [optOutSms, setOptOutSms]             = useState(false);
@@ -24,10 +27,18 @@ export default function EmailPreferences() {
         const json = await res.json();
         setData(json);
         const p = json.existingPreferences || {};
-        setOptOutCampaigns(!!p.opt_out_campaigns);
-        setOptOutSms(!!p.opt_out_sms);
-        setOptOutAll(!!p.opt_out_all);
-        setReferralOnly(!!p.referral_only);
+        const prefs = {
+          opt_out_campaigns: !!p.opt_out_campaigns,
+          opt_out_sms:       !!p.opt_out_sms,
+          opt_out_all:       !!p.opt_out_all,
+          referral_only:     !!p.referral_only,
+        };
+        setOptOutCampaigns(prefs.opt_out_campaigns);
+        setOptOutSms(prefs.opt_out_sms);
+        setOptOutAll(prefs.opt_out_all);
+        setReferralOnly(prefs.referral_only);
+        setInitialPrefs(prefs);
+        setHasExistingRecord(prefs.opt_out_campaigns || prefs.opt_out_sms || prefs.opt_out_all || prefs.referral_only);
         setStatus('valid');
       } catch {
         setStatus('invalid');
@@ -49,6 +60,15 @@ export default function EmailPreferences() {
 
   const anyChecked = optOutCampaigns || optOutSms || optOutAll || referralOnly;
 
+  const hasChanges = hasExistingRecord && (
+    optOutCampaigns !== initialPrefs.opt_out_campaigns ||
+    optOutSms       !== initialPrefs.opt_out_sms       ||
+    optOutAll       !== initialPrefs.opt_out_all       ||
+    referralOnly    !== initialPrefs.referral_only
+  );
+
+  const btnDisabled = submitting || (hasExistingRecord ? !hasChanges : !anyChecked);
+
   async function handleSubmit() {
     setSubmitting(true);
     setSubmitError('');
@@ -68,6 +88,20 @@ export default function EmailPreferences() {
         const err = await res.json().catch(() => ({}));
         setSubmitError(err.error || 'Something went wrong. Please try again.');
         return;
+      }
+      // Determine if any flag changed from opted-out to cleared (resubscribe)
+      const anyNewOptOut = (!initialPrefs.opt_out_campaigns && optOutCampaigns) ||
+        (!initialPrefs.opt_out_sms && optOutSms) ||
+        (!initialPrefs.opt_out_all && optOutAll) ||
+        (!initialPrefs.referral_only && referralOnly);
+      const anyResubscribed = (initialPrefs.opt_out_campaigns && !optOutCampaigns) ||
+        (initialPrefs.opt_out_sms && !optOutSms) ||
+        (initialPrefs.opt_out_all && !optOutAll) ||
+        (initialPrefs.referral_only && !referralOnly);
+      if (anyResubscribed && !anyNewOptOut) {
+        setSuccessMsg('resubscribe');
+      } else {
+        setSuccessMsg('updated');
       }
       setStatus('success');
     } catch {
@@ -135,7 +169,9 @@ export default function EmailPreferences() {
           </div>
           <h1 style={s.heading}>You're all set.</h1>
           <p style={{ ...s.sub, marginBottom: 0 }}>
-            You have been removed from the selected outreach lists. It may take up to 24 hours for all systems to reflect your preferences.
+            {successMsg === 'resubscribe'
+              ? "You've been resubscribed. Your preferences have been updated."
+              : 'Your preferences have been updated. It may take up to 24 hours for all systems to reflect your changes.'}
           </p>
           {companyEmail && (
             <p style={s.contact}>
@@ -179,9 +215,15 @@ export default function EmailPreferences() {
 
         <h1 style={{ ...s.heading, marginTop: 12 }}>Manage Your Communication Preferences</h1>
 
-        <p style={s.intro}>
-          Please select which types of communications you'd like to opt out of. Your transactional messages (like reward confirmations) will still be delivered.
-        </p>
+        {hasExistingRecord ? (
+          <p style={s.intro}>
+            You currently have the following preferences set. Uncheck any item to resubscribe.
+          </p>
+        ) : (
+          <p style={s.intro}>
+            Please select which types of communications you'd like to opt out of. Your transactional messages (like reward confirmations) will still be delivered.
+          </p>
+        )}
 
         {/* Checkbox rows */}
         {[
@@ -237,11 +279,16 @@ export default function EmailPreferences() {
 
         <button
           onClick={handleSubmit}
-          disabled={!anyChecked || submitting}
-          style={{ ...s.btn, ...(!anyChecked || submitting ? s.btnDisabled : {}) }}
+          disabled={btnDisabled}
+          style={{ ...s.btn, ...(btnDisabled ? s.btnDisabled : {}) }}
         >
-          {submitting ? 'Saving…' : 'Submit and Confirm Opt Out'}
+          {submitting ? 'Saving…' : hasExistingRecord ? 'Update Preferences' : 'Submit and Confirm Opt Out'}
         </button>
+        {hasExistingRecord && !hasChanges && !submitting && (
+          <p style={{ fontSize: 13, color: '#888', textAlign: 'center', marginTop: 8 }}>
+            No changes to save
+          </p>
+        )}
 
         {submitError && (
           <p style={s.err}>

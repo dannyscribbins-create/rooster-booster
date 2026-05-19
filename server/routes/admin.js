@@ -1000,8 +1000,19 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
 // ── ADMIN: ACTIVITY LOG ───────────────────────────────────────────────────────
 router.get('/api/admin/activity', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
+  const ALLOWED_CATEGORIES = ['user_action', 'admin_action', 'opt_out', 'resubscribe'];
+  const { category } = req.query;
   try {
-    const result = await pool.query('SELECT id, event_type, full_name, email, detail, created_at FROM activity_log ORDER BY created_at DESC LIMIT 100');
+    let queryText;
+    let params;
+    if (category && ALLOWED_CATEGORIES.includes(category)) {
+      queryText = 'SELECT id, event_type, full_name, email, detail, created_at, category, contact_id FROM activity_log WHERE category = $1 ORDER BY created_at DESC LIMIT 100';
+      params = [category];
+    } else {
+      queryText = 'SELECT id, event_type, full_name, email, detail, created_at, category, contact_id FROM activity_log ORDER BY created_at DESC LIMIT 100';
+      params = [];
+    }
+    const result = await pool.query(queryText, params);
     res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });
@@ -4818,6 +4829,10 @@ router.get('/api/admin/contacts/:contactId', async (req, res) => {
       created_at:       row.created_at,
       opted_out:        !!(row.opt_out_campaigns || row.opt_out_sms || row.opt_out_all || row.referral_only),
       opt_out_type:     deriveOptOutType(row),
+      opt_out_campaigns: !!row.opt_out_campaigns,
+      opt_out_sms:       !!row.opt_out_sms,
+      opt_out_all:       !!row.opt_out_all,
+      referral_only:     !!row.referral_only,
     };
 
     // ── 2. Send history ───────────────────────────────────────────────────────
@@ -4881,6 +4896,77 @@ router.get('/api/admin/contacts/:contactId', async (req, res) => {
     });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/contacts/:contactId' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── CONTACT RESUBSCRIBE ───────────────────────────────────────────────────────
+
+router.patch('/api/admin/contacts/:contactId/resubscribe', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+  const { contactId } = req.params;
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(contactId)) {
+    return res.status(400).json({ error: 'Invalid contact ID' });
+  }
+
+  const { flags } = req.body;
+  const ALLOWED_FLAGS = ['opt_out_sms', 'opt_out_campaigns', 'opt_out_all', 'referral_only'];
+  if (!Array.isArray(flags) || flags.length === 0) {
+    return res.status(400).json({ error: 'flags must be a non-empty array' });
+  }
+  const invalid = flags.filter(f => !ALLOWED_FLAGS.includes(f));
+  if (invalid.length > 0) {
+    return res.status(400).json({ error: 'Invalid flag values' });
+  }
+
+  try {
+    const contactResult = await pool.query(
+      `SELECT id, name, email FROM contacts WHERE id = $1 AND contractor_id = $2`,
+      [contactId, contractorId]
+    );
+    if (contactResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+    const contact = contactResult.rows[0];
+
+    const optOutResult = await pool.query(
+      `SELECT id FROM email_opt_outs WHERE contractor_id = $1 AND email = $2`,
+      [contractorId, contact.email]
+    );
+    if (optOutResult.rows.length === 0) {
+      return res.status(404).json({ error: 'No opt-out record found' });
+    }
+
+    // flags array contains only validated values from ALLOWED_FLAGS — safe to use as column names
+    const setClauses = flags.map((f, i) => `${f} = $${i + 1}`).join(', ');
+    const values = flags.map(() => false);
+    const offset = flags.length;
+
+    await pool.query(
+      `UPDATE email_opt_outs SET ${setClauses}, resubscribed_at = NOW(), resubscribe_source = 'admin' WHERE contractor_id = $${offset + 1} AND email = $${offset + 2}`,
+      [...values, contractorId, contact.email]
+    );
+
+    const flagLabels = {
+      opt_out_campaigns: 'Campaign & Promotional Emails',
+      opt_out_sms:       'SMS Text Messages',
+      opt_out_all:       'All Emails & Texts',
+      referral_only:     'Referral Updates Only',
+    };
+    const detail = `Admin cleared opt-out flags: ${flags.map(f => flagLabels[f] || f).join(', ')}`;
+
+    await pool.query(
+      `INSERT INTO activity_log (event_type, full_name, email, detail, category, contact_id) VALUES ($1, $2, $3, $4, $5, $6)`,
+      ['resubscribe_admin', contact.name, contact.email, detail, 'resubscribe', contactId]
+    );
+
+    res.json({ success: true, flags_cleared: flags });
+  } catch (err) {
+    await logError({ req, error: err, source: 'PATCH /api/admin/contacts/:contactId/resubscribe' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

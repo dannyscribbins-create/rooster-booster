@@ -111,6 +111,15 @@ function PipelineStatusPill({ status }) {
   return <DrawerPill bg={cfg.bg} color={cfg.color} label={cfg.label} />;
 }
 
+// ── Opt-out flag metadata ─────────────────────────────────────────────────────
+
+const FLAG_CONFIG = {
+  opt_out_campaigns: 'Campaign & Promotional Emails',
+  opt_out_sms:       'SMS Text Messages',
+  opt_out_all:       'All Emails & Texts',
+  referral_only:     'Referral Updates Only',
+};
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AdminContactDetailDrawer({ contactId, onClose, token }) {
@@ -119,6 +128,9 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
   const [visible, setVisible] = useState(false);
+  const [confirmFlag, setConfirmFlag]               = useState(null);  // flag name or null
+  const [resubscribeLoading, setResubscribeLoading] = useState(false);
+  const [resubscribeError, setResubscribeError]     = useState('');
 
   // Keep cacheRef in sync with cache state
   useEffect(() => {
@@ -166,6 +178,35 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactId]);
+
+  async function handleResubscribeConfirm() {
+    if (!confirmFlag) return;
+    setResubscribeLoading(true);
+    setResubscribeError('');
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/${contactId}/resubscribe`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ flags: [confirmFlag] }),
+      });
+      if (!r.ok) throw new Error('Failed');
+      setConfirmFlag(null);
+      // Clear cache entry then re-fetch so the panel reflects the cleared flag
+      setCache(prev => {
+        const next = { ...prev };
+        delete next[contactId];
+        cacheRef.current = next;
+        return next;
+      });
+      fetchContact(contactId);
+    } catch {
+      setResubscribeError('Failed to update. Please try again.');
+    } finally {
+      setResubscribeLoading(false);
+    }
+  }
 
   // Don't render anything when no contactId
   if (!contactId) return null;
@@ -374,6 +415,38 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
                 </SectionCard>
               )}
 
+              {/* Communication Preferences panel — only when contact has active opt-out flags */}
+              {contact.opted_out && (
+                <SectionCard title="Communication Preferences">
+                  <div style={{ marginTop: 4 }}>
+                    {Object.entries(FLAG_CONFIG).map(([flag, label]) => {
+                      if (!contact[flag]) return null;
+                      return (
+                        <div key={flag} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: `1px solid ${AD.border}` }}>
+                          <span style={{ fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                            {label}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <DrawerPill bg={AD.red2Bg} color={AD.red2Text} label="Opted Out" />
+                            <button
+                              onClick={() => { setConfirmFlag(flag); setResubscribeError(''); }}
+                              style={{ padding: '3px 10px', borderRadius: AD.radiusPill, background: AD.bgCardTint, color: AD.textSecondary, border: `1px solid ${AD.border}`, fontSize: 11, fontFamily: AD.fontSans, cursor: 'pointer', fontWeight: 500 }}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {resubscribeError && (
+                      <p style={{ margin: '8px 0 0', fontSize: 12, color: AD.red2Text, fontFamily: AD.fontSans }}>
+                        {resubscribeError}
+                      </p>
+                    )}
+                  </div>
+                </SectionCard>
+              )}
+
               {/* Send History section */}
               <div style={{ marginTop: 4 }}>
                 <p style={{
@@ -434,6 +507,47 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
             </>
           )}
         </div>
+
+        {/* Confirmation modal — absolutely positioned to cover the full drawer panel */}
+        {confirmFlag && (
+          <div
+            onClick={() => { if (!resubscribeLoading) setConfirmFlag(null); }}
+            style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`, borderRadius: AD.radiusMd, padding: '20px 22px', maxWidth: 360, width: '100%', boxShadow: AD.shadowLg }}
+            >
+              <p style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 600, color: AD.textPrimary, fontFamily: "'Montserrat', sans-serif" }}>
+                Remove opt-out?
+              </p>
+              <p style={{ margin: '0 0 20px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+                This will allow <strong style={{ color: AD.textPrimary }}>{FLAG_CONFIG[confirmFlag]}</strong> to be sent to this contact again.
+              </p>
+              {resubscribeError && (
+                <p style={{ margin: '-8px 0 12px', fontSize: 12, color: AD.red2Text, fontFamily: AD.fontSans }}>
+                  {resubscribeError}
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => setConfirmFlag(null)}
+                  disabled={resubscribeLoading}
+                  style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: AD.bgCardTint, color: AD.textSecondary, border: `1px solid ${AD.border}`, fontSize: 13, fontFamily: AD.fontSans, cursor: resubscribeLoading ? 'not-allowed' : 'pointer', fontWeight: 500, opacity: resubscribeLoading ? 0.5 : 1 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResubscribeConfirm}
+                  disabled={resubscribeLoading}
+                  style={{ flex: 1, padding: '10px 0', borderRadius: 8, background: AD.navy, color: '#fff', border: 'none', fontSize: 13, fontFamily: AD.fontSans, cursor: resubscribeLoading ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: resubscribeLoading ? 0.7 : 1 }}
+                >
+                  {resubscribeLoading ? 'Saving…' : 'Confirm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

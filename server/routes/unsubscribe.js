@@ -94,6 +94,18 @@ router.post('/api/unsubscribe/submit', async (req, res) => {
       : req.ip;
     const userAgent = req.headers['user-agent'] || null;
 
+    // Fetch existing flags before upsert so activity log can detect opt-out vs resubscribe
+    let prev = null;
+    try {
+      const prevResult = await pool.query(
+        `SELECT opt_out_campaigns, opt_out_sms, opt_out_all, referral_only FROM email_opt_outs WHERE contractor_id = $1 AND email = $2`,
+        [row.contractor_id, row.email]
+      );
+      prev = prevResult.rows[0] || null;
+    } catch {
+      // Non-critical — prev=null causes activity log to default to opt_out classification
+    }
+
     await pool.query(
       `INSERT INTO email_opt_outs
          (contractor_id, email, opt_out_campaigns, opt_out_sms, opt_out_all, referral_only,
@@ -129,6 +141,43 @@ router.post('/api/unsubscribe/submit', async (req, res) => {
     );
 
     res.json({ success: true });
+
+    // Activity log — isolated try/catch, failure must never affect the submit response
+    try {
+      const newOpts = {
+        opt_out_campaigns: opt_out_campaigns === true,
+        opt_out_sms:       opt_out_sms === true,
+        opt_out_all:       opt_out_all === true,
+        referral_only:     referral_only === true,
+      };
+
+      let anyOptOut = false;
+      let anyResubscribe = false;
+      if (prev) {
+        for (const key of Object.keys(newOpts)) {
+          if (!prev[key] && newOpts[key]) anyOptOut = true;
+          if (prev[key] && !newOpts[key]) anyResubscribe = true;
+        }
+      } else {
+        anyOptOut = Object.values(newOpts).some(Boolean);
+      }
+
+      const eventType = anyOptOut ? 'opt_out' : (anyResubscribe ? 'resubscribe_self' : 'opt_out');
+      const category  = anyOptOut ? 'opt_out'  : (anyResubscribe ? 'resubscribe'      : 'opt_out');
+
+      const contactResult = await pool.query(
+        `SELECT id FROM contacts WHERE contractor_id = $1 AND email = $2 LIMIT 1`,
+        [row.contractor_id, row.email]
+      );
+      const contactId = contactResult.rows.length > 0 ? contactResult.rows[0].id : null;
+
+      await pool.query(
+        `INSERT INTO activity_log (event_type, full_name, email, detail, category, contact_id) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [eventType, null, row.email, 'Contact updated email preferences via unsubscribe page', category, contactId]
+      );
+    } catch {
+      // Non-critical
+    }
   } catch (err) {
     await logError({ req, error: err, source: 'POST /api/unsubscribe/submit' });
     res.status(500).json({ error: 'Internal server error' });

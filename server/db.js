@@ -25,7 +25,8 @@ async function initDB() {
   )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS activity_log (
     id SERIAL PRIMARY KEY, event_type TEXT NOT NULL,
-    full_name TEXT, email TEXT, detail TEXT, created_at TIMESTAMP DEFAULT NOW()
+    full_name TEXT, email TEXT, detail TEXT, created_at TIMESTAMP DEFAULT NOW(),
+    category TEXT DEFAULT 'user_action'
   )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS admin_cache (
     id INTEGER PRIMARY KEY DEFAULT 1, stats JSONB, cached_at TIMESTAMP DEFAULT NOW()
@@ -665,6 +666,12 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     ON contacts(contractor_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_contractor_email
     ON contacts(contractor_id, email)`);
+
+  // ── ACTIVITY LOG CATEGORY + CONTACT DEEP-LINK ────────────────────────────────
+  await pool.query(`ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'user_action'`);
+  await pool.query(`ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_activity_log_category ON activity_log(category)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_activity_log_contact_id ON activity_log(contact_id)`);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS contact_send_history (
     id             SERIAL PRIMARY KEY,
