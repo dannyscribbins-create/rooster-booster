@@ -148,10 +148,7 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
     try {
       const headers = {};
       if (token) headers.Authorization = `Bearer ${token}`;
-      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/${id}`, {
-        headers,
-        credentials: 'include',
-      });
+      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/${id}`, { headers });
       if (!r.ok) throw new Error('Failed');
       const data = await r.json();
       setCache(prev => ({ ...prev, [id]: data }));
