@@ -183,24 +183,44 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
     if (!confirmFlag) return;
     setResubscribeLoading(true);
     setResubscribeError('');
+    const flagToClear = confirmFlag;
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers.Authorization = `Bearer ${token}`;
       const r = await fetch(`${BACKEND_URL}/api/admin/contacts/${contactId}/resubscribe`, {
         method: 'PATCH',
         headers,
-        body: JSON.stringify({ flags: [confirmFlag] }),
+        body: JSON.stringify({ flags: [flagToClear] }),
       });
       if (!r.ok) throw new Error('Failed');
       setConfirmFlag(null);
-      // Clear cache entry then re-fetch so the panel reflects the cleared flag
+      // Optimistic update: clear only the specific flag — drawer stays populated, no blank
       setCache(prev => {
-        const next = { ...prev };
-        delete next[contactId];
-        cacheRef.current = next;
-        return next;
+        const existing = prev[contactId];
+        if (!existing?.contact) return prev;
+        const updatedContact = { ...existing.contact, [flagToClear]: false };
+        updatedContact.opted_out = !!(
+          updatedContact.opt_out_campaigns ||
+          updatedContact.opt_out_sms ||
+          updatedContact.opt_out_all ||
+          updatedContact.referral_only
+        );
+        return { ...prev, [contactId]: { ...existing, contact: updatedContact } };
       });
-      fetchContact(contactId);
+      // Background silent re-fetch — does not set loading state so drawer stays visible
+      (async () => {
+        try {
+          const refetchHeaders = {};
+          if (token) refetchHeaders.Authorization = `Bearer ${token}`;
+          const r2 = await fetch(`${BACKEND_URL}/api/admin/contacts/${contactId}`, { headers: refetchHeaders });
+          if (r2.ok) {
+            const freshData = await r2.json();
+            setCache(prev => ({ ...prev, [contactId]: freshData }));
+          }
+        } catch {
+          // Silent failure — optimistic data remains visible
+        }
+      })();
     } catch {
       setResubscribeError('Failed to update. Please try again.');
     } finally {

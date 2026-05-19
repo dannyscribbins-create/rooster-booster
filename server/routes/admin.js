@@ -1000,7 +1000,7 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
 // ── ADMIN: ACTIVITY LOG ───────────────────────────────────────────────────────
 router.get('/api/admin/activity', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
-  const ALLOWED_CATEGORIES = ['user_action', 'admin_action', 'opt_out', 'resubscribe'];
+  const ALLOWED_CATEGORIES = ['user_action', 'admin_action'];
   const { category } = req.query;
   try {
     let queryText;
@@ -4961,7 +4961,7 @@ router.patch('/api/admin/contacts/:contactId/resubscribe', async (req, res) => {
 
     await pool.query(
       `INSERT INTO activity_log (event_type, full_name, email, detail, category, contact_id) VALUES ($1, $2, $3, $4, $5, $6)`,
-      ['resubscribe_admin', contact.name, contact.email, detail, 'resubscribe', contactId]
+      ['resubscribe_admin', contact.name, contact.email, detail, 'admin_action', contactId]
     );
 
     res.json({ success: true, flags_cleared: flags });

@@ -9,8 +9,6 @@ const CATEGORY_FILTERS = [
   { id: 'all',          label: 'All'           },
   { id: 'user_action',  label: 'User Actions'  },
   { id: 'admin_action', label: 'Admin Actions' },
-  { id: 'opt_out',      label: 'Opt-Out'       },
-  { id: 'resubscribe',  label: 'Resubscribe'   },
 ];
 
 const iconMap = {

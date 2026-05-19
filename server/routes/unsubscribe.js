@@ -163,7 +163,7 @@ router.post('/api/unsubscribe/submit', async (req, res) => {
       }
 
       const eventType = anyOptOut ? 'opt_out' : (anyResubscribe ? 'resubscribe_self' : 'opt_out');
-      const category  = anyOptOut ? 'opt_out'  : (anyResubscribe ? 'resubscribe'      : 'opt_out');
+      const category  = 'user_action';
 
       const contactResult = await pool.query(
         `SELECT id FROM contacts WHERE contractor_id = $1 AND email = $2 LIMIT 1`,
