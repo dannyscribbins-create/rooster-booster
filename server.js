@@ -4,7 +4,7 @@ require('dotenv').config();
 const { initDB } = require('./server/db');
 const oauthRoutes = require('./server/routes/oauth');
 const referrerRoutes = require('./server/routes/referrer');
-const adminRoutes = require('./server/routes/admin');
+const adminRoutes = require('./server/routes/admin/index');
 const stripeRoutes = require('./server/routes/stripe');
 const jobberWebhooks = require('./server/routes/webhooks/jobber');
 const accountRoutes = require('./server/routes/account');
