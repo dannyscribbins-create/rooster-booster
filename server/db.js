@@ -586,7 +586,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // ── CAMPAIGN TRACKING TABLES ──────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS campaign_tracking_tokens (
     token UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    campaign_id INTEGER NOT NULL REFERENCES campaigns(id),
+    campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
     contractor_id TEXT NOT NULL,
     contact_email TEXT NOT NULL,
     contact_name TEXT,

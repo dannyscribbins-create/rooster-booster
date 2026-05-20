@@ -2772,7 +2772,6 @@ router.delete('/api/admin/campaigns/:id', async (req, res) => {
       await pool.query('DELETE FROM campaign_contacts WHERE campaign_id = $1', [id]);
       await pool.query('DELETE FROM campaign_images WHERE campaign_id = $1', [id]);
       await pool.query('DELETE FROM campaign_events WHERE campaign_id = $1', [id]);
-      await pool.query('DELETE FROM campaign_tracking_tokens WHERE campaign_id = $1', [id]);
       await pool.query('DELETE FROM unsubscribe_tokens WHERE campaign_id = $1', [id]);
       await pool.query('DELETE FROM campaigns WHERE id = $1 AND contractor_id = $2', [id, contractorId]);
       await pool.query('COMMIT');
