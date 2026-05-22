@@ -602,7 +602,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     campaign_id INTEGER NOT NULL,
     contractor_id TEXT NOT NULL,
     batch_number INTEGER NOT NULL,
-    event_type TEXT NOT NULL CHECK (event_type IN ('open', 'click')),
+    event_type TEXT NOT NULL CHECK (event_type IN ('open', 'click', 'open_server', 'click_server', 'complained', 'bounced', 'delivered', 'failed')),
     cta_url TEXT,
     ip_address TEXT,
     user_agent TEXT,
@@ -610,6 +610,15 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_campaign_events_campaign
     ON campaign_events(campaign_id, batch_number, event_type)`);
+
+  // ── SESSION 65: RESEND WEBHOOK EVENT TRACKING ────────────────────────────────
+  await pool.query(`ALTER TABLE campaign_contacts ADD COLUMN IF NOT EXISTS complained BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE campaign_contacts ADD COLUMN IF NOT EXISTS bounced BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE campaign_contacts ADD COLUMN IF NOT EXISTS failed BOOLEAN DEFAULT false`);
+
+  // Drop and re-add event_type CHECK to expand allowed types
+  await pool.query(`ALTER TABLE campaign_events DROP CONSTRAINT IF EXISTS campaign_events_event_type_check`);
+  await pool.query(`ALTER TABLE campaign_events ADD CONSTRAINT campaign_events_event_type_check CHECK (event_type IN ('open', 'click', 'open_server', 'click_server', 'complained', 'bounced', 'delivered', 'failed'))`);
 
   // ── UNSUBSCRIBE / EMAIL PREFERENCES TABLES ────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS unsubscribe_tokens (
