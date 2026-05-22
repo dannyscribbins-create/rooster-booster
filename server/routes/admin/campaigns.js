@@ -1400,12 +1400,21 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       });
     }
 
-    // Filter 3 — workCategory
+    // Filter 3 — workCategory (supports per-item include/exclude mode; backward-compat with plain string arrays)
     if (Array.isArray(filters.workCategory) && filters.workCategory.length > 0 && mappings.work_category) {
       const label = mappings.work_category;
+      const includes = filters.workCategory
+        .filter(f => (typeof f === 'string' ? 'include' : (f.mode ?? 'include')) === 'include')
+        .map(f => typeof f === 'string' ? f : f.value);
+      const excludes = filters.workCategory
+        .filter(f => typeof f !== 'string' && f.mode === 'exclude')
+        .map(f => f.value);
       filteredJobs = filteredJobs.filter(job => {
         const field = (job.customFields || []).find(f => f.label === label);
-        return filters.workCategory.includes(field?.valueDropdown);
+        const val = field?.valueDropdown;
+        if (includes.length > 0 && !includes.includes(val)) return false;
+        if (excludes.includes(val)) return false;
+        return true;
       });
     }
 

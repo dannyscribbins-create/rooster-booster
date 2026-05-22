@@ -465,19 +465,38 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar }) {
 }
 
 // ── Pill multi-select ─────────────────────────────────────────────────────────
+// selected: { value: string, mode: 'include' | 'exclude' }[]
 function PillMultiSelect({ label, options, selected, onChange }) {
   const allSelected = selected.length === options.length && options.length > 0;
 
   function toggleItem(item) {
-    if (selected.includes(item)) {
-      onChange(selected.filter(s => s !== item));
+    const isSelected = selected.some(s => s.value === item);
+    if (isSelected) {
+      onChange(selected.filter(s => s.value !== item));
     } else {
-      onChange([...selected, item]);
+      onChange([...selected, { value: item, mode: 'include' }]);
     }
   }
 
+  function toggleMode(item) {
+    onChange(selected.map(s =>
+      s.value === item
+        ? { ...s, mode: s.mode === 'exclude' ? 'include' : 'exclude' }
+        : s
+    ));
+  }
+
   function toggleAll() {
-    onChange(allSelected ? [] : [...options]);
+    if (allSelected) {
+      onChange([]);
+    } else {
+      const selectedValues = new Set(selected.map(s => s.value));
+      onChange(options.map(opt =>
+        selectedValues.has(opt)
+          ? selected.find(s => s.value === opt)
+          : { value: opt, mode: 'include' }
+      ));
+    }
   }
 
   const countText = selected.length === 0
@@ -512,7 +531,60 @@ function PillMultiSelect({ label, options, selected, onChange }) {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {options.map(opt => {
-          const isSelected = selected.includes(opt);
+          const selectedItem = selected.find(s => s.value === opt);
+          const isSelected = !!selectedItem;
+          const mode = selectedItem?.mode ?? 'include';
+
+          if (isSelected) {
+            return (
+              <div
+                key={opt}
+                style={{
+                  display: 'flex', alignItems: 'stretch', borderRadius: 999,
+                  overflow: 'hidden',
+                  border: `1px solid ${mode === 'exclude' ? '#CC0000' : '#1a7a4a'}`,
+                  flexShrink: 0,
+                }}
+              >
+                <button
+                  onClick={() => toggleItem(opt)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '6px 8px 6px 12px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: 'none', cursor: 'pointer',
+                    fontFamily: AD.fontSans, fontSize: 13,
+                    color: AD.textPrimary, fontWeight: 500,
+                  }}
+                >
+                  {opt}
+                  <i className="ph ph-x" style={{ fontSize: 11, color: AD.textTertiary }} />
+                </button>
+                <button
+                  onClick={() => toggleMode(opt)}
+                  title={mode === 'include' ? 'Click to switch to Exclude' : 'Click to switch to Include'}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    padding: '6px 10px', border: 'none', cursor: 'pointer',
+                    background: mode === 'exclude' ? '#CC0000' : '#1a7a4a',
+                    borderLeft: `1px solid ${mode === 'exclude' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.2)'}`,
+                  }}
+                >
+                  <i
+                    className={`ph ${mode === 'exclude' ? 'ph-x-circle' : 'ph-check-circle'}`}
+                    style={{ fontSize: 13, color: '#fff' }}
+                  />
+                  <span style={{
+                    fontSize: 11, color: '#fff', fontFamily: AD.fontSans,
+                    fontWeight: 600, letterSpacing: '0.02em',
+                  }}>
+                    {mode === 'exclude' ? 'Exclude' : 'Include'}
+                  </span>
+                </button>
+              </div>
+            );
+          }
+
           return (
             <button
               key={opt}
@@ -520,10 +592,8 @@ function PillMultiSelect({ label, options, selected, onChange }) {
               style={{
                 padding: '6px 12px', borderRadius: 999, fontSize: 13,
                 fontFamily: AD.fontSans, cursor: 'pointer', transition: 'all 0.15s',
-                background: isSelected ? '#CC0000' : AD.bgSurface,
-                color: isSelected ? '#fff' : AD.textSecondary,
-                border: `0.5px solid ${isSelected ? '#CC0000' : AD.borderStrong}`,
-                fontWeight: isSelected ? 500 : 400,
+                background: AD.bgSurface, color: AD.textSecondary,
+                border: `0.5px solid ${AD.borderStrong}`, fontWeight: 400,
               }}
             >
               {opt}
@@ -2842,7 +2912,11 @@ export default function AdminCampaigns({ setLoggedIn }) {
       setDateTo(f.dateTo || '');
       setPaidOnly(f.paidOnly !== undefined ? f.paidOnly : true);
       setMinJobValue(f.minJobValue || '');
-      setWorkCategory(Array.isArray(f.workCategory) ? f.workCategory : []);
+      setWorkCategory(
+        Array.isArray(f.workCategory)
+          ? f.workCategory.map(item => typeof item === 'string' ? { value: item, mode: 'include' } : item)
+          : []
+      );
       setNotInApp(f.notInApp !== undefined ? f.notInApp : true);
       setSavingFilters(false);
       setPullResult(null);
