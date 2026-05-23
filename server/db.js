@@ -598,6 +598,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_tracking_tokens_campaign
     ON campaign_tracking_tokens(campaign_id, batch_number)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tracking_tokens_email
+    ON campaign_tracking_tokens(contact_email)`);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS campaign_events (
     id SERIAL PRIMARY KEY,

@@ -19,7 +19,7 @@ router.post('/resend', async (req, res) => {
 
   if (!process.env.RESEND_WEBHOOK_SECRET) {
     await logError({ req, error: new Error('RESEND_WEBHOOK_SECRET not set'), source: 'POST /api/webhooks/resend' });
-    return res.status(400).json({ error: 'Webhook secret not configured' });
+    return res.status(200).json({ received: true });
   }
 
   const wh = new Webhook(process.env.RESEND_WEBHOOK_SECRET);
