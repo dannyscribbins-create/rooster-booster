@@ -455,16 +455,6 @@ export default function AdminEngagement({ setLoggedIn }) {
         />
       </div>
 
-      {/* Section 1d — Customer Experience Flow */}
-      <div style={card}>
-        <ToggleRow
-          label="Customer Experience Flow"
-          sublabel="When enabled, customers who complete a paid invoice will automatically receive a feedback prompt. Keep this OFF during development and testing — only enable when the app is live."
-          value={experienceFlowEnabled}
-          onChange={setExperienceFlowEnabled}
-        />
-      </div>
-
       {/* Section 2 — Prize Configuration */}
       <div style={card}>
         <div style={{ marginBottom: 28 }}>
