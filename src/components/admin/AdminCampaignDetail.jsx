@@ -348,7 +348,7 @@ function MetricsGrid({ metrics, onOpenFailedPanel, optOutData, contactTotals }) 
   const cards = [
     { label: 'Total Contacts', value: (metrics.total_selected || metrics.total_contacts || 0).toLocaleString() },
     {
-      label: 'Delivered',
+      label: 'Sent',
       value: sentCount.toLocaleString(),
       failedChip: {
         count: metrics.failed_count || 0,
