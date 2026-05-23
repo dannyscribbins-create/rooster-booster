@@ -1290,6 +1290,8 @@ router.get('/api/admin/missing-referrals', async (req, res) => {
 
 router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
+  // MVP: hardcoded contractor_id — FORA: pull from admin session token
+  const contractorId = 'accent-roofing';
   const id = parseInt(req.params.id, 10);
   if (!id || id < 1) return res.status(400).json({ error: 'Invalid report id' });
 
@@ -1316,10 +1318,20 @@ router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
 
     if (referrer?.email) {
       try {
-        // TODO: pass contractor sender_name when contractor_id is available in this scope
+        let senderName = 'RoofMiles';
+        try {
+          const settingsRes = await pool.query(
+            `SELECT COALESCE(email_sender_name, company_name, 'RoofMiles') AS sender_name
+             FROM contractor_settings WHERE contractor_id = $1`,
+            [contractorId]
+          );
+          senderName = settingsRes.rows[0]?.sender_name || 'RoofMiles';
+        } catch (settingsErr) {
+          await logError({ req, error: settingsErr });
+        }
         await retryWithBackoff(
           () => resend.emails.send({
-            from: 'RoofMiles <noreply@roofmiles.com>',
+            from: `${senderName} <noreply@roofmiles.com>`,
             to: referrer.email,
             subject: 'Your Missing Referral Was Found! 🎉',
             html: `
