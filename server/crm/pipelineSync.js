@@ -6,7 +6,8 @@ const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../utils/retryHelpers');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
-const { sendAdminNotification } = require('../utils/notificationEmail');
+const { sendAdminNotification, resolveNotificationRecipient } = require('../utils/notificationEmail');
+const { isEmailSuppressed } = require('../utils/emailSuppression');
 
 function escapeHtml(s) {
   if (!s || typeof s !== 'string') return '';
@@ -140,7 +141,9 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
         const safeClientNameA = escapeHtml(clientName);
         const safeReferredByA = escapeHtml(referredBy);
         const adminUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
-        await sendAdminNotification(
+        const adminEmail25 = await resolveNotificationRecipient(pool, 'general');
+        const suppressed25 = await isEmailSuppressed(contractorId, adminEmail25, 'new_referral_detected');
+        if (!suppressed25) await sendAdminNotification(
           pool,
           'general',
           `New referral detected — ${safeClientNameA} via ${safeReferredByA}`,
@@ -201,7 +204,8 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
           try {
             const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
             const contactLine = [companyEmail, companyPhone].filter(Boolean).map(escapeHtml).join(' + ');
-            await retryWithBackoff(
+            const suppressed1 = await isEmailSuppressed(contractorId, referrerAccount.email, 'first_referral_submitted');
+            if (!suppressed1) await retryWithBackoff(
               () => resend.emails.send({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
@@ -228,7 +232,8 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
         if (oldPipelineStatus === 'lead' && status === 'inspection' && referrerAccount?.email) {
           try {
             const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
-            await retryWithBackoff(
+            const suppressed2 = await isEmailSuppressed(contractorId, referrerAccount.email, 'referral_inspection');
+            if (!suppressed2) await retryWithBackoff(
               () => resend.emails.send({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
@@ -255,7 +260,8 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
         if (status === 'sold' && oldPipelineStatus !== 'sold' && oldPipelineStatus !== null && referrerAccount?.email) {
           try {
             const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
-            await retryWithBackoff(
+            const suppressed3 = await isEmailSuppressed(contractorId, referrerAccount.email, 'referral_sold');
+            if (!suppressed3) await retryWithBackoff(
               () => resend.emails.send({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
@@ -282,7 +288,8 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
         if (status === 'not_sold' && oldPipelineStatus !== 'not_sold' && oldPipelineStatus !== null && referrerAccount?.email) {
           try {
             const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
-            await retryWithBackoff(
+            const suppressed5 = await isEmailSuppressed(contractorId, referrerAccount.email, 'referral_lost');
+            if (!suppressed5) await retryWithBackoff(
               () => resend.emails.send({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
@@ -309,7 +316,8 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
         if (oldPipelineStatus === 'not_sold' && ['lead', 'inspection', 'sold'].includes(status) && referrerAccount?.email) {
           try {
             const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
-            await retryWithBackoff(
+            const suppressed6 = await isEmailSuppressed(contractorId, referrerAccount.email, 'referral_reactivated');
+            if (!suppressed6) await retryWithBackoff(
               () => resend.emails.send({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
@@ -348,6 +356,8 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
             const pendingRow = pendingResult.rows[0];
 
             if (pendingRow?.referred_by_email) {
+              const suppressed33 = await isEmailSuppressed(contractorId, pendingRow.referred_by_email, 'reward_earned_no_account');
+              if (!suppressed33) {
               // Calculate bonus amount: count paid pipeline rows for this referrer, apply escalating schedule
               const paidCountResult = await pool.query(
                 `SELECT COUNT(*) AS cnt FROM pipeline_cache
@@ -377,6 +387,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
                 bonusAmount,
                 contractorId
               );
+              } // end if (!suppressed33)
             }
           } catch (e33) {
             await logError({ req: null, error: e33 });

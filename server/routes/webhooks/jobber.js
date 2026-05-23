@@ -21,6 +21,7 @@ const { jobberShouldRetry, resendShouldRetry } = require('../../utils/retryHelpe
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { evaluateReferral } = require('../../referralRules');
+const { isEmailSuppressed } = require('../../utils/emailSuppression');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -582,7 +583,8 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                   const safeClientName = escapeHtml(clientName);
                   const formattedAmount = formatDollars(result.bonusAmount);
 
-                  await retryWithBackoff(
+                  const suppressed4 = await isEmailSuppressed(contractorId, referrerRow.email, 'bonus_earned');
+                  if (!suppressed4) await retryWithBackoff(
                     () => resend.emails.send({
                       from: `${fromName} <noreply@roofmiles.com>`,
                       to: referrerRow.email,
@@ -623,7 +625,8 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                   const fromName13 = escapeHtml(cs13.email_sender_name || cs13.company_name || 'RoofMiles');
                   const frontendUrl13 = process.env.FRONTEND_URL || 'https://roofmiles.com';
                   const firstName13 = escapeHtml((referrerRow13.full_name || '').split(' ')[0] || referrerRow13.full_name);
-                  await retryWithBackoff(
+                  const suppressed13 = await isEmailSuppressed(contractorId, referrerRow13.email, 'first_reward_milestone');
+                  if (!suppressed13) await retryWithBackoff(
                     () => resend.emails.send({
                       from: `${fromName13} <noreply@roofmiles.com>`,
                       to: referrerRow13.email,

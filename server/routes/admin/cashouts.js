@@ -7,6 +7,7 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { resendShouldRetry } = require('../../utils/retryHelpers');
+const { isEmailSuppressed } = require('../../utils/emailSuppression');
 
 function escapeHtml(s) {
   if (!s || typeof s !== 'string') return '';
@@ -79,9 +80,10 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
         const firstName = escapeHtml((cashout.full_name || '').split(' ')[0] || cashout.full_name || 'there');
         const formattedAmount = formatDollars(cashout.amount);
 
+        const suppressed8or9 = await isEmailSuppressed('accent-roofing', cashout.email, status === 'approved' ? 'cashout_approved' : 'cashout_denied');
         if (status === 'approved') {
           // #8 — cashout approved
-          await retryWithBackoff(
+          if (!suppressed8or9) await retryWithBackoff(
             () => resend.emails.send({
               from: `${fromName} <noreply@roofmiles.com>`,
               to: cashout.email,
@@ -100,7 +102,7 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
           );
         } else {
           // #9 — cashout denied
-          await retryWithBackoff(
+          if (!suppressed8or9) await retryWithBackoff(
             () => resend.emails.send({
               from: `${fromName} <noreply@roofmiles.com>`,
               to: cashout.email,

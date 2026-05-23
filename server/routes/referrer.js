@@ -16,6 +16,7 @@ const { getPeriodDateRange } = require('../utils/dateUtils');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { resendShouldRetry } = require('../utils/retryHelpers');
 const { sendAdminNotification, resolveNotificationRecipient } = require('../utils/notificationEmail');
+const { isEmailSuppressed } = require('../utils/emailSuppression');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { verifyReferrerSession } = require('../middleware/auth');
 
@@ -304,7 +305,9 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
         const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
         const safeName = escapeHtml(full_name);
         const safeEmail = escapeHtml(email);
-        await sendAdminNotification(
+        const adminEmail20 = await resolveNotificationRecipient(pool, 'general');
+        const suppressed20 = await isEmailSuppressed('accent-roofing', adminEmail20, 'new_referrer_signup');
+        if (!suppressed20) await sendAdminNotification(
           pool,
           'general',
           `${safeName} just joined your referral program`,
@@ -826,7 +829,8 @@ router.post('/api/cashout', cashoutLimiter, [
       const firstName = escapeHtml(full_name.split(' ')[0] || full_name);
       const formattedAmount = parseFloat(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-      await retryWithBackoff(
+      const suppressed7 = await isEmailSuppressed('accent-roofing', email, 'cashout_request_received');
+      if (!suppressed7) await retryWithBackoff(
         () => resend.emails.send({
           from: `${fromName} <noreply@roofmiles.com>`,
           to: email,
@@ -1013,7 +1017,8 @@ router.post('/api/profile/photo', async (req, res) => {
         const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
         const firstName = escapeHtml((userRow.full_name || '').split(' ')[0] || userRow.full_name);
         const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
-        await retryWithBackoff(
+        const suppressed14 = await isEmailSuppressed('accent-roofing', userRow.email, 'profile_photo_uploaded');
+        if (!suppressed14) await retryWithBackoff(
           () => resend.emails.send({
             from: `${fromName} <noreply@roofmiles.com>`,
             to: userRow.email,
@@ -1847,7 +1852,9 @@ router.post('/api/referrer/missing-referral', missingReferralLimiter, async (req
         const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
         const safeFn = escapeHtml(fullName);
         const safeRef = escapeHtml(safeReferredName);
-        await sendAdminNotification(
+        const adminEmail23 = await resolveNotificationRecipient(pool, 'general');
+        const suppressed23 = await isEmailSuppressed('accent-roofing', adminEmail23, 'missing_referral_report');
+        if (!suppressed23) await sendAdminNotification(
           pool,
           'general',
           `${safeFn} submitted a missing referral report`,

@@ -843,6 +843,16 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     ON CONFLICT (contractor_id, jobber_label) DO NOTHING
   `);
 
+  // ── NOTIFICATION PREFERENCES ──────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS notification_preferences (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL,
+    trigger_key TEXT NOT NULL,
+    email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(contractor_id, trigger_key)
+  )`);
+
   // ── REFERRER BANK ACCOUNT COLUMNS ─────────────────────────────────────────────
   await addReferrerBankColumns(pool);
 

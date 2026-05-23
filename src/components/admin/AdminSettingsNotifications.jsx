@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { Btn } from './AdminComponents';
@@ -82,6 +82,79 @@ function PlaceholderCard({ icon, title, body }) {
   );
 }
 
+// ── NOTIFICATION TOGGLE GROUPS ────────────────────────────────────────────────
+const REFERRER_GROUPS = [
+  {
+    label: 'Pipeline Updates',
+    items: [
+      { key: 'first_referral_submitted', label: 'First referral submitted confirmation', desc: "Sent when a referrer's first client enters the pipeline." },
+      { key: 'referral_inspection',      label: 'Referral moves to inspection',          desc: 'Sent when a referred client schedules an inspection.' },
+      { key: 'referral_sold',            label: 'Referral moves to sold',                desc: 'Sent when a referred client signs.' },
+      { key: 'referral_lost',            label: 'Referral lost',                         desc: 'Sent when a referred client goes cold (not_sold).' },
+      { key: 'referral_reactivated',     label: 'Dormant referral reactivated',          desc: 'Sent when a previously lost referral re-engages.' },
+    ],
+  },
+  {
+    label: 'Rewards',
+    items: [
+      { key: 'bonus_earned',            label: 'Bonus earned',                    desc: "Sent when an invoice is paid and a bonus posts to the referrer's balance." },
+      { key: 'first_reward_milestone',  label: 'First reward milestone',          desc: "Sent alongside the bonus email on the referrer's very first conversion." },
+      { key: 'reward_earned_no_account', label: 'Reward earned — no account yet', desc: 'Sent to referrers without an app account when their referral earns a bonus.' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { key: 'cashout_request_received', label: 'Cashout request confirmation', desc: 'Sent to the referrer when they submit a cashout request.' },
+      { key: 'cashout_approved',         label: 'Cashout approved',             desc: 'Sent to the referrer when their cashout is approved.' },
+      { key: 'cashout_denied',           label: 'Cashout denied',               desc: 'Sent to the referrer when their cashout is denied.' },
+      { key: 'missing_referral_resolved', label: 'Missing referral resolved',   desc: 'Sent when an admin resolves a missing referral report.' },
+      { key: 'profile_photo_uploaded',   label: 'Profile photo uploaded confirmation', desc: 'Sent when a referrer saves a profile photo.' },
+    ],
+  },
+];
+
+const ADMIN_ITEMS = [
+  { key: 'new_referrer_signup',    label: 'New referrer signup',                desc: 'Alert when someone creates an account in your referral program.' },
+  { key: 'new_referral_detected',  label: 'New referral detected',              desc: 'Alert when a referred client first appears in the pipeline.' },
+  { key: 'missing_referral_report', label: 'Missing referral report submitted', desc: 'Alert when a referrer submits a missing referral report.' },
+];
+
+const ALWAYS_ACTIVE = [
+  'PIN reset confirmation',
+  'Account deletion confirmation',
+  'Email complaint rate warning',
+  'Email bounce rate spike alert',
+  'Error monitoring alerts',
+];
+
+function NotifToggle({ triggerKey, checked, onToggle, flash }) {
+  const on = checked !== false; // missing keys default to true
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      onClick={() => onToggle(triggerKey, !on)}
+      style={{
+        width: 44, height: 24, borderRadius: 12, border: 'none', flexShrink: 0,
+        background: on ? AD.navy : AD.bgCardTint,
+        position: 'relative', cursor: 'pointer',
+        transition: 'background 0.2s',
+        outline: 'none',
+      }}
+    >
+      <div style={{
+        position: 'absolute', top: 3,
+        left: on ? 22 : 2,
+        width: 18, height: 18, borderRadius: '50%', background: '#fff',
+        transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
+      }} />
+      {flash === 'saved'  && <span style={{ position: 'absolute', right: 50, top: 2, fontSize: 11, color: AD.greenText, whiteSpace: 'nowrap', fontFamily: AD.fontSans }}>Saved</span>}
+      {flash === 'error'  && <span style={{ position: 'absolute', right: 50, top: 2, fontSize: 11, color: AD.red2Text, whiteSpace: 'nowrap', fontFamily: AD.fontSans }}>Failed to save</span>}
+    </button>
+  );
+}
+
 export default function AdminSettingsNotifications() {
   const [enabled,       setEnabled]       = useState(true);
   const [mode,          setMode]          = useState('preset_1');
@@ -90,6 +163,49 @@ export default function AdminSettingsNotifications() {
   const [saveStatus,    setSaveStatus]    = useState('');
   const [previewNameIdx, setPreviewNameIdx] = useState(PREVIEW_NAMES.length - 1);
   const [showPreview,   setShowPreview]   = useState(false);
+
+  // ── Email notification preferences state ──────────────────────────────────
+  const [prefs,       setPrefs]       = useState({});
+  const [flashKey,    setFlashKey]    = useState(null);
+  const [flashStatus, setFlashStatus] = useState('');
+  const flashTimer = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/notification-preferences`, {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        setPrefs(d);
+      } catch {
+        // swallow — prefs default to all-enabled
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handlePrefToggle(triggerKey, value) {
+    const prev = prefs[triggerKey] !== false; // current state, default true
+    setPrefs(p => ({ ...p, [triggerKey]: value }));
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/notification-preferences`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        body: JSON.stringify({ trigger_key: triggerKey, email_enabled: value }),
+      });
+      if (!r.ok) throw new Error('not ok');
+      setFlashKey(triggerKey);
+      setFlashStatus('saved');
+    } catch {
+      setPrefs(p => ({ ...p, [triggerKey]: prev })); // revert
+      setFlashKey(triggerKey);
+      setFlashStatus('error');
+    }
+    flashTimer.current = setTimeout(() => { setFlashKey(null); setFlashStatus(''); }, 1500);
+  }
 
   useEffect(() => {
     (async () => {
@@ -217,11 +333,82 @@ export default function AdminSettingsNotifications() {
 
       {/* ── SECTION 2: Email Notifications ── */}
       <p style={{ ...sectionLabel, marginTop: 8 }}>Email Notifications</p>
-      <PlaceholderCard
-        icon="ph-envelope"
-        title="Email Notification Controls"
-        body="Configure which email notifications are sent to referrers and admins. Toggle individual notifications on or off."
-      />
+      <p style={{ margin: '0 0 20px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+        Control which email notifications are sent to you and your referrers.
+      </p>
+
+      {/* Referrer Notifications */}
+      <p style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans }}>Referrer Notifications</p>
+      {REFERRER_GROUPS.map((group, gi) => (
+        <div key={group.label} style={{ ...sectionCard, marginBottom: gi < REFERRER_GROUPS.length - 1 ? 12 : 20 }}>
+          <p style={{ margin: '0 0 14px', fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans }}>{group.label}</p>
+          {group.items.map((item, idx) => (
+            <div key={item.key}>
+              {idx > 0 && <div style={{ height: 1, background: AD.border, margin: '12px 0' }} />}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>{item.label}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.4 }}>{item.desc}</p>
+                </div>
+                <div style={{ position: 'relative', marginTop: 2 }}>
+                  <NotifToggle
+                    triggerKey={item.key}
+                    checked={prefs[item.key] !== false}
+                    onToggle={handlePrefToggle}
+                    flash={flashKey === item.key ? flashStatus : null}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {/* Admin Alerts */}
+      <p style={{ margin: '20px 0 12px', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans }}>Admin Alerts</p>
+      <div style={sectionCard}>
+        {ADMIN_ITEMS.map((item, idx) => (
+          <div key={item.key}>
+            {idx > 0 && <div style={{ height: 1, background: AD.border, margin: '12px 0' }} />}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>{item.label}</p>
+                <p style={{ margin: 0, fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.4 }}>{item.desc}</p>
+              </div>
+              <div style={{ position: 'relative', marginTop: 2 }}>
+                <NotifToggle
+                  triggerKey={item.key}
+                  checked={prefs[item.key] !== false}
+                  onToggle={handlePrefToggle}
+                  flash={flashKey === item.key ? flashStatus : null}
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Always Active */}
+      <p style={{ margin: '20px 0 12px', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans }}>Always Active</p>
+      <div style={{ ...sectionCard, background: AD.bgCardTint, borderColor: AD.borderStrong }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+          <i className="ph ph-info" style={{ fontSize: 18, color: AD.blueText, flexShrink: 0, marginTop: 1 }} />
+          <div>
+            <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>Always Active</p>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+              The following notifications are system-level and cannot be turned off. They exist to protect your account and program integrity.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {ALWAYS_ACTIVE.map(label => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <i className="ph ph-lock-simple" style={{ fontSize: 13, color: AD.textTertiary, flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div style={{ marginBottom: 32 }} />
 

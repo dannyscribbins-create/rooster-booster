@@ -16,6 +16,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { resendShouldRetry, jobberShouldRetry } = require('../../utils/retryHelpers');
 const { discoverJobberFields } = require('../../crm/jobber');
+const { isEmailSuppressed } = require('../../utils/emailSuppression');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -32,6 +33,7 @@ router.use(require('./contacts'));
 router.use(require('./cashouts'));
 router.use(require('./referrers'));
 router.use(require('./metrics'));
+router.use(require('./notifications'));
 
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 router.post('/api/admin/login', adminLoginLimiter, [
@@ -1318,6 +1320,7 @@ router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
 
     if (referrer?.email) {
       try {
+        const suppressed12 = await isEmailSuppressed(contractorId, referrer.email, 'missing_referral_resolved');
         let senderName = 'RoofMiles';
         try {
           const settingsRes = await pool.query(
@@ -1329,7 +1332,7 @@ router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
         } catch (settingsErr) {
           await logError({ req, error: settingsErr });
         }
-        await retryWithBackoff(
+        if (!suppressed12) await retryWithBackoff(
           () => resend.emails.send({
             from: `${senderName} <noreply@roofmiles.com>`,
             to: referrer.email,
