@@ -8,6 +8,12 @@ const router = express.Router();
 const { Webhook } = require('svix');
 const { pool } = require('../db');
 const { logError } = require('../middleware/errorLogger');
+const { sendAdminNotification } = require('../utils/notificationEmail');
+
+function escapeHtml(s) {
+  if (!s || typeof s !== 'string') return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 // POST /resend
 // Handles all Resend webhook events for campaign email tracking.
@@ -174,6 +180,47 @@ router.post('/resend', async (req, res) => {
       await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.complained opt-out upsert' });
     }
 
+    // ── #27 COMPLAINT RATE WARNING (one-time per campaign) ────────────────────────
+    try {
+      const alertCheckResult = await pool.query(
+        `SELECT complained_alert_sent, name FROM campaigns WHERE id=$1`,
+        [campaign_id]
+      );
+      const alertCampaign = alertCheckResult.rows[0];
+      if (alertCampaign && !alertCampaign.complained_alert_sent) {
+        const rateResult = await pool.query(
+          `SELECT COUNT(*) AS total, SUM(CASE WHEN complained = true THEN 1 ELSE 0 END) AS complained_count
+           FROM campaign_contacts WHERE campaign_id=$1`,
+          [campaign_id]
+        );
+        const rr = rateResult.rows[0];
+        const total = parseInt(rr?.total || '0');
+        const complainedCount = parseInt(rr?.complained_count || '0');
+        if (total > 0 && (complainedCount / total) * 100 > 0.1) {
+          const rate = ((complainedCount / total) * 100).toFixed(2);
+          const campaignName = escapeHtml(alertCampaign.name || `Campaign #${campaign_id}`);
+          const adminUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+          await sendAdminNotification(
+            pool,
+            'general',
+            `Campaign complaint rate above safe threshold`,
+            `
+              <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                <h2 style="color:#012854;margin:0 0 12px;">Action recommended</h2>
+                <p style="color:#444;margin:0 0 24px;line-height:1.6;">Your campaign "${campaignName}" has a complaint rate of ${rate}%, which is above the 0.1% safe threshold. High complaint rates can affect email deliverability. Log in to review the campaign.</p>
+                <div style="text-align:center;margin-bottom:24px;">
+                  <a href="${adminUrl}?admin=true" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">Review Campaign</a>
+                </div>
+              </div>
+            `
+          );
+          await pool.query(`UPDATE campaigns SET complained_alert_sent=true WHERE id=$1`, [campaign_id]);
+        }
+      }
+    } catch (alertErr) {
+      await logError({ req, error: alertErr, source: 'POST /api/webhooks/resend — #27 complaint rate alert' });
+    }
+
     return res.status(200).json({ received: true });
   }
 
@@ -198,6 +245,47 @@ router.post('/resend', async (req, res) => {
       );
     } catch (err) {
       await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.bounced event insert' });
+    }
+
+    // ── #28 BOUNCE RATE SPIKE (one-time per campaign) ─────────────────────────────
+    try {
+      const alertCheckResult = await pool.query(
+        `SELECT bounced_alert_sent, name FROM campaigns WHERE id=$1`,
+        [campaign_id]
+      );
+      const alertCampaign = alertCheckResult.rows[0];
+      if (alertCampaign && !alertCampaign.bounced_alert_sent) {
+        const rateResult = await pool.query(
+          `SELECT COUNT(*) AS total, SUM(CASE WHEN bounced = true THEN 1 ELSE 0 END) AS bounced_count
+           FROM campaign_contacts WHERE campaign_id=$1`,
+          [campaign_id]
+        );
+        const rr = rateResult.rows[0];
+        const total = parseInt(rr?.total || '0');
+        const bouncedCount = parseInt(rr?.bounced_count || '0');
+        if (total > 0 && (bouncedCount / total) * 100 > 5) {
+          const rate = ((bouncedCount / total) * 100).toFixed(2);
+          const campaignName = escapeHtml(alertCampaign.name || `Campaign #${campaign_id}`);
+          const adminUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+          await sendAdminNotification(
+            pool,
+            'general',
+            `High bounce rate detected on your campaign`,
+            `
+              <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                <h2 style="color:#012854;margin:0 0 12px;">List hygiene needed</h2>
+                <p style="color:#444;margin:0 0 24px;line-height:1.6;">Your campaign "${campaignName}" has a bounce rate of ${rate}%. A high bounce rate suggests your contact list may contain outdated or invalid email addresses. Log in to review.</p>
+                <div style="text-align:center;margin-bottom:24px;">
+                  <a href="${adminUrl}?admin=true" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">Review Campaign</a>
+                </div>
+              </div>
+            `
+          );
+          await pool.query(`UPDATE campaigns SET bounced_alert_sent=true WHERE id=$1`, [campaign_id]);
+        }
+      }
+    } catch (alertErr) {
+      await logError({ req, error: alertErr, source: 'POST /api/webhooks/resend — #28 bounce rate alert' });
     }
 
     return res.status(200).json({ received: true });

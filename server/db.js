@@ -620,6 +620,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE campaign_contacts ADD COLUMN IF NOT EXISTS complained BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE campaign_contacts ADD COLUMN IF NOT EXISTS bounced BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE campaign_contacts ADD COLUMN IF NOT EXISTS failed BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS complained_alert_sent BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS bounced_alert_sent BOOLEAN DEFAULT false`);
 
   // Drop and re-add event_type CHECK to expand allowed types
   await pool.query(`ALTER TABLE campaign_events DROP CONSTRAINT IF EXISTS campaign_events_event_type_check`);

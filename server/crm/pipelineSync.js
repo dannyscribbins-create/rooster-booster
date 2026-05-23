@@ -6,6 +6,7 @@ const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../utils/retryHelpers');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
+const { sendAdminNotification } = require('../utils/notificationEmail');
 
 function escapeHtml(s) {
   if (!s || typeof s !== 'string') return '';
@@ -131,7 +132,36 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
     console.error('[pipelineSync] app_user_ placeholder cleanup failed:', cleanupErr.message);
   }
 
-  // ── PIPELINE STAGE NOTIFICATION TRIGGERS (#1, #2, #3, #5, #33) ──────────────
+  // ── #25 NEW REFERRAL ADMIN ALERT (non-blocking) ──────────────────────────────
+  // Fires only on first insert of this client — new pipeline_cache row.
+  if (!isPreStart && !oldPipelineStatus) {
+    (async () => {
+      try {
+        const safeClientNameA = escapeHtml(clientName);
+        const safeReferredByA = escapeHtml(referredBy);
+        const adminUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+        await sendAdminNotification(
+          pool,
+          'general',
+          `New referral detected — ${safeClientNameA} via ${safeReferredByA}`,
+          `
+            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+              <h2 style="color:#012854;margin:0 0 12px;">New referral in your pipeline</h2>
+              <p style="color:#444;margin:0 0 24px;line-height:1.6;">A new client, ${safeClientNameA}, was added to Jobber with ${safeReferredByA} listed as the referral source. The referral has been logged in RoofMiles.</p>
+              <div style="text-align:center;margin-bottom:24px;">
+                <a href="${adminUrl}?admin=true" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View in Admin</a>
+              </div>
+            </div>
+          `
+        );
+      } catch (e25) {
+        await logError({ req: null, error: e25 });
+        console.error('[pipelineSync] #25 new referral admin alert failed:', e25.message);
+      }
+    })();
+  }
+
+  // ── PIPELINE STAGE NOTIFICATION TRIGGERS (#1, #2, #3, #5, #6, #33) ──────────
   // Skipped for pre-start-date clients. Each trigger is individually caught so
   // a failure in one never blocks the sync or any other trigger.
   if (!isPreStart) {
@@ -140,7 +170,8 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
       (oldPipelineStatus === 'lead' && status === 'inspection') ||
       (status === 'sold' && oldPipelineStatus !== 'sold' && oldPipelineStatus !== null) ||
       (status === 'not_sold' && oldPipelineStatus !== 'not_sold' && oldPipelineStatus !== null) ||
-      (status === 'paid' && oldPipelineStatus !== 'paid')
+      (status === 'paid' && oldPipelineStatus !== 'paid') ||
+      (oldPipelineStatus === 'not_sold' && ['lead', 'inspection', 'sold'].includes(status))
     );
 
     if (shouldFireAny) {
@@ -271,6 +302,33 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
           } catch (e5) {
             await logError({ req: null, error: e5 });
             console.error('[pipelineSync] #5 not_sold email failed:', e5.message);
+          }
+        }
+
+        // ── #6 DORMANT REFERRAL REACTIVATED ──────────────────────────────────────
+        if (oldPipelineStatus === 'not_sold' && ['lead', 'inspection', 'sold'].includes(status) && referrerAccount?.email) {
+          try {
+            const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
+            await retryWithBackoff(
+              () => resend.emails.send({
+                from: `${fromName} <noreply@roofmiles.com>`,
+                to: referrerAccount.email,
+                subject: `${safeClientName} is back — your referral just moved forward`,
+                html: `
+                  <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                    <h2 style="color:#012854;margin:0 0 12px;">A referral you sent us a while back just reached out again.</h2>
+                    <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, remember ${safeClientName}? Things went quiet for a while, but they've re-engaged with ${companyName} and are moving forward again. Your referral credit is still attached — we'll keep you posted.</p>
+                    <div style="text-align:center;margin-bottom:24px;">
+                      <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View Your Pipeline</a>
+                    </div>
+                  </div>
+                `,
+              }),
+              { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+            );
+          } catch (e6) {
+            await logError({ req: null, error: e6 });
+            console.error('[pipelineSync] #6 reactivation email failed:', e6.message);
           }
         }
 

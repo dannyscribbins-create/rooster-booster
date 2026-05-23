@@ -985,6 +985,39 @@ router.post('/api/profile/photo', async (req, res) => {
     }
     const userId = session.userId;
     await pool.query('UPDATE users SET profile_photo=$1 WHERE id=$2', [photo, userId]);
+    // ── #14 PROFILE PHOTO UPLOADED (non-blocking) ─────────────────────────────
+    (async () => {
+      try {
+        const userRow = (await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId])).rows[0];
+        if (!userRow?.email) return;
+        const csResult = await pool.query(
+          `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id='accent-roofing' LIMIT 1`
+        );
+        const cs = csResult.rows[0] || {};
+        const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
+        const firstName = escapeHtml((userRow.full_name || '').split(' ')[0] || userRow.full_name);
+        const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+        await retryWithBackoff(
+          () => resend.emails.send({
+            from: `${fromName} <noreply@roofmiles.com>`,
+            to: userRow.email,
+            subject: `Looking good — your profile is complete`,
+            html: `
+              <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                <h2 style="color:#012854;margin:0 0 12px;">Profile photo saved</h2>
+                <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, your profile photo has been saved and is now showing on your profile and the leaderboard. Thanks for making it personal.</p>
+                <div style="text-align:center;margin-bottom:24px;">
+                  <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View Your Profile</a>
+                </div>
+              </div>
+            `,
+          }),
+          { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+        );
+      } catch (e14) {
+        await logError({ req, error: e14 });
+      }
+    })();
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });

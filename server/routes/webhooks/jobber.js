@@ -521,6 +521,13 @@ router.post('/jobber/invoice-paid', async (req, res) => {
           const result = await evaluateReferral(contractorId, invoiceWithJobs, referredBy);
 
           if (result.qualified) {
+            // Count prior conversions before insert — needed for #13 first-milestone detection
+            const priorCountResult = await pool.query(
+              `SELECT COUNT(*) AS cnt FROM referral_conversions WHERE user_id=$1`,
+              [result.referrerId]
+            );
+            const isFirstConversion = parseInt(priorCountResult.rows[0]?.cnt || '0') === 0;
+
             // Write conversion record — UNIQUE constraint is the DB-level safety net
             // RETURNING id lets us detect whether a new row was inserted vs duplicate skipped
             const conversionInsert = await pool.query(
@@ -595,6 +602,47 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                 }
               } catch (bonusEmailErr) {
                 await logError({ req, error: bonusEmailErr, source: 'POST /webhooks/jobber/invoice-paid — #4 bonus email' });
+              }
+            }
+
+            // ── #13 FIRST REWARD MILESTONE ──────────────────────────────────────────
+            // Fires alongside #4 only on the referrer's very first conversion ever.
+            if (conversionInsert.rowCount > 0 && isFirstConversion) {
+              try {
+                const referrerLookup13 = await pool.query(
+                  'SELECT full_name, email FROM users WHERE id=$1',
+                  [result.referrerId]
+                );
+                const referrerRow13 = referrerLookup13.rows[0];
+                if (referrerRow13?.email) {
+                  const csLookup13 = await pool.query(
+                    `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id=$1 LIMIT 1`,
+                    [contractorId]
+                  );
+                  const cs13 = csLookup13.rows[0] || {};
+                  const fromName13 = escapeHtml(cs13.email_sender_name || cs13.company_name || 'RoofMiles');
+                  const frontendUrl13 = process.env.FRONTEND_URL || 'https://roofmiles.com';
+                  const firstName13 = escapeHtml((referrerRow13.full_name || '').split(' ')[0] || referrerRow13.full_name);
+                  await retryWithBackoff(
+                    () => resend.emails.send({
+                      from: `${fromName13} <noreply@roofmiles.com>`,
+                      to: referrerRow13.email,
+                      subject: `You just earned your first reward`,
+                      html: `
+                        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                          <h2 style="color:#012854;margin:0 0 12px;">First one in the books</h2>
+                          <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName13}, your first referral reward just posted to your balance. This is just the beginning — every referral you send is another opportunity to earn. Cash out anytime.</p>
+                          <div style="text-align:center;margin-bottom:24px;">
+                            <a href="${frontendUrl13}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">Cash Out Now</a>
+                          </div>
+                        </div>
+                      `,
+                    }),
+                    { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+                  );
+                }
+              } catch (milestone13Err) {
+                await logError({ req, error: milestone13Err, source: 'POST /webhooks/jobber/invoice-paid — #13 first milestone' });
               }
             }
           } else {
