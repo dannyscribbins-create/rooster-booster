@@ -89,9 +89,12 @@ async function sendErrorAlert(errorRow) {
 
   const explanation = explainError(errorRow.error_message, errorRow.route, errorRow.severity)
 
-  const subject = `[RoofMiles] ${errorRow.source === 'frontend' ? '[Frontend]' : '[Backend]'} ${errorRow.severity} Error — ${errorRow.route} — ${
+  const originalSubject = `[RoofMiles] ${errorRow.source === 'frontend' ? '[Frontend]' : '[Backend]'} ${errorRow.severity} Error — ${errorRow.route} — ${
     (errorRow.error_message || '').slice(0, 80)
   }`;
+  const subject = process.env.NODE_ENV !== 'production'
+    ? `[STAGING] ${originalSubject}`
+    : originalSubject;
 
   const body = [
     `What this means:`,
