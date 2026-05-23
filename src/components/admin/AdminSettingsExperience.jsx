@@ -50,7 +50,7 @@ export default function AdminSettingsExperience() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
+        const r = await fetch(`${BACKEND_URL}/api/admin/retention-settings`, {
           headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
         });
         if (!r.ok) return;
@@ -90,7 +90,7 @@ export default function AdminSettingsExperience() {
     setEfSaving(true); setEfSaveStatus('');
     try {
       const payload = { ...(engagementPayload || {}), experience_flow_enabled: experienceFlowEnabled };
-      const r = await fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
+      const r = await fetch(`${BACKEND_URL}/api/admin/retention-settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
         body: JSON.stringify(payload),

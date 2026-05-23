@@ -210,8 +210,8 @@ router.get('/api/admin/leaderboard', async (req, res) => {
   }
 });
 
-// ── ADMIN: ENGAGEMENT SETTINGS ────────────────────────────────────────────────
-router.get('/api/admin/engagement-settings', async (req, res) => {
+// ── ADMIN: RETENTION SETTINGS ─────────────────────────────────────────────────
+router.get('/api/admin/retention-settings', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query(
@@ -251,7 +251,7 @@ router.get('/api/admin/engagement-settings', async (req, res) => {
   }
 });
 
-router.post('/api/admin/engagement-settings', async (req, res) => {
+router.post('/api/admin/retention-settings', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const {
     leaderboard_enabled, quarterly_prizes, yearly_prizes,

@@ -217,7 +217,7 @@ export default function AdminEngagement({ setLoggedIn }) {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
+        const r = await fetch(`${BACKEND_URL}/api/admin/retention-settings`, {
           headers: { 'Authorization': `Bearer ${adminToken()}` },
         });
         if (r.status === 401) { on401(); return; }
@@ -273,7 +273,7 @@ export default function AdminEngagement({ setLoggedIn }) {
   async function handleSave() {
     setSaving(true); setSaveStatus('');
     try {
-      const r = await fetch(`${BACKEND_URL}/api/admin/engagement-settings`, {
+      const r = await fetch(`${BACKEND_URL}/api/admin/retention-settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
         body: JSON.stringify({
