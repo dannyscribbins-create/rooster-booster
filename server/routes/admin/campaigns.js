@@ -1681,7 +1681,7 @@ router.get('/api/admin/campaigns/:id/metrics', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const campaignId = parseInt(req.params.id, 10);
   try {
-    const [byBatchResult, totalsResult] = await Promise.all([
+    const [byBatchResult, totalsResult, contactTotalsResult] = await Promise.all([
       pool.query(
         `SELECT batch_number, event_type, COUNT(*) AS count
          FROM campaign_events
@@ -1697,8 +1697,40 @@ router.get('/api/admin/campaigns/:id/metrics', async (req, res) => {
          GROUP BY event_type`,
         [campaignId]
       ),
+      pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE delivered = true)  AS total_delivered,
+           COUNT(*) FILTER (WHERE failed = true)     AS total_failed,
+           COUNT(*) FILTER (WHERE complained = true) AS total_complained,
+           COUNT(*) FILTER (WHERE bounced = true)    AS total_bounced,
+           COUNT(*) FILTER (WHERE opened = true)     AS total_opened,
+           COUNT(*) FILTER (WHERE clicked = true)    AS total_clicked,
+           COUNT(*)                                  AS sent_count
+         FROM campaign_contacts
+         WHERE campaign_id = $1`,
+        [campaignId]
+      ),
     ]);
-    res.json({ byBatch: byBatchResult.rows, totals: totalsResult.rows });
+
+    const ct = contactTotalsResult.rows[0];
+    const totalDelivered  = parseInt(ct.total_delivered, 10);
+    const totalFailed     = parseInt(ct.total_failed, 10);
+    const totalComplained = parseInt(ct.total_complained, 10);
+    const totalBounced    = parseInt(ct.total_bounced, 10);
+
+    const contactTotals = {
+      total_delivered:   totalDelivered,
+      total_failed:      totalFailed,
+      total_complained:  totalComplained,
+      total_bounced:     totalBounced,
+      total_opened:      parseInt(ct.total_opened, 10),
+      total_clicked:     parseInt(ct.total_clicked, 10),
+      sent_count:        parseInt(ct.sent_count, 10),
+      complaint_rate:    totalDelivered > 0 ? totalComplained / totalDelivered : 0,
+      bounce_rate:       totalDelivered > 0 ? totalBounced    / totalDelivered : 0,
+    };
+
+    res.json({ byBatch: byBatchResult.rows, totals: totalsResult.rows, contactTotals });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/metrics' });
     res.status(500).json({ error: 'Internal server error' });
