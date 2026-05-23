@@ -236,6 +236,22 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
     );
     const newUserId = userResult.rows[0].id;
 
+    // Sync new referrer into contacts table
+    try {
+      await pool.query(`
+        INSERT INTO contacts (id, contractor_id, email, name, phone, is_app_user, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, true, NOW(), NOW())
+        ON CONFLICT (contractor_id, email) DO UPDATE SET
+          is_app_user = true,
+          name = COALESCE(EXCLUDED.name, contacts.name),
+          phone = COALESCE(EXCLUDED.phone, contacts.phone),
+          updated_at = NOW()
+      `, [link.contractor_id, email, full_name, phone || null]);
+    } catch (syncErr) {
+      logError({ req, error: syncErr, source: 'POST /api/signup — contacts sync' });
+      // Non-blocking — signup succeeds even if contacts sync fails
+    }
+
     // Generate 6-digit verification code
     const code = String(crypto.randomInt(100000, 1000000));
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour

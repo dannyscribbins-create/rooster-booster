@@ -495,29 +495,26 @@ async function executeBatchSend(campaignId, req) {
     sendItems.push({ contact, token: trackingToken, personalizedMessage: personalizedMessages[idx], unsubscribeUrl });
   }
 
-  async function upsertContactRecord(email, name, status, jobberClientId) {
+  async function upsertContactRecord(email, name, status, jobberClientId, phone) {
     try {
-      const upsertRes = await pool.query(
-        `INSERT INTO contacts (contractor_id, email, name)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (contractor_id, email) DO UPDATE SET
-           updated_at = NOW(),
-           name = COALESCE(EXCLUDED.name, contacts.name)
-         RETURNING id`,
-        [contractorId, email, name || null]
-      );
-      const contactId = upsertRes.rows[0].id;
-
       const appUserRes = await pool.query(
-        `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+        `SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
         [email]
       );
-      if (appUserRes.rows.length > 0) {
-        await pool.query(
-          `UPDATE contacts SET is_app_user = true WHERE id = $1`,
-          [contactId]
-        );
-      }
+      const isAppUser = appUserRes.rows.length > 0;
+
+      const upsertRes = await pool.query(
+        `INSERT INTO contacts (contractor_id, email, name, phone, is_app_user)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (contractor_id, email) DO UPDATE SET
+           updated_at = NOW(),
+           name = COALESCE(EXCLUDED.name, contacts.name),
+           phone = COALESCE(EXCLUDED.phone, contacts.phone),
+           is_app_user = CASE WHEN contacts.is_app_user = true THEN true ELSE EXCLUDED.is_app_user END
+         RETURNING id`,
+        [contractorId, email, name || null, phone || null, isAppUser]
+      );
+      const contactId = upsertRes.rows[0].id;
 
       // Non-fatal: jobber_client_id is enrichment only — never block the email send.
       if (jobberClientId) {
@@ -551,7 +548,7 @@ async function executeBatchSend(campaignId, req) {
        VALUES ($1, $2, $3, $4, $5, $6, 'suppressed', NOW())`,
       [campaignId, batchNumber, c.id, c.client_name, c.email || null, c.phone || null]
     );
-    await upsertContactRecord(c.email, c.client_name, 'suppressed', c.client_jobber_id || null);
+    await upsertContactRecord(c.email, c.client_name, 'suppressed', c.client_jobber_id || null, c.phone || null);
   }
 
   const sendResults = [];
@@ -580,7 +577,7 @@ async function executeBatchSend(campaignId, req) {
        status, result.errorCode || null, result.errorMessage || null]
     );
     if (result.success) successfulIds.push(result.contact.id);
-    await upsertContactRecord(result.contact.email, result.contact.client_name, result.success ? 'sent' : 'failed', result.contact.client_jobber_id || null);
+    await upsertContactRecord(result.contact.email, result.contact.client_name, result.success ? 'sent' : 'failed', result.contact.client_jobber_id || null, result.contact.phone || null);
   }
 
   if (successfulIds.length > 0) {

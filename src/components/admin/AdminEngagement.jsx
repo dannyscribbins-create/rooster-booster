@@ -322,7 +322,7 @@ export default function AdminEngagement({ setLoggedIn }) {
   if (loading) {
     return (
       <>
-        <AdminPageHeader title="Engagement" subtitle="Leaderboard and prize configuration" />
+        <AdminPageHeader title="Retention" subtitle="Leaderboard and retention tools" />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Skeleton height="120px" borderRadius="16px" />
           <Skeleton height="180px" borderRadius="16px" />
@@ -334,7 +334,7 @@ export default function AdminEngagement({ setLoggedIn }) {
   if (loadError) {
     return (
       <>
-        <AdminPageHeader title="Engagement" />
+        <AdminPageHeader title="Retention" />
         <p style={{ color: AD.red2Text, fontSize: 15 }}>{loadError}</p>
       </>
     );
@@ -345,7 +345,7 @@ export default function AdminEngagement({ setLoggedIn }) {
 
   return (
     <>
-      <AdminPageHeader title="Engagement" subtitle="Leaderboard and prize configuration" />
+      <AdminPageHeader title="Retention" subtitle="Leaderboard and retention tools" />
 
       {/* Warmup auto-disable banner */}
       {showBanner && (

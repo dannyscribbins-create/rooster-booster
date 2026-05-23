@@ -424,19 +424,9 @@ export default function AdminReferrers({ setLoggedIn }) {
         title="Referrers"
         subtitle="Your referral network — app users and contacts"
         action={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {/* Section toggle */}
-            <div style={{ display: 'flex', background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 8, padding: 3, gap: 2 }}>
-              {[{ id: 'all', label: 'All' }, { id: 'app-users', label: 'App Users' }, { id: 'contacts', label: 'Contacts Only' }].map(opt => (
-                <button key={opt.id} onClick={() => setSectionView(opt.id)} style={sectionPillStyle(sectionView === opt.id)}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <Btn onClick={() => setShowAdd(!showAdd)} variant="accent" size="md">
-              <i className={`ph ph-${showAdd ? 'x' : 'plus'}`} /> {showAdd ? 'Cancel' : 'Add Referrer'}
-            </Btn>
-          </div>
+          <Btn onClick={() => setShowAdd(!showAdd)} variant="accent" size="md">
+            <i className={`ph ph-${showAdd ? 'x' : 'plus'}`} /> {showAdd ? 'Cancel' : 'Add Referrer'}
+          </Btn>
         }
       />
 
@@ -455,6 +445,21 @@ export default function AdminReferrers({ setLoggedIn }) {
           {formSuccess  && <p style={{ color: AD.greenText, fontSize: 12, margin: '4px 0 0' }}>{formSuccess}</p>}
         </div>
       )}
+
+      {/* ── SEARCH + SECTION TOGGLE ROW ── */}
+      <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 99, padding: '8px 16px', flex: 1, maxWidth: 320, boxShadow: AD.shadowSm }}>
+          <i className="ph ph-magnifying-glass" style={{ color: AD.textTertiary, fontSize: 16 }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ border: 'none', background: 'transparent', fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary, outline: 'none', flex: 1 }} />
+        </div>
+        <div style={{ display: 'flex', background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 8, padding: 3, gap: 2, flexShrink: 0 }}>
+          {[{ id: 'all', label: 'All' }, { id: 'app-users', label: 'App Users' }, { id: 'contacts', label: 'Contacts Only' }].map(opt => (
+            <button key={opt.id} onClick={() => setSectionView(opt.id)} style={sectionPillStyle(sectionView === opt.id)}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* ── APP USERS SECTION ── */}
       {showAppUsers && (
@@ -543,11 +548,6 @@ export default function AdminReferrers({ setLoggedIn }) {
               <option value="90">Last 90 Days</option>
             </select>
           </div>
-          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 99, padding: '8px 16px', maxWidth: 320, boxShadow: AD.shadowSm }}>
-            <i className="ph ph-magnifying-glass" style={{ color: AD.textTertiary, fontSize: 16 }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ border: 'none', background: 'transparent', fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary, outline: 'none', flex: 1 }} />
-          </div>
-
           {/* App Users table */}
           <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: AD.fontSans, fontSize: 15 }}>

@@ -461,7 +461,7 @@ export default function AdminReferralReview({ initialTab = 'pending' }) {
 
   return (
     <>
-      <AdminPageHeader title="Referral Review" subtitle="Pending invites, missing referral reports, and flagged records" />
+      <AdminPageHeader title="Missing Referrals" subtitle="Pending invites, missing referral reports, and flagged records" />
 
       {/* Tab bar */}
       <div style={{

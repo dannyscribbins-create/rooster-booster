@@ -169,7 +169,46 @@ router.get('/api/admin/contacts/:contactId', async (req, res) => {
       subject:       h.subject || null,
     }));
 
-    // ── 3. Jobber profile ─────────────────────────────────────────────────────
+    // ── 3. Jobber client ID fallback ──────────────────────────────────────────
+    // If contacts row has no jobber_client_id, attempt two-step fallback:
+    // 1. Check users table (app users with Jobber match at signup)
+    // 2. Check pipeline_cache by client name (referred clients)
+    if (!contact.jobber_client_id) {
+      try {
+        const userRes = await pool.query(
+          `SELECT jobber_client_id FROM users
+           WHERE LOWER(email) = LOWER($1) AND jobber_client_id IS NOT NULL LIMIT 1`,
+          [contact.email]
+        );
+        if (userRes.rows.length > 0) {
+          contact.jobber_client_id = userRes.rows[0].jobber_client_id;
+        } else if (contact.name) {
+          const pcRes = await pool.query(
+            `SELECT jobber_client_id FROM pipeline_cache
+             WHERE contractor_id = $1
+               AND LOWER(client_name) = LOWER($2)
+               AND jobber_client_id IS NOT NULL
+             LIMIT 1`,
+            [contractorId, contact.name]
+          );
+          if (pcRes.rows.length > 0) {
+            contact.jobber_client_id = pcRes.rows[0].jobber_client_id;
+          }
+        }
+        if (contact.jobber_client_id) {
+          await pool.query(
+            `UPDATE contacts SET jobber_client_id = $1, updated_at = NOW()
+             WHERE id = $2 AND contractor_id = $3`,
+            [contact.jobber_client_id, contactId, contractorId]
+          );
+        }
+      } catch (fallbackErr) {
+        await logError({ req, error: fallbackErr, source: 'GET /api/admin/contacts/:contactId — jobber_client_id fallback' });
+        // Fallback failure must not break the drawer response
+      }
+    }
+
+    // ── 4. Jobber profile ─────────────────────────────────────────────────────
     let jobberProfile = null;
     if (contact.jobber_client_id) {
       const pipelineResult = await pool.query(
