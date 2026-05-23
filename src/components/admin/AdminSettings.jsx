@@ -6,16 +6,20 @@ import BrandingProfileSettings from './BrandingProfileSettings';
 import CRMSettings from './CRMSettings';
 import ReferralProgramSettings from './ReferralProgramSettings';
 import BankingSettings from './BankingSettings';
+import AdminSettingsNotifications from './AdminSettingsNotifications';
+import AdminSettingsExperience from './AdminSettingsExperience';
 
 const SETTINGS_NAV = [
-  { id: 'company',  icon: 'ph-buildings',    label: 'Company Details'  },
-  { id: 'branding', icon: 'ph-paint-brush',  label: 'Branding Profile' },
-  { id: 'banking',  icon: 'ph-bank',         label: 'Banking Settings' },
-  { id: 'accounts', icon: 'ph-receipt',      label: 'Account Keeping'  },
-  { id: 'team',     icon: 'ph-users-three',  label: 'Manage Team'      },
-  { id: 'crm',      icon: 'ph-plugs',        label: 'CRM'              },
-  { id: 'referral', icon: 'ph-users-three',  label: 'Referral Program' },
-  { id: 'system',   icon: 'ph-hard-drives',  label: 'System'           },
+  { id: 'company',       icon: 'ph-buildings',       label: 'Company Details'  },
+  { id: 'branding',      icon: 'ph-paint-brush',     label: 'Branding Profile' },
+  { id: 'notifications', icon: 'ph-bell',             label: 'Notifications'    },
+  { id: 'experience',    icon: 'ph-sliders',          label: 'Experience'       },
+  { id: 'referral',      icon: 'ph-users-three',      label: 'Referral Program' },
+  { id: 'banking',       icon: 'ph-bank',             label: 'Banking Settings' },
+  { id: 'accounts',      icon: 'ph-receipt',          label: 'Account Keeping'  },
+  { id: 'team',          icon: 'ph-users-three',      label: 'Manage Team'      },
+  { id: 'crm',           icon: 'ph-plugs',            label: 'CRM'              },
+  { id: 'advanced',      icon: 'ph-hard-drives',      label: 'Advanced'         },
 ];
 
 function ComingSoonCard({ icon, label, description }) {
@@ -38,21 +42,25 @@ function ComingSoonCard({ icon, label, description }) {
 }
 
 const SETTINGS_TITLES = {
-  company:  'Company Details',
-  branding: 'Branding Profile',
-  banking:  'Banking Settings',
-  accounts: 'Account Keeping',
-  team:     'Manage Team',
-  crm:      'CRM',
-  referral: 'Referral Program',
-  system:   'System',
+  company:       'Company Details',
+  branding:      'Branding Profile',
+  notifications: 'Notifications',
+  experience:    'Experience',
+  referral:      'Referral Program',
+  banking:       'Banking Settings',
+  accounts:      'Account Keeping',
+  team:          'Manage Team',
+  crm:           'CRM',
+  advanced:      'Advanced',
 };
 
 const SETTINGS_DESCRIPTIONS = {
-  company:  'Your company\'s core contact information and physical address.',
-  branding: 'Customize how your referral app looks and feels to referrers.',
-  referral: 'Define payout schedules, qualifying job types, and bonus tiers.',
-  system:   'Database maintenance and infrastructure tools.',
+  company:       'Your company\'s core contact information, physical address, and About Us profile.',
+  branding:      'Customize how your referral app looks and feels to referrers.',
+  notifications: 'Configure in-app, email, SMS, and push notifications for referrers and admins.',
+  experience:    'Control referrer-facing features and what the app offers to your network.',
+  referral:      'Define payout schedules, qualifying job types, and bonus tiers.',
+  advanced:      'Database maintenance and infrastructure tools.',
 };
 
 function SystemSettings() {
@@ -227,14 +235,16 @@ function SystemSettings() {
 }
 
 const SETTINGS_PAGES = {
-  company:  <CompanyDetailsSettings />,
-  branding: <BrandingProfileSettings />,
-  banking:  <BankingSettings />,
-  accounts: <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
-  team:     <ComingSoonCard icon="ph-users-three" label="Manage Team"      description="Add team members, manage recruitment links, and set permissions." />,
-  crm:      <CRMSettings />,
-  referral: <ReferralProgramSettings />,
-  system:   <SystemSettings />,
+  company:       <CompanyDetailsSettings />,
+  branding:      <BrandingProfileSettings />,
+  notifications: <AdminSettingsNotifications />,
+  experience:    <AdminSettingsExperience />,
+  referral:      <ReferralProgramSettings />,
+  banking:       <BankingSettings />,
+  accounts:      <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
+  team:          <ComingSoonCard icon="ph-users-three" label="Manage Team"      description="Add team members, manage recruitment links, and set permissions." />,
+  crm:           <CRMSettings />,
+  advanced:      <SystemSettings />,
 };
 
 export default function AdminSettings() {

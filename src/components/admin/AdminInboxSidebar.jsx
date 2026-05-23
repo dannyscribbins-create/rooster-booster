@@ -205,7 +205,7 @@ export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onN
   }
 
   function handleNavigateToReport() {
-    onNavigate('referralReview', { initialTab: 'missing' });
+    onNavigate('missing-referrals', { initialTab: 'missing' });
     onClose();
   }
 

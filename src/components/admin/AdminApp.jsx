@@ -7,8 +7,6 @@ import AdminDashboard from './AdminDashboard';
 import AdminReferrers from './AdminReferrers';
 import AdminCashOuts from './AdminCashOuts';
 import AdminActivity from './AdminActivityLog';
-import AdminAnnouncementSettings from './AdminAnnouncementSettings';
-import AdminAboutUs from './AdminAboutUs';
 import AdminEngagement from './AdminEngagement';
 import AdminReferralReview from './AdminReferralReview';
 import AdminCampaigns from './AdminCampaigns';
@@ -181,20 +179,18 @@ export default function AdminPanel() {
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
 
   const pages = {
-    dashboard:     <AdminDashboard          setLoggedIn={setAuthed} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} onFlaggedBannerClick={() => { setReferralReviewTab('flagged'); setPage('referralReview'); }} />,
-    campaigns:     <AdminCampaigns          setLoggedIn={setAuthed} />,
-    referrers:     <AdminReferrers          setLoggedIn={setAuthed} />,
-    cashouts:      <AdminCashOuts           setLoggedIn={setAuthed} />,
-    activity:      <AdminActivity           setLoggedIn={setAuthed} />,
-    announcements: <AdminAnnouncementSettings setLoggedIn={setAuthed} />,
-    engagement:    <AdminEngagement         setLoggedIn={setAuthed} />,
-    about:         <AdminAboutUs            setLoggedIn={setAuthed} />,
-    referralReview: <AdminReferralReview    initialTab={referralReviewTab} />,
+    dashboard:        <AdminDashboard       setLoggedIn={setAuthed} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} onFlaggedBannerClick={() => { setReferralReviewTab('flagged'); setPage('missing-referrals'); }} />,
+    campaigns:        <AdminCampaigns       setLoggedIn={setAuthed} />,
+    referrers:        <AdminReferrers       setLoggedIn={setAuthed} />,
+    payouts:          <AdminCashOuts        setLoggedIn={setAuthed} />,
+    retention:        <AdminEngagement      setLoggedIn={setAuthed} />,
+    'missing-referrals': <AdminReferralReview initialTab={referralReviewTab} />,
+    activity:         <AdminActivity        setLoggedIn={setAuthed} />,
   };
 
   function handleNavClick(id) {
     setShowSettings(false);
-    if (id === 'referralReview') setReferralReviewTab('pending');
+    if (id === 'missing-referrals') setReferralReviewTab('pending');
     setPage(id);
   }
 
@@ -208,7 +204,7 @@ export default function AdminPanel() {
         onClose={() => setInboxOpen(false)}
         onUnreadChange={(count) => setInboxUnreadCount(count)}
         onNavigate={(navPage, options) => {
-          if (navPage === 'referralReview' && options?.initialTab) {
+          if (navPage === 'missing-referrals' && options?.initialTab) {
             setReferralReviewTab(options.initialTab);
           }
           setShowSettings(false);

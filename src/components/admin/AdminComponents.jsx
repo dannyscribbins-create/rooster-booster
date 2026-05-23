@@ -4,15 +4,13 @@ import rbLogoIcon from '../../assets/images/rb logo 1024px transparent backgroun
 import AdminSettings from './AdminSettings';
 
 export const ADMIN_NAV = [
-  { id: 'dashboard',    icon: 'ph-squares-four',          label: 'Dashboard'          },
-  { id: 'campaigns',    icon: 'ph-megaphone-simple',      label: 'Campaigns'          },
-  { id: 'referrers',    icon: 'ph-users',                 label: 'Referrers'          },
-  { id: 'cashouts',     icon: 'ph-money',                 label: 'Cash Outs'          },
-  { id: 'activity',     icon: 'ph-clock-clockwise',       label: 'Activity'           },
-  { id: 'announcements', icon: 'ph-megaphone',            label: 'Announcements'      },
-  { id: 'engagement',   icon: 'ph-trophy',                label: 'Engagement'         },
-  { id: 'about',          icon: 'ph-identification-card',   label: 'About Us & Booking' },
-  { id: 'referralReview', icon: 'ph-git-branch',           label: 'Referral Review'    },
+  { id: 'dashboard',        icon: 'ph-squares-four',     label: 'Dashboard'        },
+  { id: 'campaigns',        icon: 'ph-megaphone-simple', label: 'Campaigns'        },
+  { id: 'referrers',        icon: 'ph-users',            label: 'Referrers'        },
+  { id: 'payouts',          icon: 'ph-money',            label: 'Payouts'          },
+  { id: 'retention',        icon: 'ph-trophy',           label: 'Retention'        },
+  { id: 'missing-referrals', icon: 'ph-git-branch',      label: 'Missing Referrals' },
+  { id: 'activity',         icon: 'ph-clock-clockwise',  label: 'Activity'         },
 ];
 
 export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount }) {
@@ -45,10 +43,10 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
               {active && <div style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: AD.blueLight, borderRadius: 99 }} />}
               <i className={`ph ${item.icon}`} style={{ fontSize: 16, opacity: 0.85, flexShrink: 0 }} />
               <span>{item.label}</span>
-              {item.id === 'cashouts' && pendingCount > 0 && (
+              {item.id === 'payouts' && pendingCount > 0 && (
                 <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{pendingCount}</span>
               )}
-              {item.id === 'referralReview' && (flaggedUnresolved + pendingReferralCount) > 0 && (
+              {item.id === 'missing-referrals' && (flaggedUnresolved + pendingReferralCount) > 0 && (
                 <span style={{ marginLeft: 'auto', background: AD.red, color: '#fff', fontSize: 12, fontWeight: 600, padding: '2px 7px', borderRadius: 99 }}>{flaggedUnresolved + pendingReferralCount}</span>
               )}
             </button>

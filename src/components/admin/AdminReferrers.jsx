@@ -5,10 +5,12 @@ import { STATUS_CONFIG } from '../../constants/theme';
 import { AdminPageHeader, StatCard, Badge, Btn, AdminInput } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
 import { safeAsync } from '../../utils/clientErrorReporter';
+import AdminContactsTab from './AdminContactsTab';
 
 export default function AdminReferrers({ setLoggedIn }) {
   const adminToken = () => sessionStorage.getItem('rb_admin_token');
   const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
+  const [sectionView, setSectionView] = useState('all'); // 'all' | 'app-users' | 'contacts'
   const [users, setUsers]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [search, setSearch]         = useState('');
@@ -402,14 +404,43 @@ export default function AdminReferrers({ setLoggedIn }) {
     );
   }
 
+  const contactHeaders = { Authorization: `Bearer ${adminToken()}` };
+
+  const sectionPillStyle = (active) => ({
+    padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
+    background: active ? AD.navy : 'transparent',
+    color: active ? '#fff' : AD.textSecondary,
+    fontSize: 12, fontFamily: AD.fontSans, fontWeight: active ? 600 : 400,
+    transition: 'background 0.12s, color 0.12s',
+    outline: `1px solid ${active ? AD.navy : AD.border}`,
+  });
+
+  const showAppUsers = sectionView !== 'contacts';
+  const showContacts = sectionView !== 'app-users';
+
   return (
     <>
-      <div style={{ position: 'absolute', top: 64, right: 40, zIndex: 100 }}>
-        <Btn onClick={() => setShowAdd(!showAdd)} variant="accent" size="md">
-          <i className={`ph ph-${showAdd ? 'x' : 'plus'}`} /> {showAdd ? 'Cancel' : 'Add Referrer'}
-        </Btn>
-      </div>
-      <AdminPageHeader title="Referrers" subtitle={`${users.length} account${users.length !== 1 ? 's' : ''} enrolled`} />
+      <AdminPageHeader
+        title="Referrers"
+        subtitle="Your referral network — app users and contacts"
+        action={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* Section toggle */}
+            <div style={{ display: 'flex', background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 8, padding: 3, gap: 2 }}>
+              {[{ id: 'all', label: 'All' }, { id: 'app-users', label: 'App Users' }, { id: 'contacts', label: 'Contacts Only' }].map(opt => (
+                <button key={opt.id} onClick={() => setSectionView(opt.id)} style={sectionPillStyle(sectionView === opt.id)}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <Btn onClick={() => setShowAdd(!showAdd)} variant="accent" size="md">
+              <i className={`ph ph-${showAdd ? 'x' : 'plus'}`} /> {showAdd ? 'Cancel' : 'Add Referrer'}
+            </Btn>
+          </div>
+        }
+      />
+
+      {/* Add Referrer form (only relevant to App Users section) */}
       {showAdd && (
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px 24px', marginBottom: 20, boxShadow: AD.shadowSm }}>
           <p style={{ margin: '0 0 16px', fontSize: 12, color: AD.blueText, fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}>New Referrer Account</p>
@@ -424,231 +455,177 @@ export default function AdminReferrers({ setLoggedIn }) {
           {formSuccess  && <p style={{ color: AD.greenText, fontSize: 12, margin: '4px 0 0' }}>{formSuccess}</p>}
         </div>
       )}
-        {/* ── Invite Links ── */}
-        <div style={{ marginBottom: 28 }}>
-          <button
-            onClick={toggleInviteLinks}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              background: inviteLinksOpen ? AD.bgCard : AD.bgCardTint,
-              border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd,
-              padding: '12px 18px', cursor: 'pointer', width: '100%',
-              fontFamily: AD.fontSans, fontSize: 15, fontWeight: 500,
-              color: AD.textPrimary,
-            }}
-          >
-            <i className="ph ph-link" style={{ fontSize: 18, opacity: 0.7 }} />
-            <span>Invite Links</span>
-            <i className={`ph ph-caret-${inviteLinksOpen ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 14, opacity: 0.5 }} />
-          </button>
 
-          {inviteLinksOpen && (
-            <div style={{
-              background: AD.bgCard, border: `1px solid ${AD.border}`,
-              borderTop: 'none', borderRadius: `0 0 ${AD.radiusMd} ${AD.radiusMd}`,
-              padding: '20px', display: 'flex', flexDirection: 'column', gap: 16,
-            }}>
-              {/* Generate button + new link display */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <button
-                  onClick={generateLink}
-                  disabled={generatingLink}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    background: AD.navy, color: '#fff', border: 'none',
-                    borderRadius: AD.radiusSm, padding: '10px 18px',
-                    fontFamily: AD.fontSans, fontSize: 14, fontWeight: 500,
-                    cursor: generatingLink ? 'default' : 'pointer',
-                    opacity: generatingLink ? 0.7 : 1,
-                  }}
-                >
-                  <i className="ph ph-plus" style={{ fontSize: 14 }} />
-                  {generatingLink ? 'Generating…' : 'Generate Invite Link'}
-                </button>
-                {newLinkUrl && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                    <span style={{
-                      fontFamily: AD.fontSans, fontSize: 13, color: AD.textSecondary,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                    }}>
-                      {newLinkUrl}
-                    </span>
-                    <button
-                      onClick={() => copyInviteLink(newLinkUrl, 'new')}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 0, flexShrink: 0 }}
-                      aria-label="Copy new link"
-                    >
-                      <i className="ph ph-copy" style={{ fontSize: 16, color: inviteLinkCopied === 'new' ? AD.green : AD.textSecondary }} />
-                    </button>
-                    {inviteLinkCopied === 'new' && (
-                      <span style={{ fontSize: 12, color: AD.greenText, flexShrink: 0 }}>Copied!</span>
-                    )}
+      {/* ── APP USERS SECTION ── */}
+      {showAppUsers && (
+        <>
+          <p style={{ margin: '0 0 16px', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: AD.textTertiary }}>
+            App Users
+          </p>
+
+          {/* Invite Links */}
+          <div style={{ marginBottom: 28 }}>
+            <button
+              onClick={toggleInviteLinks}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: inviteLinksOpen ? AD.bgCard : AD.bgCardTint,
+                border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd,
+                padding: '12px 18px', cursor: 'pointer', width: '100%',
+                fontFamily: AD.fontSans, fontSize: 15, fontWeight: 500,
+                color: AD.textPrimary,
+              }}
+            >
+              <i className="ph ph-link" style={{ fontSize: 18, opacity: 0.7 }} />
+              <span>Invite Links</span>
+              <i className={`ph ph-caret-${inviteLinksOpen ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 14, opacity: 0.5 }} />
+            </button>
+
+            {inviteLinksOpen && (
+              <div style={{
+                background: AD.bgCard, border: `1px solid ${AD.border}`,
+                borderTop: 'none', borderRadius: `0 0 ${AD.radiusMd} ${AD.radiusMd}`,
+                padding: '20px', display: 'flex', flexDirection: 'column', gap: 16,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <button onClick={generateLink} disabled={generatingLink} style={{ display: 'flex', alignItems: 'center', gap: 6, background: AD.navy, color: '#fff', border: 'none', borderRadius: AD.radiusSm, padding: '10px 18px', fontFamily: AD.fontSans, fontSize: 14, fontWeight: 500, cursor: generatingLink ? 'default' : 'pointer', opacity: generatingLink ? 0.7 : 1 }}>
+                    <i className="ph ph-plus" style={{ fontSize: 14 }} />
+                    {generatingLink ? 'Generating…' : 'Generate Invite Link'}
+                  </button>
+                  {newLinkUrl && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                      <span style={{ fontFamily: AD.fontSans, fontSize: 13, color: AD.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{newLinkUrl}</span>
+                      <button onClick={() => copyInviteLink(newLinkUrl, 'new')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 0, flexShrink: 0 }} aria-label="Copy new link">
+                        <i className="ph ph-copy" style={{ fontSize: 16, color: inviteLinkCopied === 'new' ? AD.green : AD.textSecondary }} />
+                      </button>
+                      {inviteLinkCopied === 'new' && <span style={{ fontSize: 12, color: AD.greenText, flexShrink: 0 }}>Copied!</span>}
+                    </div>
+                  )}
+                </div>
+                {inviteLinks.length > 0 && (
+                  <div>
+                    <p style={{ fontFamily: AD.fontSans, fontSize: 12, color: AD.textTertiary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Active Links</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {inviteLinks.map(link => (
+                        <div key={link.slug} style={{ display: 'flex', alignItems: 'center', gap: 10, background: AD.bgCardTint, borderRadius: AD.radiusSm, padding: '10px 14px' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link.fullUrl}</p>
+                            <p style={{ fontFamily: AD.fontSans, fontSize: 11, color: AD.textTertiary, margin: 0 }}>Created {new Date(link.created_at).toLocaleDateString()} · {link.link_type}</p>
+                          </div>
+                          <button onClick={() => copyInviteLink(link.fullUrl, link.slug)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 0, flexShrink: 0 }} aria-label="Copy link">
+                            <i className="ph ph-copy" style={{ fontSize: 16, color: inviteLinkCopied === link.slug ? AD.green : AD.textSecondary }} />
+                          </button>
+                          {inviteLinkCopied === link.slug && <span style={{ fontSize: 12, color: AD.greenText, flexShrink: 0 }}>Copied!</span>}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
+                {inviteLinks.length === 0 && !generatingLink && (
+                  <p style={{ fontFamily: AD.fontSans, fontSize: 14, color: AD.textTertiary, margin: 0 }}>No invite links yet. Generate one above.</p>
+                )}
               </div>
+            )}
+          </div>
 
-              {/* Active links list */}
-              {inviteLinks.length > 0 && (
-                <div>
-                  <p style={{ fontFamily: AD.fontSans, fontSize: 12, color: AD.textTertiary, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                    Active Links
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {inviteLinks.map(link => (
-                      <div
-                        key={link.slug}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 10,
-                          background: AD.bgCardTint, borderRadius: AD.radiusSm,
-                          padding: '10px 14px',
-                        }}
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{
-                            fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary,
-                            margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {link.fullUrl}
-                          </p>
-                          <p style={{ fontFamily: AD.fontSans, fontSize: 11, color: AD.textTertiary, margin: 0 }}>
-                            Created {new Date(link.created_at).toLocaleDateString()} · {link.link_type}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => copyInviteLink(link.fullUrl, link.slug)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 0, flexShrink: 0 }}
-                          aria-label="Copy link"
-                        >
-                          <i className="ph ph-copy" style={{ fontSize: 16, color: inviteLinkCopied === link.slug ? AD.green : AD.textSecondary }} />
-                        </button>
-                        {inviteLinkCopied === link.slug && (
-                          <span style={{ fontSize: 12, color: AD.greenText, flexShrink: 0 }}>Copied!</span>
-                        )}
-                      </div>
+          {/* Filter controls */}
+          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <select value={joinMethod} onChange={e => { setJoinMethod(e.target.value); loadUsers(e.target.value, dateRange); }} style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14, padding: '8px 12px', cursor: 'pointer', outline: 'none' }}>
+              <option value="">All Join Methods</option>
+              <option value="contractor_link">Contractor Link</option>
+              <option value="peer_link">Peer Referral</option>
+              <option value="admin">Admin Added</option>
+            </select>
+            <select value={dateRange} onChange={e => { setDateRange(e.target.value); loadUsers(joinMethod, e.target.value); }} style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14, padding: '8px 12px', cursor: 'pointer', outline: 'none' }}>
+              <option value="">All Time</option>
+              <option value="7">Last 7 Days</option>
+              <option value="30">Last 30 Days</option>
+              <option value="90">Last 90 Days</option>
+            </select>
+          </div>
+          <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 99, padding: '8px 16px', maxWidth: 320, boxShadow: AD.shadowSm }}>
+            <i className="ph ph-magnifying-glass" style={{ color: AD.textTertiary, fontSize: 16 }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ border: 'none', background: 'transparent', fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary, outline: 'none', flex: 1 }} />
+          </div>
+
+          {/* App Users table */}
+          <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: AD.fontSans, fontSize: 15 }}>
+              <thead>
+                <tr style={{ background: AD.bgCardTint, borderBottom: `1px solid ${AD.border}` }}>
+                  {['Referrer', 'Email', 'Added', 'How They Joined', 'Referred By', 'Funnel Status', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '11px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: AD.textSecondary, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <>
+                    {[0, 1, 2, 3, 4].map(i => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${AD.border}` }}>
+                        <td style={{ padding: '16px 24px' }}><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Skeleton width="30px" height="30px" borderRadius="50%" style={{ flexShrink: 0 }} /><Skeleton width="120px" height="14px" borderRadius="4px" /></div></td>
+                        <td style={{ padding: '16px 24px' }}><Skeleton width="160px" height="14px" borderRadius="4px" /></td>
+                        <td style={{ padding: '16px 24px' }}><Skeleton width="80px" height="14px" borderRadius="4px" /></td>
+                        <td style={{ padding: '16px 24px' }}><Skeleton width="60px" height="14px" borderRadius="4px" /></td>
+                        <td style={{ padding: '16px 24px' }}><Skeleton width="100px" height="14px" borderRadius="4px" /></td>
+                        <td style={{ padding: '16px 24px' }}><Skeleton width="90px" height="22px" borderRadius="20px" /></td>
+                        <td style={{ padding: '16px 24px' }}><Skeleton width="80px" height="28px" borderRadius="6px" /></td>
+                      </tr>
                     ))}
-                  </div>
-                </div>
-              )}
-
-              {inviteLinks.length === 0 && !generatingLink && (
-                <p style={{ fontFamily: AD.fontSans, fontSize: 14, color: AD.textTertiary, margin: 0 }}>
-                  No invite links yet. Generate one above.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-      {/* ── Filter controls ── */}
-      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <select
-          value={joinMethod}
-          onChange={e => { setJoinMethod(e.target.value); loadUsers(e.target.value, dateRange); }}
-          style={{
-            background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd,
-            color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14,
-            padding: '8px 12px', cursor: 'pointer', outline: 'none',
-          }}
-        >
-          <option value="">All Join Methods</option>
-          <option value="contractor_link">Contractor Link</option>
-          <option value="peer_link">Peer Referral</option>
-          <option value="admin">Admin Added</option>
-        </select>
-        <select
-          value={dateRange}
-          onChange={e => { setDateRange(e.target.value); loadUsers(joinMethod, e.target.value); }}
-          style={{
-            background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd,
-            color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14,
-            padding: '8px 12px', cursor: 'pointer', outline: 'none',
-          }}
-        >
-          <option value="">All Time</option>
-          <option value="7">Last 7 Days</option>
-          <option value="30">Last 30 Days</option>
-          <option value="90">Last 90 Days</option>
-        </select>
-      </div>
-      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 99, padding: '8px 16px', maxWidth: 320, boxShadow: AD.shadowSm }}>
-        <i className="ph ph-magnifying-glass" style={{ color: AD.textTertiary, fontSize: 16 }} />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." style={{ border: 'none', background: 'transparent', fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary, outline: 'none', flex: 1 }} />
-      </div>
-      <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: AD.fontSans, fontSize: 15 }}>
-          <thead>
-            <tr style={{ background: AD.bgCardTint, borderBottom: `1px solid ${AD.border}` }}>
-              {['Referrer', 'Email', 'Added', 'How They Joined', 'Referred By', 'Funnel Status', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '11px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: AD.textSecondary, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <>
-                {[0, 1, 2, 3, 4].map(i => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${AD.border}` }}>
+                  </>
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan={7} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
+                ) : filtered.map((u, i) => (
+                  <tr key={u.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${AD.border}` : 'none', transition: 'background 0.12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = AD.bgCardTint}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
                     <td style={{ padding: '16px 24px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Skeleton width="30px" height="30px" borderRadius="50%" style={{ flexShrink: 0 }} />
-                        <Skeleton width="120px" height="14px" borderRadius="4px" />
+                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                          {u.full_name.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        <span style={{ fontWeight: 500, color: AD.textPrimary }}>{u.full_name}</span>
                       </div>
                     </td>
-                    <td style={{ padding: '16px 24px' }}><Skeleton width="160px" height="14px" borderRadius="4px" /></td>
-                    <td style={{ padding: '16px 24px' }}><Skeleton width="80px" height="14px" borderRadius="4px" /></td>
-                    <td style={{ padding: '16px 24px' }}><Skeleton width="60px" height="14px" borderRadius="4px" /></td>
-                    <td style={{ padding: '16px 24px' }}><Skeleton width="100px" height="14px" borderRadius="4px" /></td>
-                    <td style={{ padding: '16px 24px' }}><Skeleton width="90px" height="22px" borderRadius="20px" /></td>
-                    <td style={{ padding: '16px 24px' }}><Skeleton width="80px" height="28px" borderRadius="6px" /></td>
+                    <td style={{ padding: '16px 24px', color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace", fontSize: 12.5 }}>{u.email}</td>
+                    <td style={{ padding: '16px 24px', color: AD.textSecondary, fontSize: 12.5 }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                    <td style={{ padding: '16px 24px' }}>
+                      {u.signup_source === 'contractor_link' && <span style={{ background: AD.navy, color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>Contractor Link</span>}
+                      {u.signup_source === 'peer_link' && <span style={{ background: '#2D6A4F', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>Peer Referral</span>}
+                      {(!u.signup_source || u.signup_source === 'admin') && <span style={{ background: '#4B5563', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>Admin Added</span>}
+                    </td>
+                    <td style={{ padding: '16px 24px', color: AD.textSecondary, fontSize: 13 }}>{u.invited_by_name ? u.invited_by_name.split(' ')[0] : ''}</td>
+                    <td style={{ padding: '16px 24px' }}><FunnelStatusPill status={u.lifecycle_status} /></td>
+                    <td style={{ padding: '16px 24px' }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <Btn onClick={() => openDetail(u)} variant="outline" size="sm"><i className="ph ph-eye" /> View</Btn>
+                        <Btn onClick={() => handleResetPin(u.id, u.full_name)} variant="outline" size="sm"><i className="ph ph-key" /> PIN</Btn>
+                        <Btn onClick={() => handleRemove(u.id, u.full_name)} variant="danger" size="sm"><i className="ph ph-trash" /></Btn>
+                      </div>
+                    </td>
                   </tr>
                 ))}
-              </>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: '20px', color: AD.textSecondary, fontSize: 15 }}>{search ? 'No results found.' : 'No referrers yet — add one above.'}</td></tr>
-            ) : filtered.map((u, i) => (
-              <tr key={u.id} style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${AD.border}` : 'none', transition: 'background 0.12s' }}
-                onMouseEnter={e => e.currentTarget.style.background = AD.bgCardTint}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                <td style={{ padding: '16px 24px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: AD.red, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
-                      {u.full_name.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <span style={{ fontWeight: 500, color: AD.textPrimary }}>{u.full_name}</span>
-                  </div>
-                </td>
-                <td style={{ padding: '16px 24px', color: AD.textSecondary, fontFamily: "'Roboto Mono', monospace", fontSize: 12.5 }}>{u.email}</td>
-                <td style={{ padding: '16px 24px', color: AD.textSecondary, fontSize: 12.5 }}>{new Date(u.created_at).toLocaleDateString()}</td>
-                <td style={{ padding: '16px 24px' }}>
-                  {u.signup_source === 'contractor_link' && (
-                    <span style={{ background: AD.navy, color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>Contractor Link</span>
-                  )}
-                  {u.signup_source === 'peer_link' && (
-                    <span style={{ background: '#2D6A4F', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>Peer Referral</span>
-                  )}
-                  {(!u.signup_source || u.signup_source === 'admin') && (
-                    <span style={{ background: '#4B5563', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>Admin Added</span>
-                  )}
-                </td>
-                <td style={{ padding: '16px 24px', color: AD.textSecondary, fontSize: 13 }}>
-                  {u.invited_by_name ? u.invited_by_name.split(' ')[0] : ''}
-                </td>
-                <td style={{ padding: '16px 24px' }}>
-                  <FunnelStatusPill status={u.lifecycle_status} />
-                </td>
-                <td style={{ padding: '16px 24px' }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Btn onClick={() => openDetail(u)} variant="outline" size="sm"><i className="ph ph-eye" /> View</Btn>
-                    <Btn onClick={() => handleResetPin(u.id, u.full_name)} variant="outline" size="sm"><i className="ph ph-key" /> PIN</Btn>
-                    <Btn onClick={() => handleRemove(u.id, u.full_name)} variant="danger" size="sm"><i className="ph ph-trash" /></Btn>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* ── Visual divider (only when both sections visible) ── */}
+      {showAppUsers && showContacts && (
+        <div style={{ borderTop: `1px solid ${AD.border}`, margin: '40px 0' }} />
+      )}
+
+      {/* ── CONTACTS SECTION ── */}
+      {showContacts && (
+        <>
+          <p style={{ margin: '0 0 16px', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: AD.textTertiary }}>
+            Contacts
+          </p>
+          <AdminContactsTab headers={contactHeaders} />
+        </>
+      )}
     </>
   );
 }

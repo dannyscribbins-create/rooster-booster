@@ -3200,7 +3200,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-          {[{ id: 'campaigns', label: 'Campaigns' }, { id: 'contacts', label: 'Contacts' }].map(tab => {
+          {[{ id: 'campaigns', label: 'Campaigns' }, { id: 'contacts', label: 'Campaign Contacts' }].map(tab => {
             const active = tab.id === campaignsTab;
             return (
               <button
