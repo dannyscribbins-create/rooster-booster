@@ -1707,7 +1707,7 @@ router.get('/api/admin/campaigns/:id/metrics', async (req, res) => {
            COUNT(*) FILTER (WHERE clicked = true)    AS total_clicked,
            COUNT(*)                                  AS sent_count
          FROM campaign_contacts
-         WHERE campaign_id = $1`,
+         WHERE campaign_id = $1 AND selected = true`,
         [campaignId]
       ),
     ]);

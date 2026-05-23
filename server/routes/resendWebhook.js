@@ -54,6 +54,9 @@ router.post('/resend', async (req, res) => {
 
   let tokenRow = null;
   try {
+    // MVP: looks up by contact_email — resolves to most recent campaign for this address.
+    // If a contact appears in multiple campaigns, older campaign events will be attributed
+    // to the newest campaign. Fix: store Resend email_id at send time and look up by that.
     const tokenResult = await pool.query(
       `SELECT token, campaign_id, batch_number, contractor_id
        FROM campaign_tracking_tokens
