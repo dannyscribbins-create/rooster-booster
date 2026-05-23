@@ -524,6 +524,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     opened BOOLEAN DEFAULT false,
     clicked BOOLEAN DEFAULT false,
     converted BOOLEAN DEFAULT false,
+    complained BOOLEAN DEFAULT false,
+    bounced BOOLEAN DEFAULT false,
+    failed BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`);
 
