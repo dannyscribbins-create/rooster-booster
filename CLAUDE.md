@@ -241,6 +241,7 @@ Hosted on Railway (backend) and Vercel (frontend). Environment variables require
 - `ADMIN_PASSWORD` — admin panel access (app crashes on startup if missing — intentional)
 - `RESEND_API_KEY` — email notifications via Resend
 - `RESEND_FROM_EMAIL` — sending address (`noreply@roofmiles.com`)
+- `RESEND_WEBHOOK_SECRET` — Svix signing secret for Resend webhook verification (copy from Resend dashboard → Webhooks → your endpoint's Signing Secret)
 - `FRONTEND_URL` — required for forgot PIN reset email links
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` — Twilio SMS (set in Railway; blocked until 10DLC registration is complete)
 - `APP_VERSION` — current version string, set to `1.0.0` in Railway
