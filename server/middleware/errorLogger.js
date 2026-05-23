@@ -1,6 +1,8 @@
 const { pool } = require('../db');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
+const { retryWithBackoff } = require('../utils/retryWithBackoff');
+const { resendShouldRetry } = require('../utils/retryHelpers');
 
 // ── SECTION A — SEVERITY CLASSIFICATION ──────────────────────────────────────
 function classifySeverity(route) {
@@ -107,12 +109,15 @@ async function sendErrorAlert(errorRow) {
     errorRow.stack_trace || '(none)',
   ].join('\n');
 
-  await resend.emails.send({
-    from: 'noreply@roofmiles.com',
-    to: 'admin1@roofmiles.com',
-    subject,
-    text: body,
-  });
+  await retryWithBackoff(
+    () => resend.emails.send({
+      from: 'noreply@roofmiles.com',
+      to: 'admin1@roofmiles.com',
+      subject,
+      text: body,
+    }),
+    { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+  );
 }
 
 // ── SECTION D — logError() ────────────────────────────────────────────────────

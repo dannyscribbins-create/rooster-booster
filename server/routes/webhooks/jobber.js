@@ -1,5 +1,14 @@
 // Jobber webhook handlers
 // HMAC verification uses process.env.JOBBER_CLIENT_SECRET — already present in Railway env vars, no new vars needed.
+function escapeHtml(s) {
+  if (!s || typeof s !== 'string') return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatDollars(n) {
+  return parseFloat(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
@@ -513,11 +522,13 @@ router.post('/jobber/invoice-paid', async (req, res) => {
 
           if (result.qualified) {
             // Write conversion record — UNIQUE constraint is the DB-level safety net
-            await pool.query(
+            // RETURNING id lets us detect whether a new row was inserted vs duplicate skipped
+            const conversionInsert = await pool.query(
               `INSERT INTO referral_conversions
                  (user_id, contractor_id, jobber_client_id, converted_at, bonus_amount)
                VALUES ($1, $2, $3, NOW(), $4)
-               ON CONFLICT (user_id, jobber_client_id) DO NOTHING`,
+               ON CONFLICT (user_id, jobber_client_id) DO NOTHING
+               RETURNING id`,
               [result.referrerId, contractorId, result.jobberClientId, result.bonusAmount]
             );
 
@@ -542,6 +553,50 @@ router.post('/jobber/invoice-paid', async (req, res) => {
               `[invoice-paid] Referral conversion recorded — user ${result.referrerId}, ` +
               `$${result.bonusAmount}, schedule: ${result.scheduleName}, client: ${clientName}`
             );
+
+            // ── #4 BONUS EARNED EMAIL ─────────────────────────────────────────────
+            // Only fires when a NEW conversion row was inserted (not on duplicates).
+            if (conversionInsert.rowCount > 0) {
+              try {
+                const referrerLookup = await pool.query(
+                  'SELECT full_name, email FROM users WHERE id=$1',
+                  [result.referrerId]
+                );
+                const referrerRow = referrerLookup.rows[0];
+                if (referrerRow?.email) {
+                  const csLookup = await pool.query(
+                    `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id=$1 LIMIT 1`,
+                    [contractorId]
+                  );
+                  const cs = csLookup.rows[0] || {};
+                  const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
+                  const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+                  const firstName = escapeHtml((referrerRow.full_name || '').split(' ')[0] || referrerRow.full_name);
+                  const safeClientName = escapeHtml(clientName);
+                  const formattedAmount = formatDollars(result.bonusAmount);
+
+                  await retryWithBackoff(
+                    () => resend.emails.send({
+                      from: `${fromName} <noreply@roofmiles.com>`,
+                      to: referrerRow.email,
+                      subject: `You just earned $${formattedAmount}`,
+                      html: `
+                        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                          <h2 style="color:#012854;margin:0 0 12px;">Your reward is ready</h2>
+                          <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, ${safeClientName}'s job is complete and your $${formattedAmount} reward has been added to your balance. Cash out anytime directly from the app.</p>
+                          <div style="text-align:center;margin-bottom:24px;">
+                            <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">Cash Out Now</a>
+                          </div>
+                        </div>
+                      `,
+                    }),
+                    { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+                  );
+                }
+              } catch (bonusEmailErr) {
+                await logError({ req, error: bonusEmailErr, source: 'POST /webhooks/jobber/invoice-paid — #4 bonus email' });
+              }
+            }
           } else {
             // Not qualified — log reason and exit cleanly. No action needed.
             console.log(

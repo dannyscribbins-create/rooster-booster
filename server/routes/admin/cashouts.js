@@ -3,6 +3,19 @@ const router = express.Router();
 const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
 const { logError } = require('../../middleware/errorLogger');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
+const { retryWithBackoff } = require('../../utils/retryWithBackoff');
+const { resendShouldRetry } = require('../../utils/retryHelpers');
+
+function escapeHtml(s) {
+  if (!s || typeof s !== 'string') return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatDollars(n) {
+  return parseFloat(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
 
 // ── ADMIN: CASH OUTS ──────────────────────────────────────────────────────────
 router.get('/api/admin/cashouts', async (req, res) => {
@@ -50,6 +63,66 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
     }
 
     await client.query('COMMIT');
+
+    // ── #8/#9 REFERRER CASHOUT STATUS EMAIL ────────────────────────────────────
+    // Non-blocking: failure must not affect the admin response.
+    if (cashout.email && (status === 'approved' || status === 'denied')) {
+      try {
+        const csResult = await pool.query(
+          `SELECT email_sender_name, company_name, company_email FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+        );
+        const cs = csResult.rows[0] || {};
+        const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
+        const companyName = escapeHtml(cs.company_name || 'your contractor');
+        const companyEmail = cs.company_email || '';
+        const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+        const firstName = escapeHtml((cashout.full_name || '').split(' ')[0] || cashout.full_name || 'there');
+        const formattedAmount = formatDollars(cashout.amount);
+
+        if (status === 'approved') {
+          // #8 — cashout approved
+          await retryWithBackoff(
+            () => resend.emails.send({
+              from: `${fromName} <noreply@roofmiles.com>`,
+              to: cashout.email,
+              subject: `Your $${formattedAmount} cashout is approved!`,
+              html: `
+                <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                  <h2 style="color:#012854;margin:0 0 12px;">Money is on the way!</h2>
+                  <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, your cashout request for $${formattedAmount} has been approved by ${companyName}. Payment is being processed and will arrive via the method you selected. We at ${companyName} truly appreciate you and even though we know it's not about the money, it's fun for us to show our gratitude.</p>
+                  <div style="text-align:center;margin-bottom:24px;">
+                    <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View Payout History</a>
+                  </div>
+                </div>
+              `,
+            }),
+            { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+          );
+        } else {
+          // #9 — cashout denied
+          await retryWithBackoff(
+            () => resend.emails.send({
+              from: `${fromName} <noreply@roofmiles.com>`,
+              to: cashout.email,
+              subject: `Update on your cashout request`,
+              html: `
+                <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                  <h2 style="color:#012854;margin:0 0 12px;">Your cashout wasn't approved this time</h2>
+                  <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, your cashout request for $${formattedAmount} was reviewed by ${companyName} and wasn't approved at this time. If you have questions, reach out to ${companyName} directly${companyEmail ? ` at ${escapeHtml(companyEmail)}` : ''}.</p>
+                  <div style="text-align:center;margin-bottom:24px;">
+                    <a href="${companyEmail ? 'mailto:' + companyEmail : frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">Contact ${companyName}</a>
+                  </div>
+                </div>
+              `,
+            }),
+            { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+          );
+        }
+      } catch (emailErr) {
+        await logError({ req, error: emailErr, source: 'PATCH /api/admin/cashouts/:id — referrer email' });
+      }
+    }
+
     res.json(cashout);
   } catch (err) {
     await client.query('ROLLBACK');

@@ -432,9 +432,15 @@ router.delete('/me', async (req, res) => {
 
     // Confirmation to user
     try {
+      const delCs = await pool.query(
+        `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+      );
+      const delSettings = delCs.rows[0] || {};
+      const delFromName = escapeHtml(delSettings.email_sender_name || delSettings.company_name || 'RoofMiles');
+
       await retryWithBackoff(
         () => resend.emails.send({
-          from: 'Rooster Booster <noreply@roofmiles.com>',
+          from: `${delFromName} <noreply@roofmiles.com>`,
           to: email,
           subject: 'Your account has been scheduled for deletion',
           html: `

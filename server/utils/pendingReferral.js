@@ -125,7 +125,7 @@ async function sendPendingInviteSMS(pendingRecord, contractorId) {
 
     await retryWithBackoff(
       () => twilio.messages.create({
-        body: `Hi, ${companyName} here — ${pendingRecord.referred_by_name}, you have a referral reward waiting. Create your account to claim it: ${frontendUrl}`,
+        body: `Hi, ${pendingRecord.referred_by_name} — someone you referred just became a client of ${companyName}. Create an account to track their progress and earn a reward if the job closes: ${frontendUrl}`,
         from: process.env.TWILIO_PHONE_NUMBER,
         to: pendingRecord.referred_by_phone,
       }),
@@ -447,6 +447,65 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
   }
 }
 
+// ── SEND PENDING REWARD EMAIL ─────────────────────────────────────────────────
+// Sent to a pending referrer (no app account) when their referred client reaches
+// paid status. Money is waiting — CTA drives account creation to claim it.
+// Failure is logged but never thrown — must not crash the sync.
+async function sendPendingRewardEmail(pendingReferrerEmail, pendingReferrerName, clientName, bonusAmount, contractorId) {
+  try {
+    if (!pendingReferrerEmail) return;
+
+    const settingsResult = await pool.query(
+      'SELECT email_sender_name, company_name, logo_url, app_logo_url FROM contractor_settings WHERE contractor_id = $1',
+      [contractorId]
+    );
+    const settings = settingsResult.rows[0] || {};
+    const fromName = escapeHtml(settings.email_sender_name || settings.company_name || 'RoofMiles');
+    const companyName = escapeHtml(settings.company_name || 'your contractor');
+    const logoUrl = settings.logo_url || settings.app_logo_url || null;
+    const safeLogoUrl = escapeHtml(logoUrl || '');
+    const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+    const safeReferrerName = escapeHtml(pendingReferrerName || '');
+    const safeClientName = escapeHtml(clientName || '');
+    const formattedAmount = parseFloat(bonusAmount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    const logoHtml = logoUrl
+      ? `<img src="${safeLogoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
+      : '';
+
+    await retryWithBackoff(
+      () => resend.emails.send({
+        from: `${fromName} <noreply@roofmiles.com>`,
+        to: pendingReferrerEmail,
+        subject: `You've earned a $${formattedAmount} reward from ${companyName}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+            ${logoHtml}
+            <h2 style="color:#012854;margin:0 0 12px;font-size:22px;">Your reward is waiting</h2>
+            <p style="color:#444;margin:0 0 24px;line-height:1.6;font-size:15px;">
+              A referral you sent to ${companyName} just closed. You've earned $${formattedAmount} — but you need an account to claim it. Create one now and it'll be waiting in your balance.
+            </p>
+            <div style="text-align:center;margin-bottom:24px;">
+              <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;font-family:sans-serif;">
+                Claim Your Reward
+              </a>
+            </div>
+            <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;" />
+            <p style="color:#999;font-size:12px;margin:0;line-height:1.6;">
+              ${companyName}<br/>
+              You're receiving this because someone listed you as a referral source.
+            </p>
+          </div>
+        `,
+      }),
+      { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+    );
+  } catch (err) {
+    await logError({ req: null, error: err });
+    console.error('[pendingReferral] sendPendingRewardEmail failed:', err.message);
+  }
+}
+
 // ── MATCH PENDING REFERRAL ────────────────────────────────────────────────────
 // Called after email verification to link a new user to any pending referral record.
 // Matches on email (case-insensitive) or phone. Returns matched record or null.
@@ -494,4 +553,5 @@ module.exports = {
   sendPendingInviteEmail,
   sendPendingInviteSMS,
   sendCreditAttributionEmail,
+  sendPendingRewardEmail,
 };

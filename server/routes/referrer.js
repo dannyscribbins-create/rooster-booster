@@ -281,6 +281,33 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
       );
     }
 
+    // ── #20 NEW REFERRER SIGNUP ADMIN ALERT ─────────────────────────────────────
+    // Non-blocking: never allowed to fail the signup response.
+    (async () => {
+      try {
+        const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+        const safeName = escapeHtml(full_name);
+        const safeEmail = escapeHtml(email);
+        await sendAdminNotification(
+          pool,
+          'general',
+          `${safeName} just joined your referral program`,
+          `
+            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;">
+              <h2 style="color:#012854;margin:0 0 12px;">New referrer</h2>
+              <p style="color:#444;margin:0 0 16px;line-height:1.6;">${safeName} created an account through your referral program. They're ready to start referring.</p>
+              <p style="color:#444;margin:0 0 24px;"><strong>Email:</strong> ${safeEmail}</p>
+              <div style="text-align:center;margin-bottom:24px;">
+                <a href="${frontendUrl}?admin=true" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View in Admin</a>
+              </div>
+            </div>
+          `
+        );
+      } catch (adminAlertErr) {
+        await logError({ req, error: adminAlertErr, source: 'POST /api/signup — #20 admin alert' });
+      }
+    })();
+
     // BACKGROUND: Jobber client lookup by phone or email.
     // Do not await — never blocks the signup response.
     // MVP: This is a one-time lookup at signup. Full solution is a Jobber webhook that fires
@@ -771,6 +798,39 @@ router.post('/api/cashout', cashoutLimiter, [
        <p><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>`
     );
 
+    // ── #7 CASHOUT REQUEST RECEIVED EMAIL ─────────────────────────────────────
+    try {
+      const csResult = await pool.query(
+        `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+      );
+      const cs = csResult.rows[0] || {};
+      const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
+      const companyName = escapeHtml(cs.company_name || 'your contractor');
+      const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+      const firstName = escapeHtml(full_name.split(' ')[0] || full_name);
+      const formattedAmount = parseFloat(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+      await retryWithBackoff(
+        () => resend.emails.send({
+          from: `${fromName} <noreply@roofmiles.com>`,
+          to: email,
+          subject: 'We got your cashout request',
+          html: `
+            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+              <h2 style="color:#012854;margin:0 0 12px;">Your request is being reviewed!</h2>
+              <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, we received your cashout request for $${formattedAmount}. The ${companyName} team will review it shortly. You'll get a confirmation email once it's processed.</p>
+              <div style="text-align:center;margin-bottom:24px;">
+                <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View Request Status</a>
+              </div>
+            </div>
+          `,
+        }),
+        { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+      );
+    } catch (cashoutConfirmErr) {
+      await logError({ req, error: cashoutConfirmErr, source: 'POST /api/cashout — #7 request confirmation' });
+    }
+
     // ── AUTO-FIRE CHECK ──────────────────────────────────────────────────────
     // Read contractor payout automation setting and decide whether to auto-fire
     // an ACH transfer or leave in queue for manual review.
@@ -958,9 +1018,15 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
       const resetUrl = `${frontendUrl}/?reset=${token}`;
 
       try {
+        const pinResetCs = await pool.query(
+          `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+        );
+        const pinResetSettings = pinResetCs.rows[0] || {};
+        const pinResetFromName = escapeHtml(pinResetSettings.email_sender_name || pinResetSettings.company_name || 'RoofMiles');
+
         await retryWithBackoff(
           () => resend.emails.send({
-          from: 'Rooster Booster <noreply@roofmiles.com>',
+          from: `${pinResetFromName} <noreply@roofmiles.com>`,
           to: user.email,
           subject: 'Reset your Rooster Booster PIN',
           html: `
@@ -1249,9 +1315,15 @@ router.post('/api/referrer/booking', bookingLimiter, [
 
     const toEmail = await resolveNotificationRecipient(pool, 'booking');
 
+    const bookingCs = await pool.query(
+      `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+    );
+    const bookingSettings = bookingCs.rows[0] || {};
+    const bookingFromName = escapeHtml(bookingSettings.email_sender_name || bookingSettings.company_name || 'RoofMiles');
+
     await retryWithBackoff(
       () => resend.emails.send({
-        from: 'Rooster Booster <noreply@roofmiles.com>',
+        from: `${bookingFromName} <noreply@roofmiles.com>`,
         to: toEmail,
         subject: `New Inspection Booking Request — ${escapeHtml(name)}`,
         html: `<h2>New Inspection Booking Request</h2>
@@ -1718,6 +1790,34 @@ router.post('/api/referrer/missing-referral', missingReferralLimiter, async (req
        VALUES ('accent-roofing', 'missing_referral', $1, $2, $3, 'purple')`,
       [reportId, messageTitle, messageBody]
     );
+
+    // ── #23 MISSING REFERRAL ADMIN ALERT ─────────────────────────────────────
+    // Non-blocking: failure must not break the report submission response.
+    (async () => {
+      try {
+        const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+        const safeFn = escapeHtml(fullName);
+        const safeRef = escapeHtml(safeReferredName);
+        await sendAdminNotification(
+          pool,
+          'general',
+          `${safeFn} submitted a missing referral report`,
+          `
+            <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;">
+              <h2 style="color:#012854;margin:0 0 12px;">Missing referral needs review</h2>
+              <p style="color:#444;margin:0 0 16px;line-height:1.6;">${safeFn} says they referred someone who isn't showing in their pipeline. Log in to review the details and investigate.</p>
+              <p style="color:#444;margin:0 0 8px;"><strong>Reported name:</strong> ${safeRef}</p>
+              <p style="color:#444;margin:0 0 24px;"><strong>Channel:</strong> ${escapeHtml(channelLabel)}</p>
+              <div style="text-align:center;margin-bottom:24px;">
+                <a href="${frontendUrl}?admin=true" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">Review Report</a>
+              </div>
+            </div>
+          `
+        );
+      } catch (adminAlertErr) {
+        await logError({ req, error: adminAlertErr, source: 'POST /api/referrer/missing-referral — #23 admin alert' });
+      }
+    })();
 
     try {
       await pool.query(

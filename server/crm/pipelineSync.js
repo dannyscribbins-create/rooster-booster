@@ -3,7 +3,18 @@ const { pool } = require('../db');
 const { refreshTokenIfNeeded } = require('./jobber');
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
-const { jobberShouldRetry } = require('../utils/retryHelpers');
+const { jobberShouldRetry, resendShouldRetry } = require('../utils/retryHelpers');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+function escapeHtml(s) {
+  if (!s || typeof s !== 'string') return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatDollars(n) {
+  return parseFloat(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
 
 // ── PIPELINE STATUS CLASSIFIER ────────────────────────────────────────────────
 // Input: a single Jobber client object with quotes, jobs, invoices
@@ -59,6 +70,31 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   const isPreStart  = !!(referralStartDate && createdAt && createdAt < referralStartDate);
   const status      = classifyPipelineStatus(client);
 
+  // ── PRE-UPSERT STATUS CAPTURE (#1 first-referral, #2/#3/#5/#33 transitions) ──
+  // Capture old status before upsert so we can detect transitions afterward.
+  // Count existing rows for this referrer to detect first-ever referral.
+  let oldPipelineStatus = null;
+  let isFirstReferralForReferrer = false;
+  try {
+    const existingCacheRow = await pool.query(
+      `SELECT pipeline_status FROM pipeline_cache WHERE contractor_id=$1 AND jobber_client_id=$2`,
+      [contractorId, client.id]
+    );
+    oldPipelineStatus = existingCacheRow.rows[0]?.pipeline_status || null;
+
+    // Only count when this is a new client row — avoids false positive on re-syncs
+    if (!oldPipelineStatus) {
+      const referrerRowCount = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM pipeline_cache WHERE contractor_id=$1 AND LOWER(referred_by)=LOWER($2)`,
+        [contractorId, referredBy]
+      );
+      isFirstReferralForReferrer = parseInt(referrerRowCount.rows[0]?.cnt || '0') === 0;
+    }
+  } catch (preCheckErr) {
+    await logError({ req: null, error: preCheckErr });
+    console.error('[pipelineSync] pre-upsert status check failed:', preCheckErr.message);
+  }
+
   await pool.query(
     `INSERT INTO pipeline_cache
        (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status,
@@ -93,6 +129,208 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   } catch (cleanupErr) {
     await logError({ req: null, error: cleanupErr });
     console.error('[pipelineSync] app_user_ placeholder cleanup failed:', cleanupErr.message);
+  }
+
+  // ── PIPELINE STAGE NOTIFICATION TRIGGERS (#1, #2, #3, #5, #33) ──────────────
+  // Skipped for pre-start-date clients. Each trigger is individually caught so
+  // a failure in one never blocks the sync or any other trigger.
+  if (!isPreStart) {
+    const shouldFireAny = (
+      isFirstReferralForReferrer ||
+      (oldPipelineStatus === 'lead' && status === 'inspection') ||
+      (status === 'sold' && oldPipelineStatus !== 'sold' && oldPipelineStatus !== null) ||
+      (status === 'not_sold' && oldPipelineStatus !== 'not_sold' && oldPipelineStatus !== null) ||
+      (status === 'paid' && oldPipelineStatus !== 'paid')
+    );
+
+    if (shouldFireAny) {
+      try {
+        // Look up referrer's app account
+        const referrerAccountResult = await pool.query(
+          `SELECT id, email, full_name FROM users WHERE LOWER(full_name)=LOWER($1) AND deleted_at IS NULL LIMIT 1`,
+          [referredBy]
+        );
+        const referrerAccount = referrerAccountResult.rows[0] || null;
+
+        // Fetch contractor settings once for all sends
+        const csResult = await pool.query(
+          `SELECT email_sender_name, company_name, company_email, company_phone FROM contractor_settings WHERE contractor_id=$1 LIMIT 1`,
+          [contractorId]
+        );
+        const cs = csResult.rows[0] || {};
+        const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
+        const companyName = escapeHtml(cs.company_name || 'your contractor');
+        const companyEmail = cs.company_email || '';
+        const companyPhone = cs.company_phone || '';
+        const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
+        const safeClientName = escapeHtml(clientName);
+
+        // ── #1 FIRST REFERRAL EMAIL ─────────────────────────────────────────────
+        if (isFirstReferralForReferrer && referrerAccount?.email) {
+          try {
+            const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
+            const contactLine = [companyEmail, companyPhone].filter(Boolean).map(escapeHtml).join(' + ');
+            await retryWithBackoff(
+              () => resend.emails.send({
+                from: `${fromName} <noreply@roofmiles.com>`,
+                to: referrerAccount.email,
+                subject: `You're in the game! here's what happens next`,
+                html: `
+                  <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                    <h2 style="color:#012854;margin:0 0 12px;">Your first referral is in. what now?</h2>
+                    <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, you just submitted your first referral with ${companyName}. Here's what to expect — we'll reach out to them, schedule an inspection, and keep you updated every step of the way. If the job closes, your reward posts automatically to your balance for you to cash out!${contactLine ? ` If you have any questions reach out to us at ${contactLine}.` : ''}</p>
+                    <div style="text-align:center;margin-bottom:24px;">
+                      <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">See your pipeline!</a>
+                    </div>
+                  </div>
+                `,
+              }),
+              { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+            );
+          } catch (e1) {
+            await logError({ req: null, error: e1 });
+            console.error('[pipelineSync] #1 first referral email failed:', e1.message);
+          }
+        }
+
+        // ── #2 REFERRAL MOVES TO INSPECTION ────────────────────────────────────
+        if (oldPipelineStatus === 'lead' && status === 'inspection' && referrerAccount?.email) {
+          try {
+            const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
+            await retryWithBackoff(
+              () => resend.emails.send({
+                from: `${fromName} <noreply@roofmiles.com>`,
+                to: referrerAccount.email,
+                subject: `${safeClientName} has an inspection scheduled`,
+                html: `
+                  <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                    <h2 style="color:#012854;margin:0 0 12px;">Your referral is moving forward</h2>
+                    <p style="color:#444;margin:0 0 24px;line-height:1.6;">Good news, ${firstName} — ${safeClientName} has scheduled an inspection with ${companyName}. Things are progressing. We'll let you know when there's another update.</p>
+                    <div style="text-align:center;margin-bottom:24px;">
+                      <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View Your Pipeline</a>
+                    </div>
+                  </div>
+                `,
+              }),
+              { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+            );
+          } catch (e2) {
+            await logError({ req: null, error: e2 });
+            console.error('[pipelineSync] #2 inspection email failed:', e2.message);
+          }
+        }
+
+        // ── #3 REFERRAL MOVES TO SOLD ───────────────────────────────────────────
+        if (status === 'sold' && oldPipelineStatus !== 'sold' && oldPipelineStatus !== null && referrerAccount?.email) {
+          try {
+            const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
+            await retryWithBackoff(
+              () => resend.emails.send({
+                from: `${fromName} <noreply@roofmiles.com>`,
+                to: referrerAccount.email,
+                subject: `${safeClientName} just signed — reward incoming`,
+                html: `
+                  <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                    <h2 style="color:#012854;margin:0 0 12px;">Your referral closed</h2>
+                    <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, ${safeClientName} signed with ${companyName}. Once their project is invoiced and paid, your reward will post to your balance automatically. Feel free to check with them and ask how their experience has been so far and start thinking about how you want to spend your first referral bonus!</p>
+                    <div style="text-align:center;margin-bottom:24px;">
+                      <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View your pipeline</a>
+                    </div>
+                  </div>
+                `,
+              }),
+              { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+            );
+          } catch (e3) {
+            await logError({ req: null, error: e3 });
+            console.error('[pipelineSync] #3 sold email failed:', e3.message);
+          }
+        }
+
+        // ── #5 REFERRAL GOES COLD / LOST ────────────────────────────────────────
+        if (status === 'not_sold' && oldPipelineStatus !== 'not_sold' && oldPipelineStatus !== null && referrerAccount?.email) {
+          try {
+            const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
+            await retryWithBackoff(
+              () => resend.emails.send({
+                from: `${fromName} <noreply@roofmiles.com>`,
+                to: referrerAccount.email,
+                subject: `An update on your referral`,
+                html: `
+                  <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
+                    <h2 style="color:#012854;margin:0 0 12px;">We weren't able to move forward</h2>
+                    <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, we wanted to keep you in the loop — we weren't able to move forward with ${safeClientName} at this time. It happens once in a while, and we truly appreciate you thinking to send someone on our way. That said, our mission is to serve our clients and provide the best contractor experience they've ever had, and don't let that stop you from referring others! Your next referral reward is right around the corner.</p>
+                    <div style="text-align:center;margin-bottom:24px;">
+                      <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View Your Pipeline</a>
+                    </div>
+                  </div>
+                `,
+              }),
+              { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+            );
+          } catch (e5) {
+            await logError({ req: null, error: e5 });
+            console.error('[pipelineSync] #5 not_sold email failed:', e5.message);
+          }
+        }
+
+        // ── #33 PENDING REWARD EMAIL ─────────────────────────────────────────────
+        // Fires when the referrer has no app account and their referred client just reached paid.
+        if (status === 'paid' && oldPipelineStatus !== 'paid' && !referrerAccount) {
+          try {
+            const { sendPendingRewardEmail } = require('../utils/pendingReferral');
+
+            // Find pending referral record for this client
+            const pendingResult = await pool.query(
+              `SELECT referred_by_email, referred_by_name FROM pending_referrals
+               WHERE contractor_id=$1 AND jobber_client_id=$2 AND status='pending'
+               LIMIT 1`,
+              [contractorId, client.id]
+            );
+            const pendingRow = pendingResult.rows[0];
+
+            if (pendingRow?.referred_by_email) {
+              // Calculate bonus amount: count paid pipeline rows for this referrer, apply escalating schedule
+              const paidCountResult = await pool.query(
+                `SELECT COUNT(*) AS cnt FROM pipeline_cache
+                 WHERE contractor_id=$1 AND LOWER(referred_by)=LOWER($2) AND pipeline_status='paid'`,
+                [contractorId, referredBy]
+              );
+              const paidCountForReferrer = parseInt(paidCountResult.rows[0]?.cnt || '1');
+
+              const scheduleResult = await pool.query(
+                `SELECT escalating_steps, flat_amount FROM referral_schedules
+                 WHERE contractor_id=$1 AND is_active=true AND payout_model='escalating' LIMIT 1`,
+                [contractorId]
+              );
+              let bonusAmount = 500; // fallback
+              if (scheduleResult.rows[0]?.escalating_steps) {
+                const steps = scheduleResult.rows[0].escalating_steps;
+                const matched = steps.find(s => s.referral_number === paidCountForReferrer) || steps[steps.length - 1];
+                if (matched?.payout_amount) bonusAmount = matched.payout_amount;
+              } else if (scheduleResult.rows[0]?.flat_amount) {
+                bonusAmount = scheduleResult.rows[0].flat_amount;
+              }
+
+              await sendPendingRewardEmail(
+                pendingRow.referred_by_email,
+                pendingRow.referred_by_name,
+                clientName,
+                bonusAmount,
+                contractorId
+              );
+            }
+          } catch (e33) {
+            await logError({ req: null, error: e33 });
+            console.error('[pipelineSync] #33 pending reward email failed:', e33.message);
+          }
+        }
+
+      } catch (notifErr) {
+        await logError({ req: null, error: notifErr });
+        console.error('[pipelineSync] notification trigger block failed:', notifErr.message);
+      }
+    }
   }
 
   // ── PENDING REFERRAL CHECK ──────────────────────────────────────────────────
