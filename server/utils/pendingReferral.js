@@ -65,24 +65,23 @@ async function sendPendingInviteEmail(pendingRecord, contractorId) {
       : '';
 
     // TODO: Update CTA link to App Store URL after Capacitor build.
-    // TODO: Update email copy after brand review.
-    // TODO: Embed contractor logo for improved brand trust.
     await retryWithBackoff(
       () => resend.emails.send({
-        from: 'Rooster Booster <noreply@roofmiles.com>',
+        from: `${companyName} <noreply@roofmiles.com>`,
         to: pendingRecord.referred_by_email,
-        subject: `${companyName} — You have a reward waiting`,
+        subject: `Someone you referred just became a client of ${companyName}`,
         html: `
           <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
             ${logoHtml}
-            <h2 style="color:#012854;margin:0 0 12px;font-size:22px;">You have a referral reward waiting</h2>
+            <h2 style="color:#012854;margin:0 0 12px;font-size:22px;">Your referral is moving forward</h2>
             <p style="color:#444;margin:0 0 24px;line-height:1.6;font-size:15px;">
-              ${safeReferrerName}, someone you referred to ${companyName} is moving forward.
-              You've earned a reward — create your account to claim it.
+              Hi ${safeReferrerName}, someone you referred just became a client of ${companyName}.
+              Create your free account to track their progress as it moves through the pipeline —
+              and if the job closes, you'll earn a reward you can cash out directly from the app.
             </p>
             <div style="text-align:center;margin-bottom:24px;">
               <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;font-family:sans-serif;">
-                Claim Your Reward
+                Track Your Referral
               </a>
             </div>
             <hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0;" />
