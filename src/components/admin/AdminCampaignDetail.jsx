@@ -326,7 +326,7 @@ function BatchCard({ b, batchStatus, campaignId, headers }) {
 }
 
 // ── Metrics grid ──────────────────────────────────────────────────────────────
-function MetricsGrid({ metrics, onOpenFailedPanel, optOutData }) {
+function MetricsGrid({ metrics, onOpenFailedPanel, optOutData, contactTotals }) {
   if (!metrics) return null;
   const sentCount    = metrics.total_sent    || metrics.sent_count    || 0;
   const openedCount  = metrics.total_opened  || metrics.opened_count  || 0;
@@ -337,6 +337,13 @@ function MetricsGrid({ metrics, onOpenFailedPanel, optOutData }) {
   const optOutCount = optOutData != null
     ? (optOutData.total_opt_outs || 0)
     : (metrics.total_opted_out || metrics.opted_out_count || 0);
+
+  const complaintRate   = contactTotals?.complaint_rate ?? 0;
+  const isComplaintWarn = complaintRate > 0.001;
+
+  const failedRate = contactTotals?.sent_count > 0
+    ? (((contactTotals.total_failed / contactTotals.sent_count) * 100).toFixed(2) + '%')
+    : '0.00%';
 
   const cards = [
     { label: 'Total Contacts', value: (metrics.total_selected || metrics.total_contacts || 0).toLocaleString() },
@@ -379,6 +386,78 @@ function MetricsGrid({ metrics, onOpenFailedPanel, optOutData }) {
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {cards.map(c => <MetricCard key={c.label} {...c} />)}
+
+        {/* Complaints */}
+        <div style={{
+          background: isComplaintWarn ? '#fff0f0' : AD.bgCard,
+          border: `1px solid ${isComplaintWarn ? 'rgba(204,0,0,0.25)' : AD.border}`,
+          borderRadius: AD.radiusMd, padding: '18px 20px',
+        }}>
+          <p style={{ margin: '0 0 6px', fontSize: 11, color: isComplaintWarn ? '#CC0000' : AD.textTertiary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 5 }}>
+            {isComplaintWarn && <i className="ph ph-warning-circle" style={{ fontSize: 13 }} />}
+            Complaints
+          </p>
+          <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: isComplaintWarn ? '#CC0000' : AD.textPrimary, fontFamily: AD.fontSans }}>
+            {(contactTotals?.total_complained ?? 0).toLocaleString()}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: isComplaintWarn ? '#CC0000' : AD.textSecondary, fontFamily: AD.fontSans }}>
+            {(complaintRate * 100).toFixed(2)}%
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 10, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+            Safe threshold: &lt; 0.1%
+          </p>
+        </div>
+
+        {/* Bounces */}
+        <div style={{
+          background: AD.bgCard, border: `1px solid ${AD.border}`,
+          borderRadius: AD.radiusMd, padding: '18px 20px',
+        }}>
+          <p style={{ margin: '0 0 6px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Bounces
+          </p>
+          <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+            {(contactTotals?.total_bounced ?? 0).toLocaleString()}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+            {((contactTotals?.bounce_rate ?? 0) * 100).toFixed(2)}%
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 10, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+            Hard bounces only
+          </p>
+        </div>
+
+        {/* Webhook-confirmed Delivered */}
+        <div style={{
+          background: AD.bgCard, border: `1px solid ${AD.border}`,
+          borderRadius: AD.radiusMd, padding: '18px 20px',
+        }}>
+          <p style={{ margin: '0 0 6px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Delivered
+          </p>
+          <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+            {(contactTotals?.total_delivered ?? 0).toLocaleString()}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 10, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+            Confirmed by Resend
+          </p>
+        </div>
+
+        {/* Failed */}
+        <div style={{
+          background: AD.bgCard, border: `1px solid ${AD.border}`,
+          borderRadius: AD.radiusMd, padding: '18px 20px',
+        }}>
+          <p style={{ margin: '0 0 6px', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Failed
+          </p>
+          <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+            {(contactTotals?.total_failed ?? 0).toLocaleString()}
+          </p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+            {failedRate}
+          </p>
+        </div>
       </div>
       {optOutContacts.length > 0 && (
         <div style={{
@@ -434,6 +513,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
   const [retryResult,      setRetryResult]      = useState(null);
   const [exportingCsv,     setExportingCsv]     = useState(false);
   const [refreshing,       setRefreshing]       = useState(false);
+  const [metricsData,      setMetricsData]      = useState(null);
 
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
@@ -446,7 +526,11 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
 
   async function fetchMetrics() {
     try {
-      await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/metrics`, { headers });
+      const res = await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/metrics`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setMetricsData(data);
+      }
     } catch {
       // silently fail
     }
@@ -841,9 +925,9 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
 
           {/* Metrics grid */}
           {metricsBatch === 'all' ? (
-            <MetricsGrid metrics={combined} onOpenFailedPanel={openFailedPanel} optOutData={detail?.opt_out_data} />
+            <MetricsGrid metrics={combined} onOpenFailedPanel={openFailedPanel} optOutData={detail?.opt_out_data} contactTotals={metricsData?.contactTotals} />
           ) : (
-            <MetricsGrid metrics={batches.find(b => b.batch_number === metricsBatch)} onOpenFailedPanel={openFailedPanel} />
+            <MetricsGrid metrics={batches.find(b => b.batch_number === metricsBatch)} onOpenFailedPanel={openFailedPanel} contactTotals={metricsData?.contactTotals} />
           )}
         </div>
       )}
