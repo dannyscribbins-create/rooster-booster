@@ -31,6 +31,14 @@ const { pool } = require('./db');
 // referredBy:   string — raw value from Jobber "Referred by" custom field on client
 async function evaluateReferral(contractorId, invoiceData, referredBy) {
 
+  // ── STEP 0 — Invoice Status Guard ────────────────────────────────────────────
+  // Defensive safety net: only process paid invoices. The webhook handler guards
+  // on invoiceStatus before calling here, but this prevents accidental execution
+  // if a future caller omits that check.
+  if (invoiceData.invoiceStatus !== 'paid') {
+    return { qualified: false, reason: 'invoice_not_paid' };
+  }
+
   // ── STEP 1 — Referrer Attribution Check ──────────────────────────────────────
   // Caller already confirmed referred_by is populated — but guard here too.
   if (!referredBy || !referredBy.trim()) {

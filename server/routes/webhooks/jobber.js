@@ -331,6 +331,14 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       const payload = JSON.parse(req.body.toString());
       const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
 
+      // (a) Cheap early exit — skip non-paid invoice updates before any DB or API calls.
+      // Jobber sends INVOICE_UPDATE for all status changes; only 'paid' is actionable here.
+      const rawInvoiceStatus = payload?.data?.invoice?.invoiceStatus;
+      if (rawInvoiceStatus !== undefined && rawInvoiceStatus !== 'paid') {
+        console.log(`[invoice-paid] raw invoiceStatus is '${rawInvoiceStatus}' — skipping`);
+        return;
+      }
+
       // STEP 2 — Feature flag check (experience flow only)
       // Does NOT exit — referral engine runs unconditionally regardless of this flag.
       const flagResult = await pool.query(
@@ -385,6 +393,14 @@ router.post('/jobber/invoice-paid', async (req, res) => {
           console.warn(`[invoice-paid] fetchInvoiceWithJobs failed for invoice ${invoiceId}:`, err.message);
           // Non-fatal — referral engine will be skipped, experience flow continues
         }
+      }
+
+      // (b) Second guard — invoice fully fetched; bail if status still isn't 'paid'.
+      // Fires when invoiceStatus was absent from the raw payload so guard (a) was a no-op,
+      // but the Jobber API response reveals the invoice is not yet paid.
+      if (invoiceWithJobs && invoiceWithJobs.invoiceStatus !== 'paid') {
+        console.log(`[invoice-paid] fetched invoice ${invoiceId} has status '${invoiceWithJobs.invoiceStatus}' — skipping`);
+        return;
       }
 
       // ── EXPERIENCE FLOW (gated by feature flag) ────────────────────────────────
