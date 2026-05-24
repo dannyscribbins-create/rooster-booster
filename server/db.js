@@ -853,6 +853,20 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     UNIQUE(contractor_id, trigger_key)
   )`);
 
+  // ── CONTACT TAGS ──────────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS contact_tags (
+    id SERIAL PRIMARY KEY,
+    contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    contractor_id TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('system', 'jobber', 'jobber_crm', 'admin')),
+    applied_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(contact_id, tag)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_contact_tags_contact_id ON contact_tags(contact_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_contact_tags_contractor_id ON contact_tags(contractor_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_contact_tags_tag ON contact_tags(tag)`);
+
   // ── REFERRER BANK ACCOUNT COLUMNS ─────────────────────────────────────────────
   await addReferrerBankColumns(pool);
 
