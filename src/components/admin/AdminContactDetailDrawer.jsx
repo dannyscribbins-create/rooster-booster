@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AD } from '../../constants/adminTheme';
+import { AD, TAG_COLORS } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import { TagPill } from './TagCloudFilter';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -132,6 +133,14 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
   const [resubscribeLoading, setResubscribeLoading] = useState(false);
   const [resubscribeError, setResubscribeError]     = useState('');
 
+  // Tag management state
+  const [tagInput,       setTagInput]       = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState([]);
+  const [tagAdding,      setTagAdding]      = useState(false);
+  const [tagError,       setTagError]       = useState('');
+  const tagInputRef = useRef(null);
+  const suggestDebounce = useRef(null);
+
   // Keep cacheRef in sync with cache state
   useEffect(() => {
     cacheRef.current = cache;
@@ -228,12 +237,78 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
     }
   }
 
+  async function fetchTagSuggestions(q) {
+    try {
+      const headers = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/tags/suggestions?q=${encodeURIComponent(q)}`, { headers });
+      if (!r.ok) return;
+      const data = await r.json();
+      setTagSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
+    } catch {
+      // swallow
+    }
+  }
+
+  function handleTagInputChange(val) {
+    setTagInput(val);
+    setTagError('');
+    clearTimeout(suggestDebounce.current);
+    if (val.trim().length > 0) {
+      suggestDebounce.current = setTimeout(() => fetchTagSuggestions(val.trim()), 200);
+    } else {
+      setTagSuggestions([]);
+    }
+  }
+
+  async function handleAddTag(tagToAdd) {
+    const tag = (tagToAdd || tagInput).trim();
+    if (!tag) return;
+    setTagAdding(true);
+    setTagError('');
+    setTagSuggestions([]);
+    setTagInput('');
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/${contactId}/tags`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ tag }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setTagError(data.error || 'Failed to add tag'); return; }
+      setCache(prev => ({ ...prev, [contactId]: { ...prev[contactId], tags: data.tags } }));
+    } catch {
+      setTagError('Failed to add tag.');
+    } finally {
+      setTagAdding(false);
+    }
+  }
+
+  async function handleRemoveTag(tag) {
+    try {
+      const headers = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/${contactId}/tags/${encodeURIComponent(tag)}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      setCache(prev => ({ ...prev, [contactId]: { ...prev[contactId], tags: data.tags } }));
+    } catch {
+      // swallow — tag stays visible on failure
+    }
+  }
+
   // Don't render anything when no contactId
   if (!contactId) return null;
 
-  const contact      = contactData?.contact;
-  const sendHistory  = contactData?.send_history || [];
+  const contact       = contactData?.contact;
+  const sendHistory   = contactData?.send_history || [];
   const jobberProfile = contactData?.jobber_profile || null;
+  const tags          = contactData?.tags || [];
 
   return (
     <>
@@ -403,6 +478,104 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
                       </p>
                     </div>
                   </div>
+                </div>
+              </SectionCard>
+
+              {/* Tags section */}
+              <SectionCard title="Tags">
+                <div style={{ marginTop: 4 }}>
+                  {/* Existing tags */}
+                  {tags.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                      {tags.map(({ tag, source }) => (
+                        <TagPill
+                          key={tag}
+                          tag={tag}
+                          source={source}
+                          onRemove={source === 'admin' ? () => handleRemoveTag(tag) : undefined}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add tag input */}
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input
+                        ref={tagInputRef}
+                        value={tagInput}
+                        onChange={e => handleTagInputChange(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && tagInput.trim()) { e.preventDefault(); handleAddTag(); }
+                          if (e.key === 'Escape') { setTagInput(''); setTagSuggestions([]); }
+                        }}
+                        placeholder="Add tag..."
+                        disabled={tagAdding}
+                        style={{
+                          flex: 1, padding: '6px 10px',
+                          background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                          borderRadius: 8, fontFamily: AD.fontSans, fontSize: 12,
+                          color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
+                        }}
+                      />
+                      <button
+                        onClick={() => handleAddTag()}
+                        disabled={tagAdding || !tagInput.trim()}
+                        style={{
+                          padding: '6px 12px', borderRadius: 8,
+                          background: tagInput.trim() ? AD.navy : AD.bgCardTint,
+                          color: tagInput.trim() ? '#fff' : AD.textTertiary,
+                          border: 'none', fontSize: 12, fontFamily: AD.fontSans,
+                          cursor: tagInput.trim() ? 'pointer' : 'default',
+                          fontWeight: 500, flexShrink: 0,
+                          opacity: tagAdding ? 0.6 : 1,
+                        }}
+                      >
+                        {tagAdding ? '…' : 'Add'}
+                      </button>
+                    </div>
+                    {/* Suggestions dropdown */}
+                    {tagSuggestions.length > 0 && (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: 0, right: 40,
+                        background: AD.bgCard, border: `1px solid ${AD.borderStrong}`,
+                        borderRadius: 8, zIndex: 20, marginTop: 2,
+                        boxShadow: AD.shadowMd, overflow: 'hidden',
+                      }}>
+                        {tagSuggestions.map(s => {
+                          const colors = TAG_COLORS[s] || TAG_COLORS.default;
+                          return (
+                            <button
+                              key={s}
+                              onMouseDown={e => { e.preventDefault(); handleAddTag(s); }}
+                              style={{
+                                width: '100%', textAlign: 'left', padding: '8px 12px',
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                fontFamily: AD.fontSans, fontSize: 12, color: AD.textPrimary,
+                                display: 'flex', alignItems: 'center', gap: 8,
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = AD.bgSurface}
+                              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                            >
+                              <span style={{
+                                display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                                background: colors.border, flexShrink: 0,
+                              }} />
+                              {s}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  {tagError && (
+                    <p style={{ margin: '6px 0 0', fontSize: 11, color: AD.red2Text, fontFamily: AD.fontSans }}>{tagError}</p>
+                  )}
+                  {tags.length === 0 && !tagInput && (
+                    <p style={{ margin: '6px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
+                      No tags yet. Type to add one.
+                    </p>
+                  )}
                 </div>
               </SectionCard>
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import AdminContactDetailDrawer from './AdminContactDetailDrawer';
+import TagCloudFilter from './TagCloudFilter';
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
@@ -22,11 +23,6 @@ function SmallPill({ bg, color, label }) {
   );
 }
 
-const FILTERS = [
-  { id: 'all',       label: 'All' },
-  { id: 'opted_out', label: 'Opted Out' },
-  { id: 'app_user',  label: 'App User' },
-];
 
 const COL_STYLES = {
   name:     { width: '22%', paddingRight: 12 },
@@ -38,7 +34,6 @@ const COL_STYLES = {
 
 function ContactRow({ c, isLast, onClick }) {
   const [hovered, setHovered] = useState(false);
-  const hasStatus = c.is_app_user || c.opted_out;
 
   return (
     <tr
@@ -63,7 +58,7 @@ function ContactRow({ c, isLast, onClick }) {
         </span>
       </td>
       <td style={{ ...COL_STYLES.status, padding: '12px 12px 12px 0' }}>
-        {hasStatus ? (
+        {(c.is_app_user || c.opted_out) ? (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {c.is_app_user && <SmallPill bg={AD.blueBg}  color={AD.blueText}  label="App User" />}
             {c.opted_out   && <SmallPill bg={AD.red2Bg}  color={AD.red2Text}  label="Opted Out" />}
@@ -91,18 +86,25 @@ export default function AdminContactsTab({ headers }) {
   const [totalCount,        setTotalCount]        = useState(0);
   const [loading,           setLoading]           = useState(true);
   const [error,             setError]             = useState('');
-  const [activeFilter,      setActiveFilter]      = useState('all');
   const [selectedContactId, setSelectedContactId] = useState(null);
+
+  // Tag cloud filter state
+  const [tagSummary,    setTagSummary]    = useState([]);
+  const [selectedTags,  setSelectedTags]  = useState([]);
+  const [tagLogic,      setTagLogic]      = useState('AND');
 
   // Extract token from headers for the drawer (headers is { Authorization: 'Bearer ...' })
   const drawerToken = headers?.Authorization?.replace('Bearer ', '') || null;
 
-  const fetchContacts = useCallback(async (filter) => {
+  const fetchContacts = useCallback(async (tags, logic) => {
     setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams({ limit: '100' });
-      if (filter !== 'all') params.set('filter', filter);
+      if (tags && tags.length > 0) {
+        tags.forEach(t => params.append('tags', t));
+        params.set('logic', logic || 'AND');
+      }
       const r = await fetch(`${BACKEND_URL}/api/admin/contacts?${params}`, { headers });
       if (!r.ok) throw new Error('Failed');
       const data = await r.json();
@@ -116,15 +118,26 @@ export default function AdminContactsTab({ headers }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    fetchContacts(activeFilter);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter]);
-
-  function handleFilter(filterId) {
-    if (filterId === activeFilter) return;
-    setActiveFilter(filterId);
+  async function fetchTagSummary() {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/tag-summary`, { headers });
+      if (!r.ok) return;
+      const data = await r.json();
+      setTagSummary(Array.isArray(data.tags) ? data.tags : []);
+    } catch {
+      // swallow
+    }
   }
+
+  useEffect(() => {
+    fetchTagSummary();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    fetchContacts(selectedTags, tagLogic);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTags, tagLogic]);  // fires on mount (selectedTags=[]) and on every filter change
 
   const thStyle = {
     padding: '0 0 10px',
@@ -137,29 +150,20 @@ export default function AdminContactsTab({ headers }) {
 
   return (
     <div>
-      {/* Filter pills */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        {FILTERS.map(f => {
-          const active = f.id === activeFilter;
-          return (
-            <button
-              key={f.id}
-              onClick={() => handleFilter(f.id)}
-              style={{
-                padding: '6px 14px', borderRadius: 20,
-                background: active ? AD.navy : 'transparent',
-                color: active ? '#fff' : AD.textSecondary,
-                border: `1px solid ${active ? AD.navy : AD.border}`,
-                fontSize: 11, fontFamily: AD.fontSans,
-                cursor: 'pointer', fontWeight: active ? 600 : 400,
-                transition: 'background 0.15s, color 0.15s',
-              }}
-            >
-              {f.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* Tag cloud filter */}
+      {tagSummary.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <TagCloudFilter
+            tagSummary={tagSummary}
+            selectedTags={selectedTags}
+            onSelectionChange={setSelectedTags}
+            logic={tagLogic}
+            onLogicChange={setTagLogic}
+            showCounts={true}
+          />
+        </div>
+      )}
+
 
       {/* Count line */}
       {!loading && !error && (
@@ -182,7 +186,7 @@ export default function AdminContactsTab({ headers }) {
             {error}
           </p>
           <button
-            onClick={() => fetchContacts(activeFilter)}
+            onClick={() => fetchContacts(selectedTags, tagLogic)}
             style={{
               padding: '8px 20px', borderRadius: 8,
               background: AD.navy, color: '#fff',
@@ -198,7 +202,7 @@ export default function AdminContactsTab({ headers }) {
       {/* Table */}
       {!loading && !error && contacts.length === 0 && (
         <p style={{ textAlign: 'center', color: AD.textTertiary, fontFamily: AD.fontSans, fontSize: 13, marginTop: 32 }}>
-          No contacts yet. Contacts are added automatically when campaign batches are sent.
+          {selectedTags.length > 0 ? 'No contacts match the selected tags.' : 'No contacts yet. Contacts are added automatically when campaign batches are sent.'}
         </p>
       )}
 

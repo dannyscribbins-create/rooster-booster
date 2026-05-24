@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AD } from '../../constants/adminTheme';
+import { AD, TAG_COLORS } from '../../constants/adminTheme';
 import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import { AdminPageHeader, Btn, Badge } from './AdminComponents';
 import AdminCampaignDetail from './AdminCampaignDetail';
@@ -613,10 +613,44 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
   const [saving,           setSaving]           = useState(false);
   const [overflowExpanded, setOverflowExpanded] = useState(false);
 
+  // Tag enrichment: email → { tags: string[], recently_contacted: bool }
+  const [enrichData, setEnrichData] = useState({});
+
   useEffect(() => {
     const init = {};
     contacts.forEach(c => { init[c.id] = c.selected !== false; });
     setLocalSelected(init);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contacts]);
+
+  useEffect(() => {
+    if (contacts.length === 0) return;
+    async function loadEnrichment() {
+      try {
+        const emails = contacts.map(c => c.email).filter(Boolean);
+        if (emails.length === 0) return;
+        const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/enrich-contacts`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emails }),
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        const map = {};
+        if (Array.isArray(data.contacts)) {
+          data.contacts.forEach(entry => {
+            map[entry.email] = {
+              tags: Array.isArray(entry.tags) ? entry.tags : [],
+              recently_contacted: !!entry.recently_contacted,
+            };
+          });
+        }
+        setEnrichData(map);
+      } catch {
+        // swallow — enrichment is non-critical
+      }
+    }
+    loadEnrichment();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contacts]);
 
@@ -831,8 +865,41 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
                     {isSelected && <i className="ph ph-check" style={{ fontSize: 11, color: '#fff' }} />}
                   </div>
                 </div>
-                <div style={{ flex: 2, fontWeight: 500, color: AD.textPrimary, fontSize: 14, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
-                  {c.client_name || '—'}
+                <div style={{ flex: 2, paddingRight: 8, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, color: AD.textPrimary, fontSize: 14, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {c.client_name || '—'}
+                  </div>
+                  {enrichData[c.email]?.tags?.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 3 }}>
+                      {enrichData[c.email].tags.slice(0, 3).map(tag => {
+                        const colors = TAG_COLORS[tag] || TAG_COLORS.default;
+                        return (
+                          <span
+                            key={tag}
+                            style={{
+                              display: 'inline-block', padding: '1px 6px', borderRadius: 99,
+                              background: colors.bg, color: colors.text,
+                              border: `1px solid ${colors.border}`,
+                              fontSize: 9, fontFamily: AD.fontSans, fontWeight: 500,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {tag}
+                          </span>
+                        );
+                      })}
+                      {enrichData[c.email].recently_contacted && !enrichData[c.email].tags.includes('Previously Contacted') && (
+                        <span style={{
+                          display: 'inline-block', padding: '1px 6px', borderRadius: 99,
+                          background: TAG_COLORS['Recently Contacted'].bg, color: TAG_COLORS['Recently Contacted'].text,
+                          border: `1px solid ${TAG_COLORS['Recently Contacted'].border}`,
+                          fontSize: 9, fontFamily: AD.fontSans, fontWeight: 500, whiteSpace: 'nowrap',
+                        }}>
+                          Recently Contacted
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div style={{ flex: 1, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
                   {c.phone || '—'}

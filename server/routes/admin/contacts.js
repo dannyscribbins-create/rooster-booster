@@ -6,6 +6,48 @@ const { logError } = require('../../middleware/errorLogger');
 const { deriveOptOutType } = require('../../utils/adminHelpers');
 const { applyTag, removeTag } = require('../../utils/tags');
 
+// ── TAG SUGGESTIONS (literal route — must be before /:contactId) ──────────────
+
+router.get('/api/admin/contacts/tags/suggestions', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT tag FROM contact_tags
+       WHERE contractor_id = $1 AND source = 'admin'
+         AND tag ILIKE $2
+       ORDER BY tag LIMIT 10`,
+      [contractorId, `%${q}%`]
+    );
+    res.json({ suggestions: result.rows.map(r => r.tag) });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/contacts/tags/suggestions' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── TAG SUMMARY (literal route — must be before /:contactId) ─────────────────
+
+router.get('/api/admin/contacts/tag-summary', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      `SELECT ct.tag, ct.source, COUNT(DISTINCT ct.contact_id) AS contact_count
+       FROM contact_tags ct
+       WHERE ct.contractor_id = $1
+       GROUP BY ct.tag, ct.source
+       ORDER BY ct.source, ct.tag`,
+      [contractorId]
+    );
+    res.json({ tags: result.rows.map(r => ({ tag: r.tag, source: r.source, contact_count: parseInt(r.contact_count, 10) })) });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/contacts/tag-summary' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── GLOBAL CONTACT LIST ───────────────────────────────────────────────────────
 
 router.get('/api/admin/contacts', async (req, res) => {
@@ -19,6 +61,15 @@ router.get('/api/admin/contacts', async (req, res) => {
     return res.status(400).json({ error: 'Invalid filter value' });
   }
 
+  // Tag-based filter (Addendum 2 pattern: AND uses one EXISTS per tag, OR uses ANY)
+  const rawTags = req.query.tags;
+  const tags = rawTags
+    ? (Array.isArray(rawTags) ? rawTags : [rawTags])
+        .filter(t => typeof t === 'string' && t.length > 0 && t.length <= 100)
+        .slice(0, 20)
+    : [];
+  const tagLogic = req.query.logic === 'OR' ? 'OR' : 'AND';
+
   const rawLimit  = parseInt(req.query.limit,  10);
   const rawOffset = parseInt(req.query.offset, 10);
   const limit  = (!isNaN(rawLimit)  && rawLimit  > 0 && rawLimit  <= 200) ? rawLimit  : 100;
@@ -31,6 +82,29 @@ router.get('/api/admin/contacts', async (req, res) => {
     extraWhere = `AND c.is_app_user = true`;
   }
 
+  // Build tag EXISTS clauses and dynamic params
+  let tagWhere = '';
+  const tagParams = [];
+  let nextParam = 2; // $1 = contractorId
+
+  if (tags.length > 0) {
+    if (tagLogic === 'AND') {
+      const clauses = tags.map((tag, i) => {
+        tagParams.push(tag);
+        return `AND EXISTS (SELECT 1 FROM contact_tags ct${i + 1} WHERE ct${i + 1}.contact_id = c.id AND ct${i + 1}.tag = $${nextParam + i})`;
+      });
+      tagWhere = clauses.join('\n');
+      nextParam += tags.length;
+    } else {
+      tagParams.push(tags);
+      tagWhere = `AND EXISTS (SELECT 1 FROM contact_tags ct1 WHERE ct1.contact_id = c.id AND ct1.tag = ANY($${nextParam}))`;
+      nextParam += 1;
+    }
+  }
+
+  const limitParam  = nextParam;
+  const offsetParam = nextParam + 1;
+
   try {
     const baseWhere = `
       FROM contacts c
@@ -38,12 +112,15 @@ router.get('/api/admin/contacts', async (req, res) => {
         ON eoo.email = c.email
         AND eoo.contractor_id = c.contractor_id
       WHERE c.contractor_id = $1
-      ${extraWhere}`;
+      ${extraWhere}
+      ${tagWhere}`;
+
+    const baseParams = [contractorId, ...tagParams];
 
     const [countResult, rowsResult] = await Promise.all([
       pool.query(
         `SELECT COUNT(*) AS total ${baseWhere}`,
-        [contractorId]
+        baseParams
       ),
       pool.query(
         `SELECT
@@ -60,8 +137,8 @@ router.get('/api/admin/contacts', async (req, res) => {
            (SELECT MAX(sent_at) FROM contact_send_history WHERE contact_id = c.id) AS last_sent_at
          ${baseWhere}
          ORDER BY c.updated_at DESC
-         LIMIT $2 OFFSET $3`,
-        [contractorId, limit, offset]
+         LIMIT $${limitParam} OFFSET $${offsetParam}`,
+        [...baseParams, limit, offset]
       ),
     ]);
 
@@ -234,10 +311,20 @@ router.get('/api/admin/contacts/:contactId', async (req, res) => {
       }
     }
 
+    // ── 5. Contact tags ───────────────────────────────────────────────────────
+    const tagsResult = await pool.query(
+      `SELECT tag, source FROM contact_tags
+       WHERE contact_id = $1
+       ORDER BY applied_at`,
+      [contactId]
+    );
+    const tags = tagsResult.rows.map(r => ({ tag: r.tag, source: r.source }));
+
     res.json({
       contact,
       send_history: sendHistory,
       jobber_profile: jobberProfile,
+      tags,
     });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/contacts/:contactId' });
@@ -342,6 +429,83 @@ router.patch('/api/admin/contacts/:contactId/resubscribe', async (req, res) => {
     })();
   } catch (err) {
     await logError({ req, error: err, source: 'PATCH /api/admin/contacts/:contactId/resubscribe' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── ADD ADMIN TAG ─────────────────────────────────────────────────────────────
+
+router.post('/api/admin/contacts/:contactId/tags', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const { contactId } = req.params;
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(contactId)) {
+    return res.status(400).json({ error: 'Invalid contact ID' });
+  }
+
+  const { tag } = req.body;
+  if (!tag || typeof tag !== 'string' || tag.trim().length === 0 || tag.trim().length > 100) {
+    return res.status(400).json({ error: 'Invalid tag' });
+  }
+  const cleanTag = tag.trim();
+
+  try {
+    const contactCheck = await pool.query(
+      `SELECT id FROM contacts WHERE id = $1 AND contractor_id = $2`,
+      [contactId, contractorId]
+    );
+    if (contactCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+
+    await applyTag(pool, contactId, contractorId, cleanTag, 'admin');
+
+    const tagsResult = await pool.query(
+      `SELECT tag, source FROM contact_tags WHERE contact_id = $1 ORDER BY applied_at`,
+      [contactId]
+    );
+    res.json({ tags: tagsResult.rows.map(r => ({ tag: r.tag, source: r.source })) });
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/admin/contacts/:contactId/tags' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── REMOVE ADMIN TAG ──────────────────────────────────────────────────────────
+
+router.delete('/api/admin/contacts/:contactId/tags/:tag', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const { contactId, tag } = req.params;
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(contactId)) {
+    return res.status(400).json({ error: 'Invalid contact ID' });
+  }
+
+  try {
+    const tagCheck = await pool.query(
+      `SELECT source FROM contact_tags WHERE contact_id = $1 AND tag = $2`,
+      [contactId, tag]
+    );
+    if (tagCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Tag not found' });
+    }
+    if (tagCheck.rows[0].source !== 'admin') {
+      return res.status(403).json({ error: 'Only admin-added tags can be removed' });
+    }
+
+    await removeTag(pool, contactId, contractorId, tag);
+
+    const tagsResult = await pool.query(
+      `SELECT tag, source FROM contact_tags WHERE contact_id = $1 ORDER BY applied_at`,
+      [contactId]
+    );
+    res.json({ tags: tagsResult.rows.map(r => ({ tag: r.tag, source: r.source })) });
+  } catch (err) {
+    await logError({ req, error: err, source: 'DELETE /api/admin/contacts/:contactId/tags/:tag' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

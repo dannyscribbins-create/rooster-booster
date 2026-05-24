@@ -44,3 +44,20 @@ export const AD = {
   fontSans:    "'Roboto', sans-serif",
   fontDisplay: "'DM Serif Display', serif",
 };
+
+export const TAG_COLORS = {
+  'Opted Out':           { bg: '#FEE2E2', text: '#991B1B', border: '#FECACA' },
+  'SMS Opted Out':       { bg: '#FEE2E2', text: '#991B1B', border: '#FECACA' },
+  'Referral Only':       { bg: '#FEF3C7', text: '#92400E', border: '#FDE68A' },
+  'App User':            { bg: '#DBEAFE', text: '#1E40AF', border: '#BFDBFE' },
+  'Active Referrer':     { bg: '#EDE9FE', text: '#5B21B6', border: '#DDD6FE' },
+  'Previously Contacted':{ bg: '#F3F4F6', text: '#374151', border: '#E5E7EB' },
+  'High Engager':        { bg: '#D1FAE5', text: '#065F46', border: '#A7F3D0' },
+  'Never Opened':        { bg: '#F9FAFB', text: '#6B7280', border: '#E5E7EB' },
+  'Bounced':             { bg: '#FEF3C7', text: '#B45309', border: '#FDE68A' },
+  'Suppressed':          { bg: '#F3F4F6', text: '#6B7280', border: '#E5E7EB' },
+  'Existing Client':     { bg: '#CCFBF1', text: '#0F766E', border: '#99F6E4' },
+  'Paid Customer':       { bg: '#CCFBF1', text: '#0F766E', border: '#99F6E4' },
+  'Recently Contacted':  { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+  default:               { bg: '#F3F4F6', text: '#374151', border: '#E5E7EB' },
+};
