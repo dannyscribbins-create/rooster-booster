@@ -10,11 +10,11 @@ const jobberWebhooks = require('./server/routes/webhooks/jobber');
 const resendWebhookRouter = require('./server/routes/resendWebhook');
 const accountRoutes = require('./server/routes/account');
 const unsubscribeRoutes = require('./server/routes/unsubscribe');
-const { runScheduledSync } = require('./server/crm/pipelineSync');
 const { expressErrorHandler } = require('./server/middleware/errorLogger');
 const helmet = require('helmet');
 const cron = require('node-cron');
 const { runBackup } = require('./server/utils/backup');
+const { startCronJobs } = require('./server/cron/index');
 
 process.on('unhandledRejection', async (reason, promise) => {
   console.error('[server] Unhandled promise rejection:', reason)
@@ -42,6 +42,7 @@ app.use(express.json({ limit: '5mb' }));
 ;(async () => {
   try {
     await initDB();
+    startCronJobs();
     const { backfillTagsForContacts } = require('./server/utils/tags');
     const { pool } = require('./server/db');
     const contactsResult = await pool.query('SELECT id, contractor_id FROM contacts');
@@ -73,12 +74,6 @@ app.use('/', stripeRoutes);
 app.use('/api/account', accountRoutes);
 // Unsubscribe / email preferences — public, no auth middleware
 app.use('/', unsubscribeRoutes);
-
-// Background sync: 60s startup delay, then every 30 minutes. Logic in pipelineSync.js.
-setTimeout(() => {
-  runScheduledSync();
-  setInterval(runScheduledSync, 30 * 60 * 1000);
-}, 60 * 1000);
 
 app.use(expressErrorHandler);
 

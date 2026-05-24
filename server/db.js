@@ -873,6 +873,22 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // ── NOTIFICATION EMAIL COLUMNS ────────────────────────────────────────────────
   await addNotificationEmailColumns(pool);
 
+  // ── CRON JOB LOCKS ────────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS cron_job_locks (
+    job_name    TEXT PRIMARY KEY,
+    is_locked   BOOLEAN NOT NULL DEFAULT FALSE,
+    locked_at   TIMESTAMPTZ,
+    locked_by   TEXT,
+    timeout_at  TIMESTAMPTZ
+  )`);
+  await pool.query(`INSERT INTO cron_job_locks (job_name) VALUES
+    ('pipeline_sync'),
+    ('session_cleanup'),
+    ('admin_cache_expiry'),
+    ('engagement_cadence'),
+    ('dynamic_audiences')
+  ON CONFLICT DO NOTHING`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

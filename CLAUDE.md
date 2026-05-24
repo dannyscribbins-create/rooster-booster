@@ -45,7 +45,7 @@ If a shortcut is taken for MVP speed, it must be flagged with a code comment in 
 `server.js` is a lean entry point only. It imports, mounts routes, calls initDB, registers the expressErrorHandler, schedules the background sync, and starts the server. Do not add route handlers or logic into server.js.
 
 ```
-server.js                          ← entry point — imports, middleware, route mounts, scheduled sync, listen
+server.js                          ← entry point — imports, middleware, route mounts, cron bootstrap, listen
 server/
 ├── db.js                          ← PostgreSQL pool + initDB() — creates/migrates all tables on startup
 ├── crm/
@@ -54,6 +54,15 @@ server/
 │   ├── pipelineSync.js            ← runFullSync(), runIncrementalSync(), runScheduledSync() — background Jobber sync worker
 │   ├── servicetitan.js            ← placeholder — implement fetchPipeline() when ready
 │   └── acculynx.js                ← placeholder — implement fetchPipeline() when ready
+├── cron/
+│   ├── index.js                   ← startCronJobs() — registers all cron jobs on startup
+│   ├── withLock.js                ← withLock(jobName, timeoutMinutes, fn) — atomic job lock via cron_job_locks table
+│   └── jobs/
+│       ├── pipelineSync.js        ← every 30 min — calls runScheduledSync() inside withLock
+│       ├── sessionCleanup.js      ← daily 2am UTC — deletes expired sessions
+│       ├── adminCacheExpiry.js    ← every 20 min — deletes stale admin_cache rows
+│       ├── engagementCadence.js   ← daily 6am UTC — stub for Session 71 M1/M3/M6/M12 cadence
+│       └── dynamicAudiences.js   ← daily 6am UTC — stub for Session 71 audience re-evaluation
 ├── middleware/
 │   ├── auth.js                    ← verifyAdminSession(), verifyReferrerSession()
 │   └── errorLogger.js             ← classifySeverity(), explainError(), sendErrorAlert(), logError(), expressErrorHandler()
@@ -73,7 +82,7 @@ server/
 **What each layer does:**
 - **db.js** — owns the PostgreSQL pool. All other files import `{ pool }` from here. `initDB()` creates/migrates all tables on startup.
 - **crm/jobber.js** — owns `accessToken` and all Jobber-specific logic. `fetchPipelineForReferrer()` is the core shared function used by both referrer and admin routes.
-- **crm/pipelineSync.js** — background worker that calls Jobber GraphQL. `runScheduledSync()` is called by server.js on a 30-minute interval (60s startup delay). `runFullSync()` fetches all clients since referral_start_date; `runIncrementalSync()` fetches only clients updated since last sync.
+- **crm/pipelineSync.js** — background worker that calls Jobber GraphQL. `runScheduledSync()` is called by the cron job in `server/cron/jobs/pipelineSync.js` every 30 minutes inside an atomic lock. `runFullSync()` fetches all clients since referral_start_date; `runIncrementalSync()` fetches only clients updated since last sync.
 - **crm/index.js** — `getCRMAdapter(contractorId)` is the FORA hook. When contractor #2 uses a different CRM, add their adapter file and update this dispatcher. No route code changes needed.
 - **middleware/auth.js** — `verifyAdminSession(req, res)` returns true/false and handles 401 automatically. `verifyReferrerSession(req, res)` returns `{ userId, sessionId, token }` or null (sends 401/403 automatically); also checks for soft-deleted accounts.
 - **middleware/errorLogger.js** — `logError({ req, error })` writes to `error_log` table and sends Resend email alerts on first occurrence and every 10th recurrence. `expressErrorHandler` is the Express catch-all registered in server.js. Never use `console.error` alone in production catch blocks — always call `logError` first.
@@ -112,8 +121,9 @@ server/
 - **Webhook security** — `/webhooks/*` uses `express.raw({ type: 'application/json' })` to capture raw bytes before `express.json()` runs. HMAC is verified against the raw buffer before any payload processing. Never remove the `express.raw()` middleware from server.js.
 - **Pipeline cache** — the pipeline endpoint reads from `pipeline_cache` (populated by the background sync worker), not from Jobber directly. On adapter error, the endpoint falls back to the last known cache rows and returns `{ stale: true, stale_since }`. If no cache rows exist, returns 503. Frontend shows a yellow stale banner (with relative timestamp) or a red unavailable banner accordingly.
 - **Payout safety** — cashout approval in admin.js is wrapped in a `BEGIN/COMMIT/ROLLBACK` database transaction. The status update, activity log insert, and payout_announcements insert all commit atomically. A scalable Stripe ACH call should be inserted inside this transaction before the final COMMIT.
+- **Cron job infrastructure** — all scheduled jobs live in `server/cron/`. `startCronJobs()` is called inside the initDB IIFE in server.js after the DB is ready. Every job runs inside `withLock(jobName, timeoutMinutes, fn)` which acquires an atomic DB lock from `cron_job_locks` — if the lock is held, the tick is skipped with a log. All schedules run in UTC. To add a new job: create `server/cron/jobs/[name].js`, add a seed row in `initDB()`, and call `register()` in `server/cron/index.js`.
 
-**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings` (incl. season settings), `user_badges` (incl. seen column), `referral_conversions` (incl. bonus_amount INTEGER — dollar amount stored at sync time, source of truth for period-filtered earnings; see pipeline sync comment), `error_log` (incl. count, resolved — never delete rows; use resolved=true to mark fixed), `pipeline_cache` (populated by background sync worker; source of truth for pipeline endpoint), `sync_state` (tracks last_synced_at and initial_sync_complete per contractor), `flagged_referrals` (pre-start-date clients flagged during initial sync for admin review), `verification_codes` (phone and email OTP codes), `leaderboard_settings`, `invite_links`, `contractor_crm_settings` (incl. referral_start_date), `notification_preferences` (per-contractor per-trigger email suppression; one row per trigger_key, defaults to enabled), `contact_tags` (persistent tag layer on contacts; UNIQUE(contact_id, tag); source CHECK: system/jobber/jobber_crm/admin; written at trigger points, never computed on demand; indexed on contact_id, contractor_id, tag)
+**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings` (incl. season settings), `user_badges` (incl. seen column), `referral_conversions` (incl. bonus_amount INTEGER — dollar amount stored at sync time, source of truth for period-filtered earnings; see pipeline sync comment), `error_log` (incl. count, resolved — never delete rows; use resolved=true to mark fixed), `pipeline_cache` (populated by background sync worker; source of truth for pipeline endpoint), `sync_state` (tracks last_synced_at and initial_sync_complete per contractor), `flagged_referrals` (pre-start-date clients flagged during initial sync for admin review), `verification_codes` (phone and email OTP codes), `leaderboard_settings`, `invite_links`, `contractor_crm_settings` (incl. referral_start_date), `notification_preferences` (per-contractor per-trigger email suppression; one row per trigger_key, defaults to enabled), `contact_tags` (persistent tag layer on contacts; UNIQUE(contact_id, tag); source CHECK: system/jobber/jobber_crm/admin; written at trigger points, never computed on demand; indexed on contact_id, contractor_id, tag), `cron_job_locks` (atomic distributed lock per job_name; 5 seed rows: pipeline_sync, session_cleanup, admin_cache_expiry, engagement_cadence, dynamic_audiences; is_locked + timeout_at prevent duplicate concurrent runs)
 
 ---
 
@@ -338,6 +348,7 @@ These rules encode decisions made across Sessions 1–38. Violating any of them 
 - New CRM adapters → server/crm/[name].js, wired through server/crm/index.js.
 - getCRMAdapter(contractorId) in crm/index.js is the FORA multi-contractor hook. Never bypass it by importing a CRM adapter directly in a route file.
 - Retry helpers → server/utils/retryHelpers.js. Never redefine resendShouldRetry, twilioShouldRetry, or jobberShouldRetry locally in any file.
+- New cron jobs → create `server/cron/jobs/[name].js`, add seed row to `cron_job_locks` in `initDB()`, call `register()` in `server/cron/index.js`. All jobs must use `withLock()` from `server/cron/withLock.js`.
 
 ---
 
@@ -390,6 +401,13 @@ When building anything that touches a listed feature, read its entry before writ
 **Email Notification Suppression**
 - Files: server/utils/emailSuppression.js, server/routes/admin/notifications.js, server/db.js, src/components/admin/AdminSettingsNotifications.jsx
 - `isEmailSuppressed(contractorId, recipientEmail, triggerKey)` — checks email_opt_outs (opt_out_all) and notification_preferences (per-trigger toggle); fails open on DB error. Wired to all configurable triggers as of Session 68. Permanent triggers (#10, #11, #27, #28, #29, #30) are never gated. Configurable triggers: first_referral_submitted, referral_inspection, referral_sold, referral_lost, referral_reactivated, bonus_earned, first_reward_milestone, reward_earned_no_account, cashout_request_received, cashout_approved, cashout_denied, missing_referral_resolved, profile_photo_uploaded, new_referrer_signup, new_referral_detected, missing_referral_report.
+
+**Cron Job Infrastructure**
+- Files: server/cron/index.js, server/cron/withLock.js, server/cron/jobs/pipelineSync.js, server/cron/jobs/sessionCleanup.js, server/cron/jobs/adminCacheExpiry.js, server/cron/jobs/engagementCadence.js, server/cron/jobs/dynamicAudiences.js, server/db.js (cron_job_locks table)
+- All scheduled jobs use `withLock(jobName, timeoutMinutes, fn)` — acquires an atomic PostgreSQL row lock from `cron_job_locks`; if the lock is already held (or within timeout), the tick is skipped. This prevents duplicate runs if a job takes longer than its schedule interval.
+- `startCronJobs()` called inside the `initDB()` IIFE in server.js immediately after DB is ready. Never call it before initDB resolves — the lock table must exist.
+- 5 active jobs: pipeline_sync (30min), session_cleanup (2am daily), admin_cache_expiry (20min), engagement_cadence (6am daily — stub), dynamic_audiences (6am daily — stub).
+- The existing daily backup cron in server.js (lines 80–89) is NOT managed by this system — it predates the cron infrastructure and remains inline.
 
 **Contact Tag System**
 - Files: server/utils/tags.js, server/db.js, server/routes/admin/contacts.js, src/constants/adminTheme.js (TAG_COLORS), src/components/admin/TagCloudFilter.jsx, src/components/admin/AdminContactDetailDrawer.jsx, src/components/admin/AdminContactsTab.jsx, src/components/admin/AdminCampaigns.jsx
