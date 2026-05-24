@@ -123,7 +123,7 @@ server/
 - **Payout safety** — cashout approval in admin.js is wrapped in a `BEGIN/COMMIT/ROLLBACK` database transaction. The status update, activity log insert, and payout_announcements insert all commit atomically. A scalable Stripe ACH call should be inserted inside this transaction before the final COMMIT.
 - **Cron job infrastructure** — all scheduled jobs live in `server/cron/`. `startCronJobs()` is called inside the initDB IIFE in server.js after the DB is ready. Every job runs inside `withLock(jobName, timeoutMinutes, fn)` which acquires an atomic DB lock from `cron_job_locks` — if the lock is held, the tick is skipped with a log. All schedules run in UTC. To add a new job: create `server/cron/jobs/[name].js`, add a seed row in `initDB()`, and call `register()` in `server/cron/index.js`.
 
-**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings` (incl. season settings), `user_badges` (incl. seen column), `referral_conversions` (incl. bonus_amount INTEGER — dollar amount stored at sync time, source of truth for period-filtered earnings; see pipeline sync comment), `error_log` (incl. count, resolved — never delete rows; use resolved=true to mark fixed), `pipeline_cache` (populated by background sync worker; source of truth for pipeline endpoint), `sync_state` (tracks last_synced_at and initial_sync_complete per contractor), `flagged_referrals` (pre-start-date clients flagged during initial sync for admin review), `verification_codes` (phone and email OTP codes), `leaderboard_settings`, `invite_links`, `contractor_crm_settings` (incl. referral_start_date), `notification_preferences` (per-contractor per-trigger email suppression; one row per trigger_key, defaults to enabled), `contact_tags` (persistent tag layer on contacts; UNIQUE(contact_id, tag); source CHECK: system/jobber/jobber_crm/admin; written at trigger points, never computed on demand; indexed on contact_id, contractor_id, tag), `cron_job_locks` (atomic distributed lock per job_name; 5 seed rows: pipeline_sync, session_cleanup, admin_cache_expiry, engagement_cadence, dynamic_audiences; is_locked + timeout_at prevent duplicate concurrent runs)
+**Database tables**: `tokens`, `users` (incl. paid_count + paid_count_updated_at — MVP, see Architectural Principles), `sessions`, `cashout_requests`, `activity_log`, `admin_cache`, `payout_announcements`, `announcement_settings`, `pin_reset_tokens`, `engagement_settings` (incl. season settings), `user_badges` (incl. seen column), `referral_conversions` (incl. bonus_amount INTEGER — dollar amount stored at sync time, source of truth for period-filtered earnings; see pipeline sync comment), `error_log` (incl. count, resolved — never delete rows; use resolved=true to mark fixed), `pipeline_cache` (populated by background sync worker; source of truth for pipeline endpoint; incl. `paid_at TIMESTAMPTZ` — written once when pipeline_status first transitions to 'paid', never overwritten on subsequent syncs), `sync_state` (tracks last_synced_at and initial_sync_complete per contractor), `flagged_referrals` (pre-start-date clients flagged during initial sync for admin review), `verification_codes` (phone and email OTP codes), `leaderboard_settings`, `invite_links`, `contractor_crm_settings` (incl. referral_start_date), `notification_preferences` (per-contractor per-trigger email suppression; one row per trigger_key, defaults to enabled), `contact_tags` (persistent tag layer on contacts; UNIQUE(contact_id, tag); source CHECK: system/jobber/jobber_crm/admin; written at trigger points, never computed on demand; indexed on contact_id, contractor_id, tag), `cron_job_locks` (atomic distributed lock per job_name; 5 seed rows: pipeline_sync, session_cleanup, admin_cache_expiry, engagement_cadence, dynamic_audiences; is_locked + timeout_at prevent duplicate concurrent runs), `dynamic_audiences` (saved tag filter sets; member_count + last_evaluated_at updated daily by cron), `dynamic_audience_members` (contact membership per audience; refreshed atomically by dynamic_audiences cron job), `engagement_cadence_settings` (per-contractor per-month 1/3/6/12 cadence config; defaults seeded in initDB), `engagement_cadence_log` (prevents duplicate M1/M3/M6/M12 sends; UNIQUE(contact_id, cadence_month))
 
 ---
 
@@ -348,7 +348,7 @@ These rules encode decisions made across Sessions 1–38. Violating any of them 
 - New CRM adapters → server/crm/[name].js, wired through server/crm/index.js.
 - getCRMAdapter(contractorId) in crm/index.js is the FORA multi-contractor hook. Never bypass it by importing a CRM adapter directly in a route file.
 - Retry helpers → server/utils/retryHelpers.js. Never redefine resendShouldRetry, twilioShouldRetry, or jobberShouldRetry locally in any file.
-- New cron jobs → create `server/cron/jobs/[name].js`, add seed row to `cron_job_locks` in `initDB()`, call `register()` in `server/cron/index.js`. All jobs must use `withLock()` from `server/cron/withLock.js`.
+- New cron jobs → create `server/cron/jobs/[name].js`, add seed row to `cron_job_locks` in `initDB()`, export a named start function (e.g. `startMyJob`) and call it in `server/cron/index.js`. All jobs must use `withLock()` from `server/cron/withLock.js`.
 
 ---
 
@@ -406,7 +406,8 @@ When building anything that touches a listed feature, read its entry before writ
 - Files: server/cron/index.js, server/cron/withLock.js, server/cron/jobs/pipelineSync.js, server/cron/jobs/sessionCleanup.js, server/cron/jobs/adminCacheExpiry.js, server/cron/jobs/engagementCadence.js, server/cron/jobs/dynamicAudiences.js, server/db.js (cron_job_locks table)
 - All scheduled jobs use `withLock(jobName, timeoutMinutes, fn)` — acquires an atomic PostgreSQL row lock from `cron_job_locks`; if the lock is already held (or within timeout), the tick is skipped. This prevents duplicate runs if a job takes longer than its schedule interval.
 - `startCronJobs()` called inside the `initDB()` IIFE in server.js immediately after DB is ready. Never call it before initDB resolves — the lock table must exist.
-- 5 active jobs: pipeline_sync (30min), session_cleanup (2am daily), admin_cache_expiry (20min), engagement_cadence (6am daily — stub), dynamic_audiences (6am daily — stub).
+- 5 active jobs: pipeline_sync (30min), session_cleanup (2am daily), admin_cache_expiry (20min), engagement_cadence (6am UTC — M1/M3/M6/M12 post-job emails; exports `startEngagementCadenceJob`), dynamic_audiences (6:10am UTC — re-evaluates saved audience filter sets; exports `startDynamicAudiencesJob`).
+- Note: engagementCadence.js and dynamicAudiences.js export named functions (`startEngagementCadenceJob`, `startDynamicAudiencesJob`) rather than `register()`. cron/index.js calls these directly.
 - The existing daily backup cron in server.js (lines 80–89) is NOT managed by this system — it predates the cron infrastructure and remains inline.
 
 **Contact Tag System**
@@ -418,6 +419,24 @@ When building anything that touches a listed feature, read its entry before writ
 - source CHECK: `('system', 'jobber', 'jobber_crm', 'admin')`. Only admin-sourced tags can be deleted via the API; system/jobber tags return 403.
 - Frontend: `TAG_COLORS` map exported from adminTheme.js. `TagPill` and `TagCloudFilter` shared components in TagCloudFilter.jsx. Tag cloud filter in AdminContactsTab uses tag-summary endpoint + AND/OR EXISTS SQL pattern (Addendum 2). Drawer shows tags with admin add/remove. Campaign ResultsModal shows enriched tag pills per contact.
 - `POST /api/admin/campaigns/enrich-contacts` — batch lookup by email, aggregates from contact_send_history, computes Recently Contacted (last 30 days) as non-stored dynamic tag, max 500 emails.
+
+**Dynamic Audiences**
+- Files: server/cron/jobs/dynamicAudiences.js, server/routes/admin/campaigns.js, src/components/admin/AdminCampaigns.jsx, server/db.js (dynamic_audiences + dynamic_audience_members tables)
+- Audiences tab inside AdminCampaigns.jsx — lives alongside Campaigns and Campaign Contacts tabs; not a standalone nav item.
+- Saved tag filter sets (name, description, filter_json: `{tags, mode}`) re-evaluated daily at 6:10am UTC by `startDynamicAudiencesJob()`.
+- `filter_json.mode`: 'AND' = contact must have ALL tags; 'OR' = contact must have ANY tag.
+- Member sets refreshed atomically per audience: BEGIN → DELETE old members → INSERT new members → UPDATE member_count → COMMIT.
+- CRUD via /api/admin/audiences routes in campaigns.js. DELETE is soft (is_active = false) — no hard delete ever.
+- Members endpoint: GET /api/admin/audiences/:id/members — returns up to 500, ordered by added_at DESC.
+
+**Engagement Cadence M1/M3/M6/M12**
+- Files: server/cron/jobs/engagementCadence.js, server/routes/admin/campaigns.js, src/components/admin/AdminSettingsNotifications.jsx, server/db.js (engagement_cadence_settings + engagement_cadence_log tables)
+- Automated post-job emails at 1/3/6/12 months after pipeline_cache.paid_at; deduplication enforced by UNIQUE(contact_id, cadence_month) in engagement_cadence_log.
+- Settings managed in AdminSettingsNotifications.jsx under Referrer Notifications → "Post-Job Engagement Cadence" section (4 toggle rows, each with inline subject/body editor).
+- Admin can toggle each month on/off (optimistic update + Saved flash) and edit subject/body with token support: `{{first_name}}`, `{{company_name}}`, `{{job_type}}`, `{{install_month}}`, `{{warranty_year}}`, `{{referral_link}}`.
+- Settings CRUD via GET /api/admin/engagement-cadence and PUT /api/admin/engagement-cadence/:month in campaigns.js.
+- Default rows seeded in initDB() for any contractor in contractor_settings; ON CONFLICT DO NOTHING prevents overwrites.
+- paid_at on pipeline_cache is the source of truth for cadence timing — written once on first 'paid' transition, never overwritten.
 
 ---
 

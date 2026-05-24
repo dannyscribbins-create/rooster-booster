@@ -297,6 +297,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   // Migration: raw_data column added in Session 41 for app_signup placeholder rows
   await pool.query(`ALTER TABLE pipeline_cache ADD COLUMN IF NOT EXISTS raw_data JSONB`);
+  // Migration: paid_at records the first moment a client transitions to 'paid'; never overwritten
+  await pool.query(`ALTER TABLE pipeline_cache ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS flagged_referrals (
     id SERIAL PRIMARY KEY,
@@ -872,6 +874,73 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   // ── NOTIFICATION EMAIL COLUMNS ────────────────────────────────────────────────
   await addNotificationEmailColumns(pool);
+
+  // ── DYNAMIC AUDIENCES ─────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS dynamic_audiences (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    filter_json JSONB NOT NULL DEFAULT '{}',
+    member_count INTEGER NOT NULL DEFAULT 0,
+    last_evaluated_at TIMESTAMPTZ,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_dynamic_audiences_contractor_id
+    ON dynamic_audiences(contractor_id)`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS dynamic_audience_members (
+    audience_id INTEGER NOT NULL REFERENCES dynamic_audiences(id) ON DELETE CASCADE,
+    contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    added_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (audience_id, contact_id)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_dam_audience_id ON dynamic_audience_members(audience_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_dam_contact_id ON dynamic_audience_members(contact_id)`);
+
+  // ── ENGAGEMENT CADENCE ────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS engagement_cadence_settings (
+    contractor_id TEXT NOT NULL,
+    cadence_month INTEGER NOT NULL CHECK (cadence_month IN (1, 3, 6, 12)),
+    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    subject TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (contractor_id, cadence_month)
+  )`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS engagement_cadence_log (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL,
+    contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    cadence_month INTEGER NOT NULL,
+    sent_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (contact_id, cadence_month)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_ecl_contractor_id ON engagement_cadence_log(contractor_id)`);
+
+  // Seed default engagement cadence settings for any contractor missing them
+  const cadenceContractorRows = await pool.query(
+    `SELECT DISTINCT contractor_id FROM contractor_settings`
+  );
+  for (const row of cadenceContractorRows.rows) {
+    const defaults = [
+      { month: 1,  subject: 'How is everything holding up?',           body: 'Hi {{first_name}},\n\nJust checking in after your recent project. We hope everything is looking great. Reach out anytime if you have questions.\n\n— {{company_name}}' },
+      { month: 3,  subject: 'Your {{job_type}} — seasonal update',     body: 'Hi {{first_name}},\n\nStorm season is approaching. Your {{job_type}} completed in {{install_month}} is covered under our workmanship warranty through {{warranty_year}}. Reach out if anything looks off.\n\n— {{company_name}}' },
+      { month: 6,  subject: "You've been a great ambassador",          body: "Hi {{first_name}},\n\nIt's been 6 months since your project wrapped — and we couldn't be more grateful. If anyone in your network needs a roofer this season, here's your referral link: {{referral_link}}.\n\nNo pressure — just wanted to make sure you had it.\n\n— {{company_name}}" },
+      { month: 12, subject: 'Happy anniversary from {{company_name}}', body: "Hi {{first_name}},\n\nOne year ago we completed your {{job_type}}. Your workmanship warranty runs through {{warranty_year}} — we've got you covered.\n\nIf you know anyone who needs roofing work, your referral link is always active: {{referral_link}}.\n\n— {{company_name}}" },
+    ];
+    for (const d of defaults) {
+      await pool.query(
+        `INSERT INTO engagement_cadence_settings (contractor_id, cadence_month, is_enabled, subject, body)
+         VALUES ($1, $2, TRUE, $3, $4)
+         ON CONFLICT (contractor_id, cadence_month) DO NOTHING`,
+        [row.contractor_id, d.month, d.subject, d.body]
+      );
+    }
+  }
 
   // ── CRON JOB LOCKS ────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS cron_job_locks (

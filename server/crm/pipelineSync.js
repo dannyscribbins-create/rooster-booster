@@ -101,15 +101,21 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   await pool.query(
     `INSERT INTO pipeline_cache
        (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status,
-        pre_start_date, jobber_created_at, last_synced_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+        pre_start_date, jobber_created_at, last_synced_at, updated_at, paid_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(),
+       CASE WHEN $5 = 'paid' THEN NOW() ELSE NULL END)
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
        client_name      = EXCLUDED.client_name,
        referred_by      = EXCLUDED.referred_by,
        pipeline_status  = EXCLUDED.pipeline_status,
        pre_start_date   = EXCLUDED.pre_start_date,
        last_synced_at   = NOW(),
-       updated_at       = NOW()`,
+       updated_at       = NOW(),
+       paid_at          = CASE
+         WHEN EXCLUDED.pipeline_status = 'paid' AND pipeline_cache.pipeline_status != 'paid'
+         THEN NOW()
+         ELSE pipeline_cache.paid_at
+       END`,
     [contractorId, client.id, clientName, referredBy, status,
      isPreStart, createdAt]
   );

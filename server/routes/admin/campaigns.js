@@ -2933,6 +2933,219 @@ router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', asy
   }
 });
 
+// ── ADMIN: DYNAMIC AUDIENCES ─────────────────────────────────────────────────
+
+router.get('/api/admin/audiences', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, description, filter_json, member_count, last_evaluated_at, is_active, created_at
+       FROM dynamic_audiences
+       WHERE contractor_id = $1
+       ORDER BY created_at DESC`,
+      [contractorId]
+    );
+    res.json(rows);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/api/admin/audiences', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const { name, description, filter_json } = req.body;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+  if (name.trim().length > 100) {
+    return res.status(400).json({ error: 'name must be 100 characters or fewer' });
+  }
+  if (!filter_json || typeof filter_json !== 'object' || Array.isArray(filter_json)) {
+    return res.status(400).json({ error: 'filter_json must be a valid object' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO dynamic_audiences (contractor_id, name, description, filter_json)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, description, filter_json, member_count, last_evaluated_at, is_active, created_at`,
+      [contractorId, name.trim(), description || null, JSON.stringify(filter_json)]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/api/admin/audiences/:id', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const audienceId = parseInt(req.params.id, 10);
+  if (!audienceId || audienceId < 1) return res.status(400).json({ error: 'Invalid audience id' });
+
+  const { name, description, filter_json, is_active } = req.body;
+  if (name !== undefined) {
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+    if (name.trim().length > 100) {
+      return res.status(400).json({ error: 'name must be 100 characters or fewer' });
+    }
+  }
+  if (filter_json !== undefined && (typeof filter_json !== 'object' || Array.isArray(filter_json))) {
+    return res.status(400).json({ error: 'filter_json must be a valid object' });
+  }
+
+  try {
+    const existing = await pool.query(
+      `SELECT id FROM dynamic_audiences WHERE id = $1 AND contractor_id = $2`,
+      [audienceId, contractorId]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+    const { rows } = await pool.query(
+      `UPDATE dynamic_audiences
+       SET name        = COALESCE($1, name),
+           description = COALESCE($2, description),
+           filter_json = COALESCE($3, filter_json),
+           is_active   = COALESCE($4, is_active)
+       WHERE id = $5 AND contractor_id = $6
+       RETURNING id, name, description, filter_json, member_count, last_evaluated_at, is_active, created_at`,
+      [
+        name ? name.trim() : null,
+        description !== undefined ? (description || null) : null,
+        filter_json ? JSON.stringify(filter_json) : null,
+        is_active !== undefined ? is_active : null,
+        audienceId,
+        contractorId,
+      ]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/api/admin/audiences/:id', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const audienceId = parseInt(req.params.id, 10);
+  if (!audienceId || audienceId < 1) return res.status(400).json({ error: 'Invalid audience id' });
+
+  try {
+    const result = await pool.query(
+      `UPDATE dynamic_audiences SET is_active = FALSE
+       WHERE id = $1 AND contractor_id = $2
+       RETURNING id`,
+      [audienceId, contractorId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/api/admin/audiences/:id/members', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const audienceId = parseInt(req.params.id, 10);
+  if (!audienceId || audienceId < 1) return res.status(400).json({ error: 'Invalid audience id' });
+
+  try {
+    const existing = await pool.query(
+      `SELECT id FROM dynamic_audiences WHERE id = $1 AND contractor_id = $2`,
+      [audienceId, contractorId]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+    const { rows } = await pool.query(
+      `SELECT dam.contact_id, c.name AS full_name, c.email, c.phone, dam.added_at
+       FROM dynamic_audience_members dam
+       JOIN contacts c ON c.id = dam.contact_id
+       WHERE dam.audience_id = $1
+       ORDER BY dam.added_at DESC
+       LIMIT 500`,
+      [audienceId]
+    );
+    res.json(rows);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ADMIN: ENGAGEMENT CADENCE SETTINGS ───────────────────────────────────────
+
+const VALID_CADENCE_MONTHS = [1, 3, 6, 12];
+
+const DEFAULT_CADENCE_SETTINGS = [
+  { cadence_month: 1,  is_enabled: true, subject: 'How is everything holding up?',           body: 'Hi {{first_name}},\n\nJust checking in after your recent project. We hope everything is looking great. Reach out anytime if you have questions.\n\n— {{company_name}}' },
+  { cadence_month: 3,  is_enabled: true, subject: 'Your {{job_type}} — seasonal update',     body: 'Hi {{first_name}},\n\nStorm season is approaching. Your {{job_type}} completed in {{install_month}} is covered under our workmanship warranty through {{warranty_year}}. Reach out if anything looks off.\n\n— {{company_name}}' },
+  { cadence_month: 6,  is_enabled: true, subject: "You've been a great ambassador",          body: "Hi {{first_name}},\n\nIt's been 6 months since your project wrapped — and we couldn't be more grateful. If anyone in your network needs a roofer this season, here's your referral link: {{referral_link}}.\n\nNo pressure — just wanted to make sure you had it.\n\n— {{company_name}}" },
+  { cadence_month: 12, is_enabled: true, subject: 'Happy anniversary from {{company_name}}', body: "Hi {{first_name}},\n\nOne year ago we completed your {{job_type}}. Your workmanship warranty runs through {{warranty_year}} — we've got you covered.\n\nIf you know anyone who needs roofing work, your referral link is always active: {{referral_link}}.\n\n— {{company_name}}" },
+];
+
+router.get('/api/admin/engagement-cadence', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  try {
+    const { rows } = await pool.query(
+      `SELECT cadence_month, is_enabled, subject, body
+       FROM engagement_cadence_settings
+       WHERE contractor_id = $1
+       ORDER BY cadence_month ASC`,
+      [contractorId]
+    );
+    if (rows.length === 0) {
+      return res.json(DEFAULT_CADENCE_SETTINGS);
+    }
+    res.json(rows);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/api/admin/engagement-cadence/:month', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+  const month = parseInt(req.params.month, 10);
+  if (!VALID_CADENCE_MONTHS.includes(month)) {
+    return res.status(400).json({ error: 'month must be one of: 1, 3, 6, 12' });
+  }
+
+  const { is_enabled, subject, body } = req.body;
+  if (is_enabled !== undefined && typeof is_enabled !== 'boolean') {
+    return res.status(400).json({ error: 'is_enabled must be a boolean' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO engagement_cadence_settings (contractor_id, cadence_month, is_enabled, subject, body, updated_at)
+       VALUES ($1, $2, COALESCE($3, TRUE), COALESCE($4, ''), COALESCE($5, ''), NOW())
+       ON CONFLICT (contractor_id, cadence_month) DO UPDATE SET
+         is_enabled  = COALESCE($3, engagement_cadence_settings.is_enabled),
+         subject     = COALESCE($4, engagement_cadence_settings.subject),
+         body        = COALESCE($5, engagement_cadence_settings.body),
+         updated_at  = NOW()
+       RETURNING cadence_month, is_enabled, subject, body`,
+      [contractorId, month, is_enabled ?? null, subject ?? null, body ?? null]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
 
 

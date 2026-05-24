@@ -170,6 +170,15 @@ export default function AdminSettingsNotifications() {
   const [flashStatus, setFlashStatus] = useState('');
   const flashTimer = useRef(null);
 
+  // ── Engagement cadence settings state ─────────────────────────────────────
+  const [cadenceSettings,     setCadenceSettings]     = useState([]);
+  const [cadenceFlashMonth,   setCadenceFlashMonth]   = useState(null);
+  const [cadenceFlashStatus,  setCadenceFlashStatus]  = useState('');
+  const cadenceFlashTimer = useRef(null);
+  const [cadenceEditMonth,    setCadenceEditMonth]    = useState(null); // which month's editor is open
+  const [cadenceEditDraft,    setCadenceEditDraft]    = useState({}); // { subject, body } being edited
+  const [cadenceEditSaving,   setCadenceEditSaving]   = useState(false);
+
   useEffect(() => {
     (async () => {
       try {
@@ -205,6 +214,62 @@ export default function AdminSettingsNotifications() {
       setFlashStatus('error');
     }
     flashTimer.current = setTimeout(() => { setFlashKey(null); setFlashStatus(''); }, 1500);
+  }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/engagement-cadence`, {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        setCadenceSettings(Array.isArray(d) ? d : []);
+      } catch {
+        // swallow — cadence defaults to empty
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleCadenceToggle(month, value) {
+    const prev = cadenceSettings;
+    setCadenceSettings(s => s.map(r => r.cadence_month === month ? { ...r, is_enabled: value } : r));
+    if (cadenceFlashTimer.current) clearTimeout(cadenceFlashTimer.current);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/engagement-cadence/${month}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        body: JSON.stringify({ is_enabled: value }),
+      });
+      if (!r.ok) throw new Error('not ok');
+      setCadenceFlashMonth(month);
+      setCadenceFlashStatus('saved');
+    } catch {
+      setCadenceSettings(prev);
+      setCadenceFlashMonth(month);
+      setCadenceFlashStatus('error');
+    }
+    cadenceFlashTimer.current = setTimeout(() => { setCadenceFlashMonth(null); setCadenceFlashStatus(''); }, 1500);
+  }
+
+  async function saveCadenceMessage(month) {
+    setCadenceEditSaving(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/engagement-cadence/${month}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        body: JSON.stringify({ subject: cadenceEditDraft.subject, body: cadenceEditDraft.body }),
+      });
+      if (!r.ok) throw new Error('not ok');
+      const updated = await r.json();
+      setCadenceSettings(s => s.map(r2 => r2.cadence_month === month ? { ...r2, subject: updated.subject, body: updated.body } : r2));
+      setCadenceEditMonth(null);
+    } catch {
+      // swallow
+    } finally {
+      setCadenceEditSaving(false);
+    }
   }
 
   useEffect(() => {
@@ -363,6 +428,94 @@ export default function AdminSettingsNotifications() {
           ))}
         </div>
       ))}
+
+      {/* Post-Job Engagement Cadence */}
+      <p style={{ margin: '28px 0 4px', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans }}>Post-Job Engagement Cadence</p>
+      <p style={{ margin: '0 0 12px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+        Automated check-in emails sent to clients after their job is completed. Each message is sent once and never repeated.
+      </p>
+      {[
+        { month: 1,  label: '1-Month Check-In',              desc: 'A post-job check-in sent one month after completion.' },
+        { month: 3,  label: '3-Month Seasonal Update',       desc: 'A seasonal touchpoint sent three months after completion.' },
+        { month: 6,  label: '6-Month Referral Re-Engagement', desc: 'A soft referral nudge sent six months after completion.' },
+        { month: 12, label: '12-Month Anniversary',          desc: 'An anniversary message sent one year after completion.' },
+      ].map((row, idx, arr) => {
+        const setting = cadenceSettings.find(s => s.cadence_month === row.month);
+        const isEnabled = setting ? setting.is_enabled : true;
+        const isEditing = cadenceEditMonth === row.month;
+        return (
+          <div key={row.month} style={{ ...sectionCard, marginBottom: idx < arr.length - 1 ? 12 : 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>{row.label}</p>
+                <p style={{ margin: 0, fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.4 }}>{row.desc}</p>
+              </div>
+              <div style={{ position: 'relative', marginTop: 2 }}>
+                <button
+                  role="switch"
+                  aria-checked={isEnabled}
+                  onClick={() => handleCadenceToggle(row.month, !isEnabled)}
+                  style={{ width: 44, height: 24, borderRadius: 12, border: 'none', flexShrink: 0, background: isEnabled ? AD.navy : AD.bgCardTint, position: 'relative', cursor: 'pointer', transition: 'background 0.2s', outline: 'none' }}
+                >
+                  <div style={{ position: 'absolute', top: 3, left: isEnabled ? 22 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.35)' }} />
+                  {cadenceFlashMonth === row.month && cadenceFlashStatus === 'saved'  && <span style={{ position: 'absolute', right: 50, top: 2, fontSize: 11, color: AD.greenText, whiteSpace: 'nowrap', fontFamily: AD.fontSans }}>Saved</span>}
+                  {cadenceFlashMonth === row.month && cadenceFlashStatus === 'error'  && <span style={{ position: 'absolute', right: 50, top: 2, fontSize: 11, color: AD.red2Text, whiteSpace: 'nowrap', fontFamily: AD.fontSans }}>Failed to save</span>}
+                </button>
+              </div>
+            </div>
+            {isEnabled && (
+              <div style={{ marginTop: 10 }}>
+                {!isEditing ? (
+                  <button
+                    onClick={() => { setCadenceEditMonth(row.month); setCadenceEditDraft({ subject: setting?.subject || '', body: setting?.body || '' }); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: AD.blueText, fontSize: 12, fontFamily: AD.fontSans, padding: 0 }}
+                  >
+                    <i className="ph ph-pencil-simple" style={{ marginRight: 4 }} />Edit message
+                  </button>
+                ) : (
+                  <div style={{ marginTop: 4 }}>
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 4 }}>Subject</label>
+                      <input
+                        value={cadenceEditDraft.subject || ''}
+                        onChange={e => setCadenceEditDraft(d => ({ ...d, subject: e.target.value }))}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary, background: AD.bgSurface, outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 4 }}>Body</label>
+                      <textarea
+                        value={cadenceEditDraft.body || ''}
+                        onChange={e => setCadenceEditDraft(d => ({ ...d, body: e.target.value }))}
+                        rows={5}
+                        style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary, background: AD.bgSurface, outline: 'none', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5 }}
+                      />
+                      <p style={{ margin: '4px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                        Available tokens: {'{{first_name}}'} {'{{company_name}}'} {'{{job_type}}'} {'{{install_month}}'} {'{{warranty_year}}'} {'{{referral_link}}'}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => saveCadenceMessage(row.month)}
+                        disabled={cadenceEditSaving}
+                        style={{ padding: '7px 16px', borderRadius: 8, background: AD.navy, color: '#fff', border: 'none', fontSize: 13, fontFamily: AD.fontSans, fontWeight: 600, cursor: cadenceEditSaving ? 'default' : 'pointer' }}
+                      >
+                        {cadenceEditSaving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setCadenceEditMonth(null)}
+                        style={{ padding: '7px 16px', borderRadius: 8, background: 'transparent', color: AD.textSecondary, border: `1px solid ${AD.border}`, fontSize: 13, fontFamily: AD.fontSans, cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {/* Admin Alerts */}
       <p style={{ margin: '20px 0 12px', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans }}>Admin Alerts</p>

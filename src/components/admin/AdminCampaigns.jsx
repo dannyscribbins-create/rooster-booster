@@ -2811,6 +2811,23 @@ export default function AdminCampaigns({ setLoggedIn }) {
   // Detail page navigation
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
 
+  // Audiences tab state
+  const [audiences,              setAudiences]              = useState([]);
+  const [audiencesLoading,       setAudiencesLoading]       = useState(false);
+  const [audienceModalOpen,      setAudienceModalOpen]      = useState(false);
+  const [editingAudience,        setEditingAudience]        = useState(null);
+  const [audienceName,           setAudienceName]           = useState('');
+  const [audienceDesc,           setAudienceDesc]           = useState('');
+  const [audienceFilterTags,     setAudienceFilterTags]     = useState([]);
+  const [audienceFilterMode,     setAudienceFilterMode]     = useState('AND');
+  const [audienceTagInput,       setAudienceTagInput]       = useState('');
+  const [audienceTagSuggestions, setAudienceTagSuggestions] = useState([]);
+  const [audienceSaving,         setAudienceSaving]         = useState(false);
+  const [audienceMembers,        setAudienceMembers]        = useState([]);
+  const [audienceMembersLoading, setAudienceMembersLoading] = useState(false);
+  const [audienceMembersExpanded, setAudienceMembersExpanded] = useState(false);
+  const audienceTagDebounce = useRef(null);
+
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -2818,6 +2835,11 @@ export default function AdminCampaigns({ setLoggedIn }) {
     loadCampaigns();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (campaignsTab === 'audiences') loadAudiences();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignsTab]);
 
   useEffect(() => {
     return () => { if (abortRef.current) abortRef.current.abort(); };
@@ -2835,6 +2857,149 @@ export default function AdminCampaigns({ setLoggedIn }) {
       // swallow
     } finally {
       setLoadingCampaigns(false);
+    }
+  }
+
+  async function loadAudiences() {
+    setAudiencesLoading(true);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/audiences`, { headers });
+      if (!r.ok) return;
+      const data = await r.json();
+      setAudiences(Array.isArray(data) ? data : []);
+    } catch {
+      // swallow
+    } finally {
+      setAudiencesLoading(false);
+    }
+  }
+
+  async function loadAudienceMembers(audienceId) {
+    setAudienceMembersLoading(true);
+    setAudienceMembers([]);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/audiences/${audienceId}/members`, { headers });
+      if (!r.ok) return;
+      const data = await r.json();
+      setAudienceMembers(Array.isArray(data) ? data : []);
+    } catch {
+      // swallow
+    } finally {
+      setAudienceMembersLoading(false);
+    }
+  }
+
+  function openCreateAudience() {
+    setEditingAudience(null);
+    setAudienceName('');
+    setAudienceDesc('');
+    setAudienceFilterTags([]);
+    setAudienceFilterMode('AND');
+    setAudienceTagInput('');
+    setAudienceTagSuggestions([]);
+    setAudienceMembers([]);
+    setAudienceMembersExpanded(false);
+    setAudienceModalOpen(true);
+  }
+
+  function openEditAudience(audience) {
+    setEditingAudience(audience);
+    setAudienceName(audience.name || '');
+    setAudienceDesc(audience.description || '');
+    setAudienceFilterTags(audience.filter_json?.tags || []);
+    setAudienceFilterMode(audience.filter_json?.mode || 'AND');
+    setAudienceTagInput('');
+    setAudienceTagSuggestions([]);
+    setAudienceMembersExpanded(false);
+    setAudienceModalOpen(true);
+    loadAudienceMembers(audience.id);
+  }
+
+  async function fetchAudienceTagSuggestions(q) {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/tags/suggestions?q=${encodeURIComponent(q)}`, { headers });
+      if (!r.ok) return;
+      const data = await r.json();
+      setAudienceTagSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
+    } catch {
+      // swallow
+    }
+  }
+
+  function handleAudienceTagInputChange(val) {
+    setAudienceTagInput(val);
+    clearTimeout(audienceTagDebounce.current);
+    if (val.trim().length > 0) {
+      audienceTagDebounce.current = setTimeout(() => fetchAudienceTagSuggestions(val.trim()), 200);
+    } else {
+      setAudienceTagSuggestions([]);
+    }
+  }
+
+  function addAudienceTag(tag) {
+    const trimmed = tag.trim();
+    if (!trimmed || audienceFilterTags.includes(trimmed)) return;
+    setAudienceFilterTags(prev => [...prev, trimmed]);
+    setAudienceTagInput('');
+    setAudienceTagSuggestions([]);
+  }
+
+  function removeAudienceTag(tag) {
+    setAudienceFilterTags(prev => prev.filter(t => t !== tag));
+  }
+
+  async function saveAudience() {
+    if (!audienceName.trim()) return;
+    setAudienceSaving(true);
+    try {
+      const body = {
+        name:        audienceName.trim(),
+        description: audienceDesc.trim() || null,
+        filter_json: { tags: audienceFilterTags, mode: audienceFilterMode },
+      };
+      let r;
+      if (editingAudience) {
+        r = await fetch(`${BACKEND_URL}/api/admin/audiences/${editingAudience.id}`, {
+          method: 'PUT',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } else {
+        r = await fetch(`${BACKEND_URL}/api/admin/audiences`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      }
+      if (!r.ok) return;
+      setAudienceModalOpen(false);
+      await loadAudiences();
+    } catch {
+      // swallow
+    } finally {
+      setAudienceSaving(false);
+    }
+  }
+
+  async function deactivateAudience(audienceId) {
+    try {
+      await fetch(`${BACKEND_URL}/api/admin/audiences/${audienceId}`, { method: 'DELETE', headers });
+      await loadAudiences();
+    } catch {
+      // swallow
+    }
+  }
+
+  async function reactivateAudience(audience) {
+    try {
+      await fetch(`${BACKEND_URL}/api/admin/audiences/${audience.id}`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: true }),
+      });
+      await loadAudiences();
+    } catch {
+      // swallow
     }
   }
 
@@ -3261,13 +3426,17 @@ export default function AdminCampaigns({ setLoggedIn }) {
               <Btn variant="accent" onClick={() => setShowTypeModal(true)}>
                 <i className="ph ph-megaphone-simple" /> Build a Campaign
               </Btn>
+            ) : campaignsTab === 'audiences' ? (
+              <Btn variant="accent" onClick={openCreateAudience}>
+                <i className="ph ph-plus" /> New Audience
+              </Btn>
             ) : null
           }
         />
 
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-          {[{ id: 'campaigns', label: 'Campaigns' }, { id: 'contacts', label: 'Campaign Contacts' }].map(tab => {
+          {[{ id: 'campaigns', label: 'Campaigns' }, { id: 'contacts', label: 'Campaign Contacts' }, { id: 'audiences', label: 'Audiences' }].map(tab => {
             const active = tab.id === campaignsTab;
             return (
               <button
@@ -3306,6 +3475,273 @@ export default function AdminCampaigns({ setLoggedIn }) {
         {/* Contacts tab content */}
         {campaignsTab === 'contacts' && (
           <AdminContactsTab headers={headers} />
+        )}
+
+        {/* Audiences tab content */}
+        {campaignsTab === 'audiences' && (
+          <div>
+            {audiencesLoading ? (
+              <p style={{ color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 15 }}>Loading audiences...</p>
+            ) : audiences.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '60px 24px' }}>
+                <i className="ph ph-funnel" style={{ fontSize: 48, color: AD.textTertiary, display: 'block', marginBottom: 16 }} />
+                <p style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>No saved audiences yet.</p>
+                <p style={{ margin: '0 0 24px', fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>Create one to reuse tag filters across campaigns.</p>
+                <Btn variant="accent" onClick={openCreateAudience}>
+                  <i className="ph ph-plus" /> Create Audience
+                </Btn>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {audiences.map(a => {
+                  const evalText = a.last_evaluated_at
+                    ? (() => {
+                        const diffMs = Date.now() - new Date(a.last_evaluated_at).getTime();
+                        const h = Math.floor(diffMs / 3600000);
+                        const d = Math.floor(diffMs / 86400000);
+                        return h < 1 ? 'Evaluated just now' : h < 24 ? `Evaluated ${h}h ago` : `Evaluated ${d}d ago`;
+                      })()
+                    : 'Never evaluated';
+                  return (
+                    <div
+                      key={a.id}
+                      style={{
+                        background: AD.bgCard, border: `1px solid ${AD.border}`,
+                        borderRadius: 14, padding: '16px 20px',
+                        boxShadow: AD.shadowSm, opacity: a.is_active ? 1 : 0.6,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                            <span style={{ fontSize: 15, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>{a.name}</span>
+                            <span style={{ padding: '2px 10px', borderRadius: 99, background: AD.navy, color: '#fff', fontSize: 11, fontFamily: AD.fontSans, fontWeight: 600 }}>
+                              {a.member_count} member{a.member_count !== 1 ? 's' : ''}
+                            </span>
+                            {!a.is_active && (
+                              <span style={{ padding: '2px 8px', borderRadius: 99, background: AD.bgCardTint, color: AD.textTertiary, fontSize: 11, fontFamily: AD.fontSans }}>Inactive</span>
+                            )}
+                          </div>
+                          {a.description && (
+                            <p style={{ margin: '0 0 6px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{a.description}</p>
+                          )}
+                          <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>{evalText}</p>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                          <button
+                            onClick={() => openEditAudience(a)}
+                            style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${AD.border}`, color: AD.textSecondary, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer' }}
+                          >
+                            <i className="ph ph-pencil" /> Edit
+                          </button>
+                          {a.is_active ? (
+                            <button
+                              onClick={() => deactivateAudience(a.id)}
+                              style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${AD.border}`, color: AD.red2Text, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer' }}
+                            >
+                              Deactivate
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => reactivateAudience(a)}
+                              style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${AD.border}`, color: AD.blueText, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer' }}
+                            >
+                              Reactivate
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Audience create/edit modal */}
+        {audienceModalOpen && (
+          <CenteredModal onClose={() => setAudienceModalOpen(false)}>
+            <h2 style={{ margin: '0 0 6px', fontFamily: AD.fontDisplay, fontSize: 22, fontWeight: 400, color: AD.textPrimary }}>
+              {editingAudience ? 'Edit Audience' : 'New Audience'}
+            </h2>
+            <p style={{ margin: '0 0 24px', color: AD.textSecondary, fontSize: 14, fontFamily: AD.fontSans }}>
+              {editingAudience ? 'Update the filter to redefine who is in this audience.' : 'Define a reusable tag filter set that re-evaluates daily.'}
+            </p>
+
+            {/* Name */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>Name *</label>
+              <input
+                value={audienceName}
+                onChange={e => setAudienceName(e.target.value)}
+                maxLength={100}
+                placeholder="e.g. Past Clients — No App"
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary, background: AD.bgSurface, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Description */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>
+                Description <span style={{ color: AD.textTertiary, fontWeight: 400 }}>(optional)</span>
+                <span style={{ float: 'right', color: AD.textTertiary, fontWeight: 400 }}>{audienceDesc.length}/300</span>
+              </label>
+              <textarea
+                value={audienceDesc}
+                onChange={e => setAudienceDesc(e.target.value.slice(0, 300))}
+                rows={2}
+                placeholder="What is this audience for?"
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary, background: AD.bgSurface, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Tag filter */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>Tag Filter</label>
+
+              {/* AND / OR toggle */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                {['AND', 'OR'].map(m => (
+                  <button
+                    key={m}
+                    onClick={() => setAudienceFilterMode(m)}
+                    style={{
+                      padding: '5px 14px', borderRadius: 8, cursor: 'pointer', fontSize: 12,
+                      fontFamily: AD.fontSans, fontWeight: 600,
+                      background: audienceFilterMode === m ? AD.navy : 'transparent',
+                      color: audienceFilterMode === m ? '#fff' : AD.textSecondary,
+                      border: `1px solid ${audienceFilterMode === m ? AD.navy : AD.border}`,
+                    }}
+                  >
+                    {m}
+                  </button>
+                ))}
+                <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, alignSelf: 'center' }}>
+                  {audienceFilterMode === 'AND' ? 'Contact must have ALL selected tags' : 'Contact must have ANY selected tag'}
+                </span>
+              </div>
+
+              {/* Selected tags */}
+              {audienceFilterTags.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {audienceFilterTags.map(tag => {
+                    const colors = TAG_COLORS[tag] || TAG_COLORS.default;
+                    return (
+                      <span
+                        key={tag}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 99, background: colors.bg, color: colors.text, fontSize: 12, fontFamily: AD.fontSans, fontWeight: 500 }}
+                      >
+                        {tag}
+                        <button
+                          onClick={() => removeAudienceTag(tag)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.text, padding: 0, fontSize: 13, lineHeight: 1, marginLeft: 2 }}
+                        >
+                          <i className="ph ph-x" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Tag input with autocomplete */}
+              <div style={{ position: 'relative' }}>
+                <input
+                  value={audienceTagInput}
+                  onChange={e => handleAudienceTagInputChange(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && audienceTagInput.trim()) { addAudienceTag(audienceTagInput); } }}
+                  placeholder="Search or type a tag…"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary, background: AD.bgSurface, outline: 'none', boxSizing: 'border-box' }}
+                />
+                {audienceTagSuggestions.length > 0 && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, boxShadow: AD.shadowMd, zIndex: 20, overflow: 'hidden', marginTop: 4 }}>
+                    {audienceTagSuggestions.map(s => (
+                      <button
+                        key={s}
+                        onClick={() => addAudienceTag(s)}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary }}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Active toggle (edit mode only) */}
+            {editingAudience && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, padding: '12px 16px', background: AD.bgCardTint, borderRadius: 10 }}>
+                <div>
+                  <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>Active</p>
+                  <p style={{ margin: 0, fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>Inactive audiences are skipped during daily evaluation.</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    const next = !editingAudience.is_active;
+                    setEditingAudience(prev => ({ ...prev, is_active: next }));
+                    try {
+                      await fetch(`${BACKEND_URL}/api/admin/audiences/${editingAudience.id}`, {
+                        method: 'PUT',
+                        headers: { ...headers, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ is_active: next }),
+                      });
+                    } catch { /* swallow */ }
+                  }}
+                  style={{ width: 44, height: 24, borderRadius: 12, border: 'none', flexShrink: 0, background: editingAudience.is_active ? AD.navy : AD.bgCardTint, position: 'relative', cursor: 'pointer', transition: 'background 0.2s' }}
+                >
+                  <div style={{ position: 'absolute', top: 3, left: editingAudience.is_active ? 22 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.35)' }} />
+                </button>
+              </div>
+            )}
+
+            {/* Member preview (edit mode only) */}
+            {editingAudience && (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 600, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                  Current Members ({editingAudience.member_count})
+                </p>
+                {audienceMembersLoading ? (
+                  <p style={{ fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>Loading...</p>
+                ) : audienceMembers.length === 0 ? (
+                  <p style={{ fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>No members yet — run evaluation to populate.</p>
+                ) : (
+                  <div>
+                    {(audienceMembersExpanded ? audienceMembers : audienceMembers.slice(0, 10)).map(m => (
+                      <div key={m.contact_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${AD.border}` }}>
+                        <span style={{ fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans }}>{m.full_name || '—'}</span>
+                        <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>{m.email}</span>
+                      </div>
+                    ))}
+                    {audienceMembers.length > 10 && !audienceMembersExpanded && (
+                      <button
+                        onClick={() => setAudienceMembersExpanded(true)}
+                        style={{ marginTop: 8, background: 'none', border: 'none', color: AD.blueText, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer', padding: 0 }}
+                      >
+                        Show all {audienceMembers.length} members
+                      </button>
+                    )}
+                    <p style={{ margin: '10px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>Members are re-evaluated daily at 6:10am UTC</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <Btn
+                variant="accent"
+                onClick={saveAudience}
+                disabled={!audienceName.trim() || audienceSaving}
+              >
+                {audienceSaving
+                  ? <><i className="ph ph-circle-notch" style={{ animation: 'spin 0.8s linear infinite' }} /> Saving…</>
+                  : editingAudience ? 'Update Audience' : 'Save Audience'
+                }
+              </Btn>
+              <Btn variant="outline" onClick={() => setAudienceModalOpen(false)}>Cancel</Btn>
+            </div>
+          </CenteredModal>
         )}
       </div>
 
