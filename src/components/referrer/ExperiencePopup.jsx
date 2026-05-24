@@ -151,16 +151,6 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
         setError(d.error || 'Something went wrong. Please try again.');
         return;
       }
-      // Also mark experience prompt as negative (writes to suggestion_box_submissions + admin_messages)
-      try {
-        await fetch(`${BACKEND_URL}/api/referrer/experience-prompt/${prompt.id}/respond`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ response_type: 'negative', suggestion_text: text.trim() }),
-        });
-      } catch {
-        // non-critical — feedback already saved
-      }
       setSlide(2);
     } finally {
       setSubmitting(false);

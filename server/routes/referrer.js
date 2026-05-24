@@ -2094,47 +2094,30 @@ router.post('/api/referrer/feedback', async (req, res) => {
     // MVP: single contractor — contractor_id defaults to 'accent-roofing'
     const contractorId = 'accent-roofing';
 
-    await pool.query(
-      `INSERT INTO feedback (user_id, contractor_id, message) VALUES ($1, $2, $3)`,
+    const submissionResult = await pool.query(
+      'INSERT INTO suggestion_box_submissions (user_id, contractor_id, message_text) VALUES ($1, $2, $3) RETURNING id',
       [userId, contractorId, message.trim()]
+    );
+    const submissionId = submissionResult.rows[0].id;
+    const msgBody = message.trim().substring(0, 120) + (message.trim().length > 120 ? '...' : '');
+    await pool.query(
+      `INSERT INTO admin_messages (contractor_id, message_type, reference_id, title, body, color_code, read)
+       VALUES ($1, 'suggestion_box', $2, 'New Suggestion Submitted', $3, 'red', false)`,
+      [contractorId, submissionId, msgBody]
+    );
+
+    // Mark the most recent pending experience prompt so the respond endpoint treats it as alreadyCompleted
+    await pool.query(
+      `UPDATE experience_prompts SET response_type = 'negative', completed_at = NOW()
+       WHERE id = (
+         SELECT id FROM experience_prompts
+         WHERE user_id = $1 AND response_type = 'pending'
+         ORDER BY triggered_at DESC LIMIT 1
+       )`,
+      [userId]
     );
 
     res.json({ success: true });
-
-    // Fire-and-forget admin alert — response already sent
-    ;(async () => {
-      try {
-        const [userResult, settingsResult] = await Promise.all([
-          pool.query(`SELECT full_name, email FROM users WHERE id = $1`, [userId]),
-          pool.query(`SELECT COALESCE(company_name, 'RoofMiles') AS company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`, [contractorId]),
-        ]);
-        const userName    = userResult.rows[0]?.full_name || '(unknown)';
-        const userEmail   = userResult.rows[0]?.email     || '(no email)';
-        const companyName = settingsResult.rows[0]?.company_name || 'RoofMiles';
-
-        await retryWithBackoff(
-          () => resend.emails.send({
-            from:    `RoofMiles <noreply@roofmiles.com>`,
-            to:      'admin1@roofmiles.com',
-            subject: `New Client Feedback — ${companyName}`,
-            html: `
-              <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;">
-                <h2 style="color:#012854;margin:0 0 16px;">New Client Feedback</h2>
-                <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
-                  <tr><td style="padding:6px 0;color:#666;font-size:14px;width:100px;">Contractor</td><td style="padding:6px 0;font-size:14px;color:#1a1a1a;font-weight:600;">${companyName}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666;font-size:14px;">Name</td><td style="padding:6px 0;font-size:14px;color:#1a1a1a;">${userName}</td></tr>
-                  <tr><td style="padding:6px 0;color:#666;font-size:14px;">Email</td><td style="padding:6px 0;font-size:14px;color:#1a1a1a;">${userEmail}</td></tr>
-                </table>
-                <div style="background:#f5f5f5;border-radius:8px;padding:16px;font-size:14px;color:#333;line-height:1.6;white-space:pre-wrap;">${message.trim()}</div>
-              </div>
-            `,
-          }),
-          { retries: 2, initialDelayMs: 500, shouldRetry: resendShouldRetry }
-        );
-      } catch (alertErr) {
-        await logError({ error: alertErr, source: 'POST /api/referrer/feedback — admin alert' });
-      }
-    })();
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });

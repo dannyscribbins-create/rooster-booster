@@ -444,16 +444,6 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     CHECK (response_type IN ('pending','positive','negative'))
   )`);
 
-  // ── FEEDBACK TABLE ────────────────────────────────────────────────────────────
-  // Captures bad-path suggestion text submitted via the T+24h post-job modal flow.
-  await pool.query(`CREATE TABLE IF NOT EXISTS feedback (
-    id            SERIAL PRIMARY KEY,
-    user_id       INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    contractor_id TEXT NOT NULL,
-    message       TEXT NOT NULL,
-    created_at    TIMESTAMPTZ DEFAULT NOW()
-  )`);
-
   await pool.query(`CREATE TABLE IF NOT EXISTS experience_invite_tokens (
     id SERIAL PRIMARY KEY,
     token TEXT NOT NULL UNIQUE,
