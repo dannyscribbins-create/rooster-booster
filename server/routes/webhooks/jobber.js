@@ -737,6 +737,17 @@ router.post('/jobber/job-update', async (req, res) => {
       const payload = JSON.parse(req.body.toString());
       const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
 
+      // Feature flag check — this handler exists solely to feed the T+24h experience flow.
+      // Unlike invoice-paid, there is no unconditional second engine here, so disabled = early exit.
+      const flagResult = await pool.query(
+        'SELECT experience_flow_enabled FROM engagement_settings WHERE contractor_id = $1',
+        [contractorId]
+      );
+      if (!flagResult.rows[0]?.experience_flow_enabled) {
+        console.log('[job-update] experience flow disabled for contractor:', contractorId);
+        return;
+      }
+
       const jobId   = payload?.data?.job?.id;
       const clientId = payload?.data?.job?.client?.id;
       if (!jobId || !clientId) {
