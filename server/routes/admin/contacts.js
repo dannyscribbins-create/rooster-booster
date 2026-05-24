@@ -4,6 +4,7 @@ const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
 const { logError } = require('../../middleware/errorLogger');
 const { deriveOptOutType } = require('../../utils/adminHelpers');
+const { applyTag, removeTag } = require('../../utils/tags');
 
 // ── GLOBAL CONTACT LIST ───────────────────────────────────────────────────────
 
@@ -309,6 +310,36 @@ router.patch('/api/admin/contacts/:contactId/resubscribe', async (req, res) => {
     );
 
     res.json({ success: true, flags_cleared: flags });
+
+    // Non-blocking tag sync based on current flag state after resubscribe
+    ;(async () => {
+      try {
+        const currentOptOut = await pool.query(
+          `SELECT opt_out_campaigns, opt_out_all, opt_out_sms, referral_only
+           FROM email_opt_outs WHERE contractor_id = $1 AND email = $2`,
+          [contractorId, contact.email]
+        );
+        if (currentOptOut.rows.length === 0) return;
+        const cur = currentOptOut.rows[0];
+        if (cur.opt_out_campaigns || cur.opt_out_all) {
+          await applyTag(pool, contactId, contractorId, 'Opted Out', 'system');
+        } else {
+          await removeTag(pool, contactId, contractorId, 'Opted Out');
+        }
+        if (cur.opt_out_sms) {
+          await applyTag(pool, contactId, contractorId, 'SMS Opted Out', 'system');
+        } else {
+          await removeTag(pool, contactId, contractorId, 'SMS Opted Out');
+        }
+        if (cur.referral_only) {
+          await applyTag(pool, contactId, contractorId, 'Referral Only', 'system');
+        } else {
+          await removeTag(pool, contactId, contractorId, 'Referral Only');
+        }
+      } catch (tagErr) {
+        await logError({ req, error: tagErr, source: 'PATCH /api/admin/contacts/:contactId/resubscribe — tag sync' });
+      }
+    })();
   } catch (err) {
     await logError({ req, error: err, source: 'PATCH /api/admin/contacts/:contactId/resubscribe' });
     res.status(500).json({ error: 'Internal server error' });

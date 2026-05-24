@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
 const { logError } = require('../middleware/errorLogger');
+const { applyTag, removeTag } = require('../utils/tags');
 
 const TRACKING_PIXEL = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
@@ -175,6 +176,29 @@ router.post('/api/unsubscribe/submit', async (req, res) => {
         `INSERT INTO activity_log (event_type, full_name, email, detail, category, contact_id) VALUES ($1, $2, $3, $4, $5, $6)`,
         [eventType, null, row.email, 'Contact updated email preferences via unsubscribe page', category, contactId]
       );
+
+      // Apply / remove opt-out tags based on current flag state
+      if (contactId) {
+        const optOutCampaigns = opt_out_campaigns === true;
+        const optOutAll = opt_out_all === true;
+        const optOutSms = opt_out_sms === true;
+        const referralOnlyFlag = referral_only === true;
+        if (optOutCampaigns || optOutAll) {
+          await applyTag(pool, contactId, row.contractor_id, 'Opted Out', 'system');
+        } else {
+          await removeTag(pool, contactId, row.contractor_id, 'Opted Out');
+        }
+        if (optOutSms) {
+          await applyTag(pool, contactId, row.contractor_id, 'SMS Opted Out', 'system');
+        } else {
+          await removeTag(pool, contactId, row.contractor_id, 'SMS Opted Out');
+        }
+        if (referralOnlyFlag) {
+          await applyTag(pool, contactId, row.contractor_id, 'Referral Only', 'system');
+        } else {
+          await removeTag(pool, contactId, row.contractor_id, 'Referral Only');
+        }
+      }
     } catch {
       // Non-critical
     }

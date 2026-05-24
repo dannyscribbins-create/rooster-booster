@@ -19,6 +19,7 @@ const { sendAdminNotification, resolveNotificationRecipient } = require('../util
 const { isEmailSuppressed } = require('../utils/emailSuppression');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { verifyReferrerSession } = require('../middleware/auth');
+const { applyTag } = require('../utils/tags');
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -248,6 +249,21 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
           phone = COALESCE(EXCLUDED.phone, contacts.phone),
           updated_at = NOW()
       `, [link.contractor_id, email, full_name, phone || null]);
+
+      // Non-blocking App User tag write — look up the contact UUID by email then apply tag
+      ;(async () => {
+        try {
+          const contactRes = await pool.query(
+            `SELECT id FROM contacts WHERE contractor_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1`,
+            [link.contractor_id, email]
+          );
+          if (contactRes.rows.length > 0) {
+            await applyTag(pool, contactRes.rows[0].id, link.contractor_id, 'App User', 'system');
+          }
+        } catch (tagErr) {
+          logError({ req, error: tagErr, source: 'POST /api/signup — App User tag' });
+        }
+      })();
     } catch (syncErr) {
       logError({ req, error: syncErr, source: 'POST /api/signup — contacts sync' });
       // Non-blocking — signup succeeds even if contacts sync fails

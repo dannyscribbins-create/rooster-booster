@@ -8,6 +8,7 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { sendAdminNotification, resolveNotificationRecipient } = require('../utils/notificationEmail');
 const { isEmailSuppressed } = require('../utils/emailSuppression');
+const { applyTag } = require('../utils/tags');
 
 function escapeHtml(s) {
   if (!s || typeof s !== 'string') return '';
@@ -160,6 +161,24 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
       } catch (e25) {
         await logError({ req: null, error: e25 });
         console.error('[pipelineSync] #25 new referral admin alert failed:', e25.message);
+      }
+    })();
+  }
+
+  // ── PAID CUSTOMER TAG ─────────────────────────────────────────────────────────
+  // Non-blocking — fires when a referred client's pipeline_status transitions to paid.
+  if (!isPreStart && status === 'paid' && oldPipelineStatus !== 'paid') {
+    ;(async () => {
+      try {
+        const contactRes = await pool.query(
+          `SELECT id FROM contacts WHERE contractor_id = $1 AND jobber_client_id = $2 LIMIT 1`,
+          [contractorId, client.id]
+        );
+        if (contactRes.rows.length > 0) {
+          await applyTag(pool, contactRes.rows[0].id, contractorId, 'Paid Customer', 'jobber');
+        }
+      } catch (tagErr) {
+        await logError({ req: null, error: tagErr, source: 'pipelineSync — Paid Customer tag' });
       }
     })();
   }

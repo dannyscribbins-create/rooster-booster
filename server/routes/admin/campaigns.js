@@ -16,6 +16,7 @@ const Papa = require('papaparse');
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const { deriveOptOutType } = require('../../utils/adminHelpers');
+const { applyTag, backfillTagsForContacts } = require('../../utils/tags');
 
 // Lazy initializer — reads env vars at call time, not at module load, to avoid ERR_INVALID_URL on startup
 let _mediaS3Client = null;
@@ -516,6 +517,11 @@ async function executeBatchSend(campaignId, req) {
       );
       const contactId = upsertRes.rows[0].id;
 
+      // Non-blocking tag writes — never affect the email send path
+      if (isAppUser) {
+        applyTag(pool, contactId, contractorId, 'App User', 'system').catch(() => {});
+      }
+
       // Non-fatal: jobber_client_id is enrichment only — never block the email send.
       if (jobberClientId) {
         try {
@@ -526,10 +532,18 @@ async function executeBatchSend(campaignId, req) {
                AND jobber_client_id IS NULL`,
             [jobberClientId, contactId]
           );
+          applyTag(pool, contactId, contractorId, 'Existing Client', 'jobber').catch(() => {});
         } catch (linkErr) {
           await logError({ req, error: linkErr, source: 'upsertContactRecord jobber_client_id link' });
         }
       }
+
+      // Check for first send before inserting so the Previously Contacted tag only fires once
+      const priorSendCount = await pool.query(
+        `SELECT 1 FROM contact_send_history WHERE contact_id = $1 LIMIT 1`,
+        [contactId]
+      );
+      const isFirstSend = priorSendCount.rows.length === 0;
 
       await pool.query(
         `INSERT INTO contact_send_history
@@ -537,6 +551,10 @@ async function executeBatchSend(campaignId, req) {
          VALUES ($1, $2, $3, $4, 'email', $5, 'campaign', $6)`,
         [contactId, contractorId, campaignId, batchNumber, status, emailSubject]
       );
+
+      if (isFirstSend) {
+        applyTag(pool, contactId, contractorId, 'Previously Contacted', 'system').catch(() => {});
+      }
     } catch (err) {
       await logError({ req, error: err, source: 'executeBatchSend contact upsert' });
     }

@@ -22,6 +22,7 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { evaluateReferral } = require('../../referralRules');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
+const { applyTag } = require('../../utils/tags');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -546,6 +547,30 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                WHERE id = $1`,
               [result.referrerId]
             );
+
+            // Non-blocking Active Referrer tag write
+            if (conversionInsert.rowCount > 0) {
+              ;(async () => {
+                try {
+                  const referrerEmailRes = await pool.query(
+                    `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+                    [result.referrerId]
+                  );
+                  if (referrerEmailRes.rows.length > 0) {
+                    const refEmail = referrerEmailRes.rows[0].email;
+                    const contactRes = await pool.query(
+                      `SELECT id FROM contacts WHERE contractor_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1`,
+                      [contractorId, refEmail]
+                    );
+                    if (contactRes.rows.length > 0) {
+                      await applyTag(pool, contactRes.rows[0].id, contractorId, 'Active Referrer', 'system');
+                    }
+                  }
+                } catch (tagErr) {
+                  await logError({ req, error: tagErr, source: 'POST /webhooks/jobber/invoice-paid — Active Referrer tag' });
+                }
+              })();
+            }
 
             // Activity log for qualified conversion
             await pool.query(

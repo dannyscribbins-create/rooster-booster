@@ -9,6 +9,7 @@ const { Webhook } = require('svix');
 const { pool } = require('../db');
 const { logError } = require('../middleware/errorLogger');
 const { sendAdminNotification } = require('../utils/notificationEmail');
+const { applyTag } = require('../utils/tags');
 
 function escapeHtml(s) {
   if (!s || typeof s !== 'string') return '';
@@ -140,6 +141,21 @@ router.post('/resend', async (req, res) => {
       } catch (err) {
         await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.clicked event insert' });
       }
+
+      // Non-blocking High Engager tag write
+      ;(async () => {
+        try {
+          const contactRes = await pool.query(
+            `SELECT id FROM contacts WHERE contractor_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1`,
+            [contractor_id, contactEmail]
+          );
+          if (contactRes.rows.length > 0) {
+            await applyTag(pool, contactRes.rows[0].id, contractor_id, 'High Engager', 'system');
+          }
+        } catch (tagErr) {
+          await logError({ req, error: tagErr, source: 'POST /api/webhooks/resend — High Engager tag' });
+        }
+      })();
     }
 
     return res.status(200).json({ received: true });
@@ -236,6 +252,21 @@ router.post('/resend', async (req, res) => {
     } catch (err) {
       await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.bounced update' });
     }
+
+    // Non-blocking Bounced tag write
+    ;(async () => {
+      try {
+        const contactRes = await pool.query(
+          `SELECT id FROM contacts WHERE contractor_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1`,
+          [contractor_id, contactEmail]
+        );
+        if (contactRes.rows.length > 0) {
+          await applyTag(pool, contactRes.rows[0].id, contractor_id, 'Bounced', 'system');
+        }
+      } catch (tagErr) {
+        await logError({ req, error: tagErr, source: 'POST /api/webhooks/resend — Bounced tag' });
+      }
+    })();
 
     try {
       await pool.query(
