@@ -145,7 +145,7 @@ export default function AdminSettingsExperience() {
         <div>
           <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: AD.textPrimary }}>Customer Experience Flow</p>
           <p style={{ margin: '4px 0 0', fontSize: 12, color: AD.textSecondary }}>
-            When enabled, customers who complete a paid invoice will automatically receive a feedback prompt. Keep this OFF during development and testing — only enable when the app is live.
+            When enabled, customers will automatically receive a feedback prompt 24 hours after their job is marked complete. Keep this OFF during development and testing — only enable when the app is live.
           </p>
         </div>
         <button
