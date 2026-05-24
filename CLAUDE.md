@@ -378,6 +378,12 @@ When building anything that touches a listed feature, read its entry before writ
 - Bonus amount on `complete` cards is sourced from `referral_conversions.bonus_amount` (the `conversion_bonus` field returned by `fetchPipelineForReferrer`), with speculative `payout` as fallback if no conversion record exists yet.
 - `sold` cards show "Pending completion" — never show a dollar amount at this stage.
 - The DB column `pipeline_status` is never changed by this mapping — admin views read raw DB values and are unaffected.
+- **Bonus amount read path (audited Session 72):**
+  - `complete` cards: display `referral_conversions.bonus_amount` via `conversion_bonus` field. Speculative `payout` fallback is computed from a hardcoded inline `boostSchedule` array in `fetchPipelineForReferrer()` — only used when no conversion record exists yet.
+  - **Reward Schedule Card** (`src/components/referrer/RewardScheduleCard.jsx`): reads from `referral_schedules` table via `GET /api/referrer/schedules`. Fully DB-driven. Does NOT use `BOOST_TABLE`.
+  - **evaluateReferral()** (`server/referralRules.js`): reads from `referral_schedules` table. Fully DB-driven. Records `bonus_amount` into `referral_conversions` at conversion time.
+  - These three paths are end-to-end consistent: what the Reward Schedule Card shows → what evaluateReferral records → what the complete card displays are all sourced from `referral_schedules`.
+  - **Remaining cosmetic gap:** "Next Payout" amounts in the Boost Progress Card (`DashboardTab.jsx`) and Profile stats card (`ProfileTab.jsx`) still use `getNextPayout()` from `src/constants/boostSchedule.js` (BOOST_TABLE). These are predictive UI displays only — not used for any conversion recording. They will show stale values if `referral_schedules` DB escalating_steps are ever changed. Fix by replacing `getNextPayout()` calls with a lookup from `/api/referrer/schedules` data when schedules are modified.
 
 **Pending Referral System**
 - Files: server/utils/pendingReferral.js, server/utils/retryHelpers.js, server/crm/pipelineSync.js, server/routes/webhooks/jobber.js, server/routes/referrer.js, server/routes/admin.js, src/components/referrer/PendingMatchPopup.jsx, src/components/admin/AdminPendingReferrals.jsx
