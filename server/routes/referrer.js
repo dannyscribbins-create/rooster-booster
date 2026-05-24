@@ -1953,9 +1953,11 @@ router.get('/api/referrer/experience-prompt', async (req, res) => {
     const { userId } = session;
 
     const result = await pool.query(
-      `SELECT ep.id, ep.response_type, ep.triggered_at, ca.google_place_id
+      `SELECT ep.id, ep.response_type, ep.triggered_at, ca.google_place_id,
+              u.referral_code
        FROM experience_prompts ep
        LEFT JOIN contractor_about ca ON ca.contractor_id = ep.contractor_id
+       LEFT JOIN users u ON u.id = ep.user_id
        WHERE ep.user_id = $1 AND ep.response_type = 'pending'
        ORDER BY ep.triggered_at DESC LIMIT 1`,
       [userId]
@@ -1963,7 +1965,17 @@ router.get('/api/referrer/experience-prompt', async (req, res) => {
 
     if (result.rows.length === 0) return res.json({ prompt: null });
     const row = result.rows[0];
-    res.json({ prompt: { id: row.id, response_type: row.response_type, triggered_at: row.triggered_at, google_place_id: row.google_place_id } });
+    const frontendUrl  = process.env.FRONTEND_URL || '';
+    const referralLink = row.referral_code ? `${frontendUrl}/?ref=${row.referral_code}` : null;
+    res.json({
+      prompt: {
+        id:            row.id,
+        response_type: row.response_type,
+        triggered_at:  row.triggered_at,
+        google_place_id: row.google_place_id,
+        ...(referralLink ? { referral_link: referralLink } : {}),
+      },
+    });
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });
@@ -2055,6 +2067,73 @@ router.post('/api/referrer/claim-experience-token', async (req, res) => {
       'UPDATE experience_invite_tokens SET claimed_at = NOW() WHERE id = $1',
       [inviteToken.id]
     );
+
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/referrer/feedback
+// Captures bad-path suggestion text from the T+24h post-job modal flow.
+router.post('/api/referrer/feedback', async (req, res) => {
+  try {
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
+
+    const { message } = req.body;
+    if (!message || !message.trim()) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+    if (message.length > 5000) {
+      return res.status(400).json({ error: 'message must be 5000 characters or fewer' });
+    }
+
+    // MVP: single contractor — contractor_id defaults to 'accent-roofing'
+    const contractorId = 'accent-roofing';
+
+    await pool.query(
+      `INSERT INTO feedback (user_id, contractor_id, message) VALUES ($1, $2, $3)`,
+      [userId, contractorId, message.trim()]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/referrer/post-job-sequence-complete
+// Called when the user completes or dismisses the T+24h ExperiencePopup flow.
+// Sets post_job_modal_shown = TRUE on the relevant pipeline_cache row.
+router.post('/api/referrer/post-job-sequence-complete', async (req, res) => {
+  try {
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { userId } = session;
+
+    // Find the most-recent experience_prompt for this user.
+    // jobber_invoice_id stores the jobber_client_id when created by the T+24h cron.
+    const promptResult = await pool.query(
+      `SELECT jobber_invoice_id, contractor_id FROM experience_prompts
+       WHERE user_id = $1
+       ORDER BY triggered_at DESC LIMIT 1`,
+      [userId]
+    );
+
+    if (promptResult.rows.length > 0) {
+      const { jobber_invoice_id: jobberClientId, contractor_id: contractorId } = promptResult.rows[0];
+      if (jobberClientId) {
+        await pool.query(
+          `UPDATE pipeline_cache SET post_job_modal_shown = TRUE
+           WHERE contractor_id = $1 AND jobber_client_id = $2`,
+          [contractorId, jobberClientId]
+        );
+      }
+    }
 
     res.json({ success: true });
   } catch (err) {

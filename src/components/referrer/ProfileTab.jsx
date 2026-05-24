@@ -24,7 +24,7 @@ const CHANNEL_LABEL_MAP = {
 };
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
-export default function Profile({ onLogout, pipeline, loading, userName, userEmail, onNameUpdate, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight, bankStatus, refreshBankStatus, openManageAccount, onResetOpenManageAccount }) {
+export default function Profile({ onLogout, pipeline, loading, userName, userEmail, onNameUpdate, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight, bankStatus, refreshBankStatus, openManageAccount, onResetOpenManageAccount, devTriggerExperience }) {
   const soldCount  = pipeline.filter(p => p.status === "complete").length;
   const balance    = pipeline.filter(p => p.bonusEarned).reduce((sum, p) => sum + (p.conversion_bonus ?? p.payout ?? 0), 0);
   const nextPayout = getNextPayout(soldCount);
@@ -819,6 +819,23 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             Sign Out
           </button>
         </AnimCard>
+
+        {/* DEV ONLY — remove before ship */}
+        {devTriggerExperience && (
+          <div style={{ padding: '0 16px 24px' }}>
+            <button
+              onClick={devTriggerExperience}
+              style={{
+                width: '100%', background: '#7c3aed', color: '#fff',
+                border: 'none', borderRadius: 10, padding: '12px',
+                fontFamily: R.fontBody, fontSize: 13, fontWeight: 700,
+                cursor: 'pointer', letterSpacing: '0.04em',
+              }}
+            >
+              DEV: Trigger Post-Job Modal
+            </button>
+          </div>
+        )}
       </div>
 
       {newBadges.length > 0 && (

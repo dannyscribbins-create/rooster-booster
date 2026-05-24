@@ -170,6 +170,18 @@ export default function ReferrerApp({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // DEV ONLY — remove before ship
+  function devTriggerExperience() {
+    setExperiencePrompt({
+      id: 0,
+      response_type: 'pending',
+      triggered_at: new Date().toISOString(),
+      google_place_id: null,
+      referral_link: window.location.origin + '/?ref=DEVTEST',
+    });
+    setShowExperiencePopup(true);
+  }
+
   // Check for pending experience prompt once on mount after login
   useEffect(() => {
     const token = sessionStorage.getItem('rb_token');
@@ -197,7 +209,7 @@ export default function ReferrerApp({
     cashout:   <CashOut pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} bankStatus={bankStatus} setTab={setTab} onOpenBankSetup={handleOpenBankSetup} />,
     refer:     <ReferAFriendTab userName={userName} token={sessionStorage.getItem('rb_token')} />,
     rankings:  <Rankings token={sessionStorage.getItem('rb_token')} />,
-    profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} onNameUpdate={onNameUpdate} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} highlightReferrals={highlightReferrals} onResetHighlight={() => setHighlightReferrals(false)} bankStatus={bankStatus} refreshBankStatus={fetchBankStatus} openManageAccount={openManageAccount} onResetOpenManageAccount={() => setOpenManageAccount(false)} />,
+    profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} onNameUpdate={onNameUpdate} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} highlightReferrals={highlightReferrals} onResetHighlight={() => setHighlightReferrals(false)} bankStatus={bankStatus} refreshBankStatus={fetchBankStatus} openManageAccount={openManageAccount} onResetOpenManageAccount={() => setOpenManageAccount(false)} devTriggerExperience={devTriggerExperience} />,
   };
 
   return (

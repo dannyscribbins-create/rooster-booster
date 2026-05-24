@@ -433,15 +433,28 @@ router.post('/jobber/invoice-paid', async (req, res) => {
 
           if (matchedUser) {
             // STEP 7A — App user path
-            await pool.query(
-              `INSERT INTO experience_prompts (user_id, contractor_id, jobber_invoice_id, response_type)
-               VALUES ($1, $2, $3, 'pending')`,
-              [matchedUser.id, contractorId, fullClient.id]
+            // Suppress immediate prompt if the user's jobber_client_id matches this client.
+            // The T+24h post-job cron will create the experience_prompt after job completion.
+            const userLinkResult = await pool.query(
+              'SELECT jobber_client_id FROM users WHERE id = $1',
+              [matchedUser.id]
             );
-            console.log('[invoice-paid] experience prompt created for user:', matchedUser.id);
-            // PUSH NOTIFICATION STUB — not built yet (requires App Store/Play Store registration)
-            // TODO: fire push notification to user matchedUser.id when push infrastructure is ready
-            // Message: "Thanks for working with us! We'd love your feedback — open the app to share."
+            const userJobberClientId = userLinkResult.rows[0]?.jobber_client_id;
+            const isLinkedClient = userJobberClientId && userJobberClientId === fullClient.id;
+
+            if (!isLinkedClient) {
+              await pool.query(
+                `INSERT INTO experience_prompts (user_id, contractor_id, jobber_invoice_id, response_type)
+                 VALUES ($1, $2, $3, 'pending')`,
+                [matchedUser.id, contractorId, fullClient.id]
+              );
+              console.log('[invoice-paid] experience prompt created for user:', matchedUser.id);
+              // PUSH NOTIFICATION STUB — not built yet (requires App Store/Play Store registration)
+              // TODO: fire push notification to user matchedUser.id when push infrastructure is ready
+              // Message: "Thanks for working with us! We'd love your feedback — open the app to share."
+            } else {
+              console.log('[invoice-paid] user', matchedUser.id, 'is a linked client — T+24h cron will handle experience prompt');
+            }
             experienceActionTaken = true;
           } else if (clientEmail) {
             // STEP 7B — Non-app-user path (has email)
@@ -690,6 +703,122 @@ router.post('/jobber/invoice-paid', async (req, res) => {
     } catch (err) {
       await logError({ req, error: err });
       console.error('[invoice-paid]', err.message);
+    }
+  })();
+});
+
+// POST /webhooks/jobber/job-update
+// Fires when a Jobber job is updated. Used to detect job completion and mark
+// pipeline_cache.job_completed_at so the T+24h post-job sequence cron can trigger.
+// Requires JOB_UPDATE webhook subscription in Jobber developer settings.
+router.post('/jobber/job-update', async (req, res) => {
+  if (!verifyJobberWebhookSignature(req, res)) return;
+
+  res.status(200).json({ received: true });
+
+  (async () => {
+    try {
+      const payload = JSON.parse(req.body.toString());
+      const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
+
+      const jobId   = payload?.data?.job?.id;
+      const clientId = payload?.data?.job?.client?.id;
+      if (!jobId || !clientId) {
+        console.log('[job-update] missing job id or client id in payload — skipping');
+        return;
+      }
+
+      // Fetch token
+      const tokenResult = await pool.query(
+        'SELECT access_token FROM tokens WHERE contractor_id = $1',
+        [contractorId]
+      );
+      const token = tokenResult.rows[0]?.access_token;
+      if (!token) {
+        console.warn('[job-update] no access token found — skipping');
+        return;
+      }
+
+      // Fetch all jobs for this client from Jobber GraphQL to get accurate status + total
+      const jobsResponse = await retryWithBackoff(
+        () => axios.post(
+          'https://api.getjobber.com/api/graphql',
+          {
+            query: `query GetClientJobs($id: EncodedId!) {
+              client(id: $id) {
+                jobs(first: 20) {
+                  nodes { id jobStatus total }
+                }
+              }
+            }`,
+            variables: { id: clientId },
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+            },
+          }
+        ),
+        { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+      );
+
+      const allJobs = jobsResponse.data?.data?.client?.jobs?.nodes || [];
+
+      // Find the current job among the fetched set
+      const currentJob = allJobs.find(j => j.id === jobId);
+      if (!currentJob) {
+        console.log(`[job-update] job ${jobId} not found in client jobs response — skipping`);
+        return;
+      }
+
+      // Only process completed jobs with a positive dollar value
+      const jobStatus = (currentJob.jobStatus || '').toUpperCase();
+      const jobTotal  = parseFloat(currentJob.total) || 0;
+      if (jobStatus !== 'COMPLETED' || jobTotal <= 0) {
+        console.log(`[job-update] job ${jobId} status=${jobStatus} total=${jobTotal} — skipping`);
+        return;
+      }
+
+      // Only trigger if this is the highest-value job (or tied for highest) among dollar-value jobs.
+      // If a larger completed job exists, that one was (or will be) the trigger.
+      const dollarJobs = allJobs.filter(j => (parseFloat(j.total) || 0) > 0);
+      const maxTotal   = Math.max(...dollarJobs.map(j => parseFloat(j.total) || 0));
+      if (jobTotal < maxTotal) {
+        console.log(`[job-update] job ${jobId} total ${jobTotal} is not the max (${maxTotal}) — skipping`);
+        return;
+      }
+
+      // 60-day cooldown: skip if job_completed_at was already set within the last 60 days
+      const cooldownResult = await pool.query(
+        `SELECT id FROM pipeline_cache
+         WHERE contractor_id = $1 AND jobber_client_id = $2
+           AND job_completed_at > NOW() - INTERVAL '60 days'
+         LIMIT 1`,
+        [contractorId, clientId]
+      );
+      if (cooldownResult.rows.length > 0) {
+        console.log(`[job-update] client ${clientId} already has job_completed_at within 60 days — skipping`);
+        return;
+      }
+
+      // UPSERT pipeline_cache — only write job_completed_at if it is currently NULL
+      await pool.query(
+        `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, job_completed_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (contractor_id, jobber_client_id)
+         DO UPDATE SET job_completed_at = CASE
+           WHEN pipeline_cache.job_completed_at IS NULL THEN NOW()
+           ELSE pipeline_cache.job_completed_at
+         END`,
+        [contractorId, clientId]
+      );
+
+      console.log(`[job-update] job_completed_at set for client ${clientId} (contractor: ${contractorId})`);
+    } catch (err) {
+      await logError({ req, error: err, source: 'POST /webhooks/jobber/job-update' });
+      console.error('[job-update]', err.message);
     }
   })();
 });

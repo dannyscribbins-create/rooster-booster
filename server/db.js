@@ -250,6 +250,10 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_email VARCHAR(255)`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_requested_at TIMESTAMP`);
+  // Migration: T+24h post-job sequence — set TRUE for non-app users who sign up via warm welcome email
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS post_job_invite BOOLEAN DEFAULT FALSE`);
+  // Migration: referral_code — unique referral identifier; exists in Railway DB, added here for completeness
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT`);
 
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_info TEXT`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip_address VARCHAR(45)`);
@@ -299,6 +303,10 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE pipeline_cache ADD COLUMN IF NOT EXISTS raw_data JSONB`);
   // Migration: paid_at records the first moment a client transitions to 'paid'; never overwritten
   await pool.query(`ALTER TABLE pipeline_cache ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`);
+  // Migration: T+24h post-job sequence columns
+  await pool.query(`ALTER TABLE pipeline_cache ADD COLUMN IF NOT EXISTS job_completed_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE pipeline_cache ADD COLUMN IF NOT EXISTS t24_sequence_triggered BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE pipeline_cache ADD COLUMN IF NOT EXISTS post_job_modal_shown BOOLEAN NOT NULL DEFAULT FALSE`);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS flagged_referrals (
     id SERIAL PRIMARY KEY,
@@ -434,6 +442,16 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     response_type TEXT NOT NULL DEFAULT 'pending',
     completed_at TIMESTAMPTZ,
     CHECK (response_type IN ('pending','positive','negative'))
+  )`);
+
+  // ── FEEDBACK TABLE ────────────────────────────────────────────────────────────
+  // Captures bad-path suggestion text submitted via the T+24h post-job modal flow.
+  await pool.query(`CREATE TABLE IF NOT EXISTS feedback (
+    id            SERIAL PRIMARY KEY,
+    user_id       INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    contractor_id TEXT NOT NULL,
+    message       TEXT NOT NULL,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
   )`);
 
   await pool.query(`CREATE TABLE IF NOT EXISTS experience_invite_tokens (
@@ -955,7 +973,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     ('session_cleanup'),
     ('admin_cache_expiry'),
     ('engagement_cadence'),
-    ('dynamic_audiences')
+    ('dynamic_audiences'),
+    ('post_job_sequence')
   ON CONFLICT DO NOTHING`);
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');

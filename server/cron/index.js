@@ -3,6 +3,7 @@ const sessionCleanupJob = require('./jobs/sessionCleanup');
 const adminCacheExpiryJob = require('./jobs/adminCacheExpiry');
 const { startEngagementCadenceJob } = require('./jobs/engagementCadence');
 const { startDynamicAudiencesJob } = require('./jobs/dynamicAudiences');
+const { startPostJobSequenceJob } = require('./jobs/postJobSequence');
 
 function startCronJobs() {
   console.log('[cron] Starting cron job scheduler...');
@@ -11,6 +12,7 @@ function startCronJobs() {
   adminCacheExpiryJob.register();
   startEngagementCadenceJob();
   startDynamicAudiencesJob();
+  startPostJobSequenceJob();
   console.log('[cron] All cron jobs registered.');
 }
 
