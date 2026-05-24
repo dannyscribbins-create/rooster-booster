@@ -290,11 +290,11 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
               () => resend.emails.send({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
-                subject: `${safeClientName} just signed — reward incoming`,
+                subject: `Great news — ${safeClientName}'s job is underway`,
                 html: `
                   <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
-                    <h2 style="color:#012854;margin:0 0 12px;">Your referral closed</h2>
-                    <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, ${safeClientName} signed with ${companyName}. Once their project is invoiced and paid, your reward will post to your balance automatically. Feel free to check with them and ask how their experience has been so far and start thinking about how you want to spend your first referral bonus!</p>
+                    <h2 style="color:#012854;margin:0 0 12px;">Your referral is now an active job</h2>
+                    <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, your referral ${safeClientName} is now an active job with ${companyName}. You'll earn your bonus once the invoice is paid — we'll notify you the moment it's complete.</p>
                     <div style="text-align:center;margin-bottom:24px;">
                       <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">View your pipeline</a>
                     </div>

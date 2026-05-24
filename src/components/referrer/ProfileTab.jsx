@@ -25,8 +25,8 @@ const CHANNEL_LABEL_MAP = {
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 export default function Profile({ onLogout, pipeline, loading, userName, userEmail, onNameUpdate, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight, bankStatus, refreshBankStatus, openManageAccount, onResetOpenManageAccount }) {
-  const soldCount  = pipeline.filter(p => p.status === "sold").length;
-  const balance    = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
+  const soldCount  = pipeline.filter(p => p.status === "complete").length;
+  const balance    = pipeline.filter(p => p.bonusEarned).reduce((sum, p) => sum + (p.conversion_bonus ?? p.payout ?? 0), 0);
   const nextPayout = getNextPayout(soldCount);
 
   const [showContact, setShowContact] = useState(false);
@@ -190,13 +190,13 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
   }, 'ProfileTab');
 
   // ── Pipeline filter ──────────────────────────────────────────────────────────
-  const filters      = ["all", "lead", "inspection", "sold", "closed"];
-  const filterLabels = { all: "All", lead: "Lead", inspection: "Inspection", sold: "Sold", closed: "Not Sold" };
+  const filters      = ["all", "lead", "inspection", "sold", "complete", "closed"];
+  const filterLabels = { all: "All", lead: "Lead", inspection: "Inspection", sold: "Sold", complete: "Complete", closed: "Not Sold" };
   const filtered     = filter === "all" ? pipeline : pipeline.filter(p => p.status === filter);
 
   // ── Activity feed: earnings from pipeline ────────────────────────────────────
-  const earned      = pipeline.filter(p => p.payout).map(p => ({
-    id: p.id, desc: `Referral Bonus — ${p.name}`, amount: p.payout,
+  const earned      = pipeline.filter(p => p.bonusEarned).map(p => ({
+    id: p.id, desc: `Referral Bonus — ${p.name}`, amount: p.conversion_bonus ?? p.payout,
   }));
   const totalEarned = earned.reduce((sum, h) => sum + h.amount, 0);
 
@@ -397,9 +397,19 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                           <StatusBadge status={ref.status} />
-                          {ref.payout && (
-                            <span style={{ fontSize: 14, fontWeight: 800, color: R.green, fontFamily: R.fontMono }}>
-                              +${ref.payout}
+                          {ref.status === 'sold' && !ref.pre_start_date && (
+                            <span style={{ fontSize: 11, fontWeight: 400, color: R.textMuted, fontFamily: R.fontBody }}>
+                              Pending completion
+                            </span>
+                          )}
+                          {ref.status === 'complete' && (ref.conversion_bonus != null || ref.payout != null) && (
+                            <span style={{ fontSize: 14, fontWeight: 800, color: R.emeraldText, fontFamily: R.fontMono }}>
+                              +${ref.conversion_bonus ?? ref.payout}
+                            </span>
+                          )}
+                          {ref.status === 'complete' && ref.conversion_bonus == null && ref.payout == null && (
+                            <span style={{ fontSize: 14, fontWeight: 800, color: R.textMuted, fontFamily: R.fontMono }}>
+                              +$—
                             </span>
                           )}
                           {isTappable && (

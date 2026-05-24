@@ -606,24 +606,39 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
         );
 
         if (cacheResult.rows.length > 0) {
+          // Fetch confirmed conversion amounts for stale-cache display
+          const staleCacheConvMap = {};
+          try {
+            const staleCacheConvResult = await pool.query(
+              `SELECT jobber_client_id, bonus_amount FROM referral_conversions WHERE user_id = $1 AND contractor_id = $2`,
+              [userId, contractorId]
+            );
+            for (const scRow of staleCacheConvResult.rows) {
+              staleCacheConvMap[scRow.jobber_client_id] = parseInt(scRow.bonus_amount);
+            }
+          } catch (staleCacheConvErr) {
+            await logError({ req, error: staleCacheConvErr });
+          }
+
           const boostSchedule = [0, 100, 200, 250, 300, 350, 400];
           let paidCount = 0;
           let totalBalance = 0;
           const pipeline = cacheResult.rows.map(row => {
             const isPreStart = row.pre_start_date;
             let status;
-            if (row.pipeline_status === 'paid') status = 'sold';
+            if (row.pipeline_status === 'paid') status = 'complete';
             else if (row.pipeline_status === 'not_sold') status = 'closed';
             else status = row.pipeline_status;
             const bonusEarned = row.pipeline_status === 'paid' && !isPreStart;
+            const conversionBonus = bonusEarned ? (staleCacheConvMap[row.jobber_client_id] ?? null) : null;
             let payout = null;
             if (bonusEarned) {
               const boost = boostSchedule[Math.min(paidCount, boostSchedule.length - 1)];
               payout = 500 + boost;
-              totalBalance += payout;
+              totalBalance += conversionBonus ?? payout;
               paidCount++;
             }
-            return { id: row.jobber_client_id, name: row.client_name || 'Unknown', status, bonusEarned, payout, pre_start_date: isPreStart };
+            return { id: row.jobber_client_id, name: row.client_name || 'Unknown', status, bonusEarned, payout, conversion_bonus: conversionBonus, pre_start_date: isPreStart };
           });
           const maxSyncedAt = cacheResult.rows.reduce(
             (max, row) => (row.last_synced_at && (!max || row.last_synced_at > max) ? row.last_synced_at : max),

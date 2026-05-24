@@ -5,6 +5,7 @@ const axios = require('axios');
 const { pool } = require('../db');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
+const { logError } = require('../middleware/errorLogger');
 
 let accessToken = null;
 
@@ -93,6 +94,27 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
     };
   }
 
+  // Fetch confirmed conversion records for this referrer — source of truth for bonus amounts.
+  // pipeline_status 'paid' items that already have a conversion record (from the invoice-paid
+  // webhook or a prior pipeline load) carry the confirmed bonus_amount here.
+  // Items with no record yet use the speculative payout as fallback.
+  const conversionMap = {};
+  try {
+    const convResult = await pool.query(
+      `SELECT rc.jobber_client_id, rc.bonus_amount
+       FROM referral_conversions rc
+       JOIN users u ON u.id = rc.user_id AND LOWER(u.full_name) = LOWER($2)
+       WHERE rc.contractor_id = $1`,
+      [resolvedContractorId, referrerName]
+    );
+    for (const row of convResult.rows) {
+      conversionMap[row.jobber_client_id] = parseInt(row.bonus_amount);
+    }
+  } catch (convErr) {
+    await logError({ req: null, error: convErr });
+    console.error('[fetchPipeline] conversion lookup failed:', convErr.message);
+  }
+
   // Map pipeline_cache rows to the response shape PipelineTab expects
   // Bonus schedule: $500 base + boost per tier [0,100,200,250,300,350,400]
   const boostSchedule = [0, 100, 200, 250, 300, 350, 400];
@@ -106,29 +128,35 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
     const isPreStart = row.pre_start_date;
 
     // Map internal status to frontend status values
+    // pipeline_status 'paid' → 'complete' (invoice paid; bonus confirmed)
+    // pipeline_status 'sold' → 'sold' (job in progress; no bonus yet)
     let status;
-    if (row.pipeline_status === 'paid')          status = 'sold';
+    if (row.pipeline_status === 'paid')          status = 'complete';
     else if (row.pipeline_status === 'not_sold') status = 'closed';
     else status = row.pipeline_status; // 'lead', 'inspection', 'sold'
 
     // Bonus only fires when paid AND not pre-start-date
     const bonusEarned = row.pipeline_status === 'paid' && !isPreStart;
 
+    // conversion_bonus: actual amount from referral_conversions (null if record not yet written)
+    const conversionBonus = bonusEarned ? (conversionMap[row.jobber_client_id] ?? null) : null;
+
     let payout = null;
     if (bonusEarned) {
       const boost = boostSchedule[Math.min(paidCount, boostSchedule.length - 1)];
       payout        = 500 + boost;
-      totalBalance += payout;
+      totalBalance += conversionBonus ?? payout;
       paidCount++;
     }
 
     return {
-      id:            row.jobber_client_id,
-      name:          row.client_name || 'Unknown',
+      id:               row.jobber_client_id,
+      name:             row.client_name || 'Unknown',
       status,
       bonusEarned,
       payout,
-      pre_start_date: isPreStart,
+      conversion_bonus: conversionBonus,
+      pre_start_date:   isPreStart,
     };
   });
 

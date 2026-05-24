@@ -327,6 +327,7 @@ These rules encode decisions made across Sessions 1–38. Violating any of them 
 - Icons: Phosphor Icons v2.1.1 only. No other icon library.
 - WARMUP_ENTRIES_SERVER in the backend must always stay in sync with WARMUP_ENTRIES in shouts.js.
 - react-hooks/exhaustive-deps warnings are hard Vercel build errors. Every useEffect with intentionally omitted dependencies must have // eslint-disable-next-line react-hooks/exhaustive-deps on the line immediately above the dependency array.
+- Never display a referral bonus dollar amount on a pipeline card at `sold` stage — the job is in progress and no conversion record exists yet. Bonus amounts are only shown on `complete` stage cards, sourced from `referral_conversions.bonus_amount`.
 
 **Code Quality**
 - No .then() chains anywhere. All async code uses async/await.
@@ -365,6 +366,18 @@ When building anything that touches a listed feature, read its entry before writ
 **Referral Pipeline System**
 - Files: server/crm/jobber.js, server/crm/pipelineSync.js, server/db.js
 - Syncs Jobber clients with "Referred by" field through lead → inspection → sold → paid; one bonus conversion per client enforced by UNIQUE(user_id, jobber_client_id).
+
+**Pipeline Display (frontend status mapping)**
+- Files: server/crm/jobber.js (`fetchPipelineForReferrer`), server/routes/referrer.js (stale cache fallback), src/constants/theme.js (STATUS_CONFIG), src/components/referrer/ProfileTab.jsx
+- `pipeline_status` DB values map to frontend status keys as follows:
+  - `'lead'` → `'lead'` ("Lead Submitted")
+  - `'inspection'` → `'inspection'` ("Inspection Completed")
+  - `'sold'` → `'sold'` ("Sold ✓") — job in progress, no bonus displayed
+  - `'paid'` → `'complete'` ("Complete ✓") — invoice paid, bonus confirmed
+  - `'not_sold'` → `'closed'` ("Not Sold")
+- Bonus amount on `complete` cards is sourced from `referral_conversions.bonus_amount` (the `conversion_bonus` field returned by `fetchPipelineForReferrer`), with speculative `payout` as fallback if no conversion record exists yet.
+- `sold` cards show "Pending completion" — never show a dollar amount at this stage.
+- The DB column `pipeline_status` is never changed by this mapping — admin views read raw DB values and are unaffected.
 
 **Pending Referral System**
 - Files: server/utils/pendingReferral.js, server/utils/retryHelpers.js, server/crm/pipelineSync.js, server/routes/webhooks/jobber.js, server/routes/referrer.js, server/routes/admin.js, src/components/referrer/PendingMatchPopup.jsx, src/components/admin/AdminPendingReferrals.jsx
