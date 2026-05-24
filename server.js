@@ -39,7 +39,27 @@ app.use(express.json({ limit: '5mb' }));
 
 // Token management moved to getCRMAdapter() — reads from DB per request.
 // No startup token load needed.
-initDB();
+;(async () => {
+  try {
+    await initDB();
+    const { backfillTagsForContacts } = require('./server/utils/tags');
+    const { pool } = require('./server/db');
+    const contactsResult = await pool.query('SELECT id, contractor_id FROM contacts');
+    if (contactsResult.rows.length) {
+      const byContractor = {};
+      for (const r of contactsResult.rows) {
+        if (!byContractor[r.contractor_id]) byContractor[r.contractor_id] = [];
+        byContractor[r.contractor_id].push(r.id);
+      }
+      for (const [cid, ids] of Object.entries(byContractor)) {
+        backfillTagsForContacts(pool, cid, ids); // fire and forget per contractor
+      }
+    }
+  } catch (err) {
+    const { logError } = require('./server/middleware/errorLogger');
+    logError({ req: null, error: err, source: 'startup-backfill' });
+  }
+})();
 
 // Jobber webhook — no auth middleware, Jobber verifies via HMAC signature
 app.use('/webhooks', jobberWebhooks);

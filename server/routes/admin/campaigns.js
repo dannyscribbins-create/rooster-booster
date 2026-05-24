@@ -790,6 +790,69 @@ router.get('/api/admin/campaigns/field-values', async (req, res) => {
   }
 });
 
+// ── ENRICH CONTACTS ───────────────────────────────────────────────────────────
+// POST /api/admin/campaigns/enrich-contacts
+// Returns stored tags + computed send stats for a batch of emails.
+// 'Recently Contacted' is computed (not stored) — added if last_sent_at is within 30 days.
+router.post('/api/admin/campaigns/enrich-contacts', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+
+  const { emails } = req.body;
+  if (!Array.isArray(emails) || emails.length === 0) {
+    return res.status(400).json({ error: 'emails must be a non-empty array' });
+  }
+  if (emails.length > 500) {
+    return res.status(400).json({ error: 'emails array exceeds maximum of 500 items' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT
+         c.email,
+         c.id AS contact_id,
+         COUNT(csh.id) AS total_sends,
+         MAX(csh.sent_at) AS last_sent_at,
+         COALESCE(json_agg(ct.tag) FILTER (WHERE ct.tag IS NOT NULL), '[]') AS tags
+       FROM contacts c
+       LEFT JOIN contact_tags ct ON ct.contact_id = c.id
+       LEFT JOIN contact_send_history csh ON csh.contact_id = c.id
+       WHERE c.contractor_id = $1 AND c.email = ANY($2)
+       GROUP BY c.id, c.email`,
+      [contractorId, emails]
+    );
+
+    const foundMap = new Map();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    for (const row of result.rows) {
+      const tags = Array.isArray(row.tags) ? row.tags : [];
+      // Compute 'Recently Contacted' — not stored, derived from last_sent_at
+      if (row.last_sent_at && new Date(row.last_sent_at) >= thirtyDaysAgo) {
+        if (!tags.includes('Recently Contacted')) tags.push('Recently Contacted');
+      }
+      foundMap.set(row.email.toLowerCase(), {
+        email: row.email,
+        tags,
+        last_sent_at: row.last_sent_at || null,
+        total_sends: parseInt(row.total_sends, 10),
+      });
+    }
+
+    // Return an entry for every requested email — missing contacts get empty defaults
+    const response = emails.map(email => {
+      const lower = email.toLowerCase();
+      return foundMap.get(lower) || { email, tags: [], last_sent_at: null, total_sends: 0 };
+    });
+
+    res.json(response);
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/admin/campaigns/enrich-contacts' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.get('/api/admin/campaigns/:id', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
@@ -1514,6 +1577,42 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
     emit({ type: 'complete', totalContacts: finalContacts.length, inAppCount });
     res.write('\n');
     res.end();
+
+    // Non-blocking contacts upsert + backfill for Jobber pull contacts
+    const pullEmailContacts = withInApp.filter(c => c.email);
+    if (pullEmailContacts.length > 0) {
+      ;(async () => {
+        try {
+          const CHUNK = 100;
+          const allContactIds = [];
+          for (let ci = 0; ci < pullEmailContacts.length; ci += CHUNK) {
+            const chunk = pullEmailContacts.slice(ci, ci + CHUNK);
+            const phs = chunk.map((_, j) => {
+              const b = j * 5;
+              return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5})`;
+            }).join(',');
+            const vals = chunk.flatMap(c => [
+              'accent-roofing', c.email, c.clientName || null, c.phone || null, c.clientJobberId || null
+            ]);
+            const r = await pool.query(
+              `INSERT INTO contacts (contractor_id, email, name, phone, jobber_client_id)
+               VALUES ${phs}
+               ON CONFLICT (contractor_id, email) DO UPDATE SET
+                 name = COALESCE(EXCLUDED.name, contacts.name),
+                 phone = COALESCE(EXCLUDED.phone, contacts.phone),
+                 jobber_client_id = COALESCE(EXCLUDED.jobber_client_id, contacts.jobber_client_id),
+                 updated_at = NOW()
+               RETURNING id`,
+              vals
+            );
+            allContactIds.push(...r.rows.map(row => row.id));
+          }
+          backfillTagsForContacts(pool, 'accent-roofing', allContactIds);
+        } catch (pullBackfillErr) {
+          await logError({ req, error: pullBackfillErr, source: 'POST /api/admin/campaigns/:id/pull — contacts backfill' });
+        }
+      })();
+    }
   } catch (err) {
     await logError({ req, error: err });
     if (res.headersSent) {
@@ -2228,6 +2327,34 @@ router.post('/api/admin/campaigns/:id/confirm-csv', async (req, res) => {
       'UPDATE campaigns SET total_contacts = $1, csv_raw = NULL, updated_at = NOW() WHERE id = $2',
       [toInsert.length, campaignId]
     );
+
+    // Non-blocking contacts upsert + backfill for CSV contacts
+    const emailContacts = toInsert.filter(c => c.email);
+    if (emailContacts.length > 0) {
+      ;(async () => {
+        try {
+          const phs = emailContacts.map((_, i) => {
+            const b = i * 4;
+            return `($${b+1},$${b+2},$${b+3},$${b+4})`;
+          }).join(',');
+          const vals = emailContacts.flatMap(c => [contractorId, c.email, c.clientName || null, c.phone || null]);
+          const upsertRes = await pool.query(
+            `INSERT INTO contacts (contractor_id, email, name, phone)
+             VALUES ${phs}
+             ON CONFLICT (contractor_id, email) DO UPDATE SET
+               name = COALESCE(EXCLUDED.name, contacts.name),
+               phone = COALESCE(EXCLUDED.phone, contacts.phone),
+               updated_at = NOW()
+             RETURNING id`,
+            vals
+          );
+          const contactIds = upsertRes.rows.map(r => r.id);
+          backfillTagsForContacts(pool, contractorId, contactIds);
+        } catch (csvBackfillErr) {
+          await logError({ req, error: csvBackfillErr, source: 'POST /api/admin/campaigns/:id/confirm-csv — contacts backfill' });
+        }
+      })();
+    }
 
     res.json({ success: true, contacts_imported: toInsert.length, skipped });
   } catch (err) {
