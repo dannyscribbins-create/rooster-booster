@@ -2100,6 +2100,41 @@ router.post('/api/referrer/feedback', async (req, res) => {
     );
 
     res.json({ success: true });
+
+    // Fire-and-forget admin alert — response already sent
+    ;(async () => {
+      try {
+        const [userResult, settingsResult] = await Promise.all([
+          pool.query(`SELECT full_name, email FROM users WHERE id = $1`, [userId]),
+          pool.query(`SELECT COALESCE(company_name, 'RoofMiles') AS company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`, [contractorId]),
+        ]);
+        const userName    = userResult.rows[0]?.full_name || '(unknown)';
+        const userEmail   = userResult.rows[0]?.email     || '(no email)';
+        const companyName = settingsResult.rows[0]?.company_name || 'RoofMiles';
+
+        await retryWithBackoff(
+          () => resend.emails.send({
+            from:    `RoofMiles <noreply@roofmiles.com>`,
+            to:      'admin1@roofmiles.com',
+            subject: `New Client Feedback — ${companyName}`,
+            html: `
+              <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#fff;">
+                <h2 style="color:#012854;margin:0 0 16px;">New Client Feedback</h2>
+                <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+                  <tr><td style="padding:6px 0;color:#666;font-size:14px;width:100px;">Contractor</td><td style="padding:6px 0;font-size:14px;color:#1a1a1a;font-weight:600;">${companyName}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666;font-size:14px;">Name</td><td style="padding:6px 0;font-size:14px;color:#1a1a1a;">${userName}</td></tr>
+                  <tr><td style="padding:6px 0;color:#666;font-size:14px;">Email</td><td style="padding:6px 0;font-size:14px;color:#1a1a1a;">${userEmail}</td></tr>
+                </table>
+                <div style="background:#f5f5f5;border-radius:8px;padding:16px;font-size:14px;color:#333;line-height:1.6;white-space:pre-wrap;">${message.trim()}</div>
+              </div>
+            `,
+          }),
+          { retries: 2, initialDelayMs: 500, shouldRetry: resendShouldRetry }
+        );
+      } catch (alertErr) {
+        await logError({ error: alertErr, source: 'POST /api/referrer/feedback — admin alert' });
+      }
+    })();
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: err.message });
