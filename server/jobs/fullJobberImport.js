@@ -42,12 +42,10 @@ async function fetchAllPages(token, query, dataPath, delayMs = 200, label = '') 
       { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
     );
 
-    if (pageNum === 1 && label === 'Step A') {
-      console.log('[DIAG-A] status:', response.status);
-      console.log('[DIAG-A] data keys:', JSON.stringify(Object.keys(response.data || {})));
-      console.log('[DIAG-A] data.data keys:', JSON.stringify(Object.keys(response.data?.data || {})));
-      console.log('[DIAG-A] errors:', JSON.stringify(response.data?.errors || null));
-      console.log('[DIAG-A] clients:', JSON.stringify(response.data?.data?.clients || null).slice(0, 300));
+    const gqlErrors = response.data?.errors;
+    if (gqlErrors?.length > 0) {
+      const messages = gqlErrors.map(e => e.message).join('; ');
+      throw new Error(`Jobber GraphQL error in ${label} page ${pageNum}: ${messages}`);
     }
 
     // Walk the path string like "clients" or "invoices" to get the connection object
@@ -96,6 +94,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
     }
     const token = tokenRow.access_token;
 
+    await new Promise(resolve => setTimeout(resolve, 3000));
     console.log('[fullJobberImport] Step A — fetching all clients...');
 
     // ── STEP A — Pull all Jobber clients ─────────────────────────────────────
@@ -118,7 +117,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allClients = await fetchAllPages(token, clientsQuery, 'clients', 200, 'Step A');
+    const allClients = await fetchAllPages(token, clientsQuery, 'clients', 500, 'Step A');
     console.log(`[fullJobberImport] Step A complete — ${allClients.length} clients fetched`);
 
     // ── STEP B — Pull all invoices ────────────────────────────────────────────
@@ -135,7 +134,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allInvoices = await fetchAllPages(token, invoicesQuery, 'invoices', 200, 'Step B');
+    const allInvoices = await fetchAllPages(token, invoicesQuery, 'invoices', 500, 'Step B');
     console.log(`[fullJobberImport] Step B complete — ${allInvoices.length} invoices fetched`);
 
     // ── STEP C — Pull all jobs ────────────────────────────────────────────────
@@ -156,7 +155,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allJobs = await fetchAllPages(token, jobsQuery, 'jobs', 200, 'Step C');
+    const allJobs = await fetchAllPages(token, jobsQuery, 'jobs', 500, 'Step C');
     console.log(`[fullJobberImport] Step C complete — ${allJobs.length} jobs fetched`);
 
     // ── STEP D — Pull all quotes ──────────────────────────────────────────────
@@ -172,7 +171,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allQuotes = await fetchAllPages(token, quotesQuery, 'quotes', 200, 'Step D');
+    const allQuotes = await fetchAllPages(token, quotesQuery, 'quotes', 500, 'Step D');
     console.log(`[fullJobberImport] Step D complete — ${allQuotes.length} quotes fetched`);
 
     // ── STEP E — Pull all requests ────────────────────────────────────────────
@@ -188,7 +187,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allRequests = await fetchAllPages(token, requestsQuery, 'requests', 200, 'Step E');
+    const allRequests = await fetchAllPages(token, requestsQuery, 'requests', 500, 'Step E');
     console.log(`[fullJobberImport] Step E complete — ${allRequests.length} requests fetched`);
 
     // ── STEP F — Join all data by client ID ──────────────────────────────────
