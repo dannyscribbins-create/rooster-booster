@@ -29,7 +29,8 @@ async function initDB() {
     category TEXT DEFAULT 'user_action'
   )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS admin_cache (
-    id INTEGER PRIMARY KEY DEFAULT 1, stats JSONB, cached_at TIMESTAMP DEFAULT NOW()
+    id INTEGER PRIMARY KEY DEFAULT 1, stats JSONB, cached_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMPTZ
   )`);
 await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     id SERIAL PRIMARY KEY,
@@ -113,6 +114,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS booking_submitted BOOLEAN DEFAULT false`);
   await pool.query(`ALTER TABLE admin_cache ADD COLUMN IF NOT EXISTS cache_key TEXT`);
   await pool.query(`ALTER TABLE admin_cache ADD COLUMN IF NOT EXISTS data JSONB`);
+  await pool.query(`ALTER TABLE admin_cache ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS paid_count INTEGER DEFAULT 0`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS paid_count_updated_at TIMESTAMPTZ`);
 
