@@ -44,6 +44,23 @@ async function fetchAllPages(token, query, dataPath, delayMs = 200, label = '') 
 
     const gqlErrors = response.data?.errors;
     if (gqlErrors?.length > 0) {
+      const isThrottled = gqlErrors.some(e =>
+        e.extensions?.code === 'THROTTLED' || e.message === 'Throttled'
+      );
+      if (isThrottled) {
+        const throttleStatus = response.data?.extensions?.cost?.throttleStatus;
+        const currentlyAvailable = throttleStatus?.currentlyAvailable || 0;
+        const restoreRate = throttleStatus?.restoreRate || 500;
+        const PAGE_COST = 1500;
+        const waitMs = Math.max(
+          Math.ceil(((PAGE_COST - currentlyAvailable) / restoreRate) * 1000) + 500,
+          3000
+        );
+        console.log(`[fullJobberImport] ${label} throttled on page ${pageNum} — waiting ${waitMs}ms before retry`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        pageNum--;
+        continue;
+      }
       const messages = gqlErrors.map(e => e.message).join('; ');
       throw new Error(`Jobber GraphQL error in ${label} page ${pageNum}: ${messages}`);
     }
@@ -61,8 +78,21 @@ async function fetchAllPages(token, query, dataPath, delayMs = 200, label = '') 
     hasNextPage = connection?.pageInfo?.hasNextPage || false;
     after = connection?.pageInfo?.endCursor || null;
 
-    if (hasNextPage && delayMs > 0) {
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+    if (hasNextPage) {
+      const throttleStatus = response.data?.extensions?.cost?.throttleStatus;
+      if (throttleStatus) {
+        const currentlyAvailable = throttleStatus.currentlyAvailable || 0;
+        const restoreRate = throttleStatus.restoreRate || 500;
+        const PAGE_COST = 1500;
+        if (currentlyAvailable < PAGE_COST) {
+          const waitMs = Math.ceil(((PAGE_COST - currentlyAvailable) / restoreRate) * 1000) + 200;
+          await new Promise(resolve => setTimeout(resolve, waitMs));
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } else {
+        await new Promise(resolve => setTimeout(resolve, delayMs || 500));
+      }
     }
   }
 
