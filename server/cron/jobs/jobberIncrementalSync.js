@@ -11,14 +11,19 @@ const CONTRACTOR_ID = 'accent-roofing'; // MVP: replace with multi-contractor lo
 
 async function runIncrementalSync() {
   const tokenResult = await pool.query(
-    'SELECT access_token FROM tokens WHERE contractor_id = $1',
+    'SELECT access_token, refresh_token, expires_at FROM tokens WHERE contractor_id = $1',
     [CONTRACTOR_ID]
   );
-  const token = tokenResult.rows[0]?.access_token;
-  if (!token) {
+  const tokenRow = tokenResult.rows[0];
+  if (!tokenRow?.access_token) {
     console.log('[jobberIncrementalSync] No access token — skipping');
     return;
   }
+  if (new Date(tokenRow.expires_at) < new Date()) {
+    console.warn(`[jobberIncrementalSync] Jobber token expired for ${CONTRACTOR_ID} — reconnect Jobber OAuth`);
+    return;
+  }
+  const token = tokenRow.access_token;
 
   // Pull clients updated within the last 25 hours (covers 30-min overlap)
   console.log('[jobberIncrementalSync] Fetching recently updated clients...');
@@ -152,7 +157,7 @@ async function runIncrementalSync() {
           phone,
           client.isCompany === true,
           client.isLead === true,
-          false,
+          client.isArchived === true,
         ]
       );
 

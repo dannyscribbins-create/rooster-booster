@@ -76,13 +76,17 @@ async function runFullJobberImport(contractorId, filterPreference) {
   importState.errorMessage = null;
 
   try {
-    // Fetch access token
+    // Fetch access token and verify it has not expired
     const tokenResult = await pool.query(
-      'SELECT access_token FROM tokens WHERE contractor_id = $1',
+      'SELECT access_token, refresh_token, expires_at FROM tokens WHERE contractor_id = $1',
       [contractorId]
     );
-    const token = tokenResult.rows[0]?.access_token;
-    if (!token) throw new Error('No access token found for contractor');
+    const tokenRow = tokenResult.rows[0];
+    if (!tokenRow?.access_token) throw new Error('No access token found for contractor');
+    if (new Date(tokenRow.expires_at) < new Date()) {
+      throw new Error(`Jobber token expired for ${contractorId} — reconnect Jobber OAuth`);
+    }
+    const token = tokenRow.access_token;
 
     console.log('[fullJobberImport] Step A — fetching all clients...');
 
