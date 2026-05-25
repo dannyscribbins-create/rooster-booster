@@ -40,8 +40,8 @@ async function runIncrementalSync() {
             ) {
               nodes {
                 id firstName lastName isCompany isLead createdAt
-                emails { address isPrimary }
-                phones { number isPrimary }
+                emails { address primary }
+                phones { number primary }
                 tags { nodes { label } }
                 customFields {
                   ... on CustomFieldText { label valueText }
@@ -126,10 +126,10 @@ async function runIncrementalSync() {
       const quotes   = relatedData.quotes?.nodes || [];
       const requests = relatedData.requests?.nodes || [];
 
-      const email = client.emails?.find(e => e.isPrimary)?.address
+      const email = client.emails?.find(e => e.primary)?.address
         || client.emails?.[0]?.address
         || null;
-      const phone = client.phones?.find(p => p.isPrimary)?.number
+      const phone = client.phones?.find(p => p.primary)?.number
         || client.phones?.[0]?.number
         || null;
 

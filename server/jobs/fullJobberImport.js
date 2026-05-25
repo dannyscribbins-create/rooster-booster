@@ -42,14 +42,6 @@ async function fetchAllPages(token, query, dataPath, delayMs = 200, label = '') 
       { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
     );
 
-    if (label === 'Step A') {
-      console.log(`[DIAG] Step A raw response status:`, response.status);
-      console.log(`[DIAG] Step A response.data keys:`, Object.keys(response.data || {}));
-      console.log(`[DIAG] Step A response.data.data keys:`, Object.keys(response.data?.data || {}));
-      console.log(`[DIAG] Step A errors:`, JSON.stringify(response.data?.errors || null));
-      console.log(`[DIAG] Step A clients connection:`, JSON.stringify(response.data?.data?.clients || null).slice(0, 500));
-    }
-
     // Walk the path string like "clients" or "invoices" to get the connection object
     const data = response.data?.data;
     const connection = data?.[dataPath];
@@ -106,8 +98,8 @@ async function runFullJobberImport(contractorId, filterPreference) {
         clients(first: 100, after: $after) {
           nodes {
             id firstName lastName isCompany isLead isArchived createdAt updatedAt
-            emails { address isPrimary }
-            phones { number isPrimary }
+            emails { address primary }
+            phones { number primary }
             tags { nodes { label } }
             customFields {
               ... on CustomFieldText { label valueText }
@@ -265,10 +257,10 @@ async function runFullJobberImport(contractorId, filterPreference) {
     for (let i = 0; i < filteredClients.length; i += BATCH_SIZE) {
       const batch = filteredClients.slice(i, i + BATCH_SIZE);
       for (const client of batch) {
-        const email = client.emails?.find(e => e.isPrimary)?.address
+        const email = client.emails?.find(e => e.primary)?.address
           || client.emails?.[0]?.address
           || null;
-        const phone = client.phones?.find(p => p.isPrimary)?.number
+        const phone = client.phones?.find(p => p.primary)?.number
           || client.phones?.[0]?.number
           || null;
 
