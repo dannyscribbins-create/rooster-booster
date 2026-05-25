@@ -42,6 +42,14 @@ async function fetchAllPages(token, query, dataPath, delayMs = 200, label = '') 
       { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
     );
 
+    if (label === 'Step A') {
+      console.log(`[DIAG] Step A raw response status:`, response.status);
+      console.log(`[DIAG] Step A response.data keys:`, Object.keys(response.data || {}));
+      console.log(`[DIAG] Step A response.data.data keys:`, Object.keys(response.data?.data || {}));
+      console.log(`[DIAG] Step A errors:`, JSON.stringify(response.data?.errors || null));
+      console.log(`[DIAG] Step A clients connection:`, JSON.stringify(response.data?.data?.clients || null).slice(0, 500));
+    }
+
     // Walk the path string like "clients" or "invoices" to get the connection object
     const data = response.data?.data;
     const connection = data?.[dataPath];
