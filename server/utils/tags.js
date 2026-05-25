@@ -89,4 +89,60 @@ async function backfillTagsForContacts(pool, contractorId, contactIds, jobberCrm
   }
 }
 
-module.exports = { applyTag, removeTag, backfillTagsForContacts };
+// ── JOBBER CLIENT TAG UTILITIES ───────────────────────────────────────────────
+
+// identifier: { jobber_client_id } or { contact_id }
+// Removes all tags matching prefix for the given client.
+async function removeTagsByPrefix(pool, identifier, contractorId, prefix) {
+  try {
+    const jcid = identifier.jobber_client_id || null;
+    const cid  = identifier.contact_id || null;
+    await pool.query(
+      `DELETE FROM contact_tags
+       WHERE tag LIKE $1
+         AND contractor_id = $2
+         AND (
+           ($3::text IS NOT NULL AND jobber_client_id = $3)
+           OR ($4::uuid IS NOT NULL AND contact_id = $4)
+         )`,
+      [`${prefix}%`, contractorId, jcid, cid]
+    );
+  } catch (err) {
+    await logError({ req: null, error: err, source: `removeTagsByPrefix(${prefix})` });
+  }
+}
+
+// Inserts a tag row if it doesn't exist. ON CONFLICT DO NOTHING.
+// identifier: { jobber_client_id } or { contact_id }
+async function upsertTag(pool, identifier, contractorId, tag, source = 'jobber_crm') {
+  try {
+    const jcid = identifier.jobber_client_id || null;
+    const cid  = identifier.contact_id || null;
+    if (jcid) {
+      await pool.query(
+        `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT DO NOTHING`,
+        [jcid, contractorId, tag, source]
+      );
+    } else if (cid) {
+      await pool.query(
+        `INSERT INTO contact_tags (contact_id, contractor_id, tag, source, applied_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT DO NOTHING`,
+        [cid, contractorId, tag, source]
+      );
+    }
+  } catch (err) {
+    await logError({ req: null, error: err, source: `upsertTag(${tag})` });
+  }
+}
+
+// Removes all tags with the given prefix then inserts newTag.
+// For mutually exclusive tag groups (e.g. invoice:*, value:*, recency:*).
+async function replaceTagGroup(pool, identifier, contractorId, prefix, newTag, source = 'jobber_crm') {
+  await removeTagsByPrefix(pool, identifier, contractorId, prefix);
+  await upsertTag(pool, identifier, contractorId, newTag, source);
+}
+
+module.exports = { applyTag, removeTag, backfillTagsForContacts, removeTagsByPrefix, upsertTag, replaceTagGroup };

@@ -23,6 +23,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const { evaluateReferral } = require('../../referralRules');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { applyTag } = require('../../utils/tags');
+const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -158,6 +159,115 @@ async function fetchInvoiceWithJobs(invoiceId, token) {
   return response.data.data.invoice;
 }
 
+// ── CLIENT RELATED DATA FETCH (for tag derivation) ────────────────────────────
+// Fetches jobs, quotes, and requests for a single client — used by tag derivation
+// after CLIENT_CREATE, CLIENT_UPDATE, JOB_UPDATE, and INVOICE_UPDATE events.
+async function fetchClientRelatedData(clientId, token) {
+  const response = await retryWithBackoff(
+    () => axios.post(
+      'https://api.getjobber.com/api/graphql',
+      {
+        query: `query GetClientRelated($id: EncodedId!) {
+          client(id: $id) {
+            isCompany isLead
+            tags { nodes { label } }
+            customFields {
+              ... on CustomFieldText { label valueText }
+              ... on CustomFieldDropdown { label valueDropdown }
+            }
+            jobs(first: 50) {
+              nodes {
+                id jobStatus jobType completedAt createdAt
+                invoices { nodes { id invoiceStatus createdAt amounts { total } } }
+                customFields {
+                  ... on CustomFieldText { label valueText }
+                  ... on CustomFieldDropdown { label valueDropdown }
+                }
+              }
+            }
+            quotes(first: 20) { nodes { id quoteStatus createdAt } }
+            requests(first: 20) { nodes { id requestStatus createdAt } }
+          }
+        }`,
+        variables: { id: clientId },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+        },
+      }
+    ),
+    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+  );
+
+  return response.data?.data?.client || null;
+}
+
+// Upserts a client into jobber_clients and derives+saves all tags.
+// Called fire-and-forget from webhook handlers.
+async function upsertAndTagClient(contractorId, fullClient, relatedData) {
+  const email = fullClient.emails?.find(e => e.isPrimary)?.address
+    || fullClient.emails?.[0]?.address
+    || null;
+  const phone = fullClient.phones?.find(p => p.isPrimary)?.number
+    || fullClient.phones?.[0]?.number
+    || null;
+
+  await pool.query(
+    `INSERT INTO jobber_clients
+       (jobber_client_id, contractor_id, first_name, last_name, email, phone,
+        is_company, is_lead, is_archived, last_synced_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+     ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET
+       first_name = EXCLUDED.first_name,
+       last_name = EXCLUDED.last_name,
+       email = EXCLUDED.email,
+       phone = EXCLUDED.phone,
+       is_company = EXCLUDED.is_company,
+       is_lead = EXCLUDED.is_lead,
+       is_archived = EXCLUDED.is_archived,
+       last_synced_at = NOW()`,
+    [
+      fullClient.id,
+      contractorId,
+      fullClient.firstName || null,
+      fullClient.lastName || null,
+      email,
+      phone,
+      (relatedData?.isCompany ?? fullClient.isCompany) === true,
+      (relatedData?.isLead ?? fullClient.isLead) === true,
+      false,
+    ]
+  );
+
+  if (relatedData) {
+    const jobs = (relatedData.jobs?.nodes || []).map(j => ({
+      ...j,
+      invoices: j.invoices?.nodes || [],
+    }));
+    const clientData = {
+      isCompany:    relatedData.isCompany,
+      isLead:       relatedData.isLead,
+      tags:         relatedData.tags,
+      customFields: relatedData.customFields,
+      jobs,
+      invoices:     [],
+      quotes:       relatedData.quotes?.nodes || [],
+      requests:     relatedData.requests?.nodes || [],
+    };
+    await deriveAndSaveTags(pool, contractorId, fullClient.id, clientData);
+
+    await pool.query(
+      `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
+       VALUES ($1, $2, 'jobber_client', 'system', NOW())
+       ON CONFLICT DO NOTHING`,
+      [fullClient.id, contractorId]
+    );
+  }
+}
+
 // POST /webhooks/jobber/disconnect
 // Called by Jobber when a contractor removes Rooster Booster from their Jobber account.
 // Jobber expects a 200 response or it will retry — we always return 200, even on DB failure.
@@ -255,6 +365,15 @@ router.post('/jobber/client-create', async (req, res) => {
 
       await syncSingleClient(contractorId, fullClient, referralStartDate);
       console.log(`[jobber-webhook] client-create sync complete for client: ${rawClientId}`);
+
+      // Upsert into jobber_clients and derive tags
+      if (token) {
+        const relatedData = await fetchClientRelatedData(rawClientId, token).catch(err => {
+          console.warn(`[jobber-webhook] client-create fetchClientRelatedData failed: ${err.message}`);
+          return null;
+        });
+        await upsertAndTagClient(contractorId, fullClient, relatedData);
+      }
     } catch (err) {
       await logError({ req, error: err });
       console.error('[jobber-webhook] client-create sync failed:', err.message);
@@ -310,6 +429,15 @@ router.post('/jobber/client-update', async (req, res) => {
 
       await syncSingleClient(contractorId, fullClient, referralStartDate);
       console.log(`[jobber-webhook] client-update sync complete for client: ${rawClientId}`);
+
+      // Upsert into jobber_clients and derive tags
+      if (token) {
+        const relatedData = await fetchClientRelatedData(rawClientId, token).catch(err => {
+          console.warn(`[jobber-webhook] client-update fetchClientRelatedData failed: ${err.message}`);
+          return null;
+        });
+        await upsertAndTagClient(contractorId, fullClient, relatedData);
+      }
     } catch (err) {
       await logError({ req, error: err });
       console.error('[jobber-webhook] client-update sync failed:', err.message);
@@ -543,6 +671,29 @@ router.post('/jobber/invoice-paid', async (req, res) => {
           }
         }
       }
+
+      // ── STEP 9A — JOBBER CLIENT UPSERT + TAG DERIVATION ─────────────────────
+      // Runs unconditionally — keeps jobber_clients and contact_tags in sync on every paid invoice.
+      ;(async () => {
+        try {
+          const relatedData = await fetchClientRelatedData(clientId, token).catch(err => {
+            console.warn(`[invoice-paid] fetchClientRelatedData failed: ${err.message}`);
+            return null;
+          });
+          if (relatedData) {
+            const clientShell = {
+              id: clientId,
+              firstName: fullClient.firstName || null,
+              lastName: fullClient.lastName || null,
+              emails: fullClient.emails || [],
+              phones: fullClient.phones || [],
+            };
+            await upsertAndTagClient(contractorId, clientShell, relatedData);
+          }
+        } catch (tagErr) {
+          await logError({ req, error: tagErr, source: 'POST /webhooks/jobber/invoice-paid — upsertAndTagClient' });
+        }
+      })();
 
       // ── STEP 9 — REFERRAL RULES ENGINE ───────────────────────────────────────
       // Runs unconditionally — independent of experience flow flag and result.
@@ -843,6 +994,16 @@ router.post('/jobber/job-update', async (req, res) => {
       );
 
       console.log(`[job-update] job_completed_at set for client ${clientId} (contractor: ${contractorId})`);
+
+      // Upsert into jobber_clients and derive tags for the affected client
+      const relatedData = await fetchClientRelatedData(clientId, token).catch(err => {
+        console.warn(`[job-update] fetchClientRelatedData failed: ${err.message}`);
+        return null;
+      });
+      if (relatedData) {
+        const clientShell = { id: clientId, firstName: null, lastName: null, emails: [], phones: [] };
+        await upsertAndTagClient(contractorId, clientShell, relatedData);
+      }
     } catch (err) {
       await logError({ req, error: err, source: 'POST /webhooks/jobber/job-update' });
       console.error('[job-update]', err.message);

@@ -1534,6 +1534,46 @@ router.patch('/api/admin/jobber/field-mappings', async (req, res) => {
   }
 });
 
+// ── JOBBER CLIENT IMPORT ──────────────────────────────────────────────────────
+
+const { runFullJobberImport, importState } = require('../../jobs/fullJobberImport');
+
+// POST /api/admin/jobber-full-import
+// Starts a one-time full Jobber client import. Fire-and-forget — returns 202 immediately.
+router.post('/api/admin/jobber-full-import', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+
+  const { filterPreference } = req.body;
+  const validModes = ['recommended', 'custom_date', 'pull_all'];
+
+  if (!filterPreference || !validModes.includes(filterPreference.mode)) {
+    return res.status(400).json({ error: 'filterPreference.mode must be one of: recommended, custom_date, pull_all' });
+  }
+
+  if (filterPreference.mode === 'custom_date') {
+    const d = new Date(filterPreference.customDate);
+    if (!filterPreference.customDate || isNaN(d.getTime())) {
+      return res.status(400).json({ error: 'filterPreference.customDate must be a valid date when mode is custom_date' });
+    }
+  }
+
+  if (importState.status === 'running') {
+    return res.status(409).json({ error: 'Import already in progress' });
+  }
+
+  const contractorId = 'accent-roofing'; // MVP: extend to multi-contractor when FORA scales
+  runFullJobberImport(contractorId, filterPreference); // fire and forget
+
+  res.status(202).json({ message: 'Import started', status: 'running' });
+});
+
+// GET /api/admin/jobber-import-status
+// Returns current import state.
+router.get('/api/admin/jobber-import-status', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  res.json(importState);
+});
+
 module.exports = router;
 
 

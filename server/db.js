@@ -879,6 +879,33 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_contact_tags_contractor_id ON contact_tags(contractor_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_contact_tags_tag ON contact_tags(tag)`);
 
+  // ── CONTACT TAGS MIGRATIONS (Jobber client import) ────────────────────────────
+  await pool.query(`ALTER TABLE contact_tags ALTER COLUMN contact_id DROP NOT NULL`);
+  await pool.query(`ALTER TABLE contact_tags ADD COLUMN IF NOT EXISTS jobber_client_id TEXT`);
+  await pool.query(`ALTER TABLE contact_tags DROP CONSTRAINT IF EXISTS contact_tags_at_least_one_id`);
+  await pool.query(`ALTER TABLE contact_tags ADD CONSTRAINT contact_tags_at_least_one_id
+    CHECK (contact_id IS NOT NULL OR jobber_client_id IS NOT NULL)`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS contact_tags_jobber_unique
+    ON contact_tags (jobber_client_id, contractor_id, tag)
+    WHERE jobber_client_id IS NOT NULL`);
+
+  // ── JOBBER CLIENTS ────────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS jobber_clients (
+    id SERIAL PRIMARY KEY,
+    jobber_client_id TEXT NOT NULL,
+    contractor_id TEXT NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    email TEXT,
+    phone TEXT,
+    is_company BOOLEAN DEFAULT FALSE,
+    is_lead BOOLEAN DEFAULT FALSE,
+    is_archived BOOLEAN DEFAULT FALSE,
+    last_synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (jobber_client_id, contractor_id)
+  )`);
+
   // ── REFERRER BANK ACCOUNT COLUMNS ─────────────────────────────────────────────
   await addReferrerBankColumns(pool);
 
@@ -966,7 +993,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     ('admin_cache_expiry'),
     ('engagement_cadence'),
     ('dynamic_audiences'),
-    ('post_job_sequence')
+    ('post_job_sequence'),
+    ('jobber_incremental_sync')
   ON CONFLICT DO NOTHING`);
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
