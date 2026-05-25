@@ -236,10 +236,21 @@ export default function CRMSettings() {
   const [cfmNoToken, setCfmNoToken]         = useState(false);
   const [cfmOpen, setCfmOpen]               = useState(false);
 
+  // Import flow
+  const [importPhase, setImportPhase]           = useState('idle'); // 'idle'|'modal'|'running'|'results_success'|'results_error'
+  const [importFilterMode, setImportFilterMode] = useState('recommended');
+  const [importCustomDate, setImportCustomDate] = useState('');
+  const [importPosting, setImportPosting]       = useState(false);
+  const [importInlineError, setImportInlineError] = useState('');
+  const [importCounters, setImportCounters]     = useState({ totalFound: 0, imported: 0, tagged: 0 });
+  const [importLastResult, setImportLastResult] = useState(null);
+  const [importErrorMsg, setImportErrorMsg]     = useState('');
+
   const fieldSavedTimer     = useRef(null);
   const stageSavedTimer     = useRef(null);
   const syncMsgTimer        = useRef(null);
   const startDateMsgTimer   = useRef(null);
+  const importPollRef       = useRef(null);
 
   const cfmShowToast    = useCallback((message, type = 'success') => setCfmToast({ message, type }), []);
   const cfmDismissToast = useCallback(() => setCfmToast(null), []);
@@ -273,6 +284,14 @@ export default function CRMSettings() {
   useEffect(() => {
     const t = setInterval(() => setLastSyncedAt(prev => prev), 60000);
     return () => clearInterval(t);
+  }, []);
+
+  // Clear import poll interval on unmount
+  useEffect(() => {
+    return () => {
+      if (importPollRef.current) clearInterval(importPollRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadCampaignFields() {
@@ -485,6 +504,81 @@ export default function CRMSettings() {
       cfmShowToast('Save request failed.', 'error');
     } finally {
       setCfmSaving(false);
+    }
+  }
+
+  // ── Import flow handlers ─────────────────────────────────────────────────────
+  function openImportModal() {
+    setImportFilterMode('recommended');
+    setImportCustomDate('');
+    setImportInlineError('');
+    setImportPhase('modal');
+  }
+
+  function closeImportModal() {
+    setImportFilterMode('recommended');
+    setImportCustomDate('');
+    setImportInlineError('');
+    setImportPhase('idle');
+  }
+
+  function startImportPolling() {
+    if (importPollRef.current) clearInterval(importPollRef.current);
+    importPollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/jobber-import-status`, {
+          headers: authHeaders(),
+        });
+        const d = await r.json();
+        if (d.status === 'running') {
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged });
+        } else if (d.status === 'complete') {
+          clearInterval(importPollRef.current);
+          importPollRef.current = null;
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged });
+          setImportLastResult({
+            totalFound: d.totalFound,
+            imported: d.imported,
+            tagged: d.tagged,
+            date: new Date().toLocaleDateString(),
+          });
+          setImportPhase('results_success');
+        } else if (d.status === 'error') {
+          clearInterval(importPollRef.current);
+          importPollRef.current = null;
+          setImportErrorMsg(d.errorMessage || 'An error occurred during import. Please try again.');
+          setImportPhase('results_error');
+        }
+      } catch { /* network error during poll — keep polling */ }
+    }, 3000);
+  }
+
+  async function handleStartImport() {
+    setImportPosting(true);
+    setImportInlineError('');
+    const filterPreference = {
+      mode: importFilterMode,
+      customDate: importFilterMode === 'custom_date' ? importCustomDate : null,
+    };
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/jobber-full-import`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filterPreference }),
+      });
+      if (r.status === 202) {
+        setImportPhase('running');
+        setImportCounters({ totalFound: 0, imported: 0, tagged: 0 });
+        startImportPolling();
+      } else if (r.status === 409) {
+        setImportInlineError('An import is already running. Check back shortly.');
+      } else {
+        setImportInlineError('Something went wrong. Please try again.');
+      }
+    } catch {
+      setImportInlineError('Something went wrong. Please try again.');
+    } finally {
+      setImportPosting(false);
     }
   }
 
@@ -1172,6 +1266,226 @@ export default function CRMSettings() {
     );
   }
 
+  // ── Import modal (Phase 1) ───────────────────────────────────────────────────
+  function renderImportModal() {
+    if (importPhase !== 'modal') return null;
+    const canStart = importFilterMode !== 'custom_date' || importCustomDate.length > 0;
+    const filterOptions = [
+      {
+        value: 'recommended',
+        label: 'Recommended',
+        sub: 'Paying clients from all time + active prospects from the last 12 months',
+        isDefault: true,
+      },
+      {
+        value: 'paying_only',
+        label: 'Paying clients only',
+        sub: 'Only clients with at least one paid invoice — no prospects',
+      },
+      {
+        value: 'custom_date',
+        label: 'Custom date range',
+        sub: 'Paying clients from all time + prospects created after a specific date',
+      },
+    ];
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        background: 'rgba(0,0,0,0.75)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      }}>
+        <div style={{
+          background: AD.bgCard, borderRadius: AD.radiusLg,
+          border: `1px solid ${AD.border}`, padding: '32px',
+          maxWidth: 480, width: '100%', boxShadow: AD.shadowLg,
+        }}>
+          <div style={{ fontSize: 18, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans, marginBottom: 8 }}>
+            Import Jobber Clients
+          </div>
+          <p style={{ margin: '0 0 24px', fontSize: 14, color: AD.textSecondary, lineHeight: 1.65 }}>
+            Choose which clients to pull from Jobber into RoofMiles.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+            {filterOptions.map(opt => (
+              <div
+                key={opt.value}
+                onClick={() => setImportFilterMode(opt.value)}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 12,
+                  padding: '14px 16px', borderRadius: AD.radiusMd,
+                  border: `1px solid ${importFilterMode === opt.value ? AD.blueLight : AD.border}`,
+                  background: importFilterMode === opt.value ? AD.blueBg : 'transparent',
+                  cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
+                }}
+              >
+                <div style={{
+                  width: 16, height: 16, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                  border: `2px solid ${importFilterMode === opt.value ? AD.blueLight : AD.border}`,
+                  background: importFilterMode === opt.value ? AD.blueLight : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.15s',
+                }}>
+                  {importFilterMode === opt.value && (
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
+                  )}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                    <span style={{ fontSize: 14, fontWeight: 500, color: AD.textPrimary }}>{opt.label}</span>
+                    {opt.isDefault && (
+                      <span style={{
+                        fontSize: 11, fontWeight: 500,
+                        padding: '2px 8px', borderRadius: AD.radiusPill,
+                        background: AD.greenBg, color: AD.greenText,
+                      }}>
+                        Recommended
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 13, color: AD.textTertiary, lineHeight: 1.5 }}>
+                    {opt.sub}
+                  </div>
+                  {opt.value === 'custom_date' && importFilterMode === 'custom_date' && (
+                    <div style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>
+                      <input
+                        type="date"
+                        value={importCustomDate}
+                        onChange={e => setImportCustomDate(e.target.value)}
+                        style={{
+                          padding: '8px 10px',
+                          background: AD.bgCard, border: `1px solid ${AD.border}`,
+                          borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
+                          color: AD.textPrimary, outline: 'none',
+                          transition: 'border-color 0.15s',
+                        }}
+                        onFocus={e => { e.target.style.borderColor = AD.blueLight; }}
+                        onBlur={e => { e.target.style.borderColor = AD.border; }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          {importInlineError && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+              padding: '10px 14px', background: AD.red2Bg, borderRadius: AD.radiusMd,
+            }}>
+              <i className="ph ph-warning-circle" style={{ fontSize: 16, color: AD.red2Text, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: AD.red2Text }}>{importInlineError}</span>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <OutlineBtn onClick={closeImportModal}>Cancel</OutlineBtn>
+            <PrimaryBtn onClick={handleStartImport} loading={importPosting} disabled={!canStart}>
+              Start Import
+            </PrimaryBtn>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Import section (Phases 2, 3, 4 — in-page card) ───────────────────────────
+  function renderImportSection() {
+    if (importPhase === 'running') {
+      return (
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+            <i className="ph ph-circle-notch" style={{
+              fontSize: 24, color: AD.blueText,
+              animation: 'crmSpin 0.8s linear infinite', flexShrink: 0,
+            }} />
+            <div style={{ fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+              Import in Progress
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 40, marginBottom: 18, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Clients found', value: importCounters.totalFound },
+              { label: 'Imported', value: importCounters.imported },
+              { label: 'Tagged', value: importCounters.tagged },
+            ].map(stat => (
+              <div key={stat.label}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                  {stat.value.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 3 }}>{stat.label}</div>
+              </div>
+            ))}
+          </div>
+          <p style={{ margin: 0, fontSize: 13, color: AD.textTertiary, lineHeight: 1.6 }}>
+            This may take a few minutes. You can navigate away — the import will continue in the background.
+          </p>
+        </Card>
+      );
+    }
+
+    if (importPhase === 'results_success') {
+      return (
+        <Card style={{ borderColor: AD.green }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <i className="ph-duotone ph-check-circle" style={{ fontSize: 28, color: AD.greenText, flexShrink: 0 }} />
+            <div style={{ fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+              Import Complete
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 40, marginBottom: 18, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Clients Found', value: importCounters.totalFound },
+              { label: 'Imported', value: importCounters.imported },
+              { label: 'Tagged', value: importCounters.tagged },
+            ].map(stat => (
+              <div key={stat.label}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                  {stat.value.toLocaleString()}
+                </div>
+                <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 3 }}>{stat.label}</div>
+              </div>
+            ))}
+          </div>
+          <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.textSecondary, lineHeight: 1.65 }}>
+            Your Jobber clients are now available in RoofMiles. Tags have been applied automatically based on their Jobber data.
+          </p>
+          <PrimaryBtn onClick={() => setImportPhase('idle')}>Done</PrimaryBtn>
+        </Card>
+      );
+    }
+
+    if (importPhase === 'results_error') {
+      return (
+        <Card style={{ borderColor: AD.amber }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <i className="ph-duotone ph-warning-circle" style={{ fontSize: 28, color: AD.amberText, flexShrink: 0 }} />
+            <div style={{ fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+              Import Failed
+            </div>
+          </div>
+          <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.textSecondary, lineHeight: 1.65 }}>
+            {importErrorMsg || 'An error occurred during import. Please try again.'}
+          </p>
+          <PrimaryBtn onClick={openImportModal}>Try Again</PrimaryBtn>
+        </Card>
+      );
+    }
+
+    // Phase 4 — Idle (fresh or post-completion)
+    return (
+      <Card>
+        <SectionHeading>Jobber Client Import</SectionHeading>
+        <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.textSecondary, lineHeight: 1.65 }}>
+          {importLastResult
+            ? `Last import: ${importLastResult.imported.toLocaleString()} clients imported, ${importLastResult.tagged.toLocaleString()} tagged — ${importLastResult.date}`
+            : 'Pull your Jobber clients into RoofMiles to enable outreach, tagging, and audience building.'}
+        </p>
+        <PrimaryBtn onClick={openImportModal}>
+          {importLastResult ? 'Run Import Again' : 'Migrate Client Contacts'}
+        </PrimaryBtn>
+      </Card>
+    );
+  }
+
   // ── Disconnect confirmation modal ────────────────────────────────────────────
   function renderDisconnectModal() {
     if (!showDisconnect) return null;
@@ -1248,6 +1562,7 @@ export default function CRMSettings() {
           {renderFieldMappingCard()}
           {renderStageMappingCard()}
           {renderCampaignFieldMappingCard()}
+          {renderImportSection()}
           {renderSyncCard()}
           {renderStartDateCard()}
           {renderDangerCard()}
@@ -1255,6 +1570,7 @@ export default function CRMSettings() {
       )}
 
       {renderDisconnectModal()}
+      {renderImportModal()}
       {cfmToast && <CfmToast message={cfmToast.message} type={cfmToast.type} onDismiss={cfmDismissToast} />}
     </div>
   );

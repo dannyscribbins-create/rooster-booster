@@ -1544,7 +1544,7 @@ router.post('/api/admin/jobber-full-import', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
 
   const { filterPreference } = req.body;
-  const validModes = ['recommended', 'custom_date', 'pull_all'];
+  const validModes = ['recommended', 'custom_date', 'pull_all', 'paying_only'];
 
   if (!filterPreference || !validModes.includes(filterPreference.mode)) {
     return res.status(400).json({ error: 'filterPreference.mode must be one of: recommended, custom_date, pull_all' });

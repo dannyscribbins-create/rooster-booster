@@ -222,6 +222,8 @@ async function runFullJobberImport(contractorId, filterPreference) {
       const createdAt = client.createdAt ? new Date(client.createdAt) : null;
       if (filterPreference.mode === 'pull_all') {
         filteredClients.push(client);
+      } else if (filterPreference.mode === 'paying_only') {
+        // non-paying client — skip; paying clients already included above
       } else if (filterPreference.mode === 'custom_date' && filterPreference.customDate) {
         if (createdAt && createdAt >= new Date(filterPreference.customDate)) {
           filteredClients.push(client);
