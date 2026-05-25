@@ -19,14 +19,16 @@ const importState = {
 };
 
 // ── PAGINATION HELPER ─────────────────────────────────────────────────────────
-async function fetchAllPages(token, query, dataPath, delayMs = 200, label = '') {
+async function fetchAllPages(token, query, dataPath, label = '') {
   const results = [];
   let after = null;
   let hasNextPage = true;
   let pageNum = 0;
+  let throttleRetries = 0;
 
   while (hasNextPage) {
     pageNum++;
+
     const response = await retryWithBackoff(
       () => axios.post(
         'https://api.getjobber.com/api/graphql',
@@ -42,48 +44,57 @@ async function fetchAllPages(token, query, dataPath, delayMs = 200, label = '') 
       { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
     );
 
+    // Check for GraphQL errors including THROTTLED
     const gqlErrors = response.data?.errors;
     if (gqlErrors?.length > 0) {
       const isThrottled = gqlErrors.some(e =>
         e.extensions?.code === 'THROTTLED' || e.message === 'Throttled'
       );
+
       if (isThrottled) {
+        throttleRetries++;
+        if (throttleRetries > 10) {
+          throw new Error(`Jobber throttle retry limit exceeded in ${label} — too many retries. Try again later.`);
+        }
         const throttleStatus = response.data?.extensions?.cost?.throttleStatus;
         const currentlyAvailable = throttleStatus?.currentlyAvailable || 0;
         const restoreRate = throttleStatus?.restoreRate || 500;
-        const PAGE_COST = 1500;
+        const PAGE_COST = 2500;
         const waitMs = Math.max(
           Math.ceil(((PAGE_COST - currentlyAvailable) / restoreRate) * 1000) + 500,
-          3000
+          10000
         );
-        console.log(`[fullJobberImport] ${label} throttled on page ${pageNum} — waiting ${waitMs}ms before retry`);
+        console.log(`[fullJobberImport] ${label} throttled on page ${pageNum} (retry ${throttleRetries}) — waiting ${waitMs}ms`);
         await new Promise(resolve => setTimeout(resolve, waitMs));
         pageNum--;
         continue;
       }
+
+      // Non-throttle GraphQL error — surface it clearly
       const messages = gqlErrors.map(e => e.message).join('; ');
       throw new Error(`Jobber GraphQL error in ${label} page ${pageNum}: ${messages}`);
     }
 
-    // Walk the path string like "clients" or "invoices" to get the connection object
-    const data = response.data?.data;
-    const connection = data?.[dataPath];
+    // Reset throttle retry counter on successful page
+    throttleRetries = 0;
+
+    // Read nodes from response
+    const connection = response.data?.data?.[dataPath];
     const nodes = connection?.nodes || [];
     results.push(...nodes);
 
-    if (label) {
-      console.log(`[fullJobberImport] ${label} — page ${pageNum}, ${nodes.length} ${dataPath}`);
-    }
+    console.log(`[fullJobberImport] ${label} — page ${pageNum}, ${nodes.length} ${dataPath}`);
 
     hasNextPage = connection?.pageInfo?.hasNextPage || false;
     after = connection?.pageInfo?.endCursor || null;
 
+    // Adaptive inter-page delay based on actual bucket state
     if (hasNextPage) {
       const throttleStatus = response.data?.extensions?.cost?.throttleStatus;
       if (throttleStatus) {
         const currentlyAvailable = throttleStatus.currentlyAvailable || 0;
         const restoreRate = throttleStatus.restoreRate || 500;
-        const PAGE_COST = 1500;
+        const PAGE_COST = 2500;
         if (currentlyAvailable < PAGE_COST) {
           const waitMs = Math.ceil(((PAGE_COST - currentlyAvailable) / restoreRate) * 1000) + 200;
           await new Promise(resolve => setTimeout(resolve, waitMs));
@@ -91,7 +102,7 @@ async function fetchAllPages(token, query, dataPath, delayMs = 200, label = '') 
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       } else {
-        await new Promise(resolve => setTimeout(resolve, delayMs || 500));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
   }
@@ -137,7 +148,6 @@ async function runFullJobberImport(contractorId, filterPreference) {
             id firstName lastName isCompany isLead isArchived createdAt updatedAt
             emails { address primary }
             phones { number primary }
-            tags { nodes { label } }
             customFields {
               ... on CustomFieldText { label valueText }
               ... on CustomFieldDropdown { label valueDropdown }
@@ -147,7 +157,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allClients = await fetchAllPages(token, clientsQuery, 'clients', 500, 'Step A');
+    const allClients = await fetchAllPages(token, clientsQuery, 'clients', 'Step A');
     console.log(`[fullJobberImport] Step A complete — ${allClients.length} clients fetched`);
 
     // ── STEP B — Pull all invoices ────────────────────────────────────────────
@@ -164,29 +174,8 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allInvoices = await fetchAllPages(token, invoicesQuery, 'invoices', 500, 'Step B');
+    const allInvoices = await fetchAllPages(token, invoicesQuery, 'invoices', 'Step B');
     console.log(`[fullJobberImport] Step B complete — ${allInvoices.length} invoices fetched`);
-
-    // ── STEP C — Pull all jobs ────────────────────────────────────────────────
-    console.log('[fullJobberImport] Step C — fetching all jobs...');
-    const jobsQuery = `
-      query GetJobs($after: String) {
-        jobs(first: 50, after: $after) {
-          nodes {
-            id jobStatus jobType completedAt createdAt
-            client { id }
-            invoices { nodes { id invoiceStatus createdAt amounts { total } } }
-            customFields {
-              ... on CustomFieldText { label valueText }
-              ... on CustomFieldDropdown { label valueDropdown }
-            }
-          }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-    `;
-    const allJobs = await fetchAllPages(token, jobsQuery, 'jobs', 500, 'Step C');
-    console.log(`[fullJobberImport] Step C complete — ${allJobs.length} jobs fetched`);
 
     // ── STEP D — Pull all quotes ──────────────────────────────────────────────
     console.log('[fullJobberImport] Step D — fetching all quotes...');
@@ -201,7 +190,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allQuotes = await fetchAllPages(token, quotesQuery, 'quotes', 500, 'Step D');
+    const allQuotes = await fetchAllPages(token, quotesQuery, 'quotes', 'Step D');
     console.log(`[fullJobberImport] Step D complete — ${allQuotes.length} quotes fetched`);
 
     // ── STEP E — Pull all requests ────────────────────────────────────────────
@@ -217,8 +206,28 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allRequests = await fetchAllPages(token, requestsQuery, 'requests', 500, 'Step E');
+    const allRequests = await fetchAllPages(token, requestsQuery, 'requests', 'Step E');
     console.log(`[fullJobberImport] Step E complete — ${allRequests.length} requests fetched`);
+
+    // ── STEP C — Pull all jobs (most expensive, runs last) ────────────────────
+    console.log('[fullJobberImport] Step C — fetching all jobs...');
+    const jobsQuery = `
+      query GetJobs($after: String) {
+        jobs(first: 100, after: $after) {
+          nodes {
+            id jobStatus jobType completedAt createdAt
+            client { id }
+            customFields {
+              ... on CustomFieldText { label valueText }
+              ... on CustomFieldDropdown { label valueDropdown }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    `;
+    const allJobs = await fetchAllPages(token, jobsQuery, 'jobs', 'Step C');
+    console.log(`[fullJobberImport] Step C complete — ${allJobs.length} jobs fetched`);
 
     // ── STEP F — Join all data by client ID ──────────────────────────────────
     console.log('[fullJobberImport] Step F — joining data...');
