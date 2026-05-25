@@ -4,6 +4,7 @@ const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
 const deriveAndSaveTags = require('../utils/deriveJobberTags');
+const { refreshTokenIfNeeded } = require('../crm/jobber');
 
 // ── IMPORT STATE ──────────────────────────────────────────────────────────────
 // Module-level — persists in memory for the duration of the process.
@@ -19,7 +20,7 @@ const importState = {
 };
 
 // ── PAGINATION HELPER ─────────────────────────────────────────────────────────
-async function fetchAllPages(token, query, dataPath, label = '') {
+async function fetchAllPages(token, query, dataPath, label = '', contractorId = null) {
   const results = [];
   let after = null;
   let hasNextPage = true;
@@ -105,9 +106,36 @@ async function fetchAllPages(token, query, dataPath, label = '') {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
+
+    if (pageNum % 50 === 0 && contractorId) {
+      console.log(`[fullJobberImport] ${label} — refreshing token at page ${pageNum}`);
+      await refreshTokenIfNeeded();
+      const refreshed = await pool.query(
+        'SELECT access_token FROM tokens WHERE contractor_id = $1',
+        [contractorId]
+      );
+      if (refreshed.rows[0]?.access_token) {
+        token = refreshed.rows[0].access_token;
+      }
+    }
   }
 
   return results;
+}
+
+// ── TOKEN HELPER ─────────────────────────────────────────────────────────────
+async function getFreshToken(contractorId) {
+  await refreshTokenIfNeeded();
+  const tokenResult = await pool.query(
+    'SELECT access_token, expires_at FROM tokens WHERE contractor_id = $1',
+    [contractorId]
+  );
+  const tokenRow = tokenResult.rows[0];
+  if (!tokenRow?.access_token) throw new Error('No access token found for contractor');
+  if (new Date(tokenRow.expires_at) < new Date()) {
+    throw new Error(`Jobber token expired for ${contractorId} — reconnect Jobber OAuth`);
+  }
+  return tokenRow.access_token;
 }
 
 // ── MAIN IMPORT FUNCTION ──────────────────────────────────────────────────────
@@ -123,20 +151,9 @@ async function runFullJobberImport(contractorId, filterPreference) {
   importState.errorMessage = null;
 
   try {
-    // Fetch access token and verify it has not expired
-    const tokenResult = await pool.query(
-      'SELECT access_token, refresh_token, expires_at FROM tokens WHERE contractor_id = $1',
-      [contractorId]
-    );
-    const tokenRow = tokenResult.rows[0];
-    if (!tokenRow?.access_token) throw new Error('No access token found for contractor');
-    if (new Date(tokenRow.expires_at) < new Date()) {
-      throw new Error(`Jobber token expired for ${contractorId} — reconnect Jobber OAuth`);
-    }
-    const token = tokenRow.access_token;
-
     await new Promise(resolve => setTimeout(resolve, 3000));
     console.log('[fullJobberImport] Step A — fetching all clients...');
+    const tokenA = await getFreshToken(contractorId);
 
     // ── STEP A — Pull all Jobber clients ─────────────────────────────────────
     // No filter applied — ClientFilterAttributes does not support status filtering reliably.
@@ -157,11 +174,12 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allClients = await fetchAllPages(token, clientsQuery, 'clients', 'Step A');
+    const allClients = await fetchAllPages(tokenA, clientsQuery, 'clients', 'Step A', contractorId);
     console.log(`[fullJobberImport] Step A complete — ${allClients.length} clients fetched`);
 
     // ── STEP B — Pull all invoices ────────────────────────────────────────────
     console.log('[fullJobberImport] Step B — fetching all invoices...');
+    const tokenB = await getFreshToken(contractorId);
     const invoicesQuery = `
       query GetInvoices($after: String) {
         invoices(first: 100, after: $after) {
@@ -174,11 +192,12 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allInvoices = await fetchAllPages(token, invoicesQuery, 'invoices', 'Step B');
+    const allInvoices = await fetchAllPages(tokenB, invoicesQuery, 'invoices', 'Step B', contractorId);
     console.log(`[fullJobberImport] Step B complete — ${allInvoices.length} invoices fetched`);
 
     // ── STEP D — Pull all quotes ──────────────────────────────────────────────
     console.log('[fullJobberImport] Step D — fetching all quotes...');
+    const tokenD = await getFreshToken(contractorId);
     const quotesQuery = `
       query GetQuotes($after: String) {
         quotes(first: 100, after: $after) {
@@ -190,11 +209,12 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allQuotes = await fetchAllPages(token, quotesQuery, 'quotes', 'Step D');
+    const allQuotes = await fetchAllPages(tokenD, quotesQuery, 'quotes', 'Step D', contractorId);
     console.log(`[fullJobberImport] Step D complete — ${allQuotes.length} quotes fetched`);
 
     // ── STEP E — Pull all requests ────────────────────────────────────────────
     console.log('[fullJobberImport] Step E — fetching all requests...');
+    const tokenE = await getFreshToken(contractorId);
     const requestsQuery = `
       query GetRequests($after: String) {
         requests(first: 100, after: $after) {
@@ -206,11 +226,12 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allRequests = await fetchAllPages(token, requestsQuery, 'requests', 'Step E');
+    const allRequests = await fetchAllPages(tokenE, requestsQuery, 'requests', 'Step E', contractorId);
     console.log(`[fullJobberImport] Step E complete — ${allRequests.length} requests fetched`);
 
     // ── STEP C — Pull all jobs (most expensive, runs last) ────────────────────
     console.log('[fullJobberImport] Step C — fetching all jobs...');
+    const tokenC = await getFreshToken(contractorId);
     const jobsQuery = `
       query GetJobs($after: String) {
         jobs(first: 100, after: $after) {
@@ -226,7 +247,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allJobs = await fetchAllPages(token, jobsQuery, 'jobs', 'Step C');
+    const allJobs = await fetchAllPages(tokenC, jobsQuery, 'jobs', 'Step C', contractorId);
     console.log(`[fullJobberImport] Step C complete — ${allJobs.length} jobs fetched`);
 
     // ── STEP F — Join all data by client ID ──────────────────────────────────
