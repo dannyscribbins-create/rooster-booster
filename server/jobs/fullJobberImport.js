@@ -19,12 +19,14 @@ const importState = {
 };
 
 // ── PAGINATION HELPER ─────────────────────────────────────────────────────────
-async function fetchAllPages(token, query, dataPath, delayMs = 200) {
+async function fetchAllPages(token, query, dataPath, delayMs = 200, label = '') {
   const results = [];
   let after = null;
   let hasNextPage = true;
+  let pageNum = 0;
 
   while (hasNextPage) {
+    pageNum++;
     const response = await retryWithBackoff(
       () => axios.post(
         'https://api.getjobber.com/api/graphql',
@@ -45,6 +47,10 @@ async function fetchAllPages(token, query, dataPath, delayMs = 200) {
     const connection = data?.[dataPath];
     const nodes = connection?.nodes || [];
     results.push(...nodes);
+
+    if (label) {
+      console.log(`[fullJobberImport] ${label} — page ${pageNum}, ${nodes.length} ${dataPath}`);
+    }
 
     hasNextPage = connection?.pageInfo?.hasNextPage || false;
     after = connection?.pageInfo?.endCursor || null;
@@ -81,11 +87,13 @@ async function runFullJobberImport(contractorId, filterPreference) {
     console.log('[fullJobberImport] Step A — fetching all clients...');
 
     // ── STEP A — Pull all Jobber clients ─────────────────────────────────────
+    // No filter applied — ClientFilterAttributes does not support status filtering reliably.
+    // Filtering (active/archived/lead) happens in Node.js (Step G), not in Jobber.
     const clientsQuery = `
       query GetClients($after: String) {
-        clients(filter: { status: active }, first: 50, after: $after) {
+        clients(first: 100, after: $after) {
           nodes {
-            id firstName lastName isCompany isLead createdAt
+            id firstName lastName isCompany isLead isArchived createdAt updatedAt
             emails { address isPrimary }
             phones { number isPrimary }
             tags { nodes { label } }
@@ -98,14 +106,14 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allClients = await fetchAllPages(token, clientsQuery, 'clients');
+    const allClients = await fetchAllPages(token, clientsQuery, 'clients', 200, 'Step A');
     console.log(`[fullJobberImport] Step A complete — ${allClients.length} clients fetched`);
 
     // ── STEP B — Pull all invoices ────────────────────────────────────────────
     console.log('[fullJobberImport] Step B — fetching all invoices...');
     const invoicesQuery = `
       query GetInvoices($after: String) {
-        invoices(first: 50, after: $after) {
+        invoices(first: 100, after: $after) {
           nodes {
             id invoiceStatus createdAt
             amounts { total }
@@ -115,7 +123,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allInvoices = await fetchAllPages(token, invoicesQuery, 'invoices');
+    const allInvoices = await fetchAllPages(token, invoicesQuery, 'invoices', 200, 'Step B');
     console.log(`[fullJobberImport] Step B complete — ${allInvoices.length} invoices fetched`);
 
     // ── STEP C — Pull all jobs ────────────────────────────────────────────────
@@ -136,14 +144,14 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allJobs = await fetchAllPages(token, jobsQuery, 'jobs');
+    const allJobs = await fetchAllPages(token, jobsQuery, 'jobs', 200, 'Step C');
     console.log(`[fullJobberImport] Step C complete — ${allJobs.length} jobs fetched`);
 
     // ── STEP D — Pull all quotes ──────────────────────────────────────────────
     console.log('[fullJobberImport] Step D — fetching all quotes...');
     const quotesQuery = `
       query GetQuotes($after: String) {
-        quotes(first: 50, after: $after) {
+        quotes(first: 100, after: $after) {
           nodes {
             id quoteStatus createdAt
             client { id }
@@ -152,14 +160,14 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allQuotes = await fetchAllPages(token, quotesQuery, 'quotes');
+    const allQuotes = await fetchAllPages(token, quotesQuery, 'quotes', 200, 'Step D');
     console.log(`[fullJobberImport] Step D complete — ${allQuotes.length} quotes fetched`);
 
     // ── STEP E — Pull all requests ────────────────────────────────────────────
     console.log('[fullJobberImport] Step E — fetching all requests...');
     const requestsQuery = `
       query GetRequests($after: String) {
-        requests(first: 50, after: $after) {
+        requests(first: 100, after: $after) {
           nodes {
             id requestStatus createdAt
             client { id }
@@ -168,7 +176,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         }
       }
     `;
-    const allRequests = await fetchAllPages(token, requestsQuery, 'requests');
+    const allRequests = await fetchAllPages(token, requestsQuery, 'requests', 200, 'Step E');
     console.log(`[fullJobberImport] Step E complete — ${allRequests.length} requests fetched`);
 
     // ── STEP F — Join all data by client ID ──────────────────────────────────
@@ -275,7 +283,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
             phone,
             client.isCompany === true,
             client.isLead === true,
-            false,
+            client.isArchived === true,
           ]
         );
       }
