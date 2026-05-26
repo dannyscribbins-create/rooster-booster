@@ -353,22 +353,22 @@ router.post('/jobber/client-create', async (req, res) => {
       const token = tokenResult.rows[0]?.access_token;
 
       // Fetch full client data including quotes/jobs/invoices for accurate status classification
-      const rawClientId = payload?.data?.client?.id || payload?.data?.id;
-      if (!rawClientId) throw new Error('client-create webhook: missing client id in payload');
+      const clientId = payload?.data?.webHookEvent?.itemId;
+      if (!clientId) throw new Error('client-create webhook: missing client id in payload');
 
       const fullClient = token
-        ? await fetchFullClient(rawClientId, token).catch(err => {
+        ? await fetchFullClient(clientId, token).catch(err => {
             console.warn(`[jobber-webhook] fetchFullClient failed, using raw payload: ${err.message}`);
             return client;
           })
         : client;
 
       await syncSingleClient(contractorId, fullClient, referralStartDate);
-      console.log(`[jobber-webhook] client-create sync complete for client: ${rawClientId}`);
+      console.log(`[jobber-webhook] client-create sync complete for client: ${clientId}`);
 
       // Upsert into jobber_clients and derive tags
       if (token) {
-        const relatedData = await fetchClientRelatedData(rawClientId, token).catch(err => {
+        const relatedData = await fetchClientRelatedData(clientId, token).catch(err => {
           console.warn(`[jobber-webhook] client-create fetchClientRelatedData failed: ${err.message}`);
           return null;
         });
@@ -388,7 +388,6 @@ router.post('/jobber/client-update', async (req, res) => {
   if (!verifyJobberWebhookSignature(req, res)) return;
 
   const payload = JSON.parse(req.body.toString());
-  console.log('[DIAGNOSTIC] CLIENT_UPDATE raw payload:', JSON.stringify(payload)); // diagnostic log — intentional
   // Respond 200 immediately
   res.status(200).json({ received: true });
 
@@ -418,22 +417,22 @@ router.post('/jobber/client-update', async (req, res) => {
       const token = tokenResult.rows[0]?.access_token;
 
       // Fetch full client data including quotes/jobs/invoices for accurate status classification
-      const rawClientId = payload?.data?.client?.id || payload?.data?.id;
-      if (!rawClientId) throw new Error('client-update webhook: missing client id in payload');
+      const clientId = payload?.data?.webHookEvent?.itemId;
+      if (!clientId) throw new Error('client-update webhook: missing client id in payload');
 
       const fullClient = token
-        ? await fetchFullClient(rawClientId, token).catch(err => {
+        ? await fetchFullClient(clientId, token).catch(err => {
             console.warn(`[jobber-webhook] fetchFullClient failed, using raw payload: ${err.message}`);
             return client;
           })
         : client;
 
       await syncSingleClient(contractorId, fullClient, referralStartDate);
-      console.log(`[jobber-webhook] client-update sync complete for client: ${rawClientId}`);
+      console.log(`[jobber-webhook] client-update sync complete for client: ${clientId}`);
 
       // Upsert into jobber_clients and derive tags
       if (token) {
-        const relatedData = await fetchClientRelatedData(rawClientId, token).catch(err => {
+        const relatedData = await fetchClientRelatedData(clientId, token).catch(err => {
           console.warn(`[jobber-webhook] client-update fetchClientRelatedData failed: ${err.message}`);
           return null;
         });

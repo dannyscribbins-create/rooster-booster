@@ -98,12 +98,13 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
     console.error('[pipelineSync] pre-upsert status check failed:', preCheckErr.message);
   }
 
+  const paidAt = status === 'paid' ? new Date() : null;
+
   await pool.query(
     `INSERT INTO pipeline_cache
        (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status,
         pre_start_date, jobber_created_at, last_synced_at, updated_at, paid_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(),
-       CASE WHEN $5 = 'paid' THEN NOW() ELSE NULL END)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8)
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
        client_name      = EXCLUDED.client_name,
        referred_by      = EXCLUDED.referred_by,
@@ -117,7 +118,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
          ELSE pipeline_cache.paid_at
        END`,
     [contractorId, client.id, clientName, referredBy, status,
-     isPreStart, createdAt]
+     isPreStart, createdAt, paidAt]
   );
 
   // ── APP_USER_ PLACEHOLDER CLEANUP ──────────────────────────────────────────
