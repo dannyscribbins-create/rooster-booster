@@ -353,7 +353,7 @@ router.post('/jobber/client-create', async (req, res) => {
       const token = tokenResult.rows[0]?.access_token;
 
       // Fetch full client data including quotes/jobs/invoices for accurate status classification
-      const rawClientId = client?.id;
+      const rawClientId = payload?.data?.client?.id || payload?.data?.id;
       if (!rawClientId) throw new Error('client-create webhook: missing client id in payload');
 
       const fullClient = token
@@ -417,7 +417,7 @@ router.post('/jobber/client-update', async (req, res) => {
       const token = tokenResult.rows[0]?.access_token;
 
       // Fetch full client data including quotes/jobs/invoices for accurate status classification
-      const rawClientId = client?.id;
+      const rawClientId = payload?.data?.client?.id || payload?.data?.id;
       if (!rawClientId) throw new Error('client-update webhook: missing client id in payload');
 
       const fullClient = token
