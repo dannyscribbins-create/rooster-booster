@@ -388,6 +388,7 @@ router.post('/jobber/client-update', async (req, res) => {
   if (!verifyJobberWebhookSignature(req, res)) return;
 
   const payload = JSON.parse(req.body.toString());
+  console.log('[DIAGNOSTIC] CLIENT_UPDATE raw payload:', JSON.stringify(payload)); // diagnostic log — intentional
   // Respond 200 immediately
   res.status(200).json({ received: true });
 
