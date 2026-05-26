@@ -510,4 +510,180 @@ router.delete('/api/admin/contacts/:contactId/tags/:tag', async (req, res) => {
   }
 });
 
+// ── JOBBER CLIENT TAG SUMMARY ─────────────────────────────────────────────────
+// Returns Jobber-sourced tags grouped by prefix for filter panel Section A.
+router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+  try {
+    const result = await pool.query(
+      `SELECT
+         SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1) AS prefix,
+         ARRAY_AGG(DISTINCT SUBSTRING(tag FROM POSITION(':' IN tag) + 1)
+                   ORDER BY SUBSTRING(tag FROM POSITION(':' IN tag) + 1)) AS values,
+         COUNT(DISTINCT jobber_client_id) AS client_count
+       FROM contact_tags
+       WHERE contractor_id = $1
+         AND source = 'jobber_crm'
+         AND jobber_client_id IS NOT NULL
+         AND tag LIKE '%:%'
+       GROUP BY SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1)
+       ORDER BY SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1)`,
+      [contractorId]
+    );
+
+    const categories = result.rows.map(row => ({
+      prefix: row.prefix,
+      label:  row.prefix.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      values: row.values,
+      count:  parseInt(row.client_count, 10),
+    }));
+
+    res.json({ categories });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/jobber-client-tag-summary' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── JOBBER CLIENTS LIST ───────────────────────────────────────────────────────
+
+router.get('/api/admin/jobber-clients', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
+  const contractorId = 'accent-roofing';
+
+  const rawSearch = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const paying    = req.query.paying   === 'true';
+  const appUser   = req.query.app_user === 'true';
+  const tagLogic  = req.query.logic    === 'OR' ? 'OR' : 'AND';
+
+  const rawTags = req.query.tags;
+  const tags = rawTags
+    ? (Array.isArray(rawTags) ? rawTags : [rawTags])
+        .filter(t => typeof t === 'string' && t.length > 0 && t.length <= 100)
+        .slice(0, 20)
+    : [];
+
+  const rawLimit  = parseInt(req.query.limit,  10);
+  const rawOffset = parseInt(req.query.offset, 10);
+  const limit  = (!isNaN(rawLimit)  && rawLimit  > 0 && rawLimit  <= 200) ? rawLimit  : 100;
+  const offset = (!isNaN(rawOffset) && rawOffset >= 0)                    ? rawOffset : 0;
+
+  // $1 = contractorId throughout
+  const params   = [contractorId];
+  let nextParam  = 2;
+  let extraWhere = '';
+  let tagWhere   = '';
+
+  if (rawSearch) {
+    params.push(`%${rawSearch}%`);
+    extraWhere += ` AND (jc.first_name ILIKE $${nextParam} OR jc.last_name ILIKE $${nextParam} OR jc.email ILIKE $${nextParam})`;
+    nextParam++;
+  }
+
+  if (paying) {
+    // No new param — reuses $1
+    extraWhere += ` AND EXISTS (
+      SELECT 1 FROM contact_tags ct_pay
+      WHERE ct_pay.jobber_client_id = jc.jobber_client_id
+        AND ct_pay.contractor_id = $1
+        AND ct_pay.tag = 'Paid Customer'
+    )`;
+  }
+
+  if (appUser) {
+    // No new param — reuses $1
+    extraWhere += ` AND EXISTS (
+      SELECT 1 FROM contacts c_au
+      WHERE LOWER(c_au.email) = LOWER(jc.email)
+        AND c_au.is_app_user = true
+        AND c_au.contractor_id = $1
+    )`;
+  }
+
+  if (tags.length > 0) {
+    if (tagLogic === 'AND') {
+      // One EXISTS per tag — same pattern as contacts endpoint
+      const clauses = tags.map((tag, i) => {
+        params.push(tag);
+        return `AND EXISTS (SELECT 1 FROM contact_tags ct${i + 1} WHERE ct${i + 1}.jobber_client_id = jc.jobber_client_id AND ct${i + 1}.tag = $${nextParam + i})`;
+      });
+      tagWhere   = clauses.join('\n');
+      nextParam += tags.length;
+    } else {
+      params.push(tags); // array — uses ANY($n)
+      tagWhere = `AND EXISTS (SELECT 1 FROM contact_tags ct_or WHERE ct_or.jobber_client_id = jc.jobber_client_id AND ct_or.tag = ANY($${nextParam}))`;
+      nextParam += 1;
+    }
+  }
+
+  const limitParam  = nextParam;
+  const offsetParam = nextParam + 1;
+
+  const baseConditions = `
+    jc.contractor_id = $1
+    AND jc.is_archived = false
+    ${extraWhere}
+    ${tagWhere}`;
+
+  try {
+    const [countResult, rowsResult] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) AS total
+         FROM jobber_clients jc
+         WHERE ${baseConditions}`,
+        params
+      ),
+      pool.query(
+        `SELECT
+           jc.jobber_client_id,
+           jc.first_name,
+           jc.last_name,
+           jc.email,
+           jc.phone,
+           jc.is_company,
+           jc.last_synced_at,
+           COALESCE(
+             JSON_AGG(
+               JSON_BUILD_OBJECT('tag', ct.tag, 'source', ct.source)
+             ) FILTER (WHERE ct.tag IS NOT NULL),
+             '[]'::json
+           ) AS tags
+         FROM jobber_clients jc
+         LEFT JOIN contact_tags ct
+           ON ct.jobber_client_id = jc.jobber_client_id
+           AND ct.contractor_id = $1
+         WHERE ${baseConditions}
+         GROUP BY
+           jc.jobber_client_id, jc.first_name, jc.last_name,
+           jc.email, jc.phone, jc.is_company, jc.last_synced_at
+         ORDER BY jc.last_synced_at DESC NULLS LAST
+         LIMIT $${limitParam} OFFSET $${offsetParam}`,
+        [...params, limit, offset]
+      ),
+    ]);
+
+    const clients = rowsResult.rows.map(row => ({
+      jobber_client_id: row.jobber_client_id,
+      first_name:       row.first_name    || '',
+      last_name:        row.last_name     || '',
+      email:            row.email         || null,
+      phone:            row.phone         || null,
+      is_company:       row.is_company    || false,
+      last_synced_at:   row.last_synced_at || null,
+      tags:             Array.isArray(row.tags) ? row.tags : [],
+    }));
+
+    res.json({
+      total: parseInt(countResult.rows[0].total, 10),
+      clients,
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/jobber-clients' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;
