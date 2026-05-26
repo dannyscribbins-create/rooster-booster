@@ -27,6 +27,7 @@ async function runIncrementalSync() {
 
   // Pull clients updated within the last 25 hours (covers 30-min overlap)
   console.log('[jobberIncrementalSync] Fetching recently updated clients...');
+  const twentyFiveHoursAgo = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
   const clientsResponse = await retryWithBackoff(
     () => axios.post(
       'https://api.getjobber.com/api/graphql',
@@ -34,7 +35,7 @@ async function runIncrementalSync() {
         query: `
           query GetRecentClients($after: String) {
             clients(
-              filter: { status: active, updatedAt: { gte: "25_HOURS_AGO" } }
+              filter: { updatedAt: { after: "${twentyFiveHoursAgo}" } }
               first: 50
               after: $after
             ) {
