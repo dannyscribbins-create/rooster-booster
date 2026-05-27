@@ -459,6 +459,24 @@ When building anything that touches a listed feature, read its entry before writ
 
 ---
 
+## Contact Matching Standard
+
+Used for: app user linking, unified contacts merge, new user signup, referral conversion linking, campaign deduplication.
+
+Rule: Contact field (email or phone) is always the PRIMARY match key. Name similarity (pg_trgm, threshold >= 0.4) is always the CONFIRMATION signal.
+
+Confidence levels:
+- HIGH — auto-link: email match + name similarity >= 0.4
+- HIGH — auto-link: phone match + name similarity >= 0.4
+- MEDIUM — do not auto-link: contact match alone, name unavailable
+- LOW — never link: name similarity only, no contact match
+
+Phone normalization: strip all non-numeric characters before comparing (`REGEXP_REPLACE(phone, '[^0-9]', '', 'g')`). COALESCE to `''` to handle NULLs safely.
+Name normalization: `LOWER(TRIM(first || ' ' || last))`, COALESCE nulls to `''`. For `contacts` table (which has a single `name` column): use `COALESCE(c.name,'')` directly.
+pg_trgm extension must be enabled: `CREATE EXTENSION IF NOT EXISTS pg_trgm` (wired in `server/routes/admin/contacts.js` at module load).
+
+---
+
 ### Pending Features — Design Specs and Current Constraints
 
 Read the current constraints before building any feature below.
