@@ -286,7 +286,7 @@ function GroupedFilterPanel({
   }, [sectionBHasActive]);
 
   const panelCount      = selectedTags.length;
-  const anyFilterActive = selectedTags.length > 0 || payingFilter || appUserFilter;
+  const anyFilterActive = search.length > 0 || selectedTags.length > 0 || payingFilter || appUserFilter;
 
   const labelStyle = {
     fontSize: 11, fontFamily: AD.fontSans, fontWeight: 600,
@@ -402,7 +402,7 @@ function GroupedFilterPanel({
       {/* Clear all link */}
       {anyFilterActive && (
         <button
-          onClick={() => { onTagsChange([]); onPayingFilterChange(false); onAppUserFilterChange(false); }}
+          onClick={() => { onSearchChange(''); onTagsChange([]); onPayingFilterChange(false); onAppUserFilterChange(false); }}
           style={{
             display: 'block', marginTop: 8,
             fontSize: 11, color: AD.textTertiary,
@@ -547,7 +547,7 @@ export default function AdminContactsTab({ headers }) {
   // ── Tab ──────────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState('contacts');
 
-  // ── Shared filter state (resets on tab switch) ────────────────────────────────
+  // ── Shared filter state (persists across tab switches — clear via "Clear all filters") ──
   const [search,        setSearch]        = useState('');
   const [payingFilter,  setPayingFilter]  = useState(false);
   const [appUserFilter, setAppUserFilter] = useState(false);
@@ -641,17 +641,12 @@ export default function AdminContactsTab({ headers }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Tab switch — resets all filter state ─────────────────────────────────────
+  // ── Tab switch — filter state preserved; clear debounce only ────────────────
 
   function handleTabSwitch(tab) {
     if (tab === activeTab) return;
     clearTimeout(searchDebounce.current);
     setActiveTab(tab);
-    setSearch('');
-    setPayingFilter(false);
-    setAppUserFilter(false);
-    setSelectedTags([]);
-    setTagLogic('AND');
     setPanelOpen(false);
   }
 

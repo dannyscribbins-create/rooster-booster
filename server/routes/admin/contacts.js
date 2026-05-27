@@ -6,6 +6,16 @@ const { logError } = require('../../middleware/errorLogger');
 const { deriveOptOutType } = require('../../utils/adminHelpers');
 const { applyTag, removeTag } = require('../../utils/tags');
 
+// pg_trgm required for fuzzy name matching — used in app user linking, unified contacts merge (Session 77), and new user signup flow
+;(async () => {
+  try {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+  } catch (err) {
+    // Extension may require superuser on first install — logged but must not crash the server
+    console.log('pg_trgm setup skipped:', err.message); // diagnostic log — intentional
+  }
+})();
+
 // ── TAG SUGGESTIONS (literal route — must be before /:contactId) ──────────────
 
 router.get('/api/admin/contacts/tags/suggestions', async (req, res) => {
@@ -585,21 +595,32 @@ router.get('/api/admin/jobber-clients', async (req, res) => {
 
   if (paying) {
     // No new param — reuses $1
+    // 'paid' is the Jobber invoice:paid tag applied at import/webhook — distinct from 'Paid Customer' (RoofMiles referral conversion tag)
     extraWhere += ` AND EXISTS (
       SELECT 1 FROM contact_tags ct_pay
       WHERE ct_pay.jobber_client_id = jc.jobber_client_id
         AND ct_pay.contractor_id = $1
-        AND ct_pay.tag = 'Paid Customer'
+        AND ct_pay.tag = 'paid'
     )`;
   }
 
   if (appUser) {
     // No new param — reuses $1
+    // HIGH confidence match: email OR phone (primary key) + name similarity >= 0.4 (confirmation signal)
+    // Prevents staff-email false positives where a proposal was sent to an internal address
     extraWhere += ` AND EXISTS (
       SELECT 1 FROM contacts c_au
-      WHERE LOWER(c_au.email) = LOWER(jc.email)
+      WHERE c_au.contractor_id = $1
         AND c_au.is_app_user = true
-        AND c_au.contractor_id = $1
+        AND (
+          LOWER(c_au.email) = LOWER(jc.email)
+          OR REGEXP_REPLACE(COALESCE(c_au.phone,''), '[^0-9]', '', 'g')
+             = REGEXP_REPLACE(COALESCE(jc.phone,''), '[^0-9]', '', 'g')
+        )
+        AND similarity(
+          LOWER(TRIM(COALESCE(c_au.name,''))),
+          LOWER(TRIM(COALESCE(jc.first_name,'') || ' ' || COALESCE(jc.last_name,'')))
+        ) >= 0.4
     )`;
   }
 
