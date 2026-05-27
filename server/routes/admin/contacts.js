@@ -595,12 +595,12 @@ router.get('/api/admin/jobber-clients', async (req, res) => {
 
   if (paying) {
     // No new param — reuses $1
-    // 'paid' is the Jobber invoice:paid tag applied at import/webhook — distinct from 'Paid Customer' (RoofMiles referral conversion tag)
+    // 'paying_client' is the lifetime tag written by deriveAndSaveTags() whenever a client has any paid invoice — never removed
     extraWhere += ` AND EXISTS (
       SELECT 1 FROM contact_tags ct_pay
       WHERE ct_pay.jobber_client_id = jc.jobber_client_id
         AND ct_pay.contractor_id = $1
-        AND ct_pay.tag = 'paid'
+        AND ct_pay.tag = 'paying_client'
     )`;
   }
 
