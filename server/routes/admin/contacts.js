@@ -174,6 +174,177 @@ router.get('/api/admin/contacts', async (req, res) => {
   }
 });
 
+// ── UNIFIED CONTACTS ──────────────────────────────────────────────────────────
+// Returns Jobber clients + app-only contacts merged in one table.
+// source_badge: 'both' = linked, 'jobber' = Jobber-only, 'app' = app-only
+
+router.get('/api/admin/contacts/unified', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const contractorId = 'accent-roofing';
+
+  const search  = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const source  = typeof req.query.source === 'string' ? req.query.source.trim() : '';
+  const tier    = typeof req.query.tier   === 'string' ? req.query.tier.trim()   : '';
+  const rawTags = req.query.tags;
+  const tagMode = req.query.tagMode === 'AND' ? 'AND' : 'OR';
+  const page    = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit   = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+  const offset  = (page - 1) * limit;
+
+  const filterTags = Array.isArray(rawTags)
+    ? rawTags.filter(Boolean)
+    : rawTags ? [rawTags] : [];
+
+  try {
+    // Build the unified CTE: Jobber clients (with/without link) + app-only contacts
+    const params = [contractorId];
+    let paramCount = 1;
+
+    // Search condition fragments (applied per sub-query)
+    let searchCondJobber = '';
+    let searchCondContact = '';
+    if (search) {
+      paramCount++;
+      params.push(`%${search}%`);
+      const p = paramCount;
+      searchCondJobber  = `AND (jc.first_name ILIKE $${p} OR jc.last_name ILIKE $${p} OR jc.email ILIKE $${p} OR jc.phone ILIKE $${p})`;
+      searchCondContact = `AND (c.name ILIKE $${p} OR c.email ILIKE $${p} OR c.phone ILIKE $${p})`;
+    }
+
+    // Source filter limits which sub-queries contribute rows
+    const includeJobber  = !source || source === 'jobber' || source === 'both';
+    const includeBoth    = !source || source === 'both';
+    const includeApp     = !source || source === 'app';
+
+    // Tier filter (tier_1 / tier_2) — applied via contact_tags
+    let tierJoinJobber   = '';
+    let tierWhereJobber  = '';
+    if (tier === 'tier_1' || tier === 'tier_2') {
+      tierJoinJobber  = `JOIN contact_tags ct_tier ON ct_tier.jobber_client_id = jc.jobber_client_id AND ct_tier.contractor_id = jc.contractor_id AND ct_tier.tag = $${++paramCount}`;
+      tierWhereJobber = '';
+      params.push(tier);
+    }
+
+    // ── Jobber sub-query (both + jobber source badges) ────────────────────────
+    const jobberSubQuery = (source === 'app') ? '' : `
+      SELECT
+        jc.jobber_client_id,
+        cjl.contact_id::text                          AS contact_id,
+        TRIM(COALESCE(jc.first_name,'') || ' ' || COALESCE(jc.last_name,'')) AS name,
+        COALESCE(jc.email, c.email)                   AS email,
+        COALESCE(jc.phone, c.phone)                   AS phone,
+        CASE WHEN cjl.contact_id IS NOT NULL THEN 'both' ELSE 'jobber' END AS source_badge,
+        jc.last_synced_at,
+        (SELECT COALESCE(ARRAY_AGG(ct.tag ORDER BY ct.tag), '{}')
+         FROM contact_tags ct
+         WHERE ct.jobber_client_id = jc.jobber_client_id AND ct.contractor_id = jc.contractor_id
+           AND ct.tag NOT IN ('jobber_client','tier_1','tier_2')
+        )                                              AS tags
+      FROM jobber_clients jc
+      LEFT JOIN contact_jobber_links cjl ON cjl.jobber_client_id = jc.jobber_client_id AND cjl.contractor_id = jc.contractor_id
+      LEFT JOIN contacts c ON c.id = cjl.contact_id
+      ${tierJoinJobber}
+      WHERE jc.contractor_id = $1
+        ${searchCondJobber}
+        ${source === 'both'   ? 'AND cjl.contact_id IS NOT NULL' : ''}
+        ${source === 'jobber' ? 'AND cjl.contact_id IS NULL'     : ''}
+    `;
+
+    // ── App-only sub-query ────────────────────────────────────────────────────
+    const appSubQuery = (source === 'jobber' || source === 'both' || tier) ? '' : `
+      SELECT
+        NULL                                           AS jobber_client_id,
+        c.id::text                                     AS contact_id,
+        COALESCE(c.name,'')                            AS name,
+        c.email,
+        c.phone,
+        'app'::text                                    AS source_badge,
+        NULL::timestamptz                              AS last_synced_at,
+        (SELECT COALESCE(ARRAY_AGG(ct.tag ORDER BY ct.tag), '{}')
+         FROM contact_tags ct
+         WHERE ct.contact_id = c.id AND ct.contractor_id = c.contractor_id
+           AND ct.tag NOT IN ('jobber_client','tier_1','tier_2')
+        )                                              AS tags
+      FROM contacts c
+      WHERE c.contractor_id = $1
+        AND NOT EXISTS (SELECT 1 FROM contact_jobber_links cjl WHERE cjl.contact_id = c.id)
+        ${searchCondContact}
+    `;
+
+    // Build UNION
+    const subQueries = [jobberSubQuery, appSubQuery].filter(Boolean);
+    if (subQueries.length === 0) {
+      return res.json({ total: 0, rows: [] });
+    }
+
+    const unionSQL = subQueries.join('\nUNION ALL\n');
+
+    // ── Tag filter (AND/OR) applied on top of the unified CTE ────────────────
+    let tagFilter = '';
+    if (filterTags.length > 0) {
+      if (tagMode === 'AND') {
+        tagFilter = filterTags.map(t => {
+          params.push(t);
+          return `AND EXISTS (
+            SELECT 1 FROM contact_tags ct
+            WHERE (ct.jobber_client_id = u.jobber_client_id OR ct.contact_id::text = u.contact_id)
+              AND ct.contractor_id = $1 AND ct.tag = $${params.length}
+          )`;
+        }).join('\n');
+      } else {
+        const placeholders = filterTags.map(t => { params.push(t); return `$${params.length}`; });
+        tagFilter = `AND EXISTS (
+          SELECT 1 FROM contact_tags ct
+          WHERE (ct.jobber_client_id = u.jobber_client_id OR ct.contact_id::text = u.contact_id)
+            AND ct.contractor_id = $1 AND ct.tag = ANY(ARRAY[${placeholders.join(',')}])
+        )`;
+      }
+    }
+
+    // count is before LIMIT/OFFSET — run separate count query
+    const countSQL = `
+      WITH u AS (${unionSQL})
+      SELECT COUNT(*) AS total FROM u
+      WHERE TRUE ${tagFilter}
+    `;
+
+    params.push(limit);
+    const limitParam = params.length;
+    params.push(offset);
+    const offsetParam = params.length;
+
+    const rowSQL = `
+      WITH u AS (${unionSQL})
+      SELECT * FROM u
+      WHERE TRUE ${tagFilter}
+      ORDER BY last_synced_at DESC NULLS LAST, name ASC
+      LIMIT $${limitParam} OFFSET $${offsetParam}
+    `;
+
+    const [countResult, rowsResult] = await Promise.all([
+      pool.query(countSQL, params.slice(0, params.length - 2)),
+      pool.query(rowSQL, params),
+    ]);
+
+    res.json({
+      total: parseInt(countResult.rows[0].total, 10),
+      rows: rowsResult.rows.map(r => ({
+        jobber_client_id: r.jobber_client_id || null,
+        contact_id:       r.contact_id       || null,
+        name:             r.name             || '',
+        email:            r.email            || null,
+        phone:            r.phone            || null,
+        source_badge:     r.source_badge,
+        last_synced_at:   r.last_synced_at   || null,
+        tags:             Array.isArray(r.tags) ? r.tags : [],
+      })),
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/contacts/unified' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── CONTACT DETAIL ────────────────────────────────────────────────────────────
 
 router.get('/api/admin/contacts/:contactId', async (req, res) => {
@@ -703,177 +874,6 @@ router.get('/api/admin/jobber-clients', async (req, res) => {
     });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/jobber-clients' });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── UNIFIED CONTACTS ──────────────────────────────────────────────────────────
-// Returns Jobber clients + app-only contacts merged in one table.
-// source_badge: 'both' = linked, 'jobber' = Jobber-only, 'app' = app-only
-
-router.get('/api/admin/contacts/unified', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
-
-  const search  = typeof req.query.search === 'string' ? req.query.search.trim() : '';
-  const source  = typeof req.query.source === 'string' ? req.query.source.trim() : '';
-  const tier    = typeof req.query.tier   === 'string' ? req.query.tier.trim()   : '';
-  const rawTags = req.query.tags;
-  const tagMode = req.query.tagMode === 'AND' ? 'AND' : 'OR';
-  const page    = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const limit   = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
-  const offset  = (page - 1) * limit;
-
-  const filterTags = Array.isArray(rawTags)
-    ? rawTags.filter(Boolean)
-    : rawTags ? [rawTags] : [];
-
-  try {
-    // Build the unified CTE: Jobber clients (with/without link) + app-only contacts
-    const params = [contractorId];
-    let paramCount = 1;
-
-    // Search condition fragments (applied per sub-query)
-    let searchCondJobber = '';
-    let searchCondContact = '';
-    if (search) {
-      paramCount++;
-      params.push(`%${search}%`);
-      const p = paramCount;
-      searchCondJobber  = `AND (jc.first_name ILIKE $${p} OR jc.last_name ILIKE $${p} OR jc.email ILIKE $${p} OR jc.phone ILIKE $${p})`;
-      searchCondContact = `AND (c.name ILIKE $${p} OR c.email ILIKE $${p} OR c.phone ILIKE $${p})`;
-    }
-
-    // Source filter limits which sub-queries contribute rows
-    const includeJobber  = !source || source === 'jobber' || source === 'both';
-    const includeBoth    = !source || source === 'both';
-    const includeApp     = !source || source === 'app';
-
-    // Tier filter (tier_1 / tier_2) — applied via contact_tags
-    let tierJoinJobber   = '';
-    let tierWhereJobber  = '';
-    if (tier === 'tier_1' || tier === 'tier_2') {
-      tierJoinJobber  = `JOIN contact_tags ct_tier ON ct_tier.jobber_client_id = jc.jobber_client_id AND ct_tier.contractor_id = jc.contractor_id AND ct_tier.tag = $${++paramCount}`;
-      tierWhereJobber = '';
-      params.push(tier);
-    }
-
-    // ── Jobber sub-query (both + jobber source badges) ────────────────────────
-    const jobberSubQuery = (source === 'app') ? '' : `
-      SELECT
-        jc.jobber_client_id,
-        cjl.contact_id::text                          AS contact_id,
-        TRIM(COALESCE(jc.first_name,'') || ' ' || COALESCE(jc.last_name,'')) AS name,
-        COALESCE(jc.email, c.email)                   AS email,
-        COALESCE(jc.phone, c.phone)                   AS phone,
-        CASE WHEN cjl.contact_id IS NOT NULL THEN 'both' ELSE 'jobber' END AS source_badge,
-        jc.last_synced_at,
-        (SELECT COALESCE(ARRAY_AGG(ct.tag ORDER BY ct.tag), '{}')
-         FROM contact_tags ct
-         WHERE ct.jobber_client_id = jc.jobber_client_id AND ct.contractor_id = jc.contractor_id
-           AND ct.tag NOT IN ('jobber_client','tier_1','tier_2')
-        )                                              AS tags
-      FROM jobber_clients jc
-      LEFT JOIN contact_jobber_links cjl ON cjl.jobber_client_id = jc.jobber_client_id AND cjl.contractor_id = jc.contractor_id
-      LEFT JOIN contacts c ON c.id = cjl.contact_id
-      ${tierJoinJobber}
-      WHERE jc.contractor_id = $1
-        ${searchCondJobber}
-        ${source === 'both'   ? 'AND cjl.contact_id IS NOT NULL' : ''}
-        ${source === 'jobber' ? 'AND cjl.contact_id IS NULL'     : ''}
-    `;
-
-    // ── App-only sub-query ────────────────────────────────────────────────────
-    const appSubQuery = (source === 'jobber' || source === 'both' || tier) ? '' : `
-      SELECT
-        NULL                                           AS jobber_client_id,
-        c.id::text                                     AS contact_id,
-        COALESCE(c.name,'')                            AS name,
-        c.email,
-        c.phone,
-        'app'::text                                    AS source_badge,
-        NULL::timestamptz                              AS last_synced_at,
-        (SELECT COALESCE(ARRAY_AGG(ct.tag ORDER BY ct.tag), '{}')
-         FROM contact_tags ct
-         WHERE ct.contact_id = c.id AND ct.contractor_id = c.contractor_id
-           AND ct.tag NOT IN ('jobber_client','tier_1','tier_2')
-        )                                              AS tags
-      FROM contacts c
-      WHERE c.contractor_id = $1
-        AND NOT EXISTS (SELECT 1 FROM contact_jobber_links cjl WHERE cjl.contact_id = c.id)
-        ${searchCondContact}
-    `;
-
-    // Build UNION
-    const subQueries = [jobberSubQuery, appSubQuery].filter(Boolean);
-    if (subQueries.length === 0) {
-      return res.json({ total: 0, rows: [] });
-    }
-
-    const unionSQL = subQueries.join('\nUNION ALL\n');
-
-    // ── Tag filter (AND/OR) applied on top of the unified CTE ────────────────
-    let tagFilter = '';
-    if (filterTags.length > 0) {
-      if (tagMode === 'AND') {
-        tagFilter = filterTags.map(t => {
-          params.push(t);
-          return `AND EXISTS (
-            SELECT 1 FROM contact_tags ct
-            WHERE (ct.jobber_client_id = u.jobber_client_id OR ct.contact_id::text = u.contact_id)
-              AND ct.contractor_id = $1 AND ct.tag = $${params.length}
-          )`;
-        }).join('\n');
-      } else {
-        const placeholders = filterTags.map(t => { params.push(t); return `$${params.length}`; });
-        tagFilter = `AND EXISTS (
-          SELECT 1 FROM contact_tags ct
-          WHERE (ct.jobber_client_id = u.jobber_client_id OR ct.contact_id::text = u.contact_id)
-            AND ct.contractor_id = $1 AND ct.tag = ANY(ARRAY[${placeholders.join(',')}])
-        )`;
-      }
-    }
-
-    // count is before LIMIT/OFFSET — run separate count query
-    const countSQL = `
-      WITH u AS (${unionSQL})
-      SELECT COUNT(*) AS total FROM u
-      WHERE TRUE ${tagFilter}
-    `;
-
-    params.push(limit);
-    const limitParam = params.length;
-    params.push(offset);
-    const offsetParam = params.length;
-
-    const rowSQL = `
-      WITH u AS (${unionSQL})
-      SELECT * FROM u
-      WHERE TRUE ${tagFilter}
-      ORDER BY last_synced_at DESC NULLS LAST, name ASC
-      LIMIT $${limitParam} OFFSET $${offsetParam}
-    `;
-
-    const [countResult, rowsResult] = await Promise.all([
-      pool.query(countSQL, params.slice(0, params.length - 2)),
-      pool.query(rowSQL, params),
-    ]);
-
-    res.json({
-      total: parseInt(countResult.rows[0].total, 10),
-      rows: rowsResult.rows.map(r => ({
-        jobber_client_id: r.jobber_client_id || null,
-        contact_id:       r.contact_id       || null,
-        name:             r.name             || '',
-        email:            r.email            || null,
-        phone:            r.phone            || null,
-        source_badge:     r.source_badge,
-        last_synced_at:   r.last_synced_at   || null,
-        tags:             Array.isArray(r.tags) ? r.tags : [],
-      })),
-    });
-  } catch (err) {
-    await logError({ req, error: err, source: 'GET /api/admin/contacts/unified' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
