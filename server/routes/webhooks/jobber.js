@@ -478,14 +478,16 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         console.log('[invoice-paid] experience flow disabled for contractor:', contractorId);
       }
 
-      // STEP 3 — Extract client ID from payload
-      const clientId = payload?.data?.invoice?.client?.id || payload?.data?.client?.id;
-      if (!clientId) {
-        console.warn('[invoice-paid] could not extract client id from payload');
+      // STEP 3 — Extract invoice ID from webhook event payload
+      // Jobber INVOICE_UPDATE payloads contain only the invoice ID at webHookEvent.itemId —
+      // they do NOT include client data. Client ID is resolved via GraphQL after fetching the invoice.
+      const invoiceId = payload?.data?.webHookEvent?.itemId;
+      if (!invoiceId) {
+        await logError({ req, error: new Error('[invoice-paid] missing invoiceId in webhook payload'), source: 'POST /webhooks/jobber/invoice-paid' });
         return;
       }
 
-      // STEP 4 — Fetch token and full client
+      // STEP 4 — Fetch token
       const tokenResult = await pool.query(
         'SELECT access_token FROM tokens WHERE contractor_id = $1',
         [contractorId]
@@ -495,6 +497,33 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         console.warn('[invoice-paid] no access token found');
         return;
       }
+
+      // STEP 4b — Fetch invoice to resolve client ID and confirm paid status.
+      // fetchInvoiceWithJobs() returns client { id name } alongside invoice amounts and
+      // job type custom fields — one fetch serves both client ID resolution and the referral engine.
+      let invoiceWithJobs = null;
+      try {
+        invoiceWithJobs = await fetchInvoiceWithJobs(invoiceId, token);
+      } catch (err) {
+        await logError({ req, error: err, source: 'POST /webhooks/jobber/invoice-paid — fetchInvoiceWithJobs' });
+        console.warn(`[invoice-paid] fetchInvoiceWithJobs failed for invoice ${invoiceId}:`, err.message);
+        return;
+      }
+
+      // (b) Guard — bail if invoice is not paid per the Jobber API response
+      if (invoiceWithJobs.invoiceStatus !== 'paid') {
+        console.log(`[invoice-paid] fetched invoice ${invoiceId} has status '${invoiceWithJobs.invoiceStatus}' — skipping`);
+        return;
+      }
+
+      // STEP 4c — Resolve client ID from invoice response
+      const clientId = invoiceWithJobs.client?.id;
+      if (!clientId) {
+        await logError({ req, error: new Error(`[invoice-paid] invoice ${invoiceId} has no client id`), source: 'POST /webhooks/jobber/invoice-paid' });
+        return;
+      }
+      console.log(`[invoice-paid] resolved client id: ${clientId}`);
+
       const fullClient = await fetchFullClient(clientId, token);
       const clientName = (`${fullClient.firstName || ''} ${fullClient.lastName || ''}`).trim();
       const clientEmail = fullClient.emails?.[0]?.address || null;
@@ -505,31 +534,6 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         f => f.label && f.label.toLowerCase() === 'referred by'
       );
       const referredBy = referredByField?.valueText?.trim() || null;
-
-      // ── REFERRAL RULES ENGINE SETUP ───────────────────────────────────────────────
-      // Fetch invoice + job data needed for referral classification.
-      // Separate from fetchFullClient() — fetchFullClient() provides client contact data
-      // for experience flow. fetchInvoiceWithJobs() provides invoice amounts and job type
-      // custom fields for payout calculation.
-      const invoiceId = payload?.data?.invoice?.id;
-      let invoiceWithJobs = null;
-      if (invoiceId && referredBy) {
-        try {
-          invoiceWithJobs = await fetchInvoiceWithJobs(invoiceId, token);
-        } catch (err) {
-          await logError({ req, error: err, source: 'POST /webhooks/jobber/invoice-paid — fetchInvoiceWithJobs' });
-          console.warn(`[invoice-paid] fetchInvoiceWithJobs failed for invoice ${invoiceId}:`, err.message);
-          // Non-fatal — referral engine will be skipped, experience flow continues
-        }
-      }
-
-      // (b) Second guard — invoice fully fetched; bail if status still isn't 'paid'.
-      // Fires when invoiceStatus was absent from the raw payload so guard (a) was a no-op,
-      // but the Jobber API response reveals the invoice is not yet paid.
-      if (invoiceWithJobs && invoiceWithJobs.invoiceStatus !== 'paid') {
-        console.log(`[invoice-paid] fetched invoice ${invoiceId} has status '${invoiceWithJobs.invoiceStatus}' — skipping`);
-        return;
-      }
 
       // ── EXPERIENCE FLOW (gated by feature flag) ────────────────────────────────
       if (experienceFlowEnabled) {
