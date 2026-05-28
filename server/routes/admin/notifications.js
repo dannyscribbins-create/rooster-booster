@@ -54,4 +54,48 @@ router.put('/api/admin/notification-preferences', async (req, res) => {
   }
 });
 
+// ── NOTIFICATION BELL (sync completion notifications) ─────────────────────────
+
+// GET /api/admin/notifications
+// Returns unread + recent notifications for the admin bell.
+router.get('/api/admin/notifications', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const result = await pool.query(
+      `SELECT id, type, title, body, deeplink, read, created_at
+       FROM notifications
+       WHERE contractor_id = $1
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [CONTRACTOR_ID]
+    );
+    res.json({
+      notifications: result.rows,
+      unread_count: result.rows.filter(r => !r.read).length,
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/notifications' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/notifications/:id/read
+// Marks a single notification as read.
+router.patch('/api/admin/notifications/:id/read', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  if (!id || isNaN(Number(id))) return res.status(400).json({ error: 'Invalid notification id' });
+  try {
+    await pool.query(
+      `UPDATE notifications SET read = TRUE
+       WHERE id = $1 AND contractor_id = $2`,
+      [Number(id), CONTRACTOR_ID]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err, source: 'PATCH /api/admin/notifications/:id/read' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

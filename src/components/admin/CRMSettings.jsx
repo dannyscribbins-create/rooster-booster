@@ -242,7 +242,7 @@ export default function CRMSettings() {
   const [importCustomDate, setImportCustomDate] = useState('');
   const [importPosting, setImportPosting]       = useState(false);
   const [importInlineError, setImportInlineError] = useState('');
-  const [importCounters, setImportCounters]     = useState({ totalFound: 0, imported: 0, tagged: 0 });
+  const [importCounters, setImportCounters]     = useState({ totalFound: 0, imported: 0, tagged: 0, matchingProcessed: 0, matchingLinked: 0 });
   const [importLastResult, setImportLastResult] = useState(null);
   const [importErrorMsg, setImportErrorMsg]     = useState('');
 
@@ -531,15 +531,21 @@ export default function CRMSettings() {
         });
         const d = await r.json();
         if (d.status === 'running') {
-          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged });
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: 0, matchingLinked: 0 });
+        } else if (d.status === 'matching') {
+          const mp = d.matchingProgress || {};
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: mp.linked || 0 });
+          setImportPhase('matching');
         } else if (d.status === 'complete') {
           clearInterval(importPollRef.current);
           importPollRef.current = null;
-          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged });
+          const mp = d.matchingProgress || {};
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: d.linksEstablished || 0 });
           setImportLastResult({
             totalFound: d.totalFound,
             imported: d.imported,
             tagged: d.tagged,
+            linksEstablished: d.linksEstablished || 0,
             date: new Date().toLocaleDateString(),
           });
           setImportPhase('results_success');
@@ -568,7 +574,7 @@ export default function CRMSettings() {
       });
       if (r.status === 202) {
         setImportPhase('running');
-        setImportCounters({ totalFound: 0, imported: 0, tagged: 0 });
+        setImportCounters({ totalFound: 0, imported: 0, tagged: 0, matchingProcessed: 0, matchingLinked: 0 });
         startImportPolling();
       } else if (r.status === 409) {
         setImportInlineError('An import is already running. Check back shortly.');
@@ -1404,8 +1410,8 @@ export default function CRMSettings() {
           <div style={{ display: 'flex', gap: 40, marginBottom: 18, flexWrap: 'wrap' }}>
             {[
               { label: 'Clients found', value: importCounters.totalFound },
-              { label: 'Imported', value: importCounters.imported },
-              { label: 'Tagged', value: importCounters.tagged },
+              { label: 'Imported',      value: importCounters.imported },
+              { label: 'Tagged',        value: importCounters.tagged },
             ].map(stat => (
               <div key={stat.label}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
@@ -1422,6 +1428,52 @@ export default function CRMSettings() {
       );
     }
 
+    if (importPhase === 'matching') {
+      const matchTotal = importCounters.totalFound || 0;
+      const matchDone  = importCounters.matchingProcessed || 0;
+      const pct        = matchTotal > 0 ? Math.round((matchDone / matchTotal) * 100) : 0;
+      return (
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+            <i className="ph ph-circle-notch" style={{
+              fontSize: 24, color: AD.amberText,
+              animation: 'crmSpin 0.8s linear infinite', flexShrink: 0,
+            }} />
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                Matching contacts…
+              </div>
+              <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 2 }}>
+                Linking Jobber clients to app users
+              </div>
+            </div>
+          </div>
+          <div style={{ background: AD.bgCardTint, borderRadius: 99, height: 6, marginBottom: 14, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', borderRadius: 99,
+              background: AD.amberText,
+              width: `${pct}%`,
+              transition: 'width 0.5s ease',
+            }} />
+          </div>
+          <div style={{ display: 'flex', gap: 40, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                {matchDone.toLocaleString()} / {matchTotal.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 3 }}>Clients processed</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+                {(importCounters.matchingLinked || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 3 }}>Links established</div>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
     if (importPhase === 'results_success') {
       return (
         <Card style={{ borderColor: AD.green }}>
@@ -1434,8 +1486,9 @@ export default function CRMSettings() {
           <div style={{ display: 'flex', gap: 40, marginBottom: 18, flexWrap: 'wrap' }}>
             {[
               { label: 'Clients Found', value: importCounters.totalFound },
-              { label: 'Imported', value: importCounters.imported },
-              { label: 'Tagged', value: importCounters.tagged },
+              { label: 'Imported',      value: importCounters.imported },
+              { label: 'Tagged',        value: importCounters.tagged },
+              { label: 'Links Made',    value: importCounters.matchingLinked },
             ].map(stat => (
               <div key={stat.label}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
@@ -1446,7 +1499,7 @@ export default function CRMSettings() {
             ))}
           </div>
           <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.textSecondary, lineHeight: 1.65 }}>
-            Your Jobber clients are now available in RoofMiles. Tags have been applied automatically based on their Jobber data.
+            Your Jobber clients are now available in RoofMiles. Tags have been applied and contacts matched to app users automatically.
           </p>
           <PrimaryBtn onClick={() => setImportPhase('idle')}>Done</PrimaryBtn>
         </Card>

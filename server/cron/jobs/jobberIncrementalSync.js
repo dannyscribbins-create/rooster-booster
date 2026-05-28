@@ -6,6 +6,7 @@ const { logError } = require('../../middleware/errorLogger');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../../utils/retryHelpers');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
+const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 
 const CONTRACTOR_ID = 'accent-roofing'; // MVP: replace with multi-contractor loop at scale
 
@@ -82,6 +83,8 @@ async function runIncrementalSync() {
   }
 
   console.log(`[jobberIncrementalSync] Processing ${recentClients.length} updated clients...`);
+
+  const updatedIds = [];
 
   // For each recently updated client, fetch their full related data individually
   // (jobs/invoices/quotes/requests) using targeted queries keyed by client ID.
@@ -189,13 +192,42 @@ async function runIncrementalSync() {
         [client.id, CONTRACTOR_ID]
       );
 
+      // tier_1 = Jobber-only client (no linked app contact). Replaced by tier_2 after matching pass.
+      await pool.query(
+        `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
+         VALUES ($1, $2, 'tier_1', 'system', NOW())
+         ON CONFLICT DO NOTHING`,
+        [client.id, CONTRACTOR_ID]
+      );
+
+      updatedIds.push(client.id);
+
     } catch (err) {
       await logError({ req: null, error: err, source: `jobberIncrementalSync — client ${client.id}` });
       console.error(`[jobberIncrementalSync] Error processing client ${client.id}:`, err.message);
     }
   }
 
-  console.log(`[jobberIncrementalSync] Done — ${recentClients.length} clients processed`);
+  // Delta matching pass — run for each successfully processed client
+  let totalLinked = 0;
+  for (const jcId of updatedIds) {
+    try {
+      const { linked } = await runContactMatchingPass(CONTRACTOR_ID, { jobberClientId: jcId });
+      totalLinked += linked;
+    } catch (err) {
+      await logError({ req: null, error: err, source: `jobberIncrementalSync — matching ${jcId}` });
+    }
+  }
+
+  if (totalLinked > 0) {
+    await pool.query(
+      `INSERT INTO notifications (contractor_id, type, title, body)
+       VALUES ($1, 'incremental_sync', 'Sync complete', $2)`,
+      [CONTRACTOR_ID, `${updatedIds.length} clients synced, ${totalLinked} new contact links established.`]
+    ).catch(() => {});
+  }
+
+  console.log(`[jobberIncrementalSync] Done — ${recentClients.length} clients processed, ${totalLinked} links established`);
 }
 
 function startJobberIncrementalSyncJob() {

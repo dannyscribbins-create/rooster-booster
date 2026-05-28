@@ -3,14 +3,13 @@ import {
   House, Buildings, UserPlus, ArrowsClockwise, Stack,
   DeviceMobile, Users, Fire, EnvelopeSimple,
   WarningCircle, Prohibit, ChatSlash, ClockCountdown, ClockClockwise,
-  Lightning, CalendarCheck,
+  Lightning, CalendarCheck, LinkSimple, User, Storefront,
 } from '@phosphor-icons/react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import AdminContactDetailDrawer from './AdminContactDetailDrawer';
 
 // ── Section B RoofMiles pill groups ───────────────────────────────────────────
-// Each pill has its own color for selected state per spec.
 const ROOFMILES_GROUPS = [
   {
     label: 'Client profile',
@@ -48,45 +47,38 @@ const ROOFMILES_GROUPS = [
       { label: 'Active this year',     tag: 'active_this_year',      Icon: CalendarCheck,  color: '#185FA5' },
     ],
   },
+  {
+    label: 'Source tier',
+    pills: [
+      { label: 'Tier 1 — Jobber only', tag: 'tier_1', Icon: Storefront,   color: '#5F5E5A' },
+      { label: 'Tier 2 — Linked',      tag: 'tier_2', Icon: LinkSimple,   color: '#185FA5' },
+    ],
+  },
 ];
 
-// Flat lookup tag → { Icon, label } used by RowTagPill to display system tags with icons.
 const SYSTEM_TAG_DISPLAY = Object.fromEntries(
   ROOFMILES_GROUPS.flatMap(g => g.pills.map(p => [p.tag, { Icon: p.Icon, label: p.label }]))
 );
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 function formatRelativeTime(dateStr) {
   if (!dateStr) return '—';
   const diffDays = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
-  return `${diffDays} days ago`;
+  return `${diffDays}d ago`;
 }
 
 // ── Column widths ─────────────────────────────────────────────────────────────
 
-const CONTACT_COL = {
-  name:     { width: '22%', paddingRight: 12 },
-  email:    { width: '30%', paddingRight: 12 },
-  status:   { width: '18%', paddingRight: 12 },
-  sends:    { width: '10%', paddingRight: 12, textAlign: 'right' },
-  lastSent: { width: '14%', textAlign: 'right' },
-};
-
-const JOBBER_COL = {
-  name:   { width: '20%', paddingRight: 12 },
-  email:  { width: '22%', paddingRight: 12 },
-  phone:  { width: '12%', paddingRight: 12 },
-  type:   { width: '10%', paddingRight: 12 },
-  tags:   { width: '24%', paddingRight: 12 },
-  synced: { width: '12%', textAlign: 'right' },
+const UNIFIED_COL = {
+  source: { width: '7%',  paddingRight: 10 },
+  name:   { width: '22%', paddingRight: 12 },
+  email:  { width: '26%', paddingRight: 12 },
+  phone:  { width: '13%', paddingRight: 12 },
+  tags:   { width: '22%', paddingRight: 12 },
+  synced: { width: '10%', textAlign: 'right' },
 };
 
 // ── SmallPill ─────────────────────────────────────────────────────────────────
@@ -105,57 +97,30 @@ function SmallPill({ bg, color, label }) {
   );
 }
 
-// ── ContactRow (Campaign Contacts tab) ────────────────────────────────────────
+// ── SourceBadge ───────────────────────────────────────────────────────────────
 
-function ContactRow({ c, isLast, onClick }) {
-  const [hovered, setHovered] = useState(false);
+function SourceBadge({ badge }) {
+  const cfg = {
+    both:   { bg: '#0B3D5E', color: '#7CC8F8', label: 'Both',   Icon: LinkSimple },
+    app:    { bg: AD.blueBg,  color: AD.blueText, label: 'App',   Icon: User       },
+    jobber: { bg: AD.bgCardTint, color: AD.textSecondary, label: 'Jobber', Icon: Storefront },
+  }[badge] || { bg: AD.bgCardTint, color: AD.textSecondary, label: badge, Icon: null };
+
   return (
-    <tr
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
-        borderBottom: isLast ? 'none' : `1px solid ${AD.border}`,
-        transition: 'background 0.1s',
-        cursor: 'pointer',
-      }}
-    >
-      <td style={{ ...CONTACT_COL.name, padding: '12px 12px 12px 0' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: AD.blueLight, fontFamily: "'Montserrat', sans-serif" }}>
-          {c.name || '—'}
-        </span>
-      </td>
-      <td style={{ ...CONTACT_COL.email, padding: '12px 12px 12px 0' }}>
-        <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>{c.email}</span>
-      </td>
-      <td style={{ ...CONTACT_COL.status, padding: '12px 12px 12px 0' }}>
-        {(c.is_app_user || c.opted_out) ? (
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            {c.is_app_user && <SmallPill bg={AD.blueBg}  color={AD.blueText}  label="App User" />}
-            {c.opted_out   && <SmallPill bg={AD.red2Bg}  color={AD.red2Text}  label="Opted Out" />}
-          </div>
-        ) : (
-          <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>—</span>
-        )}
-      </td>
-      <td style={{ ...CONTACT_COL.sends, padding: '12px 12px 12px 0', textAlign: 'right' }}>
-        <span style={{ fontSize: 12, color: AD.blueLight, fontFamily: "'Roboto Mono', monospace" }}>
-          {c.total_sends || 0}
-        </span>
-      </td>
-      <td style={{ ...CONTACT_COL.lastSent, padding: '12px 0', textAlign: 'right' }}>
-        <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-          {formatDate(c.last_sent_at)}
-        </span>
-      </td>
-    </tr>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      background: cfg.bg, color: cfg.color,
+      padding: '2px 6px', borderRadius: 4,
+      fontSize: 10, fontFamily: AD.fontSans, fontWeight: 600,
+      whiteSpace: 'nowrap', border: `1px solid ${cfg.color}22`,
+    }}>
+      {cfg.Icon && <cfg.Icon size={10} weight="bold" />}
+      {cfg.label}
+    </span>
   );
 }
 
-// ── RowTagPill (Jobber Clients tab) ───────────────────────────────────────────
-// System tags (source='system') render with Phosphor icon.
-// Jobber tags show plain text (value portion after ':').
+// ── RowTagPill ────────────────────────────────────────────────────────────────
 
 function RowTagPill({ tag, source }) {
   const systemConfig = source === 'system' ? SYSTEM_TAG_DISPLAY[tag] : null;
@@ -184,73 +149,78 @@ function RowTagPill({ tag, source }) {
   return <span style={pillStyle}>{displayText}</span>;
 }
 
-// ── JobberClientRow ───────────────────────────────────────────────────────────
+// ── UnifiedRow ────────────────────────────────────────────────────────────────
 
-function JobberClientRow({ c, isLast }) {
+function UnifiedRow({ row, isLast, onClick }) {
   const [hovered, setHovered] = useState(false);
-  const visibleTags = (c.tags || []).slice(0, 3);
-  const extraCount  = (c.tags || []).length - 3;
+  const visibleTags = (row.tags || []).slice(0, 3);
+  const extraCount  = (row.tags || []).length - 3;
 
   return (
     <tr
-      // TODO Session 77: extend AdminContactDetailDrawer to support jobber_client_id lookup
+      onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
         borderBottom: isLast ? 'none' : `1px solid ${AD.border}`,
         transition: 'background 0.1s',
-        cursor: 'default',
+        cursor: 'pointer',
       }}
     >
-      <td style={{ ...JOBBER_COL.name, padding: '12px 12px 12px 0' }}>
+      <td style={{ ...UNIFIED_COL.source, padding: '11px 10px 11px 0' }}>
+        <SourceBadge badge={row.source_badge} />
+      </td>
+      <td style={{ ...UNIFIED_COL.name, padding: '11px 12px 11px 0' }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: AD.blueLight, fontFamily: "'Montserrat', sans-serif" }}>
-          {[c.first_name, c.last_name].filter(Boolean).join(' ') || '—'}
+          {row.name || '—'}
         </span>
       </td>
-      <td style={{ ...JOBBER_COL.email, padding: '12px 12px 12px 0' }}>
-        <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>{c.email || '—'}</span>
+      <td style={{ ...UNIFIED_COL.email, padding: '11px 12px 11px 0' }}>
+        <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+          {row.email || '—'}
+        </span>
       </td>
-      <td style={{ ...JOBBER_COL.phone, padding: '12px 12px 12px 0' }}>
-        <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>{c.phone || '—'}</span>
+      <td style={{ ...UNIFIED_COL.phone, padding: '11px 12px 11px 0' }}>
+        <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+          {row.phone || '—'}
+        </span>
       </td>
-      <td style={{ ...JOBBER_COL.type, padding: '12px 12px 12px 0' }}>
-        {c.is_company
-          ? <SmallPill bg={AD.grayBg}  color={AD.textSecondary} label="Company" />
-          : <SmallPill bg={AD.blueBg}  color={AD.blueText}      label="Residential" />
-        }
-      </td>
-      <td style={{ ...JOBBER_COL.tags, padding: '12px 12px 12px 0' }}>
+      <td style={{ ...UNIFIED_COL.tags, padding: '11px 12px 11px 0' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-          {visibleTags.map(({ tag, source }) => (
-            <RowTagPill key={tag} tag={tag} source={source} />
+          {visibleTags.map((tag, i) => (
+            <RowTagPill key={i} tag={tag} source="jobber_crm" />
           ))}
           {extraCount > 0 && (
             <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-              +{extraCount} more
+              +{extraCount}
             </span>
           )}
         </div>
       </td>
-      <td style={{ ...JOBBER_COL.synced, padding: '12px 0', textAlign: 'right' }}>
+      <td style={{ ...UNIFIED_COL.synced, padding: '11px 0', textAlign: 'right' }}>
         <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-          {formatRelativeTime(c.last_synced_at)}
+          {formatRelativeTime(row.last_synced_at)}
         </span>
       </td>
     </tr>
   );
 }
 
+// ── Source filter pills ───────────────────────────────────────────────────────
+
+const SOURCE_OPTIONS = [
+  { value: '',       label: 'All'    },
+  { value: 'both',   label: 'Both'   },
+  { value: 'app',    label: 'App'    },
+  { value: 'jobber', label: 'Jobber' },
+];
+
 // ── GroupedFilterPanel ────────────────────────────────────────────────────────
-// Toolbar (always visible) + accordion panel (opens below toolbar).
-// sectionAOpen / sectionBOpen are internal state — they persist across panel
-// open/close because this component stays mounted. Sections with active
-// selections auto-expand and cannot be collapsed.
 
 function GroupedFilterPanel({
   search, onSearchChange,
-  payingFilter, onPayingFilterChange,
-  appUserFilter, onAppUserFilterChange,
+  sourceFilter, onSourceFilterChange,
   logic, onLogicChange,
   panelOpen, onPanelOpenChange,
   jobberTagSummary,
@@ -274,7 +244,6 @@ function GroupedFilterPanel({
   const sectionAHasActive = selectedTags.some(t => sectionATagSet.has(t));
   const sectionBHasActive = selectedTags.some(t => sectionBTagSet.has(t));
 
-  // Auto-expand sections that gain active selections
   useEffect(() => {
     if (sectionAHasActive) setSectionAOpen(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -286,7 +255,7 @@ function GroupedFilterPanel({
   }, [sectionBHasActive]);
 
   const panelCount      = selectedTags.length;
-  const anyFilterActive = search.length > 0 || selectedTags.length > 0 || payingFilter || appUserFilter;
+  const anyFilterActive = search.length > 0 || selectedTags.length > 0 || sourceFilter !== '';
 
   const labelStyle = {
     fontSize: 11, fontFamily: AD.fontSans, fontWeight: 600,
@@ -305,7 +274,7 @@ function GroupedFilterPanel({
           type="text"
           value={search}
           onChange={e => onSearchChange(e.target.value)}
-          placeholder="Search by name or email..."
+          placeholder="Search by name, email, or phone..."
           style={{
             flex: 1, minWidth: 180,
             padding: '7px 12px',
@@ -315,37 +284,26 @@ function GroupedFilterPanel({
           }}
         />
 
-        {/* Paying client quick toggle */}
-        <button
-          onClick={() => onPayingFilterChange(!payingFilter)}
-          style={{
-            padding: '7px 13px', borderRadius: 99,
-            background: payingFilter ? '#085041' : 'transparent',
-            color: payingFilter ? '#fff' : AD.textSecondary,
-            border: `1px solid ${payingFilter ? '#085041' : AD.border}`,
-            fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer',
-            fontWeight: payingFilter ? 600 : 400, whiteSpace: 'nowrap',
-            transition: 'all 0.12s',
-          }}
-        >
-          Paying client
-        </button>
-
-        {/* App user quick toggle */}
-        <button
-          onClick={() => onAppUserFilterChange(!appUserFilter)}
-          style={{
-            padding: '7px 13px', borderRadius: 99,
-            background: appUserFilter ? '#185FA5' : 'transparent',
-            color: appUserFilter ? '#fff' : AD.textSecondary,
-            border: `1px solid ${appUserFilter ? '#185FA5' : AD.border}`,
-            fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer',
-            fontWeight: appUserFilter ? 600 : 400, whiteSpace: 'nowrap',
-            transition: 'all 0.12s',
-          }}
-        >
-          App user
-        </button>
+        {/* Source filter pills */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {SOURCE_OPTIONS.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => onSourceFilterChange(value)}
+              style={{
+                padding: '7px 12px', borderRadius: 99,
+                background: sourceFilter === value ? AD.navy : 'transparent',
+                color: sourceFilter === value ? '#fff' : AD.textSecondary,
+                border: `1px solid ${sourceFilter === value ? AD.navy : AD.border}`,
+                fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer',
+                fontWeight: sourceFilter === value ? 600 : 400, whiteSpace: 'nowrap',
+                transition: 'all 0.12s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* Filters button + badge */}
         <button
@@ -402,7 +360,7 @@ function GroupedFilterPanel({
       {/* Clear all link */}
       {anyFilterActive && (
         <button
-          onClick={() => { onSearchChange(''); onTagsChange([]); onPayingFilterChange(false); onAppUserFilterChange(false); }}
+          onClick={() => { onSearchChange(''); onTagsChange([]); onSourceFilterChange(''); }}
           style={{
             display: 'block', marginTop: 8,
             fontSize: 11, color: AD.textTertiary,
@@ -424,7 +382,7 @@ function GroupedFilterPanel({
           overflow: 'hidden',
         }}>
 
-          {/* Section A — Jobber categories (open by default) */}
+          {/* Section A — Jobber categories */}
           <div>
             <button
               onClick={() => { if (!sectionAHasActive) setSectionAOpen(p => !p); }}
@@ -484,7 +442,7 @@ function GroupedFilterPanel({
             )}
           </div>
 
-          {/* Section B — RoofMiles status (collapsed by default) */}
+          {/* Section B — RoofMiles status */}
           <div style={{ borderTop: `1px solid ${AD.border}` }}>
             <button
               onClick={() => { if (!sectionBHasActive) setSectionBOpen(p => !p); }}
@@ -544,33 +502,24 @@ function GroupedFilterPanel({
 
 export default function AdminContactsTab({ headers }) {
 
-  // ── Tab ──────────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('contacts');
-
-  // ── Shared filter state (persists across tab switches — clear via "Clear all filters") ──
+  // ── Filter state ─────────────────────────────────────────────────────────────
   const [search,        setSearch]        = useState('');
-  const [payingFilter,  setPayingFilter]  = useState(false);
-  const [appUserFilter, setAppUserFilter] = useState(false);
+  const [sourceFilter,  setSourceFilter]  = useState('');
   const [tagLogic,      setTagLogic]      = useState('AND');
   const [selectedTags,  setSelectedTags]  = useState([]);
   const [panelOpen,     setPanelOpen]     = useState(false);
 
-  // ── Section A data ────────────────────────────────────────────────────────────
-  const [jobberTagSummary, setJobberTagSummary] = useState([]);
+  // ── Data state ────────────────────────────────────────────────────────────────
+  const [jobberTagSummary,       setJobberTagSummary]       = useState([]);
+  const [unifiedRows,            setUnifiedRows]            = useState([]);
+  const [unifiedTotal,           setUnifiedTotal]           = useState(0);
+  const [unifiedLoading,         setUnifiedLoading]         = useState(true);
+  const [unifiedError,           setUnifiedError]           = useState('');
+  const [unifiedPage,            setUnifiedPage]            = useState(1);
 
-  // ── Campaign contacts state ───────────────────────────────────────────────────
-  const [contacts,          setContacts]          = useState([]);
-  const [contactsTotal,     setContactsTotal]     = useState(0);
-  const [contactsLoading,   setContactsLoading]   = useState(true);
-  const [contactsError,     setContactsError]     = useState('');
-  const [selectedContactId, setSelectedContactId] = useState(null);
-
-  // ── Jobber clients state ──────────────────────────────────────────────────────
-  const [jobberClients, setJobberClients] = useState([]);
-  const [jobberTotal,   setJobberTotal]   = useState(0);
-  const [jobberLoading, setJobberLoading] = useState(false);
-  const [jobberError,   setJobberError]   = useState('');
-  const [jobberOffset,  setJobberOffset]  = useState(0);
+  // ── Drawer state ──────────────────────────────────────────────────────────────
+  const [selectedContactId,      setSelectedContactId]      = useState(null);
+  const [selectedJobberClientId, setSelectedJobberClientId] = useState(null);
 
   const drawerToken    = headers?.Authorization?.replace('Bearer ', '') || null;
   const searchDebounce = useRef(null);
@@ -589,77 +538,52 @@ export default function AdminContactsTab({ headers }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchContacts = useCallback(async (tags, logic) => {
-    setContactsLoading(true);
-    setContactsError('');
+  const fetchUnified = useCallback(async (searchVal, src, tags, logic, page, append = false) => {
+    if (!append) setUnifiedLoading(true);
+    setUnifiedError('');
     try {
-      const params = new URLSearchParams({ limit: '100' });
-      if (tags && tags.length > 0) {
-        tags.forEach(t => params.append('tags', t));
-        params.set('logic', logic || 'AND');
-      }
-      const r = await fetch(`${BACKEND_URL}/api/admin/contacts?${params}`, { headers });
-      if (!r.ok) throw new Error('Failed');
-      const data = await r.json();
-      setContacts(Array.isArray(data.contacts) ? data.contacts : []);
-      setContactsTotal(typeof data.total_count === 'number' ? data.total_count : 0);
-    } catch {
-      setContactsError('Could not load contacts.');
-    } finally {
-      setContactsLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const fetchJobberClients = useCallback(async (searchVal, tags, logic, paying, appUser, offset = 0) => {
-    setJobberLoading(true);
-    setJobberError('');
-    try {
-      const params = new URLSearchParams({ limit: '100', offset: String(offset) });
+      const params = new URLSearchParams({ limit: '50', page: String(page) });
       if (searchVal.trim()) params.set('search', searchVal.trim());
+      if (src)              params.set('source', src);
       if (tags.length > 0) {
         tags.forEach(t => params.append('tags', t));
-        params.set('logic', logic);
+        params.set('tagMode', logic);
       }
-      if (paying)  params.set('paying',   'true');
-      if (appUser) params.set('app_user', 'true');
-      const r = await fetch(`${BACKEND_URL}/api/admin/jobber-clients?${params}`, { headers });
+      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/unified?${params}`, { headers });
       if (!r.ok) throw new Error('Failed');
       const data = await r.json();
-      if (offset === 0) {
-        setJobberClients(Array.isArray(data.clients) ? data.clients : []);
-      } else {
-        setJobberClients(prev => [...prev, ...(Array.isArray(data.clients) ? data.clients : [])]);
-      }
-      setJobberTotal(typeof data.total === 'number' ? data.total : 0);
-      setJobberOffset(offset + 100);
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      setUnifiedRows(prev => append ? [...prev, ...rows] : rows);
+      setUnifiedTotal(typeof data.total === 'number' ? data.total : 0);
     } catch {
-      setJobberError('Could not load clients.');
+      setUnifiedError('Could not load contacts.');
     } finally {
-      setJobberLoading(false);
+      setUnifiedLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Tab switch — filter state preserved; clear debounce only ────────────────
-
-  function handleTabSwitch(tab) {
-    if (tab === activeTab) return;
-    clearTimeout(searchDebounce.current);
-    setActiveTab(tab);
-    setPanelOpen(false);
-  }
-
-  // ── Search debounce (Jobber tab only) ────────────────────────────────────────
+  // ── Search debounce ───────────────────────────────────────────────────────────
 
   function handleSearchChange(val) {
     setSearch(val);
-    if (activeTab !== 'jobber') return;
     clearTimeout(searchDebounce.current);
     searchDebounce.current = setTimeout(() => {
-      setJobberOffset(0);
-      fetchJobberClients(val, selectedTags, tagLogic, payingFilter, appUserFilter, 0);
+      setUnifiedPage(1);
+      fetchUnified(val, sourceFilter, selectedTags, tagLogic, 1, false);
     }, 300);
+  }
+
+  // ── Row click ─────────────────────────────────────────────────────────────────
+
+  function handleRowClick(row) {
+    if (row.source_badge === 'jobber') {
+      setSelectedContactId(null);
+      setSelectedJobberClientId(row.jobber_client_id);
+    } else {
+      setSelectedContactId(row.contact_id);
+      setSelectedJobberClientId(null);
+    }
   }
 
   // ── Effects ───────────────────────────────────────────────────────────────────
@@ -669,24 +593,21 @@ export default function AdminContactsTab({ headers }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Contacts: fires on mount and whenever tag/logic filters change while on contacts tab
   useEffect(() => {
-    if (activeTab === 'contacts') {
-      fetchContacts(selectedTags, tagLogic);
-    }
+    setUnifiedPage(1);
+    fetchUnified(search, sourceFilter, selectedTags, tagLogic, 1, false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTags, tagLogic, activeTab]);
+  }, [selectedTags, tagLogic, sourceFilter]);
 
-  // Jobber: fires when non-search filters change while on jobber tab
-  useEffect(() => {
-    if (activeTab === 'jobber') {
-      setJobberOffset(0);
-      fetchJobberClients(search, selectedTags, tagLogic, payingFilter, appUserFilter, 0);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTags, tagLogic, payingFilter, appUserFilter, activeTab]);
+  // ── Load more ─────────────────────────────────────────────────────────────────
 
-  // ── Shared table header style ─────────────────────────────────────────────────
+  function handleLoadMore() {
+    const nextPage = unifiedPage + 1;
+    setUnifiedPage(nextPage);
+    fetchUnified(search, sourceFilter, selectedTags, tagLogic, nextPage, true);
+  }
+
+  // ── Table header style ────────────────────────────────────────────────────────
 
   const thStyle = {
     padding: '0 0 10px',
@@ -700,37 +621,12 @@ export default function AdminContactsTab({ headers }) {
   return (
     <div>
 
-      {/* Tab switcher */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
-        {[
-          { id: 'contacts', label: 'Campaign contacts' },
-          { id: 'jobber',   label: 'Jobber clients' },
-        ].map(({ id, label }) => (
-          <button
-            key={id}
-            onClick={() => handleTabSwitch(id)}
-            style={{
-              padding: '6px 14px', borderRadius: 99,
-              background: activeTab === id ? AD.navy : 'transparent',
-              color: activeTab === id ? '#fff' : AD.textSecondary,
-              border: `1px solid ${activeTab === id ? AD.navy : AD.border}`,
-              fontSize: 13, fontFamily: AD.fontSans, cursor: 'pointer',
-              fontWeight: activeTab === id ? 600 : 400, transition: 'all 0.1s',
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
       {/* Shared filter toolbar */}
       <GroupedFilterPanel
         search={search}
         onSearchChange={handleSearchChange}
-        payingFilter={payingFilter}
-        onPayingFilterChange={setPayingFilter}
-        appUserFilter={appUserFilter}
-        onAppUserFilterChange={setAppUserFilter}
+        sourceFilter={sourceFilter}
+        onSourceFilterChange={(val) => { setSourceFilter(val); }}
         logic={tagLogic}
         onLogicChange={setTagLogic}
         panelOpen={panelOpen}
@@ -740,168 +636,99 @@ export default function AdminContactsTab({ headers }) {
         onTagsChange={setSelectedTags}
       />
 
-      {/* ─── CAMPAIGN CONTACTS TAB ─── */}
-      {activeTab === 'contacts' && (
-        <>
-          {!contactsLoading && !contactsError && (
-            <p style={{ margin: '0 0 16px', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-              Showing {contacts.length.toLocaleString()} of {contactsTotal.toLocaleString()} contacts
-            </p>
-          )}
-
-          {contactsLoading && (
-            <p style={{ color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 15 }}>
-              Loading contacts...
-            </p>
-          )}
-
-          {!contactsLoading && contactsError && (
-            <div style={{ textAlign: 'center', marginTop: 32 }}>
-              <p style={{ color: AD.textTertiary, fontFamily: AD.fontSans, fontSize: 13, marginBottom: 12 }}>
-                {contactsError}
-              </p>
-              <button
-                onClick={() => fetchContacts(selectedTags, tagLogic)}
-                style={{
-                  padding: '8px 20px', borderRadius: 8,
-                  background: AD.navy, color: '#fff',
-                  border: 'none', fontSize: 13, fontFamily: AD.fontSans, cursor: 'pointer',
-                }}
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
-          {!contactsLoading && !contactsError && contacts.length === 0 && (
-            <p style={{ textAlign: 'center', color: AD.textTertiary, fontFamily: AD.fontSans, fontSize: 13, marginTop: 32 }}>
-              {selectedTags.length > 0 ? 'No contacts match the selected filters.' : 'No contacts yet. Contacts are added automatically when campaign batches are sent.'}
-            </p>
-          )}
-
-          {!contactsLoading && !contactsError && contacts.length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ ...thStyle, ...CONTACT_COL.name,     textAlign: 'left' }}>Name</th>
-                  <th style={{ ...thStyle, ...CONTACT_COL.email,    textAlign: 'left' }}>Email</th>
-                  <th style={{ ...thStyle, ...CONTACT_COL.status,   textAlign: 'left' }}>Status</th>
-                  <th style={{ ...thStyle, ...CONTACT_COL.sends,    textAlign: 'right' }}>Sends</th>
-                  <th style={{ ...thStyle, ...CONTACT_COL.lastSent, textAlign: 'right' }}>Last Sent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {contacts.map((c, idx) => (
-                  <ContactRow
-                    key={c.id}
-                    c={c}
-                    isLast={idx === contacts.length - 1}
-                    onClick={() => setSelectedContactId(c.id)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          )}
-        </>
+      {/* Row count */}
+      {!unifiedLoading && !unifiedError && (
+        <p style={{ margin: '0 0 16px', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+          Showing {unifiedRows.length.toLocaleString()} of {unifiedTotal.toLocaleString()} contacts
+        </p>
       )}
 
-      {/* ─── JOBBER CLIENTS TAB ─── */}
-      {activeTab === 'jobber' && (
+      {/* Loading */}
+      {unifiedLoading && unifiedRows.length === 0 && (
+        <p style={{ color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 15 }}>
+          Loading contacts…
+        </p>
+      )}
+
+      {/* Error */}
+      {!unifiedLoading && unifiedError && (
+        <div style={{ textAlign: 'center', marginTop: 32 }}>
+          <p style={{ color: AD.textTertiary, fontFamily: AD.fontSans, fontSize: 13, marginBottom: 12 }}>
+            {unifiedError}
+          </p>
+          <button
+            onClick={() => fetchUnified(search, sourceFilter, selectedTags, tagLogic, 1, false)}
+            style={{
+              padding: '8px 20px', borderRadius: 8,
+              background: AD.navy, color: '#fff',
+              border: 'none', fontSize: 13, fontFamily: AD.fontSans, cursor: 'pointer',
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!unifiedLoading && !unifiedError && unifiedRows.length === 0 && (
+        <p style={{ textAlign: 'center', color: AD.textTertiary, fontFamily: AD.fontSans, fontSize: 13, marginTop: 32 }}>
+          {selectedTags.length > 0 || sourceFilter || search
+            ? 'No contacts match the selected filters.'
+            : 'No contacts yet. Import clients from CRM Settings or send a campaign.'}
+        </p>
+      )}
+
+      {/* Table */}
+      {!unifiedError && unifiedRows.length > 0 && (
         <>
-          {!jobberLoading && !jobberError && jobberClients.length > 0 && (
-            <p style={{ margin: '0 0 16px', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-              Showing {jobberClients.length.toLocaleString()} of {jobberTotal.toLocaleString()} clients
-            </p>
-          )}
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, ...UNIFIED_COL.source, textAlign: 'left' }}>Source</th>
+                <th style={{ ...thStyle, ...UNIFIED_COL.name,   textAlign: 'left' }}>Name</th>
+                <th style={{ ...thStyle, ...UNIFIED_COL.email,  textAlign: 'left' }}>Email</th>
+                <th style={{ ...thStyle, ...UNIFIED_COL.phone,  textAlign: 'left' }}>Phone</th>
+                <th style={{ ...thStyle, ...UNIFIED_COL.tags,   textAlign: 'left' }}>Tags</th>
+                <th style={{ ...thStyle, ...UNIFIED_COL.synced, textAlign: 'right' }}>Synced</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unifiedRows.map((row, idx) => (
+                <UnifiedRow
+                  key={row.jobber_client_id || row.contact_id || idx}
+                  row={row}
+                  isLast={idx === unifiedRows.length - 1 && unifiedRows.length >= unifiedTotal}
+                  onClick={() => handleRowClick(row)}
+                />
+              ))}
+            </tbody>
+          </table>
 
-          {jobberLoading && jobberClients.length === 0 && (
-            <p style={{ color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 15 }}>
-              Loading clients...
-            </p>
-          )}
-
-          {!jobberLoading && jobberError && (
-            <div style={{ textAlign: 'center', marginTop: 32 }}>
-              <p style={{ color: AD.textTertiary, fontFamily: AD.fontSans, fontSize: 13, marginBottom: 12 }}>
-                {jobberError}
-              </p>
+          {/* Load more */}
+          {unifiedRows.length < unifiedTotal && (
+            <div style={{ textAlign: 'center', marginTop: 20 }}>
               <button
-                onClick={() => {
-                  setJobberOffset(0);
-                  fetchJobberClients(search, selectedTags, tagLogic, payingFilter, appUserFilter, 0);
-                }}
+                onClick={handleLoadMore}
+                disabled={unifiedLoading}
                 style={{
-                  padding: '8px 20px', borderRadius: 8,
+                  padding: '9px 24px', borderRadius: 8,
                   background: AD.navy, color: '#fff',
-                  border: 'none', fontSize: 13, fontFamily: AD.fontSans, cursor: 'pointer',
+                  border: 'none', fontSize: 13, fontFamily: AD.fontSans,
+                  cursor: unifiedLoading ? 'not-allowed' : 'pointer',
+                  opacity: unifiedLoading ? 0.6 : 1, fontWeight: 500,
                 }}
               >
-                Retry
+                {unifiedLoading ? 'Loading…' : `Load more (${(unifiedTotal - unifiedRows.length).toLocaleString()} remaining)`}
               </button>
             </div>
-          )}
-
-          {!jobberLoading && !jobberError && jobberClients.length === 0 && (
-            <div style={{ textAlign: 'center', marginTop: 32 }}>
-              <p style={{ color: AD.textTertiary, fontFamily: AD.fontSans, fontSize: 13 }}>
-                No Jobber clients found.
-              </p>
-              <p style={{ color: AD.textTertiary, fontFamily: AD.fontSans, fontSize: 12, marginTop: 4 }}>
-                Run the import from CRM Settings to populate this list.
-              </p>
-            </div>
-          )}
-
-          {!jobberError && jobberClients.length > 0 && (
-            <>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={{ ...thStyle, ...JOBBER_COL.name,   textAlign: 'left' }}>Name</th>
-                    <th style={{ ...thStyle, ...JOBBER_COL.email,  textAlign: 'left' }}>Email</th>
-                    <th style={{ ...thStyle, ...JOBBER_COL.phone,  textAlign: 'left' }}>Phone</th>
-                    <th style={{ ...thStyle, ...JOBBER_COL.type,   textAlign: 'left' }}>Type</th>
-                    <th style={{ ...thStyle, ...JOBBER_COL.tags,   textAlign: 'left' }}>Tags</th>
-                    <th style={{ ...thStyle, ...JOBBER_COL.synced, textAlign: 'right' }}>Synced</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jobberClients.map((c, idx) => (
-                    <JobberClientRow
-                      key={c.jobber_client_id}
-                      c={c}
-                      isLast={idx === jobberClients.length - 1 && jobberClients.length >= jobberTotal}
-                    />
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Load more */}
-              {jobberClients.length < jobberTotal && (
-                <div style={{ textAlign: 'center', marginTop: 20 }}>
-                  <button
-                    onClick={() => fetchJobberClients(search, selectedTags, tagLogic, payingFilter, appUserFilter, jobberOffset)}
-                    disabled={jobberLoading}
-                    style={{
-                      padding: '9px 24px', borderRadius: 8,
-                      background: AD.navy, color: '#fff',
-                      border: 'none', fontSize: 13, fontFamily: AD.fontSans,
-                      cursor: jobberLoading ? 'not-allowed' : 'pointer',
-                      opacity: jobberLoading ? 0.6 : 1, fontWeight: 500,
-                    }}
-                  >
-                    {jobberLoading ? 'Loading…' : `Load more (${(jobberTotal - jobberClients.length).toLocaleString()} remaining)`}
-                  </button>
-                </div>
-              )}
-            </>
           )}
         </>
       )}
 
       <AdminContactDetailDrawer
         contactId={selectedContactId}
-        onClose={() => setSelectedContactId(null)}
+        jobberClientId={selectedJobberClientId}
+        onClose={() => { setSelectedContactId(null); setSelectedJobberClientId(null); }}
         token={drawerToken}
       />
     </div>

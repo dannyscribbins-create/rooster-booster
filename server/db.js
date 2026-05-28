@@ -997,6 +997,34 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     ('jobber_incremental_sync')
   ON CONFLICT DO NOTHING`);
 
+  // ── CONTACT JOBBER LINKS ──────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS contact_jobber_links (
+    id SERIAL PRIMARY KEY,
+    contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+    jobber_client_id TEXT NOT NULL,
+    contractor_id TEXT NOT NULL,
+    match_confidence TEXT NOT NULL DEFAULT 'high',
+    matched_on TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(contact_id, jobber_client_id)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_cjl_contact_id ON contact_jobber_links(contact_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_cjl_jobber_client_id ON contact_jobber_links(jobber_client_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_cjl_contractor_id ON contact_jobber_links(contractor_id)`);
+
+  // ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    deeplink TEXT,
+    read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_contractor_id ON notifications(contractor_id)`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

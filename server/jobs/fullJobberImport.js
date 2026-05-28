@@ -5,6 +5,7 @@ const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
 const deriveAndSaveTags = require('../utils/deriveJobberTags');
 const { refreshTokenIfNeeded } = require('../crm/jobber');
+const { runContactMatchingPass } = require('./contactMatchingPass');
 
 // ── IMPORT STATE ──────────────────────────────────────────────────────────────
 // Module-level — persists in memory for the duration of the process.
@@ -16,6 +17,8 @@ const importState = {
   totalFound: 0,
   imported: 0,
   tagged: 0,
+  matchingProgress: { processed: 0, total: 0, linked: 0 },
+  linksEstablished: 0,
   errorMessage: null,
 };
 
@@ -392,12 +395,44 @@ async function runFullJobberImport(contractorId, filterPreference) {
         [client.id, contractorId]
       );
 
+      // tier_1 = Jobber-only client (no linked app contact). Replaced by tier_2 after matching pass.
+      await pool.query(
+        `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
+         VALUES ($1, $2, 'tier_1', 'system', NOW())
+         ON CONFLICT DO NOTHING`,
+        [client.id, contractorId]
+      );
+
       importState.tagged += 1;
+    }
+
+    // ── PHASE 2 — Contact matching pass ──────────────────────────────────────
+    console.log('[fullJobberImport] Phase 2 — running contact matching pass...');
+    importState.status = 'matching';
+    importState.matchingProgress = { processed: 0, total: filteredClients.length, linked: 0 };
+
+    for (const client of filteredClients) {
+      try {
+        const { linked } = await runContactMatchingPass(contractorId, { jobberClientId: client.id });
+        importState.matchingProgress.processed++;
+        importState.matchingProgress.linked += linked;
+        importState.linksEstablished += linked;
+      } catch (err) {
+        await logError({ req: null, error: err, source: `fullJobberImport — matching client ${client.id}` });
+      }
+    }
+
+    if (importState.linksEstablished > 0) {
+      await pool.query(
+        `INSERT INTO notifications (contractor_id, type, title, body)
+         VALUES ($1, 'import_complete', 'Import complete', $2)`,
+        [contractorId, `${importState.imported} clients imported, ${importState.linksEstablished} contact links established.`]
+      );
     }
 
     importState.status = 'complete';
     importState.completedAt = new Date();
-    console.log(`[fullJobberImport] Complete — ${importState.imported} imported, ${importState.tagged} tagged`);
+    console.log(`[fullJobberImport] Complete — ${importState.imported} imported, ${importState.tagged} tagged, ${importState.linksEstablished} links established`);
 
   } catch (err) {
     importState.status = 'error';

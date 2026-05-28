@@ -24,6 +24,7 @@ const { evaluateReferral } = require('../../referralRules');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { applyTag } = require('../../utils/tags');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
+const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -265,6 +266,14 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
        ON CONFLICT DO NOTHING`,
       [fullClient.id, contractorId]
     );
+
+    // tier_1 = Jobber-only client (no linked app contact). Replaced by tier_2 when a link is established.
+    await pool.query(
+      `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
+       VALUES ($1, $2, 'tier_1', 'system', NOW())
+       ON CONFLICT DO NOTHING`,
+      [fullClient.id, contractorId]
+    );
   }
 }
 
@@ -374,6 +383,13 @@ router.post('/jobber/client-create', async (req, res) => {
         });
         await upsertAndTagClient(contractorId, fullClient, relatedData);
       }
+
+      // Contact matching pass — isolated, never aborts webhook
+      try {
+        await runContactMatchingPass(contractorId, { jobberClientId: clientId });
+      } catch (matchErr) {
+        await logError({ req: null, error: matchErr, source: 'jobber-webhook client-create matching' });
+      }
     } catch (err) {
       await logError({ req, error: err });
       console.error('[jobber-webhook] client-create sync failed:', err.message);
@@ -437,6 +453,13 @@ router.post('/jobber/client-update', async (req, res) => {
           return null;
         });
         await upsertAndTagClient(contractorId, fullClient, relatedData);
+      }
+
+      // Contact matching pass — isolated, never aborts webhook
+      try {
+        await runContactMatchingPass(contractorId, { jobberClientId: clientId });
+      } catch (matchErr) {
+        await logError({ req: null, error: matchErr, source: 'jobber-webhook client-update matching' });
       }
     } catch (err) {
       await logError({ req, error: err });

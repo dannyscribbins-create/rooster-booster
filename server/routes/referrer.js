@@ -20,6 +20,7 @@ const { isEmailSuppressed } = require('../utils/emailSuppression');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { verifyReferrerSession } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
+const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -383,6 +384,22 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
       } catch (err) {
         await logError({ req, error: err });
         console.error('Background Jobber match failed for signup:', err.message);
+      }
+    })();
+
+    // BACKGROUND: Contact-side matching pass — links this new app user to any Jobber client
+    // in contact_jobber_links using the contact matching standard.
+    ;(async () => {
+      try {
+        const contactRow = await pool.query(
+          `SELECT id FROM contacts WHERE contractor_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1`,
+          [link.contractor_id, email]
+        );
+        if (contactRow.rows[0]) {
+          await runContactMatchingPass(link.contractor_id, { contactId: contactRow.rows[0].id });
+        }
+      } catch (matchErr) {
+        await logError({ req, error: matchErr, source: 'POST /api/signup — contact matching pass' });
       }
     })();
 

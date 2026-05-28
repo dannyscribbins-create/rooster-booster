@@ -123,12 +123,15 @@ const FLAG_CONFIG = {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function AdminContactDetailDrawer({ contactId, onClose, token }) {
-  const [cache,   setCache]   = useState({});   // keyed by contactId
-  const cacheRef              = useRef({});      // mirror for stale-closure-safe reads
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
-  const [visible, setVisible] = useState(false);
+export default function AdminContactDetailDrawer({ contactId, jobberClientId, onClose, token }) {
+  const [cache,    setCache]   = useState({});   // keyed by contactId
+  const cacheRef               = useRef({});     // mirror for stale-closure-safe reads
+  const [jcCache,  setJcCache] = useState({});   // keyed by jobberClientId
+  const jcCacheRef             = useRef({});
+  const [loading,  setLoading] = useState(false);
+  const [error,    setError]   = useState('');
+  const [visible,  setVisible] = useState(false);
+  const isOpen = !!(contactId || jobberClientId);
   const [confirmFlag, setConfirmFlag]               = useState(null);  // flag name or null
   const [resubscribeLoading, setResubscribeLoading] = useState(false);
   const [resubscribeError, setResubscribeError]     = useState('');
@@ -141,25 +144,30 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
   const tagInputRef = useRef(null);
   const suggestDebounce = useRef(null);
 
-  // Keep cacheRef in sync with cache state
+  // Keep cacheRefs in sync with cache state
   useEffect(() => {
     cacheRef.current = cache;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cache]);
 
-  // Derive the current contact data from cache (if already loaded)
-  const contactData = contactId ? (cache[contactId] || null) : null;
+  useEffect(() => {
+    jcCacheRef.current = jcCache;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jcCache]);
+
+  // Derive the current contact / jobber client data from cache
+  const contactData  = contactId      ? (cache[contactId]         || null) : null;
+  const jobberData   = jobberClientId ? (jcCache[jobberClientId]  || null) : null;
 
   // Animate open / close
   useEffect(() => {
-    if (contactId) {
-      // Small RAF so the initial translateX(100%) renders before we transition to 0
+    if (isOpen) {
       requestAnimationFrame(() => setVisible(true));
     } else {
       setVisible(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactId]);
+  }, [isOpen]);
 
   const fetchContact = useCallback(async (id) => {
     if (!id) return;
@@ -187,6 +195,33 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactId]);
+
+  const fetchJobberClient = useCallback(async (id) => {
+    if (!id) return;
+    if (jcCacheRef.current[id]) return;
+    setLoading(true);
+    setError('');
+    try {
+      const h = {};
+      if (token) h.Authorization = `Bearer ${token}`;
+      const r = await fetch(`${BACKEND_URL}/api/admin/jobber-clients/${encodeURIComponent(id)}`, { headers: h });
+      if (!r.ok) throw new Error('Failed');
+      const data = await r.json();
+      setJcCache(prev => ({ ...prev, [id]: data }));
+    } catch {
+      setError('Could not load Jobber client profile.');
+    } finally {
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  useEffect(() => {
+    if (jobberClientId) {
+      fetchJobberClient(jobberClientId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobberClientId]);
 
   async function handleResubscribeConfirm() {
     if (!confirmFlag) return;
@@ -302,13 +337,21 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
     }
   }
 
-  // Don't render anything when no contactId
-  if (!contactId) return null;
+  if (!isOpen) return null;
 
   const contact       = contactData?.contact;
   const sendHistory   = contactData?.send_history || [];
   const jobberProfile = contactData?.jobber_profile || null;
   const tags          = contactData?.tags || [];
+
+  // Jobber-only mode (no linked contact)
+  const isJobberOnly  = !!jobberClientId && !contactId;
+  const jcData        = jobberData;  // shorthand
+
+  // Determine source badge for header
+  const sourceBadge = contactId && jobberClientId ? 'both'
+    : contactId ? 'app'
+    : 'jobber';
 
   return (
     <>
@@ -363,38 +406,52 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
             <i className="ph ph-x" style={{ fontSize: 16 }} />
           </button>
 
-          {loading && !contact ? (
+          {loading && !contact && !jcData ? (
             <p style={{ margin: 0, fontSize: 15, color: 'rgba(255,255,255,0.6)', fontFamily: AD.fontSans }}>
               Loading...
             </p>
-          ) : contact ? (
-            <>
-              <p style={{
-                margin: '0 36px 4px 0',
-                fontSize: 20, fontWeight: 700,
-                color: '#fff',
-                fontFamily: "'Montserrat', sans-serif",
-                lineHeight: 1.2,
-              }}>
-                {contact.name || '—'}
-              </p>
-              <p style={{
-                margin: '0 0 10px',
-                fontSize: 13, color: 'rgba(255,255,255,0.65)',
-                fontFamily: AD.fontSans,
-              }}>
-                {contact.email || '—'}
-              </p>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {contact.is_app_user && (
-                  <DrawerPill bg={AD.blueBg} color={AD.blueText} label="App User" />
-                )}
-                {contact.opted_out && (
-                  <DrawerPill bg={AD.red2Bg} color={AD.red2Text} label="Opted Out" />
-                )}
-              </div>
-            </>
-          ) : (
+          ) : (contact || jcData) ? (() => {
+            const displayName = contact?.name
+              || [jcData?.first_name, jcData?.last_name].filter(Boolean).join(' ')
+              || '—';
+            const displayEmail = contact?.email || jcData?.email || '—';
+            const badgeCfg = {
+              both:   { bg: '#1a4d6e', color: '#7CC8F8', label: 'Both'   },
+              app:    { bg: AD.blueBg, color: AD.blueText, label: 'App'  },
+              jobber: { bg: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', label: 'Jobber' },
+            }[sourceBadge];
+            return (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <p style={{
+                    margin: '0 36px 0 0',
+                    fontSize: 20, fontWeight: 700,
+                    color: '#fff',
+                    fontFamily: "'Montserrat', sans-serif",
+                    lineHeight: 1.2, flex: 1,
+                  }}>
+                    {displayName}
+                  </p>
+                  <DrawerPill bg={badgeCfg.bg} color={badgeCfg.color} label={badgeCfg.label} />
+                </div>
+                <p style={{
+                  margin: '0 0 10px',
+                  fontSize: 13, color: 'rgba(255,255,255,0.65)',
+                  fontFamily: AD.fontSans,
+                }}>
+                  {displayEmail}
+                </p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {contact?.is_app_user && (
+                    <DrawerPill bg={AD.blueBg} color={AD.blueText} label="App User" />
+                  )}
+                  {contact?.opted_out && (
+                    <DrawerPill bg={AD.red2Bg} color={AD.red2Text} label="Opted Out" />
+                  )}
+                </div>
+              </>
+            );
+          })() : (
             <p style={{ margin: '0 36px 0 0', fontSize: 15, color: 'rgba(255,255,255,0.6)', fontFamily: AD.fontSans }}>
               Contact
             </p>
@@ -408,9 +465,9 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
         }}>
 
           {/* Loading state */}
-          {loading && !contact && (
+          {loading && !contact && !jcData && (
             <p style={{ margin: '24px 0', textAlign: 'center', fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>
-              Loading contact profile...
+              Loading...
             </p>
           )}
 
@@ -422,14 +479,13 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
               </p>
               <button
                 onClick={() => {
-                  setCache(prev => {
-                    const next = { ...prev };
-                    delete next[contactId];
-                    // also clear ref so fetchContact sees the cleared state
-                    cacheRef.current = next;
-                    return next;
-                  });
-                  fetchContact(contactId);
+                  if (isJobberOnly) {
+                    setJcCache(prev => { const n = { ...prev }; delete n[jobberClientId]; jcCacheRef.current = n; return n; });
+                    fetchJobberClient(jobberClientId);
+                  } else {
+                    setCache(prev => { const n = { ...prev }; delete n[contactId]; cacheRef.current = n; return n; });
+                    fetchContact(contactId);
+                  }
                 }}
                 style={{
                   padding: '8px 20px', borderRadius: 8,
@@ -443,7 +499,45 @@ export default function AdminContactDetailDrawer({ contactId, onClose, token }) 
             </div>
           )}
 
-          {/* Content */}
+          {/* ── Jobber-only content ── */}
+          {!loading && !error && isJobberOnly && jcData && (
+            <>
+              <SectionCard title="Identity">
+                <InfoRow icon="ph-envelope-simple" label="Email"       value={jcData.email || 'Not on file'} valueMuted={!jcData.email} />
+                <InfoRow icon="ph-phone"           label="Phone"       value={jcData.phone || 'Not on file'} valueMuted={!jcData.phone} />
+                <InfoRow icon="ph-buildings"       label="Type"        value={jcData.is_company ? 'Company' : 'Residential'} />
+                <InfoRow icon="ph-arrows-clockwise" label="Last Synced" value={jcData.last_synced_at ? new Date(jcData.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'} />
+              </SectionCard>
+
+              {jcData.tags && jcData.tags.length > 0 && (
+                <SectionCard title="Tags">
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                    {jcData.tags.map(({ tag }) => (
+                      <span
+                        key={tag}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center',
+                          padding: '3px 9px', borderRadius: 4,
+                          background: AD.bgCardTint, border: `1px solid ${AD.border}`,
+                          fontSize: 11, fontFamily: AD.fontSans, color: AD.textSecondary,
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </SectionCard>
+              )}
+
+              <SectionCard>
+                <p style={{ margin: 0, fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
+                  This client hasn't been contacted via RoofMiles yet.
+                </p>
+              </SectionCard>
+            </>
+          )}
+
+          {/* ── Contact (app or linked) content ── */}
           {!loading && !error && contact && (
             <>
               {/* Contact Info card */}
