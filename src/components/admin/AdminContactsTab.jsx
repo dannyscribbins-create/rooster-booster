@@ -81,22 +81,6 @@ const UNIFIED_COL = {
   synced: { width: '10%', textAlign: 'right' },
 };
 
-// ── SmallPill ─────────────────────────────────────────────────────────────────
-
-function SmallPill({ bg, color, label }) {
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center',
-      background: bg, color,
-      padding: '2px 6px', borderRadius: 4,
-      fontSize: 10, fontFamily: AD.fontSans, fontWeight: 500,
-      whiteSpace: 'nowrap',
-    }}>
-      {label}
-    </span>
-  );
-}
-
 // ── SourceBadge ───────────────────────────────────────────────────────────────
 
 function SourceBadge({ badge }) {
