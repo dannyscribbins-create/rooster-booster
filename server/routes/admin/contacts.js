@@ -5,7 +5,6 @@ const { verifyAdminSession } = require('../../middleware/auth');
 const { logError } = require('../../middleware/errorLogger');
 const { deriveOptOutType } = require('../../utils/adminHelpers');
 const { applyTag, removeTag } = require('../../utils/tags');
-const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 
 // pg_trgm required for fuzzy name matching — used in app user linking, unified contacts merge (Session 77), and new user signup flow
 ;(async () => {
@@ -16,21 +15,6 @@ const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
     console.log('pg_trgm setup skipped:', err.message); // diagnostic log — intentional
   }
 })();
-
-// ── TEMP: MANUAL MATCHING PASS TRIGGER ───────────────────────────────────────
-// TODO: REMOVE AFTER VERIFICATION — used to manually trigger a full contact
-// matching pass for testing. Remove once contact_jobber_links is confirmed
-// populated correctly in production.
-router.get('/api/admin/run-matching-pass', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  try {
-    const result = await runContactMatchingPass('accent-roofing');
-    res.json(result);
-  } catch (err) {
-    await logError({ req, error: err, source: 'GET /api/admin/run-matching-pass' });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 // ── TAG SUGGESTIONS (literal route — must be before /:contactId) ──────────────
 
@@ -230,9 +214,17 @@ router.get('/api/admin/contacts/unified', async (req, res) => {
     // Tier filter: derivable at query time — no tag dependency needed.
     // tier_1 = Jobber clients with no linked contact (source_badge='jobber')
     // tier_2 = Linked contacts (source_badge='both') + App-only contacts (source_badge='app')
+    // The UI sends tier_1/tier_2 as tag pills (tags=tier_1), not as a tier= param — intercept
+    // them here so they drive structural WHERE conditions, not tag EXISTS lookups.
+    const tierFromTags = filterTags.includes('tier_1') ? 'tier_1'
+                       : filterTags.includes('tier_2') ? 'tier_2' : null;
+    const effectiveTier = tier || tierFromTags;
     let effectiveSource = source;
-    if (tier === 'tier_1') effectiveSource = 'jobber';
-    else if (tier === 'tier_2') effectiveSource = 'tier_2'; // special: both+app
+    if (effectiveTier === 'tier_1') effectiveSource = 'jobber';
+    else if (effectiveTier === 'tier_2') effectiveSource = 'tier_2'; // special: both+app
+
+    // Strip tier tags from the tag filter — they've been promoted to structural conditions above
+    const structuralFilterTags = filterTags.filter(t => t !== 'tier_1' && t !== 'tier_2');
 
     // ── Jobber sub-query (both + jobber source badges) ────────────────────────
     const jobberSubQuery = (effectiveSource === 'app') ? '' : `
@@ -289,9 +281,9 @@ router.get('/api/admin/contacts/unified', async (req, res) => {
 
     // ── Tag filter (AND/OR) applied on top of the unified CTE ────────────────
     let tagFilter = '';
-    if (filterTags.length > 0) {
+    if (structuralFilterTags.length > 0) {
       if (tagMode === 'AND') {
-        tagFilter = filterTags.map(t => {
+        tagFilter = structuralFilterTags.map(t => {
           params.push(t);
           return `AND EXISTS (
             SELECT 1 FROM contact_tags ct
@@ -300,7 +292,7 @@ router.get('/api/admin/contacts/unified', async (req, res) => {
           )`;
         }).join('\n');
       } else {
-        const placeholders = filterTags.map(t => { params.push(t); return `$${params.length}`; });
+        const placeholders = structuralFilterTags.map(t => { params.push(t); return `$${params.length}`; });
         tagFilter = `AND EXISTS (
           SELECT 1 FROM contact_tags ct
           WHERE (ct.jobber_client_id = u.jobber_client_id OR ct.contact_id::text = u.contact_id)
