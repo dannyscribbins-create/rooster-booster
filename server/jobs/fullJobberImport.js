@@ -192,23 +192,73 @@ async function runFullJobberImport(contractorId, filterPreference) {
     const allClients = await fetchAllPages(tokenA, clientsQuery, 'clients', 'Step A', contractorId);
     console.log(`[fullJobberImport] Step A complete — ${allClients.length} clients fetched`);
 
-    // ── STEP B — Pull all invoices ────────────────────────────────────────────
-    console.log('[fullJobberImport] Step B — fetching all invoices...');
+    // ── STEP B — Pull invoices scoped to clients from Step A ─────────────────
+    // When a date filter is active, Step A returned a small filtered set.
+    // Fetch invoices per client to avoid sweeping all historical invoices.
+    // For unfiltered imports (16K clients), use the existing bulk sweep.
     const tokenB = await getFreshToken(contractorId);
-    const invoicesQuery = `
-      query GetInvoices($after: String) {
-        invoices(first: 100, after: $after) {
-          nodes {
-            id invoiceStatus createdAt
-            amounts { total }
-            client { id }
-          }
-          pageInfo { hasNextPage endCursor }
+    let allInvoices = [];
+
+    if (dateFilter) {
+      console.log(`[fullJobberImport] Step B — per-client invoice fetch (${allClients.length} clients)...`);
+      for (const client of allClients) {
+        try {
+          const invRes = await retryWithBackoff(
+            () => axios.post(
+              'https://api.getjobber.com/api/graphql',
+              {
+                query: `
+                  query GetClientInvoices($id: EncodedId!) {
+                    client(id: $id) {
+                      invoices(first: 50) {
+                        nodes {
+                          id invoiceStatus createdAt
+                          amounts { total }
+                        }
+                      }
+                    }
+                  }
+                `,
+                variables: { id: client.id },
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${tokenB}`,
+                  'Content-Type': 'application/json',
+                  'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+                },
+              }
+            ),
+            { retries: 3, initialDelayMs: 500, shouldRetry: jobberShouldRetry }
+          );
+          const clientInvoices = (invRes.data?.data?.client?.invoices?.nodes || []).map(inv => ({
+            ...inv,
+            client: { id: client.id },
+          }));
+          allInvoices.push(...clientInvoices);
+        } catch (invErr) {
+          await logError({ req: null, error: invErr, source: `fullJobberImport Step B — client ${client.id}` });
+          console.error(`[fullJobberImport] Step B error fetching invoices for client ${client.id}:`, invErr.message);
         }
       }
-    `;
-    const allInvoices = await fetchAllPages(tokenB, invoicesQuery, 'invoices', 'Step B', contractorId);
-    console.log(`[fullJobberImport] Step B complete — ${allInvoices.length} invoices fetched`);
+      console.log(`[fullJobberImport] Step B complete — ${allInvoices.length} invoices fetched (per-client)`);
+    } else {
+      console.log('[fullJobberImport] Step B — bulk invoice fetch (no date filter)...');
+      const invoicesQuery = `
+        query GetInvoices($after: String) {
+          invoices(first: 100, after: $after) {
+            nodes {
+              id invoiceStatus createdAt
+              amounts { total }
+              client { id }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      `;
+      allInvoices = await fetchAllPages(tokenB, invoicesQuery, 'invoices', 'Step B', contractorId);
+      console.log(`[fullJobberImport] Step B complete — ${allInvoices.length} invoices fetched`);
+    }
 
     // ── STEP D — Pull all quotes ──────────────────────────────────────────────
     console.log('[fullJobberImport] Step D — fetching all quotes...');
