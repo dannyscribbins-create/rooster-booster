@@ -209,6 +209,7 @@ function GroupedFilterPanel({
   panelOpen, onPanelOpenChange,
   jobberTagSummary,
   selectedTags, onTagsChange,
+  onClearAll,
 }) {
   const [sectionAOpen, setSectionAOpen] = useState(true);
   const [sectionBOpen, setSectionBOpen] = useState(false);
@@ -344,7 +345,7 @@ function GroupedFilterPanel({
       {/* Clear all link */}
       {anyFilterActive && (
         <button
-          onClick={() => { onSearchChange(''); onTagsChange([]); onSourceFilterChange(''); }}
+          onClick={onClearAll}
           style={{
             display: 'block', marginTop: 8,
             fontSize: 11, color: AD.textTertiary,
@@ -583,6 +584,17 @@ export default function AdminContactsTab({ headers }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTags, tagLogic, sourceFilter]);
 
+  // ── Clear all filters ─────────────────────────────────────────────────────────
+
+  function handleClearAllFilters() {
+    clearTimeout(searchDebounce.current);
+    setSearch('');
+    setSelectedTags([]);
+    setSourceFilter('');
+    setUnifiedPage(1);
+    fetchUnified('', '', [], tagLogic, 1, false);
+  }
+
   // ── Load more ─────────────────────────────────────────────────────────────────
 
   function handleLoadMore() {
@@ -618,6 +630,7 @@ export default function AdminContactsTab({ headers }) {
         jobberTagSummary={jobberTagSummary}
         selectedTags={selectedTags}
         onTagsChange={setSelectedTags}
+        onClearAll={handleClearAllFilters}
       />
 
       {/* Row count */}
