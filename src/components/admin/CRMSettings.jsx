@@ -242,7 +242,7 @@ export default function CRMSettings() {
   const [importCustomDate, setImportCustomDate] = useState('');
   const [importPosting, setImportPosting]       = useState(false);
   const [importInlineError, setImportInlineError] = useState('');
-  const [importCounters, setImportCounters]     = useState({ totalFound: 0, imported: 0, tagged: 0, matchingProcessed: 0, matchingLinked: 0 });
+  const [importCounters, setImportCounters]     = useState({ totalFound: 0, imported: 0, tagged: 0, matchingProcessed: 0, matchingLinked: 0, matchingTotal: 0 });
   const [importLastResult, setImportLastResult] = useState(null);
   const [importErrorMsg, setImportErrorMsg]     = useState('');
 
@@ -305,17 +305,17 @@ export default function CRMSettings() {
         if (!r.ok) return;
         const d = await r.json();
         if (d.status === 'running') {
-          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: 0, matchingLinked: 0 });
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: 0, matchingLinked: 0, matchingTotal: 0 });
           setImportPhase('running');
           startImportPolling();
         } else if (d.status === 'matching') {
           const mp = d.matchingProgress || {};
-          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: mp.linked || 0 });
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: mp.linked || 0, matchingTotal: mp.total || 0 });
           setImportPhase('matching');
           startImportPolling();
         } else if (d.status === 'complete' && d.totalFound > 0) {
           const mp = d.matchingProgress || {};
-          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: d.linksEstablished || 0 });
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: d.linksEstablished || 0, matchingTotal: mp.total || 0 });
           setImportLastResult({
             totalFound: d.totalFound,
             imported: d.imported,
@@ -572,16 +572,16 @@ export default function CRMSettings() {
         });
         const d = await r.json();
         if (d.status === 'running') {
-          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: 0, matchingLinked: 0 });
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: 0, matchingLinked: 0, matchingTotal: 0 });
         } else if (d.status === 'matching') {
           const mp = d.matchingProgress || {};
-          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: mp.linked || 0 });
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: mp.linked || 0, matchingTotal: mp.total || 0 });
           setImportPhase('matching');
         } else if (d.status === 'complete') {
           clearInterval(importPollRef.current);
           importPollRef.current = null;
           const mp = d.matchingProgress || {};
-          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: d.linksEstablished || 0 });
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: d.linksEstablished || 0, matchingTotal: mp.total || 0 });
           setImportLastResult({
             totalFound: d.totalFound,
             imported: d.imported,
@@ -1470,7 +1470,7 @@ export default function CRMSettings() {
     }
 
     if (importPhase === 'matching') {
-      const matchTotal   = importCounters.totalFound || 0;
+      const matchTotal   = importCounters.matchingTotal || importCounters.totalFound || 0;
       const matchDone    = importCounters.matchingProcessed || 0;
       const barPct       = matchTotal > 0 ? (matchDone / matchTotal) * 100 : 0;
       // Snap to nearest 100 — interval jumps, not smooth crawl
