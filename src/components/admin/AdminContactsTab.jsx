@@ -508,6 +508,7 @@ export default function AdminContactsTab({ headers }) {
 
   const drawerToken    = headers?.Authorization?.replace('Bearer ', '') || null;
   const searchDebounce = useRef(null);
+  const fetchAbortRef  = useRef(null);
 
   // ── Fetchers ──────────────────────────────────────────────────────────────────
 
@@ -524,7 +525,13 @@ export default function AdminContactsTab({ headers }) {
   }, []);
 
   const fetchUnified = useCallback(async (searchVal, src, tags, logic, page, append = false) => {
-    if (!append) setUnifiedLoading(true);
+    let controller = null;
+    if (!append) {
+      if (fetchAbortRef.current) fetchAbortRef.current.abort();
+      controller = new AbortController();
+      fetchAbortRef.current = controller;
+      setUnifiedLoading(true);
+    }
     setUnifiedError('');
     try {
       const params = new URLSearchParams({ limit: '50', page: String(page) });
@@ -534,16 +541,21 @@ export default function AdminContactsTab({ headers }) {
         tags.forEach(t => params.append('tags', t));
         params.set('tagMode', logic);
       }
-      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/unified?${params}`, { headers });
+      const fetchOpts = { headers };
+      if (controller) fetchOpts.signal = controller.signal;
+      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/unified?${params}`, fetchOpts);
       if (!r.ok) throw new Error('Failed');
       const data = await r.json();
       const rows = Array.isArray(data.rows) ? data.rows : [];
       setUnifiedRows(prev => append ? [...prev, ...rows] : rows);
       setUnifiedTotal(typeof data.total === 'number' ? data.total : 0);
-    } catch {
+    } catch (err) {
+      if (err.name === 'AbortError') return;
       setUnifiedError('Could not load contacts.');
     } finally {
-      setUnifiedLoading(false);
+      if (append || (controller && !controller.signal.aborted)) {
+        setUnifiedLoading(false);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
