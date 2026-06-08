@@ -294,6 +294,47 @@ export default function CRMSettings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Resume import progress UI on mount if an import is already running on the server.
+  // Covers the case where an admin navigates away mid-import and returns to this page.
+  useEffect(() => {
+    async function checkImportStatusOnMount() {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/jobber-import-status`, {
+          headers: authHeaders(),
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d.status === 'running') {
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: 0, matchingLinked: 0 });
+          setImportPhase('running');
+          startImportPolling();
+        } else if (d.status === 'matching') {
+          const mp = d.matchingProgress || {};
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: mp.linked || 0 });
+          setImportPhase('matching');
+          startImportPolling();
+        } else if (d.status === 'complete' && d.totalFound > 0) {
+          const mp = d.matchingProgress || {};
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: d.linksEstablished || 0 });
+          setImportLastResult({
+            totalFound: d.totalFound,
+            imported: d.imported,
+            tagged: d.tagged,
+            linksEstablished: d.linksEstablished || 0,
+            date: new Date().toLocaleDateString(),
+          });
+          setImportPhase('results_success');
+        } else if (d.status === 'error' && d.errorMessage) {
+          setImportErrorMsg(d.errorMessage);
+          setImportPhase('results_error');
+        }
+        // 'idle' or no active import → leave importPhase as 'idle', button shows
+      } catch { /* if status check fails on mount, show the button */ }
+    }
+    checkImportStatusOnMount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function loadCampaignFields() {
     setCfmLoading(true);
     try {
