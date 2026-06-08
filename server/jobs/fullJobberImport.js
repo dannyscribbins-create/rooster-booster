@@ -153,17 +153,29 @@ async function runFullJobberImport(contractorId, filterPreference) {
   importState.tagged = 0;
   importState.errorMessage = null;
 
+  // Date filter: only applied when mode=custom_date with a valid date
+  const dateFilter = (filterPreference.mode === 'custom_date' && filterPreference.customDate)
+    ? new Date(filterPreference.customDate).toISOString()
+    : null;
+
+  console.log('[fullJobberImport] starting — date filter:', dateFilter || 'none (all clients)');
+
   try {
     await new Promise(resolve => setTimeout(resolve, 3000));
     console.log('[fullJobberImport] Step A — fetching all clients...');
     const tokenA = await getFreshToken(contractorId);
 
     // ── STEP A — Pull all Jobber clients ─────────────────────────────────────
-    // No filter applied — ClientFilterAttributes does not support status filtering reliably.
-    // Filtering (active/archived/lead) happens in Node.js (Step G), not in Jobber.
+    // Status filtering (active/archived/lead) happens in Node.js (Step G).
+    // When a custom date filter is set, add createdAt filter to Jobber query to
+    // avoid fetching all 150+ pages. ClientFilterAttributes does NOT support
+    // name/firstName/lastName filtering — never attempt that here.
+    const clientsFilterStr = dateFilter
+      ? `, filter: { createdAt: { after: "${dateFilter}" } }`
+      : '';
     const clientsQuery = `
       query GetClients($after: String) {
-        clients(first: 100, after: $after) {
+        clients(first: 100, after: $after${clientsFilterStr}) {
           nodes {
             id firstName lastName isCompany isLead isArchived createdAt updatedAt
             emails { address primary }

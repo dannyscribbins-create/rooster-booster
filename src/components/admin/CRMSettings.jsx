@@ -1429,46 +1429,49 @@ export default function CRMSettings() {
     }
 
     if (importPhase === 'matching') {
-      const matchTotal = importCounters.totalFound || 0;
-      const matchDone  = importCounters.matchingProcessed || 0;
-      const pct        = matchTotal > 0 ? Math.round((matchDone / matchTotal) * 100) : 0;
+      const matchTotal   = importCounters.totalFound || 0;
+      const matchDone    = importCounters.matchingProcessed || 0;
+      const barPct       = matchTotal > 0 ? (matchDone / matchTotal) * 100 : 0;
+      // Snap to nearest 100 — interval jumps, not smooth crawl
+      const snapDone     = Math.round(matchDone / 100) * 100;
       return (
         <Card>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+            <span style={{
+              padding: '3px 10px', borderRadius: AD.radiusPill,
+              background: '#FAEEDA', color: '#633806',
+              fontSize: 12, fontWeight: 600, fontFamily: AD.fontSans,
+            }}>
+              Matching…
+            </span>
             <i className="ph ph-circle-notch" style={{
-              fontSize: 24, color: AD.amberText,
-              animation: 'crmSpin 0.8s linear infinite', flexShrink: 0,
+              fontSize: 16, color: '#EF9F27',
+              animation: 'crmSpin 0.8s linear infinite',
             }} />
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                Matching contacts…
-              </div>
-              <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 2 }}>
-                Linking Jobber clients to app users
-              </div>
-            </div>
           </div>
-          <div style={{ background: AD.bgCardTint, borderRadius: 99, height: 6, marginBottom: 14, overflow: 'hidden' }}>
+          <div style={{ background: AD.bgCardTint, borderRadius: 99, height: 8, marginBottom: 8, overflow: 'hidden' }}>
             <div style={{
               height: '100%', borderRadius: 99,
-              background: AD.amberText,
-              width: `${pct}%`,
-              transition: 'width 0.5s ease',
+              background: '#EF9F27',
+              width: `${barPct}%`,
+              transition: 'width 0.4s ease',
             }} />
           </div>
-          <div style={{ display: 'flex', gap: 40, flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                {matchDone.toLocaleString()} / {matchTotal.toLocaleString()}
-              </div>
-              <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 3 }}>Clients processed</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: AD.textPrimary, fontFamily: AD.fontSans }}>
-                {(importCounters.matchingLinked || 0).toLocaleString()}
-              </div>
-              <div style={{ fontSize: 12, color: AD.textTertiary, marginTop: 3 }}>Links established</div>
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+            <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+              {snapDone.toLocaleString()} / {matchTotal.toLocaleString()}
+            </span>
+          </div>
+          <div style={{ fontSize: 13, color: AD.textTertiary, marginBottom: 20 }}>
+            Finding email and phone matches — establishing contact links
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <span style={{ fontSize: 13, color: AD.greenText }}>
+              ✓ {importCounters.imported.toLocaleString()} clients imported
+            </span>
+            <span style={{ fontSize: 13, color: AD.textSecondary }}>
+              {(importCounters.matchingLinked || 0).toLocaleString()} links established
+            </span>
           </div>
         </Card>
       );

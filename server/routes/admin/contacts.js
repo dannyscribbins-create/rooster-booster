@@ -5,6 +5,7 @@ const { verifyAdminSession } = require('../../middleware/auth');
 const { logError } = require('../../middleware/errorLogger');
 const { deriveOptOutType } = require('../../utils/adminHelpers');
 const { applyTag, removeTag } = require('../../utils/tags');
+const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 
 // pg_trgm required for fuzzy name matching — used in app user linking, unified contacts merge (Session 77), and new user signup flow
 ;(async () => {
@@ -15,6 +16,21 @@ const { applyTag, removeTag } = require('../../utils/tags');
     console.log('pg_trgm setup skipped:', err.message); // diagnostic log — intentional
   }
 })();
+
+// ── TEMP: MANUAL MATCHING PASS TRIGGER ───────────────────────────────────────
+// TODO: REMOVE AFTER VERIFICATION — used to manually trigger a full contact
+// matching pass for testing. Remove once contact_jobber_links is confirmed
+// populated correctly in production.
+router.get('/api/admin/run-matching-pass', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  try {
+    const result = await runContactMatchingPass('accent-roofing');
+    res.json(result);
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/run-matching-pass' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // ── TAG SUGGESTIONS (literal route — must be before /:contactId) ──────────────
 
@@ -211,22 +227,15 @@ router.get('/api/admin/contacts/unified', async (req, res) => {
       searchCondContact = `AND (c.name ILIKE $${p} OR c.email ILIKE $${p} OR c.phone ILIKE $${p})`;
     }
 
-    // Source filter limits which sub-queries contribute rows
-    const includeJobber  = !source || source === 'jobber' || source === 'both';
-    const includeBoth    = !source || source === 'both';
-    const includeApp     = !source || source === 'app';
-
-    // Tier filter (tier_1 / tier_2) — applied via contact_tags
-    let tierJoinJobber   = '';
-    let tierWhereJobber  = '';
-    if (tier === 'tier_1' || tier === 'tier_2') {
-      tierJoinJobber  = `JOIN contact_tags ct_tier ON ct_tier.jobber_client_id = jc.jobber_client_id AND ct_tier.contractor_id = jc.contractor_id AND ct_tier.tag = $${++paramCount}`;
-      tierWhereJobber = '';
-      params.push(tier);
-    }
+    // Tier filter: derivable at query time — no tag dependency needed.
+    // tier_1 = Jobber clients with no linked contact (source_badge='jobber')
+    // tier_2 = Linked contacts (source_badge='both') + App-only contacts (source_badge='app')
+    let effectiveSource = source;
+    if (tier === 'tier_1') effectiveSource = 'jobber';
+    else if (tier === 'tier_2') effectiveSource = 'tier_2'; // special: both+app
 
     // ── Jobber sub-query (both + jobber source badges) ────────────────────────
-    const jobberSubQuery = (source === 'app') ? '' : `
+    const jobberSubQuery = (effectiveSource === 'app') ? '' : `
       SELECT
         jc.jobber_client_id,
         cjl.contact_id::text                          AS contact_id,
@@ -243,15 +252,14 @@ router.get('/api/admin/contacts/unified', async (req, res) => {
       FROM jobber_clients jc
       LEFT JOIN contact_jobber_links cjl ON cjl.jobber_client_id = jc.jobber_client_id AND cjl.contractor_id = jc.contractor_id
       LEFT JOIN contacts c ON c.id = cjl.contact_id
-      ${tierJoinJobber}
       WHERE jc.contractor_id = $1
         ${searchCondJobber}
-        ${source === 'both'   ? 'AND cjl.contact_id IS NOT NULL' : ''}
-        ${source === 'jobber' ? 'AND cjl.contact_id IS NULL'     : ''}
+        ${(effectiveSource === 'both' || effectiveSource === 'tier_2') ? 'AND cjl.contact_id IS NOT NULL' : ''}
+        ${effectiveSource === 'jobber' ? 'AND cjl.contact_id IS NULL' : ''}
     `;
 
     // ── App-only sub-query ────────────────────────────────────────────────────
-    const appSubQuery = (source === 'jobber' || source === 'both' || tier) ? '' : `
+    const appSubQuery = (effectiveSource === 'jobber' || effectiveSource === 'both') ? '' : `
       SELECT
         NULL                                           AS jobber_client_id,
         c.id::text                                     AS contact_id,
