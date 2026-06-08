@@ -260,60 +260,202 @@ async function runFullJobberImport(contractorId, filterPreference) {
       console.log(`[fullJobberImport] Step B complete — ${allInvoices.length} invoices fetched`);
     }
 
-    // ── STEP D — Pull all quotes ──────────────────────────────────────────────
-    console.log('[fullJobberImport] Step D — fetching all quotes...');
+    // ── STEP D — Pull quotes scoped to clients from Step A ───────────────────
     const tokenD = await getFreshToken(contractorId);
-    const quotesQuery = `
-      query GetQuotes($after: String) {
-        quotes(first: 100, after: $after) {
-          nodes {
-            id quoteStatus createdAt
-            client { id }
-          }
-          pageInfo { hasNextPage endCursor }
+    let allQuotes = [];
+
+    if (dateFilter) {
+      console.log(`[fullJobberImport] Step D — per-client quote fetch (${allClients.length} clients)...`);
+      for (const client of allClients) {
+        try {
+          const quotRes = await retryWithBackoff(
+            () => axios.post(
+              'https://api.getjobber.com/api/graphql',
+              {
+                query: `
+                  query GetClientQuotes($id: EncodedId!) {
+                    client(id: $id) {
+                      quotes(first: 50) {
+                        nodes {
+                          id quoteStatus createdAt
+                        }
+                      }
+                    }
+                  }
+                `,
+                variables: { id: client.id },
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${tokenD}`,
+                  'Content-Type': 'application/json',
+                  'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+                },
+              }
+            ),
+            { retries: 3, initialDelayMs: 500, shouldRetry: jobberShouldRetry }
+          );
+          const clientQuotes = (quotRes.data?.data?.client?.quotes?.nodes || []).map(q => ({
+            ...q,
+            client: { id: client.id },
+          }));
+          allQuotes.push(...clientQuotes);
+        } catch (quotErr) {
+          await logError({ req: null, error: quotErr, source: `fullJobberImport Step D — client ${client.id}` });
+          console.error(`[fullJobberImport] Step D error fetching quotes for client ${client.id}:`, quotErr.message);
         }
       }
-    `;
-    const allQuotes = await fetchAllPages(tokenD, quotesQuery, 'quotes', 'Step D', contractorId);
-    console.log(`[fullJobberImport] Step D complete — ${allQuotes.length} quotes fetched`);
-
-    // ── STEP E — Pull all requests ────────────────────────────────────────────
-    console.log('[fullJobberImport] Step E — fetching all requests...');
-    const tokenE = await getFreshToken(contractorId);
-    const requestsQuery = `
-      query GetRequests($after: String) {
-        requests(first: 100, after: $after) {
-          nodes {
-            id requestStatus createdAt
-            client { id }
-          }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-    `;
-    const allRequests = await fetchAllPages(tokenE, requestsQuery, 'requests', 'Step E', contractorId);
-    console.log(`[fullJobberImport] Step E complete — ${allRequests.length} requests fetched`);
-
-    // ── STEP C — Pull all jobs (most expensive, runs last) ────────────────────
-    console.log('[fullJobberImport] Step C — fetching all jobs...');
-    const tokenC = await getFreshToken(contractorId);
-    const jobsQuery = `
-      query GetJobs($after: String) {
-        jobs(first: 100, after: $after) {
-          nodes {
-            id jobStatus jobType completedAt createdAt
-            client { id }
-            customFields {
-              ... on CustomFieldText { label valueText }
-              ... on CustomFieldDropdown { label valueDropdown }
+      console.log(`[fullJobberImport] Step D complete — ${allQuotes.length} quotes fetched (per-client)`);
+    } else {
+      console.log('[fullJobberImport] Step D — bulk quote fetch (no date filter)...');
+      const quotesQuery = `
+        query GetQuotes($after: String) {
+          quotes(first: 100, after: $after) {
+            nodes {
+              id quoteStatus createdAt
+              client { id }
             }
+            pageInfo { hasNextPage endCursor }
           }
-          pageInfo { hasNextPage endCursor }
+        }
+      `;
+      allQuotes = await fetchAllPages(tokenD, quotesQuery, 'quotes', 'Step D', contractorId);
+      console.log(`[fullJobberImport] Step D complete — ${allQuotes.length} quotes fetched`);
+    }
+
+    // ── STEP E — Pull requests scoped to clients from Step A ─────────────────
+    const tokenE = await getFreshToken(contractorId);
+    let allRequests = [];
+
+    if (dateFilter) {
+      console.log(`[fullJobberImport] Step E — per-client request fetch (${allClients.length} clients)...`);
+      for (const client of allClients) {
+        try {
+          const reqRes = await retryWithBackoff(
+            () => axios.post(
+              'https://api.getjobber.com/api/graphql',
+              {
+                query: `
+                  query GetClientRequests($id: EncodedId!) {
+                    client(id: $id) {
+                      requests(first: 50) {
+                        nodes {
+                          id requestStatus createdAt
+                        }
+                      }
+                    }
+                  }
+                `,
+                variables: { id: client.id },
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${tokenE}`,
+                  'Content-Type': 'application/json',
+                  'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+                },
+              }
+            ),
+            { retries: 3, initialDelayMs: 500, shouldRetry: jobberShouldRetry }
+          );
+          const clientRequests = (reqRes.data?.data?.client?.requests?.nodes || []).map(r => ({
+            ...r,
+            client: { id: client.id },
+          }));
+          allRequests.push(...clientRequests);
+        } catch (reqErr) {
+          await logError({ req: null, error: reqErr, source: `fullJobberImport Step E — client ${client.id}` });
+          console.error(`[fullJobberImport] Step E error fetching requests for client ${client.id}:`, reqErr.message);
         }
       }
-    `;
-    const allJobs = await fetchAllPages(tokenC, jobsQuery, 'jobs', 'Step C', contractorId);
-    console.log(`[fullJobberImport] Step C complete — ${allJobs.length} jobs fetched`);
+      console.log(`[fullJobberImport] Step E complete — ${allRequests.length} requests fetched (per-client)`);
+    } else {
+      console.log('[fullJobberImport] Step E — bulk request fetch (no date filter)...');
+      const requestsQuery = `
+        query GetRequests($after: String) {
+          requests(first: 100, after: $after) {
+            nodes {
+              id requestStatus createdAt
+              client { id }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      `;
+      allRequests = await fetchAllPages(tokenE, requestsQuery, 'requests', 'Step E', contractorId);
+      console.log(`[fullJobberImport] Step E complete — ${allRequests.length} requests fetched`);
+    }
+
+    // ── STEP C — Pull jobs scoped to clients from Step A (most expensive) ────
+    const tokenC = await getFreshToken(contractorId);
+    let allJobs = [];
+
+    if (dateFilter) {
+      console.log(`[fullJobberImport] Step C — per-client job fetch (${allClients.length} clients)...`);
+      for (const client of allClients) {
+        try {
+          const jobRes = await retryWithBackoff(
+            () => axios.post(
+              'https://api.getjobber.com/api/graphql',
+              {
+                query: `
+                  query GetClientJobs($id: EncodedId!) {
+                    client(id: $id) {
+                      jobs(first: 50) {
+                        nodes {
+                          id jobStatus jobType completedAt createdAt
+                          customFields {
+                            ... on CustomFieldText { label valueText }
+                            ... on CustomFieldDropdown { label valueDropdown }
+                          }
+                        }
+                      }
+                    }
+                  }
+                `,
+                variables: { id: client.id },
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${tokenC}`,
+                  'Content-Type': 'application/json',
+                  'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+                },
+              }
+            ),
+            { retries: 3, initialDelayMs: 500, shouldRetry: jobberShouldRetry }
+          );
+          const clientJobs = (jobRes.data?.data?.client?.jobs?.nodes || []).map(j => ({
+            ...j,
+            client: { id: client.id },
+          }));
+          allJobs.push(...clientJobs);
+        } catch (jobErr) {
+          await logError({ req: null, error: jobErr, source: `fullJobberImport Step C — client ${client.id}` });
+          console.error(`[fullJobberImport] Step C error fetching jobs for client ${client.id}:`, jobErr.message);
+        }
+      }
+      console.log(`[fullJobberImport] Step C complete — ${allJobs.length} jobs fetched (per-client)`);
+    } else {
+      console.log('[fullJobberImport] Step C — bulk job fetch (no date filter)...');
+      const jobsQuery = `
+        query GetJobs($after: String) {
+          jobs(first: 100, after: $after) {
+            nodes {
+              id jobStatus jobType completedAt createdAt
+              client { id }
+              customFields {
+                ... on CustomFieldText { label valueText }
+                ... on CustomFieldDropdown { label valueDropdown }
+              }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      `;
+      allJobs = await fetchAllPages(tokenC, jobsQuery, 'jobs', 'Step C', contractorId);
+      console.log(`[fullJobberImport] Step C complete — ${allJobs.length} jobs fetched`);
+    }
 
     // ── STEP F — Join all data by client ID ──────────────────────────────────
     console.log('[fullJobberImport] Step F — joining data...');
