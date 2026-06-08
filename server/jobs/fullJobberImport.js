@@ -611,19 +611,19 @@ async function runFullJobberImport(contractorId, filterPreference) {
     }
 
     // ── PHASE 2 — Contact matching pass ──────────────────────────────────────
-    console.log('[fullJobberImport] Phase 2 — running contact matching pass...');
+    // Run ONCE as a full pass (iterates all contacts, not per-client).
+    // Per-client matching (single jobber client scope) is only for webhook handlers.
+    console.log('[fullJobberImport] Phase 2 — running contact matching pass (full pass)...');
     importState.status = 'matching';
     importState.matchingProgress = { processed: 0, total: filteredClients.length, linked: 0 };
 
-    for (const client of filteredClients) {
-      try {
-        const { linked } = await runContactMatchingPass(contractorId, { jobberClientId: client.id });
-        importState.matchingProgress.processed++;
-        importState.matchingProgress.linked += linked;
-        importState.linksEstablished += linked;
-      } catch (err) {
-        await logError({ req: null, error: err, source: `fullJobberImport — matching client ${client.id}` });
-      }
+    try {
+      const matchResult = await runContactMatchingPass(contractorId);
+      importState.matchingProgress.processed = filteredClients.length;
+      importState.matchingProgress.linked = matchResult.linked;
+      importState.linksEstablished = matchResult.linked;
+    } catch (err) {
+      await logError({ req: null, error: err, source: 'fullJobberImport — Phase 2 matching pass' });
     }
 
     if (importState.linksEstablished > 0) {
