@@ -2820,13 +2820,13 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [audienceDesc,           setAudienceDesc]           = useState('');
   const [audienceFilterTags,     setAudienceFilterTags]     = useState([]);
   const [audienceFilterMode,     setAudienceFilterMode]     = useState('AND');
-  const [audienceTagInput,       setAudienceTagInput]       = useState('');
-  const [audienceTagSuggestions, setAudienceTagSuggestions] = useState([]);
+  const [tagSummary,             setTagSummary]             = useState([]);
+  const [tagSummaryLoading,      setTagSummaryLoading]      = useState(false);
+  const [tagSummaryError,        setTagSummaryError]        = useState(null);
   const [audienceSaving,         setAudienceSaving]         = useState(false);
   const [audienceMembers,        setAudienceMembers]        = useState([]);
   const [audienceMembersLoading, setAudienceMembersLoading] = useState(false);
   const [audienceMembersExpanded, setAudienceMembersExpanded] = useState(false);
-  const audienceTagDebounce = useRef(null);
 
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
@@ -2845,6 +2845,26 @@ export default function AdminCampaigns({ setLoggedIn }) {
     return () => { if (abortRef.current) abortRef.current.abort(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!audienceModalOpen) return;
+    async function fetchTagSummary() {
+      setTagSummaryLoading(true);
+      setTagSummaryError(null);
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/jobber-client-tag-summary?visibleOnly=true`, { headers });
+        if (!r.ok) throw new Error('Failed');
+        const data = await r.json();
+        setTagSummary(Array.isArray(data.categories) ? data.categories : []);
+      } catch {
+        setTagSummaryError('Could not load tags');
+      } finally {
+        setTagSummaryLoading(false);
+      }
+    }
+    fetchTagSummary();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audienceModalOpen]);
 
   async function loadCampaigns() {
     setLoadingCampaigns(true);
@@ -2895,8 +2915,6 @@ export default function AdminCampaigns({ setLoggedIn }) {
     setAudienceDesc('');
     setAudienceFilterTags([]);
     setAudienceFilterMode('AND');
-    setAudienceTagInput('');
-    setAudienceTagSuggestions([]);
     setAudienceMembers([]);
     setAudienceMembersExpanded(false);
     setAudienceModalOpen(true);
@@ -2908,44 +2926,15 @@ export default function AdminCampaigns({ setLoggedIn }) {
     setAudienceDesc(audience.description || '');
     setAudienceFilterTags(audience.filter_json?.tags || []);
     setAudienceFilterMode(audience.filter_json?.mode || 'AND');
-    setAudienceTagInput('');
-    setAudienceTagSuggestions([]);
     setAudienceMembersExpanded(false);
     setAudienceModalOpen(true);
     loadAudienceMembers(audience.id);
   }
 
-  async function fetchAudienceTagSuggestions(q) {
-    try {
-      const r = await fetch(`${BACKEND_URL}/api/admin/contacts/tags/suggestions?q=${encodeURIComponent(q)}`, { headers });
-      if (!r.ok) return;
-      const data = await r.json();
-      setAudienceTagSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
-    } catch {
-      // swallow
-    }
-  }
-
-  function handleAudienceTagInputChange(val) {
-    setAudienceTagInput(val);
-    clearTimeout(audienceTagDebounce.current);
-    if (val.trim().length > 0) {
-      audienceTagDebounce.current = setTimeout(() => fetchAudienceTagSuggestions(val.trim()), 200);
-    } else {
-      setAudienceTagSuggestions([]);
-    }
-  }
-
-  function addAudienceTag(tag) {
-    const trimmed = tag.trim();
-    if (!trimmed || audienceFilterTags.includes(trimmed)) return;
-    setAudienceFilterTags(prev => [...prev, trimmed]);
-    setAudienceTagInput('');
-    setAudienceTagSuggestions([]);
-  }
-
-  function removeAudienceTag(tag) {
-    setAudienceFilterTags(prev => prev.filter(t => t !== tag));
+  function toggleAudienceTag(tag) {
+    setAudienceFilterTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
   }
 
   async function saveAudience() {
@@ -3561,7 +3550,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
         {/* Audience create/edit modal */}
         {audienceModalOpen && (
-          <CenteredModal onClose={() => setAudienceModalOpen(false)}>
+          <CenteredModal onClose={() => setAudienceModalOpen(false)} maxWidth={620}>
             <h2 style={{ margin: '0 0 6px', fontFamily: AD.fontDisplay, fontSize: 22, fontWeight: 400, color: AD.textPrimary }}>
               {editingAudience ? 'Edit Audience' : 'New Audience'}
             </h2>
@@ -3622,52 +3611,92 @@ export default function AdminCampaigns({ setLoggedIn }) {
                 </span>
               </div>
 
-              {/* Selected tags */}
-              {audienceFilterTags.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                  {audienceFilterTags.map(tag => {
-                    const colors = TAG_COLORS[tag] || TAG_COLORS.default;
-                    return (
-                      <span
-                        key={tag}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 99, background: colors.bg, color: colors.text, fontSize: 12, fontFamily: AD.fontSans, fontWeight: 500 }}
-                      >
-                        {tag}
-                        <button
-                          onClick={() => removeAudienceTag(tag)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.text, padding: 0, fontSize: 13, lineHeight: 1, marginLeft: 2 }}
-                        >
-                          <i className="ph ph-x" />
-                        </button>
-                      </span>
+              {/* Tag cloud */}
+              {tagSummaryLoading ? (
+                <p style={{ margin: 0, fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>Loading tags...</p>
+              ) : tagSummaryError ? (
+                <p style={{ margin: 0, fontSize: 13, color: AD.red2Text, fontFamily: AD.fontSans }}>{tagSummaryError}</p>
+              ) : (
+                <>
+                  {/* Amber warning pills for saved tags hidden by Tag Visibility settings */}
+                  {(() => {
+                    const visibleTagSet = new Set(
+                      tagSummary.flatMap(cat => cat.values.map(v => `${cat.prefix}:${v}`))
                     );
-                  })}
-                </div>
+                    const hiddenSelected = audienceFilterTags.filter(t => !visibleTagSet.has(t));
+                    if (hiddenSelected.length === 0) return null;
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                        {hiddenSelected.map(tag => (
+                          <span
+                            key={tag}
+                            title="This tag is currently hidden in Tag Visibility settings but is still active in this audience filter"
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 5,
+                              padding: '3px 10px', borderRadius: 99,
+                              background: 'rgba(245,158,11,0.08)',
+                              color: AD.amberText,
+                              border: '1px solid rgba(245,158,11,0.4)',
+                              fontSize: 12, fontFamily: AD.fontSans, fontWeight: 500,
+                            }}
+                          >
+                            <i className="ph ph-warning" style={{ fontSize: 11 }} />
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Grouped tag cloud — scrollable */}
+                  <div style={{ maxHeight: 320, overflowY: 'auto', border: `1px solid ${AD.border}`, borderRadius: 10, padding: '12px 14px' }}>
+                    {tagSummary.length === 0 ? (
+                      <p style={{ margin: 0, fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans, fontStyle: 'italic' }}>
+                        No tags found. Import clients from CRM Settings first.
+                      </p>
+                    ) : (
+                      tagSummary.map((cat, idx) => (
+                        <div key={cat.prefix} style={{ marginBottom: idx < tagSummary.length - 1 ? 14 : 0 }}>
+                          <p style={{ margin: '0 0 6px', fontSize: 11, fontFamily: AD.fontSans, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: AD.textTertiary }}>
+                            {cat.label}
+                          </p>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {cat.values.map(val => {
+                              const tag = `${cat.prefix}:${val}`;
+                              const isSelected = audienceFilterTags.includes(tag);
+                              return (
+                                <button
+                                  key={val}
+                                  onClick={() => toggleAudienceTag(tag)}
+                                  style={{
+                                    padding: '4px 10px', borderRadius: 99,
+                                    background: isSelected ? AD.navy : 'transparent',
+                                    color: isSelected ? '#fff' : AD.textSecondary,
+                                    border: `1px solid ${isSelected ? AD.navy : AD.border}`,
+                                    fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer',
+                                    fontWeight: isSelected ? 600 : 400, transition: 'all 0.1s',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {val.replace(/_/g, ' ')}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
               )}
 
-              {/* Tag input with autocomplete */}
-              <div style={{ position: 'relative' }}>
-                <input
-                  value={audienceTagInput}
-                  onChange={e => handleAudienceTagInputChange(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && audienceTagInput.trim()) { addAudienceTag(audienceTagInput); } }}
-                  placeholder="Search or type a tag…"
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary, background: AD.bgSurface, outline: 'none', boxSizing: 'border-box' }}
-                />
-                {audienceTagSuggestions.length > 0 && (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 10, boxShadow: AD.shadowMd, zIndex: 20, overflow: 'hidden', marginTop: 4 }}>
-                    {audienceTagSuggestions.map(s => (
-                      <button
-                        key={s}
-                        onClick={() => addAudienceTag(s)}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary }}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Summary line */}
+              <p style={{ margin: '8px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                {audienceFilterTags.length === 0
+                  ? 'No filters applied — audience will include all contacts'
+                  : `${audienceFilterTags.length} tag${audienceFilterTags.length !== 1 ? 's' : ''} selected`
+                }
+              </p>
             </div>
 
             {/* Active toggle (edit mode only) */}
