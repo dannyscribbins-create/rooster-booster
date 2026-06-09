@@ -43,22 +43,9 @@ app.use(express.json({ limit: '5mb' }));
   try {
     await initDB();
     startCronJobs();
-    const { backfillTagsForContacts } = require('./server/utils/tags');
-    const { pool } = require('./server/db');
-    const contactsResult = await pool.query('SELECT id, contractor_id FROM contacts');
-    if (contactsResult.rows.length) {
-      const byContractor = {};
-      for (const r of contactsResult.rows) {
-        if (!byContractor[r.contractor_id]) byContractor[r.contractor_id] = [];
-        byContractor[r.contractor_id].push(r.id);
-      }
-      for (const [cid, ids] of Object.entries(byContractor)) {
-        backfillTagsForContacts(pool, cid, ids); // fire and forget per contractor
-      }
-    }
   } catch (err) {
     const { logError } = require('./server/middleware/errorLogger');
-    logError({ req: null, error: err, source: 'startup-backfill' });
+    logError({ req: null, error: err, source: 'startup' });
   }
 })();
 
