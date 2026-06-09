@@ -224,6 +224,13 @@ export default function CRMSettings() {
   const [cfmNoToken, setCfmNoToken]         = useState(false);
   const [cfmOpen, setCfmOpen]               = useState(false);
 
+  // Tag group visibility
+  const [tagVisibility, setTagVisibility]       = useState({});
+  const [tagGroups, setTagGroups]               = useState([]);
+  const [tagVisSaveMsg, setTagVisSaveMsg]       = useState(null); // { type: 'saved'|'error' }
+  const tagVisDebounceRef                       = useRef(null);
+  const tagVisMsgTimer                          = useRef(null);
+
   // Import flow
   const [importPhase, setImportPhase]           = useState('idle'); // 'idle'|'modal'|'running'|'results_success'|'results_error'
   const [importFilterMode, setImportFilterMode] = useState('recommended');
@@ -246,21 +253,22 @@ export default function CRMSettings() {
     return { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` };
   }
 
-  function loadStatus() {
+  async function loadStatus() {
     setLoading(true);
-    fetch(`${BACKEND_URL}/api/admin/crm/status`, { headers: authHeaders() })
-      .then(r => r.json())
-      .then(d => {
-        setStatus(d);
-        setFieldName(d.referrerFieldName || 'Referred by');
-        setSyncInterval(d.syncIntervalMins || 30);
-        setLastSyncedAt(d.lastSyncedAt || null);
-        setReferralStartDate(d.referralStartDate || null);
-        setConnectedAt(d.connectedAt || null);
-        setStartDateInput(d.referralStartDate ? d.referralStartDate.slice(0, 10) : '');
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/crm/status`, { headers: authHeaders() });
+      const d = await r.json();
+      setStatus(d);
+      setFieldName(d.referrerFieldName || 'Referred by');
+      setSyncInterval(d.syncIntervalMins || 30);
+      setLastSyncedAt(d.lastSyncedAt || null);
+      setReferralStartDate(d.referralStartDate || null);
+      setConnectedAt(d.connectedAt || null);
+      setStartDateInput(d.referralStartDate ? d.referralStartDate.slice(0, 10) : '');
+      setTagVisibility(d.tagGroupVisibility || {});
+    } finally {
+      setLoading(false);
+    }
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -343,6 +351,19 @@ export default function CRMSettings() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadCampaignFields(); }, []);
+
+  useEffect(() => {
+    async function loadTagGroups() {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/jobber-client-tag-summary`, { headers: authHeaders() });
+        if (!r.ok) return;
+        const d = await r.json();
+        setTagGroups(d.categories || []);
+      } catch { /* non-blocking */ }
+    }
+    loadTagGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function openApiKeyFlow(crmType) {
     setExpandedCRM(crmType);
@@ -1177,6 +1198,128 @@ export default function CRMSettings() {
     );
   }
 
+  // ── Card 4c ── Tag group visibility ────────────────────────────────────────
+
+  const TAG_GROUP_LABELS = {
+    assigned_rep:  'Assigned Rep',
+    client_type:   'Client Type',
+    insurance:     'Insurance',
+    invoice:       'Invoice Status',
+    job:           'Job Status',
+    job_count:     'Job Count',
+    job_type:      'Job Type',
+    material_type: 'Material type',
+    quote:         'Quote Status',
+    recency:       'Recency',
+    request:       'Request Status',
+    source:        'Lead Source',
+    status:        'Status',
+    value:         'Value Bracket',
+    work_category: 'Work Category',
+    jobber_tag:    'Jobber Native Tags',
+  };
+
+  function tagGroupLabel(prefix) {
+    return TAG_GROUP_LABELS[prefix] || prefix.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  async function saveTagVisibility(updated) {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/crm/settings`, {
+        method: 'PUT',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag_group_visibility: updated }),
+      });
+      if (!r.ok) throw new Error('save failed');
+      setTagVisSaveMsg({ type: 'saved' });
+    } catch {
+      setTagVisSaveMsg({ type: 'error' });
+    }
+    if (tagVisMsgTimer.current) clearTimeout(tagVisMsgTimer.current);
+    tagVisMsgTimer.current = setTimeout(() => setTagVisSaveMsg(null), 1500);
+  }
+
+  function handleTagVisToggle(prefix, currentVisible) {
+    const newVisible = !currentVisible;
+    const updated = { ...tagVisibility };
+    if (newVisible) {
+      delete updated[prefix]; // visible is the default — no need to store true
+    } else {
+      updated[prefix] = false;
+    }
+    // Optimistic update
+    setTagVisibility(updated);
+    // Revert on error is handled via setTagVisSaveMsg
+    if (tagVisDebounceRef.current) clearTimeout(tagVisDebounceRef.current);
+    tagVisDebounceRef.current = setTimeout(() => saveTagVisibility(updated), 800);
+  }
+
+  function renderTagVisibilityCard() {
+    const sorted = [...tagGroups].sort((a, b) => tagGroupLabel(a.prefix).localeCompare(tagGroupLabel(b.prefix)));
+    return (
+      <Card>
+        <SectionHeading>TAG VISIBILITY</SectionHeading>
+        <p style={{ margin: '0 0 20px', fontSize: 13, color: AD.textSecondary, lineHeight: 1.6 }}>
+          Choose which tag groups appear in contact filters, audience building, and campaign targeting.
+          Hidden groups are still synced in the background — you can re-enable them at any time.
+        </p>
+
+        {tagGroups.length === 0 ? (
+          <div style={{ fontSize: 13, color: AD.textTertiary }}>
+            No tag groups found. Run a Jobber client import to populate tags.
+          </div>
+        ) : (
+          <div style={{ border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, overflow: 'hidden' }}>
+            {sorted.map((group, i) => {
+              const isVisible = tagVisibility[group.prefix] !== false;
+              return (
+                <div key={group.prefix} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '13px 16px',
+                  borderBottom: i < sorted.length - 1 ? `1px solid ${AD.border}` : 'none',
+                  background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 14, color: AD.textPrimary }}>{tagGroupLabel(group.prefix)}</span>
+                  </div>
+                  <span style={{ fontSize: 12, color: AD.textTertiary, marginRight: 16 }}>
+                    {group.count.toLocaleString()} tags
+                  </span>
+                  {/* Pill toggle */}
+                  <div
+                    onClick={() => handleTagVisToggle(group.prefix, isVisible)}
+                    style={{
+                      width: 44, height: 24, borderRadius: 12, flexShrink: 0,
+                      background: isVisible ? AD.navy : AD.border,
+                      cursor: 'pointer', position: 'relative',
+                      transition: 'background 0.2s',
+                    }}
+                  >
+                    <div style={{
+                      position: 'absolute', top: 3, left: isVisible ? 23 : 3,
+                      width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                      transition: 'left 0.2s',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                    }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tagVisSaveMsg && (
+          <div style={{
+            marginTop: 12, fontSize: 13,
+            color: tagVisSaveMsg.type === 'saved' ? AD.greenText : AD.red2Text,
+          }}>
+            {tagVisSaveMsg.type === 'saved' ? 'Saved ✓' : 'Failed to save — please try again'}
+          </div>
+        )}
+      </Card>
+    );
+  }
+
   // ── Card 5 ── Sync settings ─────────────────────────────────────────────────
   function renderSyncCard() {
     return (
@@ -1695,6 +1838,7 @@ export default function CRMSettings() {
           {renderFieldMappingCard()}
           {renderStageMappingCard()}
           {renderCampaignFieldMappingCard()}
+          {renderTagVisibilityCard()}
           {renderImportSection()}
           {renderSyncCard()}
           {renderStartDateCard()}

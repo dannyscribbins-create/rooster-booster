@@ -648,19 +648,27 @@ router.get('/api/admin/crm/status', async (req, res) => {
   // MVP: hardcoded contractor_id — FORA: pull from admin session token
   const contractorId = 'accent-roofing';
   try {
-    const settingsResult = await pool.query(
-      `SELECT contractor_id, crm_type, crm_account_name, connection_method, api_key,
-              referrer_field_name, stage_map, connected_at, last_synced_at,
-              sync_interval_mins, is_connected, referral_start_date
-       FROM contractor_crm_settings WHERE contractor_id = $1`,
-      [contractorId]
-    );
+    const [settingsResult, visibilityResult] = await Promise.all([
+      pool.query(
+        `SELECT contractor_id, crm_type, crm_account_name, connection_method, api_key,
+                referrer_field_name, stage_map, connected_at, last_synced_at,
+                sync_interval_mins, is_connected, referral_start_date
+         FROM contractor_crm_settings WHERE contractor_id = $1`,
+        [contractorId]
+      ),
+      pool.query(
+        `SELECT tag_group_visibility FROM contractor_settings WHERE contractor_id = $1`,
+        [contractorId]
+      ),
+    ]);
+    const tagGroupVisibility = visibilityResult.rows[0]?.tag_group_visibility || {};
     if (settingsResult.rows.length === 0) {
       return res.json({
         isConnected: false, crmType: null, crmAccountName: null,
         connectionMethod: null, referrerFieldName: 'Referred by',
         stageMap: { lead: 'Quote Sent', inspection: 'Assessment Scheduled', sold: 'Job Approved', paid: 'Invoice Paid' },
         connectedAt: null, lastSyncedAt: null, syncIntervalMins: 30, tokenStatus: 'missing',
+        tagGroupVisibility,
       });
     }
     const s = settingsResult.rows[0];
@@ -703,6 +711,7 @@ router.get('/api/admin/crm/status', async (req, res) => {
       lastSyncedAt: s.last_synced_at,
       syncIntervalMins: s.sync_interval_mins || 30,
       tokenStatus,
+      tagGroupVisibility,
     });
   } catch (err) {
     await logError({ req, error: err });
@@ -802,20 +811,30 @@ router.put('/api/admin/crm/settings', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   // MVP: hardcoded contractor_id — FORA: pull from admin session token
   const contractorId = 'accent-roofing';
-  const { referrerFieldName, stageMap, syncIntervalMins } = req.body;
+  const { referrerFieldName, stageMap, syncIntervalMins, tag_group_visibility } = req.body;
   try {
-    await pool.query(
-      `UPDATE contractor_crm_settings
-       SET referrer_field_name = COALESCE($2, referrer_field_name),
-           stage_map = COALESCE($3, stage_map),
-           sync_interval_mins = COALESCE($4, sync_interval_mins)
-       WHERE contractor_id = $1`,
-      [contractorId, referrerFieldName || null, stageMap ? JSON.stringify(stageMap) : null, syncIntervalMins || null]
-    );
+    if (referrerFieldName !== undefined || stageMap !== undefined || syncIntervalMins !== undefined) {
+      await pool.query(
+        `UPDATE contractor_crm_settings
+         SET referrer_field_name = COALESCE($2, referrer_field_name),
+             stage_map = COALESCE($3, stage_map),
+             sync_interval_mins = COALESCE($4, sync_interval_mins)
+         WHERE contractor_id = $1`,
+        [contractorId, referrerFieldName || null, stageMap ? JSON.stringify(stageMap) : null, syncIntervalMins || null]
+      );
+    }
+    if (tag_group_visibility !== undefined) {
+      await pool.query(
+        `INSERT INTO contractor_settings (contractor_id, tag_group_visibility)
+         VALUES ($1, $2::jsonb)
+         ON CONFLICT (contractor_id) DO UPDATE SET tag_group_visibility = $2::jsonb`,
+        [contractorId, JSON.stringify(tag_group_visibility)]
+      );
+    }
     res.json({ success: true });
   } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    await logError({ req, error: err, source: 'PUT /api/admin/crm/settings' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

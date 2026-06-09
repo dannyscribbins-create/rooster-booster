@@ -492,6 +492,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // ── STRIPE CONNECT ────────────────────────────────────────────────────────────
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS stripe_account_id VARCHAR(255)`);
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS stripe_connect_status VARCHAR(20) NOT NULL DEFAULT 'not_connected'`);
+  // Tag group visibility — opt-out model: missing key = visible, explicit false = hidden
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS tag_group_visibility JSONB DEFAULT '{}'`);
 
   // ── CAMPAIGNS ─────────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS campaigns (

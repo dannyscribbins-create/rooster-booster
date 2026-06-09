@@ -693,33 +693,49 @@ router.delete('/api/admin/contacts/:contactId/tags/:tag', async (req, res) => {
 
 // ── JOBBER CLIENT TAG SUMMARY ─────────────────────────────────────────────────
 // Returns Jobber-sourced tags grouped by prefix for filter panel Section A.
+// ?visibleOnly=true filters out groups where tag_group_visibility[prefix] === false.
 router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
   const contractorId = 'accent-roofing';
+  const visibleOnly = req.query.visibleOnly === 'true';
   try {
-    const result = await pool.query(
-      `SELECT
-         SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1) AS prefix,
-         ARRAY_AGG(DISTINCT SUBSTRING(tag FROM POSITION(':' IN tag) + 1)
-                   ORDER BY SUBSTRING(tag FROM POSITION(':' IN tag) + 1)) AS values,
-         COUNT(DISTINCT jobber_client_id) AS client_count
-       FROM contact_tags
-       WHERE contractor_id = $1
-         AND source = 'jobber_crm'
-         AND jobber_client_id IS NOT NULL
-         AND tag LIKE '%:%'
-       GROUP BY SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1)
-       ORDER BY SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1)`,
-      [contractorId]
-    );
+    const [tagResult, visibilityResult] = await Promise.all([
+      pool.query(
+        `SELECT
+           SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1) AS prefix,
+           ARRAY_AGG(DISTINCT SUBSTRING(tag FROM POSITION(':' IN tag) + 1)
+                     ORDER BY SUBSTRING(tag FROM POSITION(':' IN tag) + 1)) AS values,
+           COUNT(DISTINCT jobber_client_id) AS client_count
+         FROM contact_tags
+         WHERE contractor_id = $1
+           AND source = 'jobber_crm'
+           AND jobber_client_id IS NOT NULL
+           AND tag LIKE '%:%'
+         GROUP BY SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1)
+         ORDER BY SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1)`,
+        [contractorId]
+      ),
+      visibleOnly
+        ? pool.query(
+            `SELECT tag_group_visibility FROM contractor_settings WHERE contractor_id = $1`,
+            [contractorId]
+          )
+        : Promise.resolve({ rows: [] }),
+    ]);
 
-    const categories = result.rows.map(row => ({
+    const visibility = visibilityResult.rows[0]?.tag_group_visibility || {};
+
+    let categories = tagResult.rows.map(row => ({
       prefix: row.prefix,
       label:  row.prefix.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       values: row.values,
       count:  parseInt(row.client_count, 10),
     }));
+
+    if (visibleOnly) {
+      categories = categories.filter(cat => visibility[cat.prefix] !== false);
+    }
 
     res.json({ categories });
   } catch (err) {
