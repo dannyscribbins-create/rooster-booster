@@ -137,13 +137,6 @@ const CRM_INSTRUCTIONS = {
     'In AccuLynx, contact your AccuLynx account manager to request API access. Once enabled, find your key under Settings → API.',
 };
 
-const STAGE_DESCRIPTIONS = {
-  lead:       'A referral was submitted but not yet scheduled',
-  inspection: 'A site visit or estimate has been scheduled',
-  sold:       'The job has been approved and is in progress',
-  paid:       'The invoice has been paid — bonus is triggered',
-};
-
 // ── Campaign field mapping constants ─────────────────────────────────────────
 
 const CFM_VALID_KEYS = ['work_category', 'job_source', 'material_type', 'assigned_rep'];
@@ -204,11 +197,6 @@ export default function CRMSettings() {
   const [fieldSaving, setFieldSaving]   = useState(false);
   const [fieldSaved, setFieldSaved]     = useState(false);
 
-  // Stage mapping
-  const [stageMap, setStageMap]         = useState({ lead: '', inspection: '', sold: '', paid: '' });
-  const [stageSaving, setStageSaving]   = useState(false);
-  const [stageSaved, setStageSaved]     = useState(false);
-
   // Sync
   const [syncInterval, setSyncInterval] = useState(30);
   const [syncing, setSyncing]           = useState(false);
@@ -247,7 +235,6 @@ export default function CRMSettings() {
   const [importErrorMsg, setImportErrorMsg]     = useState('');
 
   const fieldSavedTimer     = useRef(null);
-  const stageSavedTimer     = useRef(null);
   const syncMsgTimer        = useRef(null);
   const startDateMsgTimer   = useRef(null);
   const importPollRef       = useRef(null);
@@ -266,7 +253,6 @@ export default function CRMSettings() {
       .then(d => {
         setStatus(d);
         setFieldName(d.referrerFieldName || 'Referred by');
-        setStageMap(d.stageMap || { lead: '', inspection: '', sold: '', paid: '' });
         setSyncInterval(d.syncIntervalMins || 30);
         setLastSyncedAt(d.lastSyncedAt || null);
         setReferralStartDate(d.referralStartDate || null);
@@ -430,22 +416,6 @@ export default function CRMSettings() {
       fieldSavedTimer.current = setTimeout(() => setFieldSaved(false), 2000);
     } finally {
       setFieldSaving(false);
-    }
-  }
-
-  async function handleSaveStageMap() {
-    setStageSaving(true);
-    try {
-      await fetch(`${BACKEND_URL}/api/admin/crm/settings`, {
-        method: 'PUT',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stageMap }),
-      });
-      setStageSaved(true);
-      if (stageSavedTimer.current) clearTimeout(stageSavedTimer.current);
-      stageSavedTimer.current = setTimeout(() => setStageSaved(false), 2000);
-    } finally {
-      setStageSaving(false);
     }
   }
 
@@ -958,45 +928,94 @@ export default function CRMSettings() {
     );
   }
 
-  // ── Card 4 ── Stage mapping ─────────────────────────────────────────────────
+  // ── Card 4 ── Pipeline stage transparency ──────────────────────────────────
   function renderStageMappingCard() {
+    const pipelineStages = [
+      { name: 'Lead',               description: 'Referral submitted — appointment not yet scheduled', trigger: 'Client created in Jobber' },
+      { name: 'Inspection',         description: 'Site visit or estimate has been scheduled',          trigger: 'Quote created in Jobber' },
+      { name: 'Sold',               description: 'Job approved and work is in progress',              trigger: 'Job created in Jobber' },
+      { name: 'Pending Completion', description: 'Work complete — awaiting payment',                  trigger: 'Job archived, invoice not yet paid' },
+      { name: 'Complete ✓',         description: 'Invoice paid — referral bonus triggered',           trigger: 'Invoice marked paid in Jobber' },
+      { name: 'Not Sold',           description: 'Client did not proceed',                            trigger: 'All quotes archived, no job created' },
+    ];
+
+    const cardStatuses = [
+      { name: 'In App',       description: "Your referral downloaded the app via a referrer's personal link but hasn't been scheduled yet" },
+      { name: 'Booking Sent', description: "Your referral submitted a booking request through the app — awaiting entry in your CRM" },
+    ];
+
     return (
       <Card>
         <SectionHeading>Pipeline Stage Mapping</SectionHeading>
+        <p style={{ margin: '0 0 24px', fontSize: 13, color: AD.textTertiary, lineHeight: 1.6 }}>
+          RoofMiles automatically tracks referral progress based on activity in your connected CRM.
+          Here's exactly how your referrers see each stage.
+        </p>
+
+        {/* Sub-section A — Referral Pipeline Stages */}
         <div style={{
-          display: 'flex', alignItems: 'flex-start', gap: 10,
-          padding: '10px 14px', background: AD.amberBg, borderRadius: AD.radiusMd, marginBottom: 24,
+          fontSize: 11, fontWeight: 600, letterSpacing: '0.07em',
+          textTransform: 'uppercase', color: AD.textTertiary, marginBottom: 12,
         }}>
-          <i className="ph ph-warning" style={{ fontSize: 16, color: AD.amberText, flexShrink: 0, marginTop: 1 }} />
-          <p style={{ margin: 0, fontSize: 13, color: AD.amberText, lineHeight: 1.55 }}>
-            Stage names must match exactly what appears in your CRM. If a stage is mapped incorrectly,
-            referral tracking will stop advancing past that step.
-          </p>
+          Referral Pipeline Stages
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 24 }}>
-          {['lead', 'inspection', 'sold', 'paid'].map(stage => (
-            <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
-              <div style={{ flex: '0 0 200px', minWidth: 140 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: AD.textPrimary, textTransform: 'capitalize', marginBottom: 3 }}>
-                  {stage}
-                </div>
-                <div style={{ fontSize: 12, color: AD.textTertiary, lineHeight: 1.45 }}>
-                  {STAGE_DESCRIPTIONS[stage]}
-                </div>
+        <div style={{ border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, overflow: 'hidden', marginBottom: 28 }}>
+          {pipelineStages.map((stage, i) => (
+            <div key={stage.name} style={{
+              display: 'grid', gridTemplateColumns: '180px 1fr',
+              padding: '14px 16px', alignItems: 'start',
+              borderBottom: i < pipelineStages.length - 1 ? `1px solid ${AD.border}` : 'none',
+              background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: AD.textPrimary, paddingRight: 12, lineHeight: 1.4 }}>
+                {stage.name}
               </div>
-              <div style={{ flex: 1, minWidth: 200, maxWidth: 300 }}>
-                <SettingsInput
-                  value={stageMap[stage] || ''}
-                  onChange={val => setStageMap(m => ({ ...m, [stage]: val }))}
-                  placeholder={`CRM label for "${stage}"`}
-                />
+              <div>
+                <div style={{ fontSize: 13, color: AD.textSecondary, lineHeight: 1.5, marginBottom: 6 }}>
+                  {stage.description}
+                </div>
+                <div style={{ fontSize: 12, color: AD.textTertiary }}>
+                  {'Triggered by: '}
+                  <span style={{
+                    display: 'inline-block', padding: '1px 7px', borderRadius: 4,
+                    background: 'rgba(255,255,255,0.05)', border: `1px solid ${AD.border}`,
+                    fontFamily: "'Roboto Mono', monospace", fontSize: 11, color: AD.textTertiary,
+                  }}>
+                    {stage.trigger}
+                  </span>
+                </div>
               </div>
             </div>
           ))}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <PrimaryBtn onClick={handleSaveStageMap} loading={stageSaving}>Save Stage Mapping</PrimaryBtn>
-          {stageSaved && <span style={{ fontSize: 13, color: AD.greenText }}>Saved ✓</span>}
+
+        {/* Sub-section B — Card Status Indicators */}
+        <div style={{
+          fontSize: 11, fontWeight: 600, letterSpacing: '0.07em',
+          textTransform: 'uppercase', color: AD.textTertiary, marginBottom: 8,
+        }}>
+          Card Status Indicators
+        </div>
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: AD.textTertiary, lineHeight: 1.55 }}>
+          These appear on individual referral cards in the app — they are not pipeline stage pills
+          and do not advance the progress bar.
+        </p>
+        <div style={{ border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, overflow: 'hidden' }}>
+          {cardStatuses.map((item, i) => (
+            <div key={item.name} style={{
+              display: 'grid', gridTemplateColumns: '180px 1fr',
+              padding: '14px 16px', alignItems: 'start',
+              borderBottom: i < cardStatuses.length - 1 ? `1px solid ${AD.border}` : 'none',
+              background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: AD.textPrimary, paddingRight: 12, lineHeight: 1.4 }}>
+                {item.name}
+              </div>
+              <div style={{ fontSize: 13, color: AD.textSecondary, lineHeight: 1.5 }}>
+                {item.description}
+              </div>
+            </div>
+          ))}
         </div>
       </Card>
     );
@@ -1004,9 +1023,12 @@ export default function CRMSettings() {
 
   // ── Card 4b ── Campaign field mapping ──────────────────────────────────────
   function renderCampaignFieldMappingCard() {
-    const mappedCount   = Object.values(cfmSelections).filter(v => v).length;
-    const isCollapsible = cfmFields.length > 0;
-    const showBody      = !isCollapsible || cfmOpen;
+    const mappedCount    = Object.values(cfmSelections).filter(v => v).length;
+    const isCollapsible  = cfmFields.length > 0;
+    const showBody       = !isCollapsible || cfmOpen;
+    const crmDisplayName = status?.crmType
+      ? (CRM_LABEL[status.crmType] || status.crmType)
+      : null;
 
     return (
       <Card>
@@ -1023,7 +1045,7 @@ export default function CRMSettings() {
               />
             )}
             <div>
-              <SectionHeading>Campaign Field Mapping</SectionHeading>
+              <SectionHeading>{`CRM FIELD MAPPING${crmDisplayName ? ` — ${crmDisplayName}` : ''}`}</SectionHeading>
               {isCollapsible && !cfmOpen && (
                 <span style={{ fontSize: 13, color: AD.textTertiary, display: 'block', marginTop: -10, marginBottom: 4 }}>
                   {cfmFields.length} field{cfmFields.length === 1 ? '' : 's'} discovered · {mappedCount} mapped
@@ -1050,9 +1072,21 @@ export default function CRMSettings() {
 
         {showBody && (
           <div style={{ marginTop: 12 }}>
-            <p style={{ color: AD.textSecondary, fontSize: 13, margin: '0 0 16px', lineHeight: 1.6 }}>
-              Map your Jobber custom fields to RoofMiles concepts so the campaign builder knows how to filter and personalize your outreach.
-            </p>
+            {!crmDisplayName ? (
+              <p style={{ color: AD.textSecondary, fontSize: 13, margin: '0 0 16px', lineHeight: 1.6 }}>
+                Connect a CRM to configure field mapping.
+              </p>
+            ) : (
+              <p style={{ color: AD.textSecondary, fontSize: 13, margin: '0 0 16px', lineHeight: 1.6 }}>
+                Your {crmDisplayName} account uses custom fields to track job details like work type,
+                materials, and lead source. This mapping tells RoofMiles which of your {crmDisplayName} fields
+                correspond to these standard concepts — so your contacts are automatically tagged, your
+                audiences can filter by job type, and your campaigns can personalize outreach based on real
+                job data. Run Discovery any time you add new custom fields in {crmDisplayName}.
+              </p>
+            )}
+
+            <div style={{ opacity: !crmDisplayName ? 0.4 : 1, pointerEvents: !crmDisplayName ? 'none' : 'auto' }}>
 
             {cfmNoToken && (
               <div style={{
@@ -1135,6 +1169,8 @@ export default function CRMSettings() {
                 ))}
               </div>
             )}
+
+            </div>
           </div>
         )}
       </Card>
