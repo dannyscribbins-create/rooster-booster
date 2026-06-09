@@ -514,7 +514,7 @@ export default function AdminContactsTab({ headers }) {
 
   const fetchTagSummary = useCallback(async () => {
     try {
-      const r = await fetch(`${BACKEND_URL}/api/admin/jobber-client-tag-summary`, { headers });
+      const r = await fetch(`${BACKEND_URL}/api/admin/jobber-client-tag-summary?visibleOnly=true`, { headers });
       if (!r.ok) return;
       const data = await r.json();
       setJobberTagSummary(Array.isArray(data.categories) ? data.categories : []);
