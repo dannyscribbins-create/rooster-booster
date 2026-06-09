@@ -508,22 +508,25 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       if (!invoiceId) {
         await logError({ req, error: new Error('[invoice-paid] missing invoiceId in webhook payload'), source: 'POST /webhooks/jobber/invoice-paid' });
         try {
-          await resend.emails.send({
-            from: 'noreply@roofmiles.com',
-            to: 'admin1@roofmiles.com',
-            subject: '[RoofMiles Alert] Invoice webhook error — itemId missing from payload',
-            html: `
-              <p>A RoofMiles webhook error occurred and requires your attention.</p>
-              <p><strong>Webhook:</strong> invoice-paid<br>
-              <strong>Error:</strong> itemId was not present in the Jobber payload.<br>
-              <strong>Time:</strong> ${new Date().toISOString()}<br>
-              <strong>Invoice ID:</strong> not present in payload</p>
-              <p>The referral conversion check for this invoice did not run.
-              Please review recent invoices in Jobber to check whether a referral
-              conversion should have been recorded.</p>
-              <p>— RoofMiles System</p>
-            `
-          });
+          await retryWithBackoff(
+            () => resend.emails.send({
+              from: 'noreply@roofmiles.com',
+              to: 'admin1@roofmiles.com',
+              subject: '[RoofMiles Alert] Invoice webhook error — itemId missing from payload',
+              html: `
+                <p>A RoofMiles webhook error occurred and requires your attention.</p>
+                <p><strong>Webhook:</strong> invoice-paid<br>
+                <strong>Error:</strong> itemId was not present in the Jobber payload.<br>
+                <strong>Time:</strong> ${new Date().toISOString()}<br>
+                <strong>Invoice ID:</strong> not present in payload</p>
+                <p>The referral conversion check for this invoice did not run.
+                Please review recent invoices in Jobber to check whether a referral
+                conversion should have been recorded.</p>
+                <p>— RoofMiles System</p>
+              `
+            }),
+            { shouldRetry: resendShouldRetry }
+          );
         } catch (emailErr) {
           console.warn('[invoice-paid] failed to send admin alert email:', emailErr.message);
         }
@@ -564,22 +567,25 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       if (!clientId) {
         await logError({ req, error: new Error(`[invoice-paid] invoice ${invoiceId} has no client id`), source: 'POST /webhooks/jobber/invoice-paid' });
         try {
-          await resend.emails.send({
-            from: 'noreply@roofmiles.com',
-            to: 'admin1@roofmiles.com',
-            subject: '[RoofMiles Alert] Invoice webhook error — client ID could not be resolved',
-            html: `
-              <p>A RoofMiles webhook error occurred and requires your attention.</p>
-              <p><strong>Webhook:</strong> invoice-paid<br>
-              <strong>Error:</strong> The Jobber API returned no client ID for the fetched invoice.<br>
-              <strong>Time:</strong> ${new Date().toISOString()}<br>
-              <strong>Invoice ID:</strong> ${invoiceId}</p>
-              <p>The referral conversion check for this invoice did not run.
-              Please review this invoice in Jobber to check whether a referral
-              conversion should have been recorded.</p>
-              <p>— RoofMiles System</p>
-            `
-          });
+          await retryWithBackoff(
+            () => resend.emails.send({
+              from: 'noreply@roofmiles.com',
+              to: 'admin1@roofmiles.com',
+              subject: '[RoofMiles Alert] Invoice webhook error — client ID could not be resolved',
+              html: `
+                <p>A RoofMiles webhook error occurred and requires your attention.</p>
+                <p><strong>Webhook:</strong> invoice-paid<br>
+                <strong>Error:</strong> The Jobber API returned no client ID for the fetched invoice.<br>
+                <strong>Time:</strong> ${new Date().toISOString()}<br>
+                <strong>Invoice ID:</strong> ${invoiceId}</p>
+                <p>The referral conversion check for this invoice did not run.
+                Please review this invoice in Jobber to check whether a referral
+                conversion should have been recorded.</p>
+                <p>— RoofMiles System</p>
+              `
+            }),
+            { shouldRetry: resendShouldRetry }
+          );
         } catch (emailErr) {
           console.warn('[invoice-paid] failed to send admin alert email:', emailErr.message);
         }

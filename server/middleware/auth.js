@@ -1,6 +1,7 @@
 'use strict';
 
 const { pool } = require('../db');
+const { logError } = require('./errorLogger');
 
 async function verifyAdminSession(req, res) {
   const token = req.headers['authorization']?.replace('Bearer ', '');
@@ -16,6 +17,7 @@ async function verifyAdminSession(req, res) {
     }
     return true;
   } catch (err) {
+    logError({ req, error: err, source: 'verifyAdminSession' });
     res.status(500).json({ error: 'Auth check failed' });
     return false;
   }
@@ -48,6 +50,7 @@ async function verifyReferrerSession(req, res) {
     }
     return { userId: result.rows[0].user_id, sessionId: result.rows[0].session_id };
   } catch (err) {
+    logError({ req, error: err, source: 'verifyReferrerSession' });
     res.status(500).json({ error: 'Auth check failed' });
     return null;
   }

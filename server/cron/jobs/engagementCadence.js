@@ -3,6 +3,8 @@ const { withLock } = require('../withLock');
 const { pool } = require('../../db');
 const { logError } = require('../../middleware/errorLogger');
 const { Resend } = require('resend');
+const { retryWithBackoff } = require('../../utils/retryWithBackoff');
+const { resendShouldRetry } = require('../../utils/retryHelpers');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -120,12 +122,15 @@ function startEngagementCadenceJob() {
                 .join('');
 
               try {
-                await resend.emails.send({
-                  from: `${senderName} <noreply@roofmiles.com>`,
-                  to:   contact.email,
-                  subject,
-                  html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">${htmlBody}</div>`,
-                });
+                await retryWithBackoff(
+                  () => resend.emails.send({
+                    from: `${senderName} <noreply@roofmiles.com>`,
+                    to:   contact.email,
+                    subject,
+                    html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">${htmlBody}</div>`,
+                  }),
+                  { shouldRetry: resendShouldRetry }
+                );
 
                 await pool.query(
                   `INSERT INTO engagement_cadence_log (contractor_id, contact_id, cadence_month)

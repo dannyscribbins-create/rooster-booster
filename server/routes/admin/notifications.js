@@ -23,7 +23,7 @@ router.get('/api/admin/notification-preferences', async (req, res) => {
     res.json(prefs);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -50,7 +50,7 @@ router.put('/api/admin/notification-preferences', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

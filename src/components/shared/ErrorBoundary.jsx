@@ -36,7 +36,7 @@ class ErrorBoundary extends React.Component {
           <div style={{
             fontSize: '20px',
             fontWeight: '700',
-            color: '#021428',
+            color: '#021428', // intentional exception — ErrorBoundary renders outside React tree, cannot use R tokens
             marginBottom: '8px',
             fontFamily: 'Montserrat, sans-serif'
           }}>
@@ -54,7 +54,7 @@ class ErrorBoundary extends React.Component {
           <button
             onClick={() => window.location.reload()}
             style={{
-              backgroundColor: '#CC0000',
+              backgroundColor: '#CC0000', // intentional exception — ErrorBoundary renders outside React tree, cannot use R tokens
               color: '#fff',
               border: 'none',
               borderRadius: '8px',

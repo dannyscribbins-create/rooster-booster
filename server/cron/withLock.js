@@ -6,11 +6,11 @@ async function withLock(jobName, timeoutMinutes, fn) {
     UPDATE cron_job_locks
     SET is_locked = TRUE,
         locked_at = NOW(),
-        timeout_at = NOW() + INTERVAL '${timeoutMinutes} minutes'
+        timeout_at = NOW() + ($2 || ' minutes')::interval
     WHERE job_name = $1
       AND (is_locked = FALSE OR timeout_at < NOW())
     RETURNING job_name
-  `, [jobName]);
+  `, [jobName, timeoutMinutes]);
 
   if (result.rowCount === 0) {
     console.log(`[cron] ${jobName} skipped — already running`);
