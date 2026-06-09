@@ -228,6 +228,7 @@ export default function CRMSettings() {
   const [tagVisibility, setTagVisibility]       = useState({});
   const [tagGroups, setTagGroups]               = useState([]);
   const [tagVisSaveMsg, setTagVisSaveMsg]       = useState(null); // { type: 'saved'|'error' }
+  const [expandedGroups, setExpandedGroups]     = useState(new Set());
   const tagVisDebounceRef                       = useRef(null);
   const tagVisMsgTimer                          = useRef(null);
 
@@ -1239,23 +1240,62 @@ export default function CRMSettings() {
     tagVisMsgTimer.current = setTimeout(() => setTagVisSaveMsg(null), 1500);
   }
 
-  function handleTagVisToggle(prefix, currentVisible) {
-    const newVisible = !currentVisible;
+  function toggleGroupExpand(prefix, isEnabled) {
+    if (!isEnabled) return;
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(prefix)) next.delete(prefix);
+      else next.add(prefix);
+      return next;
+    });
+  }
+
+  function handleTagGroupToggle(e, prefix) {
+    e.stopPropagation();
+    const existing = tagVisibility[prefix];
+    const currentEnabled = existing?.enabled !== false;
+    const newEnabled = !currentEnabled;
+    const existingHidden = existing?.hidden_values || [];
     const updated = { ...tagVisibility };
-    if (newVisible) {
-      delete updated[prefix]; // visible is the default — no need to store true
+    if (newEnabled && existingHidden.length === 0) {
+      delete updated[prefix]; // fully visible = default, no need to store
     } else {
-      updated[prefix] = false;
+      updated[prefix] = { enabled: newEnabled, hidden_values: existingHidden };
     }
-    // Optimistic update
     setTagVisibility(updated);
-    // Revert on error is handled via setTagVisSaveMsg
+    if (!newEnabled) {
+      setExpandedGroups(prev => { const next = new Set(prev); next.delete(prefix); return next; });
+    }
+    if (tagVisDebounceRef.current) clearTimeout(tagVisDebounceRef.current);
+    tagVisDebounceRef.current = setTimeout(() => saveTagVisibility(updated), 800);
+  }
+
+  function handleTagValueToggle(prefix, value) {
+    const normalizeVal = s => s.toLowerCase().replace(/\s+/g, '_');
+    const normalized = normalizeVal(value);
+    const existing = tagVisibility[prefix];
+    const currentEnabled = existing?.enabled !== false;
+    const currentHidden = existing?.hidden_values || [];
+    const isCurrentlyHidden = currentHidden.includes(normalized);
+    const newHidden = isCurrentlyHidden
+      ? currentHidden.filter(v => v !== normalized)
+      : [...currentHidden, normalized];
+    const updated = { ...tagVisibility };
+    if (currentEnabled && newHidden.length === 0) {
+      delete updated[prefix]; // back to fully visible default
+    } else {
+      updated[prefix] = { enabled: currentEnabled, hidden_values: newHidden };
+    }
+    setTagVisibility(updated);
     if (tagVisDebounceRef.current) clearTimeout(tagVisDebounceRef.current);
     tagVisDebounceRef.current = setTimeout(() => saveTagVisibility(updated), 800);
   }
 
   function renderTagVisibilityCard() {
+    const normalizeVal = s => s.toLowerCase().replace(/\s+/g, '_');
+    const formatTagValue = v => v.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     const sorted = [...tagGroups].sort((a, b) => tagGroupLabel(a.prefix).localeCompare(tagGroupLabel(b.prefix)));
+
     return (
       <Card>
         <SectionHeading>TAG VISIBILITY</SectionHeading>
@@ -1271,37 +1311,95 @@ export default function CRMSettings() {
         ) : (
           <div style={{ border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, overflow: 'hidden' }}>
             {sorted.map((group, i) => {
-              const isVisible = tagVisibility[group.prefix] !== false;
+              const isEnabled = tagVisibility[group.prefix]?.enabled !== false;
+              const isExpanded = expandedGroups.has(group.prefix);
+              const hiddenValues = tagVisibility[group.prefix]?.hidden_values || [];
+              const isLast = i === sorted.length - 1;
+
               return (
-                <div key={group.prefix} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '13px 16px',
-                  borderBottom: i < sorted.length - 1 ? `1px solid ${AD.border}` : 'none',
-                  background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
-                }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: 14, color: AD.textPrimary }}>{tagGroupLabel(group.prefix)}</span>
-                  </div>
-                  <span style={{ fontSize: 12, color: AD.textTertiary, marginRight: 16 }}>
-                    {group.count.toLocaleString()} tags
-                  </span>
-                  {/* Pill toggle */}
+                <div key={group.prefix}>
+                  {/* Group header row */}
                   <div
-                    onClick={() => handleTagVisToggle(group.prefix, isVisible)}
+                    onClick={() => toggleGroupExpand(group.prefix, isEnabled)}
                     style={{
-                      width: 44, height: 24, borderRadius: 12, flexShrink: 0,
-                      background: isVisible ? AD.navy : AD.border,
-                      cursor: 'pointer', position: 'relative',
-                      transition: 'background 0.2s',
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '12px 16px',
+                      borderBottom: (isExpanded || !isLast) ? `1px solid ${AD.border}` : 'none',
+                      background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                      cursor: isEnabled ? 'pointer' : 'default',
+                      userSelect: 'none',
                     }}
                   >
-                    <div style={{
-                      position: 'absolute', top: 3, left: isVisible ? 23 : 3,
-                      width: 18, height: 18, borderRadius: '50%', background: '#fff',
-                      transition: 'left 0.2s',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                    }} />
+                    {/* Chevron — only expands when group is enabled */}
+                    <i
+                      className={`ph ${isEnabled && isExpanded ? 'ph-caret-down' : 'ph-caret-right'}`}
+                      style={{ fontSize: 12, color: isEnabled ? AD.textTertiary : AD.border, flexShrink: 0 }}
+                    />
+                    <span style={{ flex: 1, fontSize: 14, color: isEnabled ? AD.textPrimary : AD.textTertiary }}>
+                      {tagGroupLabel(group.prefix)}
+                    </span>
+                    {/* Dual count columns */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginRight: 16 }}>
+                      <span style={{ fontSize: 12, color: AD.textTertiary, whiteSpace: 'nowrap' }}>
+                        {(group.valueCount ?? (group.values?.length ?? 0)).toLocaleString()} options
+                      </span>
+                      <div style={{ width: 1, height: 10, background: AD.borderStrong, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: AD.textTertiary, whiteSpace: 'nowrap' }}>
+                        {(group.contactCount ?? group.count ?? 0).toLocaleString()} contacts
+                      </span>
+                    </div>
+                    {/* Group toggle — stopPropagation prevents row expand/collapse */}
+                    <div
+                      onClick={e => handleTagGroupToggle(e, group.prefix)}
+                      style={{
+                        width: 44, height: 24, borderRadius: 12, flexShrink: 0,
+                        background: isEnabled ? AD.navy : AD.border,
+                        cursor: 'pointer', position: 'relative',
+                        transition: 'background 0.2s',
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute', top: 3, left: isEnabled ? 23 : 3,
+                        width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                        transition: 'left 0.2s',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                      }} />
+                    </div>
                   </div>
+
+                  {/* Expanded tag pill grid */}
+                  {isExpanded && isEnabled && (
+                    <div style={{
+                      padding: '10px 16px 14px 38px',
+                      borderBottom: !isLast ? `1px solid ${AD.border}` : 'none',
+                      background: 'rgba(255,255,255,0.02)',
+                    }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                        {(group.values || []).map(value => {
+                          const isHidden = hiddenValues.includes(normalizeVal(value));
+                          return (
+                            <div
+                              key={value}
+                              onClick={() => handleTagValueToggle(group.prefix, value)}
+                              style={{
+                                padding: '4px 10px', borderRadius: AD.radiusPill,
+                                fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                                userSelect: 'none',
+                                opacity: isHidden ? 0.45 : 1,
+                                background: isHidden ? 'rgba(204,0,0,0.08)' : AD.bgCardTint,
+                                border: `1px solid ${isHidden ? 'rgba(204,0,0,0.4)' : AD.border}`,
+                                color: isHidden ? AD.red2Text : AD.textSecondary,
+                                textDecoration: isHidden ? 'line-through' : 'none',
+                                transition: 'opacity 0.15s, background 0.15s',
+                              }}
+                            >
+                              {formatTagValue(value)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

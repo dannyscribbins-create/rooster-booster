@@ -5,6 +5,7 @@ const { verifyAdminSession } = require('../../middleware/auth');
 const { logError } = require('../../middleware/errorLogger');
 const { deriveOptOutType } = require('../../utils/adminHelpers');
 const { applyTag, removeTag } = require('../../utils/tags');
+const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility');
 
 // pg_trgm required for fuzzy name matching — used in app user linking, unified contacts merge (Session 77), and new user signup flow
 ;(async () => {
@@ -724,17 +725,31 @@ router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
         : Promise.resolve({ rows: [] }),
     ]);
 
-    const visibility = visibilityResult.rows[0]?.tag_group_visibility || {};
+    const visibility = normalizeTagGroupVisibility(visibilityResult.rows[0]?.tag_group_visibility || {});
 
-    let categories = tagResult.rows.map(row => ({
-      prefix: row.prefix,
-      label:  row.prefix.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-      values: row.values,
-      count:  parseInt(row.client_count, 10),
-    }));
+    let categories = tagResult.rows.map(row => {
+      const values = Array.isArray(row.values) ? row.values : [];
+      const contactCount = parseInt(row.client_count, 10);
+      return {
+        prefix:       row.prefix,
+        label:        row.prefix.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        values,
+        valueCount:   values.length,
+        contactCount,
+        count:        contactCount, // backward compat — AdminContactsTab.jsx reads .count
+      };
+    });
 
     if (visibleOnly) {
-      categories = categories.filter(cat => visibility[cat.prefix] !== false);
+      const normalizeVal = s => s.toLowerCase().replace(/\s+/g, '_');
+      categories = categories
+        .filter(cat => visibility[cat.prefix]?.enabled !== false)
+        .map(cat => {
+          const hiddenVals = visibility[cat.prefix]?.hidden_values || [];
+          if (hiddenVals.length === 0) return cat;
+          const filteredValues = cat.values.filter(v => !hiddenVals.includes(normalizeVal(v)));
+          return { ...cat, values: filteredValues, valueCount: filteredValues.length };
+        });
     }
 
     res.json({ categories });

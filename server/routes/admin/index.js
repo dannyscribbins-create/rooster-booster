@@ -17,6 +17,7 @@ const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { resendShouldRetry, jobberShouldRetry } = require('../../utils/retryHelpers');
 const { discoverJobberFields } = require('../../crm/jobber');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
+const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -661,7 +662,7 @@ router.get('/api/admin/crm/status', async (req, res) => {
         [contractorId]
       ),
     ]);
-    const tagGroupVisibility = visibilityResult.rows[0]?.tag_group_visibility || {};
+    const tagGroupVisibility = normalizeTagGroupVisibility(visibilityResult.rows[0]?.tag_group_visibility || {});
     if (settingsResult.rows.length === 0) {
       return res.json({
         isConnected: false, crmType: null, crmAccountName: null,
