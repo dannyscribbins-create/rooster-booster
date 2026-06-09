@@ -2756,6 +2756,128 @@ function BuilderDrawer({
   );
 }
 
+// ── Audience card ─────────────────────────────────────────────────────────────
+function AudienceCard({ audience, onEdit, onDeactivate, onReactivate, onDelete }) {
+  const [hov,           setHov]           = useState(false);
+  const [trashHov,      setTrashHov]      = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
+  const [deleteError,   setDeleteError]   = useState('');
+
+  const evalText = audience.last_evaluated_at
+    ? (() => {
+        const diffMs = Date.now() - new Date(audience.last_evaluated_at).getTime();
+        const h = Math.floor(diffMs / 3600000);
+        const d = Math.floor(diffMs / 86400000);
+        return h < 1 ? 'Evaluated just now' : h < 24 ? `Evaluated ${h}h ago` : `Evaluated ${d}d ago`;
+      })()
+    : 'Never evaluated';
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await onDelete(audience.id);
+    } catch {
+      setDeleteError('Could not delete audience');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  if (confirmDelete) {
+    return (
+      <div style={{
+        background: AD.bgCard, border: `1px solid ${AD.borderStrong}`,
+        borderRadius: 14, padding: '18px 22px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 16,
+      }}>
+        <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+          {deleteError || 'Delete this audience?'}
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+          <Btn variant="outline" onClick={() => { setConfirmDelete(false); setDeleteError(''); }}>Cancel</Btn>
+          <Btn variant="accent" onClick={handleDelete} style={{ opacity: deleting ? 0.6 : 1 }}>
+            {deleting ? 'Deleting...' : 'Delete'}
+          </Btn>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => { setHov(false); setTrashHov(false); }}
+      style={{
+        background: AD.bgCard, border: `1px solid ${AD.border}`,
+        borderRadius: 14, padding: '16px 20px',
+        boxShadow: AD.shadowSm, opacity: audience.is_active ? 1 : 0.6,
+        position: 'relative',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>{audience.name}</span>
+            <span style={{ padding: '2px 10px', borderRadius: 99, background: AD.navy, color: '#fff', fontSize: 11, fontFamily: AD.fontSans, fontWeight: 600 }}>
+              {audience.member_count} member{audience.member_count !== 1 ? 's' : ''}
+            </span>
+            {!audience.is_active && (
+              <span style={{ padding: '2px 8px', borderRadius: 99, background: AD.bgCardTint, color: AD.textTertiary, fontSize: 11, fontFamily: AD.fontSans }}>Inactive</span>
+            )}
+          </div>
+          {audience.description && (
+            <p style={{ margin: '0 0 6px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{audience.description}</p>
+          )}
+          <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>{evalText}</p>
+        </div>
+        {/* Buttons — right-margin leaves room for the absolute trash icon */}
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, marginRight: 28 }}>
+          <button
+            onClick={() => onEdit(audience)}
+            style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${AD.border}`, color: AD.textSecondary, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer' }}
+          >
+            <i className="ph ph-pencil" /> Edit
+          </button>
+          {audience.is_active ? (
+            <button
+              onClick={() => onDeactivate(audience.id)}
+              style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${AD.border}`, color: AD.red2Text, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer' }}
+            >
+              Deactivate
+            </button>
+          ) : (
+            <button
+              onClick={() => onReactivate(audience)}
+              style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${AD.border}`, color: AD.blueText, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer' }}
+            >
+              Reactivate
+            </button>
+          )}
+        </div>
+      </div>
+      {/* Trash — appears on hover, same style as campaign delete */}
+      <button
+        onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
+        onMouseEnter={() => setTrashHov(true)}
+        onMouseLeave={() => setTrashHov(false)}
+        style={{
+          position: 'absolute', top: 12, right: 12,
+          background: 'none', border: 'none', cursor: 'pointer',
+          padding: 4, borderRadius: 6,
+          opacity: hov ? 1 : 0, transition: 'opacity 0.15s',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: trashHov ? '#CC0000' : AD.textSecondary,
+        }}
+      >
+        <i className="ph ph-trash" style={{ fontSize: 16 }} />
+      </button>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AdminCampaigns({ setLoggedIn }) {
   const [campaigns,        setCampaigns]        = useState([]);
@@ -2972,11 +3094,21 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
   async function deactivateAudience(audienceId) {
     try {
-      await fetch(`${BACKEND_URL}/api/admin/audiences/${audienceId}`, { method: 'DELETE', headers });
+      await fetch(`${BACKEND_URL}/api/admin/audiences/${audienceId}`, {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: false }),
+      });
       await loadAudiences();
     } catch {
       // swallow
     }
+  }
+
+  async function handleDeleteAudience(audienceId) {
+    const r = await fetch(`${BACKEND_URL}/api/admin/audiences/${audienceId}`, { method: 'DELETE', headers });
+    if (!r.ok) throw new Error('Delete failed');
+    setAudiences(prev => prev.filter(a => a.id !== audienceId));
   }
 
   async function reactivateAudience(audience) {
@@ -3482,67 +3614,16 @@ export default function AdminCampaigns({ setLoggedIn }) {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {audiences.map(a => {
-                  const evalText = a.last_evaluated_at
-                    ? (() => {
-                        const diffMs = Date.now() - new Date(a.last_evaluated_at).getTime();
-                        const h = Math.floor(diffMs / 3600000);
-                        const d = Math.floor(diffMs / 86400000);
-                        return h < 1 ? 'Evaluated just now' : h < 24 ? `Evaluated ${h}h ago` : `Evaluated ${d}d ago`;
-                      })()
-                    : 'Never evaluated';
-                  return (
-                    <div
-                      key={a.id}
-                      style={{
-                        background: AD.bgCard, border: `1px solid ${AD.border}`,
-                        borderRadius: 14, padding: '16px 20px',
-                        boxShadow: AD.shadowSm, opacity: a.is_active ? 1 : 0.6,
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                            <span style={{ fontSize: 15, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>{a.name}</span>
-                            <span style={{ padding: '2px 10px', borderRadius: 99, background: AD.navy, color: '#fff', fontSize: 11, fontFamily: AD.fontSans, fontWeight: 600 }}>
-                              {a.member_count} member{a.member_count !== 1 ? 's' : ''}
-                            </span>
-                            {!a.is_active && (
-                              <span style={{ padding: '2px 8px', borderRadius: 99, background: AD.bgCardTint, color: AD.textTertiary, fontSize: 11, fontFamily: AD.fontSans }}>Inactive</span>
-                            )}
-                          </div>
-                          {a.description && (
-                            <p style={{ margin: '0 0 6px', fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{a.description}</p>
-                          )}
-                          <p style={{ margin: 0, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>{evalText}</p>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                          <button
-                            onClick={() => openEditAudience(a)}
-                            style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${AD.border}`, color: AD.textSecondary, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer' }}
-                          >
-                            <i className="ph ph-pencil" /> Edit
-                          </button>
-                          {a.is_active ? (
-                            <button
-                              onClick={() => deactivateAudience(a.id)}
-                              style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${AD.border}`, color: AD.red2Text, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer' }}
-                            >
-                              Deactivate
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => reactivateAudience(a)}
-                              style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${AD.border}`, color: AD.blueText, fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer' }}
-                            >
-                              Reactivate
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                {audiences.map(a => (
+                  <AudienceCard
+                    key={a.id}
+                    audience={a}
+                    onEdit={openEditAudience}
+                    onDeactivate={deactivateAudience}
+                    onReactivate={reactivateAudience}
+                    onDelete={handleDeleteAudience}
+                  />
+                ))}
               </div>
             )}
           </div>
