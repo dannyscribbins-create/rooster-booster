@@ -94,6 +94,7 @@ async function evaluateAudience(pool, audienceId) {
           SELECT 1 FROM contact_tags ct
           WHERE ct.contact_id = c.id
             AND ct.tag = ANY($2)
+            AND ct.contractor_id = $1
         )
       UNION ALL
       SELECT NULL::uuid AS contact_id, jc.jobber_client_id AS jobber_client_id
@@ -103,11 +104,12 @@ async function evaluateAudience(pool, audienceId) {
           SELECT 1 FROM contact_tags ct
           WHERE ct.jobber_client_id = jc.jobber_client_id
             AND ct.tag = ANY($2)
+            AND ct.contractor_id = $1
         )
     `;
   }
 
-  const { rows: matchingRows } = await pool.query(unionQuery, queryParams);
+  let memberCount = 0;
 
   const client = await pool.connect();
   try {
@@ -118,25 +120,24 @@ async function evaluateAudience(pool, audienceId) {
       [audienceId]
     );
 
-    if (matchingRows.length > 0) {
-      const params = [audienceId];
-      const valueClauses = matchingRows.map((row) => {
-        params.push(row.contact_id);
-        params.push(row.jobber_client_id);
-        return `($1, $${params.length - 1}, $${params.length})`;
-      });
-      await client.query(
-        `INSERT INTO dynamic_audience_members (audience_id, contact_id, jobber_client_id)
-         VALUES ${valueClauses.join(', ')}`,
-        params
-      );
-    }
+    // INSERT...SELECT keeps the member set entirely inside Postgres — no row
+    // transfer to Node, no multi-VALUES insert (which hits the 65,535 bind
+    // parameter ceiling at ~32,700 members). ::int cast required so Postgres
+    // can infer the parameter type inside the SELECT list.
+    queryParams.push(audienceId);
+    const insertResult = await client.query(
+      `INSERT INTO dynamic_audience_members (audience_id, contact_id, jobber_client_id)
+       SELECT $${queryParams.length}::int, contact_id, jobber_client_id
+       FROM ( ${unionQuery} ) AS members`,
+      queryParams
+    );
+    memberCount = insertResult.rowCount;
 
     await client.query(
       `UPDATE dynamic_audiences
        SET member_count = $1, last_evaluated_at = NOW()
        WHERE id = $2`,
-      [matchingRows.length, audienceId]
+      [memberCount, audienceId]
     );
 
     await client.query('COMMIT');
@@ -147,7 +148,7 @@ async function evaluateAudience(pool, audienceId) {
     client.release();
   }
 
-  return { memberCount: matchingRows.length };
+  return { memberCount };
 }
 
 function startDynamicAudiencesJob() {
