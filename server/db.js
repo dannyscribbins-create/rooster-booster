@@ -938,6 +938,22 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_dam_audience_id ON dynamic_audience_members(audience_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_dam_contact_id ON dynamic_audience_members(contact_id)`);
 
+  // ── DYNAMIC AUDIENCE MEMBERS MIGRATIONS (Phase 6.6 — Tier 1 Jobber clients) ──
+  // Extend schema to support both contacts (Tier 2) and jobber_clients (Tier 1) members.
+  // DROP CONSTRAINT drops the PK whose implicit NOT NULL blocks nullable contact_id.
+  await pool.query(`ALTER TABLE dynamic_audience_members ADD COLUMN IF NOT EXISTS jobber_client_id TEXT`);
+  await pool.query(`ALTER TABLE dynamic_audience_members DROP CONSTRAINT IF EXISTS dynamic_audience_members_pkey`);
+  await pool.query(`ALTER TABLE dynamic_audience_members ALTER COLUMN contact_id DROP NOT NULL`);
+  await pool.query(`ALTER TABLE dynamic_audience_members DROP CONSTRAINT IF EXISTS dam_at_least_one_id`);
+  await pool.query(`ALTER TABLE dynamic_audience_members ADD CONSTRAINT dam_at_least_one_id
+    CHECK (contact_id IS NOT NULL OR jobber_client_id IS NOT NULL)`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS dam_contact_unique
+    ON dynamic_audience_members(audience_id, contact_id)
+    WHERE contact_id IS NOT NULL`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS dam_jobber_unique
+    ON dynamic_audience_members(audience_id, jobber_client_id)
+    WHERE jobber_client_id IS NOT NULL`);
+
   // ── ENGAGEMENT CADENCE ────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS engagement_cadence_settings (
     contractor_id TEXT NOT NULL,

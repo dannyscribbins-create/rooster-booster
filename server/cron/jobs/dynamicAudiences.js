@@ -22,7 +22,8 @@ function resolveTagValue(tag) {
 }
 
 // Evaluates a single audience by id. Fetches the audience row, runs the tag
-// filter SQL, atomically replaces dynamic_audience_members, and updates
+// filter SQL across both contacts (Tier 2) and jobber_clients (Tier 1) pools
+// via UNION ALL, atomically replaces dynamic_audience_members, and updates
 // member_count + last_evaluated_at. Returns { memberCount }.
 // Returns { memberCount: 0 } if the audience is not found or is inactive.
 async function evaluateAudience(pool, audienceId) {
@@ -39,36 +40,74 @@ async function evaluateAudience(pool, audienceId) {
   const mode = filters.mode || 'AND';
   const resolvedTags = tags.map(resolveTagValue);
 
-  let contactQuery;
+  let unionQuery;
   let queryParams = [contractorId];
 
   if (resolvedTags.length === 0) {
-    contactQuery = `SELECT id FROM contacts WHERE contractor_id = $1`;
+    // No tag filter — all contacts and all jobber_clients
+    unionQuery = `
+      SELECT id AS contact_id, NULL::text AS jobber_client_id
+      FROM contacts
+      WHERE contractor_id = $1
+      UNION ALL
+      SELECT NULL::uuid AS contact_id, jobber_client_id
+      FROM jobber_clients
+      WHERE contractor_id = $1
+    `;
   } else if (mode === 'AND') {
-    const tagConditions = resolvedTags.map((tag) => {
+    // Each tag must match — one correlated EXISTS per tag per pool.
+    // Tags are pushed once into queryParams; jobber conditions reuse the same $n indices.
+    const contactConditions = resolvedTags.map((tag) => {
       queryParams.push(tag);
       return `EXISTS (
         SELECT 1 FROM contact_tags ct
-        WHERE ct.contact_id = contacts.id AND ct.tag = $${queryParams.length}
+        WHERE ct.contact_id = c.id
+          AND ct.tag = $${queryParams.length}
+          AND ct.contractor_id = $1
       )`;
     });
-    contactQuery = `
-      SELECT id FROM contacts
-      WHERE contractor_id = $1
-        AND ${tagConditions.join(' AND ')}
+    const jobberConditions = resolvedTags.map((_, i) => `EXISTS (
+      SELECT 1 FROM contact_tags ct
+      WHERE ct.jobber_client_id = jc.jobber_client_id
+        AND ct.tag = $${i + 2}
+        AND ct.contractor_id = $1
+    )`);
+    unionQuery = `
+      SELECT c.id AS contact_id, NULL::text AS jobber_client_id
+      FROM contacts c
+      WHERE c.contractor_id = $1
+        AND ${contactConditions.join('\n        AND ')}
+      UNION ALL
+      SELECT NULL::uuid AS contact_id, jc.jobber_client_id AS jobber_client_id
+      FROM jobber_clients jc
+      WHERE jc.contractor_id = $1
+        AND ${jobberConditions.join('\n        AND ')}
     `;
   } else {
+    // OR mode — any matching tag qualifies; single EXISTS with ANY($2)
     queryParams.push(resolvedTags);
-    contactQuery = `
-      SELECT DISTINCT contacts.id FROM contacts
-      JOIN contact_tags ct ON ct.contact_id = contacts.id
-      WHERE contacts.contractor_id = $1
-        AND ct.tag = ANY($${queryParams.length})
+    unionQuery = `
+      SELECT c.id AS contact_id, NULL::text AS jobber_client_id
+      FROM contacts c
+      WHERE c.contractor_id = $1
+        AND EXISTS (
+          SELECT 1 FROM contact_tags ct
+          WHERE ct.contact_id = c.id
+            AND ct.tag = ANY($2)
+        )
+      UNION ALL
+      SELECT NULL::uuid AS contact_id, jc.jobber_client_id AS jobber_client_id
+      FROM jobber_clients jc
+      WHERE jc.contractor_id = $1
+        AND EXISTS (
+          SELECT 1 FROM contact_tags ct
+          WHERE ct.jobber_client_id = jc.jobber_client_id
+            AND ct.tag = ANY($2)
+        )
     `;
   }
 
-  const { rows: matchingContacts } = await pool.query(contactQuery, queryParams);
-  const matchingIds = matchingContacts.map(r => r.id);
+  const { rows: matchingRows } = await pool.query(unionQuery, queryParams);
 
   const client = await pool.connect();
   try {
@@ -79,14 +118,17 @@ async function evaluateAudience(pool, audienceId) {
       [audienceId]
     );
 
-    if (matchingIds.length > 0) {
-      const insertValues = matchingIds
-        .map((id, i) => `($1, $${i + 2})`)
-        .join(',');
+    if (matchingRows.length > 0) {
+      const params = [audienceId];
+      const valueClauses = matchingRows.map((row) => {
+        params.push(row.contact_id);
+        params.push(row.jobber_client_id);
+        return `($1, $${params.length - 1}, $${params.length})`;
+      });
       await client.query(
-        `INSERT INTO dynamic_audience_members (audience_id, contact_id)
-         VALUES ${insertValues}`,
-        [audienceId, ...matchingIds]
+        `INSERT INTO dynamic_audience_members (audience_id, contact_id, jobber_client_id)
+         VALUES ${valueClauses.join(', ')}`,
+        params
       );
     }
 
@@ -94,7 +136,7 @@ async function evaluateAudience(pool, audienceId) {
       `UPDATE dynamic_audiences
        SET member_count = $1, last_evaluated_at = NOW()
        WHERE id = $2`,
-      [matchingIds.length, audienceId]
+      [matchingRows.length, audienceId]
     );
 
     await client.query('COMMIT');
@@ -105,7 +147,7 @@ async function evaluateAudience(pool, audienceId) {
     client.release();
   }
 
-  return { memberCount: matchingIds.length };
+  return { memberCount: matchingRows.length };
 }
 
 function startDynamicAudiencesJob() {

@@ -3082,18 +3082,26 @@ router.get('/api/admin/audiences/:id/members', async (req, res) => {
     if (existing.rows.length === 0) return res.status(404).json({ error: 'Not found' });
 
     const { rows } = await pool.query(
-      `SELECT dam.contact_id, c.name AS full_name, c.email, c.phone, dam.added_at
+      `SELECT
+         dam.contact_id,
+         dam.jobber_client_id,
+         COALESCE(c.name, jc.first_name || ' ' || jc.last_name) AS full_name,
+         COALESCE(c.email, jc.email) AS email,
+         COALESCE(c.phone, jc.phone) AS phone,
+         dam.added_at
        FROM dynamic_audience_members dam
-       JOIN contacts c ON c.id = dam.contact_id
+       LEFT JOIN contacts c ON c.id = dam.contact_id
+       LEFT JOIN jobber_clients jc ON jc.jobber_client_id = dam.jobber_client_id
+         AND jc.contractor_id = $2
        WHERE dam.audience_id = $1
        ORDER BY dam.added_at DESC
        LIMIT 500`,
-      [audienceId]
+      [audienceId, contractorId]
     );
     res.json(rows);
   } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    await logError({ req, error: err, source: 'GET /api/admin/audiences/:id/members' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

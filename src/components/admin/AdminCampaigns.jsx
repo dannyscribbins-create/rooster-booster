@@ -3824,7 +3824,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
                 ) : (
                   <div>
                     {(audienceMembersExpanded ? audienceMembers : audienceMembers.slice(0, 10)).map(m => (
-                      <div key={m.contact_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${AD.border}` }}>
+                      <div key={m.contact_id || m.jobber_client_id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${AD.border}` }}>
                         <span style={{ fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans }}>{m.full_name || '—'}</span>
                         <span style={{ fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>{m.email}</span>
                       </div>
