@@ -18,8 +18,8 @@ async function applyTag(pool, contactId, contractorId, tag, source) {
 async function removeTag(pool, contactId, contractorId, tag) {
   try {
     await pool.query(
-      `DELETE FROM contact_tags WHERE contact_id = $1 AND tag = $2`,
-      [contactId, tag]
+      `DELETE FROM contact_tags WHERE contact_id = $1 AND tag = $2 AND contractor_id = $3`,
+      [contactId, tag, contractorId]
     );
   } catch (err) {
     await logError({ req: null, error: err, source: `removeTag(${tag})` });
