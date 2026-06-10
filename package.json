@@ -38,7 +38,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "node --test server/test/*.test.js",
+    "test": "node --test --test-concurrency=1 server/test/*.test.js",
     "test:react": "react-scripts test",
     "eject": "react-scripts eject"
   },

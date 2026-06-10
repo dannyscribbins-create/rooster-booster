@@ -6,6 +6,10 @@ const { Pool } = require('pg');
 // is required. override: true ensures test values win over any already-set process.env.
 require('dotenv').config({ path: '.env.test', override: true });
 
+// Set a deterministic webhook HMAC secret for tests. Must be set before the webhook
+// router module is required (which can happen transitively during the test run).
+process.env.JOBBER_CLIENT_SECRET = 'test-secret';
+
 // STEP B — SAFETY INTERLOCK (runs at module-load time, not deferred to initTestDb).
 // Tests must only connect to localhost/127.0.0.1. Any other host aborts the process
 // before a single query can reach a non-local database.
