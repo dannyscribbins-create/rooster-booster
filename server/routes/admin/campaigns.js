@@ -17,6 +17,7 @@ const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/cl
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const { deriveOptOutType } = require('../../utils/adminHelpers');
 const { applyTag, backfillTagsForContacts } = require('../../utils/tags');
+const { evaluateAudience } = require('../../cron/jobs/dynamicAudiences');
 
 // Lazy initializer — reads env vars at call time, not at module load, to avoid ERR_INVALID_URL on startup
 let _mediaS3Client = null;
@@ -2975,10 +2976,15 @@ router.post('/api/admin/audiences', async (req, res) => {
        RETURNING id, name, description, filter_json, member_count, last_evaluated_at, is_active, created_at`,
       [contractorId, name.trim(), description || null, JSON.stringify(filter_json)]
     );
-    res.json(rows[0]);
+    const newAudience = rows[0];
+    res.json(newAudience);
+    // Fire-and-forget immediate evaluation — do not await
+    evaluateAudience(pool, newAudience.id).catch(err =>
+      logError({ error: err, source: 'POST /api/admin/audiences — immediate eval' })
+    );
   } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    await logError({ req, error: err, source: 'POST /api/admin/audiences' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -3026,9 +3032,14 @@ router.put('/api/admin/audiences/:id', async (req, res) => {
       ]
     );
     res.json(rows[0]);
+    // Fire-and-forget immediate evaluation — do not await
+    // evaluateAudience checks is_active = TRUE, so deactivate calls are safely a no-op
+    evaluateAudience(pool, audienceId).catch(err =>
+      logError({ error: err, source: 'PUT /api/admin/audiences/:id — immediate eval' })
+    );
   } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    await logError({ req, error: err, source: 'PUT /api/admin/audiences/:id' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

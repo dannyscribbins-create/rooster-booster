@@ -3085,6 +3085,11 @@ export default function AdminCampaigns({ setLoggedIn }) {
       if (!r.ok) return;
       setAudienceModalOpen(false);
       await loadAudiences();
+      // Poll twice after save to pick up the fire-and-forget evaluation result
+      setTimeout(async () => {
+        await loadAudiences();
+        setTimeout(() => { loadAudiences(); }, 3000);
+      }, 2000);
     } catch {
       // swallow
     } finally {
