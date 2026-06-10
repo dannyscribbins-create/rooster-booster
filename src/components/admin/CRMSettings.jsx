@@ -267,6 +267,7 @@ export default function CRMSettings() {
       setConnectedAt(d.connectedAt || null);
       setStartDateInput(d.referralStartDate ? d.referralStartDate.slice(0, 10) : '');
       setTagVisibility(d.tagGroupVisibility || {});
+    } catch { /* status load failed — keep previous state; spinner clears in finally */
     } finally {
       setLoading(false);
     }
