@@ -1,4 +1,6 @@
 // ─── Boost Table ──────────────────────────────────────────────────────────────
+// Backend mirror: server/constants/boostSchedule.js holds the canonical boost
+// values — any change there MUST be mirrored here (and vice versa).
 export const BOOST_TABLE = [
   { referral: 1,  label: "1st",          base: 500, boost: 0,   total: 500 },
   { referral: 2,  label: "2nd",          base: 500, boost: 100, total: 600 },

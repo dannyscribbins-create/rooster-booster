@@ -6,6 +6,7 @@ const { pool } = require('../db');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
 const { logError } = require('../middleware/errorLogger');
+const { boostSchedule } = require('../constants/boostSchedule');
 
 let accessToken = null;
 
@@ -116,8 +117,7 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
   }
 
   // Map pipeline_cache rows to the response shape PipelineTab expects
-  // Bonus schedule: $500 base + boost per tier [0,100,200,250,300,350,400]
-  const boostSchedule = [0, 100, 200, 250, 300, 350, 400];
+  // Bonus schedule: $500 base + boost per tier — see server/constants/boostSchedule.js
   // paidCount here is the index into boostSchedule — it counts only bonus-eligible
   // (post-start-date) paid referrals in this result set, NOT the referrer's all-time
   // paid count. Pre-start-date rows are excluded from tier calculation.
