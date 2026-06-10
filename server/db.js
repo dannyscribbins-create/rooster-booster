@@ -3,9 +3,12 @@ require('dotenv').config();
 const addReferrerBankColumns = require('./migrations/add_referrer_bank_columns');
 const addNotificationEmailColumns = require('./migrations/add_notification_email_columns');
 
+const _connStr = process.env.DATABASE_URL || '';
+// Skip SSL for localhost/127.0.0.1 (local dev + test). Railway URLs are non-local.
+const _isLocalhost = /[@/](localhost|127\.0\.0\.1)[:/]/.test(_connStr);
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  connectionString: _connStr,
+  ssl: _isLocalhost ? false : { rejectUnauthorized: false },
 });
 
 // ── DATABASE INIT ─────────────────────────────────────────────────────────────
