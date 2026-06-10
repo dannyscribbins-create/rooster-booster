@@ -1202,6 +1202,7 @@ export default function CRMSettings() {
   // ── Card 4c ── Tag group visibility ────────────────────────────────────────
 
   const TAG_GROUP_LABELS = {
+    roofmiles:     'RoofMiles Tags',
     assigned_rep:  'Assigned Rep',
     client_type:   'Client Type',
     insurance:     'Insurance',

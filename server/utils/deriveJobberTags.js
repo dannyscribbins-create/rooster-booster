@@ -44,10 +44,18 @@ function getCustomFieldValue(fields, label) {
  * @param {string} contractorId
  * @param {string} jobberClientId - raw Jobber client ID (encoded)
  * @param {object} clientData - assembled client object with jobs, invoices, quotes, requests
+ * @param {object} contractorFieldMappings - JSONB from contractor_settings; keys: work_category,
+ *   material_type, assigned_rep, job_source, insurance_company. Falls back to Accent Roofing defaults.
  */
-async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData) {
+async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData, contractorFieldMappings = {}) {
   try {
     const identifier = { jobber_client_id: jobberClientId };
+
+    const workCategoryLabel  = contractorFieldMappings.work_category      || 'Job Type';
+    const materialTypeLabel  = contractorFieldMappings.material_type      || 'Material Type';
+    const assignedRepLabel   = contractorFieldMappings.assigned_rep       || 'Sales Representative';
+    const jobSourceLabel     = contractorFieldMappings.job_source         || 'Source';
+    const insuranceLabel     = contractorFieldMappings.insurance_company  || 'Insurance Company';
 
     const jobs     = clientData.jobs     || [];
     const invoices = clientData.invoices || [];
@@ -86,7 +94,7 @@ async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData)
     }
 
     // ── LEAD SOURCE (from client custom fields) ───────────────────────────────
-    const rawSource = getCustomFieldValue(clientData.customFields, 'Source');
+    const rawSource = getCustomFieldValue(clientData.customFields, jobSourceLabel);
     if (!isBlankFieldValue(rawSource)) {
       await replaceTagGroup(pool, identifier, contractorId, 'source:', `source:${normalizeTagValue(rawSource)}`);
     } else {
@@ -286,32 +294,32 @@ async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData)
     const mostRecentJob = jobs.length > 0 ? sortByCreatedAtDesc(jobs)[0] : null;
     const jobCustomFields = mostRecentJob?.customFields || [];
 
-    // work_category: Job Type
-    const workCategory = getCustomFieldValue(jobCustomFields, 'Job Type');
+    // work_category
+    const workCategory = getCustomFieldValue(jobCustomFields, workCategoryLabel);
     if (!isBlankFieldValue(workCategory)) {
       await replaceTagGroup(pool, identifier, contractorId, 'work_category:', `work_category:${normalizeTagValue(workCategory)}`);
     } else {
       await removeTagsByPrefix(pool, identifier, contractorId, 'work_category:');
     }
 
-    // material_type: Material Type
-    const materialType = getCustomFieldValue(jobCustomFields, 'Material Type');
+    // material_type
+    const materialType = getCustomFieldValue(jobCustomFields, materialTypeLabel);
     if (!isBlankFieldValue(materialType)) {
       await replaceTagGroup(pool, identifier, contractorId, 'material_type:', `material_type:${normalizeTagValue(materialType)}`);
     } else {
       await removeTagsByPrefix(pool, identifier, contractorId, 'material_type:');
     }
 
-    // assigned_rep: Sales Representative
-    const assignedRep = getCustomFieldValue(jobCustomFields, 'Sales Representative');
+    // assigned_rep
+    const assignedRep = getCustomFieldValue(jobCustomFields, assignedRepLabel);
     if (!isBlankFieldValue(assignedRep)) {
       await replaceTagGroup(pool, identifier, contractorId, 'assigned_rep:', `assigned_rep:${assignedRep.toLowerCase().trim()}`);
     } else {
       await removeTagsByPrefix(pool, identifier, contractorId, 'assigned_rep:');
     }
 
-    // insurance: Insurance Company
-    const insurance = getCustomFieldValue(jobCustomFields, 'Insurance Company');
+    // insurance
+    const insurance = getCustomFieldValue(jobCustomFields, insuranceLabel);
     if (!isBlankFieldValue(insurance)) {
       await replaceTagGroup(pool, identifier, contractorId, 'insurance:', `insurance:${insurance.toLowerCase().trim()}`);
     } else {

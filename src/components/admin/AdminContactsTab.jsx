@@ -517,7 +517,11 @@ export default function AdminContactsTab({ headers }) {
       const r = await fetch(`${BACKEND_URL}/api/admin/jobber-client-tag-summary?visibleOnly=true`, { headers });
       if (!r.ok) return;
       const data = await r.json();
-      setJobberTagSummary(Array.isArray(data.categories) ? data.categories : []);
+      // Exclude 'roofmiles' from Section A — Section B (ROOFMILES_GROUPS) already covers system tags with better UI.
+      const categories = Array.isArray(data.categories)
+        ? data.categories.filter(c => c.prefix !== 'roofmiles')
+        : [];
+      setJobberTagSummary(categories);
     } catch {
       // swallow — filter panel gracefully shows empty state
     }

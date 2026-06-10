@@ -84,6 +84,17 @@ async function runIncrementalSync() {
 
   console.log(`[jobberIncrementalSync] Processing ${recentClients.length} updated clients...`);
 
+  let contractorFieldMappings = {};
+  try {
+    const mappingsResult = await pool.query(
+      'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
+      [CONTRACTOR_ID]
+    );
+    contractorFieldMappings = mappingsResult.rows[0]?.contractor_field_mappings || {};
+  } catch {
+    // fall through — deriveAndSaveTags uses hardcoded label defaults
+  }
+
   const updatedIds = [];
 
   // For each recently updated client, fetch their full related data individually
@@ -182,7 +193,7 @@ async function runIncrementalSync() {
         requests,
       };
 
-      await deriveAndSaveTags(pool, CONTRACTOR_ID, client.id, clientData);
+      await deriveAndSaveTags(pool, CONTRACTOR_ID, client.id, clientData, contractorFieldMappings);
 
       // Permanent system tag
       await pool.query(

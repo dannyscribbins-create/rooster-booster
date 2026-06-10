@@ -571,6 +571,16 @@ async function runFullJobberImport(contractorId, filterPreference) {
 
     // ── STEP I — Derive and save tags (per client) ────────────────────────────
     console.log('[fullJobberImport] Step I — deriving tags...');
+    let contractorFieldMappings = {};
+    try {
+      const mappingsResult = await pool.query(
+        'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
+        [contractorId]
+      );
+      contractorFieldMappings = mappingsResult.rows[0]?.contractor_field_mappings || {};
+    } catch {
+      // fall through — deriveAndSaveTags uses hardcoded label defaults
+    }
     for (const client of filteredClients) {
       // Normalize job-embedded invoices shape for deriveAndSaveTags
       const normalizedJobs = client.jobs.map(j => ({
@@ -589,7 +599,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
         requests:     client.requests,
       };
 
-      await deriveAndSaveTags(pool, contractorId, client.id, clientData);
+      await deriveAndSaveTags(pool, contractorId, client.id, clientData, contractorFieldMappings);
 
       // Permanent system tag — marks this contact as a known Jobber client
       await pool.query(

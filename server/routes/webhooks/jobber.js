@@ -258,7 +258,17 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
       quotes:       relatedData.quotes?.nodes || [],
       requests:     relatedData.requests?.nodes || [],
     };
-    await deriveAndSaveTags(pool, contractorId, fullClient.id, clientData);
+    let contractorFieldMappings = {};
+    try {
+      const mappingsResult = await pool.query(
+        'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
+        [contractorId]
+      );
+      contractorFieldMappings = mappingsResult.rows[0]?.contractor_field_mappings || {};
+    } catch {
+      // fall through — deriveAndSaveTags uses hardcoded label defaults
+    }
+    await deriveAndSaveTags(pool, contractorId, fullClient.id, clientData, contractorFieldMappings);
 
     await pool.query(
       `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)

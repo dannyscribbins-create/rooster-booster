@@ -701,7 +701,7 @@ router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
   const contractorId = 'accent-roofing';
   const visibleOnly = req.query.visibleOnly === 'true';
   try {
-    const [tagResult, visibilityResult] = await Promise.all([
+    const [tagResult, systemTagResult, visibilityResult] = await Promise.all([
       pool.query(
         `SELECT
            SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1) AS prefix,
@@ -717,6 +717,15 @@ router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
          ORDER BY SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1)`,
         [contractorId]
       ),
+      pool.query(
+        `SELECT DISTINCT tag
+         FROM contact_tags
+         WHERE contractor_id = $1
+           AND source = 'system'
+           AND tag NOT LIKE '%:%'
+         ORDER BY tag`,
+        [contractorId]
+      ),
       visibleOnly
         ? pool.query(
             `SELECT tag_group_visibility FROM contractor_settings WHERE contractor_id = $1`,
@@ -726,6 +735,18 @@ router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
     ]);
 
     const visibility = normalizeTagGroupVisibility(visibilityResult.rows[0]?.tag_group_visibility || {});
+
+    // Build RoofMiles system tag group — normalized values for consistent pill rendering
+    const normalizeTagVal = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const systemValues = systemTagResult.rows.map(r => normalizeTagVal(r.tag));
+    const roofmilesGroup = {
+      prefix:       'roofmiles',
+      label:        'RoofMiles Tags',
+      values:       systemValues,
+      valueCount:   systemValues.length,
+      contactCount: 0, // RoofMiles tags span contacts table — not counted per jobber_client_id
+      count:        0, // backward compat
+    };
 
     let categories = tagResult.rows.map(row => {
       const values = Array.isArray(row.values) ? row.values : [];
@@ -750,6 +771,20 @@ router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
           const filteredValues = cat.values.filter(v => !hiddenVals.includes(normalizeVal(v)));
           return { ...cat, values: filteredValues, valueCount: filteredValues.length };
         });
+
+      // Apply visibleOnly filtering to the RoofMiles group
+      if (visibility['roofmiles']?.enabled !== false) {
+        const hiddenVals = visibility['roofmiles']?.hidden_values || [];
+        if (hiddenVals.length > 0) {
+          roofmilesGroup.values = roofmilesGroup.values.filter(v => !hiddenVals.includes(v));
+          roofmilesGroup.valueCount = roofmilesGroup.values.length;
+        }
+        if (roofmilesGroup.values.length > 0) {
+          categories = [roofmilesGroup, ...categories];
+        }
+      }
+    } else if (roofmilesGroup.values.length > 0) {
+      categories = [roofmilesGroup, ...categories];
     }
 
     res.json({ categories });
