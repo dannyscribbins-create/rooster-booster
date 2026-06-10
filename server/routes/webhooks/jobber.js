@@ -206,6 +206,30 @@ async function fetchClientRelatedData(clientId, token) {
   return response.data?.data?.client || null;
 }
 
+// ── TEST SEAMS ─────────────────────────────────────────────────────────────────
+// Module-level variables default to the real implementations.
+// Inert in production — never overridden outside tests.
+let _fetchInvoiceWithJobs   = fetchInvoiceWithJobs;
+let _fetchFullClient        = fetchFullClient;
+let _fetchClientRelatedData = fetchClientRelatedData;
+let _sendEmail              = (...args) => resend.emails.send(...args);
+
+// test seam — inert in production, never called outside server/test/
+function _setTestOverrides({ fetchInvoiceWithJobs: a, fetchFullClient: b, fetchClientRelatedData: c, sendEmail: d } = {}) {
+  if (a !== undefined) _fetchInvoiceWithJobs   = a;
+  if (b !== undefined) _fetchFullClient        = b;
+  if (c !== undefined) _fetchClientRelatedData = c;
+  if (d !== undefined) _sendEmail              = d;
+}
+
+// test seam — inert in production, never called outside server/test/
+function _resetTestOverrides() {
+  _fetchInvoiceWithJobs   = fetchInvoiceWithJobs;
+  _fetchFullClient        = fetchFullClient;
+  _fetchClientRelatedData = fetchClientRelatedData;
+  _sendEmail              = (...args) => resend.emails.send(...args);
+}
+
 // Upserts a client into jobber_clients and derives+saves all tags.
 // Called fire-and-forget from webhook handlers.
 async function upsertAndTagClient(contractorId, fullClient, relatedData) {
@@ -376,7 +400,7 @@ router.post('/jobber/client-create', async (req, res) => {
       if (!clientId) throw new Error('client-create webhook: missing client id in payload');
 
       const fullClient = token
-        ? await fetchFullClient(clientId, token).catch(err => {
+        ? await _fetchFullClient(clientId, token).catch(err => {
             console.warn(`[jobber-webhook] fetchFullClient failed, using raw payload: ${err.message}`);
             return client;
           })
@@ -387,7 +411,7 @@ router.post('/jobber/client-create', async (req, res) => {
 
       // Upsert into jobber_clients and derive tags
       if (token) {
-        const relatedData = await fetchClientRelatedData(clientId, token).catch(err => {
+        const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
           console.warn(`[jobber-webhook] client-create fetchClientRelatedData failed: ${err.message}`);
           return null;
         });
@@ -447,7 +471,7 @@ router.post('/jobber/client-update', async (req, res) => {
       if (!clientId) throw new Error('client-update webhook: missing client id in payload');
 
       const fullClient = token
-        ? await fetchFullClient(clientId, token).catch(err => {
+        ? await _fetchFullClient(clientId, token).catch(err => {
             console.warn(`[jobber-webhook] fetchFullClient failed, using raw payload: ${err.message}`);
             return client;
           })
@@ -458,7 +482,7 @@ router.post('/jobber/client-update', async (req, res) => {
 
       // Upsert into jobber_clients and derive tags
       if (token) {
-        const relatedData = await fetchClientRelatedData(clientId, token).catch(err => {
+        const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
           console.warn(`[jobber-webhook] client-update fetchClientRelatedData failed: ${err.message}`);
           return null;
         });
@@ -519,7 +543,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         await logError({ req, error: new Error('[invoice-paid] missing invoiceId in webhook payload'), source: 'POST /webhooks/jobber/invoice-paid' });
         try {
           await retryWithBackoff(
-            () => resend.emails.send({
+            () => _sendEmail({
               from: 'noreply@roofmiles.com',
               to: 'admin1@roofmiles.com',
               subject: '[RoofMiles Alert] Invoice webhook error — itemId missing from payload',
@@ -559,7 +583,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       // job type custom fields — one fetch serves both client ID resolution and the referral engine.
       let invoiceWithJobs = null;
       try {
-        invoiceWithJobs = await fetchInvoiceWithJobs(invoiceId, token);
+        invoiceWithJobs = await _fetchInvoiceWithJobs(invoiceId, token);
       } catch (err) {
         await logError({ req, error: err, source: 'POST /webhooks/jobber/invoice-paid — fetchInvoiceWithJobs' });
         console.warn(`[invoice-paid] fetchInvoiceWithJobs failed for invoice ${invoiceId}:`, err.message);
@@ -578,7 +602,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         await logError({ req, error: new Error(`[invoice-paid] invoice ${invoiceId} has no client id`), source: 'POST /webhooks/jobber/invoice-paid' });
         try {
           await retryWithBackoff(
-            () => resend.emails.send({
+            () => _sendEmail({
               from: 'noreply@roofmiles.com',
               to: 'admin1@roofmiles.com',
               subject: '[RoofMiles Alert] Invoice webhook error — client ID could not be resolved',
@@ -603,7 +627,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       }
       console.log(`[invoice-paid] resolved client id: ${clientId}`);
 
-      const fullClient = await fetchFullClient(clientId, token);
+      const fullClient = await _fetchFullClient(clientId, token);
       const clientName = (`${fullClient.firstName || ''} ${fullClient.lastName || ''}`).trim();
       const clientEmail = fullClient.emails?.[0]?.address || null;
       const clientPhone = fullClient.phones?.[0]?.number || null;
@@ -708,7 +732,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
             const ctaUrl = `${frontendUrl}?exp=${inviteToken}`;
 
             await retryWithBackoff(
-              () => resend.emails.send({
+              () => _sendEmail({
                 from: `${emailSenderName} <noreply@roofmiles.com>`,
                 to: clientEmail,
                 subject: `Thank you for choosing us, ${firstName}!`,
@@ -759,7 +783,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       // Runs unconditionally — keeps jobber_clients and contact_tags in sync on every paid invoice.
       ;(async () => {
         try {
-          const relatedData = await fetchClientRelatedData(clientId, token).catch(err => {
+          const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
             console.warn(`[invoice-paid] fetchClientRelatedData failed: ${err.message}`);
             return null;
           });
@@ -873,7 +897,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
 
                   const suppressed4 = await isEmailSuppressed(contractorId, referrerRow.email, 'bonus_earned');
                   if (!suppressed4) await retryWithBackoff(
-                    () => resend.emails.send({
+                    () => _sendEmail({
                       from: `${fromName} <noreply@roofmiles.com>`,
                       to: referrerRow.email,
                       subject: `You just earned $${formattedAmount}`,
@@ -915,7 +939,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                   const firstName13 = escapeHtml((referrerRow13.full_name || '').split(' ')[0] || referrerRow13.full_name);
                   const suppressed13 = await isEmailSuppressed(contractorId, referrerRow13.email, 'first_reward_milestone');
                   if (!suppressed13) await retryWithBackoff(
-                    () => resend.emails.send({
+                    () => _sendEmail({
                       from: `${fromName13} <noreply@roofmiles.com>`,
                       to: referrerRow13.email,
                       subject: `You just earned your first reward`,
@@ -1079,7 +1103,7 @@ router.post('/jobber/job-update', async (req, res) => {
       console.log(`[job-update] job_completed_at set for client ${clientId} (contractor: ${contractorId})`);
 
       // Upsert into jobber_clients and derive tags for the affected client
-      const relatedData = await fetchClientRelatedData(clientId, token).catch(err => {
+      const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
         console.warn(`[job-update] fetchClientRelatedData failed: ${err.message}`);
         return null;
       });
@@ -1095,3 +1119,6 @@ router.post('/jobber/job-update', async (req, res) => {
 });
 
 module.exports = router;
+// test seam — inert in production, never called outside server/test/
+router._setTestOverrides  = _setTestOverrides;
+router._resetTestOverrides = _resetTestOverrides;
