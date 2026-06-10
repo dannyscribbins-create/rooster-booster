@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const { pool } = require('../db');
-const { setAccessToken, discoverJobberFields } = require('../crm/jobber');
+const { discoverJobberFields } = require('../crm/jobber');
 const { logError } = require('../middleware/errorLogger');
 
 // ── JOBBER OAUTH ──────────────────────────────────────────────────────────────
@@ -25,7 +25,6 @@ router.get('/callback', async (req, res) => {
       grant_type: 'authorization_code', client_id: process.env.JOBBER_CLIENT_ID,
       client_secret: process.env.JOBBER_CLIENT_SECRET, redirect_uri: process.env.REDIRECT_URI, code
     });
-    setAccessToken(response.data.access_token);
     const expiresAt = new Date(Date.now() + (parseInt(response.data.expires_in) || 3600) * 1000);
     await pool.query(
       `INSERT INTO tokens (id,access_token,refresh_token,expires_at,updated_at,contractor_id) VALUES (1,$1,$2,$3,NOW(),$4)

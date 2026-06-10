@@ -1,19 +1,9 @@
-// TODO: setAccessToken() and module-level accessToken are deprecated.
-// All credential access now goes through getCRMAdapter(contractorId) in crm/index.js.
-// Remove these after confirming all routes use the adapter pattern.
 const axios = require('axios');
 const { pool } = require('../db');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
 const { logError } = require('../middleware/errorLogger');
 const { boostSchedule } = require('../constants/boostSchedule');
-
-let accessToken = null;
-
-// TODO: setAccessToken() is kept for backward compatibility while existing routes import
-// directly from jobber.js. Once all callers go through getCRMAdapter() in crm/index.js,
-// this function and the module-level accessToken variable can be removed.
-function setAccessToken(token) { accessToken = token; }
 
 // ── TOKEN AUTO-REFRESH ────────────────────────────────────────────────────────
 // TODO: refreshTokenIfNeeded() is kept for backward compatibility. It uses WHERE id=1
@@ -40,7 +30,6 @@ async function refreshTokenIfNeeded() {
       `UPDATE tokens SET access_token=$1, refresh_token=$2, expires_at=$3, updated_at=NOW() WHERE id=1`,
       [newAccess, newRefresh, newExpiry]
     );
-    accessToken = newAccess;
     console.log('Token refreshed, expires:', newExpiry);
   }
 }
@@ -290,4 +279,4 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
   return result.rows;
 }
 
-module.exports = { setAccessToken, refreshTokenIfNeeded, fetchPipelineForReferrer, discoverJobberFields };
+module.exports = { refreshTokenIfNeeded, fetchPipelineForReferrer, discoverJobberFields };
