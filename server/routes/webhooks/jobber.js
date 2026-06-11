@@ -828,15 +828,15 @@ router.post('/jobber/invoice-paid', async (req, res) => {
               [result.referrerId, contractorId, result.jobberClientId, result.bonusAmount]
             );
 
-            // Update referrer's paid_count cache
-            await pool.query(
-              `UPDATE users SET paid_count = paid_count + 1, paid_count_updated_at = NOW()
-               WHERE id = $1`,
-              [result.referrerId]
-            );
-
-            // Non-blocking Active Referrer tag write
+            // Non-blocking Active Referrer tag write — paid_count increment lives here too
+            // so concurrent duplicate deliveries where one INSERT returns rowCount=0 don't
+            // double-increment the referrer's boost tier.
             if (conversionInsert.rowCount > 0) {
+              await pool.query(
+                `UPDATE users SET paid_count = paid_count + 1, paid_count_updated_at = NOW()
+                 WHERE id = $1`,
+                [result.referrerId]
+              );
               ;(async () => {
                 try {
                   const referrerEmailRes = await pool.query(

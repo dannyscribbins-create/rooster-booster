@@ -243,67 +243,71 @@ describe('invoice-paid webhook (characterization suite)', () => {
   });
 
   // ── TEST 5 ──────────────────────────────────────────────────────────────────
-  it('duplicate conversion attempt — referralRules dupe check returns qualified:false, no paid_count change', async () => {
-    // FIXME(Session 79.5): paid_count UPDATE at handler line ~832 is NOT guarded by
-    // conversionInsert.rowCount. referralRules.evaluateReferral has its own dupe check
-    // ('conversion_already_recorded') that protects sequential retries — so paid_count
-    // does NOT inflate in the observable (single-threaded) test below. However, under
-    // concurrent webhook delivery (race condition), both handlers could receive
-    // qualified:true from evaluateReferral before either commits, then one INSERT returns
-    // rowCount=0 but paid_count still increments — inflating boost tier. Suspected live
-    // bug under concurrent load. Pinned as-is per characterization rule.
+  it('duplicate webhook delivery — paid_count increments exactly once, no second conversion row', async () => {
+    // Fires the same invoice twice. First delivery records the conversion and increments
+    // paid_count. Second delivery is blocked by evaluateReferral's dupe check (qualified:false)
+    // and by the rowCount guard added in Session 79.5 — paid_count stays at 1.
 
     await seedContractor(pool, 'test-roofing');
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
-    const userId = await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com' });
+    await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com' });
     await seedReferralSchedule(pool, {
       contractorId: 'test-roofing',
       jobberLabel: 'Roof Replacement',
       flatAmount: 250,
     });
 
-    // Seed an existing conversion row — simulates that this client was already converted.
-    await pool.query(
-      `INSERT INTO referral_conversions
-         (user_id, contractor_id, jobber_client_id, bonus_amount, converted_at)
-       VALUES ($1, 'test-roofing', 'jobber-c1', 250, NOW())`,
-      [userId]
-    );
-
     const emails = [];
-    let fetchRelatedCalled = false;
+    let fetchRelatedCallCount = 0;
     _setTestOverrides({
       fetchInvoiceWithJobs:   async () => PAID_INVOICE,
       fetchFullClient:        async () => FULL_CLIENT_WITH_REFERRAL,
-      fetchClientRelatedData: async () => { fetchRelatedCalled = true; return null; },
+      fetchClientRelatedData: async () => { fetchRelatedCallCount++; return null; },
       sendEmail: async args => { emails.push(args); return { id: 'test-email' }; },
     });
 
-    const resp = await post({
+    // First delivery — qualified referral, records conversion and increments paid_count.
+    const resp1 = await post({
       data: { webHookEvent: { itemId: 'inv-004' } },
       contractor_id: 'test-roofing',
     });
+    assert.equal(resp1.status, 200);
 
-    assert.equal(resp.status, 200);
+    // Both #4 bonus + #13 first-milestone emails signal first delivery is fully complete.
+    await waitFor(() => emails.length >= 2, { timeout: 5000 });
 
-    // STEP 9A fires after the referral engine. When fetchRelatedCalled is true,
-    // the IIFE (including all referral engine awaits) has completed.
-    await waitFor(() => fetchRelatedCalled, { timeout: 3000 });
+    const { rows: rcRows1 } = await pool.query('SELECT * FROM referral_conversions');
+    assert.equal(rcRows1.length, 1, 'one conversion row after first delivery');
 
-    // referralRules returned qualified:false — no new row, paid_count unchanged.
-    const { rows: rcRows } = await pool.query('SELECT * FROM referral_conversions');
-    assert.equal(rcRows.length, 1, 'no second conversion row inserted');
+    const { rows: userRows1 } = await pool.query(
+      "SELECT paid_count FROM users WHERE LOWER(full_name) = 'jane referrer'"
+    );
+    assert.equal(userRows1[0].paid_count, 1, 'paid_count = 1 after first delivery');
 
-    const { rows: userRows } = await pool.query(
-      'SELECT paid_count FROM users WHERE id = $1', [userId]
+    // Second delivery (same invoice) — evaluateReferral returns qualified:false.
+    const resp2 = await post({
+      data: { webHookEvent: { itemId: 'inv-004' } },
+      contractor_id: 'test-roofing',
+    });
+    assert.equal(resp2.status, 200);
+
+    // STEP 9A fires unconditionally on each delivery — fetchRelatedCallCount >= 2 is the
+    // terminal signal that the second delivery's outer IIFE has reached and passed STEP 9A.
+    await waitFor(() => fetchRelatedCallCount >= 2, { timeout: 3000 });
+
+    const { rows: rcRows2 } = await pool.query('SELECT * FROM referral_conversions');
+    assert.equal(rcRows2.length, 1, 'still exactly one conversion row after duplicate delivery');
+
+    const { rows: userRows2 } = await pool.query(
+      "SELECT paid_count FROM users WHERE LOWER(full_name) = 'jane referrer'"
     );
     assert.equal(
-      userRows[0].paid_count, 0,
-      'paid_count unchanged — referralRules dupe check returned qualified:false'
+      userRows2[0].paid_count, 1,
+      'paid_count still 1 — duplicate delivery did not double-increment'
     );
 
-    assert.equal(emails.length, 0, 'no emails on duplicate attempt');
+    assert.equal(emails.length, 2, 'no extra emails from duplicate delivery');
   });
 
   // ── TEST 6 ──────────────────────────────────────────────────────────────────
