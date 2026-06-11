@@ -206,12 +206,11 @@ src/
         ├── AdminSettings.jsx       ← main settings hub
         ├── AdminSettingsNotifications.jsx
         ├── AdminSettingsEngagement.jsx ← ExperiencePopup toggle lives here (not Retention page)
-        ├── AdminSettingsCRM.jsx    ← CRM connection, import trigger, import state machine
         ├── BankingSettings.jsx
         ├── BrandingPreview.jsx
         ├── BrandingProfileSettings.jsx
         ├── CompanyDetailsSettings.jsx
-        ├── CRMSettings.jsx
+        ├── CRMSettings.jsx         ← CRM connection, import trigger, import state machine
         ├── ReferralProgramSettings.jsx
         ├── ScheduleBuilderDrawer.jsx
         └── TagCloudFilter.jsx      ← TagPill + TagCloudFilter shared components
@@ -351,6 +350,16 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — Stripe ACH (not yet live)
 - `B2_ENDPOINT`, `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME` — Backblaze B2 backups
 - `APP_VERSION` — set to `1.0.0` in Railway production
+
+---
+
+## Testing
+
+- `npm test` runs the suite via Node's built-in `node:test` with `--test-concurrency=1` (the concurrency flag is load-bearing: Node 24 runs test files in parallel by default and the suites share one database).
+- Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
+- `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
+- Rule: run `npm test` before every push. All 18 tests must be green.
+- Characterization rule: a failing or surprising test result means STOP and report — never adjust production code to satisfy a test, and never silently adjust a test to satisfy the code. Deliberate behavior changes update the relevant test openly and are documented in the session handoff.
 
 ---
 
