@@ -5,6 +5,8 @@ const { verifyAdminSession } = require('../../middleware/auth');
 const { logError } = require('../../middleware/errorLogger');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
+// test seam — inert in production, never called outside server/test/
+let _sendEmail = (...args) => resend.emails.send(...args);
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { resendShouldRetry } = require('../../utils/retryHelpers');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
@@ -84,7 +86,7 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
         if (status === 'approved') {
           // #8 — cashout approved
           if (!suppressed8or9) await retryWithBackoff(
-            () => resend.emails.send({
+            () => _sendEmail({
               from: `${fromName} <noreply@roofmiles.com>`,
               to: cashout.email,
               subject: `Your $${formattedAmount} cashout is approved!`,
@@ -103,7 +105,7 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
         } else {
           // #9 — cashout denied
           if (!suppressed8or9) await retryWithBackoff(
-            () => resend.emails.send({
+            () => _sendEmail({
               from: `${fromName} <noreply@roofmiles.com>`,
               to: cashout.email,
               subject: `Update on your cashout request`,
@@ -134,5 +136,16 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
     client.release();
   }
 });
+
+// test seam — inert in production, never called outside server/test/
+function _setTestOverrides({ sendEmail: a } = {}) {
+  if (a !== undefined) _sendEmail = a;
+}
+// test seam — inert in production, never called outside server/test/
+function _resetTestOverrides() {
+  _sendEmail = (...args) => resend.emails.send(...args);
+}
+router._setTestOverrides  = _setTestOverrides;
+router._resetTestOverrides = _resetTestOverrides;
 
 module.exports = router;

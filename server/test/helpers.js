@@ -12,23 +12,23 @@ async function seedContractor(pool, contractorId) {
 }
 
 // Inserts a jobber_clients row. name goes into first_name for simplicity.
-async function seedJobberClient(pool, { contractorId, jobberClientId, name = null, email = null }) {
+async function seedJobberClient(pool, { contractorId, jobberClientId, name = null, email = null, phone = null }) {
   await pool.query(
     `INSERT INTO jobber_clients
-       (jobber_client_id, contractor_id, first_name, last_name, email, last_synced_at)
-     VALUES ($1, $2, $3, NULL, $4, NOW())
+       (jobber_client_id, contractor_id, first_name, last_name, email, phone, last_synced_at)
+     VALUES ($1, $2, $3, NULL, $4, $5, NOW())
      ON CONFLICT (jobber_client_id, contractor_id) DO NOTHING`,
-    [jobberClientId, contractorId, name, email]
+    [jobberClientId, contractorId, name, email, phone]
   );
 }
 
 // Inserts a contacts row. Caller must supply a fixed UUID string for id.
-async function seedContact(pool, { contractorId, id, name = null, email }) {
+async function seedContact(pool, { contractorId, id, name = null, email, phone = null, jobberClientId = null }) {
   await pool.query(
-    `INSERT INTO contacts (id, contractor_id, email, name)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO contacts (id, contractor_id, email, name, phone, jobber_client_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
      ON CONFLICT (contractor_id, email) DO NOTHING`,
-    [id, contractorId, email, name]
+    [id, contractorId, email, name, phone, jobberClientId]
   );
 }
 
@@ -112,6 +112,18 @@ async function seedUser(pool, { fullName, email, contractorId }) {
     [fullName, email]
   );
   return rows[0].id;
+}
+
+// Inserts a sessions row with the given role and token.
+// userId may be null for admin sessions (no user account required).
+async function seedSession(pool, { userId = null, token, role = 'referrer', expiresInMs = 3_600_000 }) {
+  const expiresAt = new Date(Date.now() + expiresInMs);
+  await pool.query(
+    `INSERT INTO sessions (user_id, token, expires_at, role)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (token) DO UPDATE SET expires_at = EXCLUDED.expires_at`,
+    [userId, token, expiresAt, role]
+  );
 }
 
 // ── HTTP TEST TRANSPORT HELPERS ───────────────────────────────────────────────
@@ -215,6 +227,7 @@ module.exports = {
   seedEngagementSettings,
   seedReferralSchedule,
   seedUser,
+  seedSession,
   signJobberWebhook,
   httpPost,
   buildTestApp,

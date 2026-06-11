@@ -22,6 +22,11 @@ const { verifyReferrerSession } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
 const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
 
+// test seam — inert in production, never called outside server/test/
+// Only the cashout-section call sites below use these overrides.
+let _sendEmail              = (...args) => resend.emails.send(...args);
+let _sendAdminNotificationFn = sendAdminNotification;
+
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
@@ -855,7 +860,7 @@ router.post('/api/cashout', cashoutLimiter, [
       `INSERT INTO activity_log (event_type,full_name,email,detail) VALUES ('cashout',$1,$2,$3)`,
       [full_name, email, `Requested $${amount} via ${method || 'unknown'}`]
     );
-    await sendAdminNotification(
+    await _sendAdminNotificationFn(
       pool,
       'payouts',
       'New Cash Out Request - Rooster Booster',
@@ -879,7 +884,7 @@ router.post('/api/cashout', cashoutLimiter, [
 
       const suppressed7 = await isEmailSuppressed('accent-roofing', email, 'cashout_request_received');
       if (!suppressed7) await retryWithBackoff(
-        () => resend.emails.send({
+        () => _sendEmail({
           from: `${fromName} <noreply@roofmiles.com>`,
           to: email,
           subject: 'We got your cashout request',
@@ -941,7 +946,7 @@ router.post('/api/cashout', cashoutLimiter, [
             );
             try {
               await retryWithBackoff(
-                () => resend.emails.send({
+                () => _sendEmail({
                   from: 'noreply@roofmiles.com',
                   to: email,
                   subject: 'Action Required: Connect Your Bank to Receive Your Bonus',
@@ -970,7 +975,7 @@ router.post('/api/cashout', cashoutLimiter, [
               await logError({ req, error: referrerEmailErr, source: 'POST /api/cashout' });
               // do not crash the cashout flow on referrer email failure
             }
-            await sendAdminNotification(
+            await _sendAdminNotificationFn(
               pool,
               'payouts',
               'Auto-Fire Blocked — Bank Account Not Connected',
@@ -2249,5 +2254,18 @@ router.get('/api/referrer/conversions', async (req, res) => {
     res.status(500).json({ error: 'Failed to load conversions' });
   }
 });
+
+// test seam — inert in production, never called outside server/test/
+function _setTestOverrides({ sendEmail: a, sendAdminNotification: b } = {}) {
+  if (a !== undefined) _sendEmail              = a;
+  if (b !== undefined) _sendAdminNotificationFn = b;
+}
+// test seam — inert in production, never called outside server/test/
+function _resetTestOverrides() {
+  _sendEmail              = (...args) => resend.emails.send(...args);
+  _sendAdminNotificationFn = sendAdminNotification;
+}
+router._setTestOverrides  = _setTestOverrides;
+router._resetTestOverrides = _resetTestOverrides;
 
 module.exports = router;
