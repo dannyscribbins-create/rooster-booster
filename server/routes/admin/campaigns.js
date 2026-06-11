@@ -860,7 +860,7 @@ router.get('/api/admin/campaigns/:id', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, name, status, total_contacts, total_batches, current_batch,
-              filters, builder_path, last_step,
+              filters, builder_path, last_step, audience_id,
               message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url,
               created_at, updated_at
        FROM campaigns WHERE id = $1 AND contractor_id = $2`,
@@ -956,7 +956,7 @@ router.delete('/api/admin/campaigns/:id', async (req, res) => {
 router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
-  const { dateFrom, dateTo, paidOnly, minJobValue, workCategory, jobSource, notInApp } = req.body;
+  const { dateFrom, dateTo, paidOnly, minJobValue, workCategory, jobSource, notInApp, audience_id } = req.body;
   try {
     const check = await pool.query(
       'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
@@ -965,13 +965,102 @@ router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
     if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const filters = { dateFrom, dateTo, paidOnly, minJobValue, workCategory, jobSource, notInApp };
     const result = await pool.query(
-      `UPDATE campaigns SET filters = $1, updated_at = NOW() WHERE id = $2
-       RETURNING id, filters`,
-      [JSON.stringify(filters), id]
+      `UPDATE campaigns SET filters = $1, audience_id = $2, updated_at = NOW() WHERE id = $3
+       RETURNING id, filters, audience_id`,
+      [JSON.stringify(filters), audience_id || null, id]
     );
     res.json(result.rows[0]);
   } catch (err) {
     await logError({ req, error: err });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Loads dynamic_audience_members into campaign_contacts, bypassing Jobber pull.
+// Mirrors the pull endpoint's bookkeeping: sets total_contacts, in_app flag, opted_out=false.
+router.post('/api/admin/campaigns/:id/load-audience', async (req, res) => {
+  if (!await verifyAdminSession(req, res)) return;
+  const { id } = req.params;
+  const contractorId = 'accent-roofing';
+  try {
+    const campaignResult = await pool.query(
+      'SELECT id, audience_id FROM campaigns WHERE id = $1 AND contractor_id = $2',
+      [id, contractorId]
+    );
+    if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
+    const audienceId = campaignResult.rows[0].audience_id;
+    if (!audienceId) return res.status(400).json({ error: 'Campaign has no audience selected' });
+
+    // Load all audience members with contact details from both Tier 2 (contacts) and Tier 1 (jobber_clients)
+    const membersResult = await pool.query(
+      `SELECT
+         dam.contact_id,
+         dam.jobber_client_id AS dam_jobber_client_id,
+         c.email      AS c_email,
+         c.name       AS c_name,
+         c.phone      AS c_phone,
+         c.jobber_client_id AS c_jobber_client_id,
+         jc.email     AS jc_email,
+         jc.first_name,
+         jc.last_name,
+         jc.phone     AS jc_phone,
+         jc.jobber_client_id AS jc_jobber_client_id
+       FROM dynamic_audience_members dam
+       LEFT JOIN contacts c
+         ON c.id = dam.contact_id
+       LEFT JOIN jobber_clients jc
+         ON jc.jobber_client_id = dam.jobber_client_id AND jc.contractor_id = $2
+       WHERE dam.audience_id = $1`,
+      [audienceId, contractorId]
+    );
+
+    // Determine in_app status — same logic as the Jobber pull path
+    const usersResult = await pool.query(
+      'SELECT email FROM users WHERE deleted_at IS NULL'
+    );
+    const knownEmails = new Set(
+      usersResult.rows.map(r => r.email?.toLowerCase()).filter(Boolean)
+    );
+
+    const contacts = membersResult.rows.map(m => {
+      const email        = m.c_email || m.jc_email || null;
+      const phone        = m.c_phone || m.jc_phone || null;
+      const name         = m.c_name  || [m.first_name, m.last_name].filter(Boolean).join(' ') || null;
+      const clientJobberId = m.c_jobber_client_id || m.dam_jobber_client_id || null;
+      const inApp        = email ? knownEmails.has(email.toLowerCase()) : false;
+      return { email, phone, name, clientJobberId, inApp };
+    });
+
+    const inAppCount = contacts.filter(c => c.inApp).length;
+
+    // Replace campaign_contacts — same pattern as pull endpoint
+    await pool.query('DELETE FROM campaign_contacts WHERE campaign_id = $1', [id]);
+
+    if (contacts.length > 0) {
+      const valuePlaceholders = contacts.map((_, i) => {
+        const base = i * 7;
+        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7})`;
+      }).join(',');
+      const flatValues = contacts.flatMap(c => [
+        id, contractorId, c.clientJobberId, c.name, c.phone, c.email, c.inApp,
+      ]);
+      await pool.query(
+        `INSERT INTO campaign_contacts
+           (campaign_id, contractor_id, client_jobber_id, client_name, phone, email, in_app)
+         VALUES ${valuePlaceholders}`,
+        flatValues
+      );
+    }
+
+    // Match pull path bookkeeping: total_contacts = all contacts, same as withInApp.length in pull
+    await pool.query(
+      'UPDATE campaigns SET total_contacts = $1, updated_at = NOW() WHERE id = $2',
+      [contacts.length, id]
+    );
+
+    res.json({ totalContacts: contacts.length, inAppCount });
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/load-audience' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

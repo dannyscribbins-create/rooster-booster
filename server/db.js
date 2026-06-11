@@ -961,6 +961,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     ON dynamic_audience_members(audience_id, jobber_client_id)
     WHERE jobber_client_id IS NOT NULL`);
 
+  // audience_id FK on campaigns — must run after dynamic_audiences table is created above
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS audience_id INTEGER REFERENCES dynamic_audiences(id)`);
+
   // ── ENGAGEMENT CADENCE ────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS engagement_cadence_settings (
     contractor_id TEXT NOT NULL,

@@ -347,11 +347,18 @@ const CURATING_ITEMS = [
   'Building your list...',
 ];
 
+const CURATING_ITEMS_AUDIENCE = [
+  'Loading saved audience',
+  'Filtering active members',
+  'Matching against app users',
+  'Building your list...',
+];
+
 const CURATING_TIMINGS = [0, 800, 1400, 2200]; // when each item becomes visible (ms)
 const CHECK_TIMINGS    = [800, 1400, 2200];     // when items 0-2 get a checkmark (ms)
 const LARGE_DATASET_MS = 8000;
 
-function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar }) {
+function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAudienceMode }) {
   const [phase, setPhase]           = useState(0); // 0–7: tracks visible + checked items
   const [showLarge, setShowLarge]   = useState(false);
 
@@ -399,7 +406,7 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar }) {
       `}</style>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 0 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 36, minWidth: 280 }}>
-          {CURATING_ITEMS.map((label, i) => (
+          {(isAudienceMode ? CURATING_ITEMS_AUDIENCE : CURATING_ITEMS).map((label, i) => (
             <div
               key={label}
               style={{
@@ -2464,6 +2471,12 @@ function BuilderDrawer({
   isCsvFlow,
   csvFile, onCsvFileSelect, csvUploading, csvUploadError, onCsvUpload,
   csvPreviewData, csvColumnMapping, onCsvMappingChange, csvConfirming, csvConfirmError, onCsvConfirm,
+  // Audience mode props
+  filterMode, onFilterModeChange,
+  builderAudiences, builderAudiencesLoading,
+  selectedBuilderAudienceId, onAudienceSelect,
+  audienceLoadSaving, onUseAudience,
+  isAudienceMode,
 }) {
   const [drawerIn, setDrawerIn] = useState(false);
 
@@ -2584,113 +2597,217 @@ function BuilderDrawer({
               <h3 style={{ margin: '0 0 6px', fontFamily: AD.fontSans, fontSize: 20, fontWeight: 600, color: AD.textPrimary }}>Set your filters</h3>
               <p style={{ margin: '0 0 20px', color: AD.textSecondary, fontSize: 14, fontFamily: AD.fontSans }}>Your results will include clients who match all filters you set.</p>
 
-              {/* Compliance notice */}
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                background: 'rgba(37,99,235,0.08)', border: `1px solid rgba(37,99,235,0.2)`,
-                borderRadius: 10, padding: '12px 16px', marginBottom: 24,
-              }}>
-                <i className="ph ph-shield-check" style={{ fontSize: 18, color: AD.blueText, flexShrink: 0, marginTop: 1 }} />
-                <p style={{ margin: 0, fontSize: 13, color: AD.blueText, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
-                  Only contact clients with whom you have an existing business relationship. You are responsible for ensuring all outreach complies with applicable laws.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-                {/* Card 1 — Date Range */}
-                <FilterCard
-                  title="Job date range"
-                  expanded={dateExpanded}
-                  onToggle={() => setDateExpanded(v => !v)}
-                >
-                  <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>From</label>
-                      <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...inputStyle, colorScheme: 'dark' }}
-                        onFocus={e => e.target.style.borderColor = AD.blueLight}
-                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>To</label>
-                      <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ ...inputStyle, colorScheme: 'dark' }}
-                        onFocus={e => e.target.style.borderColor = AD.blueLight}
-                        onBlur={e => e.target.style.borderColor = AD.borderStrong}
-                      />
-                    </div>
-                  </div>
-                </FilterCard>
-
-                {/* Card 2 — Paid Invoices Only */}
-                <FilterCard
-                  title="Paid invoices only"
-                  noExpand
-                  right={<Toggle on={paidOnly} onChange={setPaidOnly} />}
-                  note={!paidOnly ? <p style={{ margin: 0, fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans }}>Includes unpaid invoices</p> : null}
-                />
-
-                {/* Card 3 — Minimum Job Value */}
-                <FilterCard
-                  title="Minimum job value"
-                  expanded={valueExpanded}
-                  onToggle={() => setValueExpanded(v => !v)}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: 4 }}>
-                    <span style={{ background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`, borderRight: 'none', padding: '10px 12px', borderRadius: '10px 0 0 10px', fontSize: 15, color: AD.textSecondary, fontFamily: AD.fontSans, flexShrink: 0 }}>$</span>
-                    <input
-                      type="number"
-                      value={minJobValue}
-                      onChange={e => setMinJobValue(e.target.value)}
-                      placeholder="e.g. 1000"
-                      style={{ ...inputStyle, borderRadius: '0 10px 10px 0', flex: 1 }}
-                      onFocus={e => e.target.style.borderColor = AD.blueLight}
-                      onBlur={e => e.target.style.borderColor = AD.borderStrong}
-                    />
-                  </div>
-                </FilterCard>
-
-                {/* Card 4 — Work Category (conditional) */}
-                {hasWorkCat && workCategoryOptions.length > 0 && (
-                  <FilterCard
-                    title="Work category"
-                    expanded={catExpanded}
-                    onToggle={() => setCatExpanded(v => !v)}
+              {/* Mode toggle */}
+              <div style={{ display: 'flex', gap: 0, marginBottom: 24, background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: 10, padding: 4, width: 'fit-content' }}>
+                {[{ id: 'manual', label: 'Build filters manually' }, { id: 'audience', label: 'Use saved audience' }].map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => onFilterModeChange(opt.id)}
+                    style={{
+                      background: filterMode === opt.id ? AD.navy : 'transparent',
+                      border: filterMode === opt.id ? `1px solid ${AD.borderStrong}` : '1px solid transparent',
+                      borderRadius: 8, padding: '7px 16px', cursor: 'pointer',
+                      fontFamily: AD.fontSans, fontSize: 13, fontWeight: filterMode === opt.id ? 600 : 400,
+                      color: filterMode === opt.id ? AD.textPrimary : AD.textSecondary,
+                      transition: 'all 0.15s',
+                    }}
                   >
-                    <PillMultiSelect
-                      label="Work category"
-                      options={workCategoryOptions}
-                      selected={workCategory}
-                      onChange={setWorkCategory}
-                    />
-                  </FilterCard>
-                )}
-
-                {/* Card 5 — Not Yet in App */}
-                <FilterCard
-                  title="Exclude existing app users"
-                  noExpand
-                  right={<Toggle on={notInApp} onChange={setNotInApp} />}
-                  note={notInApp ? <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>Contacts already using the app will be excluded automatically.</p> : null}
-                />
-
+                    {opt.label}
+                  </button>
+                ))}
               </div>
 
-              {/* Pool count from unified contacts */}
-              <p style={{ margin: '20px 0 24px', fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-                {poolTotal != null
-                  ? `${poolTotal.toLocaleString()} contacts in pool. Pull from Jobber to filter and see exact results.`
-                  : 'Filters set. Pull from Jobber to see exact results.'
-                }
-              </p>
+              {/* ── Manual filter mode ── */}
+              {filterMode === 'manual' && (
+                <>
+                  {/* Compliance notice */}
+                  <div style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    background: 'rgba(37,99,235,0.08)', border: `1px solid rgba(37,99,235,0.2)`,
+                    borderRadius: 10, padding: '12px 16px', marginBottom: 24,
+                  }}>
+                    <i className="ph ph-shield-check" style={{ fontSize: 18, color: AD.blueText, flexShrink: 0, marginTop: 1 }} />
+                    <p style={{ margin: 0, fontSize: 13, color: AD.blueText, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+                      Only contact clients with whom you have an existing business relationship. You are responsible for ensuring all outreach complies with applicable laws.
+                    </p>
+                  </div>
 
-              <Btn
-                variant="accent" size="lg"
-                onClick={onPullFromJobber}
-                style={{ opacity: savingFilters ? 0.6 : 1 }}
-              >
-                {savingFilters ? 'Saving...' : <>Pull from Jobber <i className="ph ph-arrow-right" /></>}
-              </Btn>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+                    {/* Card 1 — Date Range */}
+                    <FilterCard
+                      title="Job date range"
+                      expanded={dateExpanded}
+                      onToggle={() => setDateExpanded(v => !v)}
+                    >
+                      <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>From</label>
+                          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...inputStyle, colorScheme: 'dark' }}
+                            onFocus={e => e.target.style.borderColor = AD.blueLight}
+                            onBlur={e => e.target.style.borderColor = AD.borderStrong}
+                          />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>To</label>
+                          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ ...inputStyle, colorScheme: 'dark' }}
+                            onFocus={e => e.target.style.borderColor = AD.blueLight}
+                            onBlur={e => e.target.style.borderColor = AD.borderStrong}
+                          />
+                        </div>
+                      </div>
+                    </FilterCard>
+
+                    {/* Card 2 — Paid Invoices Only */}
+                    <FilterCard
+                      title="Paid invoices only"
+                      noExpand
+                      right={<Toggle on={paidOnly} onChange={setPaidOnly} />}
+                      note={!paidOnly ? <p style={{ margin: 0, fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans }}>Includes unpaid invoices</p> : null}
+                    />
+
+                    {/* Card 3 — Minimum Job Value */}
+                    <FilterCard
+                      title="Minimum job value"
+                      expanded={valueExpanded}
+                      onToggle={() => setValueExpanded(v => !v)}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginTop: 4 }}>
+                        <span style={{ background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`, borderRight: 'none', padding: '10px 12px', borderRadius: '10px 0 0 10px', fontSize: 15, color: AD.textSecondary, fontFamily: AD.fontSans, flexShrink: 0 }}>$</span>
+                        <input
+                          type="number"
+                          value={minJobValue}
+                          onChange={e => setMinJobValue(e.target.value)}
+                          placeholder="e.g. 1000"
+                          style={{ ...inputStyle, borderRadius: '0 10px 10px 0', flex: 1 }}
+                          onFocus={e => e.target.style.borderColor = AD.blueLight}
+                          onBlur={e => e.target.style.borderColor = AD.borderStrong}
+                        />
+                      </div>
+                    </FilterCard>
+
+                    {/* Card 4 — Work Category (conditional) */}
+                    {hasWorkCat && workCategoryOptions.length > 0 && (
+                      <FilterCard
+                        title="Work category"
+                        expanded={catExpanded}
+                        onToggle={() => setCatExpanded(v => !v)}
+                      >
+                        <PillMultiSelect
+                          label="Work category"
+                          options={workCategoryOptions}
+                          selected={workCategory}
+                          onChange={setWorkCategory}
+                        />
+                      </FilterCard>
+                    )}
+
+                    {/* Card 5 — Not Yet in App */}
+                    <FilterCard
+                      title="Exclude existing app users"
+                      noExpand
+                      right={<Toggle on={notInApp} onChange={setNotInApp} />}
+                      note={notInApp ? <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>Contacts already using the app will be excluded automatically.</p> : null}
+                    />
+
+                  </div>
+
+                  {/* Pool count from unified contacts */}
+                  <p style={{ margin: '20px 0 24px', fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                    {poolTotal != null
+                      ? `${poolTotal.toLocaleString()} contacts in pool. Pull from Jobber to filter and see exact results.`
+                      : 'Filters set. Pull from Jobber to see exact results.'
+                    }
+                  </p>
+
+                  <Btn
+                    variant="accent" size="lg"
+                    onClick={onPullFromJobber}
+                    style={{ opacity: savingFilters ? 0.6 : 1 }}
+                  >
+                    {savingFilters ? 'Saving...' : <>Pull from Jobber <i className="ph ph-arrow-right" /></>}
+                  </Btn>
+                </>
+              )}
+
+              {/* ── Audience mode ── */}
+              {filterMode === 'audience' && (
+                <div>
+                  <p style={{ margin: '0 0 16px', fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                    Select a saved audience to use as the contact list for this campaign.
+                  </p>
+
+                  {builderAudiencesLoading && (
+                    <p style={{ fontSize: 14, color: AD.textTertiary, fontFamily: AD.fontSans }}>Loading audiences...</p>
+                  )}
+
+                  {!builderAudiencesLoading && builderAudiences.length === 0 && (
+                    <div style={{
+                      padding: '24px 20px', borderRadius: 12,
+                      border: `1px dashed ${AD.border}`,
+                      textAlign: 'center',
+                    }}>
+                      <i className="ph ph-users-three" style={{ fontSize: 32, color: AD.textTertiary, display: 'block', marginBottom: 8 }} />
+                      <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>No active audiences found.</p>
+                      <p style={{ margin: '4px 0 0', fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>Create and activate an audience in the Audiences tab first.</p>
+                    </div>
+                  )}
+
+                  {!builderAudiencesLoading && builderAudiences.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {builderAudiences.map(aud => {
+                        const isSelected = selectedBuilderAudienceId === aud.id;
+                        return (
+                          <button
+                            key={aud.id}
+                            onClick={() => onAudienceSelect(aud.id)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 16,
+                              background: isSelected ? 'rgba(1,40,84,0.5)' : AD.bgCard,
+                              border: `1px solid ${isSelected ? AD.blueLight : AD.border}`,
+                              borderRadius: 12, padding: '14px 18px', cursor: 'pointer',
+                              textAlign: 'left', width: '100%', transition: 'border-color 0.15s, background 0.15s',
+                            }}
+                          >
+                            <div style={{
+                              width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                              border: `2px solid ${isSelected ? AD.blueLight : AD.borderStrong}`,
+                              background: isSelected ? AD.blueLight : 'transparent',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              {isSelected && <i className="ph ph-check" style={{ fontSize: 11, color: AD.navy }} />}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ margin: '0 0 2px', fontFamily: AD.fontSans, fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>{aud.name}</p>
+                              {aud.description && (
+                                <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{aud.description}</p>
+                              )}
+                            </div>
+                            <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                              <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontMono }}>
+                                {aud.member_count != null ? aud.member_count.toLocaleString() : '—'}
+                              </p>
+                              <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>members</p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {selectedBuilderAudienceId && (
+                    <div style={{ marginTop: 24 }}>
+                      <Btn
+                        variant="accent" size="lg"
+                        onClick={() => onUseAudience(selectedBuilderAudienceId)}
+                        style={{ opacity: audienceLoadSaving ? 0.6 : 1 }}
+                      >
+                        {audienceLoadSaving ? 'Loading...' : <>Use this audience <i className="ph ph-arrow-right" /></>}
+                      </Btn>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -2714,6 +2831,7 @@ function BuilderDrawer({
               onRetryPull={onRetryPull}
               onGoBack={onGoBackFromCurating}
               contactsSoFar={contactsSoFar}
+              isAudienceMode={isAudienceMode}
             />
           )}
 
@@ -2955,6 +3073,13 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [audienceMembersLoading, setAudienceMembersLoading] = useState(false);
   const [audienceMembersExpanded, setAudienceMembersExpanded] = useState(false);
 
+  // Audience mode state for builder Step 1
+  const [filterMode,               setFilterMode]               = useState('manual');
+  const [builderAudienceId,        setBuilderAudienceId]        = useState(null);
+  const [builderAudiences,         setBuilderAudiences]         = useState([]);
+  const [builderAudiencesLoading,  setBuilderAudiencesLoading]  = useState(false);
+  const [audienceLoadSaving,       setAudienceLoadSaving]       = useState(false);
+
   const token   = sessionStorage.getItem('rb_admin_token');
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -3043,6 +3168,58 @@ export default function AdminCampaigns({ setLoggedIn }) {
     } finally {
       setAudienceMembersLoading(false);
     }
+  }
+
+  async function loadBuilderAudiences() {
+    setBuilderAudiencesLoading(true);
+    setBuilderAudiences([]);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/audiences`, { headers });
+      if (!r.ok) return;
+      const data = await r.json();
+      setBuilderAudiences(Array.isArray(data) ? data.filter(a => a.is_active) : []);
+    } catch {
+      // swallow — empty list shown
+    } finally {
+      setBuilderAudiencesLoading(false);
+    }
+  }
+
+  async function triggerAudienceLoad(id) {
+    setPullError(null);
+    setContactsSoFar(0);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/campaigns/${id}/load-audience`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setPullError(data.error || 'Failed to load audience members.');
+        return;
+      }
+      setPullResult({ totalContacts: data.totalContacts, inAppCount: data.inAppCount });
+      setTimeout(() => { setDrawerStep(3); loadContacts(id); }, 1200);
+    } catch {
+      setPullError('Failed to load audience members.');
+    }
+  }
+
+  async function handleUseAudience(audienceId) {
+    setAudienceLoadSaving(true);
+    try {
+      await fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/filters`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audience_id: audienceId }),
+      });
+    } catch {
+      // proceed — load will surface errors
+    } finally {
+      setAudienceLoadSaving(false);
+    }
+    setDrawerStep(2);
+    triggerAudienceLoad(campaignId);
   }
 
   function openCreateAudience() {
@@ -3226,7 +3403,11 @@ export default function AdminCampaigns({ setLoggedIn }) {
     setContactsSoFar(0);
     setContacts([]);
     setWorkCategoryOptions([]);
+    setFilterMode('manual');
+    setBuilderAudienceId(null);
+    setAudienceLoadSaving(false);
     loadFieldMappings();
+    if (mode === 'jobber') loadBuilderAudiences();
     setDrawerOpen(true);
   }
 
@@ -3251,7 +3432,11 @@ export default function AdminCampaigns({ setLoggedIn }) {
         saves.push(fetch(`${BACKEND_URL}/api/admin/campaigns/${campaignId}/filters`, {
           method: 'PATCH',
           headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dateFrom, dateTo, paidOnly, minJobValue: minJobValue || null, workCategory, notInApp }),
+          body: JSON.stringify(
+            filterMode === 'audience'
+              ? { audience_id: builderAudienceId }
+              : { dateFrom, dateTo, paidOnly, minJobValue: minJobValue || null, workCategory, notInApp }
+          ),
         }));
       }
       await Promise.all(saves).catch(() => {});
@@ -3297,6 +3482,17 @@ export default function AdminCampaigns({ setLoggedIn }) {
       setCsvFile(null);
       setCsvPreviewData(null);
       setCsvColumnMapping({});
+      setAudienceLoadSaving(false);
+
+      // Restore audience mode if audience_id is persisted on campaign
+      if (data.audience_id) {
+        setFilterMode('audience');
+        setBuilderAudienceId(data.audience_id);
+      } else {
+        setFilterMode('manual');
+        setBuilderAudienceId(null);
+      }
+
       loadFieldMappings();
 
       if (data.builder_path === 'jobber') {
@@ -3312,12 +3508,14 @@ export default function AdminCampaigns({ setLoggedIn }) {
         } else if (lastStep === 1 || lastStep === 2) {
           // Step 2 (curating) is transient — land at filters
           loadFieldValues();
+          loadBuilderAudiences();
           setDrawerStep(1);
           setDrawerOpen(true);
         } else {
           // lastStep === 0: use hasFilters for backwards compat with old drafts
           if (hasFilters) {
             loadFieldValues();
+            loadBuilderAudiences();
             setDrawerStep(1);
           } else {
             setWorkCategoryOptions([]);
@@ -3978,6 +4176,20 @@ export default function AdminCampaigns({ setLoggedIn }) {
           csvConfirming={csvConfirming}
           csvConfirmError={csvConfirmError}
           onCsvConfirm={handleCsvConfirm}
+          filterMode={filterMode}
+          onFilterModeChange={mode => {
+            setFilterMode(mode);
+            if (mode === 'audience' && builderAudiences.length === 0 && !builderAudiencesLoading) {
+              loadBuilderAudiences();
+            }
+          }}
+          builderAudiences={builderAudiences}
+          builderAudiencesLoading={builderAudiencesLoading}
+          selectedBuilderAudienceId={builderAudienceId}
+          onAudienceSelect={setBuilderAudienceId}
+          audienceLoadSaving={audienceLoadSaving}
+          onUseAudience={handleUseAudience}
+          isAudienceMode={filterMode === 'audience'}
         />
       )}
 
