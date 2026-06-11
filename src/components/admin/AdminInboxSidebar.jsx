@@ -38,7 +38,8 @@ const NOTIF_DEST = {
 };
 
 function NotificationCard({ notif, onNavigate, onClose }) {
-  const dest = NOTIF_DEST[notif.type];
+  const dest    = NOTIF_DEST[notif.type];
+  const isUnread = !notif.read;
   function handleClick() {
     if (dest) onNavigate(dest);
     onClose();
@@ -47,17 +48,26 @@ function NotificationCard({ notif, onNavigate, onClose }) {
     <div
       onClick={dest ? handleClick : undefined}
       style={{
-        background: AD.bgCard,
+        position: 'relative',
+        background: isUnread ? AD.bgCard : AD.bgCardTint,
         border: `1px solid ${AD.border}`,
-        borderLeft: `4px solid ${AD.blueLight}`,
+        borderLeft: `4px solid ${isUnread ? AD.blueLight : AD.border}`,
         borderRadius: 12,
         padding: '14px 16px',
         marginBottom: 8,
         cursor: dest ? 'pointer' : 'default',
+        transition: 'background 0.3s, border-left-color 0.3s',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-        <span style={{ fontFamily: AD.fontSans, fontWeight: 600, fontSize: 14, color: AD.textPrimary }}>
+      {isUnread && (
+        <div style={{
+          position: 'absolute', top: 14, right: 14,
+          width: 8, height: 8, borderRadius: '50%',
+          background: AD.blueLight,
+        }} />
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingRight: isUnread ? 16 : 0, marginBottom: 4 }}>
+        <span style={{ fontFamily: AD.fontSans, fontWeight: isUnread ? 600 : 400, fontSize: 14, color: isUnread ? AD.textPrimary : AD.textSecondary }}>
           {notif.title}
         </span>
         <span style={{ fontFamily: AD.fontSans, fontSize: 12, color: AD.textTertiary, marginLeft: 8, flexShrink: 0 }}>
@@ -65,7 +75,7 @@ function NotificationCard({ notif, onNavigate, onClose }) {
         </span>
       </div>
       {notif.body && (
-        <p style={{ margin: 0, fontFamily: AD.fontSans, fontSize: 13, color: AD.textSecondary }}>
+        <p style={{ margin: 0, fontFamily: AD.fontSans, fontSize: 13, color: isUnread ? AD.textSecondary : AD.textTertiary }}>
           {notif.body}
         </p>
       )}
