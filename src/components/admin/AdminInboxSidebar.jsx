@@ -32,6 +32,47 @@ function SkeletonCard() {
   );
 }
 
+const NOTIF_DEST = {
+  incremental_sync: 'campaigns',
+  import_complete:  'campaigns',
+};
+
+function NotificationCard({ notif, onNavigate, onClose }) {
+  const dest = NOTIF_DEST[notif.type];
+  function handleClick() {
+    if (dest) onNavigate(dest);
+    onClose();
+  }
+  return (
+    <div
+      onClick={dest ? handleClick : undefined}
+      style={{
+        background: AD.bgCard,
+        border: `1px solid ${AD.border}`,
+        borderLeft: `4px solid ${AD.blueLight}`,
+        borderRadius: 12,
+        padding: '14px 16px',
+        marginBottom: 8,
+        cursor: dest ? 'pointer' : 'default',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+        <span style={{ fontFamily: AD.fontSans, fontWeight: 600, fontSize: 14, color: AD.textPrimary }}>
+          {notif.title}
+        </span>
+        <span style={{ fontFamily: AD.fontSans, fontSize: 12, color: AD.textTertiary, marginLeft: 8, flexShrink: 0 }}>
+          {relativeTime(notif.created_at)}
+        </span>
+      </div>
+      {notif.body && (
+        <p style={{ margin: 0, fontFamily: AD.fontSans, fontSize: 13, color: AD.textSecondary }}>
+          {notif.body}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function MissingReferralCard({ msg, onMarkRead, onNavigate }) {
   const isUnread = !msg.read;
 
@@ -174,10 +215,11 @@ function SuggestionBoxCard({ msg, onMarkRead }) {
   );
 }
 
-export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onNavigate }) {
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [readIds, setReadIds]   = useState(new Set());
+export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onNotificationsRead, onNavigate }) {
+  const [messages, setMessages]           = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading]             = useState(false);
+  const [readIds, setReadIds]             = useState(new Set());
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchMessages = useCallback(safeAsync(async () => {
@@ -193,8 +235,32 @@ export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const markNotificationsRead = useCallback(safeAsync(async () => {
+    const token = sessionStorage.getItem('rb_admin_token');
+    const r = await fetch(`${BACKEND_URL}/api/admin/notifications`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await r.json();
+    const notifs = Array.isArray(data.notifications) ? data.notifications : [];
+    setNotifications(notifs);
+    const unread = notifs.filter(n => !n.read);
+    if (unread.length > 0) {
+      await Promise.allSettled(unread.map(n =>
+        fetch(`${BACKEND_URL}/api/admin/notifications/${n.id}/read`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      ));
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      if (onNotificationsRead) onNotificationsRead();
+    }
+  }, 'AdminInboxSidebar.markNotificationsRead'),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  []);
+
   useEffect(() => {
-    if (isOpen) fetchMessages();
+    if (isOpen) { fetchMessages(); markNotificationsRead(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
@@ -285,33 +351,43 @@ export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onN
               <SkeletonCard />
               <SkeletonCard />
             </>
-          ) : messages.length === 0 ? (
+          ) : messages.length === 0 && notifications.length === 0 ? (
             <div style={{ textAlign: 'center', marginTop: 48, fontFamily: AD.fontSans, fontSize: 14, color: AD.textTertiary }}>
               No messages yet.
             </div>
           ) : (
-            messages.map(msg => {
-              if (msg.message_type === 'missing_referral') {
-                return (
-                  <MissingReferralCard
-                    key={msg.id}
-                    msg={{ ...msg, read: msg.read || readIds.has(msg.id) }}
-                    onMarkRead={handleMarkRead}
-                    onNavigate={handleNavigateToReport}
-                  />
-                );
-              }
-              if (msg.message_type === 'suggestion_box') {
-                return (
-                  <SuggestionBoxCard
-                    key={msg.id}
-                    msg={{ ...msg, read: msg.read || readIds.has(msg.id) }}
-                    onMarkRead={handleMarkRead}
-                  />
-                );
-              }
-              return null;
-            })
+            <>
+              {notifications.map(n => (
+                <NotificationCard
+                  key={n.id}
+                  notif={n}
+                  onNavigate={onNavigate}
+                  onClose={onClose}
+                />
+              ))}
+              {messages.map(msg => {
+                if (msg.message_type === 'missing_referral') {
+                  return (
+                    <MissingReferralCard
+                      key={msg.id}
+                      msg={{ ...msg, read: msg.read || readIds.has(msg.id) }}
+                      onMarkRead={handleMarkRead}
+                      onNavigate={handleNavigateToReport}
+                    />
+                  );
+                }
+                if (msg.message_type === 'suggestion_box') {
+                  return (
+                    <SuggestionBoxCard
+                      key={msg.id}
+                      msg={{ ...msg, read: msg.read || readIds.has(msg.id) }}
+                      onMarkRead={handleMarkRead}
+                    />
+                  );
+                }
+                return null;
+              })}
+            </>
           )}
         </div>
       </div>

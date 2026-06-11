@@ -2455,6 +2455,7 @@ function BuilderDrawer({
   workCategory, setWorkCategory,
   notInApp, setNotInApp,
   workCategoryOptions,
+  poolTotal,
   savingFilters, onPullFromJobber,
   pullResult, pullError, onRetryPull, onGoBackFromCurating, contactsSoFar,
   campaignId, contacts, loadingContacts, onNext, onNextFromMessaging, onBack, headers,
@@ -2675,9 +2676,12 @@ function BuilderDrawer({
 
               </div>
 
-              {/* Estimated count placeholder */}
+              {/* Pool count from unified contacts */}
               <p style={{ margin: '20px 0 24px', fontSize: 13, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-                Filters set. Pull from Jobber to see exact results.
+                {poolTotal != null
+                  ? `${poolTotal.toLocaleString()} contacts in pool. Pull from Jobber to filter and see exact results.`
+                  : 'Filters set. Pull from Jobber to see exact results.'
+                }
               </p>
 
               <Btn
@@ -2884,6 +2888,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [showTypeModal,    setShowTypeModal]    = useState(false);
   const [campaignsTab,     setCampaignsTab]     = useState('campaigns');
+  const [poolTotal,        setPoolTotal]        = useState(null);
 
   // Builder state
   const [drawerOpen,      setDrawerOpen]      = useState(false);
@@ -2955,6 +2960,15 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
   useEffect(() => {
     loadCampaigns();
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/contacts/unified?limit=1`, { headers });
+        if (r.ok) {
+          const data = await r.json();
+          if (data.total != null) setPoolTotal(data.total);
+        }
+      } catch { /* swallow */ }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -3930,6 +3944,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
           workCategory={workCategory} setWorkCategory={setWorkCategory}
           notInApp={notInApp} setNotInApp={setNotInApp}
           workCategoryOptions={workCategoryOptions}
+          poolTotal={poolTotal}
           savingFilters={savingFilters}
           onPullFromJobber={handlePullFromJobber}
           pullResult={pullResult}

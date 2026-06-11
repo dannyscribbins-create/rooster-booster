@@ -131,6 +131,7 @@ export default function AdminPanel() {
   const [dashboardCachedAt, setDashboardCachedAt]     = useState(null);
   const [inboxOpen, setInboxOpen]                 = useState(false);
   const [inboxUnreadCount, setInboxUnreadCount]   = useState(0);
+  const [notificationsUnread, setNotificationsUnread] = useState(0);
 
   useAdminFonts();
 
@@ -146,6 +147,14 @@ export default function AdminPanel() {
         setInboxUnreadCount(data.filter(m => !m.read).length);
       }
     }, 'AdminPanel.fetchInboxUnreadCount')();
+    safeAsync(async () => {
+      const token = sessionStorage.getItem('rb_admin_token');
+      const r = await fetch(`${BACKEND_URL}/api/admin/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await r.json();
+      if (data.unread_count != null) setNotificationsUnread(data.unread_count);
+    }, 'AdminPanel.fetchNotificationsUnread')();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed]);
 
@@ -196,13 +205,14 @@ export default function AdminPanel() {
 
   return (
     <>
-      <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount}>
+      <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread}>
         {pages[page]}
       </AdminShell>
       <AdminInboxSidebar
         isOpen={inboxOpen}
         onClose={() => setInboxOpen(false)}
         onUnreadChange={(count) => setInboxUnreadCount(count)}
+        onNotificationsRead={() => setNotificationsUnread(0)}
         onNavigate={(navPage, options) => {
           if (navPage === 'missing-referrals' && options?.initialTab) {
             setReferralReviewTab(options.initialTab);
