@@ -57,6 +57,10 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_payout_announcements_user_unseen
     ON payout_announcements(user_id, seen_at)`);
+  // Prevents double-approval creating duplicate announcement rows.
+  // Risk on first deploy: fails if duplicate rows already exist in production — deduplicate first.
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS payout_announcements_cashout_unique
+    ON payout_announcements(cashout_request_id)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS announcement_settings (
     id INTEGER PRIMARY KEY DEFAULT 1,
     enabled BOOLEAN DEFAULT true,

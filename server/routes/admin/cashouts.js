@@ -56,6 +56,14 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
     );
 
     if (status === 'approved') {
+      const existingAnnouncement = await client.query(
+        `SELECT 1 FROM payout_announcements WHERE cashout_request_id = $1`,
+        [req.params.id]
+      );
+      if (existingAnnouncement.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Cashout already approved — duplicate approval blocked' });
+      }
       // SCALABLE: wrap Stripe ACH call inside this transaction before committing approved status
       if (cashout.user_id != null) {
         await client.query(

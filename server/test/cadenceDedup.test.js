@@ -167,9 +167,7 @@ describe('engagement cadence — deduplication and window logic', () => {
   });
 
   // ── TEST 3.5 ──────────────────────────────────────────────────────────────────
-  it('FIXME: opt_out_all=TRUE not checked by cadence cron — email sent despite opt-out', async () => {
-    // FIXME: _runEngagementCadencePass never calls isEmailSuppressed. A contact with
-    // opt_out_all=TRUE still receives cadence emails. Correct behavior: skip suppressed contacts.
+  it('opt_out_all=TRUE suppresses cadence send — no email sent, no log row inserted', async () => {
     await seedCadenceScenario([1]);
 
     await pool.query(
@@ -183,8 +181,12 @@ describe('engagement cadence — deduplication and window logic', () => {
 
     await _runEngagementCadencePass(TODAY_FIXED);
 
-    // FIXME: should be 0 emails (opt_out_all=TRUE should suppress), but cadence sends it anyway
-    assert.equal(emails.length, 1,         'FIXME: email sent despite opt_out_all=TRUE (no suppression check)');
-    assert.equal(emails[0].to, CLIENT_EMAIL, 'FIXME: email delivered to opted-out address');
+    assert.equal(emails.length, 0, 'no email sent to opted-out contact');
+
+    const { rows: logRows } = await pool.query(
+      `SELECT id FROM engagement_cadence_log WHERE contact_id = $1 AND cadence_month = 1`,
+      [CONTACT_ID]
+    );
+    assert.equal(logRows.length, 0, 'no cadence_log row inserted for opted-out contact');
   });
 });

@@ -275,9 +275,7 @@ describe('cashout — balance, request, and approval integrity', () => {
   });
 
   // ── TEST 7 ────────────────────────────────────────────────────────────────────
-  it('double-approval FIXME: second approve inserts duplicate payout_announcements row', async () => {
-    // FIXME: payout_announcements has no UNIQUE(cashout_request_id) constraint — double-approving
-    // the same cashout inserts a second row. The correct behavior would be a 409 or no-op.
+  it('double-approval blocked: second approve returns 409, no duplicate payout_announcements row', async () => {
     const { userId } = await setupReferrer({ email: 'ref@test.com' });
     await setupAdmin();
     const cashoutId = await seedCashoutRequest(userId, 50, 'pending');
@@ -295,14 +293,12 @@ describe('cashout — balance, request, and approval integrity', () => {
       { status: 'approved' },
       { authorization: `Bearer ${ADMIN_TOKEN}` }
     );
-    // FIXME: second approval also returns 200 (no idempotency guard)
-    assert.equal(resp2.status, 200, 'FIXME: second approval returns 200 instead of 409');
+    assert.equal(resp2.status, 409, 'second approval blocked with 409');
 
     const { rows: paRows } = await pool.query(
       'SELECT id FROM payout_announcements WHERE cashout_request_id = $1', [cashoutId]
     );
-    // FIXME: duplicate row inserted — should be 1
-    assert.equal(paRows.length, 2, 'FIXME: 2 payout_announcements rows after double-approval');
+    assert.equal(paRows.length, 1, 'exactly one payout_announcements row after double-approval attempt');
   });
 
   // ── TEST 8 ────────────────────────────────────────────────────────────────────

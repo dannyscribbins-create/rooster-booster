@@ -5,6 +5,7 @@ const { logError } = require('../../middleware/errorLogger');
 const { Resend } = require('resend');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { resendShouldRetry } = require('../../utils/retryHelpers');
+const { isEmailSuppressed } = require('../../utils/emailSuppression');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 // test seam — inert in production, never called outside server/test/
@@ -101,6 +102,12 @@ async function _runEngagementCadencePass(today) {
           );
 
           if (logRows.length > 0) {
+            totalSkipped++;
+            continue;
+          }
+
+          const suppressed = await isEmailSuppressed(contractorId, contact.email, 'engagement_cadence');
+          if (suppressed) {
             totalSkipped++;
             continue;
           }
