@@ -56,7 +56,7 @@ router.post('/api/admin/login', adminLoginLimiter, [
     res.json({ success: true, token });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: 'Login failed: ' + err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -88,7 +88,7 @@ router.get('/api/admin/about', async (req, res) => {
     res.json({ ...row, certifications: certs });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -108,7 +108,7 @@ router.post('/api/admin/about', async (req, res) => {
   } catch (err) {
     await logError({ req, error: err });
     console.error('POST /api/admin/about error:', err.message, err.stack);
-    res.status(500).json({ error: 'Save failed', detail: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -120,7 +120,7 @@ router.get('/api/admin/announcement-settings', async (req, res) => {
     res.json(result.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -140,7 +140,7 @@ router.post('/api/admin/announcement-settings', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -209,7 +209,7 @@ router.get('/api/admin/leaderboard', async (req, res) => {
     res.json({ rows, warmup_just_disabled });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -250,7 +250,7 @@ router.get('/api/admin/retention-settings', async (req, res) => {
     });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -311,7 +311,7 @@ router.post('/api/admin/retention-settings', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -338,7 +338,7 @@ router.post('/api/admin/invite-links', async (req, res) => {
     res.json({ slug, fullUrl });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -359,7 +359,7 @@ router.get('/api/admin/invite-links', async (req, res) => {
     res.json(rows);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -406,7 +406,7 @@ router.get('/api/admin/settings', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -462,7 +462,7 @@ router.put('/api/admin/settings', async (req, res) => {
     res.json({ success: true, settings: result.rows[0] });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -489,7 +489,7 @@ router.get('/api/admin/notification-settings', async (req, res) => {
     });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -533,7 +533,7 @@ router.put('/api/admin/notification-settings', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -555,7 +555,7 @@ router.get('/api/admin/payout-automation', async (req, res) => {
     res.json({ payout_automation, payout_review_threshold });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -584,7 +584,7 @@ router.put('/api/admin/payout-automation', async (req, res) => {
     res.json({ payout_automation: row.payout_automation, payout_review_threshold: row.payout_review_threshold });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -605,7 +605,7 @@ router.get('/api/admin/payout-methods', async (req, res) => {
     res.json({ enabled_payout_methods: enabled_payout_methods || ['stripe_ach', 'check', 'venmo', 'zelle'] });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -639,7 +639,7 @@ router.put('/api/admin/payout-methods', async (req, res) => {
     res.json({ success: true, enabled_payout_methods: row.enabled_payout_methods });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -716,7 +716,7 @@ router.get('/api/admin/crm/status', async (req, res) => {
     });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -804,7 +804,7 @@ router.post('/api/admin/crm/connect-api-key', async (req, res) => {
     res.json({ success: true, accountName });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -869,7 +869,7 @@ router.post('/api/admin/crm/referral-start-date', async (req, res) => {
     res.json({ success: true, referralStartDate: row?.referral_start_date || null, effectiveStartDate });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -897,7 +897,7 @@ router.post('/api/admin/crm/sync', async (req, res) => {
     res.json({ success: true, lastSyncedAt, errors: errors.length ? errors : undefined });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -917,7 +917,7 @@ router.post('/api/admin/crm/disconnect', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1021,7 +1021,7 @@ router.get('/api/admin/flagged-referrals/summary', async (req, res) => {
     res.json({ unresolved_count: parseInt(result.rows[0].count) });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1041,7 +1041,7 @@ router.get('/api/admin/flagged-referrals', async (req, res) => {
     res.json({ flagged: result.rows });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1063,7 +1063,7 @@ router.put('/api/admin/flagged-referrals/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1081,7 +1081,7 @@ router.post('/api/admin/backup/run', backupLimiter, async (req, res) => {
     res.json({ success: true, message: 'Backup completed successfully' });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
 
@@ -1099,7 +1099,7 @@ router.post('/api/admin/backup/verify', backupLimiter, async (req, res) => {
     res.json({ success: true, output: lines });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Internal server error' });
   } finally {
     console.log = origLog;
   }
@@ -1138,7 +1138,7 @@ router.get('/api/admin/pending-referrals', async (req, res) => {
     res.json({ pending: result.rows });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1173,7 +1173,7 @@ router.post('/api/admin/pending-referrals/:id/resend', resendInviteLimiter, asyn
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1196,7 +1196,7 @@ router.post('/api/admin/pending-referrals/:id/close', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1251,7 +1251,7 @@ router.post('/api/admin/pending-referrals/:id/confirm-referrer', async (req, res
     res.json({ success: true, inviteChannel });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1278,7 +1278,7 @@ router.get('/api/admin/booking-requests', async (req, res) => {
     res.json({ bookingRequests: result.rows });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1306,7 +1306,7 @@ router.get('/api/admin/missing-referrals', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1397,7 +1397,7 @@ router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
     res.json(updateResult.rows[0]);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1430,7 +1430,7 @@ router.get('/api/admin/messages', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1462,7 +1462,7 @@ router.patch('/api/admin/messages/:id/read', async (req, res) => {
     res.json({ success: true, unreadCount });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1485,7 +1485,7 @@ router.get('/api/admin/jobber/fields', async (req, res) => {
     res.json({ fields: result.rows });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1501,7 +1501,7 @@ router.post('/api/admin/jobber/discover-fields', async (req, res) => {
     if (err.message && err.message.includes('No Jobber token')) {
       return res.status(400).json({ error: 'no_token', message: err.message });
     }
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1518,7 +1518,7 @@ router.get('/api/admin/jobber/field-mappings', async (req, res) => {
     res.json({ mappings });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1550,7 +1550,7 @@ router.patch('/api/admin/jobber/field-mappings', async (req, res) => {
     res.json({ mappings: payload });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

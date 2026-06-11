@@ -742,7 +742,7 @@ router.post('/api/admin/campaigns', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -759,7 +759,7 @@ router.get('/api/admin/campaigns', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -787,7 +787,7 @@ router.get('/api/admin/campaigns/field-values', async (req, res) => {
     res.json({ workCategoryValues });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -876,7 +876,7 @@ router.get('/api/admin/campaigns/:id', async (req, res) => {
     res.json(campaign);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -915,7 +915,7 @@ router.patch('/api/admin/campaigns/:id', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -949,7 +949,7 @@ router.delete('/api/admin/campaigns/:id', async (req, res) => {
     res.json({ deleted: true, id });
   } catch (err) {
     await logError({ req, error: err, source: 'DELETE /api/admin/campaigns/:id' });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -972,7 +972,7 @@ router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -993,7 +993,7 @@ router.get('/api/admin/campaigns/:id/contacts', async (req, res) => {
     res.json({ contacts: result.rows });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1023,7 +1023,7 @@ router.patch('/api/admin/campaigns/:id/contacts/selection', async (req, res) => 
   } catch (err) {
     await client.query('ROLLBACK');
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
   }
@@ -1078,7 +1078,7 @@ router.post('/api/admin/campaigns/:id/finalize-batch', async (req, res) => {
     res.json({ totalSelected, totalBatches });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1115,7 +1115,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
     res.json({ saved, ctaOptions, image: imageResult.rows[0] || null });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/messaging-context' });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1150,7 +1150,7 @@ router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err, source: 'PATCH /api/admin/campaigns/:id/messaging' });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1259,7 +1259,7 @@ router.post('/api/admin/campaigns/:id/launch', async (req, res) => {
       await logError({ req, error: revertErr, source: 'POST /api/admin/campaigns/:id/launch (revert)' });
     }
     await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/launch' });
-    res.status(500).json({ error: err.message || 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1620,7 +1620,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
       try { res.write(JSON.stringify({ type: 'error', message: err.message || 'Pull failed' }) + '\n'); } catch {}
       try { res.end(); } catch {}
     } else {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   }
 });
@@ -2950,7 +2950,7 @@ router.get('/api/admin/audiences', async (req, res) => {
     res.json(rows);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -3133,7 +3133,7 @@ router.get('/api/admin/engagement-cadence', async (req, res) => {
     res.json(rows);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -3165,7 +3165,7 @@ router.put('/api/admin/engagement-cadence/:month', async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
