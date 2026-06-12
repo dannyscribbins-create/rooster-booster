@@ -358,7 +358,7 @@ const CURATING_TIMINGS = [0, 800, 1400, 2200]; // when each item becomes visible
 const CHECK_TIMINGS    = [800, 1400, 2200];     // when items 0-2 get a checkmark (ms)
 const LARGE_DATASET_MS = 8000;
 
-function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAudienceMode }) {
+function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAudienceMode, pullResult }) {
   const [phase, setPhase]           = useState(0); // 0–7: tracks visible + checked items
   const [showLarge, setShowLarge]   = useState(false);
 
@@ -382,6 +382,41 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAud
 
   const itemVisible  = [phase >= 1, phase >= 2, phase >= 3, phase >= 4];
   const itemChecked  = [phase >= 2, phase >= 3, phase >= 4, false];
+
+  // Audience mode: lightweight verification UI — no Jobber pull animation
+  if (isAudienceMode) {
+    if (pullError) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 20 }}>
+          <i className="ph ph-warning-circle" style={{ fontSize: 48, color: AD.red2Text }} />
+          <p style={{ margin: 0, fontSize: 17, color: AD.textPrimary, fontFamily: AD.fontSans, fontWeight: 500 }}>Something went wrong loading the audience.</p>
+          <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>{pullError}</p>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <Btn variant="outline" onClick={onGoBack}>Go Back</Btn>
+            <Btn variant="accent" onClick={onRetryPull}>Try Again</Btn>
+          </div>
+        </div>
+      );
+    }
+    if (pullResult) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 14 }}>
+          <i className="ph ph-check-circle" style={{ fontSize: 48, color: AD.green }} />
+          <p style={{ margin: 0, fontSize: 17, color: AD.textPrimary, fontFamily: AD.fontSans, fontWeight: 500 }}>Audience verified</p>
+          <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+            {pullResult.totalContacts.toLocaleString()} members ready
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 14 }}>
+        <style>{`@keyframes curatingPulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }`}</style>
+        <i className="ph ph-spinner" style={{ fontSize: 36, color: AD.blueLight, animation: 'curatingPulse 1.5s ease-in-out infinite' }} />
+        <p style={{ margin: 0, fontSize: 16, color: AD.textPrimary, fontFamily: AD.fontSans, fontWeight: 500 }}>Verifying audience members…</p>
+      </div>
+    );
+  }
 
   if (pullError) {
     return (
@@ -2824,7 +2859,7 @@ function BuilderDrawer({
             />
           )}
 
-          {/* Step 2 — Curating (Jobber flow) */}
+          {/* Step 2 — Curating (Jobber pull or audience verification) */}
           {step === 2 && !isCsvFlow && (
             <CuratingScreen
               pullError={pullError}
@@ -2832,6 +2867,7 @@ function BuilderDrawer({
               onGoBack={onGoBackFromCurating}
               contactsSoFar={contactsSoFar}
               isAudienceMode={isAudienceMode}
+              pullResult={pullResult}
             />
           )}
 
@@ -4147,7 +4183,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
           onPullFromJobber={handlePullFromJobber}
           pullResult={pullResult}
           pullError={pullError}
-          onRetryPull={triggerPull}
+          onRetryPull={filterMode === 'audience' ? () => triggerAudienceLoad(campaignId) : triggerPull}
           contactsSoFar={contactsSoFar}
           onGoBackFromCurating={() => {
             if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }

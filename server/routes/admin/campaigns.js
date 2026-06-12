@@ -978,6 +978,7 @@ router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
 
 // Loads dynamic_audience_members into campaign_contacts, bypassing Jobber pull.
 // Mirrors the pull endpoint's bookkeeping: sets total_contacts, in_app flag, opted_out=false.
+// Uses INSERT...SELECT to avoid the 65,535 PostgreSQL bind-parameter ceiling for large audiences.
 router.post('/api/admin/campaigns/:id/load-audience', async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { id } = req.params;
@@ -991,74 +992,54 @@ router.post('/api/admin/campaigns/:id/load-audience', async (req, res) => {
     const audienceId = campaignResult.rows[0].audience_id;
     if (!audienceId) return res.status(400).json({ error: 'Campaign has no audience selected' });
 
-    // Load all audience members with contact details from both Tier 2 (contacts) and Tier 1 (jobber_clients)
-    const membersResult = await pool.query(
-      `SELECT
-         dam.contact_id,
-         dam.jobber_client_id AS dam_jobber_client_id,
-         c.email      AS c_email,
-         c.name       AS c_name,
-         c.phone      AS c_phone,
-         c.jobber_client_id AS c_jobber_client_id,
-         jc.email     AS jc_email,
-         jc.first_name,
-         jc.last_name,
-         jc.phone     AS jc_phone,
-         jc.jobber_client_id AS jc_jobber_client_id
-       FROM dynamic_audience_members dam
-       LEFT JOIN contacts c
-         ON c.id = dam.contact_id
-       LEFT JOIN jobber_clients jc
-         ON jc.jobber_client_id = dam.jobber_client_id AND jc.contractor_id = $2
-       WHERE dam.audience_id = $1`,
-      [audienceId, contractorId]
-    );
+    // Refresh audience membership before loading — picks up any newly-tagged contacts
+    // evaluateAudience is a local DB query only; no Jobber API calls
+    await evaluateAudience(pool, audienceId);
 
-    // Determine in_app status — same logic as the Jobber pull path
-    const usersResult = await pool.query(
-      'SELECT email FROM users WHERE deleted_at IS NULL'
-    );
-    const knownEmails = new Set(
-      usersResult.rows.map(r => r.email?.toLowerCase()).filter(Boolean)
-    );
-
-    const contacts = membersResult.rows.map(m => {
-      const email        = m.c_email || m.jc_email || null;
-      const phone        = m.c_phone || m.jc_phone || null;
-      const name         = m.c_name  || [m.first_name, m.last_name].filter(Boolean).join(' ') || null;
-      const clientJobberId = m.c_jobber_client_id || m.dam_jobber_client_id || null;
-      const inApp        = email ? knownEmails.has(email.toLowerCase()) : false;
-      return { email, phone, name, clientJobberId, inApp };
-    });
-
-    const inAppCount = contacts.filter(c => c.inApp).length;
-
-    // Replace campaign_contacts — same pattern as pull endpoint
     await pool.query('DELETE FROM campaign_contacts WHERE campaign_id = $1', [id]);
 
-    if (contacts.length > 0) {
-      const valuePlaceholders = contacts.map((_, i) => {
-        const base = i * 7;
-        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7})`;
-      }).join(',');
-      const flatValues = contacts.flatMap(c => [
-        id, contractorId, c.clientJobberId, c.name, c.phone, c.email, c.inApp,
-      ]);
-      await pool.query(
-        `INSERT INTO campaign_contacts
+    // INSERT...SELECT keeps all data inside Postgres — avoids the 65,535 bind-parameter ceiling
+    // (~9,362 row limit with 7 params/row). in_app resolved via EXISTS against users table.
+    const countResult = await pool.query(
+      `WITH ins AS (
+         INSERT INTO campaign_contacts
            (campaign_id, contractor_id, client_jobber_id, client_name, phone, email, in_app)
-         VALUES ${valuePlaceholders}`,
-        flatValues
-      );
-    }
-
-    // Match pull path bookkeeping: total_contacts = all contacts, same as withInApp.length in pull
-    await pool.query(
-      'UPDATE campaigns SET total_contacts = $1, updated_at = NOW() WHERE id = $2',
-      [contacts.length, id]
+         SELECT
+           $1::int,
+           $2,
+           COALESCE(c.jobber_client_id, dam.jobber_client_id),
+           COALESCE(
+             NULLIF(c.name, ''),
+             NULLIF(TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')), '')
+           ),
+           COALESCE(c.phone, jc.phone),
+           COALESCE(c.email, jc.email),
+           EXISTS (
+             SELECT 1 FROM users u
+             WHERE u.deleted_at IS NULL
+               AND LOWER(u.email) = LOWER(COALESCE(c.email, jc.email))
+           )
+         FROM dynamic_audience_members dam
+         LEFT JOIN contacts c ON c.id = dam.contact_id
+         LEFT JOIN jobber_clients jc
+           ON jc.jobber_client_id = dam.jobber_client_id AND jc.contractor_id = $2
+         WHERE dam.audience_id = $3
+         RETURNING in_app
+       )
+       SELECT COUNT(*)::int AS total_contacts, COUNT(*) FILTER (WHERE in_app)::int AS in_app_count
+       FROM ins`,
+      [id, contractorId, audienceId]
     );
 
-    res.json({ totalContacts: contacts.length, inAppCount });
+    const totalContacts = countResult.rows[0].total_contacts;
+    const inAppCount = countResult.rows[0].in_app_count;
+
+    await pool.query(
+      'UPDATE campaigns SET total_contacts = $1, updated_at = NOW() WHERE id = $2',
+      [totalContacts, id]
+    );
+
+    res.json({ totalContacts, inAppCount });
   } catch (err) {
     await logError({ req, error: err, source: 'POST /api/admin/campaigns/:id/load-audience' });
     res.status(500).json({ error: 'Internal server error' });
