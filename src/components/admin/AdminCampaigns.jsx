@@ -648,7 +648,7 @@ function PillMultiSelect({ label, options, selected, onChange }) {
 }
 
 // ── Results modal ─────────────────────────────────────────────────────────────
-function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loadingContacts, onNext, onBack, onSaveExit, headers }) {
+function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loadingContacts, onNext, onBack, onSaveExit, headers, isAudienceMode }) {
   const [search,           setSearch]           = useState('');
   const [localSelected,    setLocalSelected]    = useState({});
   const [pendingSaves,     setPendingSaves]     = useState(new Set());
@@ -779,9 +779,16 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
           <i className="ph ph-arrow-left" style={{ fontSize: 16 }} />
           Back to Filters
         </button>
-        <p style={{ margin: 0, fontSize: 15, fontFamily: AD.fontSans, color: AD.textPrimary, fontWeight: 500 }}>
-          {totalContacts.toLocaleString()} contact{totalContacts !== 1 ? 's' : ''} · {inAppCount} in app
-        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+          <p style={{ margin: 0, fontSize: 15, fontFamily: AD.fontSans, color: AD.textPrimary, fontWeight: 500 }}>
+            {totalContacts.toLocaleString()} contact{totalContacts !== 1 ? 's' : ''} · {inAppCount} in app
+          </p>
+          {isAudienceMode && (
+            <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+              This list comes from your saved audience — job details only appear when pulling fresh from Jobber.
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
             onClick={onSaveExit}
@@ -863,8 +870,8 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
           <div style={{ flex: 2, ...colHeader }}>Client Name</div>
           <div style={{ flex: 1, ...colHeader }}>Phone</div>
           <div style={{ flex: 2, ...colHeader }}>Email</div>
-          <div style={{ width: 120, flexShrink: 0, ...colHeader }}>Job Date</div>
-          <div style={{ width: 100, flexShrink: 0, ...colHeader }}>Job Value</div>
+          {!isAudienceMode && <div style={{ width: 120, flexShrink: 0, ...colHeader }}>Job Date</div>}
+          {!isAudienceMode && <div style={{ width: 100, flexShrink: 0, ...colHeader }}>Job Value</div>}
           <div style={{ width: 80, flexShrink: 0, ...colHeader }}>In App?</div>
         </div>
 
@@ -949,12 +956,16 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
                 <div style={{ flex: 2, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
                   {c.email || '—'}
                 </div>
-                <div style={{ width: 120, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
-                  {formatDate(c.job_date)}
-                </div>
-                <div style={{ width: 100, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
-                  {formatValue(c.job_value)}
-                </div>
+                {!isAudienceMode && (
+                  <div style={{ width: 120, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                    {formatDate(c.job_date)}
+                  </div>
+                )}
+                {!isAudienceMode && (
+                  <div style={{ width: 100, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                    {formatValue(c.job_value)}
+                  </div>
+                )}
                 <div style={{ width: 80, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                   {c.in_app
                     ? <i className="ph ph-check-circle" style={{ fontSize: 16, color: AD.greenText }} />
@@ -1006,8 +1017,8 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
                 <div style={{ flex: 2, ...colHeader }}>Client Name</div>
                 <div style={{ flex: 1, ...colHeader }}>Phone</div>
                 <div style={{ flex: 2, ...colHeader }}>Email</div>
-                <div style={{ width: 120, flexShrink: 0, ...colHeader }}>Job Date</div>
-                <div style={{ width: 100, flexShrink: 0, ...colHeader }}>Job Value</div>
+                {!isAudienceMode && <div style={{ width: 120, flexShrink: 0, ...colHeader }}>Job Date</div>}
+                {!isAudienceMode && <div style={{ width: 100, flexShrink: 0, ...colHeader }}>Job Value</div>}
                 <div style={{ width: 80, flexShrink: 0, ...colHeader }}>In App?</div>
               </div>
               {overflowContacts.map(c => (
@@ -1029,12 +1040,16 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
                   <div style={{ flex: 2, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
                     {c.email || '—'}
                   </div>
-                  <div style={{ width: 120, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
-                    {formatDate(c.job_date)}
-                  </div>
-                  <div style={{ width: 100, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
-                    {formatValue(c.job_value)}
-                  </div>
+                  {!isAudienceMode && (
+                    <div style={{ width: 120, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                      {formatDate(c.job_date)}
+                    </div>
+                  )}
+                  {!isAudienceMode && (
+                    <div style={{ width: 100, flexShrink: 0, fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                      {formatValue(c.job_value)}
+                    </div>
+                  )}
                   <div style={{ width: 80, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                     {c.in_app
                       ? <i className="ph ph-check-circle" style={{ fontSize: 16, color: AD.greenText }} />
@@ -2883,6 +2898,7 @@ function BuilderDrawer({
               onBack={onGoBackFromCurating}
               onSaveExit={onSaveExit}
               headers={headers}
+              isAudienceMode={isAudienceMode}
             />
           )}
 
