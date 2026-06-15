@@ -7,6 +7,7 @@ const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../../utils/retryHelpers');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
+const { evaluateAudience } = require('./dynamicAudiences');
 
 const CONTRACTOR_ID = 'accent-roofing'; // MVP: replace with multi-contractor loop at scale
 
@@ -238,7 +239,34 @@ async function runIncrementalSync() {
     ).catch(() => {});
   }
 
-  console.log(`[jobberIncrementalSync] Done — ${recentClients.length} clients processed, ${totalLinked} links established`);
+  // --- Audience refresh phase ---
+  // Rebuild every active audience once, after all tag writes for this batch are committed.
+  // evaluateAudience() does a full DELETE-then-INSERT, so clients whose tags changed will
+  // be added to matching audiences and removed from ones they no longer qualify for.
+  console.log('[jobberIncrementalSync] Refreshing active audiences...');
+  let audiencesRefreshed = 0;
+  let audiencesFailed = 0;
+  try {
+    const audienceResult = await pool.query(
+      'SELECT id, name FROM dynamic_audiences WHERE contractor_id = $1 AND is_active = TRUE',
+      [CONTRACTOR_ID]
+    );
+    for (const audience of audienceResult.rows) {
+      try {
+        await evaluateAudience(pool, audience.id);
+        audiencesRefreshed++;
+      } catch (err) {
+        audiencesFailed++;
+        await logError({ req: null, error: err, source: `jobberIncrementalSync audience-refresh ${audience.id}` });
+        console.error(`[jobberIncrementalSync] Audience refresh failed for "${audience.name}" (${audience.id}):`, err.message);
+      }
+    }
+  } catch (err) {
+    await logError({ req: null, error: err, source: 'jobberIncrementalSync audience-refresh query' });
+    console.error('[jobberIncrementalSync] Could not query active audiences:', err.message);
+  }
+
+  console.log(`[jobberIncrementalSync] Done — ${recentClients.length} clients processed, ${totalLinked} links established, ${audiencesRefreshed} audiences refreshed, ${audiencesFailed} audience failures`);
 }
 
 function startJobberIncrementalSyncJob() {
