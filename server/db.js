@@ -781,89 +781,97 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   )`);
 
   // ── ACCENT ROOFING SEED DATA ──────────────────────────────────────────────────
-  // Schedule A — Full Roof Replacement (escalating, annual reset, $9,500 minimum)
-  await pool.query(`
-    INSERT INTO referral_schedules
-      (contractor_id, name, is_active, payout_model, minimum_invoice, reset_period,
-       escalating_steps, invoice_window_days)
-    VALUES (
-      'accent-roofing',
-      'Full Roof Replacement',
-      true,
-      'escalating',
-      9500,
-      'annual',
-      '[
-        {"referral_number": 1, "payout_amount": 500},
-        {"referral_number": 2, "payout_amount": 600},
-        {"referral_number": 3, "payout_amount": 700},
-        {"referral_number": 4, "payout_amount": 750},
-        {"referral_number": 5, "payout_amount": 800},
-        {"referral_number": 6, "payout_amount": 850},
-        {"referral_number": 7, "payout_amount": 900}
-      ]'::jsonb,
-      20
-    )
-    ON CONFLICT (contractor_id, name) DO NOTHING
-  `);
+  // Only seed on a genuinely empty table (first-ever boot). ON CONFLICT (contractor_id, name)
+  // DO NOTHING was not safe post-rename: after renaming the dev tenant, the live rows have
+  // the new contractor_id, so the conflict never fires and phantom 'accent-roofing' rows
+  // would be created on every deploy. The empty-table guard prevents this while still seeding
+  // a fresh production deployment correctly.
+  const { rows: existingSchedules } = await pool.query('SELECT id FROM referral_schedules LIMIT 1');
+  if (existingSchedules.length === 0) {
+    // Schedule A — Full Roof Replacement (escalating, annual reset, $9,500 minimum)
+    await pool.query(`
+      INSERT INTO referral_schedules
+        (contractor_id, name, is_active, payout_model, minimum_invoice, reset_period,
+         escalating_steps, invoice_window_days)
+      VALUES (
+        'accent-roofing',
+        'Full Roof Replacement',
+        true,
+        'escalating',
+        9500,
+        'annual',
+        '[
+          {"referral_number": 1, "payout_amount": 500},
+          {"referral_number": 2, "payout_amount": 600},
+          {"referral_number": 3, "payout_amount": 700},
+          {"referral_number": 4, "payout_amount": 750},
+          {"referral_number": 5, "payout_amount": 800},
+          {"referral_number": 6, "payout_amount": 850},
+          {"referral_number": 7, "payout_amount": 900}
+        ]'::jsonb,
+        20
+      )
+      ON CONFLICT (contractor_id, name) DO NOTHING
+    `);
 
-  await pool.query(`
-    INSERT INTO referral_schedule_job_types (schedule_id, contractor_id, jobber_label)
-    SELECT s.id, 'accent-roofing', v.label
-    FROM referral_schedules s,
-    (VALUES
-      ('Out of Pocket'),
-      ('Insurance'),
-      ('Finance'),
-      ('New Construction')
-    ) AS v(label)
-    WHERE s.contractor_id = 'accent-roofing'
-      AND s.name = 'Full Roof Replacement'
-    ON CONFLICT (contractor_id, jobber_label) DO NOTHING
-  `);
+    await pool.query(`
+      INSERT INTO referral_schedule_job_types (schedule_id, contractor_id, jobber_label)
+      SELECT s.id, 'accent-roofing', v.label
+      FROM referral_schedules s,
+      (VALUES
+        ('Out of Pocket'),
+        ('Insurance'),
+        ('Finance'),
+        ('New Construction')
+      ) AS v(label)
+      WHERE s.contractor_id = 'accent-roofing'
+        AND s.name = 'Full Roof Replacement'
+      ON CONFLICT (contractor_id, jobber_label) DO NOTHING
+    `);
 
-  // Schedule B — Repair (tiered, no reset, $950 minimum floor)
-  await pool.query(`
-    INSERT INTO referral_schedules
-      (contractor_id, name, is_active, payout_model, minimum_invoice, reset_period,
-       tier_brackets, invoice_window_days)
-    VALUES (
-      'accent-roofing',
-      'Repair',
-      true,
-      'tiered',
-      950,
-      'none',
-      '[
-        {"min": 951,  "max": 1200, "payout_amount": 50},
-        {"min": 1201, "max": 2500, "payout_amount": 100},
-        {"min": 2501, "max": 4000, "payout_amount": 150},
-        {"min": 4001, "max": null, "payout_amount": 200}
-      ]'::jsonb,
-      20
-    )
-    ON CONFLICT (contractor_id, name) DO NOTHING
-  `);
+    // Schedule B — Repair (tiered, no reset, $950 minimum floor)
+    await pool.query(`
+      INSERT INTO referral_schedules
+        (contractor_id, name, is_active, payout_model, minimum_invoice, reset_period,
+         tier_brackets, invoice_window_days)
+      VALUES (
+        'accent-roofing',
+        'Repair',
+        true,
+        'tiered',
+        950,
+        'none',
+        '[
+          {"min": 951,  "max": 1200, "payout_amount": 50},
+          {"min": 1201, "max": 2500, "payout_amount": 100},
+          {"min": 2501, "max": 4000, "payout_amount": 150},
+          {"min": 4001, "max": null, "payout_amount": 200}
+        ]'::jsonb,
+        20
+      )
+      ON CONFLICT (contractor_id, name) DO NOTHING
+    `);
 
-  await pool.query(`
-    INSERT INTO referral_schedule_job_types (schedule_id, contractor_id, jobber_label)
-    SELECT s.id, 'accent-roofing', v.label
-    FROM referral_schedules s,
-    (VALUES
-      ('Repair'),
-      ('Repair Attempt'),
-      ('Chimney Cap Install'),
-      ('Skylight Install'),
-      ('Rain Pan Install'),
-      ('Gutter Install'),
-      ('Gutter Cover Install'),
-      ('Side Work'),
-      ('Restoration')
-    ) AS v(label)
-    WHERE s.contractor_id = 'accent-roofing'
-      AND s.name = 'Repair'
-    ON CONFLICT (contractor_id, jobber_label) DO NOTHING
-  `);
+    await pool.query(`
+      INSERT INTO referral_schedule_job_types (schedule_id, contractor_id, jobber_label)
+      SELECT s.id, 'accent-roofing', v.label
+      FROM referral_schedules s,
+      (VALUES
+        ('Repair'),
+        ('Repair Attempt'),
+        ('Chimney Cap Install'),
+        ('Skylight Install'),
+        ('Rain Pan Install'),
+        ('Gutter Install'),
+        ('Gutter Cover Install'),
+        ('Side Work'),
+        ('Restoration')
+      ) AS v(label)
+      WHERE s.contractor_id = 'accent-roofing'
+        AND s.name = 'Repair'
+      ON CONFLICT (contractor_id, jobber_label) DO NOTHING
+    `);
+  }
 
   // ── NOTIFICATION PREFERENCES ──────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS notification_preferences (
@@ -1084,9 +1092,17 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     status     TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMP DEFAULT NOW()
   )`);
-  await pool.query(
-    `INSERT INTO contractors (id, name, status) VALUES ('accent-roofing', 'Accent Roofing Service', 'active') ON CONFLICT (id) DO NOTHING`
-  );
+  // Seed the default contractor only on a genuinely empty table (first-ever boot).
+  // ON CONFLICT (id) DO NOTHING was not safe post-rename: after renaming the dev tenant,
+  // 'accent-roofing' no longer exists so the guard never fired and the row was silently
+  // re-created on every deploy. The empty-table guard prevents this while still seeding
+  // a fresh production deployment correctly.
+  const { rows: existingContractors } = await pool.query('SELECT id FROM contractors LIMIT 1');
+  if (existingContractors.length === 0) {
+    await pool.query(
+      `INSERT INTO contractors (id, name, status) VALUES ('accent-roofing', 'Accent Roofing Service', 'active')`
+    );
+  }
 
   // TEAM MEMBERS — per-contractor admin accounts replacing shared ADMIN_PASSWORD
   await pool.query(`CREATE TABLE IF NOT EXISTS team_members (
@@ -1102,8 +1118,6 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   // Wire contractor_id into sessions so every admin session carries tenant identity
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS contractor_id TEXT REFERENCES contractors(id)`);
-  // Backfill existing admin sessions so Danny doesn't need to re-login after deploy
-  await pool.query(`UPDATE sessions SET contractor_id = 'accent-roofing' WHERE role = 'admin' AND contractor_id IS NULL`);
 
   // One-time seed: inserts the Accent Roofing Owner account if the email does not yet exist.
   // Reads credentials from env vars OWNER_SEED_EMAIL + OWNER_SEED_PASSWORD.
@@ -1113,10 +1127,13 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       [process.env.OWNER_SEED_EMAIL]
     );
     if (ownerRows.length === 0) {
+      // Read contractor_id from the contractors table rather than hardcoding — safe after any rename.
+      const { rows: contractorRows } = await pool.query('SELECT id FROM contractors LIMIT 1');
+      const seedContractorId = contractorRows[0]?.id || 'accent-roofing';
       const passwordHash = await bcrypt.hash(process.env.OWNER_SEED_PASSWORD, 12);
       await pool.query(
-        `INSERT INTO team_members (contractor_id, email, password_hash, tier) VALUES ('accent-roofing', $1, $2, 'owner')`,
-        [process.env.OWNER_SEED_EMAIL, passwordHash]
+        `INSERT INTO team_members (contractor_id, email, password_hash, tier) VALUES ($1, $2, $3, 'owner')`,
+        [seedContractorId, process.env.OWNER_SEED_EMAIL, passwordHash]
       );
       console.log('[Seed] Accent Roofing Owner account created.'); // diagnostic log — intentional
     }

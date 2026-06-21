@@ -65,11 +65,16 @@ describe('contractor context', () => {
   });
 
   // ── TEST 1 ────────────────────────────────────────────────────────────────────
-  it('initDB seeds contractors table with exactly one row: accent-roofing', async () => {
+  // Phase 2.5: the contractors seed in initDB() now uses an empty-table guard rather than
+  // ON CONFLICT (id) DO NOTHING. The assertion below still passes because setup.js always
+  // wipes the schema before calling initDB(), so the table is empty and the guard fires,
+  // seeding 'accent-roofing' exactly as before. On a live deployment that already has rows
+  // (e.g. after Phase 3's dev-tenant rename), the guard does NOT fire — no re-creation.
+  it('initDB seeds contractors table on first boot (empty-table guard)', async () => {
     const { rows } = await pool.query(
       'SELECT id, name, status FROM contractors ORDER BY id'
     );
-    assert.equal(rows.length, 1, 'exactly one contractor row');
+    assert.equal(rows.length, 1, 'exactly one contractor row on fresh boot');
     assert.equal(rows[0].id, 'accent-roofing');
     assert.equal(rows[0].name, 'Accent Roofing Service');
     assert.equal(rows[0].status, 'active');
