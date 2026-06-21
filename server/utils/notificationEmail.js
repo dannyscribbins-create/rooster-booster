@@ -15,11 +15,11 @@ const { logError } = require('../middleware/errorLogger');
  *
  * @param {object} pool - DB pool
  * @param {string} type - 'payouts' | 'general' | 'booking'
+ * @param {string} [contractorId='accent-roofing'] - contractor to resolve for
  * @returns {Promise<string>} resolved recipient email
  */
-async function resolveNotificationRecipient(pool, type) {
+async function resolveNotificationRecipient(pool, type, contractorId = 'accent-roofing') {
   const PLATFORM_DEFAULT = 'admin1@roofmiles.com';
-  const contractorId = 'accent-roofing';
 
   try {
     // For booking type: check contractor_about.booking_email first
@@ -78,10 +78,11 @@ async function resolveNotificationRecipient(pool, type) {
  * @param {string} type - 'payouts' | 'general' | 'booking'
  * @param {string} subject - Email subject line
  * @param {string} html - Email HTML body
+ * @param {string} [contractorId='accent-roofing'] - contractor to resolve for
  */
-async function sendAdminNotification(pool, type, subject, html) {
+async function sendAdminNotification(pool, type, subject, html, contractorId = 'accent-roofing') {
   try {
-    const recipient = await resolveNotificationRecipient(pool, type);
+    const recipient = await resolveNotificationRecipient(pool, type, contractorId);
 
     await retryWithBackoff(
       () => resend.emails.send({

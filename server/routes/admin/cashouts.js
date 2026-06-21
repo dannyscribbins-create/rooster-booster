@@ -32,7 +32,9 @@ router.get('/api/admin/cashouts', async (req, res) => {
   }
 });
 router.patch('/api/admin/cashouts/:id', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { status } = req.body;
   if (!['approved','denied','paid'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
   const client = await pool.connect();
@@ -80,7 +82,8 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
     if (cashout.email && (status === 'approved' || status === 'denied')) {
       try {
         const csResult = await pool.query(
-          `SELECT email_sender_name, company_name, company_email FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+          `SELECT email_sender_name, company_name, company_email FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+          [contractorId]
         );
         const cs = csResult.rows[0] || {};
         const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
@@ -90,7 +93,7 @@ router.patch('/api/admin/cashouts/:id', async (req, res) => {
         const firstName = escapeHtml((cashout.full_name || '').split(' ')[0] || cashout.full_name || 'there');
         const formattedAmount = formatDollars(cashout.amount);
 
-        const suppressed8or9 = await isEmailSuppressed('accent-roofing', cashout.email, status === 'approved' ? 'cashout_approved' : 'cashout_denied');
+        const suppressed8or9 = await isEmailSuppressed(contractorId, cashout.email, status === 'approved' ? 'cashout_approved' : 'cashout_denied');
         if (status === 'approved') {
           // #8 — cashout approved
           if (!suppressed8or9) await retryWithBackoff(

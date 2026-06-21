@@ -149,7 +149,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
         const safeClientNameA = escapeHtml(clientName);
         const safeReferredByA = escapeHtml(referredBy);
         const adminUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
-        const adminEmail25 = await resolveNotificationRecipient(pool, 'general');
+        const adminEmail25 = await resolveNotificationRecipient(pool, 'general', contractorId);
         const suppressed25 = await isEmailSuppressed(contractorId, adminEmail25, 'new_referral_detected');
         if (!suppressed25) await sendAdminNotification(
           pool,

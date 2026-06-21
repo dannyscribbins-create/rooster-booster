@@ -8,7 +8,9 @@ const { logError } = require('../../middleware/errorLogger');
 
 // ── ADMIN: REFERRERS ──────────────────────────────────────────────────────────
 router.get('/api/admin/users', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { signup_source, joined_after, joined_before } = req.query;
   try {
     const conditions = [];
@@ -36,11 +38,11 @@ router.get('/api/admin/users', async (req, res) => {
           WHEN u.signup_source != 'peer_link' THEN NULL
           WHEN (
             EXISTS (SELECT 1 FROM referral_conversions rc WHERE rc.user_id = u.id)
-            OR EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'paid' AND pc.contractor_id = 'accent-roofing')
+            OR EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'paid' AND pc.contractor_id = $${params.length + 1})
           ) THEN 'in_pipeline_paid'
-          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'sold' AND pc.contractor_id = 'accent-roofing') THEN 'in_pipeline_sold'
-          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'inspection' AND pc.contractor_id = 'accent-roofing') THEN 'in_pipeline_inspection'
-          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.contractor_id = 'accent-roofing') THEN 'in_pipeline_lead'
+          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'sold' AND pc.contractor_id = $${params.length + 1}) THEN 'in_pipeline_sold'
+          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'inspection' AND pc.contractor_id = $${params.length + 1}) THEN 'in_pipeline_inspection'
+          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.contractor_id = $${params.length + 1}) THEN 'in_pipeline_lead'
           WHEN EXISTS (SELECT 1 FROM booking_requests br WHERE br.submitted_by_user_id = u.id AND br.status != 'matched') THEN 'booking_requested'
           ELSE 'app_account_only'
         END AS lifecycle_status
@@ -49,6 +51,7 @@ router.get('/api/admin/users', async (req, res) => {
       ${where}
       ORDER BY u.created_at DESC
     `;
+    params.push(contractorId);
     const result = await pool.query(sql, params);
     res.json(result.rows);
   } catch (err) {
@@ -113,7 +116,9 @@ router.delete('/api/admin/users/:id', async (req, res) => {
 
 // ── ADMIN: MATCH USER TO JOBBER CLIENT ────────────────────────────────────────
 router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const userResult = await pool.query('SELECT id, full_name, email, phone FROM users WHERE id = $1', [req.params.id]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -123,10 +128,10 @@ router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
     // because syncSingleClient writes client_name from Jobber firstName + lastName.
     const cacheResult = await pool.query(
       `SELECT jobber_client_id, client_name FROM pipeline_cache
-       WHERE contractor_id = 'accent-roofing'
-         AND LOWER(client_name) = LOWER($1)
+       WHERE contractor_id = $1
+         AND LOWER(client_name) = LOWER($2)
        LIMIT 1`,
-      [user.full_name]
+      [contractorId, user.full_name]
     );
 
     if (cacheResult.rows.length > 0) {
@@ -152,11 +157,11 @@ router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
 
 // ── ADMIN: REFERRER DETAIL ────────────────────────────────────────────────────
 router.get('/api/admin/referrer/:name', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const name = decodeURIComponent(req.params.name);
-    // TODO: pull contractorId from admin session token when multi-contractor is live
-    const contractorId = 'accent-roofing';
     const adapter = await getCRMAdapter(contractorId);
     const [pipelineData, userResult] = await Promise.all([
       adapter.fetchPipelineForReferrer(name),

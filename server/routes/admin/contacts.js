@@ -20,8 +20,9 @@ const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility'
 // ── TAG SUGGESTIONS (literal route — must be before /:contactId) ──────────────
 
 router.get('/api/admin/contacts/tags/suggestions', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   try {
     const result = await pool.query(
@@ -41,8 +42,9 @@ router.get('/api/admin/contacts/tags/suggestions', async (req, res) => {
 // ── TAG SUMMARY (literal route — must be before /:contactId) ─────────────────
 
 router.get('/api/admin/contacts/tag-summary', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT ct.tag, ct.source, COUNT(DISTINCT ct.contact_id) AS contact_count
@@ -62,9 +64,9 @@ router.get('/api/admin/contacts/tag-summary', async (req, res) => {
 // ── GLOBAL CONTACT LIST ───────────────────────────────────────────────────────
 
 router.get('/api/admin/contacts', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
 
   const { filter } = req.query;
   const ALLOWED_FILTERS = ['opted_out', 'app_user'];
@@ -180,8 +182,9 @@ router.get('/api/admin/contacts', async (req, res) => {
 // source_badge: 'both' = linked, 'jobber' = Jobber-only, 'app' = app-only
 
 router.get('/api/admin/contacts/unified', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
 
   const search  = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   const source  = typeof req.query.source === 'string' ? req.query.source.trim() : '';
@@ -349,9 +352,9 @@ router.get('/api/admin/contacts/unified', async (req, res) => {
 // ── CONTACT DETAIL ────────────────────────────────────────────────────────────
 
 router.get('/api/admin/contacts/:contactId', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { contactId } = req.params;
 
   try {
@@ -517,9 +520,9 @@ router.get('/api/admin/contacts/:contactId', async (req, res) => {
 // ── CONTACT RESUBSCRIBE ───────────────────────────────────────────────────────
 
 router.patch('/api/admin/contacts/:contactId/resubscribe', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { contactId } = req.params;
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -618,8 +621,9 @@ router.patch('/api/admin/contacts/:contactId/resubscribe', async (req, res) => {
 // ── ADD ADMIN TAG ─────────────────────────────────────────────────────────────
 
 router.post('/api/admin/contacts/:contactId/tags', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { contactId } = req.params;
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -658,8 +662,9 @@ router.post('/api/admin/contacts/:contactId/tags', async (req, res) => {
 // ── REMOVE ADMIN TAG ──────────────────────────────────────────────────────────
 
 router.delete('/api/admin/contacts/:contactId/tags/:tag', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { contactId, tag } = req.params;
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -696,9 +701,9 @@ router.delete('/api/admin/contacts/:contactId/tags/:tag', async (req, res) => {
 // Returns Jobber-sourced tags grouped by prefix for filter panel Section A.
 // ?visibleOnly=true filters out groups where tag_group_visibility[prefix] === false.
 router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const visibleOnly = req.query.visibleOnly === 'true';
   try {
     const [tagResult, systemTagResult, visibilityResult] = await Promise.all([
@@ -797,9 +802,9 @@ router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
 // ── JOBBER CLIENTS LIST ───────────────────────────────────────────────────────
 
 router.get('/api/admin/jobber-clients', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
 
   const rawSearch = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   const paying    = req.query.paying   === 'true';
@@ -947,8 +952,9 @@ router.get('/api/admin/jobber-clients', async (req, res) => {
 // ── JOBBER CLIENT DETAIL ──────────────────────────────────────────────────────
 
 router.get('/api/admin/jobber-clients/:jobberClientId', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { jobberClientId } = req.params;
 
   try {

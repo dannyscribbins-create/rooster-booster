@@ -1077,6 +1077,51 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     }
   }
 
+  // CONTRACTORS — single row per contractor, TEXT primary key
+  await pool.query(`CREATE TABLE IF NOT EXISTS contractors (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+  await pool.query(
+    `INSERT INTO contractors (id, name, status) VALUES ('accent-roofing', 'Accent Roofing Service', 'active') ON CONFLICT (id) DO NOTHING`
+  );
+
+  // TEAM MEMBERS — per-contractor admin accounts replacing shared ADMIN_PASSWORD
+  await pool.query(`CREATE TABLE IF NOT EXISTS team_members (
+    id            SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL REFERENCES contractors(id),
+    email         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    tier          TEXT NOT NULL DEFAULT 'owner',
+    permissions   JSONB,
+    active        BOOLEAN NOT NULL DEFAULT true,
+    created_at    TIMESTAMP DEFAULT NOW()
+  )`);
+
+  // Wire contractor_id into sessions so every admin session carries tenant identity
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS contractor_id TEXT REFERENCES contractors(id)`);
+  // Backfill existing admin sessions so Danny doesn't need to re-login after deploy
+  await pool.query(`UPDATE sessions SET contractor_id = 'accent-roofing' WHERE role = 'admin' AND contractor_id IS NULL`);
+
+  // One-time seed: inserts the Accent Roofing Owner account if the email does not yet exist.
+  // Reads credentials from env vars OWNER_SEED_EMAIL + OWNER_SEED_PASSWORD.
+  if (process.env.OWNER_SEED_EMAIL && process.env.OWNER_SEED_PASSWORD) {
+    const { rows: ownerRows } = await pool.query(
+      'SELECT id FROM team_members WHERE email = $1',
+      [process.env.OWNER_SEED_EMAIL]
+    );
+    if (ownerRows.length === 0) {
+      const passwordHash = await bcrypt.hash(process.env.OWNER_SEED_PASSWORD, 12);
+      await pool.query(
+        `INSERT INTO team_members (contractor_id, email, password_hash, tier) VALUES ('accent-roofing', $1, $2, 'owner')`,
+        [process.env.OWNER_SEED_EMAIL, passwordHash]
+      );
+      console.log('[Seed] Accent Roofing Owner account created.'); // diagnostic log — intentional
+    }
+  }
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

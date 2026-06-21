@@ -31,7 +31,9 @@ router.get('/api/admin/activity', async (req, res) => {
 
 // ── ADMIN: DASHBOARD STATS (cached 15 min) ────────────────────────────────────
 router.get('/api/admin/stats', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { refresh } = req.query;
   try {
     if (refresh !== 'true') {
@@ -44,8 +46,6 @@ router.get('/api/admin/stats', async (req, res) => {
     const usersResult = await pool.query('SELECT full_name FROM users');
     const allUsers = usersResult.rows;
     let totalReferrals=0, totalSold=0, totalNotSold=0, totalLeads=0, totalInspections=0, totalBalance=0, activeReferrers=0;
-    // TODO: pull contractorId from admin session token when multi-contractor is live
-    const contractorId = 'accent-roofing';
     let adapter;
     try {
       adapter = await getCRMAdapter(contractorId);

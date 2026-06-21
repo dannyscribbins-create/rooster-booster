@@ -9,12 +9,20 @@ const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 const { evaluateAudience } = require('./dynamicAudiences');
 
-const CONTRACTOR_ID = 'accent-roofing'; // MVP: replace with multi-contractor loop at scale
-
 async function runIncrementalSync() {
+  const { rows: contractorRows } = await pool.query(
+    'SELECT id FROM contractors WHERE status = $1',
+    ['active']
+  );
+  for (const { id: contractorId } of contractorRows) {
+    await runForContractor(contractorId);
+  }
+}
+
+async function runForContractor(contractorId) {
   const tokenResult = await pool.query(
     'SELECT access_token, refresh_token, expires_at FROM tokens WHERE contractor_id = $1',
-    [CONTRACTOR_ID]
+    [contractorId]
   );
   const tokenRow = tokenResult.rows[0];
   if (!tokenRow?.access_token) {
@@ -22,7 +30,7 @@ async function runIncrementalSync() {
     return;
   }
   if (new Date(tokenRow.expires_at) < new Date()) {
-    console.warn(`[jobberIncrementalSync] Jobber token expired for ${CONTRACTOR_ID} — reconnect Jobber OAuth`);
+    console.warn(`[jobberIncrementalSync] Jobber token expired for ${contractorId} — reconnect Jobber OAuth`);
     return;
   }
   const token = tokenRow.access_token;
@@ -89,7 +97,7 @@ async function runIncrementalSync() {
   try {
     const mappingsResult = await pool.query(
       'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
-      [CONTRACTOR_ID]
+      [contractorId]
     );
     contractorFieldMappings = mappingsResult.rows[0]?.contractor_field_mappings || {};
   } catch {
@@ -166,7 +174,7 @@ async function runIncrementalSync() {
            last_synced_at = NOW()`,
         [
           client.id,
-          CONTRACTOR_ID,
+          contractorId,
           client.firstName || null,
           client.lastName || null,
           email,
@@ -194,14 +202,14 @@ async function runIncrementalSync() {
         requests,
       };
 
-      await deriveAndSaveTags(pool, CONTRACTOR_ID, client.id, clientData, contractorFieldMappings);
+      await deriveAndSaveTags(pool, contractorId, client.id, clientData, contractorFieldMappings);
 
       // Permanent system tag
       await pool.query(
         `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
          VALUES ($1, $2, 'jobber_client', 'system', NOW())
          ON CONFLICT DO NOTHING`,
-        [client.id, CONTRACTOR_ID]
+        [client.id, contractorId]
       );
 
       // tier_1 = Jobber-only client (no linked app contact). Replaced by tier_2 after matching pass.
@@ -209,7 +217,7 @@ async function runIncrementalSync() {
         `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
          VALUES ($1, $2, 'tier_1', 'system', NOW())
          ON CONFLICT DO NOTHING`,
-        [client.id, CONTRACTOR_ID]
+        [client.id, contractorId]
       );
 
       updatedIds.push(client.id);
@@ -224,7 +232,7 @@ async function runIncrementalSync() {
   let totalLinked = 0;
   for (const jcId of updatedIds) {
     try {
-      const { linked } = await runContactMatchingPass(CONTRACTOR_ID, { jobberClientId: jcId });
+      const { linked } = await runContactMatchingPass(contractorId, { jobberClientId: jcId });
       totalLinked += linked;
     } catch (err) {
       await logError({ req: null, error: err, source: `jobberIncrementalSync — matching ${jcId}` });
@@ -235,7 +243,7 @@ async function runIncrementalSync() {
     await pool.query(
       `INSERT INTO notifications (contractor_id, type, title, body)
        VALUES ($1, 'incremental_sync', 'Sync complete', $2)`,
-      [CONTRACTOR_ID, `${updatedIds.length} clients synced, ${totalLinked} new contact links established.`]
+      [contractorId, `${updatedIds.length} clients synced, ${totalLinked} new contact links established.`]
     ).catch(() => {});
   }
 
@@ -249,7 +257,7 @@ async function runIncrementalSync() {
   try {
     const audienceResult = await pool.query(
       'SELECT id, name FROM dynamic_audiences WHERE contractor_id = $1 AND is_active = TRUE',
-      [CONTRACTOR_ID]
+      [contractorId]
     );
     for (const audience of audienceResult.rows) {
       try {

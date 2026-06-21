@@ -339,9 +339,7 @@ async function sendEmailViaResend(contact, personalizedBody, campaignData, token
   }
 }
 
-async function executeBatchSend(campaignId, req) {
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+async function executeBatchSend(campaignId, req, contractorId) {
 
   const campaignResult = await pool.query(
     `SELECT c.id, c.name, c.status, c.total_batches, c.current_batch, c.last_batch_sent_at,
@@ -728,7 +726,9 @@ router.get('/api/track/click/:token', async (req, res) => {
 const CAMPAIGN_BATCH_CAP = 500;
 
 router.post('/api/admin/campaigns', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { name, builder_path } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Campaign name is required' });
   const path = builder_path === 'csv' ? 'csv' : 'jobber';
@@ -737,7 +737,7 @@ router.post('/api/admin/campaigns', async (req, res) => {
       `INSERT INTO campaigns (contractor_id, name, status, builder_path)
        VALUES ($1, $2, 'draft', $3)
        RETURNING id, name, status, builder_path, created_at`,
-      ['accent-roofing', name.trim(), path]
+      [contractorId, name.trim(), path]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -747,14 +747,16 @@ router.post('/api/admin/campaigns', async (req, res) => {
 });
 
 router.get('/api/admin/campaigns', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT id, name, status, total_contacts, created_at, updated_at
        FROM campaigns
        WHERE contractor_id = $1
        ORDER BY created_at DESC`,
-      ['accent-roofing']
+      [contractorId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -764,11 +766,13 @@ router.get('/api/admin/campaigns', async (req, res) => {
 });
 
 router.get('/api/admin/campaigns/field-values', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const settingsResult = await pool.query(
       'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
-      ['accent-roofing']
+      [contractorId]
     );
     const mappings = settingsResult.rows[0]?.contractor_field_mappings || {};
 
@@ -777,7 +781,7 @@ router.get('/api/admin/campaigns/field-values', async (req, res) => {
     if (mappings.work_category) {
       const r = await pool.query(
         'SELECT options FROM contractor_jobber_fields WHERE contractor_id = $1 AND label = $2 LIMIT 1',
-        ['accent-roofing', mappings.work_category]
+        [contractorId, mappings.work_category]
       );
       if (r.rows.length > 0 && Array.isArray(r.rows[0].options)) {
         workCategoryValues = r.rows[0].options;
@@ -796,9 +800,9 @@ router.get('/api/admin/campaigns/field-values', async (req, res) => {
 // Returns stored tags + computed send stats for a batch of emails.
 // 'Recently Contacted' is computed (not stored) — added if last_sent_at is within 30 days.
 router.post('/api/admin/campaigns/enrich-contacts', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
 
   const { emails } = req.body;
   if (!Array.isArray(emails) || emails.length === 0) {
@@ -855,7 +859,9 @@ router.post('/api/admin/campaigns/enrich-contacts', async (req, res) => {
 });
 
 router.get('/api/admin/campaigns/:id', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   try {
     const result = await pool.query(
@@ -864,7 +870,7 @@ router.get('/api/admin/campaigns/:id', async (req, res) => {
               message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url,
               created_at, updated_at
        FROM campaigns WHERE id = $1 AND contractor_id = $2`,
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const campaign = result.rows[0];
@@ -881,7 +887,9 @@ router.get('/api/admin/campaigns/:id', async (req, res) => {
 });
 
 router.patch('/api/admin/campaigns/:id', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   const { builder_path, last_step } = req.body;
   if (builder_path !== undefined && !['jobber', 'csv'].includes(builder_path)) {
@@ -893,7 +901,7 @@ router.patch('/api/admin/campaigns/:id', async (req, res) => {
   try {
     const check = await pool.query(
       'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const updates = [];
@@ -908,8 +916,9 @@ router.patch('/api/admin/campaigns/:id', async (req, res) => {
     }
     if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
     params.push(id);
+    params.push(contractorId);
     const result = await pool.query(
-      `UPDATE campaigns SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length} AND contractor_id = 'accent-roofing' RETURNING id, builder_path, last_step`,
+      `UPDATE campaigns SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length - 1} AND contractor_id = $${params.length} RETURNING id, builder_path, last_step`,
       params
     );
     res.json(result.rows[0]);
@@ -920,9 +929,10 @@ router.patch('/api/admin/campaigns/:id', async (req, res) => {
 });
 
 router.delete('/api/admin/campaigns/:id', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
-  const contractorId = 'accent-roofing';
   try {
     const check = await pool.query(
       'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
@@ -954,13 +964,15 @@ router.delete('/api/admin/campaigns/:id', async (req, res) => {
 });
 
 router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   const { dateFrom, dateTo, paidOnly, minJobValue, workCategory, jobSource, notInApp, audience_id } = req.body;
   try {
     const check = await pool.query(
       'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const filters = { dateFrom, dateTo, paidOnly, minJobValue, workCategory, jobSource, notInApp };
@@ -980,9 +992,10 @@ router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
 // Mirrors the pull endpoint's bookkeeping: sets total_contacts, in_app flag, opted_out=false.
 // Uses INSERT...SELECT to avoid the 65,535 PostgreSQL bind-parameter ceiling for large audiences.
 router.post('/api/admin/campaigns/:id/load-audience', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
-  const contractorId = 'accent-roofing';
   try {
     const campaignResult = await pool.query(
       'SELECT id, audience_id FROM campaigns WHERE id = $1 AND contractor_id = $2',
@@ -1047,18 +1060,20 @@ router.post('/api/admin/campaigns/:id/load-audience', async (req, res) => {
 });
 
 router.get('/api/admin/campaigns/:id/contacts', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   try {
     const check = await pool.query(
       'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (check.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const result = await pool.query(
       `SELECT id, client_name, phone, email, job_type, job_date, job_value, in_app, selected
        FROM campaign_contacts WHERE campaign_id = $1 AND contractor_id = $2 ORDER BY client_name ASC`,
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     res.json({ contacts: result.rows });
   } catch (err) {
@@ -1068,7 +1083,9 @@ router.get('/api/admin/campaigns/:id/contacts', async (req, res) => {
 });
 
 router.patch('/api/admin/campaigns/:id/contacts/selection', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   const { updates } = req.body;
   if (!Array.isArray(updates) || updates.length === 0) {
@@ -1100,12 +1117,14 @@ router.patch('/api/admin/campaigns/:id/contacts/selection', async (req, res) => 
 });
 
 router.post('/api/admin/campaigns/:id/finalize-batch', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   try {
     const campaignCheck = await pool.query(
       'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
 
@@ -1113,7 +1132,7 @@ router.post('/api/admin/campaigns/:id/finalize-batch', async (req, res) => {
       `SELECT id FROM campaign_contacts
        WHERE campaign_id = $1 AND contractor_id = $2 AND selected = true
        ORDER BY client_name ASC`,
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     const selectedContacts = contactsResult.rows;
     if (selectedContacts.length === 0) return res.status(400).json({ error: 'No contacts selected' });
@@ -1142,7 +1161,7 @@ router.post('/api/admin/campaigns/:id/finalize-batch', async (req, res) => {
       `UPDATE campaigns
        SET total_contacts = $1, total_batches = $2, current_batch = 1, updated_at = NOW()
        WHERE id = $3 AND contractor_id = $4`,
-      [totalSelected, totalBatches, id, 'accent-roofing']
+      [totalSelected, totalBatches, id, contractorId]
     );
 
     res.json({ totalSelected, totalBatches });
@@ -1153,19 +1172,21 @@ router.post('/api/admin/campaigns/:id/finalize-batch', async (req, res) => {
 });
 
 router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   try {
     const campaignCheck = await pool.query(
       'SELECT message_preset, message_body, approved_message, ai_rapport_enabled, cta_enabled, cta_url, ai_rapport_generations, subject_line, selected_tone, email_header FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (campaignCheck.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const saved = campaignCheck.rows[0];
 
     const settingsResult = await pool.query(
       'SELECT company_url, social_facebook, social_instagram, social_google, social_nextdoor, social_website FROM contractor_settings WHERE contractor_id = $1 LIMIT 1',
-      ['accent-roofing']
+      [contractorId]
     );
     const row = settingsResult.rows[0];
     const ctaOptions = {
@@ -1190,7 +1211,9 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
 });
 
 router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   const { message_preset, message_body, ai_rapport_enabled, cta_enabled, cta_url, subject_line, selected_tone, approved_message, email_header } = req.body;
 
@@ -1214,7 +1237,7 @@ router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
            selected_tone = COALESCE($7, selected_tone),
            approved_message = $10, email_header = $11, updated_at = NOW()
        WHERE id = $8 AND contractor_id = $9`,
-      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, subject_line || null, selected_tone || null, id, 'accent-roofing', approved_message || null, emailHeaderTrimmed || null]
+      [message_preset, message_body || null, ai_rapport_enabled, cta_enabled, cta_url || null, subject_line || null, selected_tone || null, id, contractorId, approved_message || null, emailHeaderTrimmed || null]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Campaign not found' });
     res.json({ success: true });
@@ -1225,7 +1248,9 @@ router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
 });
 
 router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   try {
     const campaignResult = await pool.query(
@@ -1233,7 +1258,7 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
               message_preset, message_body, approved_message, ai_rapport_enabled, cta_enabled,
               cta_url, subject_line, email_header, sent_at
        FROM campaigns WHERE id = $1 AND contractor_id = $2`,
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const campaign = campaignResult.rows[0];
@@ -1244,13 +1269,13 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
          COUNT(*) FILTER (WHERE opted_out = true) AS opted_out_count
        FROM campaign_contacts
        WHERE campaign_id = $1 AND contractor_id = $2`,
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     const { batch1_selected, opted_out_count } = countsResult.rows[0];
 
     const settingsResult = await pool.query(
-      `SELECT company_name FROM contractor_settings
-       WHERE contractor_id = 'accent-roofing' LIMIT 1`
+      `SELECT company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+      [contractorId]
     );
     const companyName = settingsResult.rows[0]?.company_name || 'Accent Roofing Service';
 
@@ -1288,11 +1313,11 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
 });
 
 router.post('/api/admin/campaigns/:id/launch', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   const campaignId = parseInt(id, 10);
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
   try {
     const checkResult = await pool.query(
       `SELECT id, status, name, total_batches FROM campaigns WHERE id = $1 AND contractor_id = $2`,
@@ -1315,7 +1340,7 @@ router.post('/api/admin/campaigns/:id/launch', async (req, res) => {
       ['campaign_launched', `Campaign "${name}" launched — sending Batch 1 of ${total_batches}`]
     );
 
-    const result = await executeBatchSend(campaignId, req);
+    const result = await executeBatchSend(campaignId, req, contractorId);
 
     res.json({ success: true, status: newStatus, ...result });
   } catch (err) {
@@ -1360,19 +1385,21 @@ async function fetchJobberPage(query, variables, accessToken) {
 }
 
 router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   try {
     const campaignResult = await pool.query(
       'SELECT filters FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const filters = campaignResult.rows[0].filters || {};
 
     const settingsResult = await pool.query(
       'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
-      ['accent-roofing']
+      [contractorId]
     );
     const mappings = settingsResult.rows[0]?.contractor_field_mappings || {};
 
@@ -1629,7 +1656,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
         return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11})`;
       }).join(',');
       const flatValues = withInApp.flatMap(c => [
-        id, 'accent-roofing', c.clientJobberId, c.clientName, c.phone, c.email,
+        id, contractorId, c.clientJobberId, c.clientName, c.phone, c.email,
         c.jobType, c.jobSource, c.jobDate, c.jobValue, c.inApp
       ]);
       await pool.query(
@@ -1663,7 +1690,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
               return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5})`;
             }).join(',');
             const vals = chunk.flatMap(c => [
-              'accent-roofing', c.email, c.clientName || null, c.phone || null, c.clientJobberId || null
+              contractorId, c.email, c.clientName || null, c.phone || null, c.clientJobberId || null
             ]);
             const r = await pool.query(
               `INSERT INTO contacts (contractor_id, email, name, phone, jobber_client_id)
@@ -1678,7 +1705,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
             );
             allContactIds.push(...r.rows.map(row => row.id));
           }
-          backfillTagsForContacts(pool, 'accent-roofing', allContactIds);
+          backfillTagsForContacts(pool, contractorId, allContactIds);
         } catch (pullBackfillErr) {
           await logError({ req, error: pullBackfillErr, source: 'POST /api/admin/campaigns/:id/pull — contacts backfill' });
         }
@@ -1698,10 +1725,10 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
 // ── CAMPAIGN DETAIL + BATCH MANAGEMENT + IMAGE + CSV ─────────────────────────
 
 router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
   const campaignId = parseInt(req.params.id, 10);
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const { contractorId } = adminSession;
   try {
     const campaignResult = await pool.query(
       `SELECT id, contractor_id, name, status, filters, message_preset, message_body,
@@ -1923,10 +1950,10 @@ router.get('/api/admin/campaigns/:id/metrics', async (req, res) => {
 });
 
 router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const campaignId = parseInt(req.params.id, 10);
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
   try {
     const guardResult = await pool.query(
       `SELECT id, status, last_batch_sent_at FROM campaigns WHERE id = $1 AND contractor_id = $2`,
@@ -1949,7 +1976,7 @@ router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
       }
     }
 
-    const result = await executeBatchSend(campaignId, req);
+    const result = await executeBatchSend(campaignId, req, contractorId);
     res.json({
       success: true,
       ...result,
@@ -1962,10 +1989,10 @@ router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
 });
 
 router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
   const campaignId = parseInt(req.params.id, 10);
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const { contractorId } = adminSession;
   const { batch_number } = req.body;
   if (!batch_number || typeof batch_number !== 'number') {
     return res.status(400).json({ error: 'batch_number is required and must be a number' });
@@ -2139,10 +2166,10 @@ router.get('/api/admin/campaigns/:id/export-failed/:batchNumber', async (req, re
 router.post('/api/admin/campaigns/:id/upload-image',
   upload.single('image'),
   async (req, res) => {
-    if (!await verifyAdminSession(req, res)) return;
+    const adminSession = await verifyAdminSession(req, res);
+    if (!adminSession) return;
     const campaignId = parseInt(req.params.id, 10);
-    // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-    const contractorId = 'accent-roofing';
+    const { contractorId } = adminSession;
     try {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -2196,10 +2223,10 @@ router.post('/api/admin/campaigns/:id/upload-image',
 );
 
 router.delete('/api/admin/campaigns/:id/image', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
   const campaignId = parseInt(req.params.id, 10);
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const { contractorId } = adminSession;
   try {
     const campaignCheck = await pool.query(
       'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
@@ -2230,10 +2257,10 @@ router.delete('/api/admin/campaigns/:id/image', async (req, res) => {
 router.post('/api/admin/campaigns/:id/upload-csv',
   upload.single('csv'),
   async (req, res) => {
-    if (!await verifyAdminSession(req, res)) return;
+    const adminSession = await verifyAdminSession(req, res);
+    if (!adminSession) return;
     const campaignId = parseInt(req.params.id, 10);
-    // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-    const contractorId = 'accent-roofing';
+    const { contractorId } = adminSession;
     try {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
@@ -2339,10 +2366,10 @@ router.post('/api/admin/campaigns/:id/upload-csv',
 );
 
 router.post('/api/admin/campaigns/:id/confirm-csv', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
   const campaignId = parseInt(req.params.id, 10);
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const { contractorId } = adminSession;
   const { column_mapping, confirmed } = req.body;
 
   if (!confirmed) return res.status(400).json({ error: 'confirmed must be true' });
@@ -2437,9 +2464,9 @@ router.post('/api/admin/campaigns/:id/confirm-csv', async (req, res) => {
 // ── REFERRAL SCHEDULE CRUD ────────────────────────────────────────────────────
 
 router.get('/api/admin/schedules', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: contractor_id hardcoded; derive from session token at FORA scale
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const schedulesResult = await pool.query(
       `SELECT id, name, is_active, payout_model, minimum_invoice, reset_period,
@@ -2491,8 +2518,9 @@ router.get('/api/admin/schedules', async (req, res) => {
 });
 
 router.post('/api/admin/schedules', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const {
     name, payout_model, is_active, minimum_invoice, invoice_window_days,
     escalating_steps, tier_brackets, flat_amount, percentage_rate, percentage_max_cap,
@@ -2560,8 +2588,9 @@ router.post('/api/admin/schedules', async (req, res) => {
 });
 
 router.put('/api/admin/schedules/:id', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const scheduleId = parseInt(req.params.id, 10);
   const {
     name, payout_model, is_active, minimum_invoice, invoice_window_days,
@@ -2640,8 +2669,9 @@ router.put('/api/admin/schedules/:id', async (req, res) => {
 });
 
 router.patch('/api/admin/schedules/:id/toggle', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const scheduleId = parseInt(req.params.id, 10);
   const { is_active } = req.body;
 
@@ -2672,7 +2702,9 @@ const aiRapportLimiter = rateLimit({
 });
 
 router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'AI Rapport is not configured' });
@@ -2692,7 +2724,7 @@ router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req,
   try {
     const campaignResult = await pool.query(
       'SELECT id, contractor_id, ai_rapport_generations FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (campaignResult.rows.length === 0) {
       return res.status(404).json({ error: 'Campaign not found' });
@@ -2818,7 +2850,7 @@ Output: One email message body only. No subject line. No preview text. No button
 
     await pool.query(
       'UPDATE campaigns SET ai_rapport_generations = ai_rapport_generations + 1 WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
 
     const newCount = currentGenerations + 1;
@@ -2835,7 +2867,9 @@ Output: One email message body only. No subject line. No preview text. No button
 });
 
 router.post('/api/admin/campaigns/:id/generate-subject-lines', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'AI features are not configured' });
@@ -2849,7 +2883,7 @@ router.post('/api/admin/campaigns/:id/generate-subject-lines', async (req, res) 
   try {
     const campaignResult = await pool.query(
       'SELECT id FROM campaigns WHERE id = $1 AND contractor_id = $2',
-      [id, 'accent-roofing']
+      [id, contractorId]
     );
     if (campaignResult.rows.length === 0) {
       return res.status(404).json({ error: 'Campaign not found' });
@@ -2932,11 +2966,11 @@ Output: exactly 3 subject lines, one per line, no numbering, no quotes, no expla
 // ── BATCH CONTACT LIST ────────────────────────────────────────────────────────
 
 router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
   const campaignId  = parseInt(req.params.campaignId,  10);
   const batchNumber = parseInt(req.params.batchNumber, 10);
-  // MVP: contractor_id hardcoded — pull from session token before second contractor onboards
-  const contractorId = 'accent-roofing';
+  const { contractorId } = adminSession;
 
   if (isNaN(campaignId) || isNaN(batchNumber)) {
     return res.status(400).json({ error: 'Invalid campaignId or batchNumber' });
@@ -3007,8 +3041,9 @@ router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', asy
 // ── ADMIN: DYNAMIC AUDIENCES ─────────────────────────────────────────────────
 
 router.get('/api/admin/audiences', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const { rows } = await pool.query(
       `SELECT id, name, description, filter_json, member_count, last_evaluated_at, is_active, created_at
@@ -3025,8 +3060,9 @@ router.get('/api/admin/audiences', async (req, res) => {
 });
 
 router.post('/api/admin/audiences', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { name, description, filter_json } = req.body;
 
   if (!name || typeof name !== 'string' || !name.trim()) {
@@ -3059,8 +3095,9 @@ router.post('/api/admin/audiences', async (req, res) => {
 });
 
 router.put('/api/admin/audiences/:id', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const audienceId = parseInt(req.params.id, 10);
   if (!audienceId || audienceId < 1) return res.status(400).json({ error: 'Invalid audience id' });
 
@@ -3114,8 +3151,9 @@ router.put('/api/admin/audiences/:id', async (req, res) => {
 });
 
 router.delete('/api/admin/audiences/:id', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const audienceId = parseInt(req.params.id, 10);
   if (!audienceId || audienceId < 1) return res.status(400).json({ error: 'Invalid audience id' });
 
@@ -3139,8 +3177,9 @@ router.delete('/api/admin/audiences/:id', async (req, res) => {
 });
 
 router.get('/api/admin/audiences/:id/members', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const audienceId = parseInt(req.params.id, 10);
   if (!audienceId || audienceId < 1) return res.status(400).json({ error: 'Invalid audience id' });
 
@@ -3187,8 +3226,9 @@ const DEFAULT_CADENCE_SETTINGS = [
 ];
 
 router.get('/api/admin/engagement-cadence', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const { rows } = await pool.query(
       `SELECT cadence_month, is_enabled, subject, body
@@ -3208,8 +3248,9 @@ router.get('/api/admin/engagement-cadence', async (req, res) => {
 });
 
 router.put('/api/admin/engagement-cadence/:month', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const month = parseInt(req.params.month, 10);
   if (!VALID_CADENCE_MONTHS.includes(month)) {
     return res.status(400).json({ error: 'month must be one of: 1, 3, 6, 12' });

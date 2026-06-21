@@ -4,17 +4,17 @@ const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
 const { logError } = require('../../middleware/errorLogger');
 
-const CONTRACTOR_ID = 'accent-roofing'; // MVP: hardcoded — FORA: pull from admin session token
-
 // GET /api/admin/notification-preferences
 // Returns an object keyed by trigger_key → email_enabled boolean.
 // Missing trigger keys default to true (enabled) on the client.
 router.get('/api/admin/notification-preferences', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT trigger_key, email_enabled FROM notification_preferences WHERE contractor_id = $1`,
-      [CONTRACTOR_ID]
+      [contractorId]
     );
     const prefs = {};
     for (const row of result.rows) {
@@ -31,7 +31,9 @@ router.get('/api/admin/notification-preferences', async (req, res) => {
 // Upserts a single trigger preference.
 // Body: { trigger_key: string, email_enabled: boolean }
 router.put('/api/admin/notification-preferences', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { trigger_key, email_enabled } = req.body;
   if (typeof trigger_key !== 'string' || !trigger_key.trim()) {
     return res.status(400).json({ error: 'trigger_key is required' });
@@ -45,7 +47,7 @@ router.put('/api/admin/notification-preferences', async (req, res) => {
        VALUES ($1, $2, $3, NOW())
        ON CONFLICT (contractor_id, trigger_key) DO UPDATE
          SET email_enabled = EXCLUDED.email_enabled, updated_at = NOW()`,
-      [CONTRACTOR_ID, trigger_key.trim(), email_enabled]
+      [contractorId, trigger_key.trim(), email_enabled]
     );
     res.json({ success: true });
   } catch (err) {
@@ -59,7 +61,9 @@ router.put('/api/admin/notification-preferences', async (req, res) => {
 // GET /api/admin/notifications
 // Returns unread + recent notifications for the admin bell.
 router.get('/api/admin/notifications', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT id, type, title, body, deeplink, read, created_at
@@ -67,7 +71,7 @@ router.get('/api/admin/notifications', async (req, res) => {
        WHERE contractor_id = $1
        ORDER BY created_at DESC
        LIMIT 50`,
-      [CONTRACTOR_ID]
+      [contractorId]
     );
     res.json({
       notifications: result.rows,
@@ -82,14 +86,15 @@ router.get('/api/admin/notifications', async (req, res) => {
 // PATCH /api/admin/notifications/:id/read
 // Marks a single notification as read.
 router.patch('/api/admin/notifications/:id/read', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { id } = req.params;
   if (!id || isNaN(Number(id))) return res.status(400).json({ error: 'Invalid notification id' });
   try {
     await pool.query(
-      `UPDATE notifications SET read = TRUE
-       WHERE id = $1 AND contractor_id = $2`,
-      [Number(id), CONTRACTOR_ID]
+      `UPDATE notifications SET read = TRUE WHERE id = $1 AND contractor_id = $2`,
+      [Number(id), contractorId]
     );
     res.json({ success: true });
   } catch (err) {

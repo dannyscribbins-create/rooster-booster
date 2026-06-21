@@ -116,13 +116,14 @@ async function seedUser(pool, { fullName, email, contractorId }) {
 
 // Inserts a sessions row with the given role and token.
 // userId may be null for admin sessions (no user account required).
-async function seedSession(pool, { userId = null, token, role = 'referrer', expiresInMs = 3_600_000 }) {
+// contractorId is required for admin sessions; nullable for referrer sessions.
+async function seedSession(pool, { userId = null, token, role = 'referrer', expiresInMs = 3_600_000, contractorId = null }) {
   const expiresAt = new Date(Date.now() + expiresInMs);
   await pool.query(
-    `INSERT INTO sessions (user_id, token, expires_at, role)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO sessions (user_id, token, expires_at, role, contractor_id)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (token) DO UPDATE SET expires_at = EXCLUDED.expires_at`,
-    [userId, token, expiresAt, role]
+    [userId, token, expiresAt, role, contractorId]
   );
 }
 

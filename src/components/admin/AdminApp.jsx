@@ -29,6 +29,7 @@ function useAdminFonts() {
 }
 
 function AdminLogin({ onLogin }) {
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
@@ -39,10 +40,10 @@ function AdminLogin({ onLogin }) {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/login`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       const d = await r.json();
-      if (d.error) setError('Incorrect password');
+      if (d.error) setError('Invalid credentials');
       else {
         sessionStorage.setItem('rb_admin_token', d.token);
         onLogin();
@@ -61,7 +62,8 @@ function AdminLogin({ onLogin }) {
           <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 200, height: 'auto', margin: '0 auto 16px', display: 'block' }} />
         </div>
         <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '28px', boxShadow: AD.shadowLg }}>
-          <AdminInput type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter admin password" label="Admin Password" onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }} />
+          <AdminInput type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Enter admin email" label="Email" onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }} />
+          <AdminInput type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter admin password" label="Password" onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }} />
           {error && <p style={{ color: AD.red2Text, fontSize: 15, margin: '-8px 0 12px' }}>{error}</p>}
           <button onClick={handleLogin} style={{
             width: '100%', marginTop: 16,

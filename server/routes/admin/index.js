@@ -19,14 +19,17 @@ const { discoverJobberFields } = require('../../crm/jobber');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility');
 
+const bcrypt = require('bcrypt');
+
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
   message: { error: 'Too many login attempts. Please try again in 15 minutes.' }
 });
 
-if (!process.env.ADMIN_PASSWORD) throw new Error('ADMIN_PASSWORD environment variable is required');
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+// Hash of a throwaway sentinel — ensures bcrypt.compare always runs even when
+// the email is not found, preventing email enumeration via response-time differences.
+const DUMMY_BCRYPT_HASH = '$2b$12$zx3jp3cwKJyBjvkjLrxpC.tFQcGrtob.60TLBryMPGb8IZQvlLF32';
 
 // ── SUB-ROUTERS ───────────────────────────────────────────────────────────────
 router.use(require('./campaigns'));
@@ -38,40 +41,51 @@ router.use(require('./notifications'));
 
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 router.post('/api/admin/login', adminLoginLimiter, [
-  body('password').notEmpty().withMessage('Password is required').isString().isLength({ max: 200 }).withMessage('Password too long'),
+  body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
+  body('password').notEmpty().isString().isLength({ max: 200 }).withMessage('Password required'),
 ], async (req, res) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(422).json({ errors: errors.array() });
-  }
-  if (req.body.password !== ADMIN_PASSWORD)
-    return res.status(401).json({ error: 'Incorrect password' });
+  if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
   try {
+    const { email, password } = req.body;
+    const result = await pool.query(
+      'SELECT id, password_hash, contractor_id FROM team_members WHERE email = $1 AND active = true',
+      [email]
+    );
+    const storedHash = result.rows.length ? result.rows[0].password_hash : DUMMY_BCRYPT_HASH;
+    const match = await bcrypt.compare(password, storedHash);
+    if (!result.rows.length || !match) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const teamMember = result.rows[0];
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await pool.query(
-      'INSERT INTO sessions (user_id, token, expires_at, role) VALUES (NULL,$1,$2,$3)',
-      [token, expiresAt, 'admin']
+      'INSERT INTO sessions (user_id, token, expires_at, role, contractor_id) VALUES (NULL,$1,$2,$3,$4)',
+      [token, expiresAt, 'admin', teamMember.contractor_id]
     );
     res.json({ success: true, token });
   } catch (err) {
-    await logError({ req, error: err });
+    await logError({ req, error: err, source: 'POST /api/admin/login' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── ADMIN: ABOUT ──────────────────────────────────────────────────────────────
 router.get('/api/admin/about', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT contractor_id, enabled, booking_enabled, bio, years_in_business,
               service_area, google_place_id, certifications, booking_email, updated_at
-       FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1`
+       FROM contractor_about WHERE contractor_id = $1 LIMIT 1`,
+      [contractorId]
     );
     if (result.rows.length === 0) {
       return res.json({
-        contractor_id: 'accent-roofing',
+        contractor_id: contractorId,
         enabled: false,
         booking_enabled: false,
         bio: null,
@@ -93,16 +107,18 @@ router.get('/api/admin/about', async (req, res) => {
 });
 
 router.post('/api/admin/about', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, certifications, booking_email } = req.body;
   try {
     await pool.query(
       `INSERT INTO contractor_about (contractor_id, enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, certifications, booking_email, updated_at)
-       VALUES ('accent-roofing', $1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
        ON CONFLICT (contractor_id) DO UPDATE SET
-         enabled=$1, booking_enabled=$2, bio=$3, years_in_business=$4, service_area=$5,
-         google_place_id=$6, certifications=$7, booking_email=$8, updated_at=NOW()`,
-      [enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, JSON.stringify(certifications || []), booking_email]
+         enabled=$2, booking_enabled=$3, bio=$4, years_in_business=$5, service_area=$6,
+         google_place_id=$7, certifications=$8, booking_email=$9, updated_at=NOW()`,
+      [contractorId, enabled, booking_enabled, bio, years_in_business, service_area, google_place_id, JSON.stringify(certifications || []), booking_email]
     );
     res.json({ success: true });
   } catch (err) {
@@ -146,13 +162,15 @@ router.post('/api/admin/announcement-settings', async (req, res) => {
 
 // ── ADMIN: LEADERBOARD ────────────────────────────────────────────────────────
 router.get('/api/admin/leaderboard', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const settingsResult = await pool.query(
       `SELECT year_start_month, quarter_1_start, quarter_2_start,
               quarter_3_start, quarter_4_start, warmup_mode_enabled
        FROM engagement_settings WHERE contractor_id=$1`,
-      ['accent-roofing']
+      [contractorId]
     );
     const settings = settingsResult.rows[0] || {};
     const warmup_mode_enabled = settings.warmup_mode_enabled ?? false;
@@ -164,22 +182,23 @@ router.get('/api/admin/leaderboard', async (req, res) => {
       result = await pool.query(
         `SELECT u.id, u.full_name, u.email, COUNT(rc.id) as converted_count
          FROM users u
-         LEFT JOIN referral_conversions rc ON rc.user_id = u.id AND rc.contractor_id = 'accent-roofing'
+         LEFT JOIN referral_conversions rc ON rc.user_id = u.id AND rc.contractor_id = $1
          GROUP BY u.id, u.full_name, u.email
          ORDER BY converted_count DESC
-         LIMIT 50`
+         LIMIT 50`,
+        [contractorId]
       );
     } else {
       result = await pool.query(
         `SELECT u.id, u.full_name, u.email, COUNT(rc.id) as converted_count
          FROM users u
          LEFT JOIN referral_conversions rc ON rc.user_id = u.id
-           AND rc.contractor_id = 'accent-roofing'
-           AND rc.converted_at >= $1 AND rc.converted_at < $2
+           AND rc.contractor_id = $1
+           AND rc.converted_at >= $2 AND rc.converted_at < $3
          GROUP BY u.id, u.full_name, u.email
          ORDER BY converted_count DESC
          LIMIT 50`,
-        [start, end]
+        [contractorId, start, end]
       );
     }
 
@@ -200,7 +219,8 @@ router.get('/api/admin/leaderboard', async (req, res) => {
       const realWithCount = rows.filter(r => r.converted_count > 0).length;
       if (realWithCount >= 5) {
         await pool.query(
-          `UPDATE engagement_settings SET warmup_mode_enabled=false WHERE contractor_id='accent-roofing'`
+          `UPDATE engagement_settings SET warmup_mode_enabled=false WHERE contractor_id=$1`,
+          [contractorId]
         );
         warmup_just_disabled = true;
       }
@@ -215,7 +235,9 @@ router.get('/api/admin/leaderboard', async (req, res) => {
 
 // ── ADMIN: RETENTION SETTINGS ─────────────────────────────────────────────────
 router.get('/api/admin/retention-settings', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT leaderboard_enabled, quarterly_prizes, yearly_prizes,
@@ -223,7 +245,7 @@ router.get('/api/admin/retention-settings', async (req, res) => {
               quarter_3_start, quarter_4_start,
               warmup_mode_enabled, shouts_enabled, experience_flow_enabled
        FROM engagement_settings WHERE contractor_id = $1`,
-      ['accent-roofing']
+      [contractorId]
     );
     if (result.rows.length === 0) {
       return res.json({
@@ -255,7 +277,9 @@ router.get('/api/admin/retention-settings', async (req, res) => {
 });
 
 router.post('/api/admin/retention-settings', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const {
     leaderboard_enabled, quarterly_prizes, yearly_prizes,
     year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
@@ -301,7 +325,7 @@ router.post('/api/admin/retention-settings', async (req, res) => {
              warmup_mode_enabled=$10, shouts_enabled=$11,
              experience_flow_enabled=$12, updated_at=NOW()`,
       [
-        'accent-roofing', leaderboard_enabled,
+        contractorId, leaderboard_enabled,
         JSON.stringify(quarterly_prizes), JSON.stringify(yearly_prizes),
         monthFields.year_start_month, monthFields.quarter_1_start, monthFields.quarter_2_start,
         monthFields.quarter_3_start, monthFields.quarter_4_start,
@@ -317,7 +341,9 @@ router.post('/api/admin/retention-settings', async (req, res) => {
 
 // ── ADMIN: INVITE LINKS ───────────────────────────────────────────────────────
 router.post('/api/admin/invite-links', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { linkType } = req.body;
   if (!['contractor'].includes(linkType)) {
     return res.status(400).json({ error: "linkType must be 'contractor'" });
@@ -328,8 +354,8 @@ router.post('/api/admin/invite-links', async (req, res) => {
     const fullUrl = `${frontendUrl}?signup=${slug}`;
     await pool.query(
       `INSERT INTO contractor_invite_links (contractor_id, slug, link_type, created_by_user_id, active)
-       VALUES ('accent-roofing', $1, $2, NULL, true)`,
-      [slug, linkType]
+       VALUES ($1, $2, $3, NULL, true)`,
+      [contractorId, slug, linkType]
     );
     await pool.query(
       `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('admin', 'Admin', '', $1)`,
@@ -343,14 +369,17 @@ router.post('/api/admin/invite-links', async (req, res) => {
 });
 
 router.get('/api/admin/invite-links', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const result = await pool.query(
       `SELECT id, slug, link_type, active, created_at
        FROM contractor_invite_links
-       WHERE contractor_id='accent-roofing' AND active=true
-       ORDER BY created_at DESC`
+       WHERE contractor_id=$1 AND active=true
+       ORDER BY created_at DESC`,
+      [contractorId]
     );
     const rows = result.rows.map(r => ({
       ...r,
@@ -365,7 +394,9 @@ router.get('/api/admin/invite-links', async (req, res) => {
 
 // ── ADMIN: CONTRACTOR SETTINGS ────────────────────────────────────────────────
 router.get('/api/admin/settings', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT contractor_id, company_name, company_phone, company_email, company_url,
@@ -375,11 +406,12 @@ router.get('/api/admin/settings', async (req, res) => {
               review_url, review_button_text, review_message,
               font_heading, font_body, app_display_name, tagline,
               email_sender_name, email_footer_text, created_at, updated_at
-       FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+       FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+      [contractorId]
     );
     if (result.rows.length === 0) {
       return res.json({
-        contractor_id: 'accent-roofing',
+        contractor_id: contractorId,
         company_name: 'Accent Roofing Service',
         company_phone: '770-277-4869',
         company_email: 'contact@leaksmith.com',
@@ -411,9 +443,9 @@ router.get('/api/admin/settings', async (req, res) => {
 });
 
 router.put('/api/admin/settings', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id. FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const {
     company_name, company_phone, company_email, company_url,
     company_address, company_city, company_state, company_zip, company_country,
@@ -468,8 +500,9 @@ router.put('/api/admin/settings', async (req, res) => {
 
 // ── ADMIN: NOTIFICATION SETTINGS ─────────────────────────────────────────────
 router.get('/api/admin/notification-settings', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const [settingsResult, aboutResult] = await Promise.all([
       pool.query(
@@ -494,8 +527,9 @@ router.get('/api/admin/notification-settings', async (req, res) => {
 });
 
 router.put('/api/admin/notification-settings', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { notification_email_payouts, notification_email_general, booking_email } = req.body;
 
   const emailFields = { notification_email_payouts, notification_email_general, booking_email };
@@ -539,9 +573,9 @@ router.put('/api/admin/notification-settings', async (req, res) => {
 
 // ── ADMIN: PAYOUT AUTOMATION SETTINGS ────────────────────────────────────────
 router.get('/api/admin/payout-automation', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // TODO: pull contractorId from admin session token when multi-contractor is live
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT payout_automation, payout_review_threshold
@@ -560,9 +594,9 @@ router.get('/api/admin/payout-automation', async (req, res) => {
 });
 
 router.put('/api/admin/payout-automation', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // TODO: pull contractorId from admin session token when multi-contractor is live
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { payout_automation } = req.body;
   let { payout_review_threshold } = req.body;
   if (!['manual_all', 'full_auto', 'threshold'].includes(payout_automation)) {
@@ -590,9 +624,9 @@ router.put('/api/admin/payout-automation', async (req, res) => {
 
 // ── ADMIN: PAYOUT METHOD SETTINGS ────────────────────────────────────────────
 router.get('/api/admin/payout-methods', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // TODO: pull contractorId from admin session token when multi-contractor is live
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT enabled_payout_methods FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
@@ -610,9 +644,9 @@ router.get('/api/admin/payout-methods', async (req, res) => {
 });
 
 router.put('/api/admin/payout-methods', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // TODO: pull contractorId from admin session token when multi-contractor is live
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { enabled_payout_methods } = req.body;
   const VALID_METHODS = ['stripe_ach', 'check', 'venmo', 'zelle'];
   if (!Array.isArray(enabled_payout_methods)) {
@@ -645,9 +679,9 @@ router.put('/api/admin/payout-methods', async (req, res) => {
 
 // ── ADMIN: CRM SETTINGS ───────────────────────────────────────────────────────
 router.get('/api/admin/crm/status', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const [settingsResult, visibilityResult] = await Promise.all([
       pool.query(
@@ -756,9 +790,9 @@ router.post('/api/admin/crm/test-connection', async (req, res) => {
 });
 
 router.post('/api/admin/crm/connect-api-key', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { crmType, credential } = req.body;
   if (!crmType || !credential) return res.status(400).json({ error: 'crmType and credential required' });
 
@@ -809,9 +843,9 @@ router.post('/api/admin/crm/connect-api-key', async (req, res) => {
 });
 
 router.put('/api/admin/crm/settings', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { referrerFieldName, stageMap, syncIntervalMins, tag_group_visibility } = req.body;
   try {
     if (referrerFieldName !== undefined || stageMap !== undefined || syncIntervalMins !== undefined) {
@@ -840,9 +874,9 @@ router.put('/api/admin/crm/settings', async (req, res) => {
 });
 
 router.post('/api/admin/crm/referral-start-date', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // TODO FORA: pull contractorId from session token instead of hardcoding accent-roofing
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { referralStartDate } = req.body;
 
   try {
@@ -874,10 +908,10 @@ router.post('/api/admin/crm/referral-start-date', async (req, res) => {
 });
 
 router.post('/api/admin/crm/sync', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
-    // TODO: pull contractorId from admin session token when multi-contractor is live
-    const contractorId = 'accent-roofing';
     const adapter = await getCRMAdapter(contractorId);
     const referrers = await pool.query('SELECT id, full_name FROM users ORDER BY id');
     const errors = [];
@@ -891,8 +925,8 @@ router.post('/api/admin/crm/sync', async (req, res) => {
     }
     const lastSyncedAt = new Date();
     await pool.query(
-      `UPDATE contractor_crm_settings SET last_synced_at = $1 WHERE contractor_id = 'accent-roofing'`,
-      [lastSyncedAt]
+      `UPDATE contractor_crm_settings SET last_synced_at = $1 WHERE contractor_id = $2`,
+      [lastSyncedAt, contractorId]
     );
     res.json({ success: true, lastSyncedAt, errors: errors.length ? errors : undefined });
   } catch (err) {
@@ -902,9 +936,9 @@ router.post('/api/admin/crm/sync', async (req, res) => {
 });
 
 router.post('/api/admin/crm/disconnect', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     await pool.query(`DELETE FROM tokens WHERE contractor_id = $1`, [contractorId]);
     await pool.query(
@@ -1010,9 +1044,9 @@ router.get('/api/admin/extract-colors', async (req, res) => {
 
 // ── ADMIN: FLAGGED REFERRALS ──────────────────────────────────────────────────
 router.get('/api/admin/flagged-referrals/summary', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       'SELECT COUNT(*) FROM flagged_referrals WHERE reviewed = false AND contractor_id = $1',
@@ -1026,9 +1060,9 @@ router.get('/api/admin/flagged-referrals/summary', async (req, res) => {
 });
 
 router.get('/api/admin/flagged-referrals', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT id, jobber_client_id, client_name, referred_by, pipeline_status,
@@ -1046,9 +1080,9 @@ router.get('/api/admin/flagged-referrals', async (req, res) => {
 });
 
 router.put('/api/admin/flagged-referrals/:id', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { reviewed, review_label, review_note } = req.body;
   try {
     const result = await pool.query(
@@ -1114,9 +1148,9 @@ const resendInviteLimiter = rateLimit({
 });
 
 router.get('/api/admin/pending-referrals', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const includeClosed = req.query.include_closed === 'true';
   try {
     const statusFilter = includeClosed ? '' : `AND status != 'closed'`;
@@ -1143,9 +1177,9 @@ router.get('/api/admin/pending-referrals', async (req, res) => {
 });
 
 router.post('/api/admin/pending-referrals/:id/resend', resendInviteLimiter, async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT id, referred_by_name, referred_by_email, referred_by_phone, status
@@ -1178,9 +1212,9 @@ router.post('/api/admin/pending-referrals/:id/resend', resendInviteLimiter, asyn
 });
 
 router.post('/api/admin/pending-referrals/:id/close', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { note } = req.body || {};
   if (note && note.length > 500) return res.status(400).json({ error: 'Note must be 500 characters or less.' });
   try {
@@ -1201,9 +1235,9 @@ router.post('/api/admin/pending-referrals/:id/close', async (req, res) => {
 });
 
 router.post('/api/admin/pending-referrals/:id/confirm-referrer', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { referrer_name, referrer_jobber_id } = req.body || {};
   try {
     let referrerPhone = null;
@@ -1257,8 +1291,9 @@ router.post('/api/admin/pending-referrals/:id/confirm-referrer', async (req, res
 
 // ── ADMIN: BOOKING REQUESTS ───────────────────────────────────────────────────
 router.get('/api/admin/booking-requests', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT br.id, br.referred_name, br.referred_phone, br.referred_email,
@@ -1311,9 +1346,9 @@ router.get('/api/admin/missing-referrals', async (req, res) => {
 });
 
 router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const id = parseInt(req.params.id, 10);
   if (!id || id < 1) return res.status(400).json({ error: 'Invalid report id' });
 
@@ -1403,7 +1438,9 @@ router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
 
 // ── ADMIN: INBOX MESSAGES ─────────────────────────────────────────────────────
 router.get('/api/admin/messages', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT
@@ -1424,8 +1461,9 @@ router.get('/api/admin/messages', async (req, res) => {
          ON am.message_type = 'suggestion_box' AND am.reference_id = sbs.id
        LEFT JOIN users u2
          ON am.message_type = 'suggestion_box' AND sbs.user_id = u2.id
-       WHERE am.contractor_id = 'accent-roofing'
-       ORDER BY am.created_at DESC`
+       WHERE am.contractor_id = $1
+       ORDER BY am.created_at DESC`,
+      [contractorId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -1435,18 +1473,19 @@ router.get('/api/admin/messages', async (req, res) => {
 });
 
 router.patch('/api/admin/messages/:id/read', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const id = parseInt(req.params.id, 10);
   if (!id || id < 1) return res.status(400).json({ error: 'Invalid message id' });
   try {
     await pool.query(
-      `UPDATE admin_messages SET read = true
-       WHERE id = $1 AND contractor_id = 'accent-roofing'`,
-      [id]
+      `UPDATE admin_messages SET read = true WHERE id = $1 AND contractor_id = $2`,
+      [id, contractorId]
     );
     const countResult = await pool.query(
-      `SELECT COUNT(*) FROM admin_messages
-       WHERE contractor_id = 'accent-roofing' AND read = false`
+      `SELECT COUNT(*) FROM admin_messages WHERE contractor_id = $1 AND read = false`,
+      [contractorId]
     );
     const unreadCount = parseInt(countResult.rows[0].count, 10);
 
@@ -1471,9 +1510,9 @@ router.patch('/api/admin/messages/:id/read', async (req, res) => {
 const VALID_MAPPING_KEYS = ['work_category', 'job_source', 'material_type', 'assigned_rep'];
 
 router.get('/api/admin/jobber/fields', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT jobber_field_id, label, field_type, options, discovered_at
@@ -1490,9 +1529,9 @@ router.get('/api/admin/jobber/fields', async (req, res) => {
 });
 
 router.post('/api/admin/jobber/discover-fields', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const fields = await discoverJobberFields(contractorId);
     res.json({ fields });
@@ -1506,9 +1545,9 @@ router.post('/api/admin/jobber/discover-fields', async (req, res) => {
 });
 
 router.get('/api/admin/jobber/field-mappings', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1`,
@@ -1523,9 +1562,9 @@ router.get('/api/admin/jobber/field-mappings', async (req, res) => {
 });
 
 router.patch('/api/admin/jobber/field-mappings', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
-  // MVP: hardcoded contractor_id — FORA: pull from admin session token
-  const contractorId = 'accent-roofing';
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const body = req.body || {};
 
   const invalidKeys = Object.keys(body).filter(k => !VALID_MAPPING_KEYS.includes(k));
@@ -1561,7 +1600,9 @@ const { runFullJobberImport, importState } = require('../../jobs/fullJobberImpor
 // POST /api/admin/jobber-full-import
 // Starts a one-time full Jobber client import. Fire-and-forget — returns 202 immediately.
 router.post('/api/admin/jobber-full-import', async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
 
   const { filterPreference } = req.body;
   const validModes = ['recommended', 'custom_date', 'pull_all', 'paying_only'];
@@ -1581,9 +1622,7 @@ router.post('/api/admin/jobber-full-import', async (req, res) => {
     return res.status(409).json({ error: 'Import already in progress' });
   }
 
-  const contractorId = 'accent-roofing'; // MVP: extend to multi-contractor when FORA scales
   runFullJobberImport(contractorId, filterPreference); // fire and forget
-
   res.status(202).json({ message: 'Import started', status: 'running' });
 });
 
