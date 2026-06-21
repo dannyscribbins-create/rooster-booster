@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { BACKEND_URL } from '../../config/contractor';
 
 const NAVY = '#012854';
-const RED  = '#CC0000';
 
 // ─── Super-Admin Login Screen ─────────────────────────────────────────────────
 // Unadvertised — reachable only at /rm-control/login by direct URL.
