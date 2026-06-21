@@ -5,6 +5,7 @@ const { initDB } = require('./server/db');
 const oauthRoutes = require('./server/routes/oauth');
 const referrerRoutes = require('./server/routes/referrer');
 const adminRoutes = require('./server/routes/admin/index');
+const superAdminRoutes = require('./server/routes/superAdmin');
 const stripeRoutes = require('./server/routes/stripe');
 const jobberWebhooks = require('./server/routes/webhooks/jobber');
 const resendWebhookRouter = require('./server/routes/resendWebhook');
@@ -56,6 +57,7 @@ app.use('/api/webhooks', resendWebhookRouter);
 app.use('/', oauthRoutes);
 app.use('/', referrerRoutes);
 app.use('/', adminRoutes);
+app.use('/', superAdminRoutes);
 app.use('/', stripeRoutes);
 // Manage Account routes
 app.use('/api/account', accountRoutes);

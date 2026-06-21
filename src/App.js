@@ -11,6 +11,8 @@ import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfService from './components/TermsOfService';
 import ContractorTerms from './components/ContractorTerms';
 import EmailPreferences from './components/EmailPreferences';
+import SuperAdminLoginScreen from './components/superAdmin/SuperAdminLoginScreen';
+import SuperAdminShell from './components/superAdmin/SuperAdminShell';
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
 function useReferrerFonts() {
@@ -179,6 +181,8 @@ export default function App() {
   if (window.location.pathname === '/terms') return <TermsOfService />;
   if (window.location.pathname === '/contractor-terms') return <ContractorTerms />;
   if (window.location.pathname === '/email-preferences') return <EmailPreferences />;
+  if (window.location.pathname === '/rm-control/login') return <SuperAdminLoginScreen />;
+  if (window.location.pathname === '/rm-control') return <SuperAdminShell />;
   if (isAdmin) return <AdminPanel />;
   if (resetToken) return <ResetPinScreen token={resetToken} />;
   if (showVerify) return (

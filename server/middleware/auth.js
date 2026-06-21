@@ -56,4 +56,33 @@ async function verifyReferrerSession(req, res) {
   }
 }
 
-module.exports = { verifyAdminSession, verifyReferrerSession };
+/**
+ * Verifies a super-admin session token.
+ * Checks sessions table for a valid non-expired session with role='super_admin'.
+ *
+ * Future hook point (Phase 4 RBAC): super_admin role here bypasses any
+ * requirePermission() check once that middleware is built. See Decision A spec.
+ *
+ * @returns {boolean} true on success, false on failure (also sends 401 response)
+ */
+async function verifySuperAdminSession(req, res) {
+  const token = req.headers['authorization']?.replace('Bearer ', '');
+  if (!token) { res.status(401).json({ error: 'Not authorized' }); return false; }
+  try {
+    const result = await pool.query(
+      'SELECT id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
+      [token, 'super_admin']
+    );
+    if (!result.rows.length) {
+      res.status(401).json({ error: 'Session expired. Please log in again.' });
+      return false;
+    }
+    return true;
+  } catch (err) {
+    logError({ req, error: err, source: 'verifySuperAdminSession' });
+    res.status(500).json({ error: 'Auth check failed' });
+    return false;
+  }
+}
+
+module.exports = { verifyAdminSession, verifyReferrerSession, verifySuperAdminSession };

@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const bcrypt = require('bcrypt');
 require('dotenv').config();
 const addReferrerBankColumns = require('./migrations/add_referrer_bank_columns');
 const addNotificationEmailColumns = require('./migrations/add_notification_email_columns');
@@ -1052,6 +1053,29 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     created_at TIMESTAMPTZ DEFAULT NOW()
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_contractor_id ON notifications(contractor_id)`);
+
+  // ── SUPER ADMINS ──────────────────────────────────────────────────────────────
+  await pool.query(`CREATE TABLE IF NOT EXISTS super_admins (
+    id            SERIAL PRIMARY KEY,
+    email         TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at    TIMESTAMP DEFAULT NOW()
+  )`);
+
+  // One-time seed: inserts the platform super-admin account if the table is empty.
+  // Reads credentials from env vars SUPER_ADMIN_SEED_EMAIL + SUPER_ADMIN_SEED_PASSWORD.
+  // Once the row exists these vars are no longer needed and can be removed from Railway.
+  if (process.env.SUPER_ADMIN_SEED_EMAIL && process.env.SUPER_ADMIN_SEED_PASSWORD) {
+    const { rows: saRows } = await pool.query('SELECT COUNT(*) AS count FROM super_admins');
+    if (parseInt(saRows[0].count, 10) === 0) {
+      const passwordHash = await bcrypt.hash(process.env.SUPER_ADMIN_SEED_PASSWORD, 12);
+      await pool.query(
+        'INSERT INTO super_admins (email, password_hash) VALUES ($1, $2)',
+        [process.env.SUPER_ADMIN_SEED_EMAIL, passwordHash]
+      );
+      console.log('[Seed] Super-admin account created.'); // diagnostic log — intentional
+    }
+  }
 
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
