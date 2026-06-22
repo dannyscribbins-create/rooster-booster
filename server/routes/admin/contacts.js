@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
+const { requirePermission } = require('../../middleware/permissions');
 const { logError } = require('../../middleware/errorLogger');
 const { deriveOptOutType } = require('../../utils/adminHelpers');
 const { applyTag, removeTag } = require('../../utils/tags');
@@ -19,7 +20,7 @@ const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility'
 
 // ── TAG SUGGESTIONS (literal route — must be before /:contactId) ──────────────
 
-router.get('/api/admin/contacts/tags/suggestions', async (req, res) => {
+router.get('/api/admin/contacts/tags/suggestions', requirePermission('contacts'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -41,7 +42,7 @@ router.get('/api/admin/contacts/tags/suggestions', async (req, res) => {
 
 // ── TAG SUMMARY (literal route — must be before /:contactId) ─────────────────
 
-router.get('/api/admin/contacts/tag-summary', async (req, res) => {
+router.get('/api/admin/contacts/tag-summary', requirePermission('contacts'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -63,7 +64,7 @@ router.get('/api/admin/contacts/tag-summary', async (req, res) => {
 
 // ── GLOBAL CONTACT LIST ───────────────────────────────────────────────────────
 
-router.get('/api/admin/contacts', async (req, res) => {
+router.get('/api/admin/contacts', requirePermission('contacts'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -181,7 +182,7 @@ router.get('/api/admin/contacts', async (req, res) => {
 // Returns Jobber clients + app-only contacts merged in one table.
 // source_badge: 'both' = linked, 'jobber' = Jobber-only, 'app' = app-only
 
-router.get('/api/admin/contacts/unified', async (req, res) => {
+router.get('/api/admin/contacts/unified', requirePermission('contacts'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -351,7 +352,7 @@ router.get('/api/admin/contacts/unified', async (req, res) => {
 
 // ── CONTACT DETAIL ────────────────────────────────────────────────────────────
 
-router.get('/api/admin/contacts/:contactId', async (req, res) => {
+router.get('/api/admin/contacts/:contactId', requirePermission('contacts'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -519,7 +520,7 @@ router.get('/api/admin/contacts/:contactId', async (req, res) => {
 
 // ── CONTACT RESUBSCRIBE ───────────────────────────────────────────────────────
 
-router.patch('/api/admin/contacts/:contactId/resubscribe', async (req, res) => {
+router.patch('/api/admin/contacts/:contactId/resubscribe', requirePermission('contacts.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -620,7 +621,7 @@ router.patch('/api/admin/contacts/:contactId/resubscribe', async (req, res) => {
 
 // ── ADD ADMIN TAG ─────────────────────────────────────────────────────────────
 
-router.post('/api/admin/contacts/:contactId/tags', async (req, res) => {
+router.post('/api/admin/contacts/:contactId/tags', requirePermission('contacts.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -661,7 +662,7 @@ router.post('/api/admin/contacts/:contactId/tags', async (req, res) => {
 
 // ── REMOVE ADMIN TAG ──────────────────────────────────────────────────────────
 
-router.delete('/api/admin/contacts/:contactId/tags/:tag', async (req, res) => {
+router.delete('/api/admin/contacts/:contactId/tags/:tag', requirePermission('contacts.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -700,7 +701,7 @@ router.delete('/api/admin/contacts/:contactId/tags/:tag', async (req, res) => {
 // ── JOBBER CLIENT TAG SUMMARY ─────────────────────────────────────────────────
 // Returns Jobber-sourced tags grouped by prefix for filter panel Section A.
 // ?visibleOnly=true filters out groups where tag_group_visibility[prefix] === false.
-router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
+router.get('/api/admin/jobber-client-tag-summary', requirePermission('contacts'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -801,7 +802,7 @@ router.get('/api/admin/jobber-client-tag-summary', async (req, res) => {
 
 // ── JOBBER CLIENTS LIST ───────────────────────────────────────────────────────
 
-router.get('/api/admin/jobber-clients', async (req, res) => {
+router.get('/api/admin/jobber-clients', requirePermission('contacts'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -951,7 +952,7 @@ router.get('/api/admin/jobber-clients', async (req, res) => {
 
 // ── JOBBER CLIENT DETAIL ──────────────────────────────────────────────────────
 
-router.get('/api/admin/jobber-clients/:jobberClientId', async (req, res) => {
+router.get('/api/admin/jobber-clients/:jobberClientId', requirePermission('contacts'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
