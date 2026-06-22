@@ -61,8 +61,8 @@ router.post('/api/admin/login', adminLoginLimiter, [
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await pool.query(
-      'INSERT INTO sessions (user_id, token, expires_at, role, contractor_id) VALUES (NULL,$1,$2,$3,$4)',
-      [token, expiresAt, 'admin', teamMember.contractor_id]
+      'INSERT INTO sessions (user_id, token, expires_at, role, contractor_id, team_member_id) VALUES (NULL,$1,$2,$3,$4,$5)',
+      [token, expiresAt, 'admin', teamMember.contractor_id, teamMember.id]
     );
     res.json({ success: true, token });
   } catch (err) {

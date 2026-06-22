@@ -3,6 +3,7 @@ const router = express.Router();
 const { pool } = require('../../db');
 const { getCRMAdapter } = require('../../crm/index');
 const { verifyAdminSession } = require('../../middleware/auth');
+const { requirePermission } = require('../../middleware/permissions');
 const { logError } = require('../../middleware/errorLogger');
 const { getPeriodDateRange } = require('../../utils/dateUtils');
 
@@ -30,7 +31,7 @@ router.get('/api/admin/activity', async (req, res) => {
 });
 
 // ── ADMIN: DASHBOARD STATS (cached 15 min) ────────────────────────────────────
-router.get('/api/admin/stats', async (req, res) => {
+router.get('/api/admin/stats', requirePermission('dashboard'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;

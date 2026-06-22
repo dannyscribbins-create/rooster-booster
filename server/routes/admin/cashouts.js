@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
+const { requirePermission } = require('../../middleware/permissions');
 const { logError } = require('../../middleware/errorLogger');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -21,7 +22,7 @@ function formatDollars(n) {
 }
 
 // ── ADMIN: CASH OUTS ──────────────────────────────────────────────────────────
-router.get('/api/admin/cashouts', async (req, res) => {
+router.get('/api/admin/cashouts', requirePermission('cashouts'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query('SELECT id, user_id, full_name, email, amount, method, payout_method, status, requested_at, paid_at, bank_connection_blocked_reason FROM cashout_requests ORDER BY requested_at DESC');
@@ -31,7 +32,7 @@ router.get('/api/admin/cashouts', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-router.patch('/api/admin/cashouts/:id', async (req, res) => {
+router.patch('/api/admin/cashouts/:id', requirePermission('cashout_approve'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;

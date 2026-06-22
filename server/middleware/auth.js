@@ -5,7 +5,7 @@ const { logError } = require('./errorLogger');
 
 /**
  * Verifies an admin session token.
- * @returns {{ contractorId: string }} on success
+ * @returns {{ contractorId: string, teamMemberId: number|null }} on success
  * @returns {null} on failure (also sends 401/500 response)
  */
 async function verifyAdminSession(req, res) {
@@ -13,14 +13,17 @@ async function verifyAdminSession(req, res) {
   if (!token) { res.status(401).json({ error: 'Not authorized' }); return null; }
   try {
     const result = await pool.query(
-      'SELECT s.contractor_id FROM sessions s WHERE s.token=$1 AND s.role=$2 AND s.expires_at > NOW()',
+      'SELECT s.contractor_id, s.team_member_id FROM sessions s WHERE s.token=$1 AND s.role=$2 AND s.expires_at > NOW()',
       [token, 'admin']
     );
     if (!result.rows.length) {
       res.status(401).json({ error: 'Session expired. Please log in again.' });
       return null;
     }
-    return { contractorId: result.rows[0].contractor_id };
+    return {
+      contractorId: result.rows[0].contractor_id,
+      teamMemberId: result.rows[0].team_member_id,
+    };
   } catch (err) {
     logError({ req, error: err, source: 'verifyAdminSession' });
     res.status(500).json({ error: 'Auth check failed' });

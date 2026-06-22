@@ -1118,6 +1118,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   // Wire contractor_id into sessions so every admin session carries tenant identity
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS contractor_id TEXT REFERENCES contractors(id)`);
+  // Wire team_member_id so requirePermission() can do live JSONB reads without session caching
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_member_id INTEGER REFERENCES team_members(id)`);
 
   // One-time seed: inserts the Accent Roofing Owner account if the email does not yet exist.
   // Reads credentials from env vars OWNER_SEED_EMAIL + OWNER_SEED_PASSWORD.

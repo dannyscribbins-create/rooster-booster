@@ -124,12 +124,13 @@ describe('contractor context', () => {
     assert.match(resp.body.token, /^[0-9a-f]{64}$/, 'token is 64-char hex');
 
     const { rows } = await pool.query(
-      'SELECT role, contractor_id FROM sessions WHERE token = $1',
+      'SELECT role, contractor_id, team_member_id FROM sessions WHERE token = $1',
       [resp.body.token]
     );
     assert.equal(rows.length, 1, 'session row created');
     assert.equal(rows[0].role, 'admin');
     assert.equal(rows[0].contractor_id, 'accent-roofing', 'session carries accent-roofing contractor_id');
+    assert.ok(rows[0].team_member_id != null, 'session carries team_member_id for requirePermission() live reads');
   });
 
   // ── TEST 4 ────────────────────────────────────────────────────────────────────
@@ -202,6 +203,8 @@ describe('contractor context', () => {
     assert.ok(result, 'result is truthy');
     assert.equal(typeof result, 'object');
     assert.equal(result.contractorId, 'accent-roofing');
+    // teamMemberId is null for legacy sessions inserted without team_member_id — that is expected
+    assert.ok('teamMemberId' in result, 'result shape includes teamMemberId key');
   });
 
   // ── TEST 7 ────────────────────────────────────────────────────────────────────

@@ -81,6 +81,7 @@ describe('cashout — balance, request, and approval integrity', () => {
     await pool.query('DELETE FROM activity_log');
     await pool.query('DELETE FROM error_log');
     await pool.query('DELETE FROM sessions');
+    await pool.query("DELETE FROM team_members WHERE email = 'admin@cashout-test.com'");
     await pool.query('DELETE FROM users');
     await pool.query('DELETE FROM contractor_settings');
   });
@@ -93,7 +94,20 @@ describe('cashout — balance, request, and approval integrity', () => {
   }
 
   async function setupAdmin() {
-    await seedSession(pool, { userId: null, token: ADMIN_TOKEN, role: 'admin' });
+    // requirePermission() requires a live team_member_id on the session.
+    // Owner tier satisfies any flag check via the short-circuit, so existing
+    // cashout tests continue to exercise the full handler path.
+    const { rows } = await pool.query(
+      `INSERT INTO team_members (contractor_id, email, password_hash, tier)
+       VALUES ('accent-roofing', 'admin@cashout-test.com', 'placeholder', 'owner')
+       RETURNING id`
+    );
+    const teamMemberId = rows[0].id;
+    await pool.query(
+      `INSERT INTO sessions (user_id, token, expires_at, role, contractor_id, team_member_id)
+       VALUES (NULL, $1, NOW() + INTERVAL '1 hour', 'admin', 'accent-roofing', $2)`,
+      [ADMIN_TOKEN, teamMemberId]
+    );
   }
 
   async function seedConversion(userId, bonusAmount) {
