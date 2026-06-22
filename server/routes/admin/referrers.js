@@ -3,11 +3,12 @@ const router = express.Router();
 const { pool } = require('../../db');
 const { getCRMAdapter } = require('../../crm/index');
 const { verifyAdminSession } = require('../../middleware/auth');
+const { requirePermission } = require('../../middleware/permissions');
 const bcrypt = require('bcrypt');
 const { logError } = require('../../middleware/errorLogger');
 
 // ── ADMIN: REFERRERS ──────────────────────────────────────────────────────────
-router.get('/api/admin/users', async (req, res) => {
+router.get('/api/admin/users', requirePermission('referrers'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -59,7 +60,7 @@ router.get('/api/admin/users', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-router.post('/api/admin/users', async (req, res) => {
+router.post('/api/admin/users', requirePermission('referrers.manage'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { full_name, email, pin, phone } = req.body;
   try {
@@ -91,7 +92,7 @@ router.post('/api/admin/users', async (req, res) => {
     res.status(err.code === '23505' ? 400 : 500).json({ error: err.code === '23505' ? 'Email already exists' : err.message });
   }
 });
-router.patch('/api/admin/users/:id/pin', async (req, res) => {
+router.patch('/api/admin/users/:id/pin', requirePermission('referrers.manage'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { pin } = req.body;
   if (!pin || pin.length < 4) return res.status(400).json({ error: 'PIN must be at least 4 digits' });
@@ -103,7 +104,7 @@ router.patch('/api/admin/users/:id/pin', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-router.delete('/api/admin/users/:id', async (req, res) => {
+router.delete('/api/admin/users/:id', requirePermission('referrers.manage'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     await pool.query('DELETE FROM users WHERE id=$1', [req.params.id]);
@@ -115,7 +116,7 @@ router.delete('/api/admin/users/:id', async (req, res) => {
 });
 
 // ── ADMIN: MATCH USER TO JOBBER CLIENT ────────────────────────────────────────
-router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
+router.post('/api/admin/users/:id/match-jobber', requirePermission('referrers.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -156,7 +157,7 @@ router.post('/api/admin/users/:id/match-jobber', async (req, res) => {
 });
 
 // ── ADMIN: REFERRER DETAIL ────────────────────────────────────────────────────
-router.get('/api/admin/referrer/:name', async (req, res) => {
+router.get('/api/admin/referrer/:name', requirePermission('referrers'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
