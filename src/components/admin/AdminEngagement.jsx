@@ -198,8 +198,9 @@ export default function AdminEngagement({ setLoggedIn }) {
   const [yearlyPrizes,    setYearlyPrizes]    = useState(emptyPrizes());
 
   // Save state
-  const [saving,     setSaving]     = useState(false);
-  const [saveStatus, setSaveStatus] = useState('');
+  const [saving,           setSaving]           = useState(false);
+  const [engagementStatus, setEngagementStatus] = useState('');
+  const [prizeStatus,      setPrizeStatus]      = useState('');
 
   // Section 3 — Admin leaderboard view
   const [leaderboard, setLeaderboard] = useState([]);
@@ -271,15 +272,16 @@ export default function AdminEngagement({ setLoggedIn }) {
   }, [period]);
 
   async function handleSave() {
-    setSaving(true); setSaveStatus('');
-    try {
-      const r = await fetch(`${BACKEND_URL}/api/admin/retention-settings`, {
+    setSaving(true);
+    setEngagementStatus('');
+    setPrizeStatus('');
+
+    const [engRes, prizeRes] = await Promise.allSettled([
+      fetch(`${BACKEND_URL}/api/admin/retention-settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
         body: JSON.stringify({
           leaderboard_enabled: leaderboardEnabled,
-          quarterly_prizes: quarterlyPrizes,
-          yearly_prizes: yearlyPrizes,
           year_start_month: yearStartMonth,
           quarter_1_start: q1Start,
           quarter_2_start: q2Start,
@@ -289,15 +291,39 @@ export default function AdminEngagement({ setLoggedIn }) {
           shouts_enabled: shoutsEnabled,
           experience_flow_enabled: experienceFlowEnabled,
         }),
-      });
-      if (r.status === 401) { on401(); return; }
-      const d = await r.json();
-      setSaving(false);
-      setSaveStatus(d.success ? 'saved' : 'error');
-      setTimeout(() => setSaveStatus(''), 2000);
-    } catch {
-      setSaving(false); setSaveStatus('error');
+      }),
+      fetch(`${BACKEND_URL}/api/admin/prize-settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+        body: JSON.stringify({
+          quarterly_prizes: quarterlyPrizes,
+          yearly_prizes: yearlyPrizes,
+        }),
+      }),
+    ]);
+
+    if (engRes.status === 'fulfilled') {
+      if (engRes.value.status === 401) { on401(); return; }
+      try {
+        const d = await engRes.value.json();
+        setEngagementStatus(d.success ? 'saved' : 'error');
+      } catch { setEngagementStatus('error'); }
+    } else {
+      setEngagementStatus('error');
     }
+
+    if (prizeRes.status === 'fulfilled') {
+      if (prizeRes.value.status === 401) { on401(); return; }
+      try {
+        const d = await prizeRes.value.json();
+        setPrizeStatus(d.success ? 'saved' : 'error');
+      } catch { setPrizeStatus('error'); }
+    } else {
+      setPrizeStatus('error');
+    }
+
+    setSaving(false);
+    setTimeout(() => { setEngagementStatus(''); setPrizeStatus(''); }, 2000);
   }
 
   async function handlePreviewWinners() {
@@ -472,8 +498,12 @@ export default function AdminEngagement({ setLoggedIn }) {
         <Btn onClick={handleSave} variant="accent" size="lg" style={{ opacity: saving ? 0.7 : 1 }}>
           {saving ? 'Saving…' : 'Save Settings'}
         </Btn>
-        {saveStatus === 'saved' && <span style={{ color: AD.greenText, fontSize: 14 }}>Saved successfully.</span>}
-        {saveStatus === 'error' && <span style={{ color: AD.red2Text,  fontSize: 14 }}>Save failed — try again.</span>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {engagementStatus === 'saved' && <span style={{ color: AD.greenText, fontSize: 14 }}>✓ Settings saved</span>}
+          {engagementStatus === 'error' && <span style={{ color: AD.red2Text,  fontSize: 14 }}>Engagement save failed — try again.</span>}
+          {prizeStatus === 'saved' && <span style={{ color: AD.greenText, fontSize: 14 }}>✓ Prize settings saved</span>}
+          {prizeStatus === 'error' && <span style={{ color: AD.red2Text,  fontSize: 14 }}>Prize save failed — try again.</span>}
+        </div>
       </div>
 
       {/* Section 4 — Prize Preview */}

@@ -235,7 +235,7 @@ router.get('/api/admin/leaderboard', requirePermission('experience'), async (req
 });
 
 // ── ADMIN: RETENTION SETTINGS ─────────────────────────────────────────────────
-router.get('/api/admin/retention-settings', async (req, res) => {
+router.get('/api/admin/retention-settings', requirePermission('experience'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -277,7 +277,7 @@ router.get('/api/admin/retention-settings', async (req, res) => {
   }
 });
 
-router.post('/api/admin/retention-settings', async (req, res) => {
+router.post('/api/admin/retention-settings', requirePermission('experience.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -286,14 +286,13 @@ router.post('/api/admin/retention-settings', async (req, res) => {
     year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
     warmup_mode_enabled, shouts_enabled, experience_flow_enabled,
   } = req.body;
+  // Prize fields belong to POST /api/admin/prize-settings — reject loudly to prevent
+  // the frontend from believing a prize edit saved when it didn't.
+  if (quarterly_prizes !== undefined || yearly_prizes !== undefined) {
+    return res.status(400).json({ error: 'quarterly_prizes and yearly_prizes must be submitted to POST /api/admin/prize-settings' });
+  }
   if (typeof leaderboard_enabled !== 'boolean') {
     return res.status(400).json({ error: 'leaderboard_enabled must be a boolean' });
-  }
-  if (!Array.isArray(quarterly_prizes) || quarterly_prizes.length > 3) {
-    return res.status(400).json({ error: 'quarterly_prizes must be an array of max 3 items' });
-  }
-  if (!Array.isArray(yearly_prizes) || yearly_prizes.length > 3) {
-    return res.status(400).json({ error: 'yearly_prizes must be an array of max 3 items' });
   }
   if (typeof warmup_mode_enabled !== 'boolean') {
     return res.status(400).json({ error: 'warmup_mode_enabled must be a boolean' });
@@ -315,23 +314,58 @@ router.post('/api/admin/retention-settings', async (req, res) => {
   try {
     await pool.query(
       `INSERT INTO engagement_settings (
-         contractor_id, leaderboard_enabled, quarterly_prizes, yearly_prizes,
+         contractor_id, leaderboard_enabled,
          year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
          warmup_mode_enabled, shouts_enabled, experience_flow_enabled, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
        ON CONFLICT (contractor_id) DO UPDATE
-         SET leaderboard_enabled=$2, quarterly_prizes=$3, yearly_prizes=$4,
-             year_start_month=$5, quarter_1_start=$6, quarter_2_start=$7,
-             quarter_3_start=$8, quarter_4_start=$9,
-             warmup_mode_enabled=$10, shouts_enabled=$11,
-             experience_flow_enabled=$12, updated_at=NOW()`,
+         SET leaderboard_enabled=$2,
+             year_start_month=$3, quarter_1_start=$4, quarter_2_start=$5,
+             quarter_3_start=$6, quarter_4_start=$7,
+             warmup_mode_enabled=$8, shouts_enabled=$9,
+             experience_flow_enabled=$10, updated_at=NOW()`,
       [
         contractorId, leaderboard_enabled,
-        JSON.stringify(quarterly_prizes), JSON.stringify(yearly_prizes),
         monthFields.year_start_month, monthFields.quarter_1_start, monthFields.quarter_2_start,
         monthFields.quarter_3_start, monthFields.quarter_4_start,
         warmup_mode_enabled, shouts_enabled, experience_flow_enabled,
       ]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── ADMIN: PRIZE SETTINGS ─────────────────────────────────────────────────────
+// Finance-gated write endpoint for quarterly/yearly prize amounts.
+// GET prize data is currently available at GET /api/admin/retention-settings (experience-gated).
+// TODO (Phase 6): add GET /api/admin/prize-settings (finance_settings-gated) once the
+// Finance admin preset (Section 8.1) is built — that preset has finance_settings but no
+// experience grant, so a dedicated read endpoint is required for the prize-editing UI.
+router.post('/api/admin/prize-settings', requirePermission('finance_settings.manage'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
+  const { quarterly_prizes, yearly_prizes } = req.body;
+  if (!Array.isArray(quarterly_prizes) || quarterly_prizes.length > 3) {
+    return res.status(400).json({ error: 'quarterly_prizes must be an array of max 3 items' });
+  }
+  if (!Array.isArray(yearly_prizes) || yearly_prizes.length > 3) {
+    return res.status(400).json({ error: 'yearly_prizes must be an array of max 3 items' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO engagement_settings (
+         contractor_id, quarterly_prizes, yearly_prizes,
+         leaderboard_enabled, warmup_mode_enabled, shouts_enabled, experience_flow_enabled,
+         year_start_month, quarter_1_start, quarter_2_start, quarter_3_start, quarter_4_start,
+         updated_at
+       ) VALUES ($1, $2, $3, true, false, true, false, 1, 1, 4, 7, 10, NOW())
+       ON CONFLICT (contractor_id) DO UPDATE SET
+         quarterly_prizes=$2, yearly_prizes=$3, updated_at=NOW()`,
+      [contractorId, JSON.stringify(quarterly_prizes), JSON.stringify(yearly_prizes)]
     );
     res.json({ success: true });
   } catch (err) {

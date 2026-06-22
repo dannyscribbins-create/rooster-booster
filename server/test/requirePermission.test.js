@@ -26,6 +26,8 @@ function buildPermissionTestApp() {
   // Sample-tagged routes — mounted to prove requirePermission() is wired at route level
   app.use('/', require('../routes/admin/metrics'));
   app.use('/', require('../routes/admin/cashouts'));
+  // Full admin index — needed for retention-settings and prize-settings wiring tests
+  app.use('/', require('../routes/admin/index'));
 
   return app;
 }
@@ -299,5 +301,56 @@ describe('requirePermission middleware', () => {
 
     const res = await httpGet(port, '/test/dashboard', token);
     assert.equal(res.status, 403, 'legacy session without team_member_id is denied — fail closed');
+  });
+
+  // ── TEST 14: GET /api/admin/retention-settings enforces 'experience' flag ───
+  it('GET /api/admin/retention-settings: wired to requirePermission(experience) — admin without flag → 403', async () => {
+    await setPermissions(adminMemberId, {}); // no experience flag
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpGet(port, '/api/admin/retention-settings', token);
+    assert.equal(res.status, 403, 'retention-settings GET enforces experience permission');
+  });
+
+  // ── TEST 15: POST /api/admin/retention-settings enforces 'experience.manage' flag
+  it('POST /api/admin/retention-settings: wired to requirePermission(experience.manage) — admin without flag → 403', async () => {
+    await setPermissions(adminMemberId, { experience: true }); // view only, no manage
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpMethod(port, 'POST', '/api/admin/retention-settings', {
+      leaderboard_enabled: true, warmup_mode_enabled: false, shouts_enabled: true,
+      experience_flow_enabled: false, year_start_month: 1,
+      quarter_1_start: 1, quarter_2_start: 4, quarter_3_start: 7, quarter_4_start: 10,
+    }, token);
+    assert.equal(res.status, 403, 'retention-settings POST enforces experience.manage permission');
+  });
+
+  // ── TEST 16: POST /api/admin/retention-settings rejects prize fields ─────────
+  it('POST /api/admin/retention-settings: prize fields in body → 400 explicit rejection', async () => {
+    await setPermissions(adminMemberId, { 'experience.manage': true });
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpMethod(port, 'POST', '/api/admin/retention-settings', {
+      leaderboard_enabled: true, warmup_mode_enabled: false, shouts_enabled: true,
+      experience_flow_enabled: false, year_start_month: 1,
+      quarter_1_start: 1, quarter_2_start: 4, quarter_3_start: 7, quarter_4_start: 10,
+      quarterly_prizes: [],  // prize field — must be rejected
+    }, token);
+    assert.equal(res.status, 400, 'engagement endpoint must reject prize fields with 400');
+    assert.ok(
+      res.body?.error?.includes('prize-settings'),
+      `error message must reference prize-settings endpoint, got: ${res.body?.error}`
+    );
+  });
+
+  // ── TEST 17: POST /api/admin/prize-settings enforces 'finance_settings.manage' flag
+  it('POST /api/admin/prize-settings: wired to requirePermission(finance_settings.manage) — admin without flag → 403', async () => {
+    await setPermissions(adminMemberId, { finance_settings: true }); // view only, no manage
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpMethod(port, 'POST', '/api/admin/prize-settings', {
+      quarterly_prizes: [], yearly_prizes: [],
+    }, token);
+    assert.equal(res.status, 403, 'prize-settings POST enforces finance_settings.manage permission');
   });
 });

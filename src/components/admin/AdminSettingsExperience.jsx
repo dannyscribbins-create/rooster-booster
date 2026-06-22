@@ -89,7 +89,18 @@ export default function AdminSettingsExperience() {
   async function handleSaveExperience() {
     setEfSaving(true); setEfSaveStatus('');
     try {
-      const payload = { ...(engagementPayload || {}), experience_flow_enabled: experienceFlowEnabled };
+      const ep = engagementPayload || {};
+      const payload = {
+        leaderboard_enabled:   ep.leaderboard_enabled   ?? true,
+        warmup_mode_enabled:   ep.warmup_mode_enabled   ?? false,
+        shouts_enabled:        ep.shouts_enabled        ?? true,
+        experience_flow_enabled: experienceFlowEnabled,
+        year_start_month: ep.year_start_month ?? 1,
+        quarter_1_start:  ep.quarter_1_start  ?? 1,
+        quarter_2_start:  ep.quarter_2_start  ?? 4,
+        quarter_3_start:  ep.quarter_3_start  ?? 7,
+        quarter_4_start:  ep.quarter_4_start  ?? 10,
+      };
       const r = await fetch(`${BACKEND_URL}/api/admin/retention-settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
