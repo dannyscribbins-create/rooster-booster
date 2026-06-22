@@ -2,12 +2,13 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
+const { requirePermission } = require('../../middleware/permissions');
 const { logError } = require('../../middleware/errorLogger');
 
 // GET /api/admin/notification-preferences
 // Returns an object keyed by trigger_key → email_enabled boolean.
 // Missing trigger keys default to true (enabled) on the client.
-router.get('/api/admin/notification-preferences', async (req, res) => {
+router.get('/api/admin/notification-preferences', requirePermission('branding'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -30,7 +31,7 @@ router.get('/api/admin/notification-preferences', async (req, res) => {
 // PUT /api/admin/notification-preferences
 // Upserts a single trigger preference.
 // Body: { trigger_key: string, email_enabled: boolean }
-router.put('/api/admin/notification-preferences', async (req, res) => {
+router.put('/api/admin/notification-preferences', requirePermission('branding.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -60,6 +61,7 @@ router.put('/api/admin/notification-preferences', async (req, res) => {
 
 // GET /api/admin/notifications
 // Returns unread + recent notifications for the admin bell.
+// Intentionally session-only — admin UI chrome, not a content-area feature, see Phase 4B decision.
 router.get('/api/admin/notifications', async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
@@ -85,6 +87,7 @@ router.get('/api/admin/notifications', async (req, res) => {
 
 // PATCH /api/admin/notifications/:id/read
 // Marks a single notification as read.
+// Intentionally session-only — admin UI chrome, not a content-area feature, see Phase 4B decision.
 router.patch('/api/admin/notifications/:id/read', async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
