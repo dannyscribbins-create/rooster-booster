@@ -8,7 +8,7 @@ const { logError } = require('../../middleware/errorLogger');
 const { getPeriodDateRange } = require('../../utils/dateUtils');
 
 // ── ADMIN: ACTIVITY LOG ───────────────────────────────────────────────────────
-router.get('/api/admin/activity', async (req, res) => {
+router.get('/api/admin/activity', requirePermission('activity'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const ALLOWED_CATEGORIES = ['user_action', 'admin_action'];
   const { category } = req.query;
