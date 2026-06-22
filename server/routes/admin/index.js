@@ -4,6 +4,7 @@ const { pool } = require('../../db');
 const { getCRMAdapter } = require('../../crm/index');
 const axios = require('axios');
 const { verifyAdminSession } = require('../../middleware/auth');
+const { requirePermission } = require('../../middleware/permissions');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { logError } = require('../../middleware/errorLogger');
@@ -72,7 +73,7 @@ router.post('/api/admin/login', adminLoginLimiter, [
 });
 
 // ── ADMIN: ABOUT ──────────────────────────────────────────────────────────────
-router.get('/api/admin/about', async (req, res) => {
+router.get('/api/admin/about', requirePermission('branding'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -106,7 +107,7 @@ router.get('/api/admin/about', async (req, res) => {
   }
 });
 
-router.post('/api/admin/about', async (req, res) => {
+router.post('/api/admin/about', requirePermission('branding.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -129,7 +130,7 @@ router.post('/api/admin/about', async (req, res) => {
 });
 
 // ── ADMIN: ANNOUNCEMENT SETTINGS ──────────────────────────────────────────────
-router.get('/api/admin/announcement-settings', async (req, res) => {
+router.get('/api/admin/announcement-settings', requirePermission('branding'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query('SELECT enabled, mode, custom_message FROM announcement_settings WHERE id = 1');
@@ -140,7 +141,7 @@ router.get('/api/admin/announcement-settings', async (req, res) => {
   }
 });
 
-router.post('/api/admin/announcement-settings', async (req, res) => {
+router.post('/api/admin/announcement-settings', requirePermission('branding.manage'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { enabled, mode, customMessage } = req.body;
   const VALID_MODES = ['preset_1', 'preset_2', 'custom'];
@@ -161,7 +162,7 @@ router.post('/api/admin/announcement-settings', async (req, res) => {
 });
 
 // ── ADMIN: LEADERBOARD ────────────────────────────────────────────────────────
-router.get('/api/admin/leaderboard', async (req, res) => {
+router.get('/api/admin/leaderboard', requirePermission('experience'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -340,7 +341,7 @@ router.post('/api/admin/retention-settings', async (req, res) => {
 });
 
 // ── ADMIN: INVITE LINKS ───────────────────────────────────────────────────────
-router.post('/api/admin/invite-links', async (req, res) => {
+router.post('/api/admin/invite-links', requirePermission('referrers.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -368,7 +369,7 @@ router.post('/api/admin/invite-links', async (req, res) => {
   }
 });
 
-router.get('/api/admin/invite-links', async (req, res) => {
+router.get('/api/admin/invite-links', requirePermission('referrers'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -393,7 +394,7 @@ router.get('/api/admin/invite-links', async (req, res) => {
 });
 
 // ── ADMIN: CONTRACTOR SETTINGS ────────────────────────────────────────────────
-router.get('/api/admin/settings', async (req, res) => {
+router.get('/api/admin/settings', requirePermission('branding'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -442,7 +443,7 @@ router.get('/api/admin/settings', async (req, res) => {
   }
 });
 
-router.put('/api/admin/settings', async (req, res) => {
+router.put('/api/admin/settings', requirePermission('branding.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -499,7 +500,7 @@ router.put('/api/admin/settings', async (req, res) => {
 });
 
 // ── ADMIN: NOTIFICATION SETTINGS ─────────────────────────────────────────────
-router.get('/api/admin/notification-settings', async (req, res) => {
+router.get('/api/admin/notification-settings', requirePermission('branding'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -526,7 +527,7 @@ router.get('/api/admin/notification-settings', async (req, res) => {
   }
 });
 
-router.put('/api/admin/notification-settings', async (req, res) => {
+router.put('/api/admin/notification-settings', requirePermission('branding.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -572,7 +573,7 @@ router.put('/api/admin/notification-settings', async (req, res) => {
 });
 
 // ── ADMIN: PAYOUT AUTOMATION SETTINGS ────────────────────────────────────────
-router.get('/api/admin/payout-automation', async (req, res) => {
+router.get('/api/admin/payout-automation', requirePermission('finance_settings'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -593,7 +594,7 @@ router.get('/api/admin/payout-automation', async (req, res) => {
   }
 });
 
-router.put('/api/admin/payout-automation', async (req, res) => {
+router.put('/api/admin/payout-automation', requirePermission('finance_settings.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -623,7 +624,7 @@ router.put('/api/admin/payout-automation', async (req, res) => {
 });
 
 // ── ADMIN: PAYOUT METHOD SETTINGS ────────────────────────────────────────────
-router.get('/api/admin/payout-methods', async (req, res) => {
+router.get('/api/admin/payout-methods', requirePermission('finance_settings'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -643,7 +644,7 @@ router.get('/api/admin/payout-methods', async (req, res) => {
   }
 });
 
-router.put('/api/admin/payout-methods', async (req, res) => {
+router.put('/api/admin/payout-methods', requirePermission('finance_settings.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -678,7 +679,7 @@ router.put('/api/admin/payout-methods', async (req, res) => {
 });
 
 // ── ADMIN: CRM SETTINGS ───────────────────────────────────────────────────────
-router.get('/api/admin/crm/status', async (req, res) => {
+router.get('/api/admin/crm/status', requirePermission('integrations'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -754,7 +755,7 @@ router.get('/api/admin/crm/status', async (req, res) => {
   }
 });
 
-router.post('/api/admin/crm/test-connection', async (req, res) => {
+router.post('/api/admin/crm/test-connection', requirePermission('integrations'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { crmType, credential } = req.body;
   if (!crmType || !credential) return res.status(400).json({ error: 'crmType and credential required' });
@@ -789,7 +790,7 @@ router.post('/api/admin/crm/test-connection', async (req, res) => {
   }
 });
 
-router.post('/api/admin/crm/connect-api-key', async (req, res) => {
+router.post('/api/admin/crm/connect-api-key', requirePermission('integrations.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -842,7 +843,7 @@ router.post('/api/admin/crm/connect-api-key', async (req, res) => {
   }
 });
 
-router.put('/api/admin/crm/settings', async (req, res) => {
+router.put('/api/admin/crm/settings', requirePermission('integrations.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -873,7 +874,7 @@ router.put('/api/admin/crm/settings', async (req, res) => {
   }
 });
 
-router.post('/api/admin/crm/referral-start-date', async (req, res) => {
+router.post('/api/admin/crm/referral-start-date', requirePermission('integrations.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -907,7 +908,7 @@ router.post('/api/admin/crm/referral-start-date', async (req, res) => {
   }
 });
 
-router.post('/api/admin/crm/sync', async (req, res) => {
+router.post('/api/admin/crm/sync', requirePermission('integrations.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -935,7 +936,7 @@ router.post('/api/admin/crm/sync', async (req, res) => {
   }
 });
 
-router.post('/api/admin/crm/disconnect', async (req, res) => {
+router.post('/api/admin/crm/disconnect', requirePermission('integrations.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -956,7 +957,7 @@ router.post('/api/admin/crm/disconnect', async (req, res) => {
 });
 
 // ── ADMIN: EXTRACT COLORS FROM URL ───────────────────────────────────────────
-router.get('/api/admin/extract-colors', async (req, res) => {
+router.get('/api/admin/extract-colors', requirePermission('branding'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: 'URL required' });
@@ -1043,7 +1044,7 @@ router.get('/api/admin/extract-colors', async (req, res) => {
 });
 
 // ── ADMIN: FLAGGED REFERRALS ──────────────────────────────────────────────────
-router.get('/api/admin/flagged-referrals/summary', async (req, res) => {
+router.get('/api/admin/flagged-referrals/summary', requirePermission('referral_review'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1059,7 +1060,7 @@ router.get('/api/admin/flagged-referrals/summary', async (req, res) => {
   }
 });
 
-router.get('/api/admin/flagged-referrals', async (req, res) => {
+router.get('/api/admin/flagged-referrals', requirePermission('referral_review'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1079,7 +1080,7 @@ router.get('/api/admin/flagged-referrals', async (req, res) => {
   }
 });
 
-router.put('/api/admin/flagged-referrals/:id', async (req, res) => {
+router.put('/api/admin/flagged-referrals/:id', requirePermission('referral_review.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1108,7 +1109,7 @@ const backupLimiter = rateLimit({
 });
 
 // ── ADMIN: MANUAL BACKUP TRIGGER ──────────────────────────────────────────────
-router.post('/api/admin/backup/run', backupLimiter, async (req, res) => {
+router.post('/api/admin/backup/run', backupLimiter, requirePermission('advanced'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     await runBackup();
@@ -1120,7 +1121,7 @@ router.post('/api/admin/backup/run', backupLimiter, async (req, res) => {
 });
 
 // ── ADMIN: VERIFY LATEST BACKUP ───────────────────────────────────────────────
-router.post('/api/admin/backup/verify', backupLimiter, async (req, res) => {
+router.post('/api/admin/backup/verify', backupLimiter, requirePermission('advanced'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const lines = [];
   const origLog = console.log;
@@ -1147,7 +1148,7 @@ const resendInviteLimiter = rateLimit({
   message: { error: 'Too many resend attempts. Please try again in an hour.' }
 });
 
-router.get('/api/admin/pending-referrals', async (req, res) => {
+router.get('/api/admin/pending-referrals', requirePermission('referral_review'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1176,7 +1177,7 @@ router.get('/api/admin/pending-referrals', async (req, res) => {
   }
 });
 
-router.post('/api/admin/pending-referrals/:id/resend', resendInviteLimiter, async (req, res) => {
+router.post('/api/admin/pending-referrals/:id/resend', resendInviteLimiter, requirePermission('referral_review.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1211,7 +1212,7 @@ router.post('/api/admin/pending-referrals/:id/resend', resendInviteLimiter, asyn
   }
 });
 
-router.post('/api/admin/pending-referrals/:id/close', async (req, res) => {
+router.post('/api/admin/pending-referrals/:id/close', requirePermission('referral_review.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1234,7 +1235,7 @@ router.post('/api/admin/pending-referrals/:id/close', async (req, res) => {
   }
 });
 
-router.post('/api/admin/pending-referrals/:id/confirm-referrer', async (req, res) => {
+router.post('/api/admin/pending-referrals/:id/confirm-referrer', requirePermission('referral_review.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1290,7 +1291,7 @@ router.post('/api/admin/pending-referrals/:id/confirm-referrer', async (req, res
 });
 
 // ── ADMIN: BOOKING REQUESTS ───────────────────────────────────────────────────
-router.get('/api/admin/booking-requests', async (req, res) => {
+router.get('/api/admin/booking-requests', requirePermission('referral_review'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1327,7 +1328,7 @@ const ADMIN_CHANNEL_LABELS = {
   salesman_contact:         'Sent salesman\'s contact info',
 };
 
-router.get('/api/admin/missing-referrals', async (req, res) => {
+router.get('/api/admin/missing-referrals', requirePermission('referral_review'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const result = await pool.query(
@@ -1345,7 +1346,7 @@ router.get('/api/admin/missing-referrals', async (req, res) => {
   }
 });
 
-router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
+router.patch('/api/admin/missing-referrals/:id/resolve', requirePermission('referral_review.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1437,7 +1438,7 @@ router.patch('/api/admin/missing-referrals/:id/resolve', async (req, res) => {
 });
 
 // ── ADMIN: INBOX MESSAGES ─────────────────────────────────────────────────────
-router.get('/api/admin/messages', async (req, res) => {
+router.get('/api/admin/messages', requirePermission('referral_review'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1472,7 +1473,7 @@ router.get('/api/admin/messages', async (req, res) => {
   }
 });
 
-router.patch('/api/admin/messages/:id/read', async (req, res) => {
+router.patch('/api/admin/messages/:id/read', requirePermission('referral_review'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1509,7 +1510,7 @@ router.patch('/api/admin/messages/:id/read', async (req, res) => {
 
 const VALID_MAPPING_KEYS = ['work_category', 'job_source', 'material_type', 'assigned_rep'];
 
-router.get('/api/admin/jobber/fields', async (req, res) => {
+router.get('/api/admin/jobber/fields', requirePermission('integrations'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1528,7 +1529,7 @@ router.get('/api/admin/jobber/fields', async (req, res) => {
   }
 });
 
-router.post('/api/admin/jobber/discover-fields', async (req, res) => {
+router.post('/api/admin/jobber/discover-fields', requirePermission('integrations.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1544,7 +1545,7 @@ router.post('/api/admin/jobber/discover-fields', async (req, res) => {
   }
 });
 
-router.get('/api/admin/jobber/field-mappings', async (req, res) => {
+router.get('/api/admin/jobber/field-mappings', requirePermission('integrations'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1561,7 +1562,7 @@ router.get('/api/admin/jobber/field-mappings', async (req, res) => {
   }
 });
 
-router.patch('/api/admin/jobber/field-mappings', async (req, res) => {
+router.patch('/api/admin/jobber/field-mappings', requirePermission('integrations.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1599,7 +1600,7 @@ const { runFullJobberImport, importState } = require('../../jobs/fullJobberImpor
 
 // POST /api/admin/jobber-full-import
 // Starts a one-time full Jobber client import. Fire-and-forget — returns 202 immediately.
-router.post('/api/admin/jobber-full-import', async (req, res) => {
+router.post('/api/admin/jobber-full-import', requirePermission('integrations.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1628,7 +1629,7 @@ router.post('/api/admin/jobber-full-import', async (req, res) => {
 
 // GET /api/admin/jobber-import-status
 // Returns current import state.
-router.get('/api/admin/jobber-import-status', async (req, res) => {
+router.get('/api/admin/jobber-import-status', requirePermission('integrations'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   res.json(importState);
 });
