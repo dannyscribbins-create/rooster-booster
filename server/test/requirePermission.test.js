@@ -28,6 +28,8 @@ function buildPermissionTestApp() {
   app.use('/', require('../routes/admin/cashouts'));
   // Full admin index — needed for retention-settings and prize-settings wiring tests
   app.use('/', require('../routes/admin/index'));
+  // Stripe admin routes — outside admin/ folder, Phase 4B gap fix
+  app.use('/', require('../routes/stripe'));
 
   return app;
 }
@@ -352,5 +354,61 @@ describe('requirePermission middleware', () => {
       quarterly_prizes: [], yearly_prizes: [],
     }, token);
     assert.equal(res.status, 403, 'prize-settings POST enforces finance_settings.manage permission');
+  });
+
+  // ── TEST 18: GET /api/admin/stripe/connection-status enforces 'finance_settings' flag ──
+  it('GET /api/admin/stripe/connection-status: wired to requirePermission(finance_settings) — admin without flag → 403', async () => {
+    await setPermissions(adminMemberId, {}); // no finance_settings flag
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpGet(port, '/api/admin/stripe/connection-status', token);
+    assert.equal(res.status, 403, 'connection-status GET enforces finance_settings permission');
+  });
+
+  // ── TEST 19: POST /api/admin/stripe/create-account-link enforces 'finance_settings.manage' flag ──
+  it('POST /api/admin/stripe/create-account-link: wired to requirePermission(finance_settings.manage) — view-only flag → 403', async () => {
+    await setPermissions(adminMemberId, { finance_settings: true }); // view only, no manage
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpMethod(port, 'POST', '/api/admin/stripe/create-account-link', {}, token);
+    assert.equal(res.status, 403, 'create-account-link enforces finance_settings.manage permission');
+  });
+
+  // ── TEST 20: POST /api/admin/stripe/confirm-connection enforces 'finance_settings.manage' flag ──
+  it('POST /api/admin/stripe/confirm-connection: wired to requirePermission(finance_settings.manage) — view-only flag → 403', async () => {
+    await setPermissions(adminMemberId, { finance_settings: true }); // view only, no manage
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpMethod(port, 'POST', '/api/admin/stripe/confirm-connection', {}, token);
+    assert.equal(res.status, 403, 'confirm-connection enforces finance_settings.manage permission');
+  });
+
+  // ── TEST 21: POST /api/admin/stripe/disconnect enforces 'finance_settings.manage' flag ──
+  it('POST /api/admin/stripe/disconnect: wired to requirePermission(finance_settings.manage) — view-only flag → 403', async () => {
+    await setPermissions(adminMemberId, { finance_settings: true }); // view only, no manage
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpMethod(port, 'POST', '/api/admin/stripe/disconnect', {}, token);
+    assert.equal(res.status, 403, 'disconnect enforces finance_settings.manage permission');
+  });
+
+  // ── TEST 22: POST /api/admin/stripe/transfer enforces 'cashout_approve' flag ──
+  it('POST /api/admin/stripe/transfer: wired to requirePermission(cashout_approve) — admin without flag → 403', async () => {
+    await setPermissions(adminMemberId, {}); // no cashout_approve flag
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpMethod(port, 'POST', '/api/admin/stripe/transfer', { cashoutRequestId: 1, userId: 1, bonusAmount: 100 }, token);
+    assert.equal(res.status, 403, 'transfer route enforces cashout_approve permission');
+  });
+
+  // ── TEST 23: POST /api/admin/stripe/transfer — General-tier defense-in-depth ──
+  it('POST /api/admin/stripe/transfer: General-tier with cashout_approve=true → 403 (defense-in-depth)', async () => {
+    // Simulate a bypassed save-permissions check — General member somehow has the flag
+    await setPermissions(generalMemberId, { cashout_approve: true });
+    const token = await makeAdminSession(generalMemberId);
+
+    const res = await httpMethod(port, 'POST', '/api/admin/stripe/transfer', { cashoutRequestId: 1, userId: 1, bonusAmount: 100 }, token);
+    assert.equal(res.status, 403, 'General must be denied cashout_approve on transfer even when flag=true in JSONB');
+    assert.equal(res.body.error, 'Access denied');
   });
 });

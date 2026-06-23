@@ -2,6 +2,7 @@ const express = require('express');
 const Stripe = require('stripe');
 const { pool } = require('../db');
 const { verifyAdminSession } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/permissions');
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { stripeShouldRetry } = require('../utils/retryHelpers');
@@ -48,7 +49,7 @@ async function upsertStripeAccount(stripeAccountId, status) {
 
 // ── Route 1: POST /api/admin/stripe/create-account-link ───────────────────────
 
-router.post('/api/admin/stripe/create-account-link', async (req, res) => {
+router.post('/api/admin/stripe/create-account-link', requirePermission('finance_settings.manage'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const stripe = getStripeClient();
@@ -85,7 +86,7 @@ router.post('/api/admin/stripe/create-account-link', async (req, res) => {
 
 // ── Route 2: POST /api/admin/stripe/confirm-connection ────────────────────────
 
-router.post('/api/admin/stripe/confirm-connection', async (req, res) => {
+router.post('/api/admin/stripe/confirm-connection', requirePermission('finance_settings.manage'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const row = await getStripeRow();
@@ -118,7 +119,7 @@ router.post('/api/admin/stripe/confirm-connection', async (req, res) => {
 
 // ── Route 3: GET /api/admin/stripe/connection-status ─────────────────────────
 
-router.get('/api/admin/stripe/connection-status', async (req, res) => {
+router.get('/api/admin/stripe/connection-status', requirePermission('finance_settings'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     const row = await getStripeRow();
@@ -137,7 +138,7 @@ router.get('/api/admin/stripe/connection-status', async (req, res) => {
 
 // ── Route 4: POST /api/admin/stripe/disconnect ────────────────────────────────
 
-router.post('/api/admin/stripe/disconnect', async (req, res) => {
+router.post('/api/admin/stripe/disconnect', requirePermission('finance_settings.manage'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   try {
     // MVP: local-only clear. Stripe Standard accounts require manual deauthorization via Stripe dashboard.
@@ -157,7 +158,7 @@ router.post('/api/admin/stripe/disconnect', async (req, res) => {
 // ── Route 5: POST /api/admin/stripe/transfer ──────────────────────────────────
 // TODO: Danny to remove STRIPE_TEST_ACCOUNT_ID from Railway env vars — no longer used
 
-router.post('/api/admin/stripe/transfer', async (req, res) => {
+router.post('/api/admin/stripe/transfer', requirePermission('cashout_approve'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const { cashoutRequestId, userId, bonusAmount } = req.body;
   if (!cashoutRequestId || !userId || !bonusAmount) {
