@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
+const { requirePermission } = require('../../middleware/permissions');
 const axios = require('axios');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
@@ -725,7 +726,7 @@ router.get('/api/track/click/:token', async (req, res) => {
 // Growth = 200, Pro = 500. Change this one constant when tiers ship.
 const CAMPAIGN_BATCH_CAP = 500;
 
-router.post('/api/admin/campaigns', async (req, res) => {
+router.post('/api/admin/campaigns', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -746,7 +747,7 @@ router.post('/api/admin/campaigns', async (req, res) => {
   }
 });
 
-router.get('/api/admin/campaigns', async (req, res) => {
+router.get('/api/admin/campaigns', requirePermission('campaigns'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -765,7 +766,7 @@ router.get('/api/admin/campaigns', async (req, res) => {
   }
 });
 
-router.get('/api/admin/campaigns/field-values', async (req, res) => {
+router.get('/api/admin/campaigns/field-values', requirePermission('campaigns'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -799,7 +800,7 @@ router.get('/api/admin/campaigns/field-values', async (req, res) => {
 // POST /api/admin/campaigns/enrich-contacts
 // Returns stored tags + computed send stats for a batch of emails.
 // 'Recently Contacted' is computed (not stored) — added if last_sent_at is within 30 days.
-router.post('/api/admin/campaigns/enrich-contacts', async (req, res) => {
+router.post('/api/admin/campaigns/enrich-contacts', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -858,7 +859,7 @@ router.post('/api/admin/campaigns/enrich-contacts', async (req, res) => {
   }
 });
 
-router.get('/api/admin/campaigns/:id', async (req, res) => {
+router.get('/api/admin/campaigns/:id', requirePermission('campaigns'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -886,7 +887,7 @@ router.get('/api/admin/campaigns/:id', async (req, res) => {
   }
 });
 
-router.patch('/api/admin/campaigns/:id', async (req, res) => {
+router.patch('/api/admin/campaigns/:id', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -928,7 +929,7 @@ router.patch('/api/admin/campaigns/:id', async (req, res) => {
   }
 });
 
-router.delete('/api/admin/campaigns/:id', async (req, res) => {
+router.delete('/api/admin/campaigns/:id', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -963,7 +964,7 @@ router.delete('/api/admin/campaigns/:id', async (req, res) => {
   }
 });
 
-router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
+router.patch('/api/admin/campaigns/:id/filters', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -991,7 +992,7 @@ router.patch('/api/admin/campaigns/:id/filters', async (req, res) => {
 // Loads dynamic_audience_members into campaign_contacts, bypassing Jobber pull.
 // Mirrors the pull endpoint's bookkeeping: sets total_contacts, in_app flag, opted_out=false.
 // Uses INSERT...SELECT to avoid the 65,535 PostgreSQL bind-parameter ceiling for large audiences.
-router.post('/api/admin/campaigns/:id/load-audience', async (req, res) => {
+router.post('/api/admin/campaigns/:id/load-audience', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1059,7 +1060,7 @@ router.post('/api/admin/campaigns/:id/load-audience', async (req, res) => {
   }
 });
 
-router.get('/api/admin/campaigns/:id/contacts', async (req, res) => {
+router.get('/api/admin/campaigns/:id/contacts', requirePermission('campaigns'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1082,7 +1083,7 @@ router.get('/api/admin/campaigns/:id/contacts', async (req, res) => {
   }
 });
 
-router.patch('/api/admin/campaigns/:id/contacts/selection', async (req, res) => {
+router.patch('/api/admin/campaigns/:id/contacts/selection', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1116,7 +1117,7 @@ router.patch('/api/admin/campaigns/:id/contacts/selection', async (req, res) => 
   }
 });
 
-router.post('/api/admin/campaigns/:id/finalize-batch', async (req, res) => {
+router.post('/api/admin/campaigns/:id/finalize-batch', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1171,7 +1172,7 @@ router.post('/api/admin/campaigns/:id/finalize-batch', async (req, res) => {
   }
 });
 
-router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
+router.get('/api/admin/campaigns/:id/messaging-context', requirePermission('campaigns'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1210,7 +1211,7 @@ router.get('/api/admin/campaigns/:id/messaging-context', async (req, res) => {
   }
 });
 
-router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
+router.patch('/api/admin/campaigns/:id/messaging', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1247,7 +1248,7 @@ router.patch('/api/admin/campaigns/:id/messaging', async (req, res) => {
   }
 });
 
-router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
+router.get('/api/admin/campaigns/:id/review-summary', requirePermission('campaigns'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1312,7 +1313,7 @@ router.get('/api/admin/campaigns/:id/review-summary', async (req, res) => {
   }
 });
 
-router.post('/api/admin/campaigns/:id/launch', async (req, res) => {
+router.post('/api/admin/campaigns/:id/launch', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1384,7 +1385,7 @@ async function fetchJobberPage(query, variables, accessToken) {
   );
 }
 
-router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
+router.post('/api/admin/campaigns/:id/pull', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1724,7 +1725,7 @@ router.post('/api/admin/campaigns/:id/pull', async (req, res) => {
 
 // ── CAMPAIGN DETAIL + BATCH MANAGEMENT + IMAGE + CSV ─────────────────────────
 
-router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
+router.get('/api/admin/campaigns/:id/detail', requirePermission('campaigns'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const campaignId = parseInt(req.params.id, 10);
@@ -1889,7 +1890,7 @@ router.get('/api/admin/campaigns/:id/detail', async (req, res) => {
   }
 });
 
-router.get('/api/admin/campaigns/:id/metrics', async (req, res) => {
+router.get('/api/admin/campaigns/:id/metrics', requirePermission('campaigns'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const campaignId = parseInt(req.params.id, 10);
   try {
@@ -1949,7 +1950,7 @@ router.get('/api/admin/campaigns/:id/metrics', async (req, res) => {
   }
 });
 
-router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
+router.post('/api/admin/campaigns/:id/send-batch', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -1988,7 +1989,7 @@ router.post('/api/admin/campaigns/:id/send-batch', async (req, res) => {
   }
 });
 
-router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
+router.post('/api/admin/campaigns/:id/retry-batch', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const campaignId = parseInt(req.params.id, 10);
@@ -2111,7 +2112,7 @@ router.post('/api/admin/campaigns/:id/retry-batch', async (req, res) => {
   }
 });
 
-router.get('/api/admin/campaigns/:id/failed-contacts/:batchNumber', async (req, res) => {
+router.get('/api/admin/campaigns/:id/failed-contacts/:batchNumber', requirePermission('campaigns'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const campaignId  = parseInt(req.params.id, 10);
   const batchNumber = parseInt(req.params.batchNumber, 10);
@@ -2130,7 +2131,7 @@ router.get('/api/admin/campaigns/:id/failed-contacts/:batchNumber', async (req, 
   }
 });
 
-router.get('/api/admin/campaigns/:id/export-failed/:batchNumber', async (req, res) => {
+router.get('/api/admin/campaigns/:id/export-failed/:batchNumber', requirePermission('campaigns'), async (req, res) => {
   if (!await verifyAdminSession(req, res)) return;
   const campaignId  = parseInt(req.params.id, 10);
   const batchNumber = parseInt(req.params.batchNumber, 10);
@@ -2164,6 +2165,7 @@ router.get('/api/admin/campaigns/:id/export-failed/:batchNumber', async (req, re
 });
 
 router.post('/api/admin/campaigns/:id/upload-image',
+  requirePermission('campaigns.manage'),
   upload.single('image'),
   async (req, res) => {
     const adminSession = await verifyAdminSession(req, res);
@@ -2222,7 +2224,7 @@ router.post('/api/admin/campaigns/:id/upload-image',
   }
 );
 
-router.delete('/api/admin/campaigns/:id/image', async (req, res) => {
+router.delete('/api/admin/campaigns/:id/image', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const campaignId = parseInt(req.params.id, 10);
@@ -2255,6 +2257,7 @@ router.delete('/api/admin/campaigns/:id/image', async (req, res) => {
 });
 
 router.post('/api/admin/campaigns/:id/upload-csv',
+  requirePermission('campaigns.manage'),
   upload.single('csv'),
   async (req, res) => {
     const adminSession = await verifyAdminSession(req, res);
@@ -2365,7 +2368,7 @@ router.post('/api/admin/campaigns/:id/upload-csv',
   }
 );
 
-router.post('/api/admin/campaigns/:id/confirm-csv', async (req, res) => {
+router.post('/api/admin/campaigns/:id/confirm-csv', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const campaignId = parseInt(req.params.id, 10);
@@ -2463,7 +2466,7 @@ router.post('/api/admin/campaigns/:id/confirm-csv', async (req, res) => {
 
 // ── REFERRAL SCHEDULE CRUD ────────────────────────────────────────────────────
 
-router.get('/api/admin/schedules', async (req, res) => {
+router.get('/api/admin/schedules', requirePermission('finance_settings'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -2517,7 +2520,7 @@ router.get('/api/admin/schedules', async (req, res) => {
   }
 });
 
-router.post('/api/admin/schedules', async (req, res) => {
+router.post('/api/admin/schedules', requirePermission('finance_settings.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -2587,7 +2590,7 @@ router.post('/api/admin/schedules', async (req, res) => {
   }
 });
 
-router.put('/api/admin/schedules/:id', async (req, res) => {
+router.put('/api/admin/schedules/:id', requirePermission('finance_settings.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -2668,7 +2671,7 @@ router.put('/api/admin/schedules/:id', async (req, res) => {
   }
 });
 
-router.patch('/api/admin/schedules/:id/toggle', async (req, res) => {
+router.patch('/api/admin/schedules/:id/toggle', requirePermission('finance_settings.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -2701,7 +2704,7 @@ const aiRapportLimiter = rateLimit({
   message: { error: 'Too many AI generation requests. Please try again in a minute.' }
 });
 
-router.post('/api/admin/campaigns/:id/ai-rapport', aiRapportLimiter, async (req, res) => {
+router.post('/api/admin/campaigns/:id/ai-rapport', requirePermission('campaigns.manage'), aiRapportLimiter, async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -2866,7 +2869,7 @@ Output: One email message body only. No subject line. No preview text. No button
   }
 });
 
-router.post('/api/admin/campaigns/:id/generate-subject-lines', async (req, res) => {
+router.post('/api/admin/campaigns/:id/generate-subject-lines', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -2965,7 +2968,7 @@ Output: exactly 3 subject lines, one per line, no numbering, no quotes, no expla
 
 // ── BATCH CONTACT LIST ────────────────────────────────────────────────────────
 
-router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', async (req, res) => {
+router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', requirePermission('campaigns'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const campaignId  = parseInt(req.params.campaignId,  10);
@@ -3040,7 +3043,7 @@ router.get('/api/admin/campaigns/:campaignId/batches/:batchNumber/contacts', asy
 
 // ── ADMIN: DYNAMIC AUDIENCES ─────────────────────────────────────────────────
 
-router.get('/api/admin/audiences', async (req, res) => {
+router.get('/api/admin/audiences', requirePermission('audiences'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -3059,7 +3062,7 @@ router.get('/api/admin/audiences', async (req, res) => {
   }
 });
 
-router.post('/api/admin/audiences', async (req, res) => {
+router.post('/api/admin/audiences', requirePermission('audiences.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -3094,7 +3097,7 @@ router.post('/api/admin/audiences', async (req, res) => {
   }
 });
 
-router.put('/api/admin/audiences/:id', async (req, res) => {
+router.put('/api/admin/audiences/:id', requirePermission('audiences.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -3150,7 +3153,7 @@ router.put('/api/admin/audiences/:id', async (req, res) => {
   }
 });
 
-router.delete('/api/admin/audiences/:id', async (req, res) => {
+router.delete('/api/admin/audiences/:id', requirePermission('audiences.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -3176,7 +3179,7 @@ router.delete('/api/admin/audiences/:id', async (req, res) => {
   }
 });
 
-router.get('/api/admin/audiences/:id/members', async (req, res) => {
+router.get('/api/admin/audiences/:id/members', requirePermission('audiences'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -3225,7 +3228,7 @@ const DEFAULT_CADENCE_SETTINGS = [
   { cadence_month: 12, is_enabled: true, subject: 'Happy anniversary from {{company_name}}', body: "Hi {{first_name}},\n\nOne year ago we completed your {{job_type}}. Your workmanship warranty runs through {{warranty_year}} — we've got you covered.\n\nIf you know anyone who needs roofing work, your referral link is always active: {{referral_link}}.\n\n— {{company_name}}" },
 ];
 
-router.get('/api/admin/engagement-cadence', async (req, res) => {
+router.get('/api/admin/engagement-cadence', requirePermission('campaigns'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
@@ -3247,7 +3250,7 @@ router.get('/api/admin/engagement-cadence', async (req, res) => {
   }
 });
 
-router.put('/api/admin/engagement-cadence/:month', async (req, res) => {
+router.put('/api/admin/engagement-cadence/:month', requirePermission('campaigns.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
