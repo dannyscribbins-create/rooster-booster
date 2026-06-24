@@ -20,6 +20,13 @@ const PUBLIC_ADMIN_ROUTES = [
   },
   {
     method: 'GET',
+    path: '/api/admin/me',
+    // Session-only identity endpoint — reads the caller's own team_members row live.
+    // No permission flag by design (Decision A §5.2): a permission gate on self-read
+    // would lock out newly-created accounts before any flags are assigned.
+  },
+  {
+    method: 'GET',
     path: '/api/admin/notifications',
     // Session-only admin UI chrome (verifyAdminSession, no permission flag).
     // Phase 4B decision: notification bell is cross-section UX, not a feature area.

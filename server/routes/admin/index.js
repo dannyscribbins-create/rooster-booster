@@ -50,7 +50,7 @@ router.post('/api/admin/login', adminLoginLimiter, [
   try {
     const { email, password } = req.body;
     const result = await pool.query(
-      'SELECT id, password_hash, contractor_id FROM team_members WHERE email = $1 AND active = true',
+      'SELECT id, password_hash, contractor_id, tier, permissions FROM team_members WHERE email = $1 AND active = true',
       [email]
     );
     const storedHash = result.rows.length ? result.rows[0].password_hash : DUMMY_BCRYPT_HASH;
@@ -65,9 +65,46 @@ router.post('/api/admin/login', adminLoginLimiter, [
       'INSERT INTO sessions (user_id, token, expires_at, role, contractor_id, team_member_id) VALUES (NULL,$1,$2,$3,$4,$5)',
       [token, expiresAt, 'admin', teamMember.contractor_id, teamMember.id]
     );
-    res.json({ success: true, token });
+    // Return tier + permissions so the frontend has initial state without a /me roundtrip.
+    // /me remains the live-refresh source for all subsequent reads (Decision A §5.2).
+    res.json({ success: true, token, tier: teamMember.tier, permissions: teamMember.permissions || {} });
   } catch (err) {
     await logError({ req, error: err, source: 'POST /api/admin/login' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── ADMIN: ME ─────────────────────────────────────────────────────────────────
+// Session-only — intentionally NO requirePermission. Reads the caller's own row live
+// (Decision A §5.2: never serve identity data from the session token).
+router.get('/api/admin/me', async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { teamMemberId } = adminSession;
+  try {
+    const result = await pool.query(
+      `SELECT email, full_name, tier, permissions, title_id,
+              is_field_rep, is_attributable, rep_revenue_visibility
+       FROM team_members
+       WHERE id = $1 AND active = true`,
+      [teamMemberId]
+    );
+    if (!result.rows.length) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const m = result.rows[0];
+    res.json({
+      email: m.email,
+      full_name: m.full_name,
+      tier: m.tier,
+      permissions: m.permissions || {},
+      title_id: m.title_id,
+      is_field_rep: m.is_field_rep,
+      is_attributable: m.is_attributable,
+      rep_revenue_visibility: m.rep_revenue_visibility,
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/me' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
