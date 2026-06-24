@@ -13,6 +13,7 @@ import ContractorTerms from './components/ContractorTerms';
 import EmailPreferences from './components/EmailPreferences';
 import SuperAdminLoginScreen from './components/superAdmin/SuperAdminLoginScreen';
 import SuperAdminShell from './components/superAdmin/SuperAdminShell';
+import AdminSetPasswordScreen from './components/admin/AdminSetPasswordScreen';
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
 function useReferrerFonts() {
@@ -68,6 +69,9 @@ export default function App() {
 
   const isAdmin = window.location.search.includes("admin=true");
   const resetToken = new URLSearchParams(window.location.search).get('reset');
+  // ?admin_invite= is a separate param from ?reset= — distinct keys, no ambiguity.
+  // Checked before isAdmin so an invitee with no session always reaches the set-password screen.
+  const adminInviteToken = new URLSearchParams(window.location.search).get('admin_invite');
 
   useReferrerFonts();
 
@@ -183,6 +187,7 @@ export default function App() {
   if (window.location.pathname === '/email-preferences') return <EmailPreferences />;
   if (window.location.pathname === '/rm-control/login') return <SuperAdminLoginScreen />;
   if (window.location.pathname === '/rm-control') return <SuperAdminShell />;
+  if (adminInviteToken) return <AdminSetPasswordScreen token={adminInviteToken} />;
   if (isAdmin) return <AdminPanel />;
   if (resetToken) return <ResetPinScreen token={resetToken} />;
   if (showVerify) return (

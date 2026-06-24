@@ -37,6 +37,11 @@ const PUBLIC_ADMIN_ROUTES = [
     path: '/api/admin/notifications/:id/read',
     // Same rationale as GET /api/admin/notifications (Phase 4B decision).
   },
+  {
+    method: 'POST',
+    path: '/api/admin/team/accept-invite',
+    // public — invitee has no session yet; the single-use, time-limited token IS the authentication.
+  },
 ];
 
 // Fast-lookup Set — 'METHOD /path'
@@ -166,7 +171,7 @@ describe('admin route enforcement coverage', () => {
   });
 
   // ── Sanity: allowlisted routes actually exist in the walk ─────────────────
-  it('router walk: all three allowlisted public routes are present in the collected set', () => {
+  it('router walk: all allowlisted public routes are present in the collected set', () => {
     // If an allowlisted route was renamed or deleted, its allowlist entry becomes
     // a dead reference that could silently cover a newly-ungated replacement.
     for (const entry of PUBLIC_ADMIN_ROUTES) {

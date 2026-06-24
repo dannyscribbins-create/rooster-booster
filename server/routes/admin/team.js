@@ -7,7 +7,10 @@ const { verifyAdminSession } = require('../../middleware/auth');
 const { requirePermission } = require('../../middleware/permissions');
 const { logError } = require('../../middleware/errorLogger');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
-const { jobberShouldRetry } = require('../../utils/retryHelpers');
+const { jobberShouldRetry, resendShouldRetry } = require('../../utils/retryHelpers');
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
+const crypto = require('crypto');
 const { refreshTokenIfNeeded } = require('../../crm/jobber');
 const axios = require('axios');
 const bcrypt = require('bcrypt');
@@ -28,7 +31,13 @@ router.get('/api/admin/team', requirePermission('team'), async (req, res) => {
       `SELECT tm.id, tm.email, tm.full_name, tm.tier, tm.permissions,
               tm.is_field_rep, tm.is_attributable, tm.rep_revenue_visibility,
               tm.active, tm.last_login_at, tm.title_id, tm.jobber_user_id,
-              t.name AS title_name
+              t.name AS title_name,
+              EXISTS (
+                SELECT 1 FROM team_member_invite_tokens tit
+                WHERE tit.team_member_id = tm.id
+                  AND tit.used_at IS NULL
+                  AND tit.expires_at > NOW()
+              ) AS invite_pending
        FROM team_members tm
        LEFT JOIN titles t ON t.id = tm.title_id
        WHERE tm.contractor_id = $1
@@ -46,9 +55,12 @@ router.get('/api/admin/team', requirePermission('team'), async (req, res) => {
 // Structural creation chain (Decision A §1.3):
 //   Owner may create Admin or General.
 //   Admin may create General ONLY — creating another Admin is structurally rejected.
+//
+// Auth flow (Decision A §9): no password is accepted from the client. The new member
+// is created with a locked hash (bcrypt of random bytes — login always fails until the
+// invite link is accepted). An invite token is issued and emailed immediately.
 router.post('/api/admin/team', requirePermission('team.manage'), [
   body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
-  body('password').notEmpty().isString().isLength({ min: 8, max: 200 }).withMessage('Password must be 8–200 characters'),
   body('full_name').notEmpty().isString().isLength({ max: 200 }).withMessage('Full name required'),
   body('tier').isIn(['admin', 'general']).withMessage('Tier must be admin or general'),
 ], async (req, res) => {
@@ -67,27 +79,144 @@ router.post('/api/admin/team', requirePermission('team.manage'), [
     if (!requesterResult.rows.length) return res.status(403).json({ error: 'Access denied' });
     const requesterTier = requesterResult.rows[0].tier;
 
-    const { email, password, full_name, tier } = req.body;
+    const { email, full_name, tier } = req.body;
 
     // Structural chain: Admin may only create General-tier members
     if (requesterTier === 'admin' && tier === 'admin') {
       return res.status(403).json({ error: 'Admins may only create General-tier members' });
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    // Locked hash: bcrypt of random bytes — nobody knows the plaintext, so login
+    // always fails via bcrypt.compare → false until the invite link is accepted.
+    const lockedHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
+
     const result = await pool.query(
       `INSERT INTO team_members (contractor_id, email, password_hash, full_name, tier)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, email, full_name, tier`,
-      [contractorId, email, passwordHash, full_name, tier]
+      [contractorId, email, lockedHash, full_name, tier]
     );
-    res.status(201).json(result.rows[0]);
+    const newMember = result.rows[0];
+
+    // Issue a 24-hour invite token
+    const inviteToken = crypto.randomBytes(32).toString('hex');
+    await pool.query(
+      `INSERT INTO team_member_invite_tokens (team_member_id, token, expires_at)
+       VALUES ($1, $2, NOW() + interval '24 hours')`,
+      [newMember.id, inviteToken]
+    );
+
+    // Send invite email — failure is surfaced to the caller (not swallowed) so the
+    // Owner knows they need to resend. Member row already exists; it is still usable
+    // once the Owner triggers a resend from the roster.
+    let inviteSent = false;
+    try {
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      const inviteUrl = `${frontendUrl}/?admin_invite=${inviteToken}`;
+
+      const csResult = await pool.query(
+        `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+        [contractorId]
+      );
+      const cs = csResult.rows[0] || {};
+      const fromName = (cs.email_sender_name || cs.company_name || 'RoofMiles').replace(/[<>]/g, '');
+
+      await retryWithBackoff(
+        () => resend.emails.send({
+          from: `${fromName} <noreply@roofmiles.com>`,
+          to: newMember.email,
+          subject: `You've been invited to ${fromName} — set your password`,
+          html: `
+            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
+              <p style="font-size:20px;font-weight:700;color:#012854;margin:0 0 8px;">${fromName}</p>
+              <h1 style="font-size:24px;color:#012854;margin:0 0 16px;">You've been added to the team</h1>
+              <p style="font-size:15px;color:#444;margin:0 0 24px;">
+                ${full_name ? `Hi ${full_name},<br><br>` : ''}You've been invited to access the ${fromName} admin panel.
+                Click the button below to set your password. This link expires in 24 hours.
+              </p>
+              <a href="${inviteUrl}" style="display:inline-block;background:#CC0000;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;margin-bottom:24px;">Set Your Password</a>
+              <p style="font-size:13px;color:#888;margin:0;">
+                If you weren't expecting this invitation, you can safely ignore this email.
+              </p>
+            </div>
+          `,
+        }),
+        { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+      );
+      inviteSent = true;
+    } catch (emailErr) {
+      await logError({ req, error: emailErr, source: 'POST /api/admin/team (invite email)' });
+      // inviteSent stays false — caller sees invite_sent: false and can trigger a resend
+    }
+
+    res.status(201).json({ id: newMember.id, email: newMember.email, full_name: newMember.full_name, tier: newMember.tier, invite_sent: inviteSent });
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A member with that email already exists' });
     }
     await logError({ req, error: err, source: 'POST /api/admin/team' });
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /api/admin/team/accept-invite ────────────────────────────────────────
+// PUBLIC — no session, no requirePermission.
+// The invitee has no session yet; the single-use, time-limited token IS the
+// authentication. Declared before /:id routes to prevent any pattern shadowing.
+//
+// Security hardening:
+//   - Token validated in one query (used_at IS NULL AND expires_at > NOW()).
+//   - password_hash update + used_at mark are TRANSACTIONAL — a failure leaves
+//     neither half done (no usable password on a still-replayable token).
+//   - Generic error response prevents leaking whether a token exists.
+//   - Password min-length enforced server-side (not only in the frontend).
+router.post('/api/admin/team/accept-invite', [
+  body('token').notEmpty().isString().withMessage('Token required'),
+  body('password').isString().isLength({ min: 8, max: 200 }).withMessage('Password must be 8–200 characters'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ error: 'Invalid or expired invite' });
+
+  const { token, password } = req.body;
+  const GENERIC_INVALID = { error: 'Invalid or expired invite' };
+
+  const client = await pool.connect();
+  try {
+    const tokenResult = await client.query(
+      `SELECT t.id AS token_id, t.team_member_id
+       FROM team_member_invite_tokens t
+       WHERE t.token = $1 AND t.used_at IS NULL AND t.expires_at > NOW()`,
+      [token]
+    );
+    if (!tokenResult.rows.length) {
+      return res.status(400).json(GENERIC_INVALID);
+    }
+    const { token_id, team_member_id } = tokenResult.rows[0];
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        'UPDATE team_members SET password_hash = $1 WHERE id = $2',
+        [passwordHash, team_member_id]
+      );
+      await client.query(
+        'UPDATE team_member_invite_tokens SET used_at = NOW() WHERE id = $1',
+        [token_id]
+      );
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/admin/team/accept-invite' });
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
 
@@ -288,6 +417,85 @@ router.patch('/api/admin/team/:id/deactivate', requirePermission('team.manage'),
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err, source: 'PATCH /api/admin/team/:id/deactivate' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /api/admin/team/:id/resend-invite ────────────────────────────────────
+// Re-issues an invite token and resends the invite email for a member who has not
+// yet accepted (invite_pending). Expires all unused tokens first so only the new
+// one is valid. Requires team.manage — this is NOT public (caller has a session).
+router.post('/api/admin/team/:id/resend-invite', requirePermission('team.manage'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
+  const targetId = parseInt(req.params.id, 10);
+
+  try {
+    const targetResult = await pool.query(
+      'SELECT id, email, full_name, contractor_id FROM team_members WHERE id = $1 AND active = true',
+      [targetId]
+    );
+    if (!targetResult.rows.length) return res.status(404).json({ error: 'Member not found' });
+    const target = targetResult.rows[0];
+    if (target.contractor_id !== contractorId) return res.status(404).json({ error: 'Member not found' });
+
+    // Expire all outstanding unused tokens so only the fresh one is valid
+    await pool.query(
+      `UPDATE team_member_invite_tokens SET expires_at = NOW()
+       WHERE team_member_id = $1 AND used_at IS NULL`,
+      [targetId]
+    );
+
+    const inviteToken = crypto.randomBytes(32).toString('hex');
+    await pool.query(
+      `INSERT INTO team_member_invite_tokens (team_member_id, token, expires_at)
+       VALUES ($1, $2, NOW() + interval '24 hours')`,
+      [targetId, inviteToken]
+    );
+
+    let inviteSent = false;
+    try {
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      const inviteUrl = `${frontendUrl}/?admin_invite=${inviteToken}`;
+
+      const csResult = await pool.query(
+        `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+        [contractorId]
+      );
+      const cs = csResult.rows[0] || {};
+      const fromName = (cs.email_sender_name || cs.company_name || 'RoofMiles').replace(/[<>]/g, '');
+
+      await retryWithBackoff(
+        () => resend.emails.send({
+          from: `${fromName} <noreply@roofmiles.com>`,
+          to: target.email,
+          subject: `You've been invited to ${fromName} — set your password`,
+          html: `
+            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
+              <p style="font-size:20px;font-weight:700;color:#012854;margin:0 0 8px;">${fromName}</p>
+              <h1 style="font-size:24px;color:#012854;margin:0 0 16px;">You've been added to the team</h1>
+              <p style="font-size:15px;color:#444;margin:0 0 24px;">
+                ${target.full_name ? `Hi ${target.full_name},<br><br>` : ''}You've been invited to access the ${fromName} admin panel.
+                Click the button below to set your password. This link expires in 24 hours.
+              </p>
+              <a href="${inviteUrl}" style="display:inline-block;background:#CC0000;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:15px;margin-bottom:24px;">Set Your Password</a>
+              <p style="font-size:13px;color:#888;margin:0;">
+                If you weren't expecting this invitation, you can safely ignore this email.
+              </p>
+            </div>
+          `,
+        }),
+        { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+      );
+      inviteSent = true;
+    } catch (emailErr) {
+      await logError({ req, error: emailErr, source: 'POST /api/admin/team/:id/resend-invite (invite email)' });
+    }
+
+    res.json({ success: true, invite_sent: inviteSent });
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/admin/team/:id/resend-invite' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

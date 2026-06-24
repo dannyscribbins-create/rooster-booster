@@ -1175,6 +1175,19 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     }
   }
 
+  // TEAM MEMBER INVITE TOKENS — single-use, time-limited tokens for the invite-link
+  // flow. A new member is created with a locked password_hash; they set their real
+  // password by following this link. 24-hour expiry (longer than PIN reset — the
+  // invitee may not see the email immediately).
+  await pool.query(`CREATE TABLE IF NOT EXISTS team_member_invite_tokens (
+    id             SERIAL PRIMARY KEY,
+    team_member_id INTEGER NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+    token          TEXT NOT NULL UNIQUE,
+    created_at     TIMESTAMP DEFAULT NOW(),
+    expires_at     TIMESTAMP NOT NULL,
+    used_at        TIMESTAMP
+  )`);
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');

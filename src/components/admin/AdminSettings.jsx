@@ -8,6 +8,7 @@ import ReferralProgramSettings from './ReferralProgramSettings';
 import BankingSettings from './BankingSettings';
 import AdminSettingsNotifications from './AdminSettingsNotifications';
 import AdminSettingsExperience from './AdminSettingsExperience';
+import AdminTeamSettings from './AdminTeamSettings';
 
 const SETTINGS_NAV = [
   { id: 'company',       icon: 'ph-buildings',       label: 'Company Details'  },
@@ -242,7 +243,7 @@ const SETTINGS_PAGES = {
   referral:      <ReferralProgramSettings />,
   banking:       <BankingSettings />,
   accounts:      <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
-  team:          <ComingSoonCard icon="ph-users-three" label="Manage Team"      description="Add team members, manage recruitment links, and set permissions." />,
+  team:          <AdminTeamSettings />,
   crm:           <CRMSettings />,
   advanced:      <SystemSettings />,
 };
