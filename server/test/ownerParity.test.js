@@ -45,11 +45,11 @@ const PARITY_TABLE = [
   // handler body — skip HTTP, invoke the guard directly to avoid triggering a real backup.
   { group: 'advanced',         flag: 'advanced',         method: 'POST',  path: '/api/admin/backup/run',         mode: 'guard' },
   { group: 'activity',         flag: 'activity',         method: 'GET',   path: '/api/admin/activity',           mode: 'http'  },
-  // Synthetic routes — team and rep_assignment have no live routes until Phase 6.
-  // These entries hit /test/* handlers mounted below, proving the Owner short-circuit
-  // covers these flags before their real routes exist in production.
-  { group: 'team',             flag: 'team',             method: 'GET',   path: '/test/team',                    mode: 'http'  },
-  { group: 'team',             flag: 'team.manage',      method: 'GET',   path: '/test/team-manage',             mode: 'http'  },
+  // Phase 6: team routes are now live — replaced synthetic /test/* handlers with real endpoints.
+  // save-permissions PATCH is guard-level: write operation, avoid triggering real DB side effects
+  // beyond what the guard itself does (live DB read for session + team_member rows).
+  { group: 'team',             flag: 'team',             method: 'GET',   path: '/api/admin/team',               mode: 'http'  },
+  { group: 'team',             flag: 'team.manage',      method: 'POST',  path: '/api/admin/team/1/permissions',  mode: 'guard' },
   { group: 'rep_assignment',   flag: 'rep_assignment',   method: 'GET',   path: '/test/rep-assignment',          mode: 'http'  },
   // TODO: add billing to owner-parity coverage when billing routes land — genuinely future, no representative route yet
 ];
@@ -70,10 +70,8 @@ function buildOwnerParityApp() {
   app.use('/', require('../routes/admin/index'));
   app.use('/', require('../routes/stripe'));
 
-  // Synthetic routes — trivial 200 handlers behind real requirePermission guards.
-  // These prove the Owner short-circuit covers future flags before Phase 6 lands.
-  app.get('/test/team',           requirePermission('team'),           (_req, res) => res.json({ ok: true }));
-  app.get('/test/team-manage',    requirePermission('team.manage'),    (_req, res) => res.json({ ok: true }));
+  // Synthetic route — rep_assignment has no live route yet (Phase 6+).
+  // Proves Owner short-circuit covers this flag before real routes exist.
   app.get('/test/rep-assignment', requirePermission('rep_assignment'), (_req, res) => res.json({ ok: true }));
 
   return app;

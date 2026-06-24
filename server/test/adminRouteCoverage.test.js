@@ -82,7 +82,7 @@ function hasPermissionGuard(middlewareStack) {
 //                        routes are the ones this test coverage-checks.
 //   NON_ADMIN          — confirmed to register no /api/admin/* routes; not mirrored.
 const ADMIN_CONTRIBUTING_MODULES = new Set([
-  './server/routes/admin/index', // aggregates all 7 admin sub-routers
+  './server/routes/admin/index', // aggregates all 8 admin sub-routers (incl. team.js added Phase 6)
   './server/routes/stripe',      // 5 /api/admin/stripe/* routes (Phase 4B find)
 ]);
 

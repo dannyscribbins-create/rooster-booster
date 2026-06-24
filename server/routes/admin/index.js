@@ -39,6 +39,7 @@ router.use(require('./cashouts'));
 router.use(require('./referrers'));
 router.use(require('./metrics'));
 router.use(require('./notifications'));
+router.use(require('./team'));
 
 // ── ADMIN: AUTH ───────────────────────────────────────────────────────────────
 router.post('/api/admin/login', adminLoginLimiter, [

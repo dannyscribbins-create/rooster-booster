@@ -32,6 +32,11 @@ router.get('/api/admin/cashouts', requirePermission('cashouts'), async (req, res
     res.status(500).json({ error: err.message });
   }
 });
+// cashouts.manage is intentionally route-less and reserved (Decision A Option A).
+// Approve, deny, and mark-paid are unified under cashout_approve this phase.
+// cashouts.manage is reserved for future bulk-management actions (bulk deny, export, etc.)
+// that are distinct from the per-cashout ACH approval flow. Do not route to it until
+// that bulk-management feature is scoped and built.
 router.patch('/api/admin/cashouts/:id', requirePermission('cashout_approve'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
