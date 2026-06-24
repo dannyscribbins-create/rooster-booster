@@ -376,11 +376,32 @@ router.post('/api/admin/retention-settings', requirePermission('experience.manag
 });
 
 // ── ADMIN: PRIZE SETTINGS ─────────────────────────────────────────────────────
-// Finance-gated write endpoint for quarterly/yearly prize amounts.
-// GET prize data is currently available at GET /api/admin/retention-settings (experience-gated).
-// TODO (Phase 6): add GET /api/admin/prize-settings (finance_settings-gated) once the
-// Finance admin preset (Section 8.1) is built — that preset has finance_settings but no
-// experience grant, so a dedicated read endpoint is required for the prize-editing UI.
+// Separate gate from retention-settings: Finance preset has finance_settings but no
+// experience grant, so prize data needs its own read endpoint (Decision A §6.3).
+router.get('/api/admin/prize-settings', requirePermission('finance_settings'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
+  try {
+    const result = await pool.query(
+      `SELECT quarterly_prizes, yearly_prizes
+       FROM engagement_settings WHERE contractor_id = $1`,
+      [contractorId]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ quarterly_prizes: [], yearly_prizes: [] });
+    }
+    const row = result.rows[0];
+    res.json({
+      quarterly_prizes: row.quarterly_prizes,
+      yearly_prizes: row.yearly_prizes,
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/prize-settings' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/api/admin/prize-settings', requirePermission('finance_settings.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;

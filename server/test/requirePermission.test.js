@@ -356,6 +356,36 @@ describe('requirePermission middleware', () => {
     assert.equal(res.status, 403, 'prize-settings POST enforces finance_settings.manage permission');
   });
 
+  // ── TEST 17b: GET /api/admin/prize-settings enforces 'finance_settings' flag ──────────
+  it('GET /api/admin/prize-settings: wired to requirePermission(finance_settings) — admin without flag → 403', async () => {
+    await setPermissions(adminMemberId, {}); // no finance_settings flag
+    const token = await makeAdminSession(adminMemberId);
+
+    const res = await httpGet(port, '/api/admin/prize-settings', token);
+    assert.equal(res.status, 403, 'prize-settings GET enforces finance_settings permission');
+  });
+
+  // ── TEST 17c: gate split — experience-only vs finance_settings-only ──────────────────
+  // Proves the two endpoints are independently gated: finance_settings can read prize data
+  // but not retention-settings, and experience can read retention-settings but not prize data.
+  it('prize-settings / retention-settings gate split: each flag opens only its own endpoint', async () => {
+    // experience-only → blocked from prize-settings, allowed through retention-settings
+    await setPermissions(adminMemberId, { experience: true });
+    const expToken = await makeAdminSession(adminMemberId);
+    const expPrize = await httpGet(port, '/api/admin/prize-settings', expToken);
+    assert.equal(expPrize.status, 403, 'experience-only session must be blocked from prize-settings');
+    const expRetention = await httpGet(port, '/api/admin/retention-settings', expToken);
+    assert.notEqual(expRetention.status, 403, 'experience-only session must pass retention-settings guard');
+
+    // finance_settings-only → allowed through prize-settings, blocked from retention-settings
+    await setPermissions(adminMemberId, { finance_settings: true });
+    const finToken = await makeAdminSession(adminMemberId);
+    const finPrize = await httpGet(port, '/api/admin/prize-settings', finToken);
+    assert.notEqual(finPrize.status, 403, 'finance_settings-only session must pass prize-settings guard');
+    const finRetention = await httpGet(port, '/api/admin/retention-settings', finToken);
+    assert.equal(finRetention.status, 403, 'finance_settings-only session must be blocked from retention-settings');
+  });
+
   // ── TEST 18: GET /api/admin/stripe/connection-status enforces 'finance_settings' flag ──
   it('GET /api/admin/stripe/connection-status: wired to requirePermission(finance_settings) — admin without flag → 403', async () => {
     await setPermissions(adminMemberId, {}); // no finance_settings flag
