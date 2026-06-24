@@ -5,6 +5,7 @@ const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 const fs = require('fs');
+const { buildMirrorApp, collectAdminRoutes } = require('./helpers/adminRouterIntrospection');
 
 // ── PUBLIC-ROUTE ALLOWLIST ────────────────────────────────────────────────────
 // Exhaustive list of /api/admin/* routes that intentionally carry NO
@@ -53,58 +54,7 @@ function hasPermissionGuard(middlewareStack) {
   );
 }
 
-// ── ROUTER WALK ───────────────────────────────────────────────────────────────
-// Recursively walks an Express layer stack and collects every terminal Route
-// whose path starts with '/api/admin/'. Returns one object per method per route.
-//
-// Express nesting for this codebase (confirmed Phase 0):
-//   Level 1 — app._router.stack
-//   Level 2 — sub-router layers from app.use('/', adminRouter) and
-//              app.use('/', stripeRouter)
-//   Level 3 — sub-sub-router layers from adminRouter.use(campaignsRouter) etc.
-//
-// A terminal Route layer has layer.route set. A Router layer has
-// layer.handle with a .stack array — recurse into it.
-function collectAdminRoutes(layerStack) {
-  const routes = [];
-  for (const layer of layerStack || []) {
-    if (layer.route) {
-      const routePath = layer.route.path;
-      if (typeof routePath === 'string' && routePath.startsWith('/api/admin/')) {
-        for (const method of Object.keys(layer.route.methods)) {
-          routes.push({
-            method: method.toUpperCase(),
-            path: routePath,
-            middlewareStack: layer.route.stack,
-          });
-        }
-      }
-    } else if (layer.handle && Array.isArray(layer.handle.stack)) {
-      routes.push(...collectAdminRoutes(layer.handle.stack));
-    }
-  }
-  return routes;
-}
-
-// ── MIRROR APP ────────────────────────────────────────────────────────────────
-// Mirrors only the app.use() calls from server.js that contribute /api/admin/*
-// routes. Does NOT call app.listen() — we only need app._router.stack.
-//
-// Called inside before() so that route-module require()s fire AFTER initTestDb().
-// This matters because contacts.js fires a pg_trgm query at module load time and
-// needs the test schema to already exist.
-//
-// These are the ONLY two files in server.js that register /api/admin/* paths:
-//   - server/routes/admin/index   (aggregates 7 admin sub-routers via router.use())
-//   - server/routes/stripe        (5 /api/admin/stripe/* routes; Phase 4B gap)
-function buildMirrorApp() {
-  const express = require('express');
-  const app = express();
-  app.use(express.json({ limit: '5mb' }));
-  app.use('/', require('../routes/admin/index'));
-  app.use('/', require('../routes/stripe'));
-  return app;
-}
+// collectAdminRoutes() and buildMirrorApp() imported from shared helper above.
 
 // ── DRIFT GUARD ───────────────────────────────────────────────────────────────
 // WHY THIS EXISTS:
