@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import useAdminPermissions, { AdminPermissionsContext } from '../../hooks/useAdminPermissions';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import { AdminShell, AdminInput } from './AdminComponents';
 import AdminDashboard from './AdminDashboard';
@@ -135,6 +136,8 @@ export default function AdminPanel() {
   const [inboxUnreadCount, setInboxUnreadCount]   = useState(0);
   const [notificationsUnread, setNotificationsUnread] = useState(0);
 
+  const permState = useAdminPermissions(authed);
+
   useAdminFonts();
 
   useEffect(() => {
@@ -206,7 +209,7 @@ export default function AdminPanel() {
   }
 
   return (
-    <>
+    <AdminPermissionsContext.Provider value={permState}>
       <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread}>
         {pages[page]}
       </AdminShell>
@@ -223,6 +226,6 @@ export default function AdminPanel() {
           setPage(navPage);
         }}
       />
-    </>
+    </AdminPermissionsContext.Provider>
   );
 }
