@@ -1141,6 +1141,40 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     }
   }
 
+  // ── PHASE 6: TEAM MEMBERS EXTENSIONS + TITLES ────────────────────────────────
+  // titles must be created before the title_id FK is added to team_members
+  await pool.query(`CREATE TABLE IF NOT EXISTS titles (
+    id            SERIAL PRIMARY KEY,
+    contractor_id TEXT NOT NULL REFERENCES contractors(id),
+    name          TEXT NOT NULL,
+    UNIQUE(contractor_id, name)
+  )`);
+  await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS full_name TEXT`);
+  await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS is_field_rep BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS is_attributable BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS rep_revenue_visibility BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS jobber_user_id TEXT`);
+  await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS title_id INTEGER REFERENCES titles(id)`);
+
+  // Backfill full_name on the seeded Owner row. WHERE full_name IS NULL is idempotent.
+  await pool.query(`UPDATE team_members SET full_name = 'Danny Scribbins' WHERE id = 1 AND full_name IS NULL`);
+
+  // Seed preset titles for every existing contractor. Reads contractor_id dynamically —
+  // never hardcoded — so this works correctly after any tenant rename.
+  // Preset names mirror permission-preset labels for UX convenience ONLY.
+  // CRITICAL DECOUPLING: titles are display labels; they confer zero permissions.
+  const PRESET_TITLES = ['Full Admin', 'Marketing Admin', 'Finance Admin', 'Office Manager', 'Internal Team', 'Field Rep'];
+  const { rows: contractorRowsForTitles } = await pool.query('SELECT id FROM contractors');
+  for (const { id: contractorIdForTitles } of contractorRowsForTitles) {
+    for (const titleName of PRESET_TITLES) {
+      await pool.query(
+        `INSERT INTO titles (contractor_id, name) VALUES ($1, $2) ON CONFLICT (contractor_id, name) DO NOTHING`,
+        [contractorIdForTitles, titleName]
+      );
+    }
+  }
+
   const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
   if (result.rows.length > 0) {
     console.log('Token loaded from database');
