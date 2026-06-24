@@ -23,7 +23,7 @@ function requirePermission(flag) {
     throw new Error(`requirePermission: unknown flag '${flag}'. Check server/permissions/registry.js.`);
   }
 
-  return async function permissionMiddleware(req, res, next) {
+  async function permissionMiddleware(req, res, next) {
     const token = req.headers['authorization']?.replace('Bearer ', '');
     if (!token) {
       return res.status(401).json({ error: 'Not authorized' });
@@ -100,7 +100,9 @@ function requirePermission(flag) {
       await logError({ req, error: err, source: `requirePermission('${flag}')` });
       return res.status(500).json({ error: 'Internal server error' });
     }
-  };
+  }
+  permissionMiddleware.permission = flag;
+  return permissionMiddleware;
 }
 
 module.exports = { requirePermission };
