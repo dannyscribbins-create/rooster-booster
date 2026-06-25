@@ -3,8 +3,10 @@ import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, StatCard, PipelineBar } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
+import { usePermissions } from '../../hooks/useAdminPermissions';
 
 export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats, onSettingsClick, onFlaggedBannerClick }) {
+  const { full_name } = usePermissions();
   const [stats, setStats]               = useState(null);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
@@ -52,10 +54,12 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const firstName = full_name ? full_name.trim().split(/\s+/)[0] : null;
+  const greetingTitle = firstName ? `${greeting}, ${firstName}.` : `${greeting}.`;
 
   return (
     <>
-      <AdminPageHeader title={`${greeting}, Danny.`} subtitle="Rooster Booster · Accent Roofing" />
+      <AdminPageHeader title={greetingTitle} subtitle="Rooster Booster · Accent Roofing" />
       {flaggedUnresolved > 0 && (
         <div
           onClick={onFlaggedBannerClick}

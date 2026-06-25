@@ -9,8 +9,10 @@ import BankingSettings from './BankingSettings';
 import AdminSettingsNotifications from './AdminSettingsNotifications';
 import AdminSettingsExperience from './AdminSettingsExperience';
 import AdminTeamSettings from './AdminTeamSettings';
+import AdminSettingsMyProfile from './AdminSettingsMyProfile';
 
 const SETTINGS_NAV = [
+  { id: 'my-profile',    icon: 'ph-user-circle',     label: 'My Profile'       },
   { id: 'company',       icon: 'ph-buildings',       label: 'Company Details'  },
   { id: 'branding',      icon: 'ph-paint-brush',     label: 'Branding Profile' },
   { id: 'notifications', icon: 'ph-bell',             label: 'Notifications'    },
@@ -43,6 +45,7 @@ function ComingSoonCard({ icon, label, description }) {
 }
 
 const SETTINGS_TITLES = {
+  'my-profile':  'My Profile',
   company:       'Company Details',
   branding:      'Branding Profile',
   notifications: 'Notifications',
@@ -236,6 +239,7 @@ function SystemSettings() {
 }
 
 const SETTINGS_PAGES = {
+  'my-profile':  <AdminSettingsMyProfile />,
   company:       <CompanyDetailsSettings />,
   branding:      <BrandingProfileSettings />,
   notifications: <AdminSettingsNotifications />,

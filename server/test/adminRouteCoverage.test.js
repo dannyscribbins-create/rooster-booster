@@ -49,6 +49,13 @@ const PUBLIC_ADMIN_ROUTES = [
     // must read the title list to populate their self-select dropdown. Same rationale as
     // GET /api/admin/me — a permission gate here would block members from choosing their own title.
   },
+  {
+    method: 'PATCH',
+    path: '/api/admin/me/title',
+    // Session-authed but intentionally ungated — any member (incl. zero-permission General)
+    // must be able to self-select their own title; the cross-tenant guard is enforced
+    // inside the handler (titles ownership check), not by a permission gate.
+  },
 ];
 
 // Fast-lookup Set — 'METHOD /path'

@@ -117,6 +117,55 @@ router.get('/api/admin/me', async (req, res) => {
   }
 });
 
+// ── ADMIN: ME — TITLE SELF-SELECT ─────────────────────────────────────────────
+// Session-only, NO requirePermission. Any member — including a zero-permission
+// General — must be able to set their own title. Cross-tenant guard is enforced
+// inside the handler via the titles ownership check, not by a permission gate.
+router.patch('/api/admin/me/title', async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { teamMemberId, contractorId } = adminSession;
+  const { title_id } = req.body;
+
+  // title_id must be null or a positive integer
+  if (title_id !== null && (!Number.isInteger(title_id) || title_id < 1)) {
+    return res.status(400).json({ error: 'invalid_title_id' });
+  }
+
+  try {
+    if (title_id !== null) {
+      // Guard: title must belong to the session contractor
+      const titleCheck = await pool.query(
+        `SELECT id FROM titles WHERE id = $1 AND contractor_id = $2`,
+        [title_id, contractorId]
+      );
+      if (!titleCheck.rows.length) {
+        return res.status(403).json({ error: 'invalid_title' });
+      }
+    }
+
+    await pool.query(
+      `UPDATE team_members SET title_id = $1 WHERE id = $2 AND contractor_id = $3`,
+      [title_id, teamMemberId, contractorId]
+    );
+
+    // Return the resolved title name alongside the id for convenience
+    let title_name = null;
+    if (title_id !== null) {
+      const nameRow = await pool.query(
+        `SELECT name FROM titles WHERE id = $1`,
+        [title_id]
+      );
+      title_name = nameRow.rows[0]?.name ?? null;
+    }
+
+    res.json({ title_id, title_name });
+  } catch (err) {
+    await logError({ req, error: err, source: 'PATCH /api/admin/me/title' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── ADMIN: ABOUT ──────────────────────────────────────────────────────────────
 router.get('/api/admin/about', requirePermission('branding'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
