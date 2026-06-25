@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import PermissionGate from './PermissionGate';
@@ -402,6 +402,13 @@ function AddMemberModal({ creatorTier, onClose, onSuccess }) {
 
 // ── MEMBER EDIT DRAWER (Sub-piece 2) ─────────────────────────────────────────
 
+function permsEqual(a, b) {
+  const aKeys = Object.keys(a).filter(k => a[k]);
+  const bKeys = Object.keys(b).filter(k => b[k]);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(k => !!b[k]);
+}
+
 function ToggleSwitch({ checked, onChange, disabled }) {
   return (
     <button
@@ -434,17 +441,44 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
   const [collapsed, setCollapsed]       = useState({ forward: true });
   const [saving, setSaving]             = useState(false);
   const [saveErr, setSaveErr]           = useState(null);
+  const [saveSuccess, setSaveSuccess]   = useState(false);
+  const successTimerRef                  = useRef(null);
+  // Tracks last-saved state so isDirty stays correct across multiple saves
+  const baselineRef                      = useRef({
+    name:  member.full_name || '',
+    tier:  member.tier,
+    perms: { ...(member.permissions || {}) },
+  });
 
   // Non-owners cannot edit admin-tier members — read-only view only
   const readOnly      = myTier !== 'owner' && member.tier === 'admin';
   // Only Owners can change tier, and only when the target is not already an Owner
   const canChangeTier = myTier === 'owner' && member.tier !== 'owner';
 
+  function clearSuccess() {
+    setSaveSuccess(false);
+    if (successTimerRef.current) {
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+  }
+
+  const isDirty =
+    localName !== baselineRef.current.name ||
+    localTier !== baselineRef.current.tier ||
+    !permsEqual(workingPerms, baselineRef.current.perms);
+
+  useEffect(() => () => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function toggleGroup(key) {
     setCollapsed(c => ({ ...c, [key]: !c[key] }));
   }
 
   function toggleFlag(flag, val) {
+    clearSuccess();
     setWorkingPerms(p => {
       const next = { ...p, [flag]: val };
       if (!val) delete next[flag];
@@ -453,6 +487,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
   }
 
   function applyPreset(presetId) {
+    clearSuccess();
     setPresetSel(presetId);
     if (!presetId) return;
     const p = PRESETS.find(x => x.id === presetId);
@@ -464,12 +499,12 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
     setSaveErr(null);
     const token = sessionStorage.getItem('rb_admin_token');
     try {
-      // Step 1: PATCH identity only when something actually changed
-      const identityChanged = localName !== (member.full_name || '') || localTier !== member.tier;
+      // Step 1: PATCH identity only when something actually changed (compare to last-saved baseline, not stale props)
+      const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier;
       if (identityChanged) {
         const body = {};
-        if (localName !== (member.full_name || '')) body.full_name = localName;
-        if (localTier !== member.tier) body.tier = localTier;
+        if (localName !== baselineRef.current.name) body.full_name = localName;
+        if (localTier !== baselineRef.current.tier) body.tier = localTier;
         const r = await fetch(`${BACKEND_URL}/api/admin/team/${member.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -494,8 +529,12 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
         setSaving(false);
         return;
       }
+      baselineRef.current = { name: localName, tier: localTier, perms: { ...workingPerms } };
+      setSaving(false);
+      setSaveSuccess(true);
       onSaved();
-      onClose();
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSaveSuccess(false), 3000);
     } catch {
       setSaveErr('Network error. Please try again.');
       setSaving(false);
@@ -579,7 +618,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
                 {readOnly ? (
                   <div style={{ ...inputStyle, background: AD.bgSurface, color: AD.textSecondary }}>{localName || '—'}</div>
                 ) : (
-                  <input type="text" value={localName} onChange={e => setLocalName(e.target.value)} placeholder="Full name" style={inputStyle} />
+                  <input type="text" value={localName} onChange={e => { clearSuccess(); setLocalName(e.target.value); }} placeholder="Full name" style={inputStyle} />
                 )}
               </div>
               <div>
@@ -587,7 +626,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
                 {member.tier === 'owner' ? (
                   <div style={{ ...inputStyle, background: AD.bgSurface, color: '#fbbf24' }}>Owner</div>
                 ) : canChangeTier ? (
-                  <select value={localTier} onChange={e => { setLocalTier(e.target.value); setPresetSel(''); }} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <select value={localTier} onChange={e => { clearSuccess(); setLocalTier(e.target.value); setPresetSel(''); }} style={{ ...inputStyle, cursor: 'pointer' }}>
                     <option value="admin">Admin</option>
                     <option value="general">General</option>
                   </select>
@@ -779,6 +818,16 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
               {saveErr}
             </div>
           )}
+          {saveSuccess && (
+            <div style={{
+              padding: '8px 12px', borderRadius: AD.radiusMd, marginBottom: 10,
+              background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)',
+              color: '#4ade80', fontSize: 12, display: 'flex', alignItems: 'center', gap: 7,
+            }}>
+              <i className="ph ph-check-circle" style={{ fontSize: 14, flexShrink: 0 }} />
+              Changes saved
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <button
               onClick={() => { if (!saving) onClose(); }}
@@ -793,13 +842,13 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
             {!readOnly && (
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || !isDirty}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 7,
                   padding: '8px 22px', borderRadius: AD.radiusMd,
-                  background: saving ? AD.bgCardTint : AD.blueText, border: 'none',
-                  color: saving ? AD.textSecondary : '#fff',
-                  cursor: saving ? 'not-allowed' : 'pointer',
+                  background: (saving || !isDirty) ? AD.bgCardTint : AD.blueText, border: 'none',
+                  color: (saving || !isDirty) ? AD.textSecondary : '#fff',
+                  cursor: (saving || !isDirty) ? 'not-allowed' : 'pointer',
                   fontSize: 13, fontWeight: 500, fontFamily: AD.fontSans, transition: 'all 0.15s',
                 }}
               >
