@@ -500,6 +500,137 @@ router.post('/api/admin/team/:id/resend-invite', requirePermission('team.manage'
   }
 });
 
+// ── TITLES CRUD ──────────────────────────────────────────────────────────────
+// Titles are organizational labels only — they confer zero permissions.
+// Routes use the /api/admin/titles prefix, which does not shadow any existing
+// /api/admin/team/* param routes.
+
+// ── GET /api/admin/titles ─────────────────────────────────────────────────────
+// Session-only, NO requirePermission: any authenticated member — including a
+// zero-permission General member — must read the title list to populate their
+// self-select dropdown. Same rationale as GET /api/admin/me.
+router.get('/api/admin/titles', async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
+  try {
+    const result = await pool.query(
+      `SELECT id, name FROM titles WHERE contractor_id = $1 ORDER BY name ASC`,
+      [contractorId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/titles' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /api/admin/titles ────────────────────────────────────────────────────
+router.post('/api/admin/titles', requirePermission('team.manage'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
+  const name = (req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Title name is required' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO titles (contractor_id, name) VALUES ($1, $2) RETURNING id, name`,
+      [contractorId, name]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'duplicate_title' });
+    await logError({ req, error: err, source: 'POST /api/admin/titles' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PATCH /api/admin/titles/:id ───────────────────────────────────────────────
+router.patch('/api/admin/titles/:id', requirePermission('team.manage'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
+  const titleId = parseInt(req.params.id, 10);
+  const name = (req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Title name is required' });
+  try {
+    const result = await pool.query(
+      `UPDATE titles SET name = $1 WHERE id = $2 AND contractor_id = $3 RETURNING id, name`,
+      [name, titleId, contractorId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Title not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'duplicate_title' });
+    await logError({ req, error: err, source: 'PATCH /api/admin/titles/:id' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── DELETE /api/admin/titles/:id ──────────────────────────────────────────────
+// Without ?confirm=true:
+//   0 members holding the title → delete immediately.
+//   ≥1 member holding → 409 { error: 'title_in_use', members_affected: N }.
+// With ?confirm=true:
+//   Transactionally SET NULL on all holders, then delete.
+router.delete('/api/admin/titles/:id', requirePermission('team.manage'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
+  const titleId    = parseInt(req.params.id, 10);
+  const withConfirm = req.query.confirm === 'true';
+
+  const client = await pool.connect();
+  try {
+    const titleCheck = await client.query(
+      `SELECT id FROM titles WHERE id = $1 AND contractor_id = $2`,
+      [titleId, contractorId]
+    );
+    if (!titleCheck.rows.length) return res.status(404).json({ error: 'Title not found' });
+
+    const countResult = await client.query(
+      `SELECT COUNT(*) AS count FROM team_members WHERE title_id = $1 AND contractor_id = $2`,
+      [titleId, contractorId]
+    );
+    const membersHolding = parseInt(countResult.rows[0].count, 10);
+
+    if (!withConfirm) {
+      if (membersHolding > 0) {
+        return res.status(409).json({ error: 'title_in_use', members_affected: membersHolding });
+      }
+      await client.query(
+        `DELETE FROM titles WHERE id = $1 AND contractor_id = $2`,
+        [titleId, contractorId]
+      );
+      return res.json({ deleted: true, members_cleared: 0 });
+    }
+
+    // confirm=true: atomically clear all holders, then delete
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        `UPDATE team_members SET title_id = NULL WHERE title_id = $1 AND contractor_id = $2`,
+        [titleId, contractorId]
+      );
+      await client.query(
+        `DELETE FROM titles WHERE id = $1 AND contractor_id = $2`,
+        [titleId, contractorId]
+      );
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    }
+
+    res.json({ deleted: true, members_cleared: membersHolding });
+  } catch (err) {
+    await logError({ req, error: err, source: 'DELETE /api/admin/titles/:id' });
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
 // ── GET /api/admin/jobber-users ───────────────────────────────────────────────
 // Proxies the Jobber user list for the Jobber User Mapping card in Team Settings.
 // Source data for the mapping UI — Owner sets explicit mappings (source of truth).

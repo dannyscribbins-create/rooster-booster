@@ -42,6 +42,13 @@ const PUBLIC_ADMIN_ROUTES = [
     path: '/api/admin/team/accept-invite',
     // public — invitee has no session yet; the single-use, time-limited token IS the authentication.
   },
+  {
+    method: 'GET',
+    path: '/api/admin/titles',
+    // Session-authed but intentionally ungated: any member (including a zero-permission General)
+    // must read the title list to populate their self-select dropdown. Same rationale as
+    // GET /api/admin/me — a permission gate here would block members from choosing their own title.
+  },
 ];
 
 // Fast-lookup Set — 'METHOD /path'

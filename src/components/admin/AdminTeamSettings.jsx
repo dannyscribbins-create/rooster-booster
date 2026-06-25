@@ -433,9 +433,10 @@ function ToggleSwitch({ checked, onChange, disabled }) {
   );
 }
 
-function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
+function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
   const [localName, setLocalName]       = useState(member.full_name || '');
   const [localTier, setLocalTier]       = useState(member.tier);
+  const [localTitleId, setLocalTitleId] = useState(member.title_id ?? null);
   const [workingPerms, setWorkingPerms] = useState({ ...(member.permissions || {}) });
   const [presetSel, setPresetSel]       = useState('');
   const [collapsed, setCollapsed]       = useState({ forward: true });
@@ -445,9 +446,10 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
   const successTimerRef                  = useRef(null);
   // Tracks last-saved state so isDirty stays correct across multiple saves
   const baselineRef                      = useRef({
-    name:  member.full_name || '',
-    tier:  member.tier,
-    perms: { ...(member.permissions || {}) },
+    name:    member.full_name || '',
+    tier:    member.tier,
+    titleId: member.title_id ?? null,
+    perms:   { ...(member.permissions || {}) },
   });
 
   // Non-owners cannot edit admin-tier members — read-only view only
@@ -466,6 +468,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
   const isDirty =
     localName !== baselineRef.current.name ||
     localTier !== baselineRef.current.tier ||
+    localTitleId !== baselineRef.current.titleId ||
     !permsEqual(workingPerms, baselineRef.current.perms);
 
   useEffect(() => () => {
@@ -500,11 +503,12 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
     const token = sessionStorage.getItem('rb_admin_token');
     try {
       // Step 1: PATCH identity only when something actually changed (compare to last-saved baseline, not stale props)
-      const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier;
+      const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier || localTitleId !== baselineRef.current.titleId;
       if (identityChanged) {
         const body = {};
-        if (localName !== baselineRef.current.name) body.full_name = localName;
-        if (localTier !== baselineRef.current.tier) body.tier = localTier;
+        if (localName !== baselineRef.current.name)       body.full_name = localName;
+        if (localTier !== baselineRef.current.tier)       body.tier      = localTier;
+        if (localTitleId !== baselineRef.current.titleId) body.title_id  = localTitleId;
         const r = await fetch(`${BACKEND_URL}/api/admin/team/${member.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -529,7 +533,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
         setSaving(false);
         return;
       }
-      baselineRef.current = { name: localName, tier: localTier, perms: { ...workingPerms } };
+      baselineRef.current = { name: localName, tier: localTier, titleId: localTitleId, perms: { ...workingPerms } };
       setSaving(false);
       setSaveSuccess(true);
       onSaved();
@@ -634,15 +638,24 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
                   <div style={{ ...inputStyle, background: AD.bgSurface, color: AD.textSecondary, textTransform: 'capitalize' }}>{localTier}</div>
                 )}
               </div>
-              {/* Title selector — stub until Sub-piece 3 wires the titles CRUD endpoint */}
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, marginBottom: 4 }}>
-                  Title
-                  <span style={{ marginLeft: 6, fontSize: 10, color: AD.textTertiary, fontStyle: 'italic' }}>(Sub-piece 3)</span>
-                </label>
-                <div style={{ ...inputStyle, background: AD.bgSurface, color: AD.textTertiary, cursor: 'not-allowed', userSelect: 'none' }}>
-                  {member.title_name || '—'}
-                </div>
+                <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, marginBottom: 4 }}>Title</label>
+                {readOnly ? (
+                  <div style={{ ...inputStyle, background: AD.bgSurface, color: AD.textSecondary }}>
+                    {(titles || []).find(t => t.id === localTitleId)?.name || '—'}
+                  </div>
+                ) : (
+                  <select
+                    value={localTitleId ?? ''}
+                    onChange={e => { clearSuccess(); setLocalTitleId(e.target.value ? parseInt(e.target.value, 10) : null); }}
+                    style={{ ...inputStyle, cursor: 'pointer', width: '100%' }}
+                  >
+                    <option value="">— None —</option>
+                    {(titles || []).map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
           </div>
@@ -866,6 +879,321 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved }) {
   );
 }
 
+// ── MANAGE TITLES SECTION ─────────────────────────────────────────────────────
+// Collapsible curation panel. Titles are display labels only — no permissions.
+function ManageTitlesSection({ titles, onRefresh }) {
+  const [open, setOpen]                   = useState(false);
+  const [newName, setNewName]             = useState('');
+  const [addErr, setAddErr]               = useState(null);
+  const [adding, setAdding]               = useState(false);
+  const [editingId, setEditingId]         = useState(null);
+  const [editName, setEditName]           = useState('');
+  const [editErr, setEditErr]             = useState(null);
+  const [savingId, setSavingId]           = useState(null);
+  const [deletingId, setDeletingId]       = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, name, members_affected }
+  const [deleteErr, setDeleteErr]         = useState(null);
+
+  async function handleAdd() {
+    const name = newName.trim();
+    if (!name) { setAddErr('Title name is required.'); return; }
+    setAdding(true);
+    setAddErr(null);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/titles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        body: JSON.stringify({ name }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        setAddErr(d.error === 'duplicate_title' ? 'A title with that name already exists.' : (d.error || 'Failed to add title.'));
+        return;
+      }
+      setNewName('');
+      onRefresh();
+    } catch {
+      setAddErr('Network error. Please try again.');
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  function startEdit(title) {
+    setEditingId(title.id);
+    setEditName(title.name);
+    setEditErr(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName('');
+    setEditErr(null);
+  }
+
+  async function handleRename(id) {
+    const name = editName.trim();
+    if (!name) { setEditErr('Title name is required.'); return; }
+    setSavingId(id);
+    setEditErr(null);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/titles/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        body: JSON.stringify({ name }),
+      });
+      const d = await r.json();
+      if (!r.ok) {
+        setEditErr(d.error === 'duplicate_title' ? 'A title with that name already exists.' : (d.error || 'Failed to rename title.'));
+        return;
+      }
+      setEditingId(null);
+      onRefresh();
+    } catch {
+      setEditErr('Network error. Please try again.');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function handleDelete(id, name, withConfirm) {
+    setDeletingId(id);
+    setDeleteErr(null);
+    try {
+      const url = withConfirm
+        ? `${BACKEND_URL}/api/admin/titles/${id}?confirm=true`
+        : `${BACKEND_URL}/api/admin/titles/${id}`;
+      const r = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+      });
+      if (r.status === 409) {
+        const d = await r.json();
+        if (d.error === 'title_in_use') {
+          setDeleteConfirm({ id, name, members_affected: d.members_affected });
+          return;
+        }
+        setDeleteErr(d.error || 'Failed to delete title.');
+        return;
+      }
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setDeleteErr(d.error || 'Failed to delete title.');
+        return;
+      }
+      setDeleteConfirm(null);
+      onRefresh();
+    } catch {
+      setDeleteErr('Network error. Please try again.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  const inputStyle = {
+    padding: '7px 10px', borderRadius: AD.radiusMd, border: `1px solid ${AD.border}`,
+    background: AD.bgCard, color: AD.textPrimary,
+    fontSize: 13, fontFamily: AD.fontSans, outline: 'none',
+  };
+
+  return (
+    <>
+      <div style={{ marginBottom: 16, background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, overflow: 'hidden' }}>
+        {/* Collapsible header */}
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+            padding: '12px 16px', background: 'transparent', border: 'none',
+            cursor: 'pointer', textAlign: 'left',
+          }}
+        >
+          <i className={`ph ${open ? 'ph-caret-down' : 'ph-caret-right'}`} style={{ fontSize: 13, color: AD.textTertiary, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans, flex: 1 }}>Manage Titles</span>
+          <span style={{ fontSize: 11, color: AD.textTertiary }}>
+            {titles.length} title{titles.length !== 1 ? 's' : ''}
+          </span>
+        </button>
+
+        {open && (
+          <div style={{ borderTop: `1px solid ${AD.border}`, padding: '14px 16px' }}>
+            <div style={{ fontSize: 12, color: AD.textTertiary, marginBottom: 14, lineHeight: 1.6 }}>
+              Titles are organizational labels only and confer no permissions. Each member can select their own title from this list.
+            </div>
+
+            {/* Title list */}
+            {titles.length === 0 ? (
+              <div style={{ fontSize: 13, color: AD.textTertiary, marginBottom: 12 }}>No titles yet. Add one below.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+                {titles.map(t => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {editingId === t.id ? (
+                      <>
+                        <input
+                          value={editName}
+                          onChange={e => { setEditName(e.target.value); setEditErr(null); }}
+                          onKeyDown={e => { if (e.key === 'Enter') handleRename(t.id); if (e.key === 'Escape') cancelEdit(); }}
+                          style={{ ...inputStyle, flex: 1, boxSizing: 'border-box' }}
+                        />
+                        <button
+                          onClick={() => handleRename(t.id)}
+                          disabled={savingId === t.id}
+                          style={{
+                            padding: '6px 12px', borderRadius: AD.radiusMd, border: 'none',
+                            background: AD.blueText, color: '#fff',
+                            fontSize: 12, fontFamily: AD.fontSans, cursor: savingId === t.id ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {savingId === t.id ? '…' : 'Save'}
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          style={{
+                            padding: '6px 12px', borderRadius: AD.radiusMd, border: `1px solid ${AD.border}`,
+                            background: 'transparent', color: AD.textSecondary,
+                            fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        {editErr && <span style={{ fontSize: 11, color: AD.red2Text }}>{editErr}</span>}
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ flex: 1, fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans }}>{t.name}</span>
+                        <PermissionGate flag="team.manage" mode="element" tooltip="Requires team management permission.">
+                          <button
+                            onClick={() => startEdit(t)}
+                            title="Rename"
+                            style={{
+                              width: 28, height: 28, borderRadius: AD.radiusMd, border: `1px solid ${AD.border}`,
+                              background: 'transparent', color: AD.textSecondary, cursor: 'pointer',
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            }}
+                          >
+                            <i className="ph ph-pencil-simple" style={{ fontSize: 13 }} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(t.id, t.name, false)}
+                            disabled={deletingId === t.id}
+                            title="Delete"
+                            style={{
+                              width: 28, height: 28, borderRadius: AD.radiusMd, border: `1px solid ${AD.border}`,
+                              background: 'transparent', color: AD.red2Text,
+                              cursor: deletingId === t.id ? 'not-allowed' : 'pointer',
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            }}
+                          >
+                            {deletingId === t.id
+                              ? <i className="ph ph-circle-notch" style={{ fontSize: 13, animation: 'spin 0.8s linear infinite' }} />
+                              : <i className="ph ph-trash" style={{ fontSize: 13 }} />
+                            }
+                          </button>
+                        </PermissionGate>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {deleteErr && (
+              <div style={{ fontSize: 12, color: AD.red2Text, marginBottom: 10 }}>{deleteErr}</div>
+            )}
+
+            {/* Add new title */}
+            <PermissionGate flag="team.manage" mode="element" tooltip="Requires team management permission.">
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <input
+                    value={newName}
+                    onChange={e => { setNewName(e.target.value); setAddErr(null); }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+                    placeholder="New title name…"
+                    style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                  />
+                  {addErr && <div style={{ fontSize: 11, color: AD.red2Text, marginTop: 4 }}>{addErr}</div>}
+                </div>
+                <button
+                  onClick={handleAdd}
+                  disabled={adding}
+                  style={{
+                    padding: '7px 14px', borderRadius: AD.radiusMd, border: 'none',
+                    background: adding ? AD.bgCardTint : AD.blueText,
+                    color: adding ? AD.textSecondary : '#fff',
+                    fontSize: 13, fontFamily: AD.fontSans, cursor: adding ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', flexShrink: 0,
+                  }}
+                >
+                  {adding
+                    ? <><i className="ph ph-circle-notch" style={{ fontSize: 13, animation: 'spin 0.8s linear infinite' }} />Adding…</>
+                    : <><i className="ph ph-plus" style={{ fontSize: 13 }} />Add Title</>
+                  }
+                </button>
+              </div>
+            </PermissionGate>
+          </div>
+        )}
+      </div>
+
+      {/* Delete confirm dialog */}
+      {deleteConfirm && (
+        <div
+          onClick={e => { if (e.target === e.currentTarget) setDeleteConfirm(null); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+        >
+          <div style={{
+            background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+            borderRadius: AD.radiusLg, boxShadow: AD.shadowLg,
+            width: '100%', maxWidth: 400, padding: '24px 28px', fontFamily: AD.fontSans,
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: AD.textPrimary, marginBottom: 10 }}>
+              Delete title &ldquo;{deleteConfirm.name}&rdquo;?
+            </div>
+            <div style={{ fontSize: 13, color: AD.textSecondary, marginBottom: 20, lineHeight: 1.6 }}>
+              This title is used by <strong>{deleteConfirm.members_affected}</strong> team member{deleteConfirm.members_affected !== 1 ? 's' : ''}.
+              Deleting it will remove their title assignment.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                style={{
+                  padding: '8px 18px', borderRadius: AD.radiusMd, cursor: 'pointer',
+                  background: 'transparent', border: `1px solid ${AD.border}`,
+                  color: AD.textSecondary, fontSize: 13, fontFamily: AD.fontSans,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirm.id, deleteConfirm.name, true)}
+                disabled={deletingId === deleteConfirm.id}
+                style={{
+                  padding: '8px 18px', borderRadius: AD.radiusMd,
+                  cursor: deletingId === deleteConfirm.id ? 'not-allowed' : 'pointer',
+                  background: AD.red2Bg, border: `1px solid ${AD.red2}`,
+                  color: AD.red2Text, fontSize: 13, fontWeight: 500, fontFamily: AD.fontSans,
+                  display: 'inline-flex', alignItems: 'center', gap: 7,
+                }}
+              >
+                {deletingId === deleteConfirm.id
+                  ? <><i className="ph ph-circle-notch" style={{ fontSize: 13, animation: 'spin 0.8s linear infinite' }} />Deleting…</>
+                  : <><i className="ph ph-trash" style={{ fontSize: 13 }} />Delete & Clear</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 export default function AdminTeamSettings() {
   const { tier: myTier } = usePermissions();
@@ -878,6 +1206,19 @@ export default function AdminTeamSettings() {
   const [resending, setResending]           = useState(null);   // memberId being resent
   const [resendMsg, setResendMsg]           = useState(null);   // { id, text, warn }
   const [selectedMember, setSelectedMember] = useState(null);   // Sub-piece 2: edit drawer
+  const [titles, setTitles]               = useState([]);
+
+  async function fetchTitles() {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/titles`, {
+        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+      });
+      const data = await r.json();
+      if (r.ok) setTitles(Array.isArray(data) ? data : []);
+    } catch {
+      // non-fatal — titles stay empty
+    }
+  }
 
   async function fetchMembers() {
     setLoading(true);
@@ -940,6 +1281,7 @@ export default function AdminTeamSettings() {
 
   useEffect(() => {
     fetchMembers();
+    fetchTitles();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -975,6 +1317,9 @@ export default function AdminTeamSettings() {
             </button>
           </PermissionGate>
         </div>
+
+        {/* Manage Titles curation section */}
+        <ManageTitlesSection titles={titles} onRefresh={fetchTitles} />
 
         {/* Error banner */}
         {err && (
@@ -1179,6 +1524,7 @@ export default function AdminTeamSettings() {
             myTier={myTier}
             onClose={() => setSelectedMember(null)}
             onSaved={fetchMembers}
+            titles={titles}
           />
         )}
 

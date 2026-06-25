@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import AdminSettings from './AdminSettings';
+import { usePermissions } from '../../hooks/useAdminPermissions';
+
+function getInitials(fullName, email) {
+  if (fullName) {
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  if (email) return email[0].toUpperCase();
+  return '?';
+}
 
 export const ADMIN_NAV = [
   { id: 'dashboard',        icon: 'ph-squares-four',     label: 'Dashboard'        },
@@ -14,6 +25,11 @@ export const ADMIN_NAV = [
 ];
 
 export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount }) {
+  const { full_name, email, tier } = usePermissions();
+  const initials    = getInitials(full_name, email);
+  const displayName = full_name || email || 'Team Member';
+  const tierLabel   = tier ? (tier.charAt(0).toUpperCase() + tier.slice(1)) : null;
+
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, width: 230, height: '100vh',
@@ -55,10 +71,10 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
       </nav>
       <div style={{ padding: '16px 20px', borderTop: `1px solid ${AD.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 32, height: 32, borderRadius: '50%', background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0 }}>DS</div>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0 }}>{initials}</div>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>Danny Scribbins</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Administrator</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{displayName}</div>
+            {tierLabel && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{tierLabel}</div>}
           </div>
         </div>
       </div>

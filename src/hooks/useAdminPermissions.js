@@ -13,17 +13,19 @@ export const AdminPermissionsContext = createContext({
   tier: null,
   permissions: {},
   loading: false,
+  full_name: null,
+  email: null,
 });
 
 // ─── useAdminPermissions ──────────────────────────────────────────────────────
 // Called once in AdminApp. Fires a live /api/admin/me fetch whenever `authed`
 // becomes true. Returns { tier, permissions, loading }.
 export default function useAdminPermissions(authed) {
-  const [state, setState] = useState({ tier: null, permissions: {}, loading: false });
+  const [state, setState] = useState({ tier: null, permissions: {}, loading: false, full_name: null, email: null });
 
   useEffect(() => {
     if (!authed) return;
-    setState({ tier: null, permissions: {}, loading: true });
+    setState({ tier: null, permissions: {}, loading: true, full_name: null, email: null });
     (async () => {
       try {
         const token = sessionStorage.getItem('rb_admin_token');
@@ -31,13 +33,13 @@ export default function useAdminPermissions(authed) {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!r.ok) {
-          setState({ tier: null, permissions: {}, loading: false });
+          setState({ tier: null, permissions: {}, loading: false, full_name: null, email: null });
           return;
         }
         const data = await r.json();
-        setState({ tier: data.tier, permissions: data.permissions || {}, loading: false });
+        setState({ tier: data.tier, permissions: data.permissions || {}, loading: false, full_name: data.full_name ?? null, email: data.email ?? null });
       } catch {
-        setState({ tier: null, permissions: {}, loading: false });
+        setState({ tier: null, permissions: {}, loading: false, full_name: null, email: null });
       }
     })();
   }, [authed]);
