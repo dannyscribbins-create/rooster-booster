@@ -38,7 +38,8 @@
       "Bash(npm audit *)",
       "Bash(npx npm-audit-resolver-report *)",
       "Bash(npm ls *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(gh run *)"
     ]
   }
 }

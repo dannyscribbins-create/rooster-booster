@@ -66,6 +66,13 @@ router.post('/api/admin/login', adminLoginLimiter, [
       'INSERT INTO sessions (user_id, token, expires_at, role, contractor_id, team_member_id) VALUES (NULL,$1,$2,$3,$4,$5)',
       [token, expiresAt, 'admin', teamMember.contractor_id, teamMember.id]
     );
+    // Stamp last_login_at after a successful login. Failure is logged but must not
+    // block the login response — the session is already created and valid.
+    try {
+      await pool.query('UPDATE team_members SET last_login_at = NOW() WHERE id = $1', [teamMember.id]);
+    } catch (stampErr) {
+      await logError({ req, error: stampErr, source: 'POST /api/admin/login (last_login_at stamp)' });
+    }
     // Return tier + permissions so the frontend has initial state without a /me roundtrip.
     // /me remains the live-refresh source for all subsequent reads (Decision A §5.2).
     res.json({ success: true, token, tier: teamMember.tier, permissions: teamMember.permissions || {} });

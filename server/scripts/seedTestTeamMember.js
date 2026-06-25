@@ -6,12 +6,13 @@ const bcrypt = require('bcrypt');
 // ── EDIT THESE BEFORE RUNNING ─────────────────────────────────────────────────
 const TIER = 'admin'; // 'admin' or 'general'
 const PERMISSIONS = {
-  dashboard: true,
-  referrers: true,
-  contacts: true,
   campaigns: true,
+  'campaigns.manage': true,
+  contacts: true,
+  'contacts.manage': true,
   audiences: true,
-  experience: true,
+  'audiences.manage': true,
+  dashboard: true,
 };
 // ─────────────────────────────────────────────────────────────────────────────
 
