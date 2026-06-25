@@ -1,5 +1,4 @@
 /* eslint-env node */
-'use strict';
 
 /**
  * Frontend mirror of server/permissions/registry.js SECTIONS.
