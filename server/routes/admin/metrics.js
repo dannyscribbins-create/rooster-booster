@@ -25,8 +25,8 @@ router.get('/api/admin/activity', requirePermission('activity'), async (req, res
     const result = await pool.query(queryText, params);
     res.json(result.rows);
   } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    await logError({ req, error: err, source: 'GET /api/admin/activity' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -85,8 +85,8 @@ router.get('/api/admin/stats', requirePermission('dashboard'), async (req, res) 
     );
     res.json({ ...stats, cachedAt: new Date(), fromCache: false });
   } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: 'Stats failed: ' + err.message });
+    await logError({ req, error: err, source: 'GET /api/admin/stats' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
