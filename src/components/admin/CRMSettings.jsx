@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
-import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
+import { BACKEND_URL } from '../../config/contractor';
 import Skeleton from '../shared/Skeleton';
 
 // ── Local design primitives ───────────────────────────────────────────────────
@@ -692,7 +692,7 @@ export default function CRMSettings() {
               </div>
               {isOAuth
                 ? (
-                  <PrimaryBtn onClick={() => { window.location.href = `${BACKEND_URL}/auth/jobber?contractorId=${CONTRACTOR_CONFIG.contractorId}`; }}>
+                  <PrimaryBtn disabled={!status?.contractorId} onClick={() => { window.location.href = `${BACKEND_URL}/auth/jobber?contractorId=${encodeURIComponent(status.contractorId)}`; }}>
                     <i className="ph ph-arrow-square-out" style={{ fontSize: 14 }} /> Reconnect with Jobber
                   </PrimaryBtn>
                 )
@@ -782,7 +782,8 @@ export default function CRMSettings() {
           ? (
             <PrimaryBtn
               style={{ justifyContent: 'center', width: '100%' }}
-              onClick={() => { window.location.href = `${BACKEND_URL}/auth/jobber?contractorId=${CONTRACTOR_CONFIG.contractorId}`; }}
+              disabled={!status?.contractorId}
+            onClick={() => { window.location.href = `${BACKEND_URL}/auth/jobber?contractorId=${encodeURIComponent(status.contractorId)}`; }}
             >
               <i className="ph ph-link" style={{ fontSize: 14 }} /> Connect via OAuth
             </PrimaryBtn>

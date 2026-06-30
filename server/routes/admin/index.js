@@ -849,6 +849,7 @@ router.get('/api/admin/crm/status', requirePermission('integrations'), async (re
     const tagGroupVisibility = normalizeTagGroupVisibility(visibilityResult.rows[0]?.tag_group_visibility || {});
     if (settingsResult.rows.length === 0) {
       return res.json({
+        contractorId,
         isConnected: false, crmType: null, crmAccountName: null,
         connectionMethod: null, referrerFieldName: 'Referred by',
         stageMap: { lead: 'Quote Sent', inspection: 'Assessment Scheduled', sold: 'Job Approved', paid: 'Invoice Paid' },
@@ -885,6 +886,7 @@ router.get('/api/admin/crm/status', requirePermission('integrations'), async (re
     }
 
     res.json({
+      contractorId,
       isConnected: s.is_connected,
       crmType: s.crm_type,
       crmAccountName: s.crm_account_name,
