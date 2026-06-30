@@ -19,6 +19,13 @@ function formatDollars(n) {
   return parseFloat(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+// Detects a Jobber GraphQL THROTTLED response — HTTP 200 with data: null and
+// errors[].extensions.code === 'THROTTLED'. The graphqlErrors array is attached
+// at the throw site in the pagination block.
+const isThrottledError = (err) =>
+  Array.isArray(err?.graphqlErrors) &&
+  err.graphqlErrors.some(e => e?.extensions?.code === 'THROTTLED');
+
 // ── PIPELINE STATUS CLASSIFIER ────────────────────────────────────────────────
 // Input: a single Jobber client object with quotes, jobs, invoices
 // Output: 'lead' | 'inspection' | 'not_sold' | 'sold' | 'paid'
@@ -609,9 +616,8 @@ async function runIncrementalSync(contractorId) {
   }
 
   const lastSyncedAt = new Date(syncResult.rows[0].last_synced_at);
-  const lastSyncISO  = lastSyncedAt.toISOString();
 
-  console.log(`[pipelineSync] Starting incremental sync for ${contractorId} since ${lastSyncISO}`);
+  console.log(`[pipelineSync] Starting incremental sync for ${contractorId} since ${lastSyncedAt.toISOString()}`);
 
   // Load referral_start_date for pre-start-date check
   const settingsResult = await pool.query(
@@ -634,73 +640,110 @@ async function runIncrementalSync(contractorId) {
   }
   const token = tokenResult.rows[0].access_token;
 
-  // Paginate — filter by updatedAt since last sync
-  // MVP: same in-memory accumulation as runFullSync — see comment there for scale path.
-  let allClients  = [];
-  let cursor      = null;
-  let hasNextPage = true;
+  // Chunked incremental sync — processes bounded time windows and persists the
+  // checkpoint after each successful chunk, so a throttle or failure never causes
+  // data loss or a permanently frozen checkpoint.
+  const CHUNK_DEFAULT_MS     = 24 * 60 * 60 * 1000; // 24h starting window
+  const CHUNK_MIN_MS         = 30 * 60 * 1000;       // 30 min floor
+  const MAX_CHUNKS_PER_CYCLE = 30;                   // safety cap (~30 days at 24h/chunk)
 
-  while (hasNextPage) {
-    const afterArg = cursor ? `, after: "${cursor}"` : '';
-    const query = `{
-      clients(first: 50${afterArg}, filter: { updatedAt: { after: "${lastSyncISO}" } }) {
-        nodes {
-          id firstName lastName createdAt
-          customFields { ... on CustomFieldText { label valueText } }
-          quotes(first: 10) { nodes { id quoteStatus } }
-          jobs(first: 10) {
+  let chunkStart  = lastSyncedAt;
+  let chunkSizeMs = CHUNK_DEFAULT_MS;
+  let chunksDone  = 0;
+  const now       = new Date();
+
+  while (chunkStart < now && chunksDone < MAX_CHUNKS_PER_CYCLE) {
+    const chunkEnd  = new Date(Math.min(chunkStart.getTime() + chunkSizeMs, now.getTime()));
+    const afterISO  = chunkStart.toISOString();
+    const beforeISO = chunkEnd.toISOString();
+
+    try {
+      // Paginate through all clients updated within this chunk window.
+      // MVP: same in-memory accumulation as runFullSync — see comment there for scale path.
+      let allClients  = [];
+      let cursor      = null;
+      let hasNextPage = true;
+
+      while (hasNextPage) {
+        const afterArg = cursor ? `, after: "${cursor}"` : '';
+        const query = `{
+          clients(first: 50${afterArg}, filter: { updatedAt: { after: "${afterISO}", before: "${beforeISO}" } }) {
             nodes {
-              id jobStatus
-              invoices(first: 5) { nodes { invoiceStatus } }
+              id firstName lastName createdAt
+              customFields { ... on CustomFieldText { label valueText } }
+              quotes(first: 10) { nodes { id quoteStatus } }
+              jobs(first: 10) {
+                nodes {
+                  id jobStatus
+                  invoices(first: 5) { nodes { invoiceStatus } }
+                }
+              }
             }
+            pageInfo { hasNextPage endCursor }
           }
+        }`;
+
+        const response = await retryWithBackoff(
+          () => axios.post(
+            'https://api.getjobber.com/api/graphql',
+            { query },
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+              },
+            }
+          ),
+          { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+        );
+
+        if (!response.data.data || !response.data.data.clients) {
+          const err = new Error('Jobber GraphQL returned no clients data during incremental sync');
+          err.graphqlErrors = response.data.errors || [];
+          throw err;
         }
-        pageInfo { hasNextPage endCursor }
+        if (response.data.errors?.length) {
+          console.warn('[pipelineSync] Jobber returned partial errors during incremental sync:', JSON.stringify(response.data.errors));
+        }
+
+        const { nodes, pageInfo } = response.data.data.clients;
+        allClients  = allClients.concat(nodes);
+        hasNextPage = pageInfo.hasNextPage;
+        cursor      = pageInfo.endCursor;
       }
-    }`;
 
-    const response = await retryWithBackoff(
-      () => axios.post(
-        'https://api.getjobber.com/api/graphql',
-        { query },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-          },
-        }
-      ),
-      { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-    );
+      for (const client of allClients) {
+        await syncSingleClient(contractorId, client, referralStartDate, allClients);
+      }
 
-    if (!response.data.data || !response.data.data.clients) {
-      console.error('[pipelineSync] Jobber returned no clients data during incremental sync:', JSON.stringify(response.data));
-      throw new Error('Jobber GraphQL returned no clients data during incremental sync');
+      await pool.query(
+        `UPDATE sync_state SET last_synced_at = $2, updated_at = NOW()
+         WHERE contractor_id = $1`,
+        [contractorId, beforeISO]
+      );
+
+      console.log(`[pipelineSync] Incremental chunk synced for ${contractorId}: ${afterISO} -> ${beforeISO} (${allClients.length} clients)`);
+
+      chunkStart  = chunkEnd;
+      chunkSizeMs = CHUNK_DEFAULT_MS;
+      chunksDone++;
+
+    } catch (err) {
+      if (isThrottledError(err) && chunkSizeMs > CHUNK_MIN_MS) {
+        chunkSizeMs = Math.max(Math.floor(chunkSizeMs / 2), CHUNK_MIN_MS);
+        console.warn(`[pipelineSync] Chunk throttled for ${contractorId}, shrinking window to ${chunkSizeMs / 60000}min and retrying from ${afterISO}`);
+        continue;
+      }
+      throw err;
     }
-    if (response.data.errors?.length) {
-      console.warn('[pipelineSync] Jobber returned partial errors during incremental sync:', JSON.stringify(response.data.errors));
-    }
-
-    const { nodes, pageInfo } = response.data.data.clients;
-    allClients  = allClients.concat(nodes);
-    hasNextPage = pageInfo.hasNextPage;
-    cursor      = pageInfo.endCursor;
   }
 
-  console.log(`[pipelineSync] Incremental sync fetched ${allClients.length} updated clients`);
-
-  for (const client of allClients) {
-    await syncSingleClient(contractorId, client, referralStartDate, allClients);
+  if (chunkStart < now) {
+    console.log(`[pipelineSync] Incremental sync for ${contractorId} hit max chunks per cycle (${MAX_CHUNKS_PER_CYCLE}), still ${Math.round((now - chunkStart) / 3600000)}h behind — will resume next cycle`);
+  } else {
+    console.log(`[pipelineSync] Incremental sync for ${contractorId} fully caught up`);
   }
-
-  await pool.query(
-    `UPDATE sync_state SET last_synced_at = NOW(), updated_at = NOW()
-     WHERE contractor_id = $1`,
-    [contractorId]
-  );
-
-  console.log(`[pipelineSync] Incremental sync complete for ${contractorId}`);
 }
 
 // ── SCHEDULED SYNC RUNNER ────────────────────────────────────────────────────
