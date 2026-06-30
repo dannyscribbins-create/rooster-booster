@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../../db');
-const { getCRMAdapter } = require('../../crm/index');
+const { fetchPipelineForReferrer } = require('../../crm/jobber');
 const { verifyAdminSession } = require('../../middleware/auth');
 const { requirePermission } = require('../../middleware/permissions');
 const { logError } = require('../../middleware/errorLogger');
@@ -47,18 +47,16 @@ router.get('/api/admin/stats', requirePermission('dashboard'), async (req, res) 
     const usersResult = await pool.query('SELECT full_name FROM users');
     const allUsers = usersResult.rows;
     let totalReferrals=0, totalSold=0, totalNotSold=0, totalLeads=0, totalInspections=0, totalBalance=0, activeReferrers=0;
-    let adapter;
-    try {
-      adapter = await getCRMAdapter(contractorId);
-    } catch (err) {
-      if (err.message && (err.message.includes('No CRM connected') || err.message.includes('No connected CRM'))) {
-        return res.status(503).json({ error: 'crm_not_connected', message: 'No CRM is connected for this contractor. Please connect a CRM in admin settings.' });
-      }
-      throw err;
+    const crmCheck = await pool.query(
+      `SELECT is_connected FROM contractor_crm_settings WHERE contractor_id = $1`,
+      [contractorId]
+    );
+    if (!crmCheck.rows[0]?.is_connected) {
+      return res.status(503).json({ error: 'crm_not_connected', message: 'No CRM is connected for this contractor. Please connect a CRM in admin settings.' });
     }
     for (const user of allUsers) {
       try {
-        const data = await adapter.fetchPipelineForReferrer(user.full_name);
+        const data = await fetchPipelineForReferrer(user.full_name, contractorId);
         const p = data.pipeline;
         if (p.length > 0) activeReferrers++;
         totalReferrals   += p.length;
