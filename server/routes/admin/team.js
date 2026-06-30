@@ -227,6 +227,7 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
   body('full_name').optional().notEmpty().isString().isLength({ max: 200 }),
   body('title_id').optional({ nullable: true }).isInt(),
   body('tier').optional().isIn(['owner', 'admin', 'general']),
+  body('jobber_user_id').optional({ nullable: true }).isString().isLength({ max: 200 }),
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
@@ -256,7 +257,7 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
     }
 
     // Only Owner may change tier
-    const { full_name, title_id, tier } = req.body;
+    const { full_name, title_id, tier, jobber_user_id } = req.body;
     if (tier !== undefined && requesterTier !== 'owner') {
       return res.status(403).json({ error: 'Only Owners may change member tier' });
     }
@@ -276,19 +277,26 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
     const updates = [];
     const values = [];
     let i = 1;
-    if (full_name !== undefined) { updates.push(`full_name = $${i++}`); values.push(full_name); }
-    if (title_id !== undefined)  { updates.push(`title_id = $${i++}`);  values.push(title_id);  }
-    if (tier !== undefined)      { updates.push(`tier = $${i++}`);      values.push(tier);      }
+    if (full_name !== undefined)     { updates.push(`full_name = $${i++}`);     values.push(full_name);     }
+    if (title_id !== undefined)      { updates.push(`title_id = $${i++}`);      values.push(title_id);      }
+    if (tier !== undefined)          { updates.push(`tier = $${i++}`);          values.push(tier);          }
+    if (jobber_user_id !== undefined) { updates.push(`jobber_user_id = $${i++}`); values.push(jobber_user_id); }
 
     if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
     values.push(targetId);
     const result = await pool.query(
-      `UPDATE team_members SET ${updates.join(', ')} WHERE id = $${i} RETURNING id, email, full_name, tier, title_id`,
+      `UPDATE team_members SET ${updates.join(', ')} WHERE id = $${i} RETURNING id, email, full_name, tier, title_id, jobber_user_id`,
       values
     );
     res.json(result.rows[0]);
   } catch (err) {
+    if (err.code === '23505' && err.constraint === 'team_members_jobber_user_id_unique') {
+      return res.status(409).json({
+        error: 'jobber_user_already_mapped',
+        message: 'This Jobber user is already mapped to another team member.',
+      });
+    }
     await logError({ req, error: err, source: 'PATCH /api/admin/team/:id' });
     res.status(500).json({ error: 'Internal server error' });
   }

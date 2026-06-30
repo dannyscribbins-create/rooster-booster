@@ -194,4 +194,51 @@ describe('team routes — security walls and guards', () => {
     assert.ok(Array.isArray(res.body), 'Response must be an array');
     assert.ok(res.body.length >= 3, 'Roster must include at least the seeded owner, admin, and general members');
   });
+
+  // ── JOBBER USER MAPPING (Phase A + B) ─────────────────────────────────────
+  it('DB: UNIQUE constraint on jobber_user_id prevents two members sharing the same Jobber user', async () => {
+    await pool.query('UPDATE team_members SET jobber_user_id = $1 WHERE id = $2', ['jb-unique-constraint-test', adminMemberId2]);
+    await assert.rejects(
+      pool.query('UPDATE team_members SET jobber_user_id = $1 WHERE id = $2', ['jb-unique-constraint-test', generalMemberId]),
+      err => {
+        assert.equal(err.code, '23505', `Expected unique_violation (23505), got code: ${err.code}`);
+        return true;
+      }
+    );
+    await pool.query('UPDATE team_members SET jobber_user_id = NULL WHERE id = $1', [adminMemberId2]);
+  });
+
+  it('PATCH /api/admin/team/:id: Owner can set jobber_user_id on a member', async () => {
+    await pool.query('UPDATE team_members SET jobber_user_id = NULL WHERE id = $1', [generalMemberId]);
+    const ownerToken = await makeSession(pool, ownerMemberId);
+    const res = await httpRequest(port, 'PATCH', `/api/admin/team/${generalMemberId}`, {
+      jobber_user_id: 'Z2lkOi8vSm9iYmVyL1VzZXIvMTIz',
+    }, ownerToken);
+    assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.body)}`);
+    const { rows } = await pool.query('SELECT jobber_user_id FROM team_members WHERE id = $1', [generalMemberId]);
+    assert.equal(rows[0].jobber_user_id, 'Z2lkOi8vSm9iYmVyL1VzZXIvMTIz', 'jobber_user_id must be persisted in DB');
+  });
+
+  it('PATCH /api/admin/team/:id: Owner can clear jobber_user_id (unmap) by sending null', async () => {
+    await pool.query('UPDATE team_members SET jobber_user_id = $1 WHERE id = $2', ['jb-to-clear', generalMemberId]);
+    const ownerToken = await makeSession(pool, ownerMemberId);
+    const res = await httpRequest(port, 'PATCH', `/api/admin/team/${generalMemberId}`, {
+      jobber_user_id: null,
+    }, ownerToken);
+    assert.equal(res.status, 200, `Expected 200, got ${res.status}: ${JSON.stringify(res.body)}`);
+    const { rows } = await pool.query('SELECT jobber_user_id FROM team_members WHERE id = $1', [generalMemberId]);
+    assert.equal(rows[0].jobber_user_id, null, 'jobber_user_id must be cleared to null');
+  });
+
+  it('PATCH /api/admin/team/:id: returns 409 jobber_user_already_mapped when Jobber user is already assigned', async () => {
+    await pool.query('UPDATE team_members SET jobber_user_id = NULL WHERE id = ANY($1)', [[generalMemberId, adminMemberId]]);
+    await pool.query('UPDATE team_members SET jobber_user_id = $1 WHERE id = $2', ['jb-conflict-id', adminMemberId]);
+    const ownerToken = await makeSession(pool, ownerMemberId);
+    const res = await httpRequest(port, 'PATCH', `/api/admin/team/${generalMemberId}`, {
+      jobber_user_id: 'jb-conflict-id',
+    }, ownerToken);
+    assert.equal(res.status, 409, `Expected 409, got ${res.status}: ${JSON.stringify(res.body)}`);
+    assert.equal(res.body?.error, 'jobber_user_already_mapped', `Expected error key 'jobber_user_already_mapped', got: ${res.body?.error}`);
+    await pool.query('UPDATE team_members SET jobber_user_id = NULL WHERE id = $1', [adminMemberId]);
+  });
 });

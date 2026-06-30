@@ -1156,6 +1156,16 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS jobber_user_id TEXT`);
   await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS title_id INTEGER REFERENCES titles(id)`);
+  // Sub-piece 4: one Jobber user maps to at most one RoofMiles rep.
+  // DO block is the idiomatic idempotent pattern — ALTER TABLE ADD CONSTRAINT IF NOT EXISTS
+  // is not valid PostgreSQL syntax in any supported version.
+  await pool.query(`
+    DO $$ BEGIN
+      ALTER TABLE team_members
+        ADD CONSTRAINT team_members_jobber_user_id_unique UNIQUE (jobber_user_id);
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$
+  `);
 
   // Backfill full_name on the seeded Owner row. WHERE full_name IS NULL is idempotent.
   await pool.query(`UPDATE team_members SET full_name = 'Danny Scribbins' WHERE id = 1 AND full_name IS NULL`);

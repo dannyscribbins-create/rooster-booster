@@ -443,13 +443,20 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
   const [saving, setSaving]             = useState(false);
   const [saveErr, setSaveErr]           = useState(null);
   const [saveSuccess, setSaveSuccess]   = useState(false);
+  const [localJobberUserId, setLocalJobberUserId] = useState(member.jobber_user_id ?? null);
+  const [jobberUsers, setJobberUsers]             = useState([]);
+  const [jobberUsersLoading, setJobberUsersLoading] = useState(false);
+  const [jobberUsersErr, setJobberUsersErr]       = useState(null);
+  const [jobberSearch, setJobberSearch]           = useState('');
+  const [jobberMapErr, setJobberMapErr]           = useState(null);
   const successTimerRef                  = useRef(null);
   // Tracks last-saved state so isDirty stays correct across multiple saves
   const baselineRef                      = useRef({
-    name:    member.full_name || '',
-    tier:    member.tier,
-    titleId: member.title_id ?? null,
-    perms:   { ...(member.permissions || {}) },
+    name:         member.full_name || '',
+    tier:         member.tier,
+    titleId:      member.title_id ?? null,
+    jobberUserId: member.jobber_user_id ?? null,
+    perms:        { ...(member.permissions || {}) },
   });
 
   // Non-owners cannot edit admin-tier members — read-only view only
@@ -469,10 +476,34 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
     localName !== baselineRef.current.name ||
     localTier !== baselineRef.current.tier ||
     localTitleId !== baselineRef.current.titleId ||
+    localJobberUserId !== baselineRef.current.jobberUserId ||
     !permsEqual(workingPerms, baselineRef.current.perms);
 
   useEffect(() => () => {
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    async function fetchJobberUsers() {
+      setJobberUsersLoading(true);
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/jobber-users`, {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          setJobberUsersErr(r.status === 503 ? 'Jobber not connected.' : 'Could not load Jobber users.');
+          return;
+        }
+        setJobberUsers(Array.isArray(data.users) ? data.users : []);
+      } catch {
+        setJobberUsersErr('Could not load Jobber users.');
+      } finally {
+        setJobberUsersLoading(false);
+      }
+    }
+    fetchJobberUsers();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -500,15 +531,17 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
   async function handleSave() {
     setSaving(true);
     setSaveErr(null);
+    setJobberMapErr(null);
     const token = sessionStorage.getItem('rb_admin_token');
     try {
-      // Step 1: PATCH identity only when something actually changed (compare to last-saved baseline, not stale props)
-      const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier || localTitleId !== baselineRef.current.titleId;
+      // Step 1: PATCH identity fields only when something actually changed (compare to last-saved baseline, not stale props)
+      const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier || localTitleId !== baselineRef.current.titleId || localJobberUserId !== baselineRef.current.jobberUserId;
       if (identityChanged) {
         const body = {};
-        if (localName !== baselineRef.current.name)       body.full_name = localName;
-        if (localTier !== baselineRef.current.tier)       body.tier      = localTier;
-        if (localTitleId !== baselineRef.current.titleId) body.title_id  = localTitleId;
+        if (localName !== baselineRef.current.name)                 body.full_name      = localName;
+        if (localTier !== baselineRef.current.tier)                 body.tier           = localTier;
+        if (localTitleId !== baselineRef.current.titleId)           body.title_id       = localTitleId;
+        if (localJobberUserId !== baselineRef.current.jobberUserId) body.jobber_user_id = localJobberUserId;
         const r = await fetch(`${BACKEND_URL}/api/admin/team/${member.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -516,7 +549,11 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
         });
         if (!r.ok) {
           const d = await r.json();
-          setSaveErr(d.error || 'Failed to update member details.');
+          if (r.status === 409 && d.error === 'jobber_user_already_mapped') {
+            setJobberMapErr(d.message || 'This Jobber user is already mapped to another team member.');
+          } else {
+            setSaveErr(d.error || 'Failed to update member details.');
+          }
           setSaving(false);
           return;
         }
@@ -533,7 +570,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
         setSaving(false);
         return;
       }
-      baselineRef.current = { name: localName, tier: localTier, titleId: localTitleId, perms: { ...workingPerms } };
+      baselineRef.current = { name: localName, tier: localTier, titleId: localTitleId, jobberUserId: localJobberUserId, perms: { ...workingPerms } };
       setSaving(false);
       setSaveSuccess(true);
       onSaved();
@@ -544,6 +581,21 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
       setSaving(false);
     }
   }
+
+  function selectJobberUser(id) {
+    clearSuccess();
+    setJobberMapErr(null);
+    setLocalJobberUserId(id);
+    setJobberSearch('');
+  }
+
+  const filteredJobberUsers = jobberSearch.trim().length === 0
+    ? jobberUsers
+    : jobberUsers.filter(u => {
+        const q = jobberSearch.toLowerCase();
+        return (u.name?.full || '').toLowerCase().includes(q) || (u.email?.raw || '').toLowerCase().includes(q);
+      });
+  const mappedJobberUser = localJobberUserId ? (jobberUsers.find(u => u.id === localJobberUserId) ?? null) : null;
 
   const availablePresets = PRESETS.filter(p => p.tier === localTier);
 
@@ -658,6 +710,87 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Jobber User mapping */}
+          <div style={sectionCardStyle}>
+            <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: AD.textTertiary, marginBottom: 14 }}>
+              Jobber User
+            </div>
+            {jobberUsersLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: AD.textTertiary }}>
+                <i className="ph ph-circle-notch" style={{ fontSize: 14, animation: 'spin 0.8s linear infinite' }} />
+                Loading Jobber users…
+              </div>
+            ) : jobberUsersErr ? (
+              <div style={{ fontSize: 12, color: AD.amberText, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <i className="ph ph-warning" style={{ fontSize: 13 }} />
+                {jobberUsersErr}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, marginBottom: 4 }}>Current mapping</label>
+                  <div style={{ fontSize: 13, color: mappedJobberUser ? AD.textPrimary : AD.textTertiary, fontStyle: mappedJobberUser ? 'normal' : 'italic' }}>
+                    {mappedJobberUser ? (mappedJobberUser.name?.full || mappedJobberUser.id) : '— Not mapped —'}
+                  </div>
+                </div>
+                {!readOnly && (
+                  <>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, marginBottom: 4 }}>Search to change</label>
+                      <input
+                        type="text"
+                        value={jobberSearch}
+                        onChange={e => { setJobberMapErr(null); setJobberSearch(e.target.value); }}
+                        placeholder="Name or email…"
+                        style={inputStyle}
+                      />
+                    </div>
+                    {jobberSearch.trim().length > 0 && (
+                      <div style={{ maxHeight: 168, overflowY: 'auto', border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, background: AD.bgSurface }}>
+                        <div
+                          onClick={() => selectJobberUser(null)}
+                          style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, color: AD.textTertiary, fontStyle: 'italic', borderBottom: `1px solid ${AD.border}` }}
+                          onMouseEnter={e => { e.currentTarget.style.background = AD.bgCard; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          — None (unmap) —
+                        </div>
+                        {filteredJobberUsers.length === 0 ? (
+                          <div style={{ padding: '8px 12px', fontSize: 13, color: AD.textTertiary }}>
+                            No users match &ldquo;{jobberSearch}&rdquo;
+                          </div>
+                        ) : (
+                          filteredJobberUsers.map(u => (
+                            <div
+                              key={u.id}
+                              onClick={() => selectJobberUser(u.id)}
+                              style={{ padding: '8px 12px', cursor: 'pointer', background: localJobberUserId === u.id ? 'rgba(37,99,235,0.08)' : 'transparent', borderBottom: `1px solid ${AD.border}` }}
+                              onMouseEnter={e => { if (localJobberUserId !== u.id) e.currentTarget.style.background = AD.bgCard; }}
+                              onMouseLeave={e => { if (localJobberUserId !== u.id) e.currentTarget.style.background = 'transparent'; }}
+                            >
+                              <div style={{ fontSize: 13, fontWeight: localJobberUserId === u.id ? 500 : 400, color: localJobberUserId === u.id ? AD.blueText : AD.textPrimary }}>
+                                {u.name?.full || '—'}
+                              </div>
+                              {u.email?.raw && (
+                                <div style={{ fontSize: 11, color: AD.textTertiary }}>{u.email.raw}</div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+                {jobberMapErr && (
+                  <div style={{ padding: '8px 12px', borderRadius: AD.radiusMd, background: AD.red2Bg, border: `1px solid ${AD.red2}`, color: AD.red2Text, fontSize: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <i className="ph ph-warning-circle" style={{ fontSize: 14, flexShrink: 0 }} />
+                    {jobberMapErr}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Preset stamp — edit mode only, not shown for Owner targets */}
