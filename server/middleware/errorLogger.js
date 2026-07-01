@@ -83,6 +83,14 @@ const explainError = (errorMessage, route, severity) => {
 }
 
 // ── SECTION C — EMAIL ALERT WITH THROTTLING ───────────────────────────────────
+
+// Pure helper — prefix subject with [STAGING] only when NODE_ENV is explicitly
+// 'staging'. Any other value (production, undefined, development, etc.) sends
+// the subject unmodified. Exported for unit testing.
+function buildAlertSubject(originalSubject, nodeEnv) {
+  return nodeEnv === 'staging' ? `[STAGING] ${originalSubject}` : originalSubject;
+}
+
 async function sendErrorAlert(errorRow) {
   // Only send on first occurrence or every 10th recurrence
   if (errorRow.count !== 1 && errorRow.count % 10 !== 0) return;
@@ -92,9 +100,7 @@ async function sendErrorAlert(errorRow) {
   const originalSubject = `[RoofMiles] ${errorRow.source === 'frontend' ? '[Frontend]' : '[Backend]'} ${errorRow.severity} Error — ${errorRow.route} — ${
     (errorRow.error_message || '').slice(0, 80)
   }`;
-  const subject = process.env.NODE_ENV !== 'production'
-    ? `[STAGING] ${originalSubject}`
-    : originalSubject;
+  const subject = buildAlertSubject(originalSubject, process.env.NODE_ENV);
 
   const body = [
     `What this means:`,
@@ -168,4 +174,4 @@ async function expressErrorHandler(err, req, res, next) {
   });
 }
 
-module.exports = { logError, expressErrorHandler };
+module.exports = { logError, expressErrorHandler, buildAlertSubject };
