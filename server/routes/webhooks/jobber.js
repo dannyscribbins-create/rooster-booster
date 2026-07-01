@@ -25,6 +25,7 @@ const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { applyTag } = require('../../utils/tags');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
+const { refreshTokenIfNeeded } = require('../../crm/jobber');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -567,7 +568,9 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         return;
       }
 
-      // STEP 4 — Fetch token
+      // STEP 4 — Fetch token (refresh first, mirrors the pattern already used
+      // in server/routes/admin/team.js's jobber-users route)
+      await refreshTokenIfNeeded();
       const tokenResult = await pool.query(
         'SELECT access_token FROM tokens WHERE contractor_id = $1',
         [contractorId]
