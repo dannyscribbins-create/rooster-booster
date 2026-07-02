@@ -1,6 +1,6 @@
 const axios = require('axios');
 const { pool } = require('../db');
-const { refreshTokenIfNeeded } = require('./jobber');
+const { refreshTokenIfNeeded, fetchAttributionData } = require('./jobber');
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../utils/retryHelpers');
@@ -9,6 +9,26 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const { sendAdminNotification, resolveNotificationRecipient } = require('../utils/notificationEmail');
 const { isEmailSuppressed } = require('../utils/emailSuppression');
 const { applyTag } = require('../utils/tags');
+const { runAttributionEngine } = require('../utils/attributionEngine');
+
+// test seam — inert in production, never called outside server/test/
+let _runAttributionEngine = runAttributionEngine;
+function _setAttributionEngineForTest(fn) { _runAttributionEngine = fn; }
+function _resetAttributionEngine() { _runAttributionEngine = runAttributionEngine; }
+
+// Reassignables for test email suppression — production always uses the real implementations.
+let _sendAdminNotification = sendAdminNotification;
+let _psSendEmail = (...args) => resend.emails.send(...args);
+
+// test seam — inert in production, never called outside server/test/
+function _setPipelineSyncEmailsForTest({ adminNotification, email } = {}) {
+  if (adminNotification !== undefined) _sendAdminNotification = adminNotification;
+  if (email !== undefined) _psSendEmail = email;
+}
+function _resetPipelineSyncEmails() {
+  _sendAdminNotification = sendAdminNotification;
+  _psSendEmail = (...args) => resend.emails.send(...args);
+}
 
 function escapeHtml(s) {
   if (!s || typeof s !== 'string') return '';
@@ -71,7 +91,7 @@ function getReferredByValue(client) {
 // Pre-start-date clients: written to pipeline_cache with pre_start_date=true
 // and inserted into flagged_referrals if initial_sync is still running.
 // Pre-start-date clients never trigger bonus logic (checked upstream by hard gate).
-async function syncSingleClient(contractorId, client, referralStartDate, allClients = []) {
+async function syncSingleClient(contractorId, client, referralStartDate, allClients = [], token = null) {
   const referredBy = getReferredByValue(client);
   if (!referredBy) return; // not a referred client — do nothing
 
@@ -148,6 +168,23 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
     console.error('[pipelineSync] app_user_ placeholder cleanup failed:', cleanupErr.message);
   }
 
+  // ── ATTRIBUTION ENGINE ────────────────────────────────────────────────────────
+  // Fail-safe: an attribution error must never abort the sync or block notifications.
+  try {
+    if (contractorId) {
+      await _runAttributionEngine(pool, {
+        contractorId,
+        jobberClientId: client.id,
+        currentStatus: status,
+        client,
+        fetchAttributionData,
+        token,
+      });
+    }
+  } catch (err) {
+    logError({ req: null, error: err, source: 'pipelineSync/attribution' });
+  }
+
   // ── #25 NEW REFERRAL ADMIN ALERT (non-blocking) ──────────────────────────────
   // Fires only on first insert of this client — new pipeline_cache row.
   if (!isPreStart && !oldPipelineStatus) {
@@ -158,7 +195,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
         const adminUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
         const adminEmail25 = await resolveNotificationRecipient(pool, 'general', contractorId);
         const suppressed25 = await isEmailSuppressed(contractorId, adminEmail25, 'new_referral_detected');
-        if (!suppressed25) await sendAdminNotification(
+        if (!suppressed25) await _sendAdminNotification(
           pool,
           'general',
           `New referral detected — ${safeClientNameA} via ${safeReferredByA}`,
@@ -239,7 +276,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
             const contactLine = [companyEmail, companyPhone].filter(Boolean).map(escapeHtml).join(' + ');
             const suppressed1 = await isEmailSuppressed(contractorId, referrerAccount.email, 'first_referral_submitted');
             if (!suppressed1) await retryWithBackoff(
-              () => resend.emails.send({
+              () => _psSendEmail({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
                 subject: `You're in the game! here's what happens next`,
@@ -267,7 +304,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
             const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
             const suppressed2 = await isEmailSuppressed(contractorId, referrerAccount.email, 'referral_inspection');
             if (!suppressed2) await retryWithBackoff(
-              () => resend.emails.send({
+              () => _psSendEmail({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
                 subject: `${safeClientName} has an inspection scheduled`,
@@ -295,7 +332,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
             const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
             const suppressed3 = await isEmailSuppressed(contractorId, referrerAccount.email, 'referral_sold');
             if (!suppressed3) await retryWithBackoff(
-              () => resend.emails.send({
+              () => _psSendEmail({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
                 subject: `Great news — ${safeClientName}'s job is underway`,
@@ -323,7 +360,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
             const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
             const suppressed5 = await isEmailSuppressed(contractorId, referrerAccount.email, 'referral_lost');
             if (!suppressed5) await retryWithBackoff(
-              () => resend.emails.send({
+              () => _psSendEmail({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
                 subject: `An update on your referral`,
@@ -351,7 +388,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
             const firstName = escapeHtml((referrerAccount.full_name || '').split(' ')[0] || referrerAccount.full_name);
             const suppressed6 = await isEmailSuppressed(contractorId, referrerAccount.email, 'referral_reactivated');
             if (!suppressed6) await retryWithBackoff(
-              () => resend.emails.send({
+              () => _psSendEmail({
                 from: `${fromName} <noreply@roofmiles.com>`,
                 to: referrerAccount.email,
                 subject: `${safeClientName} is back — your referral just moved forward`,
@@ -584,7 +621,7 @@ async function runFullSync(contractorId) {
   for (const client of allClients) {
     const referredBy = getReferredByValue(client);
     if (referredBy) referredCount++;
-    await syncSingleClient(contractorId, client, referralStartDate, allClients);
+    await syncSingleClient(contractorId, client, referralStartDate, allClients, token);
   }
 
   // Mark initial sync complete
@@ -714,7 +751,7 @@ async function runIncrementalSync(contractorId) {
       }
 
       for (const client of allClients) {
-        await syncSingleClient(contractorId, client, referralStartDate, allClients);
+        await syncSingleClient(contractorId, client, referralStartDate, allClients, token);
       }
 
       await pool.query(
@@ -775,4 +812,4 @@ async function runScheduledSync() {
   }
 }
 
-module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync };
+module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync, _setAttributionEngineForTest, _resetAttributionEngine, _setPipelineSyncEmailsForTest, _resetPipelineSyncEmails };

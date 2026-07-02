@@ -407,7 +407,7 @@ router.post('/jobber/client-create', async (req, res) => {
           })
         : client;
 
-      await syncSingleClient(contractorId, fullClient, referralStartDate);
+      await syncSingleClient(contractorId, fullClient, referralStartDate, [], token);
       console.log(`[jobber-webhook] client-create sync complete for client: ${clientId}`);
 
       // Upsert into jobber_clients and derive tags
@@ -478,7 +478,7 @@ router.post('/jobber/client-update', async (req, res) => {
           })
         : client;
 
-      await syncSingleClient(contractorId, fullClient, referralStartDate);
+      await syncSingleClient(contractorId, fullClient, referralStartDate, [], token);
       console.log(`[jobber-webhook] client-update sync complete for client: ${clientId}`);
 
       // Upsert into jobber_clients and derive tags
