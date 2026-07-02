@@ -279,4 +279,66 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
   return result.rows;
 }
 
-module.exports = { refreshTokenIfNeeded, fetchPipelineForReferrer, discoverJobberFields };
+const ATTRIBUTION_QUERY = `
+  query GetClientAttributionData($id: EncodedId!) {
+    client(id: $id) {
+      requests(first: 10) {
+        nodes {
+          id
+          createdAt
+          salesperson { id }
+          assessment {
+            id
+            assignedUsers { nodes { id } }
+          }
+        }
+      }
+    }
+  }
+`;
+
+// Fetches requests and assessments for the attribution engine.
+// _httpPost is injected in tests; production uses axios.post.
+async function fetchAttributionData(clientId, token, _httpPost = null) {
+  const post = _httpPost || axios.post;
+
+  const response = await retryWithBackoff(
+    () => post(
+      'https://api.getjobber.com/api/graphql',
+      { query: ATTRIBUTION_QUERY, variables: { id: clientId } },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'Content-Type': 'application/json',
+        },
+      }
+    ),
+    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+  );
+
+  if (response.data.errors) {
+    const diagnosticDetails = {
+      errors: (response.data.errors).slice(0, 5),
+      connectionSlice: response.data?.data?.client?.requests?.nodes?.slice(0, 2),
+    };
+    console.error('[fetchAttributionData] GraphQL error response:', JSON.stringify(diagnosticDetails)); // diagnostic log — intentional
+    const err = new Error(`fetchAttributionData: GraphQL errors for client ${clientId}`);
+    await logError({ req: null, error: err, source: 'fetchAttributionData' });
+    throw err;
+  }
+
+  if (!response.data?.data?.client) {
+    const err = new Error(`fetchAttributionData: null client response for client ${clientId}`);
+    await logError({ req: null, error: err, source: 'fetchAttributionData' });
+    throw err;
+  }
+
+  const requestNodes = response.data.data.client.requests.nodes;
+  const sorted = [...requestNodes].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const assessments = sorted.filter(r => r.assessment != null).map(r => r.assessment);
+
+  return { requests: sorted, assessments };
+}
+
+module.exports = { refreshTokenIfNeeded, fetchPipelineForReferrer, discoverJobberFields, fetchAttributionData };

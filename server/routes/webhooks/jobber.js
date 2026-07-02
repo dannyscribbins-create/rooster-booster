@@ -70,7 +70,7 @@ async function fetchFullClient(clientId, token) {
             customFields { ... on CustomFieldText { label valueText } }
             phones { number description }
             emails { address description }
-            quotes(first: 10) { nodes { id quoteStatus } }
+            quotes(first: 10) { nodes { id quoteStatus lastTransitioned salesperson { id } } }
             jobs(first: 10) {
               nodes {
                 id jobStatus
