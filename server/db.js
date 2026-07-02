@@ -931,9 +931,6 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // ── NOTIFICATION EMAIL COLUMNS ────────────────────────────────────────────────
   await addNotificationEmailColumns(pool);
 
-  // ── DECISION B SCHEMA (attribution_source, client_rep_assignments, flagged_assignments) ──
-  await addDecisionBSchema(pool);
-
   // ── DYNAMIC AUDIENCES ─────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS dynamic_audiences (
     id SERIAL PRIMARY KEY,
@@ -1170,6 +1167,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     EXCEPTION WHEN duplicate_object THEN NULL;
     END $$
   `);
+
+  // ── DECISION B SCHEMA (attribution_source, client_rep_assignments, flagged_assignments) ──
+  await addDecisionBSchema(pool);
 
   // Backfill full_name on the seeded Owner row. WHERE full_name IS NULL is idempotent.
   await pool.query(`UPDATE team_members SET full_name = 'Danny Scribbins' WHERE id = 1 AND full_name IS NULL`);
