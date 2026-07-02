@@ -4,6 +4,12 @@
 // engagement_cadence_settings seeding. ON CONFLICT DO NOTHING is safe on repeat calls.
 async function seedContractor(pool, contractorId) {
   await pool.query(
+    `INSERT INTO contractors (id, name)
+     VALUES ($1, $1)
+     ON CONFLICT (id) DO NOTHING`,
+    [contractorId]
+  );
+  await pool.query(
     `INSERT INTO contractor_settings (contractor_id, company_name)
      VALUES ($1, $1)
      ON CONFLICT (contractor_id) DO NOTHING`,

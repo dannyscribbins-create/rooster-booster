@@ -190,3 +190,8 @@ Read the current constraints before building any feature below.
 - Admin panel cards/controls that write to permission-gated endpoints currently have no frontend disabled/hidden state — save actions fire unconditionally and the server returns 403 for unauthorized callers.
 - Deferred scope: CRM Settings cards (Referrer Field Mapping, Sync Interval, Tag Visibility, Rep Attribution Source — Session 91), and all other admin UI controls whose endpoints are tagged with requirePermission(). When built, sweep all cards in a single pass rather than card-by-card.
 - Do not build until: Explicitly scheduled by Danny.
+
+**Feature: Attribution Engine Orphan Self-Resolution (Decision B follow-on)**
+- Future consideration: after writing an orphan flag, the engine could still evaluate the provisional step so a later sync pass can promote and self-resolve the orphan without requiring admin review.
+- Deferred — matches locked spec as built (Session 92). Currently the orphan path returns immediately with no provisional write.
+- Do not build until: Explicitly scheduled by Danny.
