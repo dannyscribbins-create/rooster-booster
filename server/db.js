@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 require('dotenv').config();
 const addReferrerBankColumns = require('./migrations/add_referrer_bank_columns');
 const addNotificationEmailColumns = require('./migrations/add_notification_email_columns');
+const addDecisionBSchema = require('./migrations/add_decision_b_schema');
 
 const _connStr = process.env.DATABASE_URL || '';
 // Skip SSL for localhost/127.0.0.1 (local dev + test). Railway URLs are non-local.
@@ -929,6 +930,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   // ── NOTIFICATION EMAIL COLUMNS ────────────────────────────────────────────────
   await addNotificationEmailColumns(pool);
+
+  // ── DECISION B SCHEMA (attribution_source, client_rep_assignments, flagged_assignments) ──
+  await addDecisionBSchema(pool);
 
   // ── DYNAMIC AUDIENCES ─────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS dynamic_audiences (
