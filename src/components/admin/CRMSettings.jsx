@@ -203,6 +203,11 @@ export default function CRMSettings() {
   const [syncMsg, setSyncMsg]           = useState('');
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
 
+  // Attribution source
+  const [attributionSource, setAttributionSource] = useState('assessment_assigned_users');
+  const [attrSaving, setAttrSaving]               = useState(false);
+  const [attrMsg, setAttrMsg]                     = useState('');
+
   // Referral start date
   const [referralStartDate, setReferralStartDate] = useState(null);   // saved custom date (string or null)
   const [connectedAt, setConnectedAt]             = useState(null);   // OAuth connection date (string)
@@ -245,6 +250,7 @@ export default function CRMSettings() {
   const fieldSavedTimer     = useRef(null);
   const syncMsgTimer        = useRef(null);
   const startDateMsgTimer   = useRef(null);
+  const attrSavedTimer      = useRef(null);
   const importPollRef       = useRef(null);
 
   const cfmShowToast    = useCallback((message, type = 'success') => setCfmToast({ message, type }), []);
@@ -266,6 +272,7 @@ export default function CRMSettings() {
       setReferralStartDate(d.referralStartDate || null);
       setConnectedAt(d.connectedAt || null);
       setStartDateInput(d.referralStartDate ? d.referralStartDate.slice(0, 10) : '');
+      setAttributionSource(d.attributionSource || 'assessment_assigned_users');
       setTagVisibility(d.tagGroupVisibility || {});
     } catch { /* status load failed — keep previous state; spinner clears in finally */
     } finally {
@@ -455,6 +462,33 @@ export default function CRMSettings() {
       if (syncMsgTimer.current) clearTimeout(syncMsgTimer.current);
       syncMsgTimer.current = setTimeout(() => setSyncMsg(''), 2000);
     } catch { /* silent */ }
+  }
+
+  async function handleSaveAttributionSource(value) {
+    const prev = attributionSource;
+    setAttributionSource(value);
+    setAttrSaving(true);
+    setAttrMsg('');
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/crm/settings`, {
+        method: 'PUT',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attribution_source: value }),
+      });
+      if (!res.ok) {
+        setAttributionSource(prev);
+        setAttrMsg('Save failed — try again');
+        return;
+      }
+      setAttrMsg('Saved ✓');
+      if (attrSavedTimer.current) clearTimeout(attrSavedTimer.current);
+      attrSavedTimer.current = setTimeout(() => setAttrMsg(''), 2000);
+    } catch {
+      setAttributionSource(prev);
+      setAttrMsg('Save failed — try again');
+    } finally {
+      setAttrSaving(false);
+    }
   }
 
   async function handleSyncNow() {
@@ -1201,7 +1235,82 @@ export default function CRMSettings() {
     );
   }
 
-  // ── Card 4c ── Tag group visibility ────────────────────────────────────────
+  // ── Card 4c ── Rep attribution source ──────────────────────────────────────
+  function renderAttributionModeCard() {
+    const options = [
+      {
+        value: 'assessment_assigned_users',
+        label: 'Assessment Assigned Users',
+        description:
+          'For teams that assign field reps to on-site assessments using the ' +
+          '"Assign team members" box in Jobber. The rep assigned to the assessment ' +
+          'is credited as the lead owner.',
+      },
+      {
+        value: 'request_salesperson',
+        label: 'Request Salesperson',
+        description:
+          "For teams that use Jobber's built-in Salesperson field on the Request " +
+          'to track lead ownership. The rep set as Salesperson on the request is credited.',
+      },
+    ];
+
+    return (
+      <Card>
+        <SectionHeading>Rep Attribution Source</SectionHeading>
+        <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.textSecondary, lineHeight: 1.65 }}>
+          Choose how Rooster Booster identifies which sales rep is responsible for each new client.
+          This controls which Jobber field is read when attributing a client to a rep.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {options.map(opt => {
+            const selected = attributionSource === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => !attrSaving && handleSaveAttributionSource(opt.value)}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 14,
+                  padding: '14px 16px',
+                  background: selected ? AD.blueBg : 'transparent',
+                  border: `1.5px solid ${selected ? AD.blue : AD.border}`,
+                  borderRadius: AD.radiusMd,
+                  cursor: attrSaving ? 'default' : 'pointer',
+                  textAlign: 'left', width: '100%',
+                }}
+              >
+                <div style={{
+                  width: 17, height: 17, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                  border: `2px solid ${selected ? AD.blue : AD.border}`,
+                  background: selected ? AD.blue : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {selected && (
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
+                  )}
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: AD.textPrimary, marginBottom: 4 }}>
+                    {opt.label}
+                  </div>
+                  <div style={{ fontSize: 13, color: AD.textSecondary, lineHeight: 1.55 }}>
+                    {opt.description}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {(attrSaving || attrMsg) && (
+          <div style={{ marginTop: 14, fontSize: 13, color: attrMsg === 'Saved ✓' ? AD.greenText : attrMsg ? AD.red2Text : AD.textTertiary }}>
+            {attrSaving ? 'Saving…' : attrMsg}
+          </div>
+        )}
+      </Card>
+    );
+  }
+
+  // ── Card 4d ── Tag group visibility ────────────────────────────────────────
 
   const TAG_GROUP_LABELS = {
     roofmiles:     'RoofMiles Tags',
@@ -1939,6 +2048,7 @@ export default function CRMSettings() {
           {renderFieldMappingCard()}
           {renderStageMappingCard()}
           {renderCampaignFieldMappingCard()}
+          {renderAttributionModeCard()}
           {renderTagVisibilityCard()}
           {renderImportSection()}
           {renderSyncCard()}

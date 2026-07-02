@@ -185,3 +185,8 @@ Read the current constraints before building any feature below.
 - Bulk sync omits phones/emails — credit attribution emails can't fire for scheduled-sync referrals.
 - Current constraints: Adding phones/emails to bulk query means significant API load increase. Alternatives: fetch contact info only for referred clients, or accept limitation and rely on admin verification.
 - Do not build until: Explicitly scheduled by Danny. Requires architectural decision on API load tradeoff.
+
+**Feature: Permission-Aware UI Rendering (frontend RBAC soft-locks)**
+- Admin panel cards/controls that write to permission-gated endpoints currently have no frontend disabled/hidden state — save actions fire unconditionally and the server returns 403 for unauthorized callers.
+- Deferred scope: CRM Settings cards (Referrer Field Mapping, Sync Interval, Tag Visibility, Rep Attribution Source — Session 91), and all other admin UI controls whose endpoints are tagged with requirePermission(). When built, sweep all cards in a single pass rather than card-by-card.
+- Do not build until: Explicitly scheduled by Danny.
