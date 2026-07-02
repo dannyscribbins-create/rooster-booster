@@ -837,7 +837,7 @@ router.get('/api/admin/crm/status', requirePermission('integrations'), async (re
       pool.query(
         `SELECT contractor_id, crm_type, crm_account_name, connection_method, api_key,
                 referrer_field_name, stage_map, connected_at, last_synced_at,
-                sync_interval_mins, is_connected, referral_start_date
+                sync_interval_mins, is_connected, referral_start_date, attribution_source
          FROM contractor_crm_settings WHERE contractor_id = $1`,
         [contractorId]
       ),
@@ -854,6 +854,7 @@ router.get('/api/admin/crm/status', requirePermission('integrations'), async (re
         connectionMethod: null, referrerFieldName: 'Referred by',
         stageMap: { lead: 'Quote Sent', inspection: 'Assessment Scheduled', sold: 'Job Approved', paid: 'Invoice Paid' },
         connectedAt: null, lastSyncedAt: null, syncIntervalMins: 30, tokenStatus: 'missing',
+        attributionSource: 'assessment_assigned_users',
         tagGroupVisibility,
       });
     }
@@ -898,6 +899,7 @@ router.get('/api/admin/crm/status', requirePermission('integrations'), async (re
       lastSyncedAt: s.last_synced_at,
       syncIntervalMins: s.sync_interval_mins || 30,
       tokenStatus,
+      attributionSource: s.attribution_source || 'assessment_assigned_users',
       tagGroupVisibility,
     });
   } catch (err) {
@@ -998,16 +1000,21 @@ router.put('/api/admin/crm/settings', requirePermission('integrations.manage'), 
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
-  const { referrerFieldName, stageMap, syncIntervalMins, tag_group_visibility } = req.body;
+  const { referrerFieldName, stageMap, syncIntervalMins, tag_group_visibility, attribution_source } = req.body;
+  const VALID_ATTRIBUTION_SOURCES = ['assessment_assigned_users', 'request_salesperson'];
+  if (attribution_source !== undefined && !VALID_ATTRIBUTION_SOURCES.includes(attribution_source)) {
+    return res.status(400).json({ error: 'invalid_attribution_source' });
+  }
   try {
-    if (referrerFieldName !== undefined || stageMap !== undefined || syncIntervalMins !== undefined) {
+    if (referrerFieldName !== undefined || stageMap !== undefined || syncIntervalMins !== undefined || attribution_source !== undefined) {
       await pool.query(
         `UPDATE contractor_crm_settings
          SET referrer_field_name = COALESCE($2, referrer_field_name),
              stage_map = COALESCE($3, stage_map),
-             sync_interval_mins = COALESCE($4, sync_interval_mins)
+             sync_interval_mins = COALESCE($4, sync_interval_mins),
+             attribution_source = COALESCE($5, attribution_source)
          WHERE contractor_id = $1`,
-        [contractorId, referrerFieldName || null, stageMap ? JSON.stringify(stageMap) : null, syncIntervalMins || null]
+        [contractorId, referrerFieldName || null, stageMap ? JSON.stringify(stageMap) : null, syncIntervalMins || null, attribution_source || null]
       );
     }
     if (tag_group_visibility !== undefined) {
