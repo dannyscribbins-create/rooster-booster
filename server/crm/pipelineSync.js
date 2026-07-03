@@ -30,6 +30,21 @@ function _resetPipelineSyncEmails() {
   _psSendEmail = (...args) => resend.emails.send(...args);
 }
 
+// Reassignables for the Jobber HTTP transport and throttle pacing delay —
+// production always uses real axios.post and a real setTimeout-based sleep.
+let _axiosPost = (...args) => axios.post(...args);
+let _sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// test seam — inert in production, never called outside server/test/
+function _setPipelineSyncHttpForTest({ axiosPost, sleep } = {}) {
+  if (axiosPost !== undefined) _axiosPost = axiosPost;
+  if (sleep !== undefined) _sleep = sleep;
+}
+function _resetPipelineSyncHttp() {
+  _axiosPost = (...args) => axios.post(...args);
+  _sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function escapeHtml(s) {
   if (!s || typeof s !== 'string') return '';
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -41,10 +56,48 @@ function formatDollars(n) {
 
 // Detects a Jobber GraphQL THROTTLED response — HTTP 200 with data: null and
 // errors[].extensions.code === 'THROTTLED'. The graphqlErrors array is attached
-// at the throw site in the pagination block.
+// at the throw site in the pagination block. message === 'Throttled' is matched
+// as a fallback, mirroring fullJobberImport.js's more defensive check.
 const isThrottledError = (err) =>
   Array.isArray(err?.graphqlErrors) &&
-  err.graphqlErrors.some(e => e?.extensions?.code === 'THROTTLED');
+  err.graphqlErrors.some(e => e?.extensions?.code === 'THROTTLED' || e?.message === 'Throttled');
+
+// ── THROTTLE PACING ────────────────────────────────────────────────────────────
+// Input: throttleStatus { currentlyAvailable, restoreRate } read from Jobber's
+// response.data.extensions.cost.throttleStatus (or undefined/malformed), and
+// requestedQueryCost from the same response's extensions.cost.requestedQueryCost.
+// Output: ms to wait before the next request so the bucket has refilled past the
+// admission price, capped at PACE_DELAY_CAP_MS. A missing or malformed
+// throttleStatus is non-fatal — logs a warning and proceeds without delay, since a
+// guessed delay is worse than an occasional extra throttle retry.
+const PACE_DELAY_CAP_MS = 60000;
+const PACE_DELAY_BUFFER_MS = 500;
+
+function computeThrottlePaceDelayMs(throttleStatus, requestedQueryCost) {
+  const currentlyAvailable = throttleStatus?.currentlyAvailable;
+  const restoreRate = throttleStatus?.restoreRate;
+
+  const isValid =
+    typeof currentlyAvailable === 'number' && !Number.isNaN(currentlyAvailable) &&
+    typeof restoreRate === 'number' && !Number.isNaN(restoreRate) && restoreRate > 0 &&
+    typeof requestedQueryCost === 'number' && !Number.isNaN(requestedQueryCost);
+
+  if (!isValid) {
+    console.warn('[pipelineSync] Missing or malformed throttleStatus — proceeding without pacing delay');
+    return 0;
+  }
+
+  if (currentlyAvailable >= requestedQueryCost) return 0;
+
+  const rawDelayMs = Math.ceil(((requestedQueryCost - currentlyAvailable) / restoreRate) * 1000) + PACE_DELAY_BUFFER_MS;
+
+  if (rawDelayMs > PACE_DELAY_CAP_MS) {
+    console.warn(`[pipelineSync] Computed pacing delay ${rawDelayMs}ms exceeds cap — clamping to ${PACE_DELAY_CAP_MS}ms`);
+    return PACE_DELAY_CAP_MS;
+  }
+
+  return rawDelayMs;
+}
 
 // ── PIPELINE STATUS CLASSIFIER ────────────────────────────────────────────────
 // Input: a single Jobber client object with quotes, jobs, invoices
@@ -569,7 +622,7 @@ async function runFullSync(contractorId) {
   while (hasNextPage) {
     const afterArg = cursor ? `, after: "${cursor}"` : '';
     const query = `{
-      clients(first: 50${afterArg}, filter: { createdAt: { after: "${startDateISO}" } }) {
+      clients(first: 25${afterArg}, filter: { createdAt: { after: "${startDateISO}" } }) {
         nodes {
           id firstName lastName createdAt
           customFields { ... on CustomFieldText { label valueText } }
@@ -586,7 +639,7 @@ async function runFullSync(contractorId) {
     }`;
 
     const response = await retryWithBackoff(
-      () => axios.post(
+      () => _axiosPost(
         'https://api.getjobber.com/api/graphql',
         { query },
         {
@@ -602,7 +655,9 @@ async function runFullSync(contractorId) {
 
     if (!response.data.data || !response.data.data.clients) {
       console.error('[pipelineSync] Jobber returned no clients data:', JSON.stringify(response.data));
-      throw new Error('Jobber GraphQL returned no clients data during full sync');
+      const err = new Error('Jobber GraphQL returned no clients data during full sync');
+      err.graphqlErrors = response.data.errors || [];
+      throw err;
     }
     if (response.data.errors?.length) {
       console.warn('[pipelineSync] Jobber returned partial errors during full sync:', JSON.stringify(response.data.errors));
@@ -683,11 +738,23 @@ async function runIncrementalSync(contractorId) {
   const CHUNK_DEFAULT_MS     = 24 * 60 * 60 * 1000; // 24h starting window
   const CHUNK_MIN_MS         = 30 * 60 * 1000;       // 30 min floor
   const MAX_CHUNKS_PER_CYCLE = 30;                   // safety cap (~30 days at 24h/chunk)
+  // Fallback admission price when no response has yet reported extensions.cost —
+  // last calibrated against the production query shape (customFields + quotes:10 +
+  // jobs:10 + invoices:5) via live GraphiQL. Calibrated against API default version
+  // 2025-04-16, not the pinned 2026-02-17 — treat as provisional pending a re-run
+  // against the pinned version. See CLAUDE_REGISTRY.md.
+  const CONSERVATIVE_REQUESTED_COST = 8055;
 
   let chunkStart  = lastSyncedAt;
   let chunkSizeMs = CHUNK_DEFAULT_MS;
   let chunksDone  = 0;
   const now       = new Date();
+
+  // Most recently observed extensions.cost from any page response in this sync run —
+  // used to pace the next request when the next response's own cost isn't known yet
+  // (i.e. before the first page of a new chunk).
+  let lastKnownCost = null;
+  let throttleRetriesForWindow = 0;
 
   while (chunkStart < now && chunksDone < MAX_CHUNKS_PER_CYCLE) {
     const chunkEnd  = new Date(Math.min(chunkStart.getTime() + chunkSizeMs, now.getTime()));
@@ -704,7 +771,7 @@ async function runIncrementalSync(contractorId) {
       while (hasNextPage) {
         const afterArg = cursor ? `, after: "${cursor}"` : '';
         const query = `{
-          clients(first: 50${afterArg}, filter: { updatedAt: { after: "${afterISO}", before: "${beforeISO}" } }) {
+          clients(first: 25${afterArg}, filter: { updatedAt: { after: "${afterISO}", before: "${beforeISO}" } }) {
             nodes {
               id firstName lastName createdAt
               customFields { ... on CustomFieldText { label valueText } }
@@ -721,7 +788,7 @@ async function runIncrementalSync(contractorId) {
         }`;
 
         const response = await retryWithBackoff(
-          () => axios.post(
+          () => _axiosPost(
             'https://api.getjobber.com/api/graphql',
             { query },
             {
@@ -738,16 +805,31 @@ async function runIncrementalSync(contractorId) {
         if (!response.data.data || !response.data.data.clients) {
           const err = new Error('Jobber GraphQL returned no clients data during incremental sync');
           err.graphqlErrors = response.data.errors || [];
+          err.throttleCost = response.data.extensions?.cost || null;
           throw err;
         }
         if (response.data.errors?.length) {
           console.warn('[pipelineSync] Jobber returned partial errors during incremental sync:', JSON.stringify(response.data.errors));
         }
 
+        if (response.data.extensions?.cost) {
+          lastKnownCost = response.data.extensions.cost;
+        }
+
         const { nodes, pageInfo } = response.data.data.clients;
         allClients  = allClients.concat(nodes);
         hasNextPage = pageInfo.hasNextPage;
         cursor      = pageInfo.endCursor;
+
+        // Proactive pacing — before firing the next page in this chunk, wait for the
+        // bucket to refill past the admission price if the last response reported it short.
+        if (hasNextPage) {
+          const paceDelayMs = computeThrottlePaceDelayMs(
+            lastKnownCost?.throttleStatus,
+            lastKnownCost?.requestedQueryCost ?? CONSERVATIVE_REQUESTED_COST
+          );
+          if (paceDelayMs > 0) await _sleep(paceDelayMs);
+        }
       }
 
       for (const client of allClients) {
@@ -765,13 +847,31 @@ async function runIncrementalSync(contractorId) {
       chunkStart  = chunkEnd;
       chunkSizeMs = CHUNK_DEFAULT_MS;
       chunksDone++;
+      throttleRetriesForWindow = 0;
 
     } catch (err) {
-      if (isThrottledError(err) && chunkSizeMs > CHUNK_MIN_MS) {
-        chunkSizeMs = Math.max(Math.floor(chunkSizeMs / 2), CHUNK_MIN_MS);
-        console.warn(`[pipelineSync] Chunk throttled for ${contractorId}, shrinking window to ${chunkSizeMs / 60000}min and retrying from ${afterISO}`);
+      if (!isThrottledError(err)) throw err;
+
+      throttleRetriesForWindow++;
+      const costForDelay = err.throttleCost || lastKnownCost;
+      const paceDelayMs = computeThrottlePaceDelayMs(
+        costForDelay?.throttleStatus,
+        costForDelay?.requestedQueryCost ?? CONSERVATIVE_REQUESTED_COST
+      );
+      if (paceDelayMs > 0) await _sleep(paceDelayMs);
+
+      if (throttleRetriesForWindow === 1) {
+        console.warn(`[pipelineSync] Chunk throttled for ${contractorId}, paced ${paceDelayMs}ms and retrying same window from ${afterISO}`);
         continue;
       }
+
+      if (chunkSizeMs > CHUNK_MIN_MS) {
+        chunkSizeMs = Math.max(Math.floor(chunkSizeMs / 2), CHUNK_MIN_MS);
+        throttleRetriesForWindow = 0;
+        console.warn(`[pipelineSync] Chunk throttled again for ${contractorId}, shrinking window to ${chunkSizeMs / 60000}min and retrying from ${afterISO}`);
+        continue;
+      }
+
       throw err;
     }
   }
@@ -812,4 +912,4 @@ async function runScheduledSync() {
   }
 }
 
-module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync, _setAttributionEngineForTest, _resetAttributionEngine, _setPipelineSyncEmailsForTest, _resetPipelineSyncEmails };
+module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync, isThrottledError, computeThrottlePaceDelayMs, _setAttributionEngineForTest, _resetAttributionEngine, _setPipelineSyncEmailsForTest, _resetPipelineSyncEmails, _setPipelineSyncHttpForTest, _resetPipelineSyncHttp };
