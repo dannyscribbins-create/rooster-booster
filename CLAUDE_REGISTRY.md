@@ -195,3 +195,23 @@ Read the current constraints before building any feature below.
 - Future consideration: after writing an orphan flag, the engine could still evaluate the provisional step so a later sync pass can promote and self-resolve the orphan without requiring admin review.
 - Deferred — matches locked spec as built (Session 92). Currently the orphan path returns immediately with no provisional write.
 - Do not build until: Explicitly scheduled by Danny.
+
+---
+
+## Known Issues / Pre-launch Cleanup
+
+**1. Scheduler silent on disconnect + possibly never registered (Session 92 finding)**
+- `POST /api/admin/crm/disconnect` deletes the tokens row (`admin/index.js:1101`); `runScheduledSync` (`crm/pipelineSync.js:793`) guards on `SELECT DISTINCT contractor_id FROM tokens WHERE access_token IS NOT NULL` and skips with only `[scheduler] No contractors with tokens — skipping cycle`. HOWEVER live deploy logs (July 2 18:28 EDT deploy, multiple :00/:30 UTC boundaries elapsed) show ZERO [scheduler] lines of ANY kind — neither skip nor start — suggesting `startCronJobs()` may not actually be invoked from the production entry point. Verification pending. Fixes pending review: (a) confirm/repair cron registration, (b) prominent skip logging, (c) sync-staleness alert via logError when `sync_state.last_synced_at` exceeds threshold, (d) launch consideration: contractor OAuth disconnect silently halts their pipeline sync with no recovery signal.
+
+**2. Sync Now button mis-wired (Session 92 finding + decision)**
+- `POST /api/admin/crm/sync` (`admin/index.js:1069`) calls `fetchPipelineForReferrer` per referrer and updates `contractor_crm_settings.last_synced_at` (status-card display only) — it does NOT run the pipeline incremental sync, does NOT touch `sync_state`, does NOT exercise `syncSingleClient`/attribution, and logs nothing. DECISION (Danny): keep the feature — its original intent (contractor-facing manual data refresh) is valid — but rewire it to `runIncrementalSync(contractorId)` from `crm/pipelineSync.js` with proper logging. Fix pending its own reviewed build.
+
+**2a. Webhook contractor fallback CONFIRMED LIVE (Session 92 evidence)**
+- Deploy logs show all webhook processing under `contractor: accent-roofing` and `[invoice-paid] no access token found` (token is keyed to `accent-roofing-dev`). Two confirmed consequences: (1) invoice-paid webhook token lookups fail under the fallback id, (2) attribution engine no-ops on webhook-triggered updates because rep mappings live under `accent-roofing-dev`. Raises priority of cleanup item 2a (fail-closed contractor resolution).
+
+---
+
+## Architecture Notes
+
+**Naming collision + rename decision (Session 92)**
+- TWO functions named `runIncrementalSync` exist: `server/crm/pipelineSync.js` (updates `pipeline_cache` + `sync_state`, called by the 30-min cron) and `server/cron/jobs/jobberIncrementalSync.js` (updates `jobber_clients`, daily 2am UTC). DECISION (Danny): rename both to function-specific names (e.g. `runPipelineIncrementalSync` / `runJobberClientsIncrementalSync`) during the cleanup pass.
