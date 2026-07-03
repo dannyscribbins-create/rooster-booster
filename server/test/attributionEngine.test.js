@@ -77,8 +77,8 @@ function makeClient(quoteNodes = []) {
 
 // Returns an approved quote node for the sticky gate.
 // salespersonId: Jobber user id string (or null for no salesperson).
-// lastTransitioned: ISO timestamp used for multi-quote tiebreak.
-function makeApprovedQuote({ id = 'q-1', salespersonId = null, lastTransitioned = '2026-05-01T00:00:00Z' } = {}) {
+// lastTransitioned: object { approvedAt } matching Jobber GraphQL shape (NOT a scalar string).
+function makeApprovedQuote({ id = 'q-1', salespersonId = null, lastTransitioned = { approvedAt: '2026-05-01T00:00:00Z' } } = {}) {
   return {
     id,
     quoteStatus: 'approved',
@@ -545,8 +545,8 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
   it('sticky gate: multi-quote tiebreak — most recently lastTransitioned wins', async () => {
     const rep3Id = await seedTeamMember(pool, { contractorId: CID, email: 'rep-gamma@attr-test.com', jobberUserId: 'jobber-user-C', isAttributable: true, fullName: 'Rep Gamma' });
     const client = makeClient([
-      makeApprovedQuote({ id: 'q-old', salespersonId: 'jobber-user-A', lastTransitioned: '2026-04-01T00:00:00Z' }),
-      makeApprovedQuote({ id: 'q-new', salespersonId: 'jobber-user-C', lastTransitioned: '2026-06-01T00:00:00Z' }),
+      makeApprovedQuote({ id: 'q-old', salespersonId: 'jobber-user-A', lastTransitioned: { approvedAt: '2026-04-01T00:00:00Z' } }),
+      makeApprovedQuote({ id: 'q-new', salespersonId: 'jobber-user-C', lastTransitioned: { approvedAt: '2026-06-01T00:00:00Z' } }),
     ]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',

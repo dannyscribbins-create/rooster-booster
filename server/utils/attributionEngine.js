@@ -10,7 +10,7 @@ const { logError: realLogError } = require('../middleware/errorLogger');
 //   jobberClientId    — Jobber client being evaluated
 //   currentStatus     — pipeline status from classifyPipelineStatus
 //   client            — Jobber client object; must include quotes.nodes with quoteStatus,
-//                       salesperson.id, and lastTransitioned
+//                       salesperson.id, and lastTransitioned { approvedAt }
 //   fetchAttributionData — async (jobberClientId, token) => { assessments, requests }
 //                          REQUIRED in production; omit only in tests that don't reach
 //                          the provisional step
@@ -71,7 +71,7 @@ async function runAttributionEngine(pool, {
     // Pick the most recently transitioned approved quote; handles multi-quote tiebreak
     const winnerQuote = approvedQuotes.reduce((best, q) => {
       if (!best) return q;
-      return new Date(q.lastTransitioned) > new Date(best.lastTransitioned) ? q : best;
+      return new Date(q.lastTransitioned?.approvedAt) > new Date(best.lastTransitioned?.approvedAt) ? q : best;
     }, null);
 
     let stickyRepId = null;
