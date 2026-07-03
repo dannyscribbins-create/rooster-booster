@@ -397,6 +397,7 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
 - Never run destructive SQL without explicit instruction and confirmed backup.
 - Always click Run Backup Now before any migration or DB-touching push.
 - `pending_referrals` records never hard deleted — close-out sets `status='closed'`.
+- `ADD CONSTRAINT ... UNIQUE` in a `DO $$` block must catch `WHEN duplicate_object OR duplicate_table` (re-run collides with its own backing index, raising 42P07). `CHECK` constraints only need `duplicate_object` (no backing index). Prefer the `pg_constraint` pre-check pattern (see `tokens_contractor_id_unique` in db.js) for new UNIQUE constraints.
 
 ### Jobber API
 - All Jobber GraphQL calls wrapped in retryWithBackoff with jobberShouldRetry.

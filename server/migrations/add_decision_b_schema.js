@@ -65,11 +65,18 @@ const steps = [
   },
   {
     name: 'client_rep_assignments.unique_contractor_client',
+    // Confirmed via Railway console (Session 93): constraint already exists and is
+    // healthy, applied manually in Session 91, backed by its own unique index of the
+    // same name. Every re-run recreates that same-named backing index and collides
+    // with the constraint's own existing index, raising 42P07 (duplicate_table) rather
+    // than 42710 (duplicate_object) — same root cause as the team_members_jobber_user_id_unique
+    // boot bug fixed earlier this session. Catching duplicate_table too is a safe no-op
+    // on an already-satisfied invariant, not a swallowed real error.
     sql: `DO $$ BEGIN
             ALTER TABLE client_rep_assignments
               ADD CONSTRAINT client_rep_assignments_unique_contractor_client
               UNIQUE (contractor_id, jobber_client_id);
-          EXCEPTION WHEN duplicate_object THEN NULL;
+          EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
           END $$`,
   },
 
