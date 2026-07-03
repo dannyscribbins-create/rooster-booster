@@ -9,6 +9,7 @@ function register() {
       await runScheduledSync();
     });
   });
+  console.log('[cron] pipeline_sync registered (every 30 min)');
 }
 
 module.exports = { register };

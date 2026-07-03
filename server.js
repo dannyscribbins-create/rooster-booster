@@ -45,6 +45,7 @@ app.use(express.json({ limit: '5mb' }));
     await initDB();
     startCronJobs();
   } catch (err) {
+    console.error('[server] initDB() failed — cron jobs will NOT start:', err);
     const { logError } = require('./server/middleware/errorLogger');
     logError({ req: null, error: err, source: 'startup' });
   }

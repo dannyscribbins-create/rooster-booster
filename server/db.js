@@ -1159,12 +1159,20 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE team_members ADD COLUMN IF NOT EXISTS title_id INTEGER REFERENCES titles(id)`);
   // Sub-piece 4: one Jobber user maps to at most one RoofMiles rep.
   // DO block is the idiomatic idempotent pattern — ALTER TABLE ADD CONSTRAINT IF NOT EXISTS
-  // is not valid PostgreSQL syntax in any supported version.
+  // is not valid PostgreSQL syntax in any supported version. Confirmed via Railway console
+  // (Session 93): the constraint already exists and is healthy (pg_constraint contype='u'),
+  // backed by its own unique index of the same name. Every re-run of this ADD CONSTRAINT
+  // recreates that same-named backing index and collides with the constraint's own existing
+  // index, raising 42P07 (duplicate_table) rather than 42710 (duplicate_object) — Postgres
+  // treats the index-name collision differently from a constraint-name collision. The old
+  // handler only caught duplicate_object, so every boot threw here and skipped the rest of
+  // initDB(). Catching duplicate_table too is safe: it's a no-op on an already-satisfied
+  // invariant, not a swallowed real error.
   await pool.query(`
     DO $$ BEGIN
       ALTER TABLE team_members
         ADD CONSTRAINT team_members_jobber_user_id_unique UNIQUE (jobber_user_id);
-    EXCEPTION WHEN duplicate_object THEN NULL;
+    EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
     END $$
   `);
 
