@@ -6,6 +6,11 @@ export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhos
 export const STRIPE_PUBLISHABLE_KEY = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || '';
 
 // ─── Contractor Config (white-label) ──────────────────────────────────────────
+// Display/branding config only. contractorId below must NEVER be sent to the backend
+// or used to resolve tenancy — it went stale after a contractors-table rename (2026-07-06)
+// and caused every referrer-facing endpoint to resolve to the wrong (empty) tenant.
+// The backend resolves contractor_id itself via getDefaultContractorId(); no client-supplied
+// contractor id is trusted anywhere in the referrer API surface.
 export const CONTRACTOR_CONFIG = {
   contractorId:     'accent-roofing',
   name:             'Accent Roofing Service',

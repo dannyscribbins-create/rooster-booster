@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
-import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
+import { BACKEND_URL } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
@@ -24,7 +24,7 @@ const DETAIL_LABELS = {
 };
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
-export default function CashOut({ pipeline, loading, userName, userEmail, bankStatus, setTab, onOpenBankSetup }) {
+export default function CashOut({ pipeline, loading, userName, userEmail, bankStatus, setTab, onOpenBankSetup, token }) {
   const [method, setMethod] = useState(null);
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
@@ -38,9 +38,12 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
   const [enabledMethods, setEnabledMethods] = useState(['stripe_ach', 'check', 'venmo', 'zelle']);
 
   useEffect(() => {
+    if (!token) return;
     async function fetchEnabledMethods() {
       try {
-        const r = await fetch(`${BACKEND_URL}/api/referrer/enabled-payout-methods/${CONTRACTOR_CONFIG.contractorId}`);
+        const r = await fetch(`${BACKEND_URL}/api/referrer/enabled-payout-methods`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         const d = await r.json();
         if (d.enabled_payout_methods) setEnabledMethods(d.enabled_payout_methods);
       } catch {
@@ -48,7 +51,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
       }
     }
     fetchEnabledMethods();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const advanceStep = (n) => {
     setStep(n);

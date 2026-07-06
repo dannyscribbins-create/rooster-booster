@@ -21,6 +21,7 @@ const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { verifyReferrerSession } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
 const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
+const { getDefaultContractorId } = require('../utils/contractorContext');
 
 // test seam — inert in production, never called outside server/test/
 // Only the cashout-section call sites below use these overrides.
@@ -328,7 +329,7 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
         const safeName = escapeHtml(full_name);
         const safeEmail = escapeHtml(email);
         const adminEmail20 = await resolveNotificationRecipient(pool, 'general');
-        const suppressed20 = await isEmailSuppressed('accent-roofing', adminEmail20, 'new_referrer_signup');
+        const suppressed20 = await isEmailSuppressed(link.contractor_id, adminEmail20, 'new_referrer_signup');
         if (!suppressed20) await sendAdminNotification(
           pool,
           'general',
@@ -462,14 +463,16 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
         const inviterName = inviterResult.rows[0]?.full_name;
         if (!inviterName) return;
 
+        const pipelineContractorId = await getDefaultContractorId();
+
         // Guard: don't write if pipeline_cache already has a row for this client name
         // (avoids duplicates when Jobber sync already caught this user)
         const existing = await pool.query(
           `SELECT 1 FROM pipeline_cache
-           WHERE contractor_id = 'accent-roofing'
-             AND LOWER(client_name) = LOWER($1)
+           WHERE contractor_id = $1
+             AND LOWER(client_name) = LOWER($2)
            LIMIT 1`,
-          [newUser.full_name]
+          [pipelineContractorId, newUser.full_name]
         );
         if (existing.rows.length > 0) return;
 
@@ -477,8 +480,9 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
           `INSERT INTO pipeline_cache
              (contractor_id, jobber_client_id, client_name, referred_by,
               pipeline_status, pre_start_date, raw_data, last_synced_at)
-           VALUES ('accent-roofing', $1, $2, $3, 'app_user', false, $4, NOW())`,
+           VALUES ($1, $2, $3, $4, 'app_user', false, $5, NOW())`,
           [
+            pipelineContractorId,
             'app_user_' + userId,
             newUser.full_name,
             inviterName,
@@ -524,8 +528,9 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
     const userNameResult = await pool.query('SELECT full_name FROM users WHERE id=$1', [userId]);
     if (!userNameResult.rows[0]?.full_name) return res.status(404).json({ error: 'User not found' });
     referrerName = userNameResult.rows[0].full_name;
-    // TODO: pull contractorId from referrer session token when multi-contractor is live
-    const contractorId = 'accent-roofing';
+    // MVP: single contractor — resolved via getDefaultContractorId(); pull from
+    // session at FORA scale (multi-contractor).
+    const contractorId = await getDefaultContractorId();
     const adapter = await getCRMAdapter(contractorId);
     const data = await adapter.fetchPipelineForReferrer(referrerName);
     // MVP: update this to cron-based sync at scale
@@ -559,7 +564,7 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
         `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at, bonus_amount)
          VALUES ($1, $2, $3, NOW(), $4)
          ON CONFLICT (user_id, jobber_client_id) DO NOTHING`,
-        [userId, 'accent-roofing', item.id, item.payout]
+        [userId, contractorId, item.id, item.payout]
       );
     }
 
@@ -577,12 +582,12 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
            SELECT id FROM users WHERE invited_by_user_id = $1
          )
          AND br.status = 'pending'
-         AND br.contractor_id = 'accent-roofing'`,
+         AND br.contractor_id = $2`,
         // Only surfaces for peer-referred users (invited_by_user_id IS NOT NULL).
         // Users who joined via contractor invite link have no referrer attribution
         // and their booking requests do not appear in any pipeline.
         // This is intentional — contractor-link users are already known to the contractor.
-        [userId]
+        [userId, contractorId]
       );
       const existingNames = new Set(data.pipeline.map(p => p.name.toLowerCase()));
       const bookingItems = brResult.rows
@@ -618,7 +623,7 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
     // Stale cache fallback — serve last known pipeline data when the adapter throws
     if (referrerName) {
       try {
-        const contractorId = 'accent-roofing';
+        const contractorId = await getDefaultContractorId();
         const cacheResult = await pool.query(
           `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date, last_synced_at
            FROM pipeline_cache
@@ -680,8 +685,8 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
                    SELECT id FROM users WHERE invited_by_user_id = $1
                  )
                  AND br.status = 'pending'
-                 AND br.contractor_id = 'accent-roofing'`,
-                [userId]
+                 AND br.contractor_id = $2`,
+                [userId, contractorId]
               );
               const existingNames = new Set(pipeline.map(p => p.name.toLowerCase()));
               const bookingItems = brResult.rows
@@ -795,10 +800,12 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
   }
 });
 
-// ── REFERRER: ENABLED PAYOUT METHODS (public — no auth required) ─────────────
-router.get('/api/referrer/enabled-payout-methods/:contractorId', async (req, res) => {
-  const { contractorId } = req.params;
+// ── REFERRER: ENABLED PAYOUT METHODS ──────────────────────────────────────────
+router.get('/api/referrer/enabled-payout-methods', async (req, res) => {
   try {
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const contractorId = await getDefaultContractorId();
     const result = await pool.query(
       `SELECT enabled_payout_methods FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
       [contractorId]
@@ -839,6 +846,7 @@ router.post('/api/cashout', cashoutLimiter, [
   }
   try {
     const userId = session.userId;
+    const contractorId = await getDefaultContractorId();
     const userResult = await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const { full_name, email } = userResult.rows[0];
@@ -873,7 +881,8 @@ router.post('/api/cashout', cashoutLimiter, [
     // ── #7 CASHOUT REQUEST RECEIVED EMAIL ─────────────────────────────────────
     try {
       const csResult = await pool.query(
-        `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+        `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+        [contractorId]
       );
       const cs = csResult.rows[0] || {};
       const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
@@ -882,7 +891,7 @@ router.post('/api/cashout', cashoutLimiter, [
       const firstName = escapeHtml(full_name.split(' ')[0] || full_name);
       const formattedAmount = parseFloat(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-      const suppressed7 = await isEmailSuppressed('accent-roofing', email, 'cashout_request_received');
+      const suppressed7 = await isEmailSuppressed(contractorId, email, 'cashout_request_received');
       if (!suppressed7) await retryWithBackoff(
         () => _sendEmail({
           from: `${fromName} <noreply@roofmiles.com>`,
@@ -912,7 +921,7 @@ router.post('/api/cashout', cashoutLimiter, [
     try {
       const settingsResult = await pool.query(
         'SELECT payout_automation, payout_review_threshold FROM contractor_settings WHERE contractor_id = $1',
-        ['accent-roofing']
+        [contractorId]
       );
       const settings = settingsResult.rows[0] || {};
       const { payout_automation, payout_review_threshold } = settings;
@@ -1063,14 +1072,16 @@ router.post('/api/profile/photo', async (req, res) => {
       try {
         const userRow = (await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId])).rows[0];
         if (!userRow?.email) return;
+        const contractorId = await getDefaultContractorId();
         const csResult = await pool.query(
-          `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id='accent-roofing' LIMIT 1`
+          `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id=$1 LIMIT 1`,
+          [contractorId]
         );
         const cs = csResult.rows[0] || {};
         const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
         const firstName = escapeHtml((userRow.full_name || '').split(' ')[0] || userRow.full_name);
         const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
-        const suppressed14 = await isEmailSuppressed('accent-roofing', userRow.email, 'profile_photo_uploaded');
+        const suppressed14 = await isEmailSuppressed(contractorId, userRow.email, 'profile_photo_uploaded');
         if (!suppressed14) await retryWithBackoff(
           () => resend.emails.send({
             from: `${fromName} <noreply@roofmiles.com>`,
@@ -1125,8 +1136,10 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
       const resetUrl = `${frontendUrl}/?reset=${token}`;
 
       try {
+        const contractorId = await getDefaultContractorId();
         const pinResetCs = await pool.query(
-          `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+          `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+          [contractorId]
         );
         const pinResetSettings = pinResetCs.rows[0] || {};
         const pinResetFromName = escapeHtml(pinResetSettings.email_sender_name || pinResetSettings.company_name || 'RoofMiles');
@@ -1270,7 +1283,8 @@ router.get('/api/referrer/qr-code', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
-    const referralUrl = `https://leaksmith.com/refer?ref=${userId}&contractor=accent-roofing`;
+    const contractorId = await getDefaultContractorId();
+    const referralUrl = `https://leaksmith.com/refer?ref=${userId}&contractor=${contractorId}`;
     const qrCodeDataUrl = await QRCode.toDataURL(referralUrl);
     res.json({ qrCodeDataUrl });
   } catch (err) {
@@ -1301,10 +1315,11 @@ router.get('/api/referrer/my-invite-link', async (req, res) => {
     } else {
       // Lazy-create the peer link
       slug = crypto.randomBytes(5).toString('hex');
+      const contractorId = await getDefaultContractorId();
       await pool.query(
         `INSERT INTO contractor_invite_links (contractor_id, slug, link_type, created_by_user_id, active)
-         VALUES ('accent-roofing', $1, 'peer', $2, true)`,
-        [slug, userId]
+         VALUES ($1, $2, 'peer', $3, true)`,
+        [contractorId, slug, userId]
       );
     }
 
@@ -1329,9 +1344,11 @@ router.get('/api/referrer/about', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
+    const contractorId = await getDefaultContractorId();
 
     const aboutResult = await pool.query(
-      "SELECT * FROM contractor_about WHERE contractor_id = 'accent-roofing' LIMIT 1"
+      'SELECT * FROM contractor_about WHERE contractor_id = $1 LIMIT 1',
+      [contractorId]
     );
     const about = aboutResult.rows[0];
     if (!about || !about.enabled) return res.json({ enabled: false });
@@ -1341,8 +1358,10 @@ router.get('/api/referrer/about', async (req, res) => {
 
     if (about.google_place_id && process.env.GOOGLE_PLACES_API_KEY) {
       try {
+        const googleRatingCacheKey = `google_rating_${contractorId}`;
         const cached = await pool.query(
-          "SELECT data, cached_at FROM admin_cache WHERE cache_key = 'google_rating_accent-roofing' AND cached_at > NOW() - INTERVAL '86400 seconds'"
+          "SELECT data, cached_at FROM admin_cache WHERE cache_key = $1 AND cached_at > NOW() - INTERVAL '86400 seconds'",
+          [googleRatingCacheKey]
         );
         if (cached.rows.length > 0) {
           google_rating = cached.rows[0].data.rating ?? null;
@@ -1362,9 +1381,9 @@ router.get('/api/referrer/about', async (req, res) => {
             google_rating = googleData.rating ?? null;
             google_review_count = googleData.userRatingCount ?? null;
             await pool.query(
-              `INSERT INTO admin_cache (id, cache_key, data, cached_at) VALUES (2, 'google_rating_accent-roofing', $1, NOW())
-               ON CONFLICT (id) DO UPDATE SET cache_key='google_rating_accent-roofing', data=$1, cached_at=NOW()`,
-              [JSON.stringify({ rating: google_rating, userRatingCount: google_review_count })]
+              `INSERT INTO admin_cache (id, cache_key, data, cached_at) VALUES (2, $1, $2, NOW())
+               ON CONFLICT (id) DO UPDATE SET cache_key=$1, data=$2, cached_at=NOW()`,
+              [googleRatingCacheKey, JSON.stringify({ rating: google_rating, userRatingCount: google_review_count })]
             );
           }
         }
@@ -1421,9 +1440,11 @@ router.post('/api/referrer/booking', bookingLimiter, [
     await pool.query('UPDATE users SET booking_submitted = true WHERE id = $1', [userId]);
 
     const toEmail = await resolveNotificationRecipient(pool, 'booking');
+    const contractorId = await getDefaultContractorId();
 
     const bookingCs = await pool.query(
-      `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = 'accent-roofing' LIMIT 1`
+      `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
+      [contractorId]
     );
     const bookingSettings = bookingCs.rows[0] || {};
     const bookingFromName = escapeHtml(bookingSettings.email_sender_name || bookingSettings.company_name || 'RoofMiles');
@@ -1449,8 +1470,8 @@ router.post('/api/referrer/booking', bookingLimiter, [
         `INSERT INTO booking_requests
            (contractor_id, submitted_by_user_id, referred_name, referred_phone,
             referred_email, referred_address, notes)
-         VALUES ('accent-roofing', $1, $2, $3, $4, $5, $6)`,
-        [userId, name, phone || null, email || null, address || null, notes || null]
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [contractorId, userId, name, phone || null, email || null, address || null, notes || null]
       );
     } catch (bookingErr) {
       await logError({ req, error: bookingErr });
@@ -1572,6 +1593,7 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
+    const contractorId = await getDefaultContractorId();
 
     const [settingsResult, userShoutResult] = await Promise.all([
       pool.query(
@@ -1580,7 +1602,7 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
                 quarterly_prizes, yearly_prizes,
                 warmup_mode_enabled, shouts_enabled
          FROM engagement_settings WHERE contractor_id=$1`,
-        ['accent-roofing']
+        [contractorId]
       ),
       pool.query(
         'SELECT shout_opt_out, pinned_shout, full_name, profile_photo FROM users WHERE id=$1',
@@ -1606,17 +1628,18 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
                   COUNT(rc.id) as converted_count,
                   COALESCE(SUM(rc.bonus_amount), 0) as period_earnings
            FROM users u
-           LEFT JOIN referral_conversions rc ON rc.user_id = u.id AND rc.contractor_id = 'accent-roofing'
+           LEFT JOIN referral_conversions rc ON rc.user_id = u.id AND rc.contractor_id = $1
            GROUP BY u.id, u.full_name, u.profile_photo
            ORDER BY converted_count DESC
-           LIMIT 10`
+           LIMIT 10`,
+          [contractorId]
         ),
         pool.query(
           `SELECT COUNT(*) as converted_count,
                   COALESCE(SUM(bonus_amount), 0) as period_earnings
            FROM referral_conversions
-           WHERE user_id = $1 AND contractor_id = 'accent-roofing'`,
-          [userId]
+           WHERE user_id = $1 AND contractor_id = $2`,
+          [userId, contractorId]
         ),
       ]);
     } else {
@@ -1627,20 +1650,20 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
                   COALESCE(SUM(rc.bonus_amount), 0) as period_earnings
            FROM users u
            LEFT JOIN referral_conversions rc ON rc.user_id = u.id
-             AND rc.contractor_id = 'accent-roofing'
+             AND rc.contractor_id = $3
              AND rc.converted_at >= $1 AND rc.converted_at < $2
            GROUP BY u.id, u.full_name, u.profile_photo
            ORDER BY converted_count DESC
            LIMIT 10`,
-          [start, end]
+          [start, end, contractorId]
         ),
         pool.query(
           `SELECT COUNT(*) as converted_count,
                   COALESCE(SUM(bonus_amount), 0) as period_earnings
            FROM referral_conversions
-           WHERE user_id = $1 AND contractor_id = 'accent-roofing'
+           WHERE user_id = $1 AND contractor_id = $4
              AND converted_at >= $2 AND converted_at < $3`,
-          [userId, start, end]
+          [userId, start, end, contractorId]
         ),
       ]);
     }
@@ -1681,7 +1704,8 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
       }
       // 5+ real referrers — auto-disable warmup mode
       await pool.query(
-        `UPDATE engagement_settings SET warmup_mode_enabled=false WHERE contractor_id='accent-roofing'`
+        `UPDATE engagement_settings SET warmup_mode_enabled=false WHERE contractor_id=$1`,
+        [contractorId]
       );
     }
 
@@ -1704,19 +1728,19 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
           ? pool.query(
               `SELECT COUNT(*) as rank_above FROM (
                  SELECT user_id FROM referral_conversions
-                 WHERE contractor_id = 'accent-roofing'
-                 GROUP BY user_id HAVING COUNT(*) > $1
+                 WHERE contractor_id = $1
+                 GROUP BY user_id HAVING COUNT(*) > $2
                ) sub`,
-              [userCount]
+              [contractorId, userCount]
             )
           : pool.query(
               `SELECT COUNT(*) as rank_above FROM (
                  SELECT user_id FROM referral_conversions
-                 WHERE contractor_id = 'accent-roofing'
-                   AND converted_at >= $1 AND converted_at < $2
-                 GROUP BY user_id HAVING COUNT(*) > $3
+                 WHERE contractor_id = $1
+                   AND converted_at >= $2 AND converted_at < $3
+                 GROUP BY user_id HAVING COUNT(*) > $4
                ) sub`,
-              [start, end, userCount]
+              [contractorId, start, end, userCount]
             )
         )
       : Promise.resolve(null);
@@ -1862,6 +1886,7 @@ router.post('/api/referrer/missing-referral', missingReferralLimiter, async (req
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
+    const contractorId = await getDefaultContractorId();
 
     const userResult = await pool.query('SELECT full_name FROM users WHERE id=$1 AND deleted_at IS NULL', [userId]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -1894,8 +1919,8 @@ router.post('/api/referrer/missing-referral', missingReferralLimiter, async (req
     await pool.query(
       `INSERT INTO admin_messages
          (contractor_id, message_type, reference_id, title, body, color_code)
-       VALUES ('accent-roofing', 'missing_referral', $1, $2, $3, 'purple')`,
-      [reportId, messageTitle, messageBody]
+       VALUES ($1, 'missing_referral', $2, $3, $4, 'purple')`,
+      [contractorId, reportId, messageTitle, messageBody]
     );
 
     // ── #23 MISSING REFERRAL ADMIN ALERT ─────────────────────────────────────
@@ -1906,7 +1931,7 @@ router.post('/api/referrer/missing-referral', missingReferralLimiter, async (req
         const safeFn = escapeHtml(fullName);
         const safeRef = escapeHtml(safeReferredName);
         const adminEmail23 = await resolveNotificationRecipient(pool, 'general');
-        const suppressed23 = await isEmailSuppressed('accent-roofing', adminEmail23, 'missing_referral_report');
+        const suppressed23 = await isEmailSuppressed(contractorId, adminEmail23, 'missing_referral_report');
         if (!suppressed23) await sendAdminNotification(
           pool,
           'general',
@@ -2113,8 +2138,9 @@ router.post('/api/referrer/feedback', async (req, res) => {
       return res.status(400).json({ error: 'message must be 5000 characters or fewer' });
     }
 
-    // MVP: single contractor — contractor_id defaults to 'accent-roofing'
-    const contractorId = 'accent-roofing';
+    // MVP: single contractor — resolved via getDefaultContractorId(); pull from
+    // session at FORA scale (multi-contractor).
+    const contractorId = await getDefaultContractorId();
 
     const submissionResult = await pool.query(
       'INSERT INTO suggestion_box_submissions (user_id, contractor_id, message_text) VALUES ($1, $2, $3) RETURNING id',
@@ -2190,8 +2216,9 @@ router.get('/api/referrer/schedules', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
 
-    // MVP: contractor_id hardcoded — pull from session at FORA scale
-    const contractorId = 'accent-roofing';
+    // MVP: single contractor — resolved via getDefaultContractorId(); pull from
+    // session at FORA scale (multi-contractor).
+    const contractorId = await getDefaultContractorId();
 
     const result = await pool.query(
       `SELECT s.id, s.name, s.payout_model, s.minimum_invoice, s.reset_period,
@@ -2221,8 +2248,9 @@ router.get('/api/referrer/conversions', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
-    // MVP: contractor_id hardcoded — pull from session at FORA scale
-    const contractorId = 'accent-roofing';
+    // MVP: single contractor — resolved via getDefaultContractorId(); pull from
+    // session at FORA scale (multi-contractor).
+    const contractorId = await getDefaultContractorId();
 
     // DISTINCT ON (rc.id) prevents duplicate rows when multiple activity_log entries
     // reference the same jobber_client_id. MVP: add schedule_id column to
