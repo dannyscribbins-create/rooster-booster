@@ -36,10 +36,14 @@ const REQ_OLD = {
 };
 
 // Builds a mock _httpPost that resolves with a successful Jobber response shape.
+// Shape matches the TOP-LEVEL Query.requests field (data.requests.nodes), not the nested
+// Client.requests connection — the nested connection accepts no sort/filter args at our
+// pinned API version (2026-02-17), confirmed live; ATTRIBUTION_QUERY moved to the top-level
+// field with a clientId filter instead. See jobber.js for the full verification history.
 function successPost(requestNodes) {
   return async () => ({
     data: {
-      data: { client: { requests: { nodes: requestNodes } } },
+      data: { requests: { nodes: requestNodes } },
     },
   });
 }
@@ -103,18 +107,18 @@ describe('fetchAttributionData — transformation logic', () => {
     );
   });
 
-  it('(e) throws when client object is null in response', async () => {
-    const nullClientPost = async () => ({
-      data: { data: { client: null } },
+  it('(e) throws when requests field is null in response', async () => {
+    const nullRequestsPost = async () => ({
+      data: { data: { requests: null } },
     });
     await assert.rejects(
-      () => fetchAttributionData('client-1', 'tok', nullClientPost),
+      () => fetchAttributionData('client-1', 'tok', nullRequestsPost),
       (err) => {
         assert.ok(err instanceof Error, 'throws an Error instance');
         assert.ok(err.message.includes('client-1'), 'error message identifies the client');
         return true;
       },
-      'must throw on null client, not silently return empty arrays'
+      'must throw on null requests field, not silently return empty arrays'
     );
   });
 });

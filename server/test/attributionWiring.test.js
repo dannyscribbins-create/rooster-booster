@@ -119,6 +119,31 @@ describe('syncSingleClient — attribution engine wiring', () => {
       'fetchAttributionData is the real production import, not undefined'
     );
     assert.equal(opts.token, 'test-token-abc', 'token is the value passed into syncSingleClient');
+    assert.ok(opts.referralAnchor, 'referralAnchor must be passed to the engine');
+  });
+
+  it('(a2) referralAnchor is the pipeline_cache row\'s own created_at, not last_synced_at/updated_at, and is preserved (not reset) on re-sync', async () => {
+    const spy = makeSpy();
+    _setAttributionEngineForTest(spy.fn);
+    const client = makeReferredClient('attr-wire-a2');
+
+    // First sync — creates the pipeline_cache row. Anchor should equal that first-seen moment.
+    await syncSingleClient(CID, client, REFERRAL_START_DATE, [], 'test-token-abc');
+    const firstAnchor = new Date(spy.lastCallOptions.referralAnchor).getTime();
+
+    const { rows } = await pool.query(
+      `SELECT created_at FROM pipeline_cache WHERE contractor_id=$1 AND jobber_client_id=$2`,
+      [CID, 'attr-wire-a2']
+    );
+    assert.equal(firstAnchor, new Date(rows[0].created_at).getTime(), 'anchor equals the pipeline_cache row created_at on first sync');
+
+    // Re-sync the same client later — created_at must not change, so the anchor passed to
+    // the engine on the second call must equal the FIRST call's anchor, not "now".
+    const clientAgain = makeReferredClient('attr-wire-a2');
+    await syncSingleClient(CID, clientAgain, REFERRAL_START_DATE, [], 'test-token-abc');
+    const secondAnchor = new Date(spy.lastCallOptions.referralAnchor).getTime();
+
+    assert.equal(secondAnchor, firstAnchor, 'referralAnchor must be preserved across re-sync, not reset to the current sync time');
   });
 
   it('(b) an engine throw does NOT break syncSingleClient — pipeline_cache row exists and logError fires with source pipelineSync/attribution', async () => {

@@ -279,18 +279,32 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
   return result.rows;
 }
 
+// Uses the TOP-LEVEL Query.requests field, not the nested Client.requests connection — the
+// nested connection accepts no sort/filter args at our pinned version (2026-02-17): confirmed
+// live via a GraphiQL argumentNotAccepted error, and confirmed in Jobber's Client type docs
+// (args: after/before/first/last only; sibling connections like contacts/jobs/notes DO take
+// sort, but requests and quotes are plain). The top-level Query.requests field, by contrast,
+// takes filter: RequestFilterAttributes (which includes clientId) AND sort: [RequestsSortInput!]
+// (the key/direction shape — REQUESTED_AT is the field it actually belongs to). Verified live
+// in GraphiQL on 2026-07-06 against a production client: no errors, requests returned
+// newest-first, requestedQueryCost sane. first: 25 with server-side newest-first ordering means
+// the referral-era request is effectively always in-window regardless of client history length
+// — this resolves the "10+ requests could miss the relevant one" limitation from the earlier
+// nested-connection attempt.
+// (Also confirmed in docs but NOT verified live — do not build against without a GraphiQL check
+// first: QuoteFilterAttributes on the top-level `quotes` query includes clientId AND
+// salespersonId; RequestFilterAttributes includes assignedTo, "the user assigned to the
+// request's assessment".)
 const ATTRIBUTION_QUERY = `
   query GetClientAttributionData($id: EncodedId!) {
-    client(id: $id) {
-      requests(first: 10) {
-        nodes {
+    requests(first: 25, filter: { clientId: $id }, sort: [{ key: REQUESTED_AT, direction: DESCENDING }]) {
+      nodes {
+        id
+        createdAt
+        salesperson { id }
+        assessment {
           id
-          createdAt
-          salesperson { id }
-          assessment {
-            id
-            assignedUsers { nodes { id } }
-          }
+          assignedUsers { nodes { id } }
         }
       }
     }
@@ -320,7 +334,7 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
   if (response.data.errors) {
     const diagnosticDetails = {
       errors: (response.data.errors).slice(0, 5),
-      connectionSlice: response.data?.data?.client?.requests?.nodes?.slice(0, 2),
+      connectionSlice: response.data?.data?.requests?.nodes?.slice(0, 2),
     };
     console.error('[fetchAttributionData] GraphQL error response:', JSON.stringify(diagnosticDetails)); // diagnostic log — intentional
     const err = new Error(`fetchAttributionData: GraphQL errors for client ${clientId}`);
@@ -328,13 +342,16 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
     throw err;
   }
 
-  if (!response.data?.data?.client) {
-    const err = new Error(`fetchAttributionData: null client response for client ${clientId}`);
+  if (!response.data?.data?.requests) {
+    const err = new Error(`fetchAttributionData: null requests response for client ${clientId}`);
     await logError({ req: null, error: err, source: 'fetchAttributionData' });
     throw err;
   }
 
-  const requestNodes = response.data.data.client.requests.nodes;
+  const requestNodes = response.data.data.requests.nodes;
+  // Belt-and-suspenders — server-side sort on the query is by REQUESTED_AT (primary; no
+  // CREATED_AT key exists in RequestsSortKey), not createdAt, so this local sort covers the
+  // distinction between the two timestamps (see ATTRIBUTION_QUERY comment).
   const sorted = [...requestNodes].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const assessments = sorted.filter(r => r.assessment != null).map(r => r.assessment);
 

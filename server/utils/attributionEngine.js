@@ -2,6 +2,150 @@
 
 const { logError: realLogError } = require('../middleware/errorLogger');
 
+// Anchor = pipeline_cache.created_at (first-seen time), NOT the actual referral moment in
+// Jobber — it lags behind the true referral by however long until our sync first observes the
+// "Referred by" field. Normally that's under the ~30min sync cadence, but it is unboundedly
+// wider during a sync outage (Bug 1, Session 93: syncs were dead for 2 days) or when a rep
+// back-fills the referral field days after the underlying request/quote was already created.
+// GRACE_MS absorbs that lag by shifting the eligibility cutoff earlier than the anchor itself.
+// Trade-off: a quote/request from an UNRELATED prior visit that happens to fall within the
+// GRACE window before detection can still win attribution — accepted, because the alternative
+// (no grace) systematically orphans every referral that lands during a sync outage or a
+// late-set referral field, which is worse and more common than a coincidental same-week
+// unrelated closing.
+const GRACE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// A quote is eligible for the sticky gate's quote_salesperson match only if: it was never
+// archived (archived means rejected/superseded, even if once approved), it has a recorded
+// approvedAt (was ever actually approved), and that approvedAt is not earlier than the
+// referral anchor minus GRACE_MS. Missing referralAnchor fails closed — never eligible.
+function isQuoteEligible(quote, referralAnchor) {
+  if (!referralAnchor) return false;
+  if (quote.quoteStatus === 'archived') return false;
+  const approvedAt = quote.lastTransitioned?.approvedAt;
+  if (!approvedAt) return false;
+  const cutoff = new Date(referralAnchor).getTime() - GRACE_MS;
+  return new Date(approvedAt).getTime() >= cutoff;
+}
+
+// A request is eligible for Mode A/B selection only if its createdAt is not earlier than the
+// referral anchor minus GRACE_MS. Missing referralAnchor fails closed — never eligible.
+function isRequestEligible(request, referralAnchor) {
+  if (!referralAnchor) return false;
+  const cutoff = new Date(referralAnchor).getTime() - GRACE_MS;
+  return new Date(request.createdAt).getTime() >= cutoff;
+}
+
+async function getAttributionSource(pool, contractorId) {
+  const { rows } = await pool.query(
+    `SELECT attribution_source FROM contractor_crm_settings WHERE contractor_id = $1`,
+    [contractorId]
+  );
+  return rows.length > 0 ? rows[0].attribution_source : 'assessment_assigned_users';
+}
+
+// Resolves Mode A's match from in-grace requests-with-assessment (anchor filtering happens
+// BEFORE match-counting, so an excluded pre-anchor rep can never contribute to a co-assignment
+// flag). requests must already be sorted newest-first (fetchAttributionData's contract).
+// Returns { type: 'none' } | { type: 'single', repId, assessmentId } | { type: 'multiple', repIds, assessmentId }.
+async function resolveModeAMatch(pool, contractorId, requests, referralAnchor) {
+  const eligible = (requests || []).filter(r => r.assessment != null && isRequestEligible(r, referralAnchor));
+  if (eligible.length === 0) return { type: 'none' };
+
+  const assessment = eligible[0].assessment; // most recent in-grade request with an assessment
+  const assignedUserIds = (assessment.assignedUsers && assessment.assignedUsers.nodes)
+    ? assessment.assignedUsers.nodes.map(u => u.id)
+    : [];
+  if (assignedUserIds.length === 0) return { type: 'none' };
+
+  const { rows: matchedReps } = await pool.query(
+    `SELECT id FROM team_members
+     WHERE contractor_id = $1 AND is_attributable = true AND jobber_user_id = ANY($2::text[])`,
+    [contractorId, assignedUserIds]
+  );
+  if (matchedReps.length === 0) return { type: 'none' };
+  if (matchedReps.length >= 2) {
+    return { type: 'multiple', repIds: matchedReps.map(r => r.id), assessmentId: assessment.id };
+  }
+  return { type: 'single', repId: matchedReps[0].id, assessmentId: assessment.id };
+}
+
+// Resolves Mode B's match from in-grace requests carrying a salesperson.
+// Returns { type: 'none' } | { type: 'single', repId }.
+async function resolveModeBMatch(pool, contractorId, requests, referralAnchor) {
+  const eligible = (requests || []).filter(r => r.salesperson && r.salesperson.id && isRequestEligible(r, referralAnchor));
+  if (eligible.length === 0) return { type: 'none' };
+
+  const request = eligible[0]; // most recent in-grace request with a salesperson
+  const { rows: matchedReps } = await pool.query(
+    `SELECT id FROM team_members
+     WHERE contractor_id = $1 AND is_attributable = true AND jobber_user_id = $2`,
+    [contractorId, request.salesperson.id]
+  );
+  if (matchedReps.length === 0) return { type: 'none' };
+  return { type: 'single', repId: matchedReps[0].id };
+}
+
+async function writeProvisional(pool, contractorId, jobberClientId, repId, source) {
+  await pool.query(
+    `INSERT INTO client_rep_assignments
+       (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, updated_at)
+     VALUES ($1, $2, $3, $4, NOW(), NOW())
+     ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
+       provisional_rep_id = EXCLUDED.provisional_rep_id,
+       provisional_source = EXCLUDED.provisional_source,
+       provisional_set_at = EXCLUDED.provisional_set_at,
+       updated_at         = EXCLUDED.updated_at`,
+    [contractorId, jobberClientId, repId, source]
+  );
+}
+
+async function writeSticky(pool, contractorId, jobberClientId, repId, source) {
+  // WHERE guard prevents overwriting an existing sticky under a concurrent race
+  await pool.query(
+    `INSERT INTO client_rep_assignments
+       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+     VALUES ($1, $2, $3, $4, NOW(), NOW())
+     ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
+       sticky_rep_id = EXCLUDED.sticky_rep_id,
+       sticky_source = EXCLUDED.sticky_source,
+       sticky_set_at = EXCLUDED.sticky_set_at,
+       updated_at    = EXCLUDED.updated_at
+     WHERE client_rep_assignments.sticky_rep_id IS NULL`,
+    [contractorId, jobberClientId, repId, source]
+  );
+}
+
+async function writeCoAssignmentFlag(pool, contractorId, jobberClientId, repIds, assessmentId) {
+  const { rows: existingFlag } = await pool.query(
+    `SELECT id FROM flagged_assignments
+     WHERE contractor_id = $1 AND jobber_client_id = $2 AND flag_reason = 'rep_co_assignment' AND reviewed = false`,
+    [contractorId, jobberClientId]
+  );
+  if (existingFlag.length > 0) return;
+  await pool.query(
+    `INSERT INTO flagged_assignments
+       (contractor_id, jobber_client_id, flag_reason, reps_involved, triggering_assessment_id)
+     VALUES ($1, $2, 'rep_co_assignment', $3::jsonb, $4)`,
+    [contractorId, jobberClientId, JSON.stringify(repIds), assessmentId]
+  );
+}
+
+async function writeOrphanFlag(pool, contractorId, jobberClientId, triggeringQuoteId) {
+  const { rows: existingOrphan } = await pool.query(
+    `SELECT id FROM flagged_assignments
+     WHERE contractor_id = $1 AND jobber_client_id = $2 AND flag_reason = 'orphan' AND reviewed = false`,
+    [contractorId, jobberClientId]
+  );
+  if (existingOrphan.length > 0) return;
+  await pool.query(
+    `INSERT INTO flagged_assignments
+       (contractor_id, jobber_client_id, flag_reason, triggering_quote_id)
+     VALUES ($1, $2, 'orphan', $3)`,
+    [contractorId, jobberClientId, triggeringQuoteId]
+  );
+}
+
 // Assigns a sales rep to a referred Jobber client.
 //
 // Inputs:
@@ -15,6 +159,8 @@ const { logError: realLogError } = require('../middleware/errorLogger');
 //                          REQUIRED in production; omit only in tests that don't reach
 //                          the provisional step
 //   token             — Jobber access token passed to fetchAttributionData
+//   referralAnchor    — timestamp (Date or ISO string) this client was first seen as referred;
+//                       pipeline_cache.created_at in production. Missing/null fails closed.
 //   logError          — injectable; defaults to real logError for production
 //
 // Order of operations (contractual — do not reorder):
@@ -22,7 +168,9 @@ const { logError: realLogError } = require('../middleware/errorLogger');
 //   2. Read existing client_rep_assignments row
 //   3. Sticky short-circuit: return if sticky already set
 //   4. Early missing-fetcher detection: logError once, set skipProvisional; gate still runs
-//   5. Sticky gate: fires when status NOT IN ('lead','inspection','not_sold')
+//   5. Sticky gate: fires when status NOT IN ('lead','inspection','not_sold'). Tries, in order:
+//      eligible quote's salesperson -> promote existing provisional -> Mode A/B fallthrough
+//      (direct sticky write on exactly one in-grace match, or co-assignment flag on 2+) -> orphan
 //   6. Provisional step: skipped when skipProvisional
 async function runAttributionEngine(pool, {
   contractorId,
@@ -31,6 +179,7 @@ async function runAttributionEngine(pool, {
   client,
   fetchAttributionData,
   token,
+  referralAnchor,
   logError = realLogError,
 }) {
   // 1. Guard — fail closed on missing identity
@@ -66,18 +215,18 @@ async function runAttributionEngine(pool, {
   const GATE_EXCLUSIONS = new Set(['lead', 'inspection', 'not_sold']);
   if (!GATE_EXCLUSIONS.has(currentStatus)) {
     const quoteNodes = (client && client.quotes && client.quotes.nodes) ? client.quotes.nodes : [];
-    const approvedQuotes = quoteNodes.filter(q => q.quoteStatus === 'approved');
+    const eligibleQuotes = quoteNodes.filter(q => isQuoteEligible(q, referralAnchor));
 
-    // Pick the most recently transitioned approved quote; handles multi-quote tiebreak
-    const winnerQuote = approvedQuotes.reduce((best, q) => {
+    // Pick the most recently approved ELIGIBLE quote; handles multi-quote tiebreak
+    const winnerQuote = eligibleQuotes.reduce((best, q) => {
       if (!best) return q;
-      return new Date(q.lastTransitioned?.approvedAt) > new Date(best.lastTransitioned?.approvedAt) ? q : best;
+      return new Date(q.lastTransitioned.approvedAt) > new Date(best.lastTransitioned.approvedAt) ? q : best;
     }, null);
 
     let stickyRepId = null;
     let stickySource = null;
 
-    // Prefer attributable quote salesperson
+    // Prefer the eligible quote's attributable salesperson
     if (winnerQuote && winnerQuote.salesperson && winnerQuote.salesperson.id) {
       const { rows: attrRows } = await pool.query(
         `SELECT id FROM team_members
@@ -97,36 +246,37 @@ async function runAttributionEngine(pool, {
     }
 
     if (stickyRepId !== null) {
-      // WHERE guard prevents overwriting an existing sticky under a concurrent race
-      await pool.query(
-        `INSERT INTO client_rep_assignments
-           (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
-         VALUES ($1, $2, $3, $4, NOW(), NOW())
-         ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
-           sticky_rep_id = EXCLUDED.sticky_rep_id,
-           sticky_source = EXCLUDED.sticky_source,
-           sticky_set_at = EXCLUDED.sticky_set_at,
-           updated_at    = EXCLUDED.updated_at
-         WHERE client_rep_assignments.sticky_rep_id IS NULL`,
-        [contractorId, jobberClientId, stickyRepId, stickySource]
-      );
+      await writeSticky(pool, contractorId, jobberClientId, stickyRepId, stickySource);
       return;
     }
 
-    // Orphan: no attributable salesperson and no provisional to promote.
-    // Suppress duplicate if an unreviewed orphan flag already exists.
-    const { rows: existingOrphan } = await pool.query(
-      `SELECT id FROM flagged_assignments
-       WHERE contractor_id = $1 AND jobber_client_id = $2 AND flag_reason = 'orphan' AND reviewed = false`,
-      [contractorId, jobberClientId]
-    );
-    if (existingOrphan.length === 0) {
-      await pool.query(
-        `INSERT INTO flagged_assignments
-           (contractor_id, jobber_client_id, flag_reason, triggering_quote_id)
-         VALUES ($1, $2, 'orphan', $3)`,
-        [contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null]
-      );
+    // Neither an eligible quote's salesperson nor an existing provisional resolved this
+    // client. Fall through to Mode A/B before giving up — a matching assessment/request
+    // still in the grace window counts, even with no quote or prior provisional to promote.
+    if (skipProvisional) {
+      await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
+      return;
+    }
+
+    const attributionSource = await getAttributionSource(pool, contractorId);
+    const { requests } = await fetchAttributionData(jobberClientId, token);
+
+    if (attributionSource === 'assessment_assigned_users') {
+      const match = await resolveModeAMatch(pool, contractorId, requests, referralAnchor);
+      if (match.type === 'single') {
+        await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_a_at_close');
+      } else if (match.type === 'multiple') {
+        await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId);
+      } else {
+        await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
+      }
+    } else {
+      const match = await resolveModeBMatch(pool, contractorId, requests, referralAnchor);
+      if (match.type === 'single') {
+        await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_b_at_close');
+      } else {
+        await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
+      }
     }
     return;
   }
@@ -134,106 +284,25 @@ async function runAttributionEngine(pool, {
   // 6. Provisional step — skipped when fetcher is absent
   if (skipProvisional) return;
 
-  // Read attribution mode; default to mode_a when settings row is missing
-  const { rows: settingsRows } = await pool.query(
-    `SELECT attribution_source FROM contractor_crm_settings WHERE contractor_id = $1`,
-    [contractorId]
-  );
-  const attributionSource = settingsRows.length > 0
-    ? settingsRows[0].attribution_source
-    : 'assessment_assigned_users';
-
-  const { assessments, requests } = await fetchAttributionData(jobberClientId, token);
+  const attributionSource = await getAttributionSource(pool, contractorId);
+  const { requests } = await fetchAttributionData(jobberClientId, token);
 
   if (attributionSource === 'assessment_assigned_users') {
-    await applyModeA(pool, contractorId, jobberClientId, assessments, currentProvisionalSource);
-  } else {
-    await applyModeB(pool, contractorId, jobberClientId, requests, currentProvisionalSource);
-  }
-}
-
-// Mode A: cross-reference assessment.assignedUsers against attributable team_members.
-async function applyModeA(pool, contractorId, jobberClientId, assessments, currentProvisionalSource) {
-  if (!assessments || assessments.length === 0) return;
-
-  const assessment = assessments[0];
-  const assignedUserIds = (assessment.assignedUsers && assessment.assignedUsers.nodes)
-    ? assessment.assignedUsers.nodes.map(u => u.id)
-    : [];
-
-  if (assignedUserIds.length === 0) return;
-
-  const { rows: matchedReps } = await pool.query(
-    `SELECT id FROM team_members
-     WHERE contractor_id = $1 AND is_attributable = true AND jobber_user_id = ANY($2::text[])`,
-    [contractorId, assignedUserIds]
-  );
-
-  if (matchedReps.length === 0) return;
-
-  if (matchedReps.length >= 2) {
-    // Co-assignment: suppress duplicate unreviewed flags
-    const { rows: existingFlag } = await pool.query(
-      `SELECT id FROM flagged_assignments
-       WHERE contractor_id = $1 AND jobber_client_id = $2 AND flag_reason = 'rep_co_assignment' AND reviewed = false`,
-      [contractorId, jobberClientId]
-    );
-    if (existingFlag.length === 0) {
-      await pool.query(
-        `INSERT INTO flagged_assignments
-           (contractor_id, jobber_client_id, flag_reason, reps_involved, triggering_assessment_id)
-         VALUES ($1, $2, 'rep_co_assignment', $3::jsonb, $4)`,
-        [contractorId, jobberClientId, JSON.stringify(matchedReps.map(r => r.id)), assessment.id]
-      );
+    const match = await resolveModeAMatch(pool, contractorId, requests, referralAnchor);
+    if (match.type === 'single') {
+      // Exactly one attributable match — qr_link source takes precedence over mode_a
+      if (currentProvisionalSource !== 'qr_link') {
+        await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a');
+      }
+    } else if (match.type === 'multiple') {
+      await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId);
     }
-    return;
+  } else {
+    const match = await resolveModeBMatch(pool, contractorId, requests, referralAnchor);
+    if (match.type === 'single' && currentProvisionalSource !== 'qr_link') {
+      await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_b');
+    }
   }
-
-  // Exactly one attributable match — qr_link source takes precedence over mode_a
-  if (currentProvisionalSource === 'qr_link') return;
-
-  await pool.query(
-    `INSERT INTO client_rep_assignments
-       (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, updated_at)
-     VALUES ($1, $2, $3, 'mode_a', NOW(), NOW())
-     ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
-       provisional_rep_id = EXCLUDED.provisional_rep_id,
-       provisional_source = EXCLUDED.provisional_source,
-       provisional_set_at = EXCLUDED.provisional_set_at,
-       updated_at         = EXCLUDED.updated_at`,
-    [contractorId, jobberClientId, matchedReps[0].id]
-  );
-}
-
-// Mode B: read request.salesperson and match against attributable team_members.
-async function applyModeB(pool, contractorId, jobberClientId, requests, currentProvisionalSource) {
-  if (!requests || requests.length === 0) return;
-
-  const request = requests[0];
-  if (!request.salesperson || !request.salesperson.id) return;
-
-  const { rows: matchedReps } = await pool.query(
-    `SELECT id FROM team_members
-     WHERE contractor_id = $1 AND is_attributable = true AND jobber_user_id = $2`,
-    [contractorId, request.salesperson.id]
-  );
-
-  if (matchedReps.length === 0) return;
-
-  // qr_link source takes precedence over mode_b
-  if (currentProvisionalSource === 'qr_link') return;
-
-  await pool.query(
-    `INSERT INTO client_rep_assignments
-       (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, updated_at)
-     VALUES ($1, $2, $3, 'mode_b', NOW(), NOW())
-     ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
-       provisional_rep_id = EXCLUDED.provisional_rep_id,
-       provisional_source = EXCLUDED.provisional_source,
-       provisional_set_at = EXCLUDED.provisional_set_at,
-       updated_at         = EXCLUDED.updated_at`,
-    [contractorId, jobberClientId, matchedReps[0].id]
-  );
 }
 
 module.exports = { runAttributionEngine };

@@ -180,7 +180,12 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
 
   const paidAt = status === 'paid' ? new Date() : null;
 
-  await pool.query(
+  // RETURNING created_at gives us the referral anchor for the attribution engine's grace-window
+  // checks (see attributionEngine.js) straight from the row Postgres actually persisted — created_at
+  // is excluded from the ON CONFLICT update below, so on a re-sync this returns the ORIGINAL
+  // first-seen instant, not "now". Reading it back this way (rather than capturing new Date() in JS
+  // beforehand) avoids clock/round-trip drift between the JS timestamp and what's actually stored.
+  const upsertResult = await pool.query(
     `INSERT INTO pipeline_cache
        (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status,
         pre_start_date, jobber_created_at, last_synced_at, updated_at, paid_at)
@@ -196,10 +201,12 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
          WHEN EXCLUDED.pipeline_status = 'paid' AND pipeline_cache.pipeline_status != 'paid'
          THEN NOW()
          ELSE pipeline_cache.paid_at
-       END`,
+       END
+     RETURNING created_at`,
     [contractorId, client.id, clientName, referredBy, status,
      isPreStart, createdAt, paidAt]
   );
+  const referralAnchor = upsertResult.rows[0].created_at;
 
   // ── APP_USER_ PLACEHOLDER CLEANUP ──────────────────────────────────────────
   // If a peer-signup placeholder row exists for this client (written at signup when
@@ -232,6 +239,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
         client,
         fetchAttributionData,
         token,
+        referralAnchor,
       });
     }
   } catch (err) {

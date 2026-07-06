@@ -75,31 +75,42 @@ function makeClient(quoteNodes = []) {
   };
 }
 
-// Returns an approved quote node for the sticky gate.
+// Returns a quote node for the sticky gate.
+// quoteStatus defaults to 'converted' — real Jobber data (confirmed via GraphiQL against a
+// production client) shows a quote that produced a job reads 'converted', not 'approved'.
+// The old fixture default of 'approved' encoded the bug this suite now guards against.
 // salespersonId: Jobber user id string (or null for no salesperson).
 // lastTransitioned: object { approvedAt } matching Jobber GraphQL shape (NOT a scalar string).
-function makeApprovedQuote({ id = 'q-1', salespersonId = null, lastTransitioned = { approvedAt: '2026-05-01T00:00:00Z' } } = {}) {
+function makeApprovedQuote({
+  id = 'q-1',
+  salespersonId = null,
+  quoteStatus = 'converted',
+  lastTransitioned = { approvedAt: '2026-05-01T00:00:00Z' },
+} = {}) {
   return {
     id,
-    quoteStatus: 'approved',
+    quoteStatus,
     salesperson: salespersonId ? { id: salespersonId } : null,
     lastTransitioned,
   };
 }
 
-// Mode A fetcher — returns an assessment with the given assigned user IDs.
-function modeAFetcher(assignedUserIds = [], assessmentId = 'assess-1') {
+// Mode A fetcher — returns a request (with createdAt) wrapping an assessment with the given
+// assigned user IDs. requestCreatedAt matters now: the anchor/grace filter operates on the
+// REQUEST's createdAt, not on the assessment (assessments have no timestamp of their own).
+function modeAFetcher(assignedUserIds = [], assessmentId = 'assess-1', requestCreatedAt = '2026-05-01T00:00:00Z') {
+  const assessment = { id: assessmentId, assignedUsers: { nodes: assignedUserIds.map(id => ({ id })) } };
   return async () => ({
-    assessments: [{ id: assessmentId, assignedUsers: { nodes: assignedUserIds.map(id => ({ id })) } }],
-    requests: [],
+    assessments: [assessment],
+    requests: [{ id: 'req-1', createdAt: requestCreatedAt, salesperson: null, assessment }],
   });
 }
 
 // Mode B fetcher — returns a request with the given salesperson Jobber user ID (or null).
-function modeBFetcher(salespersonJobberUserId = null) {
+function modeBFetcher(salespersonJobberUserId = null, requestCreatedAt = '2026-05-01T00:00:00Z') {
   return async () => ({
     assessments: [],
-    requests: [{ id: 'req-1', salesperson: salespersonJobberUserId ? { id: salespersonJobberUserId } : null }],
+    requests: [{ id: 'req-1', createdAt: requestCreatedAt, salesperson: salespersonJobberUserId ? { id: salespersonJobberUserId } : null }],
   });
 }
 
@@ -110,6 +121,11 @@ const emptyFetcher = async () => ({ assessments: [], requests: [] });
 
 const CID       = 'accent-roofing';
 const CLIENT_ID = 'jc-attr-001';
+
+// Referral anchor for tests that aren't specifically exercising anchor/grace edge cases.
+// Set well before every fixture quote/request timestamp above (2026-04-01 onward) so those
+// fixtures are unambiguously "post-referral" regardless of the grace window.
+const DEFAULT_ANCHOR = new Date('2026-01-01T00:00:00Z');
 
 // ── TEST SUITE ────────────────────────────────────────────────────────────────
 
@@ -149,7 +165,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
   it('Mode A: no assessments returned → benign skip, no row written', async () => {
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: emptyFetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -167,7 +183,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-B']); // rep2Id is NOT attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -185,7 +201,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A', 'jobber-user-B']); // only A is attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -206,7 +222,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A']); // repId IS attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -224,7 +240,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A', 'jobber-user-C'], 'assess-co');
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows: assignments } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -247,7 +263,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A', 'jobber-user-C'], 'assess-co2');
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows: flags } = await pool.query(
       'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
@@ -263,7 +279,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeBFetcher('jobber-user-A'); // repId is attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -280,7 +296,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeBFetcher(null);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -294,7 +310,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeBFetcher('jobber-user-B'); // rep2Id is NOT attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -312,7 +328,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     };
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: trackingFetcher, token: 'test-token',
+      client: makeClient(), fetchAttributionData: trackingFetcher, token: 'test-token', referralAnchor: DEFAULT_ANCHOR,
     });
     assert.ok(fetcherCalledWith !== null, 'fetchAttributionData must be called');
     assert.equal(fetcherCalledWith.clientId, CLIENT_ID, 'fetcher receives jobberClientId');
@@ -330,7 +346,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A']); // would normally match repId
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -350,7 +366,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeBFetcher('jobber-user-A'); // would normally match repId
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -370,7 +386,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
       client: makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]),
-      fetchAttributionData: fetcher, token: 'tok',
+      fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -393,7 +409,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -408,7 +424,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'paid',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -422,7 +438,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -435,7 +451,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'inspection',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -448,7 +464,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'not_sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -462,7 +478,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'pending_completion_whatever',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -480,7 +496,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-B' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -498,7 +514,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: null })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -508,12 +524,13 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     assert.equal(rows[0].sticky_source, 'promoted_provisional');
   });
 
-  it('sticky gate: orphan flag when no attributable salesperson AND no provisional', async () => {
-    // No assignment row exists, salesperson is non-attributable
+  it('sticky gate: orphan flag when no attributable salesperson AND no provisional AND no Mode A match', async () => {
+    // No assignment row exists, salesperson is non-attributable, and the assessment fetch
+    // (emptyFetcher) yields nothing either — only then must the gate orphan.
     const client = makeClient([makeApprovedQuote({ id: 'q-orphan', salespersonId: 'jobber-user-B' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows: flags } = await pool.query(
       'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
@@ -533,7 +550,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ id: 'q-orphan2', salespersonId: 'jobber-user-B' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows: flags } = await pool.query(
       'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
@@ -550,7 +567,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     ]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -571,7 +588,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'paid',
-      client, fetchAttributionData: emptyFetcher, token: 'tok',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -600,7 +617,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A']);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
 
     // contractor-a should have its provisional set.
@@ -629,7 +646,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
 
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: undefined, token: 'tok',
+      client: makeClient(), fetchAttributionData: undefined, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       logError: mockLogError,
     });
 
@@ -649,8 +666,8 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     assert.equal(flags.length, 0, 'no flag writes when fetcher is missing at pre-gate status');
   });
 
-  // Missing fetcher skips the provisional step only; the sticky gate still fires
-  // because it reads quote data from the client object, not from the fetcher.
+  // Missing fetcher skips the provisional/fallthrough step only; the sticky gate's quote
+  // check still fires because it reads quote data from the client object, not the fetcher.
   it('missing fetchAttributionData at gate: logError called once AND sticky still set from client quotes', async () => {
     const errors = [];
     const mockLogError = async (params) => { errors.push(params); };
@@ -658,7 +675,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: undefined, token: 'tok',
+      client, fetchAttributionData: undefined, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       logError: mockLogError,
     });
 
@@ -671,5 +688,252 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     );
     assert.equal(rows[0]?.sticky_rep_id, repId, 'sticky set from quote salesperson despite missing fetcher');
     assert.equal(rows[0]?.sticky_source, 'quote_salesperson');
+  });
+
+  // Missing fetcher at gate, WITHOUT a quote match or provisional to fall back on — must
+  // orphan directly (cannot fall through to Mode A, since the fetcher that would run it
+  // is exactly what's missing).
+  it('missing fetchAttributionData at gate with no quote/provisional match: orphans directly, no crash', async () => {
+    const errors = [];
+    const mockLogError = async (params) => { errors.push(params); };
+
+    const client = makeClient([makeApprovedQuote({ id: 'q-nofetcher', salespersonId: 'jobber-user-B' })]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: undefined, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      logError: mockLogError,
+    });
+
+    const { rows: flags } = await pool.query(
+      'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
+      [CID, CLIENT_ID, 'orphan']
+    );
+    assert.equal(flags.length, 1, 'orphans directly when fetcher is missing and no quote/provisional resolves it');
+  });
+
+  // ── ANCHOR / GRACE WINDOW (temporal scoping fix) ──────────────────────────────
+
+  it('PRIMARY: pre-existing converted quote (ancient, null salesperson) + pre-existing jobs + new request BEFORE anchor within grace, assessment matches attributable rep → sticky via mode_a_at_close, not orphan', async () => {
+    // Models the real Session flagged row: shared/returning-customer client with a 2024
+    // converted quote (null salesperson) and pre-existing jobs (making status 'sold'), plus
+    // a brand-new 2026 request whose assessment names the attributable rep. The request was
+    // created several hours BEFORE the anchor — anchor = detection time (first sync to see
+    // the client as referred), which lagged the real referral due to a 2-day sync outage.
+    const anchor = new Date('2026-07-03T18:30:00Z'); // first sync saw the client (post-outage)
+    const requestCreatedAt = '2026-07-03T00:33:40Z'; // ~18h BEFORE anchor — within 7-day grace
+
+    const ancientQuote = makeApprovedQuote({
+      id: 'q-2024', salespersonId: null, quoteStatus: 'converted',
+      lastTransitioned: { approvedAt: '2024-07-24T16:48:46Z' },
+    });
+    const client = makeClient([ancientQuote]);
+    const fetcher = modeAFetcher(['jobber-user-A'], 'assess-real', requestCreatedAt);
+
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: anchor,
+    });
+
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id, repId, 'anchor-lag request must still win attribution via Mode A fallthrough');
+    assert.equal(rows[0]?.sticky_source, 'mode_a_at_close', 'sticky written directly from the gate fallthrough, not left provisional');
+
+    const { rows: flags } = await pool.query(
+      'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
+      [CID, CLIENT_ID, 'orphan']
+    );
+    assert.equal(flags.length, 0, 'must NOT orphan — this is exactly the bug being fixed');
+  });
+
+  it('post-referral quote approved then archived: excluded from quote-salesperson matching even though salesperson is attributable and approvedAt is post-anchor', async () => {
+    const client = makeClient([
+      makeApprovedQuote({
+        id: 'q-archived', salespersonId: 'jobber-user-A', quoteStatus: 'archived',
+        lastTransitioned: { approvedAt: '2026-05-01T00:00:00Z' },
+      }),
+    ]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id ?? null, null, 'archived quote must never produce a quote_salesperson sticky');
+    const { rows: flags } = await pool.query(
+      'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
+      [CID, CLIENT_ID, 'orphan']
+    );
+    assert.equal(flags.length, 1, 'falls through to orphan since archived quote is fully ignored and no Mode A match exists');
+  });
+
+  it('null-salesperson eligible quote + no provisional → falls through to Mode A, sticky via mode_a_at_close', async () => {
+    const client = makeClient([
+      makeApprovedQuote({ id: 'q-nosales', salespersonId: null, quoteStatus: 'converted' }),
+    ]);
+    const fetcher = modeAFetcher(['jobber-user-A']);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id, repId, 'Mode A fallthrough resolves the null-salesperson-quote case');
+    assert.equal(rows[0]?.sticky_source, 'mode_a_at_close');
+  });
+
+  it('null/missing referralAnchor: fails closed — quote is NOT treated as eligible, never reverts to old unscoped behavior', async () => {
+    const client = makeClient([makeApprovedQuote({ id: 'q-noanchor', salespersonId: 'jobber-user-A' })]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: null,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id ?? null, null, 'no sticky written when anchor is missing — fail closed, not fail open');
+    const { rows: flags } = await pool.query(
+      'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
+      [CID, CLIENT_ID, 'orphan']
+    );
+    assert.equal(flags.length, 1, 'missing anchor with no other resolution path ends in orphan, not a silent unscoped match');
+  });
+
+  it('two-quote tiebreak: archived quote has the latest approvedAt but must lose to the still-valid earlier quote', async () => {
+    const client = makeClient([
+      makeApprovedQuote({
+        id: 'q-archived-latest', salespersonId: 'jobber-user-A', quoteStatus: 'archived',
+        lastTransitioned: { approvedAt: '2026-06-01T00:00:00Z' },
+      }),
+      makeApprovedQuote({
+        id: 'q-valid-earlier', salespersonId: 'jobber-user-B', quoteStatus: 'converted',
+        lastTransitioned: { approvedAt: '2026-04-01T00:00:00Z' },
+      }),
+    ]);
+    // jobber-user-B (rep2Id) is NOT attributable in this suite's default seed. Asserting
+    // "no sticky" here proves the *valid earlier* quote (jobber-user-B) was the one
+    // considered — if the archived-but-later quote had wrongly won, sticky would be repId.
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id ?? null, null, 'archived quote (jobber-user-A, attributable) must not win despite later approvedAt');
+    const { rows: flags } = await pool.query(
+      'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
+      [CID, CLIENT_ID, 'orphan']
+    );
+    assert.equal(flags.length, 1, 'valid earlier quote (jobber-user-B, non-attributable) was the one considered, and it does not match — orphans');
+  });
+
+  it('ancient quote (2 years pre-anchor) excluded even with the grace window applied', async () => {
+    const client = makeClient([
+      makeApprovedQuote({
+        id: 'q-ancient', salespersonId: 'jobber-user-A', quoteStatus: 'converted',
+        lastTransitioned: { approvedAt: '2024-07-24T16:48:46Z' },
+      }),
+    ]);
+    const anchor = new Date('2026-05-15T00:00:00Z');
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: anchor,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id ?? null, null, 'a 2-year-old quote must never be eligible, 7-day grace or not');
+    const { rows: flags } = await pool.query(
+      'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
+      [CID, CLIENT_ID, 'orphan']
+    );
+    assert.equal(flags.length, 1, 'ancient quote ignored, no Mode A match, falls to orphan');
+  });
+
+  it('quote-side grace: approvedAt a few hours BEFORE the anchor, within grace, still eligible for quote_salesperson', async () => {
+    const anchor = new Date('2026-07-03T18:30:00Z');
+    const client = makeClient([
+      makeApprovedQuote({
+        id: 'q-in-grace', salespersonId: 'jobber-user-A', quoteStatus: 'converted',
+        lastTransitioned: { approvedAt: '2026-07-03T12:00:00Z' }, // ~6.5h before anchor, within 7-day grace
+      }),
+    ]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: anchor,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id, repId, 'quote approved shortly before anchor, within grace, must still win via quote_salesperson');
+    assert.equal(rows[0]?.sticky_source, 'quote_salesperson');
+  });
+
+  it('Mode A anchor filtering (pre-gate, step 6): an ancient request with an assessment must NOT set a provisional when the only in-grace request has no assessment', async () => {
+    // Uses a PRE-GATE status ('lead') deliberately — this exercises the EXISTING step-6
+    // provisional path (which already calls fetchAttributionData today), isolating whether
+    // Mode A's own selection needs anchor filtering, independent of the new gate-fallthrough
+    // mechanism. Without the anchor filter, the ancient (2024) request's assessment is the
+    // only assessment available and would wrongly set a provisional today.
+    const anchor = new Date('2026-07-03T18:30:00Z');
+    const oldAssessment = { id: 'assess-old', assignedUsers: { nodes: [{ id: 'jobber-user-A' }] } };
+    const fetcher = async () => ({
+      assessments: [oldAssessment],
+      requests: [
+        { id: 'req-in-grace', createdAt: '2026-07-03T00:33:40Z', salesperson: null, assessment: null },
+        { id: 'req-ancient', createdAt: '2024-01-01T00:00:00Z', salesperson: null, assessment: oldAssessment },
+      ],
+    });
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
+      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: anchor,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows.length, 0, 'the ancient assessment must be excluded by the anchor filter — no provisional written, even though the fetcher returns a matching assessment');
+  });
+
+  it('Mode A anchor filtering: pre-anchor and in-grace requests name different attributable reps — only the in-grace one counts, never co-assignment', async () => {
+    const repXId = await seedTeamMember(pool, { contractorId: CID, email: 'rep-x@attr-test.com', jobberUserId: 'jobber-user-X', isAttributable: true, fullName: 'Rep X (pre-anchor — must be excluded)' });
+    const anchor = new Date('2026-07-03T18:30:00Z');
+    const oldAssessment = { id: 'assess-old-x', assignedUsers: { nodes: [{ id: 'jobber-user-X' }] } };
+    const newAssessment = { id: 'assess-new-a', assignedUsers: { nodes: [{ id: 'jobber-user-A' }] } };
+    const fetcher = async () => ({
+      assessments: [newAssessment, oldAssessment],
+      requests: [
+        { id: 'req-in-grace', createdAt: '2026-07-03T00:33:40Z', salesperson: null, assessment: newAssessment },
+        { id: 'req-ancient', createdAt: '2024-01-01T00:00:00Z', salesperson: null, assessment: oldAssessment },
+      ],
+    });
+    const client = makeClient([]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: anchor,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id, repId, 'only the in-grace request (rep A) counts — the excluded pre-anchor rep (X) must never win');
+    assert.equal(rows[0]?.sticky_source, 'mode_a_at_close');
+    const { rows: flags } = await pool.query(
+      'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
+      [CID, CLIENT_ID, 'rep_co_assignment']
+    );
+    assert.equal(flags.length, 0, 'anchor filtering happens before match-counting — the excluded pre-anchor rep must not trigger co-assignment');
+    void repXId;
   });
 });
