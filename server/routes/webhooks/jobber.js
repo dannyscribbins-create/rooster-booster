@@ -26,6 +26,7 @@ const { applyTag } = require('../../utils/tags');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 const { refreshTokenIfNeeded } = require('../../crm/jobber');
+const { getDefaultContractorId } = require('../../utils/contractorContext');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -161,6 +162,38 @@ async function fetchInvoiceWithJobs(invoiceId, token) {
   return response.data.data.invoice;
 }
 
+// ── CLIENT JOBS FETCH (for job-update pipeline check) ─────────────────────────
+// Fetches all jobs for a client so job-update can find the current job's status/total
+// and compare against sibling jobs. Extracted to its own function (rather than an
+// inline axios call) so it can be swapped for a test stub, matching the pattern used
+// by fetchFullClient/fetchInvoiceWithJobs/fetchClientRelatedData above.
+async function fetchClientJobsForJobUpdate(clientId, token) {
+  const response = await retryWithBackoff(
+    () => axios.post(
+      'https://api.getjobber.com/api/graphql',
+      {
+        query: `query GetClientJobs($id: EncodedId!) {
+          client(id: $id) {
+            jobs(first: 20) {
+              nodes { id jobStatus total }
+            }
+          }
+        }`,
+        variables: { id: clientId },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+        },
+      }
+    ),
+    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+  );
+  return response.data?.data?.client?.jobs?.nodes || [];
+}
+
 // ── CLIENT RELATED DATA FETCH (for tag derivation) ────────────────────────────
 // Fetches jobs, quotes, and requests for a single client — used by tag derivation
 // after CLIENT_CREATE, CLIENT_UPDATE, JOB_UPDATE, and INVOICE_UPDATE events.
@@ -210,25 +243,56 @@ async function fetchClientRelatedData(clientId, token) {
 // ── TEST SEAMS ─────────────────────────────────────────────────────────────────
 // Module-level variables default to the real implementations.
 // Inert in production — never overridden outside tests.
-let _fetchInvoiceWithJobs   = fetchInvoiceWithJobs;
-let _fetchFullClient        = fetchFullClient;
-let _fetchClientRelatedData = fetchClientRelatedData;
-let _sendEmail              = (...args) => resend.emails.send(...args);
+let _fetchInvoiceWithJobs         = fetchInvoiceWithJobs;
+let _fetchFullClient              = fetchFullClient;
+let _fetchClientRelatedData       = fetchClientRelatedData;
+let _fetchClientJobsForJobUpdate  = fetchClientJobsForJobUpdate;
+let _refreshTokenIfNeeded         = refreshTokenIfNeeded;
+let _sendEmail                    = (...args) => resend.emails.send(...args);
 
 // test seam — inert in production, never called outside server/test/
-function _setTestOverrides({ fetchInvoiceWithJobs: a, fetchFullClient: b, fetchClientRelatedData: c, sendEmail: d } = {}) {
-  if (a !== undefined) _fetchInvoiceWithJobs   = a;
-  if (b !== undefined) _fetchFullClient        = b;
-  if (c !== undefined) _fetchClientRelatedData = c;
-  if (d !== undefined) _sendEmail              = d;
+function _setTestOverrides({
+  fetchInvoiceWithJobs: a,
+  fetchFullClient: b,
+  fetchClientRelatedData: c,
+  sendEmail: d,
+  fetchClientJobsForJobUpdate: e,
+  refreshTokenIfNeeded: f,
+} = {}) {
+  if (a !== undefined) _fetchInvoiceWithJobs        = a;
+  if (b !== undefined) _fetchFullClient              = b;
+  if (c !== undefined) _fetchClientRelatedData       = c;
+  if (d !== undefined) _sendEmail                    = d;
+  if (e !== undefined) _fetchClientJobsForJobUpdate  = e;
+  if (f !== undefined) _refreshTokenIfNeeded         = f;
 }
 
 // test seam — inert in production, never called outside server/test/
 function _resetTestOverrides() {
-  _fetchInvoiceWithJobs   = fetchInvoiceWithJobs;
-  _fetchFullClient        = fetchFullClient;
-  _fetchClientRelatedData = fetchClientRelatedData;
-  _sendEmail              = (...args) => resend.emails.send(...args);
+  _fetchInvoiceWithJobs        = fetchInvoiceWithJobs;
+  _fetchFullClient             = fetchFullClient;
+  _fetchClientRelatedData      = fetchClientRelatedData;
+  _fetchClientJobsForJobUpdate = fetchClientJobsForJobUpdate;
+  _refreshTokenIfNeeded        = refreshTokenIfNeeded;
+  _sendEmail                   = (...args) => resend.emails.send(...args);
+}
+
+// ── CONTRACTOR RESOLUTION QUARANTINE ──────────────────────────────────────────
+// getDefaultContractorId() fails closed the instant `contractors` holds 0 or 2+ rows
+// (server/utils/contractorContext.js) — there is no safe guess for which tenant a
+// webhook belongs to in that state, and client-supplied contractorId (query/payload)
+// is never trusted for tenancy. Jobber retries webhooks on non-2xx responses, but this
+// condition cannot self-resolve within a retry window — it needs a code/data fix — so
+// retrying would just hammer a permanent failure. We ack 200 and quarantine the event
+// in error_log (topic + item id + raw payload) instead, so it can be manually
+// reconciled once the underlying condition is fixed. The 30-minute pipeline sync cron
+// (crm/pipelineSync.js) is the backstop that eventually reconciles pipeline_cache state
+// for any webhook lost this way.
+async function logWebhookResolutionFailure(req, topic, itemId, payload, err) {
+  const message = `[webhook-resolution] topic=${topic} itemId=${itemId ?? 'n/a'}: ${err.message}`;
+  const quarantineErr = new Error(message);
+  quarantineErr.stack = `${message}\n\nRaw payload:\n${JSON.stringify(payload)}\n\nOriginal stack:\n${err.stack}`;
+  await logError({ req, error: quarantineErr, source: `POST /webhooks/jobber/${topic} — contractor resolution` });
 }
 
 // Upserts a client into jobber_clients and derives+saves all tags.
@@ -319,13 +383,18 @@ router.post('/jobber/disconnect', async (req, res) => {
   if (!verifyJobberWebhookSignature(req, res)) return;
 
   const payload = JSON.parse(req.body.toString());
-  // ── CONTRACTOR IDENTIFICATION ─────────────────────────────────────────────
-  // Jobber may include contractor context in query params or body.
-  // TODO: implement multi-contractor lookup here when FORA scales beyond one contractor
-  const contractorId =
-    req.query.contractorId ||
-    payload?.contractor_id ||
-    'accent-roofing'; // MVP default
+
+  // No Jobber DISCONNECT webhook is currently registered in the Jobber Developer
+  // Center for this app — this route is unreachable from Jobber today. Resolution
+  // is still fixed here for consistency with the other four handlers.
+  let contractorId;
+  try {
+    contractorId = await getDefaultContractorId();
+  } catch (err) {
+    await logWebhookResolutionFailure(req, 'disconnect', null, payload, err);
+    res.status(200).json({ received: true });
+    return;
+  }
 
   console.log(`[jobber-webhook] Disconnect received for contractor: ${contractorId}`);
 
@@ -354,7 +423,7 @@ router.post('/jobber/disconnect', async (req, res) => {
     console.log(`[jobber-webhook] Cleanup complete for contractor: ${contractorId}`);
   } catch (err) {
     // Log but do not propagate — Jobber must receive 200 to prevent retries
-    await logError({ req, error: err });
+    await logError({ req, error: err, contractorId });
     console.error('[jobber-webhook] DB cleanup failed:', err.message);
   }
 
@@ -375,11 +444,17 @@ router.post('/jobber/client-create', async (req, res) => {
   // MVP: webhook payload may not include full nested quotes/jobs/invoices data.
   // If payload is incomplete, classifyPipelineStatus returns 'lead' as default.
   // The 30-minute incremental sync will correct the status. This is acceptable for MVP.
-  // TODO: implement multi-contractor lookup here when FORA scales beyond one contractor
-  const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
-  const client       = payload?.data?.client || payload;
+  const client = payload?.data?.client || payload;
 
   (async () => {
+    let contractorId;
+    try {
+      contractorId = await getDefaultContractorId();
+    } catch (err) {
+      await logWebhookResolutionFailure(req, 'client-create', payload?.data?.webHookEvent?.itemId, payload, err);
+      return;
+    }
+
     try {
       const settingsResult = await pool.query(
         'SELECT referral_start_date FROM contractor_crm_settings WHERE contractor_id = $1',
@@ -423,10 +498,10 @@ router.post('/jobber/client-create', async (req, res) => {
       try {
         await runContactMatchingPass(contractorId, { jobberClientId: clientId });
       } catch (matchErr) {
-        await logError({ req: null, error: matchErr, source: 'jobber-webhook client-create matching' });
+        await logError({ req: null, error: matchErr, contractorId, source: 'jobber-webhook client-create matching' });
       }
     } catch (err) {
-      await logError({ req, error: err });
+      await logError({ req, error: err, contractorId });
       console.error('[jobber-webhook] client-create sync failed:', err.message);
     }
   })();
@@ -446,11 +521,17 @@ router.post('/jobber/client-update', async (req, res) => {
   // MVP: webhook payload may not include full nested quotes/jobs/invoices data.
   // If payload is incomplete, classifyPipelineStatus returns 'lead' as default.
   // The 30-minute incremental sync will correct the status. This is acceptable for MVP.
-  // TODO: implement multi-contractor lookup here when FORA scales beyond one contractor
-  const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
-  const client       = payload?.data?.client || payload;
+  const client = payload?.data?.client || payload;
 
   (async () => {
+    let contractorId;
+    try {
+      contractorId = await getDefaultContractorId();
+    } catch (err) {
+      await logWebhookResolutionFailure(req, 'client-update', payload?.data?.webHookEvent?.itemId, payload, err);
+      return;
+    }
+
     try {
       const settingsResult = await pool.query(
         'SELECT referral_start_date FROM contractor_crm_settings WHERE contractor_id = $1',
@@ -494,10 +575,10 @@ router.post('/jobber/client-update', async (req, res) => {
       try {
         await runContactMatchingPass(contractorId, { jobberClientId: clientId });
       } catch (matchErr) {
-        await logError({ req: null, error: matchErr, source: 'jobber-webhook client-update matching' });
+        await logError({ req: null, error: matchErr, contractorId, source: 'jobber-webhook client-update matching' });
       }
     } catch (err) {
-      await logError({ req, error: err });
+      await logError({ req, error: err, contractorId });
       console.error('[jobber-webhook] client-update sync failed:', err.message);
     }
   })();
@@ -513,10 +594,23 @@ router.post('/jobber/invoice-paid', async (req, res) => {
   res.status(200).json({ received: true });
 
   (async () => {
+    let payload;
     try {
-      const payload = JSON.parse(req.body.toString());
-      const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
+      payload = JSON.parse(req.body.toString());
+    } catch (parseErr) {
+      await logError({ req, error: parseErr, source: 'POST /webhooks/jobber/invoice-paid — payload parse' });
+      return;
+    }
 
+    let contractorId;
+    try {
+      contractorId = await getDefaultContractorId();
+    } catch (err) {
+      await logWebhookResolutionFailure(req, 'invoice-paid', payload?.data?.webHookEvent?.itemId, payload, err);
+      return;
+    }
+
+    try {
       // (a) Cheap early exit — skip non-paid invoice updates before any DB or API calls.
       // Jobber sends INVOICE_UPDATE for all status changes; only 'paid' is actionable here.
       const rawInvoiceStatus = payload?.data?.invoice?.invoiceStatus;
@@ -541,7 +635,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       // they do NOT include client data. Client ID is resolved via GraphQL after fetching the invoice.
       const invoiceId = payload?.data?.webHookEvent?.itemId;
       if (!invoiceId) {
-        await logError({ req, error: new Error('[invoice-paid] missing invoiceId in webhook payload'), source: 'POST /webhooks/jobber/invoice-paid' });
+        await logError({ req, error: new Error('[invoice-paid] missing invoiceId in webhook payload'), contractorId, source: 'POST /webhooks/jobber/invoice-paid' });
         try {
           await retryWithBackoff(
             () => _sendEmail({
@@ -570,12 +664,12 @@ router.post('/jobber/invoice-paid', async (req, res) => {
 
       // STEP 4 — Fetch token (refresh first, mirrors the pattern already used
       // in server/routes/admin/team.js's jobber-users route)
-      await refreshTokenIfNeeded();
-      const tokenResult = await pool.query(
+      await _refreshTokenIfNeeded();
+      let tokenResult = await pool.query(
         'SELECT access_token FROM tokens WHERE contractor_id = $1',
         [contractorId]
       );
-      const token = tokenResult.rows[0]?.access_token;
+      let token = tokenResult.rows[0]?.access_token;
       if (!token) {
         console.warn('[invoice-paid] no access token found');
         return;
@@ -584,13 +678,38 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       // STEP 4b — Fetch invoice to resolve client ID and confirm paid status.
       // fetchInvoiceWithJobs() returns client { id name } alongside invoice amounts and
       // job type custom fields — one fetch serves both client ID resolution and the referral engine.
+      //
+      // 2c mitigation: a 401 here is the signature of the concurrent-refresh rotation race
+      // (CLAUDE_REGISTRY.md item 2c) — refresh token rotation is enabled and this shared
+      // tokens row is refreshed independently from ~7 call sites with no locking, so a
+      // sibling refresh can invalidate the token this handler just read even though
+      // expires_at looked fresh. Force a refresh and retry exactly once with the
+      // freshly-re-read token; the 30-min pipeline sync cron is the backstop if this
+      // single retry still fails.
       let invoiceWithJobs = null;
       try {
         invoiceWithJobs = await _fetchInvoiceWithJobs(invoiceId, token);
       } catch (err) {
-        await logError({ req, error: err, source: 'POST /webhooks/jobber/invoice-paid — fetchInvoiceWithJobs' });
-        console.warn(`[invoice-paid] fetchInvoiceWithJobs failed for invoice ${invoiceId}:`, err.message);
-        return;
+        if (err?.response?.status === 401) {
+          try {
+            await _refreshTokenIfNeeded(true);
+            tokenResult = await pool.query(
+              'SELECT access_token FROM tokens WHERE contractor_id = $1',
+              [contractorId]
+            );
+            token = tokenResult.rows[0]?.access_token;
+            if (!token) throw err;
+            invoiceWithJobs = await _fetchInvoiceWithJobs(invoiceId, token);
+          } catch (retryErr) {
+            await logError({ req, error: retryErr, contractorId, source: 'POST /webhooks/jobber/invoice-paid — fetchInvoiceWithJobs' });
+            console.warn(`[invoice-paid] fetchInvoiceWithJobs failed after forced-refresh retry for invoice ${invoiceId}:`, retryErr.message);
+            return;
+          }
+        } else {
+          await logError({ req, error: err, contractorId, source: 'POST /webhooks/jobber/invoice-paid — fetchInvoiceWithJobs' });
+          console.warn(`[invoice-paid] fetchInvoiceWithJobs failed for invoice ${invoiceId}:`, err.message);
+          return;
+        }
       }
 
       // (b) Guard — bail if invoice is not paid per the Jobber API response
@@ -602,7 +721,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       // STEP 4c — Resolve client ID from invoice response
       const clientId = invoiceWithJobs.client?.id;
       if (!clientId) {
-        await logError({ req, error: new Error(`[invoice-paid] invoice ${invoiceId} has no client id`), source: 'POST /webhooks/jobber/invoice-paid' });
+        await logError({ req, error: new Error(`[invoice-paid] invoice ${invoiceId} has no client id`), contractorId, source: 'POST /webhooks/jobber/invoice-paid' });
         try {
           await retryWithBackoff(
             () => _sendEmail({
@@ -775,7 +894,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                 ['invoice_paid_experience_trigger', detail]
               );
             } catch (logErr) {
-              await logError({ req, error: logErr, source: 'POST /webhooks/jobber/invoice-paid — activity_log insert' });
+              await logError({ req, error: logErr, contractorId, source: 'POST /webhooks/jobber/invoice-paid — activity_log insert' });
               console.error('[invoice-paid] activity log failed:', logErr.message);
             }
           }
@@ -801,7 +920,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
             await upsertAndTagClient(contractorId, clientShell, relatedData);
           }
         } catch (tagErr) {
-          await logError({ req, error: tagErr, source: 'POST /webhooks/jobber/invoice-paid — upsertAndTagClient' });
+          await logError({ req, error: tagErr, contractorId, source: 'POST /webhooks/jobber/invoice-paid — upsertAndTagClient' });
         }
       })();
 
@@ -857,7 +976,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                     }
                   }
                 } catch (tagErr) {
-                  await logError({ req, error: tagErr, source: 'POST /webhooks/jobber/invoice-paid — Active Referrer tag' });
+                  await logError({ req, error: tagErr, contractorId, source: 'POST /webhooks/jobber/invoice-paid — Active Referrer tag' });
                 }
               })();
             }
@@ -918,7 +1037,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                   );
                 }
               } catch (bonusEmailErr) {
-                await logError({ req, error: bonusEmailErr, source: 'POST /webhooks/jobber/invoice-paid — #4 bonus email' });
+                await logError({ req, error: bonusEmailErr, contractorId, source: 'POST /webhooks/jobber/invoice-paid — #4 bonus email' });
               }
             }
 
@@ -960,7 +1079,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
                   );
                 }
               } catch (milestone13Err) {
-                await logError({ req, error: milestone13Err, source: 'POST /webhooks/jobber/invoice-paid — #13 first milestone' });
+                await logError({ req, error: milestone13Err, contractorId, source: 'POST /webhooks/jobber/invoice-paid — #13 first milestone' });
               }
             }
           } else {
@@ -973,12 +1092,12 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         } catch (err) {
           // Referral engine failure must never affect experience flow or crash the handler
           console.error('[invoice-paid] Referral rules engine error:', err.message);
-          await logError({ req, error: err });
+          await logError({ req, error: err, contractorId });
         }
       }
 
     } catch (err) {
-      await logError({ req, error: err });
+      await logError({ req, error: err, contractorId });
       console.error('[invoice-paid]', err.message);
     }
   })();
@@ -994,10 +1113,23 @@ router.post('/jobber/job-update', async (req, res) => {
   res.status(200).json({ received: true });
 
   (async () => {
+    let payload;
     try {
-      const payload = JSON.parse(req.body.toString());
-      const contractorId = req.query.contractorId || payload?.contractor_id || 'accent-roofing';
+      payload = JSON.parse(req.body.toString());
+    } catch (parseErr) {
+      await logError({ req, error: parseErr, source: 'POST /webhooks/jobber/job-update — payload parse' });
+      return;
+    }
 
+    let contractorId;
+    try {
+      contractorId = await getDefaultContractorId();
+    } catch (err) {
+      await logWebhookResolutionFailure(req, 'job-update', payload?.data?.job?.id, payload, err);
+      return;
+    }
+
+    try {
       // Feature flag check — this handler exists solely to feed the T+24h experience flow.
       // Unlike invoice-paid, there is no unconditional second engine here, so disabled = early exit.
       const flagResult = await pool.query(
@@ -1028,31 +1160,7 @@ router.post('/jobber/job-update', async (req, res) => {
       }
 
       // Fetch all jobs for this client from Jobber GraphQL to get accurate status + total
-      const jobsResponse = await retryWithBackoff(
-        () => axios.post(
-          'https://api.getjobber.com/api/graphql',
-          {
-            query: `query GetClientJobs($id: EncodedId!) {
-              client(id: $id) {
-                jobs(first: 20) {
-                  nodes { id jobStatus total }
-                }
-              }
-            }`,
-            variables: { id: clientId },
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-            },
-          }
-        ),
-        { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-      );
-
-      const allJobs = jobsResponse.data?.data?.client?.jobs?.nodes || [];
+      const allJobs = await _fetchClientJobsForJobUpdate(clientId, token);
 
       // Find the current job among the fetched set
       const currentJob = allJobs.find(j => j.id === jobId);
@@ -1115,7 +1223,7 @@ router.post('/jobber/job-update', async (req, res) => {
         await upsertAndTagClient(contractorId, clientShell, relatedData);
       }
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /webhooks/jobber/job-update' });
+      await logError({ req, error: err, contractorId, source: 'POST /webhooks/jobber/job-update' });
       console.error('[job-update]', err.message);
     }
   })();

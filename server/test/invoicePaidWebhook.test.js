@@ -93,6 +93,15 @@ describe('invoice-paid webhook (characterization suite)', () => {
     await pool.query('DELETE FROM engagement_settings');
     await pool.query('DELETE FROM contractor_settings');
     await pool.query('DELETE FROM users');   // cascades to referral_conversions + experience_prompts
+    // FK-safe order for the contractors wipe below (mirrors contractorResolution.test.js):
+    // sessions/titles/team_members all reference contractors(id).
+    await pool.query('DELETE FROM sessions');
+    await pool.query('DELETE FROM titles');
+    await pool.query('DELETE FROM team_members');
+    // getDefaultContractorId() requires the invariant "exactly one contractors row" —
+    // this file owns that invariant exclusively within each test (same pattern as
+    // contractorResolution.test.js), so leftover rows from other test files never leak in.
+    await pool.query('DELETE FROM contractors');
   });
 
   // Signs and POSTs to /webhooks/jobber/invoice-paid. Returns { status, body }.
@@ -105,7 +114,9 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 1 ──────────────────────────────────────────────────────────────────
   it('non-paid invoiceStatus in payload → 200, IIFE exits synchronously, no DB writes', async () => {
-    // No seeds needed — the IIFE exits before any DB query.
+    // contractor_id resolution now runs before the invoiceStatus check, so a single
+    // contractors row is required even though this test's own DB queries are otherwise minimal.
+    await seedContractor(pool, 'test-roofing');
     const resp = await post({
       data: { invoice: { invoiceStatus: 'draft' }, webHookEvent: { itemId: 'inv-001' } },
       contractor_id: 'test-roofing',
@@ -126,6 +137,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 2 ──────────────────────────────────────────────────────────────────
   it('missing invoiceId → 200, error_log row written, admin alert email sent via _sendEmail', async () => {
+    await seedContractor(pool, 'test-roofing');
     const emails = [];
     _setTestOverrides({
       fetchInvoiceWithJobs:   async () => { throw new Error('must not be called'); },
@@ -425,5 +437,122 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
     const { rows: rcRows } = await pool.query('SELECT * FROM referral_conversions');
     assert.equal(rcRows.length, 0, 'no referral_conversions when client has no referredBy field');
+  });
+
+  // ── TEST 9 — 2c mitigation: 401 → forced refresh → retry once ───────────────
+  it('401 from fetchInvoiceWithJobs → forced refresh → retry succeeds with the refreshed token', async () => {
+    await seedContractor(pool, 'test-roofing');
+    await seedToken(pool, { contractorId: 'test-roofing', accessToken: 'stale-token' });
+    await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
+    await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com' });
+    await seedReferralSchedule(pool, {
+      contractorId: 'test-roofing',
+      jobberLabel: 'Roof Replacement',
+      flatAmount: 250,
+    });
+
+    let invoiceCallCount = 0;
+    const invoiceCallTokens = [];
+    let fullClientToken = null;
+    const refreshCalls = [];
+
+    _setTestOverrides({
+      fetchInvoiceWithJobs: async (invoiceId, token) => {
+        invoiceCallCount++;
+        invoiceCallTokens.push(token);
+        if (invoiceCallCount === 1) {
+          const err = new Error('Request failed with status code 401');
+          err.response = { status: 401 };
+          throw err;
+        }
+        return PAID_INVOICE;
+      },
+      fetchFullClient: async (clientId, token) => {
+        fullClientToken = token;
+        return FULL_CLIENT_WITH_REFERRAL;
+      },
+      fetchClientRelatedData: async () => null,
+      sendEmail: async () => ({ id: 'test-email' }),
+      // Not yet wired into the seam system — this override is inert against today's
+      // code (the real refreshTokenIfNeeded still runs), which is exactly why this
+      // test is expected to fail before the 2c mitigation is implemented.
+      refreshTokenIfNeeded: async (force) => {
+        refreshCalls.push(!!force);
+        if (force) {
+          await pool.query(
+            `UPDATE tokens SET access_token = 'refreshed-token' WHERE contractor_id = $1`,
+            ['test-roofing']
+          );
+        }
+      },
+    });
+
+    const resp = await post({
+      data: { webHookEvent: { itemId: 'inv-401-001' } },
+      contractor_id: 'test-roofing',
+    });
+    assert.equal(resp.status, 200);
+
+    const { rows: rcRows } = await pool.query('SELECT * FROM referral_conversions');
+    await waitFor(async () => {
+      const { rows } = await pool.query('SELECT * FROM referral_conversions');
+      return rows.length > 0;
+    }, { timeout: 5000 });
+
+    assert.equal(invoiceCallCount, 2, 'fetchInvoiceWithJobs called exactly twice (original + one retry)');
+    assert.ok(refreshCalls.some(f => f === true), 'refreshTokenIfNeeded was called with force=true at least once');
+    assert.equal(
+      invoiceCallTokens[1], 'refreshed-token',
+      'retry call re-reads the token from DB after forcing refresh — must not reuse the stale in-memory token'
+    );
+    assert.equal(
+      fullClientToken, 'refreshed-token',
+      'the subsequent fetchFullClient call reuses the refreshed token, not the original stale one'
+    );
+
+    const { rows: rcRowsAfter } = await pool.query('SELECT * FROM referral_conversions');
+    assert.equal(rcRowsAfter.length, 1, 'referral engine completes normally after the retry succeeds');
+  });
+
+  // ── TEST 10 — non-401 errors must not trigger forced refresh ────────────────
+  it('non-401 error from fetchInvoiceWithJobs → no retry, no forced refresh, error_log carries resolved contractorId', async () => {
+    await seedContractor(pool, 'test-roofing');
+    await seedToken(pool, { contractorId: 'test-roofing' });
+    await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
+
+    let invoiceCallCount = 0;
+    const refreshCalls = [];
+    _setTestOverrides({
+      fetchInvoiceWithJobs: async () => {
+        invoiceCallCount++;
+        const err = new Error('Request failed with status code 500');
+        err.response = { status: 500 };
+        throw err;
+      },
+      fetchFullClient:        async () => { throw new Error('must not be called'); },
+      fetchClientRelatedData: async () => { throw new Error('must not be called'); },
+      refreshTokenIfNeeded: async (force) => { refreshCalls.push(!!force); },
+    });
+
+    const resp = await post({
+      data: { webHookEvent: { itemId: 'inv-500-001' } },
+      contractor_id: 'test-roofing',
+    });
+    assert.equal(resp.status, 200);
+
+    await waitFor(async () => {
+      const { rows } = await pool.query("SELECT * FROM error_log WHERE source LIKE '%fetchInvoiceWithJobs%'");
+      return rows.length > 0;
+    });
+
+    assert.equal(invoiceCallCount, 1, 'no retry on a non-401 error');
+    assert.ok(!refreshCalls.some(f => f === true), 'forced refresh (force=true) is never triggered by a non-401 error');
+
+    const { rows: errRows } = await pool.query("SELECT * FROM error_log WHERE source LIKE '%fetchInvoiceWithJobs%'");
+    assert.equal(errRows.length, 1);
+    assert.equal(
+      errRows[0].contractor_id, 'test-roofing',
+      'error_log.contractor_id is the resolved contractorId, not the stale fallback'
+    );
   });
 });

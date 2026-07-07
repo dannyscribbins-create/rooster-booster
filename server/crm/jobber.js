@@ -9,12 +9,19 @@ const { boostSchedule } = require('../constants/boostSchedule');
 // TODO: refreshTokenIfNeeded() is kept for backward compatibility. It uses WHERE id=1
 // (single-contractor pattern). Once all callers go through getCRMAdapter(), replace with
 // a contractorId-aware version and remove this function.
-async function refreshTokenIfNeeded() {
+//
+// force=true bypasses the expires_at freshness check and always exchanges the refresh
+// token. Used by the invoice-paid webhook's 401 retry path (2c mitigation): with refresh
+// token rotation enabled and ~7 uncoordinated call sites sharing this single row, a
+// concurrent refresh elsewhere can invalidate the token this caller just read even though
+// expires_at still looked fresh — force lets the caller recover in place rather than
+// trusting a freshness check that a sibling refresh has already invalidated.
+async function refreshTokenIfNeeded(force = false) {
   const result = await pool.query('SELECT refresh_token, expires_at FROM tokens WHERE id = 1');
   if (result.rows.length === 0) throw new Error('No token - visit /auth/jobber');
   const { refresh_token, expires_at } = result.rows[0];
   const fiveMin = new Date(Date.now() + 5 * 60 * 1000);
-  if (!expires_at || new Date(expires_at) < fiveMin) {
+  if (force || !expires_at || new Date(expires_at) < fiveMin) {
     console.log('Refreshing token...');
     const response = await retryWithBackoff(
       () => axios.post('https://api.getjobber.com/api/oauth/token', {
