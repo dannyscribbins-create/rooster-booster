@@ -376,8 +376,9 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
 2. Confirm all imports resolve, no functions renamed/deleted, no logic altered outside target
 3. Confirm all useEffect hooks with intentionally omitted deps still have eslint-disable comments
 4. Confirm no .then() chains introduced, no console.log added to production paths
-5. Run: `git add -A && git commit -m "[descriptive message]" && git push`
-6. Never commit a broken or partial state
+5. Run `npm audit` before pushing (per Dependency Management Standards) — resolve or explicitly acknowledge any HIGH/CRITICAL findings before proceeding
+6. Run: `git add -A && git commit -m "[descriptive message]" && git push`
+7. Never commit a broken or partial state
 
 ---
 

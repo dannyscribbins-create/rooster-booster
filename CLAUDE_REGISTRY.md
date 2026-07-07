@@ -137,7 +137,7 @@ Read the current constraints before building any feature below.
 - Do not build until: Stripe Connect account registered. LLC amendment complete. Explicitly scheduled by Danny.
 
 **Feature: Vite Migration**
-- Replace CRA with Vite — closes 32 npm audit vulnerabilities (all CRA build toolchain).
+- Replace CRA with Vite — closes 38 npm audit vulnerabilities confirmed 2026-07-06 (1 critical, 18 high; all CRA/react-scripts build toolchain — see Known Issues item 7).
 - Current constraints: Test on staging branch first. All REACT_APP_ env vars may need renaming to VITE_.
 - Do not build until: Explicitly scheduled by Danny.
 
@@ -226,6 +226,10 @@ Read the current constraints before building any feature below.
 - Live case: client `Z2lkOi8vSm9iYmVyL0NsaWVudC8yODA2ODcxNg==` received `provisional_rep_id=5` after a task (not an on-site assessment) was assigned to Daniel Scribbins that day.
 - Deferred investigation: verify whether Jobber TASKS surface in the requests/assessment data fetched by `ATTRIBUTION_QUERY` and can trigger provisional attribution. May require distinguishing/blocking task-type items from counting as assessment assignments.
 - Do not build until: Explicitly scheduled by Danny. Not investigated yet — this is a registry placeholder only.
+
+**7. npm audit — 38 findings acknowledged and deferred (2026-07-06)**
+- 38 npm audit findings (1 critical, 18 high) confirmed 2026-07-06, all in the react-scripts/webpack-dev-server build toolchain (shell-quote, underscore/jsonpath/bfj, ws, uuid) — build/dev-time dependencies, not runtime code shipped to users or the production server. Pre-existing, unrelated to the tenant-resolution fix.
+- RESOLUTION PATH: the queued Vite migration exits the react-scripts dependency tree and is the actual fix; piecemeal overrides inside react-scripts are not worth the fragility. Fold into the same workstream as the Dependabot sweep (pre-launch cleanup checklist item 5) during roadmap reconciliation.
 
 ---
 
