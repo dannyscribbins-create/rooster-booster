@@ -40,11 +40,12 @@ MVP shortcuts must be flagged with a code comment explaining: (a) the limitation
 
 ### Backend — Folder Structure
 
-`server.js` is a lean entry point only — imports, middleware, route mounts, cron bootstrap, listen. Do not add route handlers or business logic to server.js.
+`server.js` is a lean entry point only — dotenv, process-level error handlers, the initDB()/cron bootstrap IIFE, the legacy backup cron, and `app.listen()`. All Express app construction (middleware, all 9 route mounts) lives in `server/app.js`'s `createApp()` factory (tenant-resolution rebuild, S1) — never add route handlers, middleware, or business logic to server.js itself.
 
 ```
-server.js                          ← lean entry point (~80 lines)
+server.js                          ← lean entry point (41 lines) — calls createApp(), does not build the app
 server/
+├── app.js                         ← createApp() factory — all middleware + all 9 app.use() mounts, in server.js's old order
 ├── db.js                          ← PostgreSQL pool + initDB() — creates/migrates all tables on startup
 ├── referralRules.js               ← evaluateReferral() — referral evaluation engine, imported by invoice-paid webhook
 ├── crm/
@@ -293,7 +294,7 @@ Report violations and ask whether to fix before or after the assigned task. Neve
 - Grep for `console.log` across server/ — remove any not marked intentional
 - Grep for `TODO` and `FIXME` — action or document in handoff
 - Check for files in server/ or src/ not in CLAUDE.md folder structure
-- Confirm server.js has not grown significantly (target: ~80 lines)
+- Confirm server.js has not grown significantly (target: ~40 lines — app construction lives in server/app.js, not here)
 - Confirm src/App.js has not accumulated component logic
 
 ---

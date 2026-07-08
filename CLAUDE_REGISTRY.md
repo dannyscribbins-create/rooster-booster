@@ -254,6 +254,32 @@ Read the current constraints before building any feature below.
 
 ---
 
+## Tenant Resolution Rebuild (multi-session effort)
+
+Full build spec: `TENANT_RESOLUTION_REBUILD_SPEC.md`. Tracks the users/sessions schema fix (audit finding F7) + `getDefaultContractorId()` retirement (F1), batched with the `createApp()` refactor per the audit's Fix Sequencing recommendation.
+
+**Session 1 (S1) — COMPLETE (commits `4eed1f9` + `91e70c4`, deployed + live-verified 2026-07-08)**
+- `users.contractor_id` — NOT NULL, FK to `contractors(id)`, live and backfilled to `accent-roofing-dev` (5 rows, 0 NULLs verified).
+- `users_email_key` replaced by `users_contractor_id_email_unique` (verified via `pg_constraint`).
+- `createApp()` factory extracted to `server/app.js` — pure extraction, all 9 mounts + middleware order preserved verbatim. `server.js` is now a lean 41-line entry point (dotenv, process handlers, initDB/cron IIFE, backup cron, listen).
+- `admin/referrers.js` `POST /api/admin/users` — captures `adminSession`, stamps `contractor_id` from the admin's own session; founding-referrer `COUNT(*)` is now scoped per contractor (this session's Q5 fix).
+- `server/test/helpers.js` `seedUser()` — now requires an explicit `contractorId` (fail-loud, no hidden tenant default).
+- `adminRouteCoverage.test.js` — sweep now walks the real `createApp()` instance; the obsolete server.js source-text drift guard was retired (proven RED via a temporary probe route before removal, per Session 86 discipline).
+- Suite: 228/228 green.
+
+**S1 explicitly did NOT touch** (deferred to later sessions):
+- The 16 (`referrer.js`) + 5 (`webhooks/jobber.js`) `getDefaultContractorId()` call sites — still live, fail-closed tripwire intact.
+- Session stamping for referrers — login/forgot-pin/signup flows still resolve tenancy via the singleton helper, not `session.contractorId`.
+- Webhook contractor resolution — still resolves via `getDefaultContractorId()`, not Jobber's `accountId`.
+
+**Next: S2** — per `TENANT_RESOLUTION_REBUILD_SPEC.md` Section 8 (session stamping + the referrer-facing call-site batches).
+
+**Small follow-ups queue (opportunistic, not blocking):**
+- `registryReconciliation.test.js` still uses the legacy `buildMirrorApp()` helper (green, harmless) — swap to `createApp()` opportunistically, same pattern already applied to `adminRouteCoverage.test.js`.
+- `docs/desktop.ini` should be gitignored (Windows Explorer artifact, currently untracked noise in `git status`).
+
+---
+
 ## Architecture Notes
 
 **Naming collision + rename decision (Session 92)**
