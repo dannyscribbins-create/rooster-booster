@@ -226,7 +226,7 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
     const link = linkResult.rows[0];
 
     // Check for duplicate email
-    const existing = await pool.query('SELECT id FROM users WHERE LOWER(email)=LOWER($1)', [email]);
+    const existing = await pool.query('SELECT id FROM users WHERE contractor_id = $1 AND LOWER(email) = LOWER($2)', [link.contractor_id, email]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'An account with this email already exists.' });
     }
@@ -238,10 +238,10 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
 
     // Create user (email_verified = false)
     const userResult = await pool.query(
-      `INSERT INTO users (full_name, email, pin, phone, invite_slug, invited_by_user_id, signup_source, email_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, false)
+      `INSERT INTO users (full_name, email, pin, phone, invite_slug, invited_by_user_id, signup_source, email_verified, contractor_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8)
        RETURNING id`,
-      [full_name, email, hashedPassword, phone || null, inviteSlug, invitedByUserId, signupSource]
+      [full_name, email, hashedPassword, phone || null, inviteSlug, invitedByUserId, signupSource, link.contractor_id]
     );
     const newUserId = userResult.rows[0].id;
 
