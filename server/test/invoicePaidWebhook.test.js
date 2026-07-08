@@ -213,7 +213,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
     await seedContractor(pool, 'test-roofing');
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
-    await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com' });
+    await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com', contractorId: 'test-roofing' });
     await seedReferralSchedule(pool, {
       contractorId: 'test-roofing',
       jobberLabel: 'Roof Replacement',
@@ -263,7 +263,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
     await seedContractor(pool, 'test-roofing');
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
-    await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com' });
+    await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com', contractorId: 'test-roofing' });
     await seedReferralSchedule(pool, {
       contractorId: 'test-roofing',
       jobberLabel: 'Roof Replacement',
@@ -328,7 +328,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: true });
     // Seed app user whose email matches the client email returned by the stub.
-    await seedUser(pool, { fullName: 'App User', email: 'app-user@example.com' });
+    await seedUser(pool, { fullName: 'App User', email: 'app-user@example.com', contractorId: 'test-roofing' });
 
     // Client email matches the seeded user; no 'Referred by' → referral engine skipped.
     const fullClientAppUser = {
@@ -444,7 +444,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
     await seedContractor(pool, 'test-roofing');
     await seedToken(pool, { contractorId: 'test-roofing', accessToken: 'stale-token' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
-    await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com' });
+    await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com', contractorId: 'test-roofing' });
     await seedReferralSchedule(pool, {
       contractorId: 'test-roofing',
       jobberLabel: 'Roof Replacement',

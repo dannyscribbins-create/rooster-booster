@@ -110,12 +110,15 @@ async function seedReferralSchedule(pool, { contractorId, jobberLabel = 'Roof Re
 // Inserts a users row with a dummy bcrypt hash (no auth needed in webhook tests).
 // Returns the new user id.
 async function seedUser(pool, { fullName, email, contractorId }) {
+  if (!contractorId) {
+    throw new Error('seedUser() now requires an explicit contractorId — users.contractor_id is NOT NULL as of the tenant rebuild (S1). Pass the contractor your test operates under.');
+  }
   const { rows } = await pool.query(
-    `INSERT INTO users (full_name, email, pin, email_verified)
-     VALUES ($1, $2, '$2b$10$test.placeholder.hash.for.tests', TRUE)
-     ON CONFLICT (email) DO UPDATE SET full_name = EXCLUDED.full_name
+    `INSERT INTO users (full_name, email, pin, email_verified, contractor_id)
+     VALUES ($1, $2, '$2b$10$test.placeholder.hash.for.tests', TRUE, $3)
+     ON CONFLICT (contractor_id, email) DO UPDATE SET full_name = EXCLUDED.full_name
      RETURNING id`,
-    [fullName, email]
+    [fullName, email, contractorId]
   );
   return rows[0].id;
 }

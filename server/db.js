@@ -1123,6 +1123,71 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // Wire team_member_id so requirePermission() can do live JSONB reads without session caching
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS team_member_id INTEGER REFERENCES team_members(id)`);
 
+  // ── TENANT RESOLUTION REBUILD — users.contractor_id (Session 1, Phase 4) ────
+  // See TENANT_RESOLUTION_REBUILD_SPEC.md Section 2. Four sequential blocks, run in
+  // this exact order every boot (idempotent) — do not reorder. Runs after the
+  // contractors table (created + empty-table-guard seeded above) so the backfill's
+  // exactly-1-row check always has a contractor to read.
+
+  // Step 1 — add the column, nullable, no default.
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS contractor_id TEXT REFERENCES contractors(id)`);
+
+  // Step 2 — fail-closed backfill: mirrors getDefaultContractorId()'s own fail-closed
+  // philosophy, applied once, at migration time, in SQL. Only safe pre-contractor-#2.
+  await pool.query(`
+    DO $$
+    DECLARE
+      the_contractor_id TEXT;
+      contractor_count INTEGER;
+    BEGIN
+      SELECT COUNT(*) INTO contractor_count FROM contractors;
+      IF contractor_count <> 1 THEN
+        RAISE EXCEPTION 'users.contractor_id backfill aborted: expected exactly 1 contractors row, found %. This migration is only safe pre-contractor-#2 — investigate before re-running.', contractor_count;
+      END IF;
+      SELECT id INTO the_contractor_id FROM contractors LIMIT 1;
+      UPDATE users SET contractor_id = the_contractor_id WHERE contractor_id IS NULL;
+    END $$;
+  `);
+
+  // Step 3 — enforce NOT NULL once every row is backfilled. Guarded so a re-run
+  // (contractor_id already NOT NULL) is a no-op, not an error.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'users' AND column_name = 'contractor_id' AND is_nullable = 'YES'
+      ) THEN
+        ALTER TABLE users ALTER COLUMN contractor_id SET NOT NULL;
+      END IF;
+    END $$;
+  `);
+
+  // Step 4 — replace the global email UNIQUE with a per-contractor one. No collision
+  // pre-check needed: the old global UNIQUE(email) already guarantees no duplicate
+  // emails exist, so the stricter per-contractor constraint can never be rejected by
+  // existing data (spec Section 2, Step 4).
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'users_email_key'
+      ) THEN
+        ALTER TABLE users DROP CONSTRAINT users_email_key;
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'users_contractor_id_email_unique'
+      ) THEN
+        ALTER TABLE users ADD CONSTRAINT users_contractor_id_email_unique UNIQUE (contractor_id, email);
+      END IF;
+    END $$;
+  `);
+
   // One-time seed: inserts the Accent Roofing Owner account if the email does not yet exist.
   // Reads credentials from env vars OWNER_SEED_EMAIL + OWNER_SEED_PASSWORD.
   if (process.env.OWNER_SEED_EMAIL && process.env.OWNER_SEED_PASSWORD) {

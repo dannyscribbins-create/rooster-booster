@@ -61,22 +61,21 @@ router.get('/api/admin/users', requirePermission('referrers'), async (req, res) 
   }
 });
 router.post('/api/admin/users', requirePermission('referrers.manage'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
   const { full_name, email, pin, phone } = req.body;
   try {
     const hashedPin = await bcrypt.hash(String(pin), 10);
     const result = await pool.query(
-      'INSERT INTO users (full_name,email,pin,phone) VALUES ($1,$2,$3,$4) RETURNING id,full_name,email,phone,created_at',
-      [full_name, email, hashedPin, phone || null]
+      'INSERT INTO users (full_name,email,pin,phone,contractor_id) VALUES ($1,$2,$3,$4,$5) RETURNING id,full_name,email,phone,created_at',
+      [full_name, email, hashedPin, phone || null, adminSession.contractorId]
     );
     const newUser = result.rows[0];
 
-    // Award founding_referrer badge to the first 20 users ever registered.
-    // MVP shortcut: at FORA scale, scope this count per contractorId so each
-    // contractor gets their own founding cohort of 20.
+    // Award founding_referrer badge to the first 20 users ever registered per contractor.
     // TODO: when self-serve signup is built, add the same founding_referrer check
     // to that new registration endpoint.
-    const countResult = await pool.query('SELECT COUNT(*) as total FROM users');
+    const countResult = await pool.query('SELECT COUNT(*) as total FROM users WHERE contractor_id = $1', [adminSession.contractorId]);
     if (parseInt(countResult.rows[0].total) <= 20) {
       await pool.query(
         `INSERT INTO user_badges (user_id, badge_id, seen)
