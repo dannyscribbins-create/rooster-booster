@@ -8,31 +8,7 @@ const { request: _httpRequest } = require('node:http');
 const bcrypt = require('bcrypt');
 const { requirePermission } = require('../middleware/permissions');
 const { startTestServer, stopTestServer } = require('./helpers');
-
-// ── TEST APP ──────────────────────────────────────────────────────────────────
-// Minimal Express app that mounts:
-//   - Generic test routes for direct middleware unit testing
-//   - The 3 sample-tagged admin routes to prove the middleware is wired correctly
-function buildPermissionTestApp() {
-  const express = require('express');
-  const app = express();
-  app.use(express.json({ limit: '5mb' }));
-
-  // Generic test routes — each exercises one flag without side-effects from the real handler
-  app.get( '/test/dashboard',        requirePermission('dashboard'),        (_req, res) => res.json({ ok: true }));
-  app.get( '/test/cashouts',         requirePermission('cashouts'),         (_req, res) => res.json({ ok: true }));
-  app.post('/test/cashout_approve',  requirePermission('cashout_approve'),  (_req, res) => res.json({ ok: true }));
-
-  // Sample-tagged routes — mounted to prove requirePermission() is wired at route level
-  app.use('/', require('../routes/admin/metrics'));
-  app.use('/', require('../routes/admin/cashouts'));
-  // Full admin index — needed for retention-settings and prize-settings wiring tests
-  app.use('/', require('../routes/admin/index'));
-  // Stripe admin routes — outside admin/ folder, Phase 4B gap fix
-  app.use('/', require('../routes/stripe'));
-
-  return app;
-}
+const { createApp } = require('../app');
 
 // ── HTTP HELPERS ──────────────────────────────────────────────────────────────
 
@@ -116,7 +92,15 @@ describe('requirePermission middleware', () => {
     );
     generalMemberId = generalRow.rows[0].id;
 
-    ({ server, port } = await startTestServer(buildPermissionTestApp()));
+    const app = createApp();
+    // Generic test routes — each exercises one flag without side-effects from the real
+    // handler. synthetic harness routes, re-mounted onto the real app post-construction —
+    // see TENANT_RESOLUTION_REBUILD_SPEC.md Section 6.
+    app.get( '/test/dashboard',        requirePermission('dashboard'),        (_req, res) => res.json({ ok: true }));
+    app.get( '/test/cashouts',         requirePermission('cashouts'),         (_req, res) => res.json({ ok: true }));
+    app.post('/test/cashout_approve',  requirePermission('cashout_approve'),  (_req, res) => res.json({ ok: true }));
+
+    ({ server, port } = await startTestServer(app));
   });
 
   after(async () => {
@@ -167,9 +151,11 @@ describe('requirePermission middleware', () => {
     const token = await makeSuperAdminSession();
 
     const r1 = await httpGet(port, '/test/dashboard', token);
+    assert.notEqual(r1.status, 404, 'synthetic /test/dashboard route is not mounted — the guard is testing nothing');
     assert.equal(r1.status, 200, 'super-admin passes dashboard');
 
     const r2 = await httpMethod(port, 'POST', '/test/cashout_approve', {}, token);
+    assert.notEqual(r2.status, 404, 'synthetic /test/cashout_approve route is not mounted — the guard is testing nothing');
     assert.equal(r2.status, 200, 'super-admin passes cashout_approve');
   });
 
@@ -179,12 +165,15 @@ describe('requirePermission middleware', () => {
     await setPermissions(ownerMemberId, {}); // explicitly empty
 
     const r1 = await httpGet(port, '/test/dashboard', token);
+    assert.notEqual(r1.status, 404, 'synthetic /test/dashboard route is not mounted — the guard is testing nothing');
     assert.equal(r1.status, 200, 'owner passes dashboard with empty JSONB');
 
     const r2 = await httpMethod(port, 'POST', '/test/cashout_approve', {}, token);
+    assert.notEqual(r2.status, 404, 'synthetic /test/cashout_approve route is not mounted — the guard is testing nothing');
     assert.equal(r2.status, 200, 'owner passes cashout_approve with empty JSONB');
 
     const r3 = await httpGet(port, '/test/cashouts', token);
+    assert.notEqual(r3.status, 404, 'synthetic /test/cashouts route is not mounted — the guard is testing nothing');
     assert.equal(r3.status, 200, 'owner passes cashouts with empty JSONB');
   });
 
@@ -194,6 +183,7 @@ describe('requirePermission middleware', () => {
     const token = await makeAdminSession(adminMemberId);
 
     const res = await httpGet(port, '/test/dashboard', token);
+    assert.notEqual(res.status, 404, 'synthetic /test/dashboard route is not mounted — the guard is testing nothing');
     assert.equal(res.status, 200);
     assert.equal(res.body.ok, true);
   });
@@ -204,6 +194,7 @@ describe('requirePermission middleware', () => {
     const token = await makeAdminSession(adminMemberId);
 
     const res = await httpGet(port, '/test/dashboard', token);
+    assert.notEqual(res.status, 404, 'synthetic /test/dashboard route is not mounted — the guard is testing nothing');
     assert.equal(res.status, 403);
     assert.equal(res.body.error, 'Access denied');
   });
@@ -214,6 +205,7 @@ describe('requirePermission middleware', () => {
     const token = await makeAdminSession(adminMemberId);
 
     const res = await httpGet(port, '/test/cashouts', token);
+    assert.notEqual(res.status, 404, 'synthetic /test/cashouts route is not mounted — the guard is testing nothing');
     assert.equal(res.status, 403, 'absent flag must deny, not allow');
     assert.equal(res.body.error, 'Access denied');
   });
@@ -225,6 +217,7 @@ describe('requirePermission middleware', () => {
     const token = await makeAdminSession(generalMemberId);
 
     const res = await httpMethod(port, 'POST', '/test/cashout_approve', {}, token);
+    assert.notEqual(res.status, 404, 'synthetic /test/cashout_approve route is not mounted — the guard is testing nothing');
     assert.equal(res.status, 403, 'General must be denied cashout_approve even when flag=true in JSONB');
     assert.equal(res.body.error, 'Access denied');
   });
@@ -235,12 +228,14 @@ describe('requirePermission middleware', () => {
     const token = await makeAdminSession(adminMemberId);
 
     const denied = await httpGet(port, '/test/dashboard', token);
+    assert.notEqual(denied.status, 404, 'synthetic /test/dashboard route is not mounted — the guard is testing nothing');
     assert.equal(denied.status, 403, 'initially denied');
 
     // Change the flag in the DB — same token, no re-login
     await setPermissions(adminMemberId, { dashboard: true });
 
     const allowed = await httpGet(port, '/test/dashboard', token);
+    assert.notEqual(allowed.status, 404, 'synthetic /test/dashboard route is not mounted — the guard is testing nothing');
     assert.equal(allowed.status, 200, 'next request with same token sees updated permission immediately');
   });
 
@@ -275,6 +270,7 @@ describe('requirePermission middleware', () => {
   // ── TEST 11: no Authorization header → 401 ───────────────────────────────
   it('request with no Authorization header → 401', async () => {
     const res = await httpGet(port, '/test/dashboard', null);
+    assert.notEqual(res.status, 404, 'synthetic /test/dashboard route is not mounted — the guard is testing nothing');
     assert.equal(res.status, 401);
   });
 
@@ -288,6 +284,7 @@ describe('requirePermission middleware', () => {
     );
 
     const res = await httpGet(port, '/test/dashboard', token);
+    assert.notEqual(res.status, 404, 'synthetic /test/dashboard route is not mounted — the guard is testing nothing');
     assert.equal(res.status, 401);
   });
 
@@ -302,6 +299,7 @@ describe('requirePermission middleware', () => {
     );
 
     const res = await httpGet(port, '/test/dashboard', token);
+    assert.notEqual(res.status, 404, 'synthetic /test/dashboard route is not mounted — the guard is testing nothing');
     assert.equal(res.status, 403, 'legacy session without team_member_id is denied — fail closed');
   });
 

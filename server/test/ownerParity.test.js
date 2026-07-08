@@ -8,6 +8,7 @@ const { request: _httpRequest } = require('node:http');
 const { requirePermission } = require('../middleware/permissions');
 const { SECTIONS } = require('../permissions/registry');
 const { startTestServer, stopTestServer } = require('./helpers');
+const { createApp } = require('../app');
 
 // ── PARITY TABLE ──────────────────────────────────────────────────────────────
 // One entry per flag to probe. An Owner whose permissions JSONB is '{}' (empty)
@@ -53,29 +54,6 @@ const PARITY_TABLE = [
   { group: 'rep_assignment',   flag: 'rep_assignment',   method: 'GET',   path: '/test/rep-assignment',          mode: 'http'  },
   // TODO: add billing to owner-parity coverage when billing routes land — genuinely future, no representative route yet
 ];
-
-// ── APP ───────────────────────────────────────────────────────────────────────
-// Local mirror app: mounts the same real admin route modules as buildMirrorApp()
-// in adminRouterIntrospection.js, PLUS the three synthetic /test/* routes for
-// flags that have no live endpoints yet. We build this locally rather than extending
-// buildMirrorApp() because that helper returns a sealed express app with no
-// extension point for adding synthetic routes.
-function buildOwnerParityApp() {
-  const express = require('express');
-  const app = express();
-  app.use(express.json({ limit: '5mb' }));
-
-  // Real admin routes — mirrors the two app.use() calls in server.js that
-  // register /api/admin/* paths (confirmed by adminRouteCoverage drift guard).
-  app.use('/', require('../routes/admin/index'));
-  app.use('/', require('../routes/stripe'));
-
-  // Synthetic route — rep_assignment has no live route yet (Phase 6+).
-  // Proves Owner short-circuit covers this flag before real routes exist.
-  app.get('/test/rep-assignment', requirePermission('rep_assignment'), (_req, res) => res.json({ ok: true }));
-
-  return app;
-}
 
 // ── HTTP HELPER ───────────────────────────────────────────────────────────────
 
@@ -171,7 +149,14 @@ describe('owner-parity smoke test', () => {
       [ownerToken, CONTRACTOR_ID, ownerMemberId]
     );
 
-    ({ server, port } = await startTestServer(buildOwnerParityApp()));
+    const app = createApp();
+    // Synthetic route — rep_assignment has no live route yet (Phase 6+).
+    // Proves Owner short-circuit covers this flag before real routes exist.
+    // synthetic harness route, re-mounted onto the real app post-construction —
+    // see TENANT_RESOLUTION_REBUILD_SPEC.md Section 6.
+    app.get('/test/rep-assignment', requirePermission('rep_assignment'), (_req, res) => res.json({ ok: true }));
+
+    ({ server, port } = await startTestServer(app));
   });
 
   after(async () => {
@@ -232,6 +217,13 @@ describe('owner-parity smoke test', () => {
         await assertGuardPassesOwner(flag, ownerToken, group);
       } else {
         const res = await httpGet(port, path, ownerToken);
+        if (path.startsWith('/test/')) {
+          assert.notEqual(
+            res.status,
+            404,
+            'synthetic /test/rep-assignment route is not mounted — the guard is testing nothing'
+          );
+        }
         assert.notEqual(
           res.status,
           403,

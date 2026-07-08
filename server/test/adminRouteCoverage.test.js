@@ -3,9 +3,8 @@
 const { initTestDb } = require('./setup');
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const path = require('path');
-const fs = require('fs');
-const { buildMirrorApp, collectAdminRoutes } = require('./helpers/adminRouterIntrospection');
+const { collectAdminRoutes } = require('./helpers/adminRouterIntrospection');
+const { createApp } = require('../app');
 
 // ── PUBLIC-ROUTE ALLOWLIST ────────────────────────────────────────────────────
 // Exhaustive list of /api/admin/* routes that intentionally carry NO
@@ -80,79 +79,26 @@ function hasPermissionGuard(middlewareStack) {
   );
 }
 
-// collectAdminRoutes() and buildMirrorApp() imported from shared helper above.
+// collectAdminRoutes() imported from shared helper above.
 
-// ── DRIFT GUARD ───────────────────────────────────────────────────────────────
-// WHY THIS EXISTS:
-// This test builds a mirror that only walks the route files it explicitly mounts.
-// If server.js gains a NEW app.use() for a file that registers /api/admin/* routes
-// but this test's mirror is not updated, the walk silently misses those routes —
-// and the test passes on ungated routes it never saw. That is exactly how stripe.js
-// was missed in Phase 4B (it was in server.js but outside the admin/ directory
-// the manual sweep scanned). The drift guard closes that blind spot.
+// ── DRIFT GUARD — REMOVED (TENANT_RESOLUTION_REBUILD_SPEC.md Section 6) ───────
+// The drift guard used to exist because this suite walked a hand-rolled mirror
+// app that only mounted the route files it explicitly knew about — if server.js
+// gained a new app.use() for a file registering /api/admin/* routes and the
+// mirror wasn't updated, the walk would silently miss those routes (this is
+// exactly how stripe.js was missed in Phase 4B). The guard parsed server.js's
+// source text to catch that drift.
 //
-// Mechanism: parse server.js source, extract every require() path mounted via
-// app.use(), and assert the set matches the declared complete inventory below.
-// Any unclassified module makes the suite RED, forcing an explicit decision.
-
-// Complete inventory of every route module that server.js mounts via app.use().
-// Split into two groups:
-//   ADMIN_CONTRIBUTING — mirrored in buildMirrorApp() above; their /api/admin/*
-//                        routes are the ones this test coverage-checks.
-//   NON_ADMIN          — confirmed to register no /api/admin/* routes; not mirrored.
-const ADMIN_CONTRIBUTING_MODULES = new Set([
-  './server/routes/admin/index', // aggregates all 8 admin sub-routers (incl. team.js added Phase 6)
-  './server/routes/stripe',      // 5 /api/admin/stripe/* routes (Phase 4B find)
-]);
-
-const NON_ADMIN_MODULES = new Set([
-  './server/routes/oauth',           // /auth/jobber, /callback — Jobber OAuth flow
-  './server/routes/referrer',        // /api/* referrer-facing endpoints only
-  './server/routes/superAdmin',      // /api/rm-control/login only
-  './server/routes/webhooks/jobber', // /webhooks/* — Jobber HMAC webhooks
-  './server/routes/resendWebhook',   // /api/webhooks/* — Resend delivery events
-  './server/routes/account',         // /api/account/* — manage-account
-  './server/routes/unsubscribe',     // /api/unsubscribe/* — public unsubscribe
-]);
-
-const ALL_KNOWN_MODULES = new Set([
-  ...ADMIN_CONTRIBUTING_MODULES,
-  ...NON_ADMIN_MODULES,
-]);
-
-// Parses server.js source text and returns the Set of require() paths that are
-// actually passed to app.use() calls. Resolves them via the top-level const
-// variable declarations.
-//
-// Deliberately excludes destructured imports (const { x } = require(...)) because
-// those are middleware helpers (expressErrorHandler, logError), not route routers.
-// They land in usedVars but have no varToPath entry and are silently skipped.
-function extractMountedRouteModules(src) {
-  // Step A: varName → requirePath from `const varName = require('path')` lines.
-  const varToPath = {};
-  const varDeclRe = /^const\s+(\w+)\s*=\s*require\(['"]([^'"]+)['"]\)/gm;
-  let m;
-  while ((m = varDeclRe.exec(src)) !== null) {
-    varToPath[m[1]] = m[2];
-  }
-
-  // Step B: collect variable names from app.use() calls.
-  // Handles both app.use('/prefix', varName) and app.use(varName).
-  // Inline calls like app.use(helmet()) or app.use(express.json()) are NOT
-  // captured because (\w+) stops before '(' and the closing \) then fails.
-  const usedVars = new Set();
-  const withPrefixRe = /app\.use\(\s*['"][^'"]*['"]\s*,\s*(\w+)\s*\)/g;
-  const noPrefixRe = /app\.use\(\s*(\w+)\s*\)/g;
-  while ((m = withPrefixRe.exec(src)) !== null) usedVars.add(m[1]);
-  while ((m = noPrefixRe.exec(src)) !== null) usedVars.add(m[1]);
-
-  // Step C: resolve var names → require paths (unknown vars are non-router middleware).
-  const mounted = new Set();
-  for (const v of usedVars) {
-    if (varToPath[v]) mounted.add(varToPath[v]);
-  }
-  return mounted;
-}
+// Both problems this guard existed for are now structurally impossible:
+//   1. The sweep below walks createApp()'s REAL router stack (server/app.js),
+//      not a mirror — there is no second inventory that can fall out of sync.
+//   2. server/test/createAppParity.test.js (Phase 1 of the tenant-resolution
+//      rebuild) already pins that every one of createApp()'s nine app.use()
+//      mounts is reachable, so a router silently failing to mount is caught
+//      there, not here.
+// A source-text drift guard against server.js is also no longer meaningful:
+// server.js no longer constructs the app at all (see server/app.js) — mounting
+// happens exclusively inside createApp().
 
 // ── TEST SUITE ────────────────────────────────────────────────────────────────
 
@@ -162,7 +108,7 @@ describe('admin route enforcement coverage', () => {
 
   before(async () => {
     pool = await initTestDb();
-    const app = buildMirrorApp();
+    const app = createApp();
     adminRoutes = collectAdminRoutes(app._router.stack);
   });
 
@@ -197,45 +143,6 @@ describe('admin route enforcement coverage', () => {
         `Allowlist entry '${entry.method} ${entry.path}' was not found in the router ` +
           `walk. The route may have been renamed or deleted. ` +
           `Remove or update this allowlist entry.`
-      );
-    }
-  });
-
-  // ── Drift guard ───────────────────────────────────────────────────────────
-  it('drift guard: server.js mounts no route module unclassified in this test', () => {
-    // Parse server.js to discover every route module it actually mounts.
-    const serverJsSrc = fs.readFileSync(
-      path.resolve(__dirname, '../../server.js'),
-      'utf8'
-    );
-    const mounted = extractMountedRouteModules(serverJsSrc);
-
-    // Reverse-drift: verify each admin-contributing module is still in server.js.
-    // Catches the mirror referencing a module that was removed from server.js —
-    // the mirror would be walking phantom routes.
-    for (const mod of ADMIN_CONTRIBUTING_MODULES) {
-      assert.ok(
-        mounted.has(mod),
-        `Drift: ADMIN_CONTRIBUTING_MODULES declares '${mod}' but server.js no ` +
-          `longer mounts it. Remove it from ADMIN_CONTRIBUTING_MODULES and from ` +
-          `buildMirrorApp() in this test.`
-      );
-    }
-
-    // Forward-drift: every module server.js mounts must be classified.
-    // An unclassified module was added to server.js without updating this test —
-    // if it registers /api/admin/* routes, those routes are invisible to coverage.
-    for (const mod of mounted) {
-      assert.ok(
-        ALL_KNOWN_MODULES.has(mod),
-        `Drift detected: server.js mounts '${mod}' which is not classified in this ` +
-          `coverage test. ` +
-          `If it registers /api/admin/* routes: add it to ADMIN_CONTRIBUTING_MODULES ` +
-          `and to buildMirrorApp(). ` +
-          `If it registers no /api/admin/* routes: add it to NON_ADMIN_MODULES with a ` +
-          `comment confirming why. ` +
-          `Leaving it unclassified means this coverage test may be blind to ungated ` +
-          `routes in that file.`
       );
     }
   });

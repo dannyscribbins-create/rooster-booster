@@ -13,6 +13,7 @@ const { request: _httpRequest } = require('node:http');
 
 const referrerRouter = require('../routes/referrer');
 const { getDefaultContractorId } = require('../utils/contractorContext');
+const { createApp } = require('../app');
 
 const {
   seedUser,
@@ -21,15 +22,6 @@ const {
   startTestServer,
   stopTestServer,
 } = require('./helpers');
-
-function buildTestApp() {
-  const express = require('express');
-  const app = express();
-  app.set('trust proxy', true);
-  app.use(express.json({ limit: '5mb' }));
-  app.use('/', referrerRouter);
-  return app;
-}
 
 function httpGet(port, path, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
@@ -58,7 +50,7 @@ describe('contractor_id resolution — rename safety (referrer path)', () => {
 
   before(async () => {
     pool = await initTestDb();
-    ({ server, port } = await startTestServer(buildTestApp()));
+    ({ server, port } = await startTestServer(createApp()));
   });
 
   after(async () => {

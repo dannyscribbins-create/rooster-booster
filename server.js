@@ -1,21 +1,9 @@
-const express = require('express');
-const cors = require('cors');
 require('dotenv').config();
 const { initDB } = require('./server/db');
-const oauthRoutes = require('./server/routes/oauth');
-const referrerRoutes = require('./server/routes/referrer');
-const adminRoutes = require('./server/routes/admin/index');
-const superAdminRoutes = require('./server/routes/superAdmin');
-const stripeRoutes = require('./server/routes/stripe');
-const jobberWebhooks = require('./server/routes/webhooks/jobber');
-const resendWebhookRouter = require('./server/routes/resendWebhook');
-const accountRoutes = require('./server/routes/account');
-const unsubscribeRoutes = require('./server/routes/unsubscribe');
-const { expressErrorHandler } = require('./server/middleware/errorLogger');
-const helmet = require('helmet');
-const cron = require('node-cron');
-const { runBackup } = require('./server/utils/backup');
+const { createApp } = require('./server/app');
 const { startCronJobs } = require('./server/cron/index');
+const { runBackup } = require('./server/utils/backup');
+const cron = require('node-cron');
 
 process.on('unhandledRejection', async (reason, promise) => {
   console.error('[server] Unhandled promise rejection:', reason)
@@ -29,14 +17,7 @@ process.on('uncaughtException', async (err) => {
   await logError({ req: null, error: err })
 })
 
-const app = express();
-app.set('trust proxy', 1);
-app.use(helmet());
-app.get('/health', (req, res) => res.json({ status: 'ok', version: process.env.APP_VERSION || 'unknown', timestamp: new Date().toISOString() }));
-app.use(cors());
-app.use('/webhooks', express.raw({ type: 'application/json' }));
-app.use('/api/webhooks', express.raw({ type: 'application/json' }));
-app.use(express.json({ limit: '5mb' }));
+const app = createApp();
 
 // Token management moved to getCRMAdapter() — reads from DB per request.
 // No startup token load needed.
@@ -50,22 +31,6 @@ app.use(express.json({ limit: '5mb' }));
     logError({ req: null, error: err, source: 'startup' });
   }
 })();
-
-// Jobber webhook — no auth middleware, Jobber verifies via HMAC signature
-app.use('/webhooks', jobberWebhooks);
-app.use('/api/webhooks', resendWebhookRouter);
-
-app.use('/', oauthRoutes);
-app.use('/', referrerRoutes);
-app.use('/', adminRoutes);
-app.use('/', superAdminRoutes);
-app.use('/', stripeRoutes);
-// Manage Account routes
-app.use('/api/account', accountRoutes);
-// Unsubscribe / email preferences — public, no auth middleware
-app.use('/', unsubscribeRoutes);
-
-app.use(expressErrorHandler);
 
 // Daily database backup — runs at 2:00am UTC
 cron.schedule('0 2 * * *', async () => {
