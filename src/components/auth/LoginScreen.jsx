@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { R } from '../../constants/theme';
-import { BACKEND_URL } from '../../config/contractor';
+import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import rbLogoSquareWordmark from '../../assets/images/rb logo w wordmark 2000px transparent background.png';
 import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import ContactModal from '../shared/ContactModal';
@@ -27,7 +27,7 @@ export default function LoginScreen({ onLogin }) {
     fetch(`${BACKEND_URL}/api/forgot-pin`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: forgotEmail }),
+      body: JSON.stringify({ email: forgotEmail, contractorSlug: CONTRACTOR_CONFIG.contractorId }),
     })
       .then(res => {
         if (!res.ok) throw new Error(res.status);
@@ -47,7 +47,7 @@ export default function LoginScreen({ onLogin }) {
     fetch(`${BACKEND_URL}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, pin: pass }),
+      body: JSON.stringify({ email, pin: pass, contractorSlug: CONTRACTOR_CONFIG.contractorId }),
     })
       .then(res => res.json())
       .then(data => {

@@ -21,7 +21,6 @@ const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { verifyReferrerSession } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
 const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
-const { getDefaultContractorId } = require('../utils/contractorContext');
 
 // test seam — inert in production, never called outside server/test/
 // Only the cashout-section call sites below use these overrides.
@@ -433,12 +432,15 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
     await pool.query('UPDATE email_verifications SET used_at=NOW() WHERE id=$1', [verificationId]);
     await pool.query('UPDATE users SET email_verified=true WHERE id=$1', [userId]);
 
-    const userResult = await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId]);
-    if (userResult.rows.length > 0) {
-      const { full_name, email } = userResult.rows[0];
+    const newUserResult = await pool.query(
+      'SELECT full_name, email, invited_by_user_id, contractor_id FROM users WHERE id=$1',
+      [userId]
+    );
+    const newUser = newUserResult.rows[0];
+    if (newUser) {
       await pool.query(
         `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('signup', $1, $2, $3)`,
-        [full_name, email, 'Email verified for new signup']
+        [newUser.full_name, newUser.email, 'Email verified for new signup']
       );
     }
 
@@ -449,11 +451,6 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
     // Wrapped in its own try/catch: failure here must never block or roll back the signup.
     (async () => {
       try {
-        const inviteResult = await pool.query(
-          'SELECT invited_by_user_id, full_name FROM users WHERE id=$1',
-          [userId]
-        );
-        const newUser = inviteResult.rows[0];
         if (!newUser?.invited_by_user_id) return;
 
         const inviterResult = await pool.query(
@@ -463,7 +460,7 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
         const inviterName = inviterResult.rows[0]?.full_name;
         if (!inviterName) return;
 
-        const pipelineContractorId = await getDefaultContractorId();
+        const pipelineContractorId = newUser.contractor_id;
 
         // Guard: don't write if pipeline_cache already has a row for this client name
         // (avoids duplicates when Jobber sync already caught this user)
@@ -521,6 +518,7 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
 router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
   let referrerName;
   let userId;
+  let contractorId;
   try {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
@@ -528,9 +526,8 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
     const userNameResult = await pool.query('SELECT full_name FROM users WHERE id=$1', [userId]);
     if (!userNameResult.rows[0]?.full_name) return res.status(404).json({ error: 'User not found' });
     referrerName = userNameResult.rows[0].full_name;
-    // MVP: single contractor — resolved via getDefaultContractorId(); pull from
-    // session at FORA scale (multi-contractor).
-    const contractorId = await getDefaultContractorId();
+    // MVP: single contractor — resolved via session.contractorId (tenant rebuild S2).
+    contractorId = session.contractorId;
     const adapter = await getCRMAdapter(contractorId);
     const data = await adapter.fetchPipelineForReferrer(referrerName);
     // MVP: update this to cron-based sync at scale
@@ -623,7 +620,6 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
     // Stale cache fallback — serve last known pipeline data when the adapter throws
     if (referrerName) {
       try {
-        const contractorId = await getDefaultContractorId();
         const cacheResult = await pool.query(
           `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date, last_synced_at
            FROM pipeline_cache
@@ -726,9 +722,13 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
 
 // ── REFERRER: LOGIN ───────────────────────────────────────────────────────────
 router.post('/api/login', referrerLoginLimiter, async (req, res) => {
-  const { email, pin } = req.body;
+  const { email, pin, contractorSlug } = req.body;
+  if (!contractorSlug) return res.status(400).json({ error: 'Missing contractor context.' });
   try {
-    const result = await pool.query('SELECT id, full_name, email, pin, phone FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+    const result = await pool.query(
+      'SELECT id, full_name, email, pin, phone, contractor_id FROM users WHERE contractor_id = $1 AND LOWER(email) = LOWER($2)',
+      [contractorSlug, email]
+    );
     if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid email or PIN' });
     const user = result.rows[0];
     const match = await bcrypt.compare(String(pin), user.pin);
@@ -739,8 +739,8 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
     const deviceInfo = req.headers['user-agent'] || null;
     const ipAddress = req.ip || null;
     const sessionResult = await pool.query(
-      'INSERT INTO sessions (user_id, token, expires_at, device_info, ip_address) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-      [user.id, token, expiresAt, deviceInfo, ipAddress]
+      'INSERT INTO sessions (user_id, token, expires_at, device_info, ip_address, role, contractor_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+      [user.id, token, expiresAt, deviceInfo, ipAddress, 'referrer', user.contractor_id]
     );
     const sessionId = sessionResult.rows[0].id;
 
@@ -805,7 +805,7 @@ router.get('/api/referrer/enabled-payout-methods', async (req, res) => {
   try {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
-    const contractorId = await getDefaultContractorId();
+    const contractorId = session.contractorId;
     const result = await pool.query(
       `SELECT enabled_payout_methods FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
       [contractorId]
@@ -846,7 +846,7 @@ router.post('/api/cashout', cashoutLimiter, [
   }
   try {
     const userId = session.userId;
-    const contractorId = await getDefaultContractorId();
+    const contractorId = session.contractorId;
     const userResult = await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const { full_name, email } = userResult.rows[0];
@@ -1072,7 +1072,7 @@ router.post('/api/profile/photo', async (req, res) => {
       try {
         const userRow = (await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId])).rows[0];
         if (!userRow?.email) return;
-        const contractorId = await getDefaultContractorId();
+        const contractorId = session.contractorId;
         const csResult = await pool.query(
           `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id=$1 LIMIT 1`,
           [contractorId]
@@ -1112,13 +1112,14 @@ router.post('/api/profile/photo', async (req, res) => {
 
 // ── REFERRER: FORGOT PIN ───────────────────────────────────────────────────────
 router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
-  const { email } = req.body;
+  const { email, contractorSlug } = req.body;
   const genericResponse = { message: "If that email is registered, you'll receive a reset link shortly." };
+  if (!contractorSlug) return res.json(genericResponse); // fail closed to the same generic response — never reveal the missing-param distinction
 
   try {
     const userResult = await pool.query(
-      'SELECT id, full_name, email FROM users WHERE LOWER(email) = LOWER($1)',
-      [email]
+      'SELECT id, full_name, email, contractor_id FROM users WHERE contractor_id = $1 AND LOWER(email) = LOWER($2)',
+      [contractorSlug, email]
     );
 
     if (userResult.rows.length > 0) {
@@ -1136,10 +1137,9 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
       const resetUrl = `${frontendUrl}/?reset=${token}`;
 
       try {
-        const contractorId = await getDefaultContractorId();
         const pinResetCs = await pool.query(
           `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
-          [contractorId]
+          [user.contractor_id]
         );
         const pinResetSettings = pinResetCs.rows[0] || {};
         const pinResetFromName = escapeHtml(pinResetSettings.email_sender_name || pinResetSettings.company_name || 'RoofMiles');
@@ -1283,7 +1283,7 @@ router.get('/api/referrer/qr-code', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
-    const contractorId = await getDefaultContractorId();
+    const contractorId = session.contractorId;
     const referralUrl = `https://leaksmith.com/refer?ref=${userId}&contractor=${contractorId}`;
     const qrCodeDataUrl = await QRCode.toDataURL(referralUrl);
     res.json({ qrCodeDataUrl });
@@ -1315,7 +1315,7 @@ router.get('/api/referrer/my-invite-link', async (req, res) => {
     } else {
       // Lazy-create the peer link
       slug = crypto.randomBytes(5).toString('hex');
-      const contractorId = await getDefaultContractorId();
+      const contractorId = session.contractorId;
       await pool.query(
         `INSERT INTO contractor_invite_links (contractor_id, slug, link_type, created_by_user_id, active)
          VALUES ($1, $2, 'peer', $3, true)`,
@@ -1344,7 +1344,7 @@ router.get('/api/referrer/about', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
-    const contractorId = await getDefaultContractorId();
+    const contractorId = session.contractorId;
 
     const aboutResult = await pool.query(
       'SELECT * FROM contractor_about WHERE contractor_id = $1 LIMIT 1',
@@ -1440,7 +1440,7 @@ router.post('/api/referrer/booking', bookingLimiter, [
     await pool.query('UPDATE users SET booking_submitted = true WHERE id = $1', [userId]);
 
     const toEmail = await resolveNotificationRecipient(pool, 'booking');
-    const contractorId = await getDefaultContractorId();
+    const contractorId = session.contractorId;
 
     const bookingCs = await pool.query(
       `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
@@ -1593,7 +1593,7 @@ router.get('/api/referrer/leaderboard', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
-    const contractorId = await getDefaultContractorId();
+    const contractorId = session.contractorId;
 
     const [settingsResult, userShoutResult] = await Promise.all([
       pool.query(
@@ -1886,7 +1886,7 @@ router.post('/api/referrer/missing-referral', missingReferralLimiter, async (req
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
-    const contractorId = await getDefaultContractorId();
+    const contractorId = session.contractorId;
 
     const userResult = await pool.query('SELECT full_name FROM users WHERE id=$1 AND deleted_at IS NULL', [userId]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -2138,9 +2138,8 @@ router.post('/api/referrer/feedback', async (req, res) => {
       return res.status(400).json({ error: 'message must be 5000 characters or fewer' });
     }
 
-    // MVP: single contractor — resolved via getDefaultContractorId(); pull from
-    // session at FORA scale (multi-contractor).
-    const contractorId = await getDefaultContractorId();
+    // MVP: single contractor — resolved via session.contractorId (tenant rebuild S2).
+    const contractorId = session.contractorId;
 
     const submissionResult = await pool.query(
       'INSERT INTO suggestion_box_submissions (user_id, contractor_id, message_text) VALUES ($1, $2, $3) RETURNING id',
@@ -2216,9 +2215,8 @@ router.get('/api/referrer/schedules', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
 
-    // MVP: single contractor — resolved via getDefaultContractorId(); pull from
-    // session at FORA scale (multi-contractor).
-    const contractorId = await getDefaultContractorId();
+    // MVP: single contractor — resolved via session.contractorId (tenant rebuild S2).
+    const contractorId = session.contractorId;
 
     const result = await pool.query(
       `SELECT s.id, s.name, s.payout_model, s.minimum_invoice, s.reset_period,
@@ -2248,9 +2246,8 @@ router.get('/api/referrer/conversions', async (req, res) => {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
     const { userId } = session;
-    // MVP: single contractor — resolved via getDefaultContractorId(); pull from
-    // session at FORA scale (multi-contractor).
-    const contractorId = await getDefaultContractorId();
+    // MVP: single contractor — resolved via session.contractorId (tenant rebuild S2).
+    const contractorId = session.contractorId;
 
     // DISTINCT ON (rc.id) prevents duplicate rows when multiple activity_log entries
     // reference the same jobber_client_id. MVP: add schedule_id column to

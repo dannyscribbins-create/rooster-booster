@@ -6,13 +6,20 @@ export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhos
 export const STRIPE_PUBLISHABLE_KEY = process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || '';
 
 // ─── Contractor Config (white-label) ──────────────────────────────────────────
-// Display/branding config only. contractorId below must NEVER be sent to the backend
-// or used to resolve tenancy — it went stale after a contractors-table rename (2026-07-06)
-// and caused every referrer-facing endpoint to resolve to the wrong (empty) tenant.
-// The backend resolves contractor_id itself via getDefaultContractorId(); no client-supplied
-// contractor id is trusted anywhere in the referrer API surface.
+// Display/branding config only. contractorId below may be sent to the backend ONLY on the
+// two pre-session endpoints that explicitly accept a contractorSlug field (POST /api/login,
+// POST /api/forgot-pin — see TENANT_RESOLUTION_REBUILD_SPEC.md Section 3.5), where it scopes
+// a WHERE clause that a credential check (PIN, or a not-found-either-way generic response)
+// still gates. It may NEVER be used to select whose data to serve on any authenticated or
+// data-returning endpoint. This narrower rule replaces the original blanket "never send to
+// backend" rule after the 2026-07-06 tenant-resolution rebuild (approved by Danny, spec
+// Section 9, Q2, 2026-07-07).
+//
+// Planned retirement: once per-contractor Host-header/subdomain-based tenant resolution
+// exists, this exception should be removed and contractorSlug deleted from both endpoints'
+// request bodies — same retirement discipline as getDefaultContractorId() (Section 5).
 export const CONTRACTOR_CONFIG = {
-  contractorId:     'accent-roofing',
+  contractorId:     'accent-roofing-dev', // must match the live contractors.id — see backend-literal reconciliation (registry Known Issues 2a)
   name:             'Accent Roofing Service',
   logoUrl:          '/AccentRoofing-Logo-White.png',
   reviewUrl:        'https://g.page/r/CbtYNjHgUCwhEBM/review',

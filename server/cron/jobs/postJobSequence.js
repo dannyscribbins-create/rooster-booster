@@ -74,8 +74,8 @@ function startPostJobSequenceJob() {
               if (!matchedUser && contactEmail) {
                 const byEmail = await pool.query(
                   `SELECT id, full_name, email, referral_code FROM users
-                   WHERE LOWER(email) = LOWER($1) LIMIT 1`,
-                  [contactEmail]
+                   WHERE LOWER(email) = LOWER($1) AND contractor_id = $2 LIMIT 1`,
+                  [contactEmail, contractorId]
                 );
                 matchedUser = byEmail.rows[0] || null;
               }

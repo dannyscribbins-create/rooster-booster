@@ -43,20 +43,25 @@ async function verifyReferrerSession(req, res) {
   if (!token) { res.status(401).json({ error: 'Not authorized' }); return null; }
   try {
     const result = await pool.query(
-      `SELECT s.id AS session_id, s.user_id
+      `SELECT s.id AS session_id, s.user_id, s.contractor_id
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        WHERE s.token = $1
          AND s.role = $2
          AND s.expires_at > NOW()
-         AND u.deleted_at IS NULL`,
+         AND u.deleted_at IS NULL
+         AND s.contractor_id IS NOT NULL`,
       [token, 'referrer']
     );
     if (!result.rows.length) {
       res.status(401).json({ error: 'Session expired. Please log in again.' });
       return null;
     }
-    return { userId: result.rows[0].user_id, sessionId: result.rows[0].session_id };
+    return {
+      userId: result.rows[0].user_id,
+      sessionId: result.rows[0].session_id,
+      contractorId: result.rows[0].contractor_id,
+    };
   } catch (err) {
     logError({ req, error: err, source: 'verifyReferrerSession' });
     res.status(500).json({ error: 'Auth check failed' });

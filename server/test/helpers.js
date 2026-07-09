@@ -125,8 +125,13 @@ async function seedUser(pool, { fullName, email, contractorId }) {
 
 // Inserts a sessions row with the given role and token.
 // userId may be null for admin sessions (no user account required).
-// contractorId is required for admin sessions; nullable for referrer sessions.
+// contractorId is required for admin AND referrer sessions (referrer sessions carry
+// contractor_id as of tenant rebuild S2); null stays legal for role 'super_admin'
+// (tenant-less by design) and any other non-referrer role.
 async function seedSession(pool, { userId = null, token, role = 'referrer', expiresInMs = 3_600_000, contractorId = null }) {
+  if (role === 'referrer' && !contractorId) {
+    throw new Error('seedSession(): referrer sessions carry contractor_id as of tenant rebuild S2 — pass the tenant explicitly');
+  }
   const expiresAt = new Date(Date.now() + expiresInMs);
   await pool.query(
     `INSERT INTO sessions (user_id, token, expires_at, role, contractor_id)

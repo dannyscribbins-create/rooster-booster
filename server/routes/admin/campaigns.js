@@ -499,8 +499,8 @@ async function executeBatchSend(campaignId, req, contractorId) {
   async function upsertContactRecord(email, name, status, jobberClientId, phone) {
     try {
       const appUserRes = await pool.query(
-        `SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
-        [email]
+        `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND contractor_id = $2 LIMIT 1`,
+        [email, contractorId]
       );
       const isAppUser = appUserRes.rows.length > 0;
 

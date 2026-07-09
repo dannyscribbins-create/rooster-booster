@@ -106,7 +106,7 @@ describe('contractor_id resolution — rename safety (referrer path)', () => {
     const userId = await seedUser(pool, {
       fullName: 'Test Referrer', email: 'resolve-sched@test.com', contractorId: RENAMED_CONTRACTOR_ID,
     });
-    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer' });
+    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer', contractorId: RENAMED_CONTRACTOR_ID });
     await seedReferralSchedule(pool, {
       contractorId: RENAMED_CONTRACTOR_ID, jobberLabel: 'Roof Replacement', flatAmount: 250,
     });
@@ -124,7 +124,7 @@ describe('contractor_id resolution — rename safety (referrer path)', () => {
     const userId = await seedUser(pool, {
       fullName: 'Test Referrer', email: 'resolve-conv@test.com', contractorId: RENAMED_CONTRACTOR_ID,
     });
-    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer' });
+    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer', contractorId: RENAMED_CONTRACTOR_ID });
     await pool.query(
       `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, bonus_amount, converted_at)
        VALUES ($1, $2, 'jc-resolve-001', 500, NOW())`,
@@ -145,7 +145,7 @@ describe('contractor_id resolution — rename safety (referrer path)', () => {
     const userId = await seedUser(pool, {
       fullName: 'Pipeline Referrer', email: 'resolve-pipeline@test.com', contractorId: RENAMED_CONTRACTOR_ID,
     });
-    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer' });
+    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer', contractorId: RENAMED_CONTRACTOR_ID });
 
     // Connected CRM under the renamed id, using the servicetitan placeholder adapter so the
     // test never touches the network — it throws a deterministic, non-"No CRM connected" error,
@@ -180,7 +180,7 @@ describe('contractor_id resolution — rename safety (referrer path)', () => {
     const userId = await seedUser(pool, {
       fullName: 'Test Referrer', email: 'resolve-payout@test.com', contractorId: RENAMED_CONTRACTOR_ID,
     });
-    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer' });
+    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer', contractorId: RENAMED_CONTRACTOR_ID });
     await pool.query(
       `INSERT INTO contractor_settings (contractor_id, company_name, enabled_payout_methods)
        VALUES ($1, 'Renamed Co', $2)`,

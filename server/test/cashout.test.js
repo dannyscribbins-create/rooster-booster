@@ -89,7 +89,7 @@ describe('cashout — balance, request, and approval integrity', () => {
   async function setupReferrer({ email = 'ref@test.com', fullName = 'Test Referrer' } = {}) {
     await seedContractor(pool, 'accent-roofing');
     const userId = await seedUser(pool, { fullName, email, contractorId: 'accent-roofing' });
-    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer' });
+    await seedSession(pool, { userId, token: REFERRER_TOKEN, role: 'referrer', contractorId: 'accent-roofing' });
     return { userId };
   }
 

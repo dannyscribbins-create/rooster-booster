@@ -81,7 +81,7 @@ async function _runEngagementCadencePass(today) {
          FROM pipeline_cache pc
          JOIN contacts c ON c.jobber_client_id = pc.jobber_client_id
            AND c.contractor_id = pc.contractor_id
-         LEFT JOIN users u ON u.email = c.email
+         LEFT JOIN users u ON LOWER(u.email) = LOWER(c.email) AND u.contractor_id = c.contractor_id
          WHERE pc.contractor_id = $1
            AND pc.pipeline_status = 'paid'
            AND pc.paid_at IS NOT NULL
