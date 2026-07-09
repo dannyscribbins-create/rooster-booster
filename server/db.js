@@ -251,6 +251,25 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   await pool.query(`ALTER TABLE contractor_crm_settings ADD COLUMN IF NOT EXISTS referral_start_date TIMESTAMP`);
 
+  // Tenant rebuild S3, Batch C(a): captures which Jobber account (accountId) a contractor's
+  // OAuth connection belongs to, so webhook handlers can resolve contractor_id from the
+  // payload instead of the single-tenant getDefaultContractorId() tripwire.
+  await pool.query(`ALTER TABLE contractor_crm_settings ADD COLUMN IF NOT EXISTS jobber_account_id TEXT`);
+
+  // Guarded UNIQUE — two contractors sharing a Jobber account indicates an OAuth-connection
+  // bug and should fail loud at connect time, not silently misroute webhooks later. NULLs
+  // never collide under a Postgres UNIQUE, so pre-backfill rows are unaffected.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'contractor_crm_settings_jobber_account_id_unique'
+      ) THEN
+        ALTER TABLE contractor_crm_settings ADD CONSTRAINT contractor_crm_settings_jobber_account_id_unique UNIQUE (jobber_account_id);
+      END IF;
+    END $$;
+  `);
+
   // ── MANAGE ACCOUNT MIGRATIONS ─────────────────────────────────────────────────
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20)`);
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT false`);

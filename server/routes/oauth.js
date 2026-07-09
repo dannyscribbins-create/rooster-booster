@@ -5,6 +5,8 @@ const axios = require('axios');
 const { pool } = require('../db');
 const { discoverJobberFields } = require('../crm/jobber');
 const { logError } = require('../middleware/errorLogger');
+const { retryWithBackoff } = require('../utils/retryWithBackoff');
+const { jobberShouldRetry } = require('../utils/retryHelpers');
 
 // ── JOBBER OAUTH ──────────────────────────────────────────────────────────────
 router.get('/auth/jobber', (req, res) => {
@@ -31,6 +33,41 @@ router.get('/callback', async (req, res) => {
        ON CONFLICT (id) DO UPDATE SET access_token=$1, refresh_token=$2, expires_at=$3, updated_at=NOW(), contractor_id=$4`,
       [response.data.access_token, response.data.refresh_token, expiresAt, contractorId]
     );
+
+    // Tenant rebuild S3, Batch C(b): captures which Jobber account this OAuth connection
+    // belongs to, so webhook handlers can resolve contractor_id from the payload's
+    // accountId instead of the single-tenant getDefaultContractorId() tripwire (webhook-side
+    // Batch C is a separate deploy — webhooks/jobber.js is not touched here). This capture
+    // inherits this file's existing state-param tenant trust (contractorId above can still
+    // fall back to the stale 'accent-roofing' literal when no state param is present) —
+    // that trust question is tracked as F2 in CRM_TOKEN_FIX_SPEC.md and is NOT addressed by
+    // this change; a future TF session owns it. Dormant until the next OAuth connect/reconnect.
+    try {
+      const accountIdRes = await retryWithBackoff(
+        () => axios.post(
+          'https://api.getjobber.com/api/graphql',
+          { query: `query { account { id } }` },
+          { headers: {
+              Authorization: `Bearer ${response.data.access_token}`,
+              'Content-Type': 'application/json',
+              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+          } }
+        ),
+        { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+      );
+      const jobberAccountId = accountIdRes.data?.data?.account?.id;
+      await pool.query(
+        `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id) VALUES ($1, $2)
+         ON CONFLICT (contractor_id) DO UPDATE SET jobber_account_id = EXCLUDED.jobber_account_id`,
+        [contractorId, jobberAccountId]
+      );
+    } catch (captureErr) {
+      // Never fail the OAuth flow over this — a missing jobber_account_id fails closed
+      // later, at webhook time, via the existing quarantine pattern (recoverable); a
+      // broken OAuth connect is worse.
+      await logError({ req, error: captureErr, source: 'GET /callback — jobber_account_id capture' });
+      console.warn('Could not capture Jobber account id:', captureErr.message);
+    }
 
     // Fetch Jobber account name to store in CRM settings
     let crmAccountName = 'Unknown Account';
