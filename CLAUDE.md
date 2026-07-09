@@ -30,7 +30,7 @@ MVP shortcuts must be flagged with a code comment explaining: (a) the limitation
 
 **Known MVP shortcuts:**
 - `paid_count` on users table — updated only when referrer loads pipeline. At scale, replace with background cron. Flagged in code: `// MVP: update this to cron-based sync at scale`
-- `contractor_id` hardcoded as `'accent-roofing'` in all MVP endpoints — must be pulled from session token before contractor #2.
+- `contractor_id` resolution — RESOLVED for referrer-side endpoints (tenant rebuild S2, 2026-07-08): pulled from `session.contractorId`, session-derived at login. Still true for `webhooks/jobber.js` (5 sites, resolves via `getDefaultContractorId()`) — pending Session 3; do not add a second `contractors` row until that session's checkpoint passes.
 
 ---
 

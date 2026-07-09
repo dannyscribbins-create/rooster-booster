@@ -272,11 +272,32 @@ Full build spec: `TENANT_RESOLUTION_REBUILD_SPEC.md`. Tracks the users/sessions 
 - Session stamping for referrers — login/forgot-pin/signup flows still resolve tenancy via the singleton helper, not `session.contractorId`.
 - Webhook contractor resolution — still resolves via `getDefaultContractorId()`, not Jobber's `accountId`.
 
-**Next: S2** — per `TENANT_RESOLUTION_REBUILD_SPEC.md` Section 8 (session stamping + the referrer-facing call-site batches).
+**Session 2 (S2) — COMPLETE (commits `ee092f1` hotfix + `1824d5a` main, deployed + live-verified 2026-07-08)**
+- Referrer sessions stamped with `contractor_id` at login from the PIN-verified `users` row; `verifyReferrerSession()` returns `contractorId` and rejects unstamped sessions — legacy (pre-migration) sessions invalidated by design, verified live.
+- `contractorSlug` on login/forgot-pin scopes the `WHERE` clause only, never bypasses the credential check. Q2's two binding conditions shipped same-commit: `src/config/contractor.js`'s hardened-rule comment rewritten to the narrower rule + retirement note; `contractorId` value corrected to `accent-roofing-dev`.
+- All 22 referrer-side sites converted (A1-A6, B1-B14, BX1-BX3).
+- `getDefaultContractorId()` fully retired from `referrer.js` — require removed, zero matches via grep.
+- `tenantIsolation.test.js` two-tenant suite green. Suite: 239/239.
+
+**HOTFIX (`ee092f1`, pulled forward from S2's A1/A2):** S1's `users.contractor_id NOT NULL` broke public signup — `referrer.js`'s signup `INSERT` lacked `contractor_id`, the same exposure Q5 caught and fixed for the admin-create-referrer `INSERT` but missed for signup. Down ~1h, zero real users affected (`error_log` confirmed empty). Fixed by pulling A1/A2 forward ahead of the rest of Batch A.
+
+**S2 explicitly did NOT touch** (deferred to Session 3):
+- `webhooks/jobber.js` still calls `getDefaultContractorId()` 5x — the function and `contractorContext.js` live until Session 3.
+- **DO NOT insert a second `contractors` row until S3's checkpoint passes.**
+
+**New findings for the record:**
+- `users.contractor_id` / `sessions.contractor_id` FKs have no `ON UPDATE CASCADE` — a live contractor rename with existing dependents will be rejected by Postgres (safe direction, reinforces resolving tenancy dynamically rather than caching it).
+- `src/config/contractor.js:15`'s `contractorId` literal now joins the backend-literal reconciliation scope (Known Issues 2a).
+- Dependabot at 26 findings (1 critical) — pre-launch item 5.
+
+**Next: S3** — per `TENANT_RESOLUTION_REBUILD_SPEC.md` Section 8 (webhook resolution via Jobber `accountId`, Batch C, + full `getDefaultContractorId()` retirement).
 
 **Small follow-ups queue (opportunistic, not blocking):**
 - `registryReconciliation.test.js` still uses the legacy `buildMirrorApp()` helper (green, harmless) — swap to `createApp()` opportunistically, same pattern already applied to `adminRouteCoverage.test.js`.
 - `docs/desktop.ini` should be gitignored (Windows Explorer artifact, currently untracked noise in `git status`).
+- `LoginScreen.jsx` / `ResetPinScreen.jsx` — `.then()` chains (CLAUDE.md violation, pre-existing, found during S2's LoginScreen edit — not fixed, out of that session's minimal-diff scope fence).
+- `referrer.js` forgot-pin handler (~lines 1179-1200) — two `console.error(...)` calls missing the `// diagnostic log — intentional` marker (flagged during S2, out of that session's scope fence).
+- Signup verification email send (`referrer.js` ~line 288) is not covered by the route's `_setTestOverrides` seam (that seam only covers the cashout-section sends) — tests stub the `resend` package via `require.cache` instead (see `signupTenantStamp.test.js`).
 
 ---
 
