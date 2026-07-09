@@ -253,7 +253,8 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   // Tenant rebuild S3, Batch C(a): captures which Jobber account (accountId) a contractor's
   // OAuth connection belongs to, so webhook handlers can resolve contractor_id from the
-  // payload instead of the single-tenant getDefaultContractorId() tripwire.
+  // payload via resolveWebhookContractorId() (webhooks/jobber.js) — the single-tenant
+  // getDefaultContractorId() tripwire this replaced was retired the same session.
   await pool.query(`ALTER TABLE contractor_crm_settings ADD COLUMN IF NOT EXISTS jobber_account_id TEXT`);
 
   // Guarded UNIQUE — two contractors sharing a Jobber account indicates an OAuth-connection
@@ -1151,8 +1152,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // Step 1 — add the column, nullable, no default.
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS contractor_id TEXT REFERENCES contractors(id)`);
 
-  // Step 2 — fail-closed backfill: mirrors getDefaultContractorId()'s own fail-closed
-  // philosophy, applied once, at migration time, in SQL. Only safe pre-contractor-#2.
+  // Step 2 — fail-closed backfill: mirrors the fail-closed philosophy the now-retired
+  // getDefaultContractorId() used, applied once, at migration time, in SQL. Only safe
+  // pre-contractor-#2.
   await pool.query(`
     DO $$
     DECLARE

@@ -12,7 +12,6 @@ const assert = require('node:assert/strict');
 const { request: _httpRequest } = require('node:http');
 
 const referrerRouter = require('../routes/referrer');
-const { getDefaultContractorId } = require('../utils/contractorContext');
 const { createApp } = require('../app');
 
 const {
@@ -80,23 +79,15 @@ describe('contractor_id resolution — rename safety (referrer path)', () => {
     );
   }
 
-  // ── getDefaultContractorId() — fail-closed tripwire ──────────────────────────
+  // ── getDefaultContractorId() — retired ────────────────────────────────────────
+  // Retired in tenant rebuild S3 (see TENANT_RESOLUTION_REBUILD_SPEC.md Section 5).
+  // Resolution is now session-derived (referrer path, via verifyReferrerSession()'s
+  // stamped contractorId — S2) / accountId-derived (webhook path, via
+  // resolveWebhookContractorId() — S3 Batch C). Do not reintroduce this function or any
+  // other singleton-table tenant resolver.
 
-  it('getDefaultContractorId resolves the single contractors row, whatever its id', async () => {
-    await renameContractor();
-    const id = await getDefaultContractorId();
-    assert.equal(id, RENAMED_CONTRACTOR_ID);
-  });
-
-  it('getDefaultContractorId fails closed with 0 contractor rows', async () => {
-    // beforeEach already deleted all contractors rows for this test file
-    await assert.rejects(() => getDefaultContractorId(), /0 contractor rows/i);
-  });
-
-  it('getDefaultContractorId fails closed with 2 contractor rows (contractor #2 tripwire)', async () => {
-    await renameContractor();
-    await pool.query(`INSERT INTO contractors (id, name, status) VALUES ('second-tenant', 'Second', 'active')`);
-    await assert.rejects(() => getDefaultContractorId(), /2 contractor rows/i);
+  it('getDefaultContractorId has been retired — contractorContext.js no longer exists', () => {
+    assert.throws(() => require('../utils/contractorContext'), /Cannot find module/);
   });
 
   // ── GET /api/referrer/schedules ──────────────────────────────────────────────
@@ -173,7 +164,8 @@ describe('contractor_id resolution — rename safety (referrer path)', () => {
 
   // ── GET /api/referrer/enabled-payout-methods ──────────────────────────────────
   // Security fix: contractorId must never come from the client. Route drops the
-  // :contractorId param entirely and resolves server-side via getDefaultContractorId().
+  // :contractorId param entirely and resolves server-side via the caller's session
+  // (verifyReferrerSession()'s stamped contractorId — S2).
 
   it('GET /api/referrer/enabled-payout-methods resolves server-side under the renamed contractor id', async () => {
     await renameContractor();

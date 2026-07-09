@@ -98,25 +98,51 @@ describe('invoice-paid webhook (characterization suite)', () => {
     await pool.query('DELETE FROM sessions');
     await pool.query('DELETE FROM titles');
     await pool.query('DELETE FROM team_members');
-    // getDefaultContractorId() requires the invariant "exactly one contractors row" —
-    // this file owns that invariant exclusively within each test (same pattern as
-    // contractorResolution.test.js), so leftover rows from other test files never leak in.
+    // This suite's payloads resolve via accountId 'JACCT_TEST' → contractor_crm_settings
+    // (tenant rebuild S3) — the contractors row itself is no longer load-bearing for
+    // resolution, but each test still seeds one for FK/session-adjacent consistency with
+    // the rest of the suite. Wiped here so leftover rows from other test files never leak in.
     await pool.query('DELETE FROM contractors');
   });
 
   // Signs and POSTs to /webhooks/jobber/invoice-paid. Returns { status, body }.
+  // Tenant rebuild S3: every payload gets accountId 'JACCT_TEST' injected into
+  // data.webHookEvent so resolveWebhookContractorId() resolves via the accountId ->
+  // contractor_crm_settings.jobber_account_id path seeded by seedTestContractor() below,
+  // instead of the retired getDefaultContractorId() singleton. Injected here (one seam)
+  // rather than in each test's payload literal.
   function post(payloadObject) {
-    const { body, signature } = signJobberWebhook(payloadObject);
+    const withAccountId = {
+      ...payloadObject,
+      data: {
+        ...payloadObject.data,
+        webHookEvent: { ...payloadObject.data?.webHookEvent, accountId: 'JACCT_TEST' },
+      },
+    };
+    const { body, signature } = signJobberWebhook(withAccountId);
     return httpPost(port, '/webhooks/jobber/invoice-paid', body, {
       'x-jobber-hmac-sha256': signature,
     });
+  }
+
+  // Tenant rebuild S3: seeds both the contractors row (kept for consistency with the rest
+  // of the suite) and the contractor_crm_settings row mapping accountId 'JACCT_TEST' to it.
+  // ON CONFLICT DO UPDATE is required — contractor_crm_settings is not wiped in beforeEach
+  // (unlike contractors), so a plain INSERT would collide once more than one test has run.
+  async function seedTestContractor() {
+    await seedContractor(pool, 'test-roofing');
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id) VALUES ($1, 'JACCT_TEST')
+       ON CONFLICT (contractor_id) DO UPDATE SET jobber_account_id = EXCLUDED.jobber_account_id`,
+      ['test-roofing']
+    );
   }
 
   // ── TEST 1 ──────────────────────────────────────────────────────────────────
   it('non-paid invoiceStatus in payload → 200, IIFE exits synchronously, no DB writes', async () => {
     // contractor_id resolution now runs before the invoiceStatus check, so a single
     // contractors row is required even though this test's own DB queries are otherwise minimal.
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     const resp = await post({
       data: { invoice: { invoiceStatus: 'draft' }, webHookEvent: { itemId: 'inv-001' } },
       contractor_id: 'test-roofing',
@@ -137,7 +163,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 2 ──────────────────────────────────────────────────────────────────
   it('missing invoiceId → 200, error_log row written, admin alert email sent via _sendEmail', async () => {
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     const emails = [];
     _setTestOverrides({
       fetchInvoiceWithJobs:   async () => { throw new Error('must not be called'); },
@@ -177,7 +203,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 3 ──────────────────────────────────────────────────────────────────
   it('Jobber API returns non-paid invoice → 200, no experience or referral writes', async () => {
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing' });
 
     let fetchInvoiceCalled = false;
@@ -210,7 +236,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 4 ──────────────────────────────────────────────────────────────────
   it('qualified referral → referral_conversions row + paid_count increment + bonus + first-milestone emails', async () => {
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
     await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com', contractorId: 'test-roofing' });
@@ -260,7 +286,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
     // paid_count. Second delivery is blocked by evaluateReferral's dupe check (qualified:false)
     // and by the rowCount guard added in Session 79.5 — paid_count stays at 1.
 
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
     await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com', contractorId: 'test-roofing' });
@@ -324,7 +350,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 6 ──────────────────────────────────────────────────────────────────
   it('experience flow enabled, app user matched by email → experience_prompts row, no invite token', async () => {
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: true });
     // Seed app user whose email matches the client email returned by the stub.
@@ -367,7 +393,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 7 ──────────────────────────────────────────────────────────────────
   it('experience flow enabled, no app user match → experience_invite_tokens row + invite email sent', async () => {
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: true });
     // No app user seeded — no match possible via name, email, or phone.
@@ -412,7 +438,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 8 ──────────────────────────────────────────────────────────────────
   it('no referredBy on client → referral engine skipped, no referral_conversions row', async () => {
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
 
@@ -441,7 +467,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 9 — 2c mitigation: 401 → forced refresh → retry once ───────────────
   it('401 from fetchInvoiceWithJobs → forced refresh → retry succeeds with the refreshed token', async () => {
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing', accessToken: 'stale-token' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
     await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com', contractorId: 'test-roofing' });
@@ -516,7 +542,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
   // ── TEST 10 — non-401 errors must not trigger forced refresh ────────────────
   it('non-401 error from fetchInvoiceWithJobs → no retry, no forced refresh, error_log carries resolved contractorId', async () => {
-    await seedContractor(pool, 'test-roofing');
+    await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
 

@@ -2,12 +2,22 @@
 
 // Covers cleanup item 2a: all five Jobber webhook handlers (disconnect, client-create,
 // client-update, invoice-paid, job-update) must resolve contractor_id via
-// getDefaultContractorId() — never a hardcoded literal, never a client-supplied
+// resolveWebhookContractorId() — never a hardcoded literal, never a client-supplied
 // req.query.contractorId / payload.contractor_id. Mirrors the rename-safety pattern
 // from contractorResolution.test.js (referrer path) for the webhook path.
 //
 // Also covers 2d: every logError() call from this file must carry the resolved
 // contractorId explicitly, not rely on errorLogger.js's own 'accent-roofing' fallback.
+//
+// REWRITTEN for tenant rebuild S3 (Batch C): getDefaultContractorId() and its 0-row/2-row
+// tripwire have been retired from all 5 webhook handlers. Resolution is now
+// resolveWebhookContractorId(payload, fallbackLookup) — payload.data.webHookEvent.accountId
+// looked up against contractor_crm_settings.jobber_account_id, with a defensive local-data
+// fallback for client-update only. The `contractors` table's row count is no longer
+// consulted anywhere in this resolution path — the old "0 contractor rows" / "2 contractor
+// rows" tripwire scenarios and their dedicated tests are retired along with the function
+// that produced them. What replaces them: a single "unmatched accountId" fail-closed test
+// per handler (below), since the new mechanism has exactly one failure trigger, not two.
 
 const { initTestDb } = require('./setup');
 const { describe, it, before, beforeEach, after } = require('node:test');
@@ -28,6 +38,7 @@ const {
 } = require('./helpers');
 
 const RENAMED_ID = 'webhook-rename-safety-tenant';
+const RENAMED_ACCOUNT_ID = 'JACCT_RENAME';
 
 describe('webhook contractor_id resolution — rename safety + fail-closed (all 5 handlers)', () => {
   let pool, server, port;
@@ -58,12 +69,12 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     await pool.query('DELETE FROM sessions');
     await pool.query('DELETE FROM titles');
     await pool.query('DELETE FROM team_members');
-    // getDefaultContractorId() requires the invariant "exactly one row" — this file
-    // owns that invariant exclusively within each test, same pattern as
-    // contractorResolution.test.js, so leftover rows from other test files never leak in.
     await pool.query('DELETE FROM contractors');
   });
 
+  // contractor_crm_settings.contractor_id has NO FK to contractors — seeded here only
+  // AFTER seedSingleContractor() has inserted the matching contractors row, everywhere
+  // this file does both, so no test ever creates an orphaned contractor_crm_settings row.
   async function seedSingleContractor(id = RENAMED_ID) {
     await pool.query(
       `INSERT INTO contractors (id, name, status) VALUES ($1, 'Renamed Tenant', 'active')`,
@@ -84,17 +95,19 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     { path: '/webhooks/jobber/job-update', topic: 'job-update' },
   ];
 
-  // ── FAIL-CLOSED-BUT-200 — every handler, both tripwire conditions ────────────
+  // ── FAIL-CLOSED-BUT-200 — every handler, the new contract's one trigger ──────
+  // No contractor_crm_settings row exists for any accountId (beforeEach wipes it), and no
+  // jobber_clients row exists either — so client-update's defensive fallback also has
+  // nothing to find. Every handler must still ack 200 and quarantine exactly once.
   for (const { path, topic } of HANDLERS) {
-    it(`${topic}: 0 contractor rows → 200 acked, quarantine error_log row, no processing`, async () => {
-      const itemId = `item-${topic}-zero`;
-      const resp = await post(path, { data: { webHookEvent: { itemId } } });
+    it(`${topic}: unmatched accountId → 200 acked, quarantine error_log row, no processing`, async () => {
+      const itemId = `item-${topic}-unmatched`;
+      const resp = await post(path, { data: { webHookEvent: { itemId, accountId: 'JACCT_UNKNOWN' } } });
       assert.equal(resp.status, 200, `${topic}: must ack 200 even when resolution fails`);
 
-      // getDefaultContractorId() logs its own generic error_log row internally (by
-      // design — every caller gets that safety net) in addition to the richer
-      // webhook-specific quarantine row this test cares about, so filter to the
-      // quarantine row by its distinct source label rather than counting all rows.
+      // resolveWebhookContractorId() throws synchronously (no internal logError of its own,
+      // unlike the retired getDefaultContractorId()), so the quarantine row is the only
+      // error_log write to wait for.
       await waitFor(async () => {
         const { rows } = await pool.query("SELECT * FROM error_log WHERE source LIKE '%contractor resolution%'");
         return rows.length > 0;
@@ -103,7 +116,7 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
       const { rows } = await pool.query("SELECT * FROM error_log WHERE source LIKE '%contractor resolution%'");
       assert.equal(rows.length, 1, `${topic}: exactly one quarantine error_log row`);
       const combined = `${rows[0].error_message} ${rows[0].stack_trace || ''}`;
-      assert.match(combined, /0 contractor rows/i, `${topic}: names the resolution failure`);
+      assert.match(combined, /resolveWebhookContractorId/, `${topic}: names the new resolution mechanism`);
       assert.match(combined, new RegExp(topic), `${topic}: quarantine context names the webhook topic`);
       if (topic !== 'disconnect') {
         assert.match(combined, new RegExp(itemId), `${topic}: quarantine context includes the Jobber item id`);
@@ -114,37 +127,27 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
       const { rows: pcRows } = await pool.query('SELECT * FROM pipeline_cache');
       assert.equal(pcRows.length, 0, `${topic}: no pipeline_cache writes on resolution failure`);
     });
-
-    it(`${topic}: 2 contractor rows → 200 acked, quarantine error_log row, no processing`, async () => {
-      await seedSingleContractor('tenant-a');
-      await pool.query(`INSERT INTO contractors (id, name, status) VALUES ('tenant-b', 'Tenant B', 'active')`);
-
-      const itemId = `item-${topic}-two`;
-      const resp = await post(path, { data: { webHookEvent: { itemId } } });
-      assert.equal(resp.status, 200, `${topic}: must ack 200 even when resolution fails`);
-
-      await waitFor(async () => {
-        const { rows } = await pool.query("SELECT * FROM error_log WHERE source LIKE '%contractor resolution%'");
-        return rows.length > 0;
-      });
-
-      const { rows } = await pool.query("SELECT * FROM error_log WHERE source LIKE '%contractor resolution%'");
-      assert.equal(rows.length, 1, `${topic}: exactly one quarantine error_log row`);
-      assert.match(rows[0].error_message, /2 contractor rows/i, `${topic}: names the resolution failure`);
-    });
   }
 
-  // ── RENAME-SAFETY — resolves against the single renamed row, not a literal ───
+  // ── RENAME-SAFETY — resolves via accountId against a non-default contractor id ───
+  // "Renamed" here means: the contractor row's id is a distinctly non-default string
+  // (not 'accent-roofing', not any hardcoded literal in the codebase) — proving
+  // resolution comes entirely from the accountId -> contractor_crm_settings lookup,
+  // never from a fallback literal. Order in every test below: seed the contractors row
+  // FIRST, then contractor_crm_settings (no FK between them — reversing the order would
+  // let contractor_crm_settings reference a contractor id that doesn't exist yet).
 
-  it('disconnect: cleans up rows under the renamed contractor id, not the hardcoded literal', async () => {
+  it('disconnect: cleans up rows under the resolved contractor id, not a hardcoded literal', async () => {
     await seedSingleContractor();
     await pool.query(
-      `INSERT INTO contractor_crm_settings (contractor_id, is_connected) VALUES ($1, true)`,
-      [RENAMED_ID]
+      `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id, is_connected) VALUES ($1, $2, true)`,
+      [RENAMED_ID, RENAMED_ACCOUNT_ID]
     );
     await seedToken(pool, { contractorId: RENAMED_ID });
 
-    const resp = await post('/webhooks/jobber/disconnect', { data: {} });
+    const resp = await post('/webhooks/jobber/disconnect', {
+      data: { webHookEvent: { accountId: RENAMED_ACCOUNT_ID } },
+    });
     assert.equal(resp.status, 200);
 
     await waitFor(async () => {
@@ -156,11 +159,15 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
       'SELECT is_connected FROM contractor_crm_settings WHERE contractor_id = $1',
       [RENAMED_ID]
     );
-    assert.equal(settingsRows[0].is_connected, false, 'is_connected flipped under the renamed id');
+    assert.equal(settingsRows[0].is_connected, false, 'is_connected flipped under the resolved id');
   });
 
-  it('client-create: writes pipeline_cache under the renamed contractor id', async () => {
+  it('client-create: writes pipeline_cache under the resolved contractor id', async () => {
     await seedSingleContractor();
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id) VALUES ($1, $2)`,
+      [RENAMED_ID, RENAMED_ACCOUNT_ID]
+    );
     await seedToken(pool, { contractorId: RENAMED_ID });
 
     let relatedDataCalled = false;
@@ -175,7 +182,7 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     });
 
     const resp = await post('/webhooks/jobber/client-create', {
-      data: { webHookEvent: { itemId: 'jc-rename-cc' } },
+      data: { webHookEvent: { itemId: 'jc-rename-cc', accountId: RENAMED_ACCOUNT_ID } },
     });
     assert.equal(resp.status, 200);
 
@@ -192,8 +199,12 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     await waitFor(() => relatedDataCalled, { timeout: 3000 });
   });
 
-  it('client-update: writes pipeline_cache under the renamed contractor id', async () => {
+  it('client-update: writes pipeline_cache under the resolved contractor id', async () => {
     await seedSingleContractor();
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id) VALUES ($1, $2)`,
+      [RENAMED_ID, RENAMED_ACCOUNT_ID]
+    );
     await seedToken(pool, { contractorId: RENAMED_ID });
 
     let relatedDataCalled = false;
@@ -208,7 +219,7 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     });
 
     const resp = await post('/webhooks/jobber/client-update', {
-      data: { webHookEvent: { itemId: 'jc-rename-cu' } },
+      data: { webHookEvent: { itemId: 'jc-rename-cu', accountId: RENAMED_ACCOUNT_ID } },
     });
     assert.equal(resp.status, 200);
 
@@ -222,8 +233,12 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     await waitFor(() => relatedDataCalled, { timeout: 3000 });
   });
 
-  it('invoice-paid: engagement_settings + tokens lookups resolve under the renamed contractor id', async () => {
+  it('invoice-paid: engagement_settings + tokens lookups resolve under the resolved contractor id', async () => {
     await seedSingleContractor();
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id) VALUES ($1, $2)`,
+      [RENAMED_ID, RENAMED_ACCOUNT_ID]
+    );
     await seedToken(pool, { contractorId: RENAMED_ID });
     await seedEngagementSettings(pool, { contractorId: RENAMED_ID, experienceFlowEnabled: false });
 
@@ -235,21 +250,25 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     });
 
     const resp = await post('/webhooks/jobber/invoice-paid', {
-      data: { webHookEvent: { itemId: 'inv-rename-001' } },
+      data: { webHookEvent: { itemId: 'inv-rename-001', accountId: RENAMED_ACCOUNT_ID } },
     });
     assert.equal(resp.status, 200);
 
     // Reaching fetchInvoiceWithJobs proves both the engagement_settings lookup and the
-    // tokens lookup succeeded under the renamed id — under the old literal fallback,
-    // the tokens lookup would find nothing and the handler would bail before this call.
+    // tokens lookup succeeded under the resolved id — under a stale/wrong id, the tokens
+    // lookup would find nothing and the handler would bail before this call.
     await waitFor(() => fetchInvoiceCalled, { timeout: 3000 });
 
     const { rows: errRows } = await pool.query('SELECT * FROM error_log');
     assert.equal(errRows.length, 0, 'no quarantine/error rows — resolution succeeded cleanly');
   });
 
-  it('job-update: engagement_settings + tokens lookups resolve under the renamed contractor id', async () => {
+  it('job-update: engagement_settings + tokens lookups resolve under the resolved contractor id', async () => {
     await seedSingleContractor();
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id) VALUES ($1, $2)`,
+      [RENAMED_ID, RENAMED_ACCOUNT_ID]
+    );
     await seedToken(pool, { contractorId: RENAMED_ID });
     await seedEngagementSettings(pool, { contractorId: RENAMED_ID, experienceFlowEnabled: true });
 
@@ -259,13 +278,16 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     });
 
     const resp = await post('/webhooks/jobber/job-update', {
-      data: { job: { id: 'job-rename-001', client: { id: 'jc-rename-ju' } } },
+      data: {
+        webHookEvent: { accountId: RENAMED_ACCOUNT_ID },
+        job: { id: 'job-rename-001', client: { id: 'jc-rename-ju' } },
+      },
     });
     assert.equal(resp.status, 200);
 
     // Reaching the client-jobs fetch proves the engagement_settings flag check and the
-    // tokens lookup both resolved under the renamed id — under the old literal fallback,
-    // either lookup finding nothing would short-circuit before this call.
+    // tokens lookup both resolved under the resolved id — under a stale/wrong id, either
+    // lookup finding nothing would short-circuit before this call.
     await waitFor(() => fetchClientJobsCalled, { timeout: 3000 });
 
     const { rows: errRows } = await pool.query('SELECT * FROM error_log');
@@ -276,6 +298,10 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
 
   it('2d: an error logged mid-handler (not a resolution failure) carries the resolved contractorId, not the stale literal', async () => {
     await seedSingleContractor();
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id) VALUES ($1, $2)`,
+      [RENAMED_ID, RENAMED_ACCOUNT_ID]
+    );
     await seedToken(pool, { contractorId: RENAMED_ID });
 
     // missing invoiceId triggers the existing "missing invoiceId" logError call —
@@ -285,7 +311,7 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     });
 
     const resp = await post('/webhooks/jobber/invoice-paid', {
-      data: { webHookEvent: {} }, // no itemId
+      data: { webHookEvent: { accountId: RENAMED_ACCOUNT_ID } }, // no itemId
     });
     assert.equal(resp.status, 200);
 

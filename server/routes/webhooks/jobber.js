@@ -26,7 +26,6 @@ const { applyTag } = require('../../utils/tags');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 const { refreshTokenIfNeeded } = require('../../crm/jobber');
-const { getDefaultContractorId } = require('../../utils/contractorContext');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -278,16 +277,37 @@ function _resetTestOverrides() {
 }
 
 // ── CONTRACTOR RESOLUTION QUARANTINE ──────────────────────────────────────────
-// getDefaultContractorId() fails closed the instant `contractors` holds 0 or 2+ rows
-// (server/utils/contractorContext.js) — there is no safe guess for which tenant a
-// webhook belongs to in that state, and client-supplied contractorId (query/payload)
-// is never trusted for tenancy. Jobber retries webhooks on non-2xx responses, but this
-// condition cannot self-resolve within a retry window — it needs a code/data fix — so
-// retrying would just hammer a permanent failure. We ack 200 and quarantine the event
-// in error_log (topic + item id + raw payload) instead, so it can be manually
+// resolveWebhookContractorId() resolves contractor_id from the Jobber webhook payload's
+// data.webHookEvent.accountId (confirmed field name, Jobber Developer Center docs,
+// 2026-07-07) against contractor_crm_settings.jobber_account_id, captured at OAuth-connect
+// time (server/routes/oauth.js). accountId is present on every event, including the
+// first-ever CLIENT_CREATE for a brand-new client, so there is no chicken-and-egg problem.
+// client-update additionally accepts a defensive fallbackLookup (a local jobber_clients
+// lookup) for clients synced before the jobber_account_id backfill existed. There is no
+// safe guess when neither path resolves — client-supplied contractorId (query/payload) is
+// never trusted for tenancy. Jobber retries webhooks on non-2xx responses, but an
+// unresolved accountId cannot self-resolve within a retry window — it needs a code/data
+// fix — so retrying would just hammer a permanent failure. We ack 200 and quarantine the
+// event in error_log (topic + item id + raw payload) instead, so it can be manually
 // reconciled once the underlying condition is fixed. The 30-minute pipeline sync cron
 // (crm/pipelineSync.js) is the backstop that eventually reconciles pipeline_cache state
 // for any webhook lost this way.
+async function resolveWebhookContractorId(payload, fallbackLookup) {
+  const accountId = payload?.data?.webHookEvent?.accountId; // confirmed field name, Jobber Developer Center docs, 2026-07-07
+  if (accountId) {
+    const { rows } = await pool.query(
+      'SELECT contractor_id FROM contractor_crm_settings WHERE jobber_account_id = $1',
+      [accountId]
+    );
+    if (rows.length) return rows[0].contractor_id;
+  }
+  if (fallbackLookup) {
+    const viaLocalData = await fallbackLookup();
+    if (viaLocalData) return viaLocalData;
+  }
+  throw new Error('resolveWebhookContractorId: could not resolve contractor_id from payload accountId or local data');
+}
+
 async function logWebhookResolutionFailure(req, topic, itemId, payload, err) {
   const message = `[webhook-resolution] topic=${topic} itemId=${itemId ?? 'n/a'}: ${err.message}`;
   const quarantineErr = new Error(message);
@@ -389,7 +409,7 @@ router.post('/jobber/disconnect', async (req, res) => {
   // is still fixed here for consistency with the other four handlers.
   let contractorId;
   try {
-    contractorId = await getDefaultContractorId();
+    contractorId = await resolveWebhookContractorId(payload);
   } catch (err) {
     await logWebhookResolutionFailure(req, 'disconnect', null, payload, err);
     res.status(200).json({ received: true });
@@ -449,7 +469,7 @@ router.post('/jobber/client-create', async (req, res) => {
   (async () => {
     let contractorId;
     try {
-      contractorId = await getDefaultContractorId();
+      contractorId = await resolveWebhookContractorId(payload);
     } catch (err) {
       await logWebhookResolutionFailure(req, 'client-create', payload?.data?.webHookEvent?.itemId, payload, err);
       return;
@@ -524,11 +544,24 @@ router.post('/jobber/client-update', async (req, res) => {
   const client = payload?.data?.client || payload;
 
   (async () => {
+    // Hoisted above resolution (reordered minimally from its prior position inside the
+    // second try block below) so C3's defensive fallbackLookup can close over it —
+    // client-update is the one handler that keeps a local-data fallback for clients
+    // synced before the jobber_account_id backfill existed.
+    const clientId = payload?.data?.webHookEvent?.itemId;
+
     let contractorId;
     try {
-      contractorId = await getDefaultContractorId();
+      contractorId = await resolveWebhookContractorId(payload, async () => {
+        if (!clientId) return null;
+        const { rows } = await pool.query(
+          'SELECT contractor_id FROM jobber_clients WHERE jobber_client_id = $1',
+          [clientId]
+        );
+        return rows[0]?.contractor_id || null;
+      });
     } catch (err) {
-      await logWebhookResolutionFailure(req, 'client-update', payload?.data?.webHookEvent?.itemId, payload, err);
+      await logWebhookResolutionFailure(req, 'client-update', clientId, payload, err);
       return;
     }
 
@@ -549,7 +582,6 @@ router.post('/jobber/client-update', async (req, res) => {
       const token = tokenResult.rows[0]?.access_token;
 
       // Fetch full client data including quotes/jobs/invoices for accurate status classification
-      const clientId = payload?.data?.webHookEvent?.itemId;
       if (!clientId) throw new Error('client-update webhook: missing client id in payload');
 
       const fullClient = token
@@ -604,7 +636,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
 
     let contractorId;
     try {
-      contractorId = await getDefaultContractorId();
+      contractorId = await resolveWebhookContractorId(payload);
     } catch (err) {
       await logWebhookResolutionFailure(req, 'invoice-paid', payload?.data?.webHookEvent?.itemId, payload, err);
       return;
@@ -1123,7 +1155,7 @@ router.post('/jobber/job-update', async (req, res) => {
 
     let contractorId;
     try {
-      contractorId = await getDefaultContractorId();
+      contractorId = await resolveWebhookContractorId(payload);
     } catch (err) {
       await logWebhookResolutionFailure(req, 'job-update', payload?.data?.job?.id, payload, err);
       return;

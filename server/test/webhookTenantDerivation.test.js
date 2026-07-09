@@ -120,7 +120,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
         id: 'jc-c2-new',
         firstName: 'New', lastName: 'Client',
         createdAt: new Date().toISOString(),
-        customFields: [],
+        customFields: [{ label: 'Referred by', valueText: 'Some Referrer' }],
       }),
       fetchClientRelatedData: async () => { relatedDataCalled = true; return null; },
     });
@@ -166,7 +166,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
         id: 'jc-c3-existing',
         firstName: 'Existing', lastName: 'Client',
         createdAt: new Date().toISOString(),
-        customFields: [],
+        customFields: [{ label: 'Referred by', valueText: 'Some Referrer' }],
       }),
       fetchClientRelatedData: async () => { relatedDataCalled = true; return null; },
     });
@@ -205,7 +205,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
         id: 'jc-c3-fallback',
         firstName: 'Fallback', lastName: 'Client',
         createdAt: new Date().toISOString(),
-        customFields: [],
+        customFields: [{ label: 'Referred by', valueText: 'Some Referrer' }],
       }),
       fetchClientRelatedData: async () => { relatedDataCalled = true; return null; },
     });

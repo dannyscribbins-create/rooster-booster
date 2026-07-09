@@ -177,8 +177,8 @@ describe('tenant isolation — two-contractor RED assertions (tenant rebuild S2)
 
   describe('core: GET /api/referrer/schedules tenant scoping', () => {
     // Tenant rebuild S2 (Batch B13): the route now resolves contractorId from
-    // session.contractorId instead of getDefaultContractorId() — the tripwire is no
-    // longer reached, and two contractors rows seeded no longer trip anything here.
+    // session.contractorId instead of the now-retired getDefaultContractorId() (deleted
+    // in S3) — two contractors rows seeded no longer trip anything here.
     it('valid tenant-A session + a schedule seeded only under tenant B → zero schedules', async () => {
       const userId = await seedUser(pool, {
         fullName: 'Tenant A Referrer',
@@ -202,7 +202,8 @@ describe('tenant isolation — two-contractor RED assertions (tenant rebuild S2)
     // Tenant rebuild S2 (Section 3.3): verifyReferrerSession() now adds
     // `AND s.contractor_id IS NOT NULL` to its WHERE clause, so a legacy pre-migration
     // session (NULL contractor_id, unexpired, role='referrer') is rejected at auth —
-    // 401 before the route ever reaches the getDefaultContractorId() tripwire.
+    // 401 before the route ever reaches resolution at all (the now-retired
+    // getDefaultContractorId() tripwire this route used pre-S2 was deleted in S3).
     it('legacy pre-migration session (contractor_id NULL) must be rejected — fail closed', async () => {
       const userId = await seedUser(pool, {
         fullName: 'Legacy Referrer',
@@ -236,8 +237,9 @@ describe('tenant isolation — two-contractor RED assertions (tenant rebuild S2)
     // has its new value — so if the UPDATE fails, it is failing for a different, worse
     // reason and must be reported verbatim.
     // Tenant rebuild S2 (Batch B13): the route now resolves contractorId from
-    // session.contractorId — the getDefaultContractorId() tripwire that previously
-    // blocked this test with a two-contractors-seeded 500 is no longer in this route's path.
+    // session.contractorId — the now-retired getDefaultContractorId() tripwire (deleted
+    // in S3) that previously blocked this test with a two-contractors-seeded 500 is no
+    // longer in this route's path.
     it('rename-safety: renaming a contractor id does not orphan its users/sessions/schedules', async () => {
       const RENAMED_ID = `test-tenant-a-renamed-${Date.now()}`;
 
