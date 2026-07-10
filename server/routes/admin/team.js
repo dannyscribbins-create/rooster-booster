@@ -654,7 +654,7 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
   if (!adminSession) return;
   const { contractorId } = adminSession;
   try {
-    await refreshTokenIfNeeded();
+    await refreshTokenIfNeeded(contractorId);
     const tokenResult = await pool.query(
       'SELECT access_token FROM tokens WHERE contractor_id = $1',
       [contractorId]

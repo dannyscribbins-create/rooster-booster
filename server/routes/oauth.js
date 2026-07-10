@@ -9,8 +9,14 @@ const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
 
 // ── JOBBER OAUTH ──────────────────────────────────────────────────────────────
-router.get('/auth/jobber', (req, res) => {
-  const contractorId = req.query.contractorId || 'accent-roofing';
+router.get('/auth/jobber', async (req, res) => {
+  const contractorId = req.query.contractorId;
+  if (!contractorId) {
+    const err = new Error('GET /auth/jobber: no contractorId query param — cannot start a Jobber connection without knowing which account it belongs to');
+    await logError({ req, error: err, source: 'GET /auth/jobber — contractor resolution' });
+    res.status(400).send('Missing contractorId — cannot start Jobber authorization.');
+    return;
+  }
   res.redirect(
     `https://api.getjobber.com/api/oauth/authorize?response_type=code` +
     `&client_id=${process.env.JOBBER_CLIENT_ID}` +
@@ -21,27 +27,47 @@ router.get('/auth/jobber', (req, res) => {
 
 router.get('/callback', async (req, res) => {
   const { code, state } = req.query;
-  const contractorId = state || 'accent-roofing';
+  const contractorId = state;
+
+  // TF-P0-3 (CRM_TOKEN_FIX_SPEC.md v1.0, F2): fail-closed on unresolvable contractor
+  // identity — no default-contractor fallback. Client-supplied identity is never trusted
+  // enough to guess; an OAuth connection with no known owner writes nothing.
+  if (!contractorId) {
+    const err = new Error('GET /callback: no contractor identity in state param — cannot resolve tenant for this OAuth connection');
+    await logError({ req, error: err, source: 'GET /callback — contractor resolution' });
+    res.status(400).send('Authorization failed: could not determine which account this connection belongs to.');
+    return;
+  }
+
   try {
+    // Resolved contractor_id must exist before any token write — a state param naming an
+    // unknown contractor is exactly as untrustworthy as a missing one.
+    const contractorCheck = await pool.query('SELECT id FROM contractors WHERE id = $1', [contractorId]);
+    if (contractorCheck.rows.length === 0) {
+      const err = new Error(`GET /callback: contractor_id "${contractorId}" does not exist in contractors table`);
+      await logError({ req, error: err, contractorId, source: 'GET /callback — contractor resolution' });
+      res.status(400).send('Authorization failed: unknown account.');
+      return;
+    }
+
     const response = await axios.post('https://api.getjobber.com/api/oauth/token', {
       grant_type: 'authorization_code', client_id: process.env.JOBBER_CLIENT_ID,
       client_secret: process.env.JOBBER_CLIENT_SECRET, redirect_uri: process.env.REDIRECT_URI, code
     });
     const expiresAt = new Date(Date.now() + (parseInt(response.data.expires_in) || 3600) * 1000);
     await pool.query(
-      `INSERT INTO tokens (id,access_token,refresh_token,expires_at,updated_at,contractor_id) VALUES (1,$1,$2,$3,NOW(),$4)
-       ON CONFLICT (id) DO UPDATE SET access_token=$1, refresh_token=$2, expires_at=$3, updated_at=NOW(), contractor_id=$4`,
-      [response.data.access_token, response.data.refresh_token, expiresAt, contractorId]
+      `INSERT INTO tokens (contractor_id, access_token, refresh_token, expires_at, updated_at) VALUES ($1,$2,$3,$4,NOW())
+       ON CONFLICT (contractor_id) DO UPDATE SET access_token=EXCLUDED.access_token, refresh_token=EXCLUDED.refresh_token, expires_at=EXCLUDED.expires_at, updated_at=NOW()`,
+      [contractorId, response.data.access_token, response.data.refresh_token, expiresAt]
     );
 
     // Tenant rebuild S3, Batch C(b): captures which Jobber account this OAuth connection
     // belongs to, so webhook handlers can resolve contractor_id from the payload's
     // accountId instead of the single-tenant getDefaultContractorId() tripwire (webhook-side
-    // Batch C is a separate deploy — webhooks/jobber.js is not touched here). This capture
-    // inherits this file's existing state-param tenant trust (contractorId above can still
-    // fall back to the stale 'accent-roofing' literal when no state param is present) —
-    // that trust question is tracked as F2 in CRM_TOKEN_FIX_SPEC.md and is NOT addressed by
-    // this change; a future TF session owns it. Dormant until the next OAuth connect/reconnect.
+    // Batch C is a separate deploy — webhooks/jobber.js is not touched here). F2 (this
+    // file's own state-param tenant trust) is resolved as of the TF token-fix session —
+    // contractorId above is fail-closed (no default-contractor fallback) and existence-
+    // checked above, so this capture inherits a verified tenant identity.
     try {
       const accountIdRes = await retryWithBackoff(
         () => axios.post(

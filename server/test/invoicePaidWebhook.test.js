@@ -499,15 +499,18 @@ describe('invoice-paid webhook (characterization suite)', () => {
       },
       fetchClientRelatedData: async () => null,
       sendEmail: async () => ({ id: 'test-email' }),
-      // Not yet wired into the seam system — this override is inert against today's
-      // code (the real refreshTokenIfNeeded still runs), which is exactly why this
-      // test is expected to fail before the 2c mitigation is implemented.
-      refreshTokenIfNeeded: async (force) => {
-        refreshCalls.push(!!force);
-        if (force) {
+      // TF session (CRM_TOKEN_FIX_SPEC.md v1.0 §6, TEST 8): pins the NEW refreshTokenIfNeeded
+      // contract — contractorId as the first argument, { force } as the second. The seam
+      // itself (_refreshTokenIfNeeded / _setTestOverrides) is fully wired today; what's
+      // missing is production code at webhooks/jobber.js:699/727 actually calling it with
+      // this shape instead of the old positional-force signature — that's why this test is
+      // expected to fail (RED) until the BUILD phase lands.
+      refreshTokenIfNeeded: async (contractorId, opts = {}) => {
+        refreshCalls.push({ contractorId, force: !!opts.force });
+        if (opts.force) {
           await pool.query(
             `UPDATE tokens SET access_token = 'refreshed-token' WHERE contractor_id = $1`,
-            ['test-roofing']
+            [contractorId]
           );
         }
       },
@@ -526,7 +529,10 @@ describe('invoice-paid webhook (characterization suite)', () => {
     }, { timeout: 5000 });
 
     assert.equal(invoiceCallCount, 2, 'fetchInvoiceWithJobs called exactly twice (original + one retry)');
-    assert.ok(refreshCalls.some(f => f === true), 'refreshTokenIfNeeded was called with force=true at least once');
+    assert.ok(
+      refreshCalls.some(c => c.force === true && c.contractorId === 'test-roofing'),
+      'refreshTokenIfNeeded was called with contractorId="test-roofing" and force:true at least once'
+    );
     assert.equal(
       invoiceCallTokens[1], 'refreshed-token',
       'retry call re-reads the token from DB after forcing refresh — must not reuse the stale in-memory token'
@@ -557,7 +563,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
       },
       fetchFullClient:        async () => { throw new Error('must not be called'); },
       fetchClientRelatedData: async () => { throw new Error('must not be called'); },
-      refreshTokenIfNeeded: async (force) => { refreshCalls.push(!!force); },
+      refreshTokenIfNeeded: async (contractorId, opts = {}) => { refreshCalls.push({ contractorId, force: !!opts.force }); },
     });
 
     const resp = await post({
@@ -572,7 +578,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
     });
 
     assert.equal(invoiceCallCount, 1, 'no retry on a non-401 error');
-    assert.ok(!refreshCalls.some(f => f === true), 'forced refresh (force=true) is never triggered by a non-401 error');
+    assert.ok(!refreshCalls.some(c => c.force === true), 'forced refresh (force=true) is never triggered by a non-401 error');
 
     const { rows: errRows } = await pool.query("SELECT * FROM error_log WHERE source LIKE '%fetchInvoiceWithJobs%'");
     assert.equal(errRows.length, 1);

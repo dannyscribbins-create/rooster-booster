@@ -27,7 +27,7 @@ async function getCRMAdapter(contractorId) {
   if (connection_method === 'oauth') {
     // Use dynamic require to avoid circular dependency issues at module load time
     const jobber = require('./jobber');
-    await jobber.refreshTokenIfNeeded();
+    await jobber.refreshTokenIfNeeded(contractorId);
     const tokenResult = await pool.query(
       'SELECT access_token FROM tokens WHERE contractor_id = $1',
       [contractorId]

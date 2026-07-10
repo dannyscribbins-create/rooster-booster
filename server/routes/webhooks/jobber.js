@@ -696,7 +696,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
 
       // STEP 4 — Fetch token (refresh first, mirrors the pattern already used
       // in server/routes/admin/team.js's jobber-users route)
-      await _refreshTokenIfNeeded();
+      await _refreshTokenIfNeeded(contractorId);
       let tokenResult = await pool.query(
         'SELECT access_token FROM tokens WHERE contractor_id = $1',
         [contractorId]
@@ -724,7 +724,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       } catch (err) {
         if (err?.response?.status === 401) {
           try {
-            await _refreshTokenIfNeeded(true);
+            await _refreshTokenIfNeeded(contractorId, { force: true });
             tokenResult = await pool.query(
               'SELECT access_token FROM tokens WHERE contractor_id = $1',
               [contractorId]

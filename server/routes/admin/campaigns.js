@@ -11,7 +11,7 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { resendShouldRetry, jobberShouldRetry, anthropicShouldRetry } = require('../../utils/retryHelpers');
-const { refreshTokenIfNeeded } = require('../../crm/jobber');
+const { refreshTokenIfNeeded, getContractorAccessToken } = require('../../crm/jobber');
 const multer = require('multer');
 const Papa = require('papaparse');
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
@@ -1404,12 +1404,13 @@ router.post('/api/admin/campaigns/:id/pull', requirePermission('campaigns.manage
     );
     const mappings = settingsResult.rows[0]?.contractor_field_mappings || {};
 
-    await refreshTokenIfNeeded();
-    const tokenResult = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
-    if (tokenResult.rows.length === 0 || !tokenResult.rows[0].access_token) {
+    await refreshTokenIfNeeded(contractorId);
+    let token;
+    try {
+      token = await getContractorAccessToken(contractorId);
+    } catch {
       return res.status(503).json({ error: 'Jobber not connected' });
     }
-    const token = tokenResult.rows[0].access_token;
 
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.setHeader('Cache-Control', 'no-cache');

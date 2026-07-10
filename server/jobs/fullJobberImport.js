@@ -112,7 +112,7 @@ async function fetchAllPages(token, query, dataPath, label = '', contractorId = 
 
     if (pageNum % 50 === 0 && contractorId) {
       console.log(`[fullJobberImport] ${label} — refreshing token at page ${pageNum}`);
-      await refreshTokenIfNeeded();
+      await refreshTokenIfNeeded(contractorId);
       const refreshed = await pool.query(
         'SELECT access_token FROM tokens WHERE contractor_id = $1',
         [contractorId]
@@ -128,7 +128,7 @@ async function fetchAllPages(token, query, dataPath, label = '', contractorId = 
 
 // ── TOKEN HELPER ─────────────────────────────────────────────────────────────
 async function getFreshToken(contractorId) {
-  await refreshTokenIfNeeded();
+  await refreshTokenIfNeeded(contractorId);
   const tokenResult = await pool.query(
     'SELECT access_token, expires_at FROM tokens WHERE contractor_id = $1',
     [contractorId]

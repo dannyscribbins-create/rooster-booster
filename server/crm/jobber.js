@@ -6,39 +6,84 @@ const { logError } = require('../middleware/errorLogger');
 const { boostSchedule } = require('../constants/boostSchedule');
 
 // ── TOKEN AUTO-REFRESH ────────────────────────────────────────────────────────
-// TODO: refreshTokenIfNeeded() is kept for backward compatibility. It uses WHERE id=1
-// (single-contractor pattern). Once all callers go through getCRMAdapter(), replace with
-// a contractorId-aware version and remove this function.
-//
 // force=true bypasses the expires_at freshness check and always exchanges the refresh
 // token. Used by the invoice-paid webhook's 401 retry path (2c mitigation): with refresh
-// token rotation enabled and ~7 uncoordinated call sites sharing this single row, a
-// concurrent refresh elsewhere can invalidate the token this caller just read even though
-// expires_at still looked fresh — force lets the caller recover in place rather than
-// trusting a freshness check that a sibling refresh has already invalidated.
-async function refreshTokenIfNeeded(force = false) {
-  const result = await pool.query('SELECT refresh_token, expires_at FROM tokens WHERE id = 1');
-  if (result.rows.length === 0) throw new Error('No token - visit /auth/jobber');
-  const { refresh_token, expires_at } = result.rows[0];
-  const fiveMin = new Date(Date.now() + 5 * 60 * 1000);
-  if (force || !expires_at || new Date(expires_at) < fiveMin) {
-    console.log('Refreshing token...');
-    const response = await retryWithBackoff(
-      () => axios.post('https://api.getjobber.com/api/oauth/token', {
-        grant_type: 'refresh_token', client_id: process.env.JOBBER_CLIENT_ID,
-        client_secret: process.env.JOBBER_CLIENT_SECRET, refresh_token,
-      }),
-      { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-    );
-    const newAccess = response.data.access_token;
-    const newRefresh = response.data.refresh_token;
-    const newExpiry = new Date(Date.now() + (parseInt(response.data.expires_in) || 3600) * 1000);
-    await pool.query(
-      `UPDATE tokens SET access_token=$1, refresh_token=$2, expires_at=$3, updated_at=NOW() WHERE id=1`,
-      [newAccess, newRefresh, newExpiry]
-    );
-    console.log('Token refreshed, expires:', newExpiry);
+// token rotation enabled and multiple uncoordinated call sites sharing a contractor's
+// tokens row, a concurrent refresh elsewhere can invalidate the token this caller just
+// read even though expires_at still looked fresh — force lets the caller recover in place
+// rather than trusting a freshness check that a sibling refresh has already invalidated.
+//
+// Single-flight guard — per-process only. If RoofMiles ever runs multiple server
+// instances, replace/augment with a Postgres advisory lock (e.g.
+// pg_advisory_xact_lock(hashtext(contractor_id))) so the guard is visible across
+// instances. Railway runs a single instance today.
+const inFlightRefreshes = new Map(); // contractorId -> Promise
+
+async function refreshTokenIfNeeded(contractorId, { force = false } = {}) {
+  if (!contractorId) {
+    const err = new Error('refreshTokenIfNeeded: contractorId is required');
+    await logError({ req: null, error: err, source: 'refreshTokenIfNeeded' });
+    throw err;
   }
+
+  // A force caller arriving while a refresh is already in flight awaits that refresh
+  // (it produces a brand-new token, which is what force wants) rather than starting a
+  // second exchange — force bypasses only the expiry check below, never this guard.
+  if (inFlightRefreshes.has(contractorId)) {
+    return inFlightRefreshes.get(contractorId);
+  }
+
+  const refreshPromise = (async () => {
+    const result = await pool.query('SELECT refresh_token, expires_at FROM tokens WHERE contractor_id = $1', [contractorId]);
+    if (result.rows.length === 0) {
+      throw new Error(`refreshTokenIfNeeded: no access token found for contractor ${contractorId} — visit /auth/jobber`);
+    }
+    const { refresh_token, expires_at } = result.rows[0];
+    const fiveMin = new Date(Date.now() + 5 * 60 * 1000);
+    if (force || !expires_at || new Date(expires_at) < fiveMin) {
+      console.log('Refreshing token...');
+      const response = await retryWithBackoff(
+        () => axios.post('https://api.getjobber.com/api/oauth/token', {
+          grant_type: 'refresh_token', client_id: process.env.JOBBER_CLIENT_ID,
+          client_secret: process.env.JOBBER_CLIENT_SECRET, refresh_token,
+        }),
+        { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+      );
+      const newAccess = response.data.access_token;
+      const newRefresh = response.data.refresh_token;
+      const newExpiry = new Date(Date.now() + (parseInt(response.data.expires_in) || 3600) * 1000);
+      await pool.query(
+        `UPDATE tokens SET access_token=$1, refresh_token=$2, expires_at=$3, updated_at=NOW() WHERE contractor_id=$4`,
+        [newAccess, newRefresh, newExpiry, contractorId]
+      );
+      console.log('Token refreshed, expires:', newExpiry);
+    }
+  })();
+
+  inFlightRefreshes.set(contractorId, refreshPromise);
+  try {
+    return await refreshPromise;
+  } finally {
+    // Cleared on success OR failure so the next call — whether a retry after a failed
+    // attempt or a genuinely new refresh cycle — starts a fresh attempt, never stuck.
+    inFlightRefreshes.delete(contractorId);
+  }
+}
+
+// F4 helper (TF session) — the one sanctioned way to read a contractor's access token;
+// never query the tokens table ad hoc for reads.
+async function getContractorAccessToken(contractorId) {
+  if (!contractorId) {
+    const err = new Error('getContractorAccessToken: contractorId is required');
+    await logError({ req: null, error: err, source: 'getContractorAccessToken' });
+    throw err;
+  }
+  const result = await pool.query('SELECT access_token FROM tokens WHERE contractor_id = $1', [contractorId]);
+  const accessToken = result.rows[0]?.access_token;
+  if (!accessToken) {
+    throw new Error(`getContractorAccessToken: no access token found for contractor ${contractorId} — visit /auth/jobber`);
+  }
+  return accessToken;
 }
 
 // ── SHARED: FETCH PIPELINE FOR A REFERRER ────────────────────────────────────
@@ -170,7 +215,7 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
 async function discoverJobberFields(contractorId, tokenOverride = null) {
   let token = tokenOverride;
   if (!token) {
-    await refreshTokenIfNeeded();
+    await refreshTokenIfNeeded(contractorId);
     const tokenResult = await pool.query(
       'SELECT access_token FROM tokens WHERE contractor_id = $1',
       [contractorId]
@@ -365,4 +410,4 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
   return { requests: sorted, assessments };
 }
 
-module.exports = { refreshTokenIfNeeded, fetchPipelineForReferrer, discoverJobberFields, fetchAttributionData };
+module.exports = { refreshTokenIfNeeded, getContractorAccessToken, fetchPipelineForReferrer, discoverJobberFields, fetchAttributionData };

@@ -355,9 +355,11 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
     // on client creation and runs this match automatically. Build in Stripe ACH / webhook session.
     (async () => {
       try {
-        await refreshTokenIfNeeded();
-        const tokenRes = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
-        if (!tokenRes.rows[0]?.access_token) return;
+        await refreshTokenIfNeeded(link.contractor_id);
+        const tokenRes = await pool.query('SELECT access_token FROM tokens WHERE contractor_id = $1', [link.contractor_id]);
+        if (!tokenRes.rows[0]?.access_token) {
+          throw new Error(`POST /api/signup — Jobber match: no access token found for contractor ${link.contractor_id}`);
+        }
         const jobberToken = tokenRes.rows[0].access_token;
 
         const gqlResponse = await axios.post(

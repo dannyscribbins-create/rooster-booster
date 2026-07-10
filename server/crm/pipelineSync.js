@@ -607,7 +607,7 @@ async function runFullSync(contractorId) {
   const startDateISO      = referralStartDate.toISOString();
 
   // Refresh OAuth token if expiring soon, then fetch the (potentially updated) token
-  await refreshTokenIfNeeded();
+  await refreshTokenIfNeeded(contractorId);
   const tokenResult = await pool.query(
     'SELECT access_token FROM tokens WHERE contractor_id = $1',
     [contractorId]
@@ -729,7 +729,7 @@ async function runIncrementalSync(contractorId) {
     : null;
 
   // Refresh OAuth token if expiring soon, then fetch the (potentially updated) token
-  await refreshTokenIfNeeded();
+  await refreshTokenIfNeeded(contractorId);
   const tokenResult = await pool.query(
     'SELECT access_token FROM tokens WHERE contractor_id = $1',
     [contractorId]
@@ -891,6 +891,18 @@ async function runIncrementalSync(contractorId) {
   }
 }
 
+// D4 (CRM_TOKEN_FIX_SPEC.md v1.0): contractors eligible for the scheduled sync — must be
+// active AND hold a non-null token. Extracted so the discovery contract is directly
+// testable without driving all of runScheduledSync's per-contractor side effects.
+function getScheduledSyncDiscoveryRows() {
+  return pool.query(
+    `SELECT DISTINCT t.contractor_id
+     FROM tokens t
+     JOIN contractors c ON c.id = t.contractor_id
+     WHERE t.access_token IS NOT NULL AND c.status = 'active'`
+  );
+}
+
 // ── SCHEDULED SYNC RUNNER ────────────────────────────────────────────────────
 // Called by server.js on a 30-minute interval.
 // Queries all contractors with valid tokens and runs runIncrementalSync for each.
@@ -898,9 +910,7 @@ async function runIncrementalSync(contractorId) {
 async function runScheduledSync() {
   console.log('[scheduler] Starting scheduled incremental sync cycle');
   try {
-    const result = await pool.query(
-      'SELECT DISTINCT contractor_id FROM tokens WHERE access_token IS NOT NULL'
-    );
+    const result = await getScheduledSyncDiscoveryRows();
     if (result.rows.length === 0) {
       console.log('[scheduler] No contractors with tokens — skipping cycle');
       return;
@@ -920,4 +930,4 @@ async function runScheduledSync() {
   }
 }
 
-module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync, isThrottledError, computeThrottlePaceDelayMs, _setAttributionEngineForTest, _resetAttributionEngine, _setPipelineSyncEmailsForTest, _resetPipelineSyncEmails, _setPipelineSyncHttpForTest, _resetPipelineSyncHttp };
+module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync, getScheduledSyncDiscoveryRows, isThrottledError, computeThrottlePaceDelayMs, _setAttributionEngineForTest, _resetAttributionEngine, _setPipelineSyncEmailsForTest, _resetPipelineSyncEmails, _setPipelineSyncHttpForTest, _resetPipelineSyncHttp };

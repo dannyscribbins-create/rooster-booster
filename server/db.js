@@ -314,6 +314,16 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     END $$;
   `);
 
+  // tokens.id is inert as of the TF token-fix session (decision TF-D1.1) — auto-filled by
+  // this sequence, never written or read by application code. contractor_id is the real
+  // key (UNIQUE above, used by the ON CONFLICT upsert in routes/oauth.js). The PK stays on
+  // id (D1) — this only gives the column a self-filling default so an INSERT can omit it.
+  await pool.query(`CREATE SEQUENCE IF NOT EXISTS tokens_id_seq`);
+  await pool.query(`ALTER TABLE tokens ALTER COLUMN id SET DEFAULT nextval('tokens_id_seq')`);
+  await pool.query(`ALTER SEQUENCE tokens_id_seq OWNED BY tokens.id`);
+  // Idempotent-safe on every restart: re-reads MAX(id), which only grows.
+  await pool.query(`SELECT setval('tokens_id_seq', GREATEST(COALESCE((SELECT MAX(id) FROM tokens), 0), 1))`);
+
   // ── PIPELINE CACHE MIGRATIONS ─────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS pipeline_cache (
     id SERIAL PRIMARY KEY,
@@ -1300,14 +1310,12 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     used_at        TIMESTAMP
   )`);
 
-  const result = await pool.query('SELECT access_token FROM tokens WHERE id = 1');
-  if (result.rows.length > 0) {
-    console.log('Token loaded from database');
-    return result.rows[0].access_token;
-  } else {
-    console.log('No token found - visit /auth/jobber to authorize');
-    return null;
-  }
+  // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
+  // by every caller — server.js does `await initDB();` with no assignment — so it was
+  // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed
+  // read/return was a single-contractor relic with no consumer to break.
+  const result = await pool.query('SELECT COUNT(*) AS n FROM tokens WHERE access_token IS NOT NULL');
+  console.log(`${result.rows[0].n} contractor token(s) loaded`);
 }
 
 module.exports = { pool, initDB };
