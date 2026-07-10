@@ -50,7 +50,7 @@ server/
 ├── referralRules.js               ← evaluateReferral() — referral evaluation engine, imported by invoice-paid webhook
 ├── crm/
 │   ├── index.js                   ← getCRMAdapter(contractorId) — multi-contractor dispatcher
-│   ├── jobber.js                  ← accessToken, refreshTokenIfNeeded(), fetchPipelineForReferrer()
+│   ├── jobber.js                  ← getContractorAccessToken(contractorId), refreshTokenIfNeeded(contractorId, {force}), fetchPipelineForReferrer() — contractor-scoped token access (TF session)
 │   ├── pipelineSync.js            ← runFullSync(), runIncrementalSync(), runScheduledSync()
 │   ├── servicetitan.js            ← placeholder
 │   └── acculynx.js                ← placeholder
@@ -407,7 +407,7 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
 - Jobber API version: `2026-02-17`. Do not change without verifying changelog.
 - `ClientFilterAttributes` does NOT support name/firstName/lastName filtering — always filter locally in JS.
 - Jobber GraphQL is read-only. Never add mutations without explicit instruction.
-- OAuth token refresh handled by `refreshTokenIfNeeded()` — never bypass.
+- OAuth token refresh handled by `refreshTokenIfNeeded(contractorId, {force})` — never bypass. Token access is contractor-scoped: never read or write the `tokens` table without a `contractor_id` predicate. Use `getContractorAccessToken(contractorId)` for reads — it is the only sanctioned way to read a contractor's access token. `tokens.id` is inert (sequence-filled default, never referenced by application code) — `contractor_id` is the real key.
 - `getPrimaryEmail`/`getPrimaryPhone` handle both GraphQL array shape and flat-string fallback — never simplify.
 - phones/emails absent from bulk allClients sync query intentionally (API load). Only in fetchFullClient and targeted lookups.
 
