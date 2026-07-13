@@ -1330,6 +1330,24 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       END IF;
     END $$;
   `);
+  // Key normalization — MUST run before the NOT NULL enforcement below: a pre-existing
+  // dashboard-stats row (from the old id=1 shape) has cache_key NULL until this runs, and
+  // the NOT NULL step would abort on that row otherwise. Guarded on the id column still
+  // being present (same guard as the id-drop block below) so it's a permanent no-op once
+  // id no longer exists — legacy id=1 dashboard-stats row → cache_key 'dashboard_stats';
+  // legacy 'google_rating_<contractorId>' rows → plain 'google_rating'.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'admin_cache' AND column_name = 'id'
+      ) THEN
+        UPDATE admin_cache SET cache_key = 'dashboard_stats' WHERE id = 1 AND cache_key IS NULL;
+        UPDATE admin_cache SET cache_key = 'google_rating' WHERE cache_key LIKE 'google\_rating\_%' ESCAPE '\';
+      END IF;
+    END $$;
+  `);
   await pool.query(`
     DO $$
     BEGIN
@@ -1348,11 +1366,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     END $$;
   `);
   // id-drop + composite-PK swap — guarded on the id column still being present, so this
-  // runs exactly once. Key normalization (legacy id=1 dashboard-stats row → cache_key
-  // 'dashboard_stats'; legacy 'google_rating_<contractorId>' rows → plain 'google_rating')
-  // lives HERE, inside the same guard, because it references the soon-to-be-dropped id
-  // column — running it unconditionally on every boot would crash the second boot once
-  // id no longer exists. Verifies no duplicate (contractor_id, cache_key) pairs first.
+  // runs exactly once. Verifies no duplicate (contractor_id, cache_key) pairs first.
   await pool.query(`
     DO $$
     BEGIN
@@ -1360,8 +1374,6 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'admin_cache' AND column_name = 'id'
       ) THEN
-        UPDATE admin_cache SET cache_key = 'dashboard_stats' WHERE id = 1 AND cache_key IS NULL;
-        UPDATE admin_cache SET cache_key = 'google_rating' WHERE cache_key LIKE 'google\_rating\_%' ESCAPE '\';
         IF EXISTS (
           SELECT 1 FROM admin_cache GROUP BY contractor_id, cache_key HAVING COUNT(*) > 1
         ) THEN
