@@ -120,8 +120,8 @@ describe('cashout — balance, request, and approval integrity', () => {
 
   async function seedCashoutRequest(userId, amount, status = 'pending') {
     const { rows } = await pool.query(
-      `INSERT INTO cashout_requests (user_id, full_name, email, amount, payout_method, status, requested_at)
-       VALUES ($1, 'Test Referrer', 'ref@test.com', $2, 'venmo', $3, NOW())
+      `INSERT INTO cashout_requests (user_id, full_name, email, amount, payout_method, contractor_id, status, requested_at)
+       VALUES ($1, 'Test Referrer', 'ref@test.com', $2, 'venmo', 'accent-roofing', $3, NOW())
        RETURNING id`,
       [userId, amount, status]
     );

@@ -23,9 +23,14 @@ function formatDollars(n) {
 
 // ── ADMIN: CASH OUTS ──────────────────────────────────────────────────────────
 router.get('/api/admin/cashouts', requirePermission('cashouts'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
-    const result = await pool.query('SELECT id, user_id, full_name, email, amount, method, payout_method, status, requested_at, paid_at, bank_connection_blocked_reason FROM cashout_requests ORDER BY requested_at DESC');
+    const result = await pool.query(
+      'SELECT id, user_id, full_name, email, amount, method, payout_method, status, requested_at, paid_at, bank_connection_blocked_reason FROM cashout_requests WHERE contractor_id = $1 ORDER BY requested_at DESC',
+      [contractorId]
+    );
     res.json(result.rows);
   } catch (err) {
     await logError({ req, error: err });
@@ -48,9 +53,9 @@ router.patch('/api/admin/cashouts/:id', requirePermission('cashout_approve'), as
     await client.query('BEGIN');
 
     const updateSql = status === 'paid'
-      ? 'UPDATE cashout_requests SET status=$1, paid_at=NOW() WHERE id=$2 RETURNING *'
-      : 'UPDATE cashout_requests SET status=$1 WHERE id=$2 RETURNING *';
-    const result = await client.query(updateSql, [status, req.params.id]);
+      ? 'UPDATE cashout_requests SET status=$1, paid_at=NOW() WHERE id=$2 AND contractor_id=$3 RETURNING *'
+      : 'UPDATE cashout_requests SET status=$1 WHERE id=$2 AND contractor_id=$3 RETURNING *';
+    const result = await client.query(updateSql, [status, req.params.id, contractorId]);
     if (result.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Not found' });

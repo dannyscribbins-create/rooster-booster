@@ -71,9 +71,6 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     custom_message TEXT,
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
-  await pool.query(`INSERT INTO announcement_settings (id, enabled, mode)
-    VALUES (1, true, 'preset_1')
-    ON CONFLICT (id) DO NOTHING`);
   await pool.query(`CREATE TABLE IF NOT EXISTS pin_reset_tokens (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -1164,19 +1161,24 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   // Step 2 — fail-closed backfill: mirrors the fail-closed philosophy the now-retired
   // getDefaultContractorId() used, applied once, at migration time, in SQL. Only safe
-  // pre-contractor-#2.
+  // pre-contractor-#2. Scope amendment (ST session, Danny-ruled): only runs while
+  // backfill work remains (a users row still has contractor_id NULL) — otherwise this
+  // guard would re-fire and crash every boot once a second contractors row exists,
+  // long after the backfill itself completed.
   await pool.query(`
     DO $$
     DECLARE
       the_contractor_id TEXT;
       contractor_count INTEGER;
     BEGIN
-      SELECT COUNT(*) INTO contractor_count FROM contractors;
-      IF contractor_count <> 1 THEN
-        RAISE EXCEPTION 'users.contractor_id backfill aborted: expected exactly 1 contractors row, found %. This migration is only safe pre-contractor-#2 — investigate before re-running.', contractor_count;
+      IF EXISTS (SELECT 1 FROM users WHERE contractor_id IS NULL) THEN
+        SELECT COUNT(*) INTO contractor_count FROM contractors;
+        IF contractor_count <> 1 THEN
+          RAISE EXCEPTION 'users.contractor_id backfill aborted: expected exactly 1 contractors row, found %. This migration is only safe pre-contractor-#2 — investigate before re-running.', contractor_count;
+        END IF;
+        SELECT id INTO the_contractor_id FROM contractors LIMIT 1;
+        UPDATE users SET contractor_id = the_contractor_id WHERE contractor_id IS NULL;
       END IF;
-      SELECT id INTO the_contractor_id FROM contractors LIMIT 1;
-      UPDATE users SET contractor_id = the_contractor_id WHERE contractor_id IS NULL;
     END $$;
   `);
 
@@ -1296,6 +1298,158 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       );
     }
   }
+
+  // ── ST SESSION: SINGLETON TABLE TENANCY + cashout_requests SCOPING ───────────
+  // SINGLETON_CASHOUT_TENANCY_SPEC.md. ST-1 (Option A): announcement_settings —
+  // contractor_id becomes the sole PRIMARY KEY, old id column dropped. ST-1A
+  // (amendment): admin_cache is a multi-entry cache table (dashboard stats keyed
+  // 'dashboard_stats', Google Places rating keyed 'google_rating') — its key becomes
+  // COMPOSITE: PRIMARY KEY (contractor_id, cache_key). Must run after the contractors
+  // table (created + seeded above) — same fail-closed precondition family as the
+  // tenant migrations. cashout_requests uses the DERIVED backfill house pattern
+  // (tenancy is derivable from the owning user, not a single-contractor assumption).
+
+  // ── 2.1 admin_cache (ST-1A composite key) ────────────────────────────────────
+  await pool.query(`ALTER TABLE admin_cache ADD COLUMN IF NOT EXISTS contractor_id TEXT REFERENCES contractors(id)`);
+  // Fail-closed backfill — only runs while backfill work remains (a row still has
+  // contractor_id NULL). Once NOT NULL is enforced below, this guard is a permanent
+  // no-op — it must never re-fire on every boot after a second contractors row exists.
+  await pool.query(`
+    DO $$
+    DECLARE
+      the_contractor_id TEXT;
+      contractor_count INTEGER;
+    BEGIN
+      IF EXISTS (SELECT 1 FROM admin_cache WHERE contractor_id IS NULL) THEN
+        SELECT COUNT(*) INTO contractor_count FROM contractors;
+        IF contractor_count <> 1 THEN
+          RAISE EXCEPTION 'admin_cache.contractor_id backfill aborted: expected exactly 1 contractors row, found %. This migration is only safe pre-contractor-#2 — investigate before re-running.', contractor_count;
+        END IF;
+        SELECT id INTO the_contractor_id FROM contractors LIMIT 1;
+        UPDATE admin_cache SET contractor_id = the_contractor_id WHERE contractor_id IS NULL;
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'admin_cache' AND column_name = 'contractor_id' AND is_nullable = 'YES'
+      ) THEN
+        ALTER TABLE admin_cache ALTER COLUMN contractor_id SET NOT NULL;
+      END IF;
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'admin_cache' AND column_name = 'cache_key' AND is_nullable = 'YES'
+      ) THEN
+        ALTER TABLE admin_cache ALTER COLUMN cache_key SET NOT NULL;
+      END IF;
+    END $$;
+  `);
+  // id-drop + composite-PK swap — guarded on the id column still being present, so this
+  // runs exactly once. Key normalization (legacy id=1 dashboard-stats row → cache_key
+  // 'dashboard_stats'; legacy 'google_rating_<contractorId>' rows → plain 'google_rating')
+  // lives HERE, inside the same guard, because it references the soon-to-be-dropped id
+  // column — running it unconditionally on every boot would crash the second boot once
+  // id no longer exists. Verifies no duplicate (contractor_id, cache_key) pairs first.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'admin_cache' AND column_name = 'id'
+      ) THEN
+        UPDATE admin_cache SET cache_key = 'dashboard_stats' WHERE id = 1 AND cache_key IS NULL;
+        UPDATE admin_cache SET cache_key = 'google_rating' WHERE cache_key LIKE 'google\_rating\_%' ESCAPE '\';
+        IF EXISTS (
+          SELECT 1 FROM admin_cache GROUP BY contractor_id, cache_key HAVING COUNT(*) > 1
+        ) THEN
+          RAISE EXCEPTION 'admin_cache composite-key migration aborted: duplicate (contractor_id, cache_key) pairs found.';
+        END IF;
+        ALTER TABLE admin_cache DROP CONSTRAINT admin_cache_pkey;
+        ALTER TABLE admin_cache ADD PRIMARY KEY (contractor_id, cache_key);
+        ALTER TABLE admin_cache DROP COLUMN id;
+      END IF;
+    END $$;
+  `);
+
+  // ── 2.2 announcement_settings (ST-1 Option A — contractor_id sole PK) ────────
+  await pool.query(`ALTER TABLE announcement_settings ADD COLUMN IF NOT EXISTS contractor_id TEXT REFERENCES contractors(id)`);
+  // Same reasoning as admin_cache above: only runs while backfill work remains.
+  await pool.query(`
+    DO $$
+    DECLARE
+      the_contractor_id TEXT;
+      contractor_count INTEGER;
+    BEGIN
+      IF EXISTS (SELECT 1 FROM announcement_settings WHERE contractor_id IS NULL) THEN
+        SELECT COUNT(*) INTO contractor_count FROM contractors;
+        IF contractor_count <> 1 THEN
+          RAISE EXCEPTION 'announcement_settings.contractor_id backfill aborted: expected exactly 1 contractors row, found %. This migration is only safe pre-contractor-#2 — investigate before re-running.', contractor_count;
+        END IF;
+        SELECT id INTO the_contractor_id FROM contractors LIMIT 1;
+        UPDATE announcement_settings SET contractor_id = the_contractor_id WHERE contractor_id IS NULL;
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'announcement_settings' AND column_name = 'contractor_id' AND is_nullable = 'YES'
+      ) THEN
+        ALTER TABLE announcement_settings ALTER COLUMN contractor_id SET NOT NULL;
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'announcement_settings' AND column_name = 'id'
+      ) THEN
+        ALTER TABLE announcement_settings DROP CONSTRAINT announcement_settings_pkey;
+        ALTER TABLE announcement_settings ADD PRIMARY KEY (contractor_id);
+        ALTER TABLE announcement_settings DROP COLUMN id;
+      END IF;
+    END $$;
+  `);
+
+  // ── 2.3 cashout_requests (derived backfill — the house pattern for tenancy that is
+  // derivable from ownership rather than a single-contractor assumption) ───────
+  await pool.query(`ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS contractor_id TEXT REFERENCES contractors(id)`);
+  await pool.query(`
+    UPDATE cashout_requests cr SET contractor_id = u.contractor_id
+    FROM users u WHERE cr.user_id = u.id AND cr.contractor_id IS NULL
+  `);
+  // Fail-closed orphan guard — a cashout whose owning user can't be resolved (user_id
+  // NULL, or otherwise unmatched) must never silently default to a guessed contractor.
+  await pool.query(`
+    DO $$
+    DECLARE
+      orphan_count INTEGER;
+    BEGIN
+      SELECT COUNT(*) INTO orphan_count FROM cashout_requests WHERE contractor_id IS NULL;
+      IF orphan_count > 0 THEN
+        RAISE EXCEPTION 'cashout_requests.contractor_id backfill aborted: % row(s) have no resolvable owning user (contractor_id still NULL after derived backfill). Investigate before re-running — do not guess a value.', orphan_count;
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'cashout_requests' AND column_name = 'contractor_id' AND is_nullable = 'YES'
+      ) THEN
+        ALTER TABLE cashout_requests ALTER COLUMN contractor_id SET NOT NULL;
+      END IF;
+    END $$;
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_cashout_requests_contractor ON cashout_requests (contractor_id)`);
 
   // TEAM MEMBER INVITE TOKENS — single-use, time-limited tokens for the invite-link
   // flow. A new member is created with a locked password_hash; they set their real

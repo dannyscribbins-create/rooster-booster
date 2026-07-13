@@ -225,9 +225,14 @@ router.post('/api/admin/about', requirePermission('branding.manage'), async (req
 
 // ── ADMIN: ANNOUNCEMENT SETTINGS ──────────────────────────────────────────────
 router.get('/api/admin/announcement-settings', requirePermission('branding'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
-    const result = await pool.query('SELECT enabled, mode, custom_message FROM announcement_settings WHERE id = 1');
+    const result = await pool.query(
+      'SELECT enabled, mode, custom_message FROM announcement_settings WHERE contractor_id = $1',
+      [contractorId]
+    );
     res.json(result.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null });
   } catch (err) {
     await logError({ req, error: err });
@@ -236,17 +241,19 @@ router.get('/api/admin/announcement-settings', requirePermission('branding'), as
 });
 
 router.post('/api/admin/announcement-settings', requirePermission('branding.manage'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { enabled, mode, customMessage } = req.body;
   const VALID_MODES = ['preset_1', 'preset_2', 'custom'];
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
   if (!VALID_MODES.includes(mode)) return res.status(400).json({ error: 'Invalid mode' });
   try {
     await pool.query(
-      `INSERT INTO announcement_settings (id, enabled, mode, custom_message, updated_at)
-       VALUES (1, $1, $2, $3, NOW())
-       ON CONFLICT (id) DO UPDATE SET enabled=$1, mode=$2, custom_message=$3, updated_at=NOW()`,
-      [enabled, mode, customMessage || null]
+      `INSERT INTO announcement_settings (contractor_id, enabled, mode, custom_message, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (contractor_id) DO UPDATE SET enabled=$2, mode=$3, custom_message=$4, updated_at=NOW()`,
+      [contractorId, enabled, mode, customMessage || null]
     );
     res.json({ success: true });
   } catch (err) {

@@ -38,7 +38,10 @@ router.get('/api/admin/stats', requirePermission('dashboard'), async (req, res) 
   const { refresh } = req.query;
   try {
     if (refresh !== 'true') {
-      const cached = await pool.query('SELECT stats, cached_at FROM admin_cache WHERE id=1');
+      const cached = await pool.query(
+        `SELECT stats, cached_at FROM admin_cache WHERE contractor_id = $1 AND cache_key = 'dashboard_stats'`,
+        [contractorId]
+      );
       if (cached.rows.length > 0) {
         const ageMin = (Date.now() - new Date(cached.rows[0].cached_at).getTime()) / 60000;
         if (ageMin < 15) return res.json({ ...cached.rows[0].stats, cachedAt: cached.rows[0].cached_at, fromCache: true });
@@ -70,8 +73,8 @@ router.get('/api/admin/stats', requirePermission('dashboard'), async (req, res) 
         console.error(`Stats: failed for ${user.full_name}:`, e.message);
       }
     }
-    const paidRes    = await pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM cashout_requests WHERE status='approved'`);
-    const pendingRes = await pool.query(`SELECT COUNT(*) as count FROM cashout_requests WHERE status='pending'`);
+    const paidRes    = await pool.query(`SELECT COALESCE(SUM(amount),0) as total FROM cashout_requests WHERE status='approved' AND contractor_id=$1`, [contractorId]);
+    const pendingRes = await pool.query(`SELECT COUNT(*) as count FROM cashout_requests WHERE status='pending' AND contractor_id=$1`, [contractorId]);
     const stats = {
       totalReferrers: allUsers.length, activeReferrers,
       totalReferrals, totalSold, totalNotSold, totalLeads, totalInspections,
@@ -79,9 +82,9 @@ router.get('/api/admin/stats', requirePermission('dashboard'), async (req, res) 
       pendingCashouts: parseInt(pendingRes.rows[0].count),
     };
     await pool.query(
-      `INSERT INTO admin_cache (id,stats,cached_at) VALUES (1,$1,NOW())
-       ON CONFLICT (id) DO UPDATE SET stats=$1, cached_at=NOW()`,
-      [JSON.stringify(stats)]
+      `INSERT INTO admin_cache (contractor_id,cache_key,stats,cached_at) VALUES ($1,'dashboard_stats',$2,NOW())
+       ON CONFLICT (contractor_id, cache_key) DO UPDATE SET stats=$2, cached_at=NOW()`,
+      [contractorId, JSON.stringify(stats)]
     );
     res.json({ ...stats, cachedAt: new Date(), fromCache: false });
   } catch (err) {

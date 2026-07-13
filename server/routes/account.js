@@ -422,9 +422,9 @@ router.delete('/me', async (req, res) => {
     const balance = parseFloat(balanceResult.rows[0]?.balance || 0);
     if (balance > 0) {
       await pool.query(
-        `INSERT INTO cashout_requests (user_id, full_name, email, amount, method, status, requested_at)
-         VALUES ($1, $2, $3, $4, 'account_deletion', 'pending', NOW())`,
-        [session.userId, full_name, email, balance]
+        `INSERT INTO cashout_requests (user_id, full_name, email, amount, method, contractor_id, status, requested_at)
+         VALUES ($1, $2, $3, $4, 'account_deletion', $5, 'pending', NOW())`,
+        [session.userId, full_name, email, balance, session.contractorId]
       );
     }
 

@@ -792,7 +792,10 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
       : null;
 
     // Fetch announcement settings for popup rendering
-    const settingsResult = await pool.query('SELECT enabled, mode, custom_message FROM announcement_settings WHERE id = 1');
+    const settingsResult = await pool.query(
+      'SELECT enabled, mode, custom_message FROM announcement_settings WHERE contractor_id = $1',
+      [user.contractor_id]
+    );
     const announcementSettings = settingsResult.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null };
 
     res.json({ success: true, fullName: user.full_name, email: user.email, phone: user.phone || null, token, showReviewCard, announcement, announcementSettings });
@@ -861,9 +864,9 @@ router.post('/api/cashout', cashoutLimiter, [
       return res.status(400).json({ error: 'Requested amount exceeds your available balance' });
     }
     const cashoutInsert = await pool.query(
-      `INSERT INTO cashout_requests (user_id,full_name,email,amount,method,payout_method,referral_conversion_id,status,requested_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',NOW()) RETURNING id`,
-      [userId, full_name, email, amount, method || null, payout_method, referral_conversion_id != null ? parseInt(referral_conversion_id, 10) : null]
+      `INSERT INTO cashout_requests (user_id,full_name,email,amount,method,payout_method,referral_conversion_id,contractor_id,status,requested_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',NOW()) RETURNING id`,
+      [userId, full_name, email, amount, method || null, payout_method, referral_conversion_id != null ? parseInt(referral_conversion_id, 10) : null, contractorId]
     );
     const newCashoutId = cashoutInsert.rows[0].id;
     await pool.query(
@@ -1360,10 +1363,9 @@ router.get('/api/referrer/about', async (req, res) => {
 
     if (about.google_place_id && process.env.GOOGLE_PLACES_API_KEY) {
       try {
-        const googleRatingCacheKey = `google_rating_${contractorId}`;
         const cached = await pool.query(
-          "SELECT data, cached_at FROM admin_cache WHERE cache_key = $1 AND cached_at > NOW() - INTERVAL '86400 seconds'",
-          [googleRatingCacheKey]
+          "SELECT data, cached_at FROM admin_cache WHERE contractor_id = $1 AND cache_key = 'google_rating' AND cached_at > NOW() - INTERVAL '86400 seconds'",
+          [contractorId]
         );
         if (cached.rows.length > 0) {
           google_rating = cached.rows[0].data.rating ?? null;
@@ -1383,9 +1385,9 @@ router.get('/api/referrer/about', async (req, res) => {
             google_rating = googleData.rating ?? null;
             google_review_count = googleData.userRatingCount ?? null;
             await pool.query(
-              `INSERT INTO admin_cache (id, cache_key, data, cached_at) VALUES (2, $1, $2, NOW())
-               ON CONFLICT (id) DO UPDATE SET cache_key=$1, data=$2, cached_at=NOW()`,
-              [googleRatingCacheKey, JSON.stringify({ rating: google_rating, userRatingCount: google_review_count })]
+              `INSERT INTO admin_cache (contractor_id, cache_key, data, cached_at) VALUES ($1, 'google_rating', $2, NOW())
+               ON CONFLICT (contractor_id, cache_key) DO UPDATE SET data=$2, cached_at=NOW()`,
+              [contractorId, JSON.stringify({ rating: google_rating, userRatingCount: google_review_count })]
             );
           }
         }
