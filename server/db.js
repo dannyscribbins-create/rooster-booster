@@ -1437,6 +1437,18 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     UPDATE cashout_requests cr SET contractor_id = u.contractor_id
     FROM users u WHERE cr.user_id = u.id AND cr.contractor_id IS NULL
   `);
+  // One-time historical exception (ST session, Danny-confirmed 2026-07-13): 13
+  // production rows have user_id NULL — Danny's own early manual test cashouts
+  // (full_name "Daniel Scribbins"), created before any contractor besides
+  // accent-roofing existed. Not derivable via the user-ownership join above (there is
+  // no user to derive from), so backfilled explicitly rather than via the general
+  // derived-backfill pattern. This does NOT relax the orphan guard below for any other
+  // case — a future cashout with an unresolvable owner (including any other NULL
+  // user_id row that isn't one of these known historical rows) still fails closed.
+  await pool.query(`
+    UPDATE cashout_requests SET contractor_id = 'accent-roofing'
+    WHERE contractor_id IS NULL AND user_id IS NULL AND full_name = 'Daniel Scribbins'
+  `);
   // Fail-closed orphan guard — a cashout whose owning user can't be resolved (user_id
   // NULL, or otherwise unmatched) must never silently default to a guessed contractor.
   await pool.query(`
