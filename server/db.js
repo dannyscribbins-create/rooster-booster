@@ -1439,15 +1439,29 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   `);
   // One-time historical exception (ST session, Danny-confirmed 2026-07-13): 13
   // production rows have user_id NULL — Danny's own early manual test cashouts
-  // (full_name "Daniel Scribbins"), created before any contractor besides
-  // accent-roofing existed. Not derivable via the user-ownership join above (there is
-  // no user to derive from), so backfilled explicitly rather than via the general
-  // derived-backfill pattern. This does NOT relax the orphan guard below for any other
-  // case — a future cashout with an unresolvable owner (including any other NULL
-  // user_id row that isn't one of these known historical rows) still fails closed.
+  // (full_name "Daniel Scribbins"), created before any contractor besides the sole
+  // seeded contractor existed. Not derivable via the user-ownership join above (there
+  // is no user to derive from), so backfilled explicitly rather than via the general
+  // derived-backfill pattern. Reads the contractor id dynamically (never hardcoded —
+  // the dev tenant has been renamed before and may be again) via the same safe
+  // "SELECT id FROM contractors LIMIT 1" pattern used by the seed-data block above.
+  // This does NOT relax the orphan guard below for any other case — a future cashout
+  // with an unresolvable owner (including any other NULL user_id row that isn't one of
+  // these known historical rows) still fails closed.
   await pool.query(`
-    UPDATE cashout_requests SET contractor_id = 'accent-roofing'
-    WHERE contractor_id IS NULL AND user_id IS NULL AND full_name = 'Daniel Scribbins'
+    DO $$
+    DECLARE
+      the_contractor_id TEXT;
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM cashout_requests
+        WHERE contractor_id IS NULL AND user_id IS NULL AND full_name = 'Daniel Scribbins'
+      ) THEN
+        SELECT id INTO the_contractor_id FROM contractors LIMIT 1;
+        UPDATE cashout_requests SET contractor_id = the_contractor_id
+        WHERE contractor_id IS NULL AND user_id IS NULL AND full_name = 'Daniel Scribbins';
+      END IF;
+    END $$;
   `);
   // Fail-closed orphan guard — a cashout whose owning user can't be resolved (user_id
   // NULL, or otherwise unmatched) must never silently default to a guessed contractor.
