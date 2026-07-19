@@ -116,6 +116,9 @@ When building anything that touches a listed feature, read its entry before writ
 - New flags fire exactly one admin_messages row (message_type='flagged_assignment', missing_referral card precedent — not the notifications table). Dedup no-ops (existing open flag found) never reach the INSERT, so never re-fire a message.
 - is_attributable toggle added to the existing PATCH /api/admin/team/:id field whitelist. AT-1 (binding rule — future-only semantics): see Architecture Notes.
 - Frontend: Team Management gained a Roster/Flagged Assignments tab switcher with a live open-count badge, mirrored on the Settings sidebar's "Manage Team" entry (seeded at login, kept live by the queue's own fetch). Inbox gained a FlaggedAssignmentCard. The Inbox→Settings→Manage Team→queue deep-link uses a token-based re-trigger (teamNavRequest = { token, tab }, token changes on every navigation request) threaded AdminApp → AdminShell → AdminSettings → AdminTeamSettings — Settings is an overlay with its own previously-uncontrolled internal tab state, so a naive initialTab-only prop (the AdminReferralReview precedent) would not have refired on a repeat navigation to an already-open tab.
+- Dismiss notes are written to the new `resolution` JSONB going forward (`resolution.note`); `review_note` (from the original Decision B schema, never dropped) is legacy-read-only now — populated only on pre-migration rows, nothing writes it anymore.
+- Footnote (cosmetic, not blocking): the resolved/dismissed history view shows "assigned rep #N" by raw id, not the rep's name — hydrate it whenever the queue UI gets its next polish pass.
+- Live-verified against production (2026-07-19, Danny): migration status breakdown correct, queue renders + resolve works against a real flag, nav badge live. Surfaced two schema-drift findings during verification — see Known Issues 13 and 14.
 
 ---
 
@@ -206,6 +209,11 @@ Read the current constraints before building any feature below.
 - Deferred — matches locked spec as built (Session 92). Currently the orphan path returns immediately with no provisional write.
 - Do not build until: Explicitly scheduled by Danny.
 
+**Feature: sticky_conflict Detection (Decision B follow-on, FA session deferral)**
+- FLAGGED_ASSIGNMENTS_TOGGLE_SPEC.md §4.1 case 2 (a new event resolves to a different rep than the client's existing sticky assignment — assignment untouched, flag raised) was never implemented in the engine this session; only `orphan` and `rep_co_assignment` are ever written. The `flagged_assignments.flag_reason` CHECK (and `client_rep_assignments.flag_reason`, same shape) is still locked to `('orphan', 'rep_co_assignment')` — widening the `flagged_assignments` CHECK is a prerequisite before this can ship.
+- The FA queue's flag_reason rendering (`AdminFlaggedAssignmentsQueue.jsx`) is already generic — a lookup-with-fallback that humanizes any unrecognized reason string — so no frontend work will be needed when this lands, only the engine detection + the CHECK widen + a proper `FLAG_REASON_LABELS` entry for polish.
+- Do not build until: Explicitly scheduled by Danny — its own engine session.
+
 ---
 
 ## Known Issues / Pre-launch Cleanup
@@ -270,6 +278,29 @@ Read the current constraints before building any feature below.
 **9. `adminCacheExpiry` cron has deleted 0 rows since inception (ST session Phase 0 finding, 2026-07-13)**
 - `server/cron/jobs/adminCacheExpiry.js` runs `DELETE FROM admin_cache WHERE expires_at < NOW()` every 20 minutes. No write site anywhere in the codebase (`admin/metrics.js`'s dashboard-stats upsert, `referrer.js`'s google-rating upsert) ever sets `expires_at` — it's always `NULL`, and `NULL < NOW()` is never `TRUE` in SQL, so the `WHERE` clause never matches a row. The job has been running as a harmless no-op for its entire lifetime. Pre-existing, untouched by ST (spec-fenced: "Do NOT touch... the adminCacheExpiry cron's never-fires expires_at bug").
 - Do not build until: its own small pre-launch fix — either have the two write sites set `expires_at` (e.g. `cached_at + INTERVAL '20 minutes'`), or replace the cron's expiry logic with an age check against `cached_at` directly.
+
+**10. Dead/unused columns surfaced by FA session audit (2026-07-19)**
+- `client_rep_assignments.flag_reason` / `flag_resolved` / `flag_resolved_at` / `flag_resolved_note` — confirmed dead (V1/V2 verification, FA session Phase 0): defined only in `add_decision_b_schema.js`'s `CREATE TABLE`, zero readers or writers anywhere else. A separate, unreconciled parallel mechanism from the `flagged_assignments` table the FA queue actually uses. Candidate for a future drop, its own scoped migration.
+- `notifications.deeplink` — defined in `db.js`, selected by `GET /api/admin/notifications`, but never written by either INSERT site (`jobberIncrementalSync.js`, `fullJobberImport.js`) and never read by the frontend (`NotificationCard` in `AdminInboxSidebar.jsx` routes via a hardcoded `NOTIF_DEST` type map instead). Pre-existing, predates FA.
+- `admin_messages.color_code` — written by every INSERT site (missing_referral, suggestion_box, and now flagged_assignment) but read nowhere in the frontend; every inbox card hardcodes its own accent color instead. Confirms the app's actual established convention is hardcoded per-type styling/routing, not DB-driven — worth knowing before building anything that assumes either column is live.
+- Do not build until: their own scoped cleanup, or fold into whichever future session actually needs dynamic per-message coloring/deeplinking.
+
+**11. Inbox permission-alignment nuance — accepted trade-off (FA session, 2026-07-19)**
+- `GET /api/admin/messages` is gated by `referral_review` (governs every card type, not just flagged_assignment). A `rep_assignment`-holder without `referral_review` never sees the `FlaggedAssignmentCard` but still gets the nav badge and full queue access via Team Management directly. A `referral_review`-holder without `rep_assignment` sees the card and can click through, but the click-through fails closed to the Roster tab (no queue access, no leak).
+- Accepted as-is (Danny-ruled, FA session) — revisit only if a real permission split between these two flags actually emerges in practice.
+
+**12. webhookTenantDerivation.test.js C2 flake — recorded as its own scoped fix (reconfirmed FA session)**
+- First recorded TF session (2026-07-09, see Small follow-ups queue below) as a 1-in-5 timing flake. Reconfirmed twice during the FA session (2026-07-18, 2026-07-19) — both times self-resolved on immediate re-run, no other test affected either time. Three independent sightings across two sessions now — promoted from a follow-up-queue bullet to its own scoped-fix entry: the wait/race in the C2 client-create test needs a real fix (a deterministic wait condition, not a timing-based one), not another "known flaky, ignore" note.
+- Do not build until: its own scoped fix. Until then: this is not a decorative/unreliable red — if it fires in any future session's suite run, re-run once to confirm before reporting it as a real failure.
+
+**13. is_field_rep / is_attributable schema drift — RESOLVED (Danny, live verification, 2026-07-19)**
+- Production rep id 5 had `is_attributable=true` with `is_field_rep=false` — both originally set via direct SQL before any UI existed for either. The schema permits this contradiction; nothing enforces `is_attributable ⇒ is_field_rep`. Symptom: the FA toggle (`MemberEditDrawer`) and the Roster's `RepStatus` renderer both gate visibility on `is_field_rep`, so an actually-attributable rep rendered as "—" (not a rep) in both places.
+- Fixed via a one-row, contractor-scoped `UPDATE` (id=5) during live verification. The attribution engine itself filters on `is_attributable` alone (never checks `is_field_rep`) — assignment behavior was never affected by the drift; this was a display-only bug.
+
+**14. Missing rep-promotion write-path — root cause of #13, named roadmap item (FA session finding, 2026-07-19)**
+- No code path anywhere sets `is_field_rep` (or `rep_revenue_visibility`) — no PATCH field, no promotion flow. The "Field Rep" PRESET (`AdminTeamSettings.jsx`) stamps permission JSONB only; the "Field Rep" TITLE is a display label only (titles confer zero permissions by design). Neither touches either flag — stamping a preset or assigning a title is NOT promotion, despite both being named "Field Rep."
+- The RBAC/RepAssignment spec's assumed "promote a General user to field rep" flow was never actually built. Queue as its own named roadmap item (rep-promotion controls session): build the promotion write-path that sets the field flags coherently, and consider a DB constraint or application-level coherence check so `is_attributable=true` structurally requires `is_field_rep=true` (preventing #13's drift from recurring).
+- Do not build until: Explicitly scheduled by Danny.
 
 ---
 
@@ -352,7 +383,7 @@ Full spec: `SINGLETON_CASHOUT_TENANCY_SPEC.md`. Closes **F6** and the Session 50
 - `LoginScreen.jsx` / `ResetPinScreen.jsx` — `.then()` chains (CLAUDE.md violation, pre-existing, found during S2's LoginScreen edit — not fixed, out of that session's minimal-diff scope fence).
 - `referrer.js` forgot-pin handler (~lines 1179-1200) — two `console.error(...)` calls missing the `// diagnostic log — intentional` marker (flagged during S2, out of that session's scope fence).
 - Signup verification email send (`referrer.js` ~line 288) is not covered by the route's `_setTestOverrides` seam (that seam only covers the cashout-section sends) — tests stub the `resend` package via `require.cache` instead (see `signupTenantStamp.test.js`).
-- webhookTenantDerivation.test.js:108 — pre-existing timing flake (C2 client-create wait race), fired 1-in-5 runs on 2026-07-09, untouched by TF.
+- webhookTenantDerivation.test.js:108 — pre-existing timing flake (C2 client-create wait race), fired 1-in-5 runs on 2026-07-09, untouched by TF. Reconfirmed twice more during the FA session (2026-07-18/19) — promoted to its own scoped-fix entry, see Known Issues 12.
 - Wider adoption of `getContractorAccessToken(contractorId)` across the remaining ad-hoc scoped token reads — see TF close-out grep for the file list.
 - Execution Plan v1 docx amendment: strike "(F2/F3/F4/2c)" from the B1-A S2 line; B1-A now reads S1 · S2 · S3 · TF · ST complete. The docx lives outside the repo — Danny owns this edit at the roadmap reconciliation session.
 
