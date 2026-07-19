@@ -221,8 +221,10 @@ router.post('/api/admin/team/accept-invite', [
 });
 
 // ── PATCH /api/admin/team/:id ─────────────────────────────────────────────────
-// Update full_name, title_id, tier.
+// Update full_name, title_id, tier, is_attributable.
 // Only Owner may edit Admin-tier rows or change tier (Decision A §9).
+// is_attributable (AT-1, FA spec §3): future-only. Flipping it never touches existing
+// client_rep_assignments rows — it only changes what the engine does on the NEXT event.
 router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
   body('full_name').optional().notEmpty().isString().isLength({ max: 200 }),
   body('title_id').optional({ nullable: true }).isInt(),
@@ -231,6 +233,12 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
 ], async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
+
+  // is_attributable is validated manually (not via express-validator's isBoolean, which
+  // lenient-mode-accepts 'yes'/'no' strings) — only a real boolean is ever acceptable.
+  if (req.body.is_attributable !== undefined && typeof req.body.is_attributable !== 'boolean') {
+    return res.status(422).json({ error: 'is_attributable must be a boolean' });
+  }
 
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
@@ -257,7 +265,7 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
     }
 
     // Only Owner may change tier
-    const { full_name, title_id, tier, jobber_user_id } = req.body;
+    const { full_name, title_id, tier, jobber_user_id, is_attributable } = req.body;
     if (tier !== undefined && requesterTier !== 'owner') {
       return res.status(403).json({ error: 'Only Owners may change member tier' });
     }
@@ -281,12 +289,13 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
     if (title_id !== undefined)      { updates.push(`title_id = $${i++}`);      values.push(title_id);      }
     if (tier !== undefined)          { updates.push(`tier = $${i++}`);          values.push(tier);          }
     if (jobber_user_id !== undefined) { updates.push(`jobber_user_id = $${i++}`); values.push(jobber_user_id); }
+    if (is_attributable !== undefined) { updates.push(`is_attributable = $${i++}`); values.push(is_attributable); }
 
     if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
     values.push(targetId);
     const result = await pool.query(
-      `UPDATE team_members SET ${updates.join(', ')} WHERE id = $${i} RETURNING id, email, full_name, tier, title_id, jobber_user_id`,
+      `UPDATE team_members SET ${updates.join(', ')} WHERE id = $${i} RETURNING id, email, full_name, tier, title_id, jobber_user_id, is_attributable`,
       values
     );
     res.json(result.rows[0]);
@@ -505,6 +514,162 @@ router.post('/api/admin/team/:id/resend-invite', requirePermission('team.manage'
   } catch (err) {
     await logError({ req, error: err, source: 'POST /api/admin/team/:id/resend-invite' });
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── FLAGGED ASSIGNMENTS QUEUE (FA spec §4) ────────────────────────────────────
+// Resolving a flag IS a rep assignment — gated under rep_assignment, not team.manage
+// (FQ-2). GET is a single segment ('flagged-assignments'); no existing GET
+// /api/admin/team/:id route exists to collide with it. PATCH is two segments
+// ('flagged-assignments/:id'), which never collides with the existing one-segment
+// PATCH /api/admin/team/:id regardless of registration order.
+
+// ── GET /api/admin/team/flagged-assignments ───────────────────────────────────
+// Defaults to status=open; ?status=resolved|dismissed|auto_resolved reaches history.
+// Hydrates reps_involved (a plain JSONB array of team_member ids) into {id, full_name}
+// objects for display — orphan flags carry no reps_involved and render as [].
+router.get('/api/admin/team/flagged-assignments', requirePermission('rep_assignment'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
+  const status = ['open', 'resolved', 'dismissed', 'auto_resolved'].includes(req.query.status)
+    ? req.query.status
+    : 'open';
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, jobber_client_id, flag_reason, reps_involved, status, resolution,
+              resolved_by, resolved_at, created_at
+       FROM flagged_assignments
+       WHERE contractor_id = $1 AND status = $2
+       ORDER BY created_at DESC`,
+      [contractorId, status]
+    );
+
+    const repIds = new Set();
+    for (const row of rows) {
+      if (Array.isArray(row.reps_involved)) row.reps_involved.forEach(id => repIds.add(id));
+    }
+    let repMap = {};
+    if (repIds.size > 0) {
+      const { rows: reps } = await pool.query(
+        `SELECT id, full_name FROM team_members WHERE contractor_id = $1 AND id = ANY($2::int[])`,
+        [contractorId, [...repIds]]
+      );
+      repMap = Object.fromEntries(reps.map(r => [r.id, r]));
+    }
+
+    const flags = rows.map(row => ({
+      ...row,
+      reps_involved: Array.isArray(row.reps_involved)
+        ? row.reps_involved.map(id => repMap[id] || { id, full_name: null })
+        : [],
+    }));
+
+    res.json({ flags });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/team/flagged-assignments' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PATCH /api/admin/team/flagged-assignments/:id ─────────────────────────────
+// action: 'assign' (rep_id required) or 'dismiss' (optional note).
+// Assign IS an Owner/Admin manual assignment (Decision B rule #4) — always allowed to
+// set/override sticky_source='manual', since that path supersedes sticky-by-design
+// (see docs/ASSIGNMENT_RULES_LOCKED.md). No branch cascade: referral inheritance does
+// not exist yet, so there are no inherited descendants to walk (vacuously faithful).
+// Everything below is one transaction: the client_rep_assignments manual-sticky write,
+// the flagged_assignments resolution, and the activity_log row all commit together.
+router.patch('/api/admin/team/flagged-assignments/:id', requirePermission('rep_assignment'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId, teamMemberId } = adminSession;
+  const flagId = parseInt(req.params.id, 10);
+  const { action, rep_id, note } = req.body;
+
+  if (!['assign', 'dismiss'].includes(action)) {
+    return res.status(422).json({ error: "action must be 'assign' or 'dismiss'" });
+  }
+  if (action === 'assign' && !Number.isInteger(rep_id)) {
+    return res.status(422).json({ error: 'rep_id is required for assign' });
+  }
+
+  const resolution = action === 'assign'
+    ? { action: 'assign', rep_id }
+    : { action: 'dismiss', note: typeof note === 'string' ? note : null };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // THE single authoritative guard for this whole action: tenant scope (contractor_id)
+    // and state scope (status='open') both live on this one WHERE clause — claim-and-resolve
+    // in one atomic statement, not a separate lookup followed by a separately-scoped write.
+    // This predicate is the exact tenant boundary the cross-tenant kill-shot test proves is
+    // load-bearing (Phase 4 drop-the-predicate RED check) — a second, redundant tenant check
+    // elsewhere would let that proof pass for the wrong reason.
+    const claim = await client.query(
+      `UPDATE flagged_assignments
+       SET status = $1, resolution = $2::jsonb, resolved_by = $3, resolved_at = NOW()
+       WHERE id = $4 AND contractor_id = $5 AND status = 'open'
+       RETURNING id, jobber_client_id`,
+      [action === 'assign' ? 'resolved' : 'dismissed', JSON.stringify(resolution), teamMemberId, flagId, contractorId]
+    );
+
+    if (claim.rows.length === 0) {
+      await client.query('ROLLBACK');
+      // Tenant-scoped existence check purely to pick the response code (404 vs 409) —
+      // does not participate in write authorization, so it can't mask a broken write guard.
+      const existsForTenant = await pool.query(
+        `SELECT 1 FROM flagged_assignments WHERE id = $1 AND contractor_id = $2`,
+        [flagId, contractorId]
+      );
+      return res.status(existsForTenant.rows.length ? 409 : 404)
+        .json({ error: existsForTenant.rows.length ? 'Flag is not open' : 'Flag not found' });
+    }
+    const jobberClientId = claim.rows[0].jobber_client_id;
+
+    if (action === 'assign') {
+      const repResult = await client.query(
+        `SELECT id FROM team_members WHERE id = $1 AND contractor_id = $2 AND is_attributable = true`,
+        [rep_id, contractorId]
+      );
+      if (repResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(422).json({ error: 'rep_id is not a valid attributable rep for this contractor' });
+      }
+
+      // No WHERE sticky_rep_id IS NULL guard here — unlike the engine's writeSticky,
+      // a manual resolve-assign always supersedes any existing sticky value (rule #4).
+      await client.query(
+        `INSERT INTO client_rep_assignments
+           (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+         VALUES ($1, $2, $3, 'manual', NOW(), NOW())
+         ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
+           sticky_rep_id = EXCLUDED.sticky_rep_id,
+           sticky_source = EXCLUDED.sticky_source,
+           sticky_set_at = EXCLUDED.sticky_set_at,
+           updated_at    = EXCLUDED.updated_at`,
+        [contractorId, jobberClientId, rep_id]
+      );
+    }
+
+    await client.query(
+      `INSERT INTO activity_log (event_type, detail, category) VALUES ('admin', $1, 'admin_action')`,
+      [action === 'assign'
+        ? `Flagged assignment #${flagId} resolved: assigned rep ${rep_id} (by team_member #${teamMemberId})`
+        : `Flagged assignment #${flagId} dismissed (by team_member #${teamMemberId})`]
+    );
+
+    await client.query('COMMIT');
+    res.json({ id: flagId, status: action === 'assign' ? 'resolved' : 'dismissed' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    await logError({ req, error: err, source: 'PATCH /api/admin/team/flagged-assignments/:id' });
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
 

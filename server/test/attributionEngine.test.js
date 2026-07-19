@@ -55,11 +55,11 @@ async function seedAssignment(pool, {
 }
 
 // Inserts a flagged_assignments row.
-async function seedFlaggedAssignment(pool, { contractorId, jobberClientId, flagReason, reviewed = false }) {
+async function seedFlaggedAssignment(pool, { contractorId, jobberClientId, flagReason, status = 'open' }) {
   await pool.query(
-    `INSERT INTO flagged_assignments (contractor_id, jobber_client_id, flag_reason, reviewed)
+    `INSERT INTO flagged_assignments (contractor_id, jobber_client_id, flag_reason, status)
      VALUES ($1, $2, $3, $4)`,
-    [contractorId, jobberClientId, flagReason, reviewed]
+    [contractorId, jobberClientId, flagReason, status]
   );
 }
 
@@ -258,7 +258,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
   });
 
   it('Mode A: duplicate flag suppression — existing unreviewed rep_co_assignment → no second flag', async () => {
-    await seedFlaggedAssignment(pool, { contractorId: CID, jobberClientId: CLIENT_ID, flagReason: 'rep_co_assignment', reviewed: false });
+    await seedFlaggedAssignment(pool, { contractorId: CID, jobberClientId: CLIENT_ID, flagReason: 'rep_co_assignment', status: 'open' });
     await seedTeamMember(pool, { contractorId: CID, email: 'rep-gamma@attr-test.com', jobberUserId: 'jobber-user-C', isAttributable: true, fullName: 'Rep Gamma' });
     const fetcher = modeAFetcher(['jobber-user-A', 'jobber-user-C'], 'assess-co2');
     await runAttributionEngine(pool, {
@@ -546,7 +546,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
   });
 
   it('sticky gate: duplicate orphan flag suppression — existing unreviewed orphan → no second flag', async () => {
-    await seedFlaggedAssignment(pool, { contractorId: CID, jobberClientId: CLIENT_ID, flagReason: 'orphan', reviewed: false });
+    await seedFlaggedAssignment(pool, { contractorId: CID, jobberClientId: CLIENT_ID, flagReason: 'orphan', status: 'open' });
     const client = makeClient([makeApprovedQuote({ id: 'q-orphan2', salespersonId: 'jobber-user-B' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',

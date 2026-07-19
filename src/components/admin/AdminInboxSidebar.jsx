@@ -147,6 +147,72 @@ function MissingReferralCard({ msg, onMarkRead, onNavigate }) {
   );
 }
 
+function FlaggedAssignmentCard({ msg, onMarkRead, onNavigate }) {
+  const isUnread = !msg.read;
+
+  const handleOpenQueue = safeAsync(async () => {
+    if (isUnread) {
+      const token = sessionStorage.getItem('rb_admin_token');
+      const r = await fetch(`${BACKEND_URL}/api/admin/messages/${msg.id}/read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json();
+      if (d.success) onMarkRead(msg.id, d.unreadCount);
+    }
+    onNavigate();
+  }, 'AdminInboxSidebar.openFlaggedAssignment');
+
+  return (
+    <div style={{
+      position: 'relative',
+      background: AD.bgCard,
+      border: `1px solid ${AD.border}`,
+      borderLeft: `4px solid ${AD.amber}`,
+      borderRadius: 12,
+      padding: '14px 16px',
+      marginBottom: 8,
+    }}>
+      {isUnread && (
+        <div style={{
+          position: 'absolute', top: 14, right: 14,
+          width: 8, height: 8, borderRadius: '50%',
+          background: AD.amber,
+        }} />
+      )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingRight: 16, marginBottom: 4 }}>
+        <span style={{ fontFamily: AD.fontSans, fontWeight: 600, fontSize: 14, color: AD.textPrimary }}>
+          {msg.title || 'Assignment flagged'}
+        </span>
+        <span style={{ fontFamily: AD.fontSans, fontSize: 12, color: AD.textTertiary, marginLeft: 8, flexShrink: 0 }}>
+          {relativeTime(msg.created_at)}
+        </span>
+      </div>
+      {msg.body && (
+        <p style={{ margin: '0 0 12px', fontFamily: AD.fontSans, fontSize: 13, color: AD.textSecondary }}>
+          {msg.body}
+        </p>
+      )}
+      <button
+        onClick={handleOpenQueue}
+        style={{
+          background: AD.amberBg,
+          border: `1px solid rgba(217,119,6,0.3)`,
+          borderRadius: 8,
+          padding: '6px 12px',
+          fontFamily: AD.fontSans,
+          fontSize: 13,
+          fontWeight: 500,
+          color: AD.amberText,
+          cursor: 'pointer',
+        }}
+      >
+        Open Queue
+      </button>
+    </div>
+  );
+}
+
 function SuggestionBoxCard({ msg, onMarkRead }) {
   const [expanded, setExpanded] = useState(false);
   const isUnread = !msg.read;
@@ -285,6 +351,11 @@ export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onN
     onClose();
   }
 
+  function handleNavigateToFlaggedQueue() {
+    onNavigate('team-queue', { tab: 'queue' });
+    onClose();
+  }
+
   const unreadCount = messages.filter(m => !m.read && !readIds.has(m.id)).length;
 
   if (!isOpen) return null;
@@ -383,6 +454,16 @@ export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onN
                       msg={{ ...msg, read: msg.read || readIds.has(msg.id) }}
                       onMarkRead={handleMarkRead}
                       onNavigate={handleNavigateToReport}
+                    />
+                  );
+                }
+                if (msg.message_type === 'flagged_assignment') {
+                  return (
+                    <FlaggedAssignmentCard
+                      key={msg.id}
+                      msg={{ ...msg, read: msg.read || readIds.has(msg.id) }}
+                      onMarkRead={handleMarkRead}
+                      onNavigate={handleNavigateToFlaggedQueue}
                     />
                   );
                 }

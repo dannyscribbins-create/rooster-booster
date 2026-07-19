@@ -135,6 +135,8 @@ export default function AdminPanel() {
   const [inboxOpen, setInboxOpen]                 = useState(false);
   const [inboxUnreadCount, setInboxUnreadCount]   = useState(0);
   const [notificationsUnread, setNotificationsUnread] = useState(0);
+  const [teamFlagsOpenCount, setTeamFlagsOpenCount] = useState(0);
+  const [teamNavRequest, setTeamNavRequest]       = useState(null); // { token, tab } — Inbox deep-link into Settings → Manage Team
 
   const permState = useAdminPermissions(authed);
 
@@ -169,11 +171,12 @@ export default function AdminPanel() {
     const headers = { 'Authorization': `Bearer ${token}` };
     (async () => {
       const fetchJson = async (url) => { const r = await fetch(url, { headers }); return r.json(); };
-      const [cashoutsRes, flaggedRes, pendingRes, missingRes] = await Promise.allSettled([
+      const [cashoutsRes, flaggedRes, pendingRes, missingRes, teamFlagsRes] = await Promise.allSettled([
         fetchJson(`${BACKEND_URL}/api/admin/cashouts`),
         fetchJson(`${BACKEND_URL}/api/admin/flagged-referrals/summary`),
         fetchJson(`${BACKEND_URL}/api/admin/pending-referrals`),
         fetchJson(`${BACKEND_URL}/api/admin/missing-referrals`),
+        fetchJson(`${BACKEND_URL}/api/admin/team/flagged-assignments?status=open`),
       ]);
       if (cashoutsRes.status === 'fulfilled' && Array.isArray(cashoutsRes.value)) {
         setPendingCount(cashoutsRes.value.filter(c => c.status === 'pending').length);
@@ -186,6 +189,10 @@ export default function AdminPanel() {
       }
       if (missingRes.status === 'fulfilled' && Array.isArray(missingRes.value)) {
         setMissingOpenCount(missingRes.value.filter(r => !r.resolved).length);
+      }
+      // Denied (403, no rep_assignment) resolves with no `.flags` array — badge just stays 0.
+      if (teamFlagsRes.status === 'fulfilled' && Array.isArray(teamFlagsRes.value.flags)) {
+        setTeamFlagsOpenCount(teamFlagsRes.value.flags.length);
       }
     })();
   }
@@ -210,7 +217,7 @@ export default function AdminPanel() {
 
   return (
     <AdminPermissionsContext.Provider value={permState}>
-      <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread}>
+      <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
         {pages[page]}
       </AdminShell>
       <AdminInboxSidebar
@@ -221,6 +228,15 @@ export default function AdminPanel() {
         onNavigate={(navPage, options) => {
           if (navPage === 'missing-referrals' && options?.initialTab) {
             setReferralReviewTab(options.initialTab);
+          }
+          // Settings is an overlay, not a `page` — deep-linking into it (FA spec §4: Inbox
+          // → Settings → Manage Team → queue tab) opens Settings instead of switching pages.
+          // `token` changes every request so AdminSettings/AdminTeamSettings re-jump even if
+          // already sitting on that exact tab.
+          if (navPage === 'team-queue') {
+            setTeamNavRequest({ token: Date.now(), tab: options?.tab || 'queue' });
+            setShowSettings(true);
+            return;
           }
           setShowSettings(false);
           setPage(navPage);

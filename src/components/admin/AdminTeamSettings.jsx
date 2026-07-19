@@ -5,6 +5,7 @@ import PermissionGate from './PermissionGate';
 import LockedSection from './LockedSection';
 import { usePermissions } from '../../hooks/useAdminPermissions';
 import { REGISTRY_SECTIONS, FINANCE_WALL_FLAGS, PERM_GROUPS } from '../../constants/registrySections';
+import AdminFlaggedAssignmentsQueue from './AdminFlaggedAssignmentsQueue';
 
 // ── PRESET DEFINITIONS (§8.1) ─────────────────────────────────────────────────
 // Presets are one-time STAMPS: selecting a preset populates the permission set on
@@ -449,14 +450,16 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
   const [jobberUsersErr, setJobberUsersErr]       = useState(null);
   const [jobberSearch, setJobberSearch]           = useState('');
   const [jobberMapErr, setJobberMapErr]           = useState(null);
+  const [localIsAttributable, setLocalIsAttributable] = useState(!!member.is_attributable);
   const successTimerRef                  = useRef(null);
   // Tracks last-saved state so isDirty stays correct across multiple saves
   const baselineRef                      = useRef({
-    name:         member.full_name || '',
-    tier:         member.tier,
-    titleId:      member.title_id ?? null,
-    jobberUserId: member.jobber_user_id ?? null,
-    perms:        { ...(member.permissions || {}) },
+    name:          member.full_name || '',
+    tier:          member.tier,
+    titleId:       member.title_id ?? null,
+    jobberUserId:  member.jobber_user_id ?? null,
+    isAttributable: !!member.is_attributable,
+    perms:         { ...(member.permissions || {}) },
   });
 
   // Non-owners cannot edit admin-tier members — read-only view only
@@ -477,6 +480,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
     localTier !== baselineRef.current.tier ||
     localTitleId !== baselineRef.current.titleId ||
     localJobberUserId !== baselineRef.current.jobberUserId ||
+    localIsAttributable !== baselineRef.current.isAttributable ||
     !permsEqual(workingPerms, baselineRef.current.perms);
 
   useEffect(() => () => {
@@ -535,13 +539,14 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
     const token = sessionStorage.getItem('rb_admin_token');
     try {
       // Step 1: PATCH identity fields only when something actually changed (compare to last-saved baseline, not stale props)
-      const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier || localTitleId !== baselineRef.current.titleId || localJobberUserId !== baselineRef.current.jobberUserId;
+      const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier || localTitleId !== baselineRef.current.titleId || localJobberUserId !== baselineRef.current.jobberUserId || localIsAttributable !== baselineRef.current.isAttributable;
       if (identityChanged) {
         const body = {};
         if (localName !== baselineRef.current.name)                 body.full_name      = localName;
         if (localTier !== baselineRef.current.tier)                 body.tier           = localTier;
         if (localTitleId !== baselineRef.current.titleId)           body.title_id       = localTitleId;
         if (localJobberUserId !== baselineRef.current.jobberUserId) body.jobber_user_id = localJobberUserId;
+        if (localIsAttributable !== baselineRef.current.isAttributable) body.is_attributable = localIsAttributable;
         const r = await fetch(`${BACKEND_URL}/api/admin/team/${member.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -570,7 +575,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
         setSaving(false);
         return;
       }
-      baselineRef.current = { name: localName, tier: localTier, titleId: localTitleId, jobberUserId: localJobberUserId, perms: { ...workingPerms } };
+      baselineRef.current = { name: localName, tier: localTier, titleId: localTitleId, jobberUserId: localJobberUserId, isAttributable: localIsAttributable, perms: { ...workingPerms } };
       setSaving(false);
       setSaveSuccess(true);
       onSaved();
@@ -792,6 +797,28 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
               </div>
             )}
           </div>
+
+          {/* Attributable rep toggle (AT-1, FA spec §3) — future-only: flipping this never
+              touches existing client_rep_assignments rows, it only changes what the engine
+              does on the NEXT event. Rendered only for members already promoted to field rep. */}
+          {member.is_field_rep && (
+            <div style={sectionCardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: AD.textPrimary, marginBottom: 3 }}>Attributable rep</div>
+                  <div style={{ fontSize: 11, color: AD.textTertiary, lineHeight: 1.5 }}>
+                    When on, clients who enter through this rep's link or Jobber appointments are assigned to them.
+                    Turning this off never removes existing assignments.
+                  </div>
+                </div>
+                <ToggleSwitch
+                  checked={localIsAttributable}
+                  onChange={v => { clearSuccess(); setLocalIsAttributable(v); }}
+                  disabled={readOnly}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Preset stamp — edit mode only, not shown for Owner targets */}
           {!readOnly && member.tier !== 'owner' && (
@@ -1328,8 +1355,16 @@ function ManageTitlesSection({ titles, onRefresh }) {
 }
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
-export default function AdminTeamSettings() {
-  const { tier: myTier } = usePermissions();
+// teamNavRequest: { token, tab } — set by AdminApp when the Inbox's FlaggedAssignmentCard
+// deep-links here (FA spec §4). `token` changes on every navigation request (even to the
+// same tab) so the effect below fires even if this component is already mounted on 'roster'.
+// onOpenFlagCountChange bubbles the live open-flag count further up to AdminSettings for
+// the section-nav badge (FQ-1).
+export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChange }) {
+  const { tier: myTier, permissions } = usePermissions();
+  const canSeeQueue = myTier === 'owner' || permissions?.rep_assignment === true;
+  const [tab, setTab]                       = useState('roster'); // 'roster' | 'queue'
+  const [openFlagCount, setOpenFlagCount]   = useState(0);
   const [members, setMembers]               = useState([]);
   const [loading, setLoading]               = useState(true);
   const [err, setErr]                       = useState(null);
@@ -1340,6 +1375,32 @@ export default function AdminTeamSettings() {
   const [resendMsg, setResendMsg]           = useState(null);   // { id, text, warn }
   const [selectedMember, setSelectedMember] = useState(null);   // Sub-piece 2: edit drawer
   const [titles, setTitles]               = useState([]);
+
+  useEffect(() => {
+    if (teamNavRequest?.tab) setTab(teamNavRequest.tab);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamNavRequest?.token]);
+
+  function reportOpenFlagCount(n) {
+    setOpenFlagCount(n);
+    if (onOpenFlagCountChange) onOpenFlagCountChange(n);
+  }
+
+  useEffect(() => {
+    if (!canSeeQueue) return;
+    (async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/team/flagged-assignments?status=open`, {
+          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        });
+        const d = await r.json();
+        if (r.ok && Array.isArray(d.flags)) reportOpenFlagCount(d.flags.length);
+      } catch {
+        // non-fatal — badge just stays at 0 until the queue tab is opened
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeQueue]);
 
   async function fetchTitles() {
     try {
@@ -1425,6 +1486,46 @@ export default function AdminTeamSettings() {
     <PermissionGate flag="team" mode="page" label="Manage Team" tooltip="Ask your Owner for access to Manage Team.">
       <div style={{ fontFamily: AD.fontSans }}>
 
+        {/* Tab switcher (FA spec §4.1 FQ-1: queue is a tab inside Team Management) */}
+        {canSeeQueue && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+            {[
+              { id: 'roster', label: 'Roster' },
+              { id: 'queue',  label: 'Flagged Assignments' },
+            ].map(t => {
+              const active = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 7,
+                    padding: '7px 16px', borderRadius: AD.radiusPill,
+                    border: `1px solid ${active ? AD.blueText : AD.border}`,
+                    background: active ? AD.blueBg : 'transparent',
+                    color: active ? AD.blueText : AD.textSecondary,
+                    fontSize: 13, fontWeight: active ? 500 : 400, fontFamily: AD.fontSans, cursor: 'pointer',
+                  }}
+                >
+                  {t.label}
+                  {t.id === 'queue' && openFlagCount > 0 && (
+                    <span style={{
+                      background: AD.red, color: '#fff', fontSize: 11, fontWeight: 600,
+                      padding: '1px 7px', borderRadius: AD.radiusPill,
+                    }}>
+                      {openFlagCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {tab === 'queue' && canSeeQueue ? (
+          <AdminFlaggedAssignmentsQueue onOpenCountChange={reportOpenFlagCount} />
+        ) : (
+        <>
         {/* Header row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ fontSize: 14, color: AD.textSecondary }}>
@@ -1649,6 +1750,8 @@ export default function AdminTeamSettings() {
             </table>
           )}
         </div>
+        </>
+        )}
 
         {selectedMember && (
           <MemberEditDrawer

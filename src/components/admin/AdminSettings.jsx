@@ -238,22 +238,34 @@ function SystemSettings() {
   );
 }
 
-const SETTINGS_PAGES = {
-  'my-profile':  <AdminSettingsMyProfile />,
-  company:       <CompanyDetailsSettings />,
-  branding:      <BrandingProfileSettings />,
-  notifications: <AdminSettingsNotifications />,
-  experience:    <AdminSettingsExperience />,
-  referral:      <ReferralProgramSettings />,
-  banking:       <BankingSettings />,
-  accounts:      <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
-  team:          <AdminTeamSettings />,
-  crm:           <CRMSettings />,
-  advanced:      <SystemSettings />,
-};
-
-export default function AdminSettings() {
+export default function AdminSettings({ teamNavRequest, initialTeamOpenFlagCount = 0 }) {
   const [settingsPage, setSettingsPage] = useState('company');
+  // Seeded from AdminApp's login-time fetch so the sidebar badge is accurate even before
+  // the admin ever opens the Manage Team tab; AdminTeamSettings' own live fetch (and any
+  // resolve/dismiss action) overwrites it via onOpenFlagCountChange from then on.
+  const [teamOpenFlagCount, setTeamOpenFlagCount] = useState(initialTeamOpenFlagCount);
+
+  // Deep-link from the Inbox's FlaggedAssignmentCard (FA spec §4): teamNavRequest.token
+  // changes on every navigation request, even a repeat one, so this fires even when
+  // Settings is already open and already sitting on some other page.
+  useEffect(() => {
+    if (teamNavRequest) setSettingsPage('team');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamNavRequest?.token]);
+
+  const SETTINGS_PAGES = {
+    'my-profile':  <AdminSettingsMyProfile />,
+    company:       <CompanyDetailsSettings />,
+    branding:      <BrandingProfileSettings />,
+    notifications: <AdminSettingsNotifications />,
+    experience:    <AdminSettingsExperience />,
+    referral:      <ReferralProgramSettings />,
+    banking:       <BankingSettings />,
+    accounts:      <ComingSoonCard icon="ph-receipt"     label="Account Keeping"  description="View transaction records, tax documents, and 1099 generation." />,
+    team:          <AdminTeamSettings teamNavRequest={teamNavRequest} onOpenFlagCountChange={setTeamOpenFlagCount} />,
+    crm:           <CRMSettings />,
+    advanced:      <SystemSettings />,
+  };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -291,6 +303,14 @@ export default function AdminSettings() {
                 {active && <div style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: AD.blueLight, borderRadius: 99 }} />}
                 <i className={`ph ${item.icon}`} style={{ fontSize: 16, opacity: 0.85, flexShrink: 0 }} />
                 <span>{item.label}</span>
+                {item.id === 'team' && teamOpenFlagCount > 0 && (
+                  <span style={{
+                    marginLeft: 'auto', background: AD.red, color: '#fff',
+                    fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 99,
+                  }}>
+                    {teamOpenFlagCount}
+                  </span>
+                )}
               </button>
             );
           })}

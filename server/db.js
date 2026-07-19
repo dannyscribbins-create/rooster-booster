@@ -5,6 +5,7 @@ const addReferrerBankColumns = require('./migrations/add_referrer_bank_columns')
 const addNotificationEmailColumns = require('./migrations/add_notification_email_columns');
 const addDecisionBSchema = require('./migrations/add_decision_b_schema');
 const widenStickySourceCheck = require('./migrations/widen_sticky_source_check');
+const addFlaggedAssignmentsStatus = require('./migrations/add_flagged_assignments_status');
 
 const _connStr = process.env.DATABASE_URL || '';
 // Skip SSL for localhost/127.0.0.1 (local dev + test). Railway URLs are non-local.
@@ -1280,6 +1281,9 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
 
   // ── ANCHOR/GRACE ATTRIBUTION FIX — widen sticky_source for gate-fallthrough writes ──
   await widenStickySourceCheck(pool);
+
+  // ── FA: flagged_assignments status lifecycle (replaces boolean `reviewed`) ──
+  await addFlaggedAssignmentsStatus(pool);
 
   // Backfill full_name on the seeded Owner row. WHERE full_name IS NULL is idempotent.
   await pool.query(`UPDATE team_members SET full_name = 'Danny Scribbins' WHERE id = 1 AND full_name IS NULL`);

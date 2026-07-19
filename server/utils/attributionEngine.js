@@ -102,7 +102,7 @@ async function writeProvisional(pool, contractorId, jobberClientId, repId, sourc
 
 async function writeSticky(pool, contractorId, jobberClientId, repId, source) {
   // WHERE guard prevents overwriting an existing sticky under a concurrent race
-  await pool.query(
+  const result = await pool.query(
     `INSERT INTO client_rep_assignments
        (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
      VALUES ($1, $2, $3, $4, NOW(), NOW())
@@ -114,35 +114,69 @@ async function writeSticky(pool, contractorId, jobberClientId, repId, source) {
      WHERE client_rep_assignments.sticky_rep_id IS NULL`,
     [contractorId, jobberClientId, repId, source]
   );
+
+  // Auto-resolution (FA spec §4.5): rowCount > 0 means this call actually just set the
+  // sticky (fresh insert, or the WHERE guard's first-ever write) — not a no-op against an
+  // already-stickied client. Any OPEN flag on this exact client is now stale and self-closes;
+  // other clients' flags (different jobber_client_id) are untouched.
+  if (result.rowCount > 0) {
+    await pool.query(
+      `UPDATE flagged_assignments SET status = 'auto_resolved', resolved_at = NOW()
+       WHERE contractor_id = $1 AND jobber_client_id = $2 AND status = 'open'`,
+      [contractorId, jobberClientId]
+    );
+  }
+}
+
+// Inserts the bell-notification row for a newly-created flag (FQ-3: existing admin_messages
+// inbox, missing_referral card precedent — not the notifications table).
+async function insertFlagAdminMessage(pool, contractorId, flagId, title, body) {
+  await pool.query(
+    `INSERT INTO admin_messages (contractor_id, message_type, reference_id, title, body, color_code)
+     VALUES ($1, 'flagged_assignment', $2, $3, $4, 'orange')`,
+    [contractorId, flagId, title, body]
+  );
 }
 
 async function writeCoAssignmentFlag(pool, contractorId, jobberClientId, repIds, assessmentId) {
   const { rows: existingFlag } = await pool.query(
     `SELECT id FROM flagged_assignments
-     WHERE contractor_id = $1 AND jobber_client_id = $2 AND flag_reason = 'rep_co_assignment' AND reviewed = false`,
+     WHERE contractor_id = $1 AND jobber_client_id = $2 AND flag_reason = 'rep_co_assignment' AND status = 'open'`,
     [contractorId, jobberClientId]
   );
   if (existingFlag.length > 0) return;
-  await pool.query(
+  const { rows: inserted } = await pool.query(
     `INSERT INTO flagged_assignments
        (contractor_id, jobber_client_id, flag_reason, reps_involved, triggering_assessment_id)
-     VALUES ($1, $2, 'rep_co_assignment', $3::jsonb, $4)`,
+     VALUES ($1, $2, 'rep_co_assignment', $3::jsonb, $4)
+     RETURNING id`,
     [contractorId, jobberClientId, JSON.stringify(repIds), assessmentId]
+  );
+  await insertFlagAdminMessage(
+    pool, contractorId, inserted[0].id,
+    'Assignment Flagged: Multiple Reps Matched',
+    `Client ${jobberClientId} has ${repIds.length} attributable reps matched and needs manual assignment.`
   );
 }
 
 async function writeOrphanFlag(pool, contractorId, jobberClientId, triggeringQuoteId) {
   const { rows: existingOrphan } = await pool.query(
     `SELECT id FROM flagged_assignments
-     WHERE contractor_id = $1 AND jobber_client_id = $2 AND flag_reason = 'orphan' AND reviewed = false`,
+     WHERE contractor_id = $1 AND jobber_client_id = $2 AND flag_reason = 'orphan' AND status = 'open'`,
     [contractorId, jobberClientId]
   );
   if (existingOrphan.length > 0) return;
-  await pool.query(
+  const { rows: inserted } = await pool.query(
     `INSERT INTO flagged_assignments
        (contractor_id, jobber_client_id, flag_reason, triggering_quote_id)
-     VALUES ($1, $2, 'orphan', $3)`,
+     VALUES ($1, $2, 'orphan', $3)
+     RETURNING id`,
     [contractorId, jobberClientId, triggeringQuoteId]
+  );
+  await insertFlagAdminMessage(
+    pool, contractorId, inserted[0].id,
+    'Assignment Flagged: Unable To Auto-Assign',
+    `Client ${jobberClientId} could not be automatically assigned a rep and needs manual assignment.`
   );
 }
 
