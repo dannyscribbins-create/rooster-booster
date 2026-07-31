@@ -19,6 +19,7 @@ const { resendShouldRetry, jobberShouldRetry } = require('../../utils/retryHelpe
 const { discoverJobberFields } = require('../../crm/jobber');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility');
+const { generateSlug, buildInviteUrl } = require('../../utils/inviteTokens');
 
 const bcrypt = require('bcrypt');
 
@@ -506,9 +507,10 @@ router.post('/api/admin/invite-links', requirePermission('referrers.manage'), as
     return res.status(400).json({ error: "linkType must be 'contractor'" });
   }
   try {
-    const slug = crypto.randomBytes(5).toString('hex');
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const fullUrl = `${frontendUrl}?signup=${slug}`;
+    // generateSlug is 8 bytes (64 bits), replacing randomBytes(5) (40 bits).
+    // Applies to newly minted links only — existing slugs resolve unchanged.
+    const slug = generateSlug();
+    const fullUrl = buildInviteUrl(slug);
     await pool.query(
       `INSERT INTO contractor_invite_links (contractor_id, slug, link_type, created_by_user_id, active)
        VALUES ($1, $2, $3, NULL, true)`,
@@ -530,7 +532,6 @@ router.get('/api/admin/invite-links', requirePermission('referrers'), async (req
   if (!adminSession) return;
   const { contractorId } = adminSession;
   try {
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const result = await pool.query(
       `SELECT id, slug, link_type, active, created_at
        FROM contractor_invite_links
@@ -538,9 +539,11 @@ router.get('/api/admin/invite-links', requirePermission('referrers'), async (req
        ORDER BY created_at DESC`,
       [contractorId]
     );
+    // Rendered through the shared builder so this listing and the POST above can
+    // never hand out differently-shaped URLs for the same slug.
     const rows = result.rows.map(r => ({
       ...r,
-      fullUrl: `${frontendUrl}?signup=${r.slug}`,
+      fullUrl: buildInviteUrl(r.slug),
     }));
     res.json(rows);
   } catch (err) {

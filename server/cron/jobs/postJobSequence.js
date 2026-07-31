@@ -4,6 +4,7 @@ const { pool } = require('../../db');
 const { logError } = require('../../middleware/errorLogger');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { resendShouldRetry } = require('../../utils/retryHelpers');
+const { buildInviteUrl } = require('../../utils/inviteTokens');
 const { Resend } = require('resend');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -144,7 +145,8 @@ function startPostJobSequenceJob() {
                     [contractorId]
                   );
                   const slug    = slugResult.rows[0]?.slug || null;
-                  const ctaUrl  = slug ? `${frontendUrl}/?signup=${slug}` : frontendUrl;
+                  // No-slug fallback is unchanged: bare frontendUrl, exactly as before.
+                  const ctaUrl  = slug ? buildInviteUrl(slug) : frontendUrl;
                   const firstName = clientName.split(' ')[0] || 'there';
 
                   await retryWithBackoff(

@@ -21,6 +21,13 @@ const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { verifyReferrerSession } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
 const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
+const {
+  generateSlug,
+  buildInviteUrl,
+  resolveToken,
+  redeemToken,
+  recordScanEvent,
+} = require('../utils/inviteTokens');
 
 // test seam — inert in production, never called outside server/test/
 // Only the cashout-section call sites below use these overrides.
@@ -182,23 +189,46 @@ async function checkAndAwardBadges(userId, totalReferralCount) {
 }
 
 // ── SELF-SERVE SIGNUP: INVITE LINK VALIDATION ─────────────────────────────────
+// This is the SPA's validation call when someone opens a link carrying a slug
+// (src/App.js:79-82), so it is also the closest thing the product has today to a
+// landing-page load — which is what CD-16 defines as a detectable scan event.
 router.get('/api/invite/:slug', async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT contractor_id, link_type FROM contractor_invite_links
-       WHERE slug=$1 AND active=true`,
-      [req.params.slug]
-    );
-    if (result.rows.length === 0) return res.json({ valid: false });
-    const { contractor_id, link_type } = result.rows[0];
-    res.json({ valid: true, contractorName: CONTRACTOR_NAME, contractorId: contractor_id, linkType: link_type });
+    // resolveToken adds the expiry check the inline query never had: a token is
+    // resolvable only while active AND unexpired.
+    const token = await resolveToken(pool, req.params.slug);
+    if (!token) return res.json({ valid: false });
+
+    // Telemetry, never a gate. A failed scan record costs a roster row; a 500
+    // here would cost the homeowner their signup. Logged and swallowed on purpose.
+    try {
+      await recordScanEvent(pool, req.params.slug);
+    } catch (scanErr) {
+      await logError({ req, error: scanErr, source: 'GET /api/invite/:slug — scan event' });
+    }
+
+    res.json({
+      valid: true,
+      contractorName: CONTRACTOR_NAME,
+      contractorId: token.contractor_id,
+      linkType: token.link_type,
+    });
   } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: err.message });
+    await logError({ req, error: err, source: 'GET /api/invite/:slug' });
+    // Was `err.message` — leaked internals to the client (Security Standards).
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── SELF-SERVE SIGNUP: CREATE ACCOUNT ─────────────────────────────────────────
+// One statement, two execution contexts: the pool for peer/contractor signups
+// (unchanged from before C/DL-1) and a checked-out transaction client for the
+// rep branch. Hoisted so the two paths can never drift apart.
+const SIGNUP_USER_INSERT = `
+  INSERT INTO users (full_name, email, pin, phone, invite_slug, invited_by_user_id, signup_source, email_verified, contractor_id)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8)
+  RETURNING id`;
+
 router.post('/api/signup', signupLimiter, async (req, res) => {
   const { firstName, lastName, phone, email, password, inviteSlug } = req.body;
 
@@ -213,16 +243,13 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
 
   try {
-    // Check invite link
-    const linkResult = await pool.query(
-      `SELECT id, contractor_id, link_type, created_by_user_id
-       FROM contractor_invite_links WHERE slug=$1 AND active=true`,
-      [inviteSlug]
-    );
-    if (linkResult.rows.length === 0) {
+    // Check invite link. resolveToken replaces the inline SELECT and adds the
+    // expiry predicate — an expired token is now refused here rather than
+    // silently accepted (CD-14: an expired token is never resurrected).
+    const link = await resolveToken(pool, inviteSlug);
+    if (!link) {
       return res.status(400).json({ error: 'Invalid or expired invite link.' });
     }
-    const link = linkResult.rows[0];
 
     // Check for duplicate email
     const existing = await pool.query('SELECT id FROM users WHERE contractor_id = $1 AND LOWER(email) = LOWER($2)', [link.contractor_id, email]);
@@ -232,17 +259,61 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
 
     const full_name = `${firstName.trim()} ${lastName.trim()}`;
     const hashedPassword = await bcrypt.hash(String(password), 10);
-    const signupSource = link.link_type === 'peer' ? 'peer_link' : 'contractor_link';
-    const invitedByUserId = link.link_type === 'peer' ? link.created_by_user_id : null;
 
-    // Create user (email_verified = false)
-    const userResult = await pool.query(
-      `INSERT INTO users (full_name, email, pin, phone, invite_slug, invited_by_user_id, signup_source, email_verified, contractor_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8)
-       RETURNING id`,
-      [full_name, email, hashedPassword, phone || null, inviteSlug, invitedByUserId, signupSource, link.contractor_id]
-    );
-    const newUserId = userResult.rows[0].id;
+    // Attribution by link type. peer and contractor are unchanged from before
+    // C/DL-1; 'rep' is new and gets its own source so C/DL-3 can tell a
+    // rep-generated signup from a marketing-QR one — labelling it
+    // 'contractor_link' would corrupt the data C/DL-3 reads.
+    let signupSource = 'contractor_link';
+    let invitedByUserId = null;
+    if (link.link_type === 'peer') {
+      signupSource = 'peer_link';
+      invitedByUserId = link.created_by_user_id;
+    } else if (link.link_type === 'rep') {
+      signupSource = 'rep_link';
+    }
+
+    const userInsertParams = [
+      full_name, email, hashedPassword, phone || null, inviteSlug,
+      invitedByUserId, signupSource, link.contractor_id,
+    ];
+
+    // ── REDEMPTION IS link_type-AWARE ──────────────────────────────────────────
+    // peer and contractor links are MULTI-USE: one referrer's personal link
+    // serves many friend signups, one marketing QR serves many scans. Neither
+    // writes anything to the token row and neither is ever deactivated —
+    // attribution lands on the user row, exactly as it did before C/DL-1. Those
+    // two paths run on the pool with no transaction, unchanged.
+    //
+    // rep links are SINGLE-USE and must redeem atomically with the user insert,
+    // so that branch — and only that branch — runs in a transaction on a
+    // checked-out client. It has no live caller until C/DL-3 mints rep tokens.
+    let newUserId;
+    if (link.link_type === 'rep') {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const txUser = await client.query(SIGNUP_USER_INSERT, userInsertParams);
+        newUserId = txUser.rows[0].id;
+
+        // Zero rows means refuse — already redeemed, revoked, expired, or not a
+        // rep token. The user insert above must not survive that.
+        const redeemed = await redeemToken(client, inviteSlug, newUserId);
+        if (!redeemed) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Invalid or expired invite link.' });
+        }
+        await client.query('COMMIT');
+      } catch (txErr) {
+        await client.query('ROLLBACK');
+        throw txErr;
+      } finally {
+        client.release();
+      }
+    } else {
+      const userResult = await pool.query(SIGNUP_USER_INSERT, userInsertParams);
+      newUserId = userResult.rows[0].id;
+    }
 
     // Sync new referrer into contacts table
     try {
@@ -1282,18 +1353,69 @@ router.post('/api/review/dismiss', async (req, res) => {
   }
 });
 
+// ── REFERRER: PEER INVITE LINK — SHARED LOOKUP ───────────────────────────────
+// The single source of a referrer's personal invite slug. Both the Dashboard QR
+// modal and the Refer tab call it, so the two surfaces can never hand out
+// different destinations (they did before C/DL-1: the QR endpoint minted a
+// leaky leaksmith.com URL while the Refer tab returned an opaque slug).
+//
+// Lazily creates the link on first request, matching the previous behavior.
+//
+// ORDER BY is load-bearing, not decoration. A referrer should only ever hold one
+// active peer link, but if supersession (C/DL-3) or a concurrent first-request
+// race ever produces two, both surfaces must agree on which one they serve. The
+// previous LIMIT 1 carried no ORDER BY and left that choice to the planner.
+//
+// Pre-existing and unchanged: two simultaneous first requests can both miss the
+// SELECT and both INSERT, leaving the referrer with two active peer links. The
+// deterministic ORDER BY makes that harmless (both surfaces then agree on the
+// newest); closing the race itself needs a partial unique index, which belongs
+// with C/DL-3's supersession work rather than here.
+async function getOrCreatePeerInviteLink({ userId, contractorId }) {
+  const existing = await pool.query(
+    `SELECT slug FROM contractor_invite_links
+      WHERE created_by_user_id = $1 AND link_type = 'peer' AND active = true
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1`,
+    [userId]
+  );
+  if (existing.rows.length > 0) return existing.rows[0].slug;
+
+  const slug = generateSlug();
+  await pool.query(
+    `INSERT INTO contractor_invite_links (contractor_id, slug, link_type, created_by_user_id, active)
+     VALUES ($1, $2, 'peer', $3, true)`,
+    [contractorId, slug, userId]
+  );
+  return slug;
+}
+
 // ── REFERRER: QR CODE ─────────────────────────────────────────────────────────
+// Serves the same peer link as /api/referrer/my-invite-link, rendered as a QR.
+// Scheme A died here — the legacy construction put a raw userId and contractorId
+// in the query string of a domain the app does not serve. The literal is not
+// reproduced here on purpose: the generator sweep matches on source text and
+// cannot tell a comment from code, which is what stops a commented-out generator
+// from being quietly uncommented later.
 router.get('/api/referrer/qr-code', async (req, res) => {
   try {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
-    const { userId } = session;
-    const contractorId = session.contractorId;
-    const referralUrl = `https://leaksmith.com/refer?ref=${userId}&contractor=${contractorId}`;
-    const qrCodeDataUrl = await QRCode.toDataURL(referralUrl);
-    res.json({ qrCodeDataUrl });
+    const { userId, contractorId } = session;
+
+    const slug = await getOrCreatePeerInviteLink({ userId, contractorId });
+    const fullUrl = buildInviteUrl(slug);
+
+    // Same QR options as my-invite-link so both surfaces render byte-identical
+    // images for the same referrer.
+    const qrCodeDataUrl = await QRCode.toDataURL(fullUrl, { width: 400, margin: 2 });
+
+    // slug and fullUrl are ADDITIVE. DashboardTab.jsx reads qrCodeDataUrl and is
+    // untouched; the added fields make the emitted URL assertable at all, which
+    // a base64 PNG alone is not.
+    res.json({ qrCodeDataUrl, slug, fullUrl });
   } catch (err) {
-    await logError({ req, error: err });
+    await logError({ req, error: err, source: 'GET /api/referrer/qr-code' });
     res.status(500).json({ error: 'Failed to generate QR code' });
   }
 });
@@ -1304,32 +1426,10 @@ router.get('/api/referrer/my-invite-link', async (req, res) => {
   try {
     const session = await verifyReferrerSession(req, res);
     if (!session) return;
-    const { userId } = session;
+    const { userId, contractorId } = session;
 
-    // Check if peer link already exists for this user
-    let linkResult = await pool.query(
-      `SELECT slug FROM contractor_invite_links
-       WHERE created_by_user_id=$1 AND link_type='peer' AND active=true
-       LIMIT 1`,
-      [userId]
-    );
-
-    let slug;
-    if (linkResult.rows.length > 0) {
-      slug = linkResult.rows[0].slug;
-    } else {
-      // Lazy-create the peer link
-      slug = crypto.randomBytes(5).toString('hex');
-      const contractorId = session.contractorId;
-      await pool.query(
-        `INSERT INTO contractor_invite_links (contractor_id, slug, link_type, created_by_user_id, active)
-         VALUES ($1, $2, 'peer', $3, true)`,
-        [contractorId, slug, userId]
-      );
-    }
-
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const fullUrl = `${frontendUrl}?signup=${slug}`;
+    const slug = await getOrCreatePeerInviteLink({ userId, contractorId });
+    const fullUrl = buildInviteUrl(slug);
 
     // Generate QR code for the invite URL (server-side, existing qrcode package)
     // MVP: QR code generated server-side per request. Full solution: pre-generate and cache as
@@ -1338,8 +1438,10 @@ router.get('/api/referrer/my-invite-link', async (req, res) => {
 
     res.json({ slug, fullUrl, qrCodeDataUrl });
   } catch (err) {
-    await logError({ req, error: err });
-    res.status(500).json({ error: 'Failed to get invite link: ' + err.message });
+    await logError({ req, error: err, source: 'GET /api/referrer/my-invite-link' });
+    // Was `'Failed to get invite link: ' + err.message` — leaked internals to the
+    // client, against the Security Standards rule on error responses.
+    res.status(500).json({ error: 'Failed to get invite link' });
   }
 });
 

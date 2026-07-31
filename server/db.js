@@ -1222,6 +1222,119 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     END $$;
   `);
 
+  // ── C/DL-1 — CONTRACTOR_INVITE_LINKS TOKEN LAYER ─────────────────────────────
+  // See DECISION_C_DL_BUILD_SPEC.md §4 (C/DL-1) and amendment A4. EXTEND, not
+  // supersede: signup, the T+24h cron CTA, and the admin invite-link surface all
+  // already read this table, so extending leaves every reader untouched.
+  //
+  // PLACEMENT IS LOAD-BEARING. This block sits here, not beside the table's own
+  // CREATE at ~line 179, because owner_team_member_id carries an FK to team_members
+  // — created at line 1138. Placed at the CREATE site, a fresh-database boot would
+  // fail on a forward reference to a table that does not exist yet.
+
+  // Eleven additive columns. ADD COLUMN IF NOT EXISTS is idempotent, and when the
+  // column already exists the inline REFERENCES clause is skipped with it.
+  //
+  // superseded_by is a SELF-reference: a replacement token points back at the token
+  // it replaced. The data model ships now so a future row has somewhere to point;
+  // the supersedeToken() function that writes it is deferred to C/DL-3 (CD-14 —
+  // resend mints a fresh token, and an expired or superseded token is never
+  // resurrected). ON DELETE SET NULL so deleting a superseded ancestor never
+  // cascades into its replacement.
+  await pool.query(`
+    ALTER TABLE contractor_invite_links
+      ADD COLUMN IF NOT EXISTS owner_team_member_id INTEGER REFERENCES team_members(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS superseded_by        INTEGER REFERENCES contractor_invite_links(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS redeemed_at          TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS redeemed_user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS expires_at           TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS scanned_at           TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS soft_save_name       TEXT,
+      ADD COLUMN IF NOT EXISTS soft_save_email      TEXT,
+      ADD COLUMN IF NOT EXISTS soft_save_phone      TEXT,
+      ADD COLUMN IF NOT EXISTS consent_affirmed_at  TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS consent_channel      TEXT
+  `);
+
+  // Drop the stale 'accent-roofing' default (amendment A1 — dynamic-id-first). Every
+  // writer passes contractor_id explicitly; the default only exists to silently
+  // mis-tenant a row that forgot to. Verified safe: 0 production rows carry it.
+  // ALTER COLUMN ... DROP DEFAULT is a no-op when no default is present, so this is
+  // idempotent without a guard.
+  await pool.query(`ALTER TABLE contractor_invite_links ALTER COLUMN contractor_id DROP DEFAULT`);
+
+  // OWNER CHECK — orphan-tolerant, negative-only. Enforces only that the WRONG owner
+  // column is never set for a type; each type's own owner column stays nullable so
+  // ON DELETE SET NULL can always fire and pre-existing orphans cannot block ADD
+  // CONSTRAINT. Production carries 2 peer rows with a NULL owner today (Railway Q6) —
+  // the rejected NOT NULL form would have failed on arrival against real data.
+  //
+  // Fail-closed on unknown link_type: a fourth type is rejected until this constraint
+  // is deliberately widened. Verified safe — production holds only 'peer' and
+  // 'contractor' (Railway Q2).
+  //
+  // pg_constraint pre-check per CLAUDE.md. A CHECK has no backing index, so unlike a
+  // UNIQUE it cannot collide with a 42P07 on re-run.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_invite_links_owner'
+      ) THEN
+        ALTER TABLE contractor_invite_links ADD CONSTRAINT chk_invite_links_owner CHECK (
+             (link_type = 'peer'       AND owner_team_member_id IS NULL)
+          OR (link_type = 'rep'        AND created_by_user_id   IS NULL)
+          OR (link_type = 'contractor' AND created_by_user_id   IS NULL
+                                       AND owner_team_member_id IS NULL)
+        );
+      END IF;
+    END $$;
+  `);
+
+  // CONSENT CHECK (CD-15) — the affirmation and the channel it was given for travel
+  // together or not at all, and the channel is a closed vocabulary. A token with a
+  // channel but no timestamp would be an unlogged consent claim, which is exactly
+  // what 10DLC makes non-negotiable.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_invite_links_consent'
+      ) THEN
+        ALTER TABLE contractor_invite_links ADD CONSTRAINT chk_invite_links_consent CHECK (
+             (consent_affirmed_at IS NULL     AND consent_channel IS NULL)
+          OR (consent_affirmed_at IS NOT NULL AND consent_channel IN ('sms', 'email'))
+        );
+      END IF;
+    END $$;
+  `);
+
+  // CONTACT-METHOD CHECK (CD-11) — a consented send must have somewhere to send to.
+  // SMS consent requires a phone on the row; email consent requires an email. The
+  // raw-scan path (CD-11a) carries no name and no contact at all and stays legal:
+  // both sides are NULL, no consent is recorded, and every branch passes.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_invite_links_contact_method'
+      ) THEN
+        ALTER TABLE contractor_invite_links ADD CONSTRAINT chk_invite_links_contact_method CHECK (
+              (consent_channel IS DISTINCT FROM 'sms'   OR soft_save_phone IS NOT NULL)
+          AND (consent_channel IS DISTINCT FROM 'email' OR soft_save_email IS NOT NULL)
+        );
+      END IF;
+    END $$;
+  `);
+
+  // Every read of this table is contractor-scoped and nearly all filter active=true
+  // (admin/index.js:537, postJobSequence.js:142). Roster-facing indexes are
+  // deliberately deferred until C/DL-3 defines the roster's actual query shape.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_invite_links_contractor_active
+      ON contractor_invite_links (contractor_id, active)
+  `);
+
   // One-time seed: inserts the Accent Roofing Owner account if the email does not yet exist.
   // Reads credentials from env vars OWNER_SEED_EMAIL + OWNER_SEED_PASSWORD.
   if (process.env.OWNER_SEED_EMAIL && process.env.OWNER_SEED_PASSWORD) {
