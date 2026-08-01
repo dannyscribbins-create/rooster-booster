@@ -195,12 +195,14 @@ const WARMUP_ENTRIES_SERVER = [
 
 // RoofMiles fallback tokens (LP §5). Any NULL branding column resolves to these so
 // a brand-new contractor has a decent page before uploading anything.
-const ROOFMILES_DEFAULTS = Object.freeze({
-  companyName:     'RoofMiles',
-  primaryColor:    '#F26A1B',
-  secondaryColor:  '#1C2D4D',
-  backgroundColor: '#FFFFFF',
-});
+//
+// SINGLE SOURCE OF TRUTH as of C/DL-2 Phase 3b: these are no longer declared
+// here. They come from server/utils/brandingTheme.js, the shared resolver the
+// landing page and the admin preview both consume, so the page's fallbacks and
+// the preview's fallbacks cannot be tuned independently of one another. The
+// aliased name is kept because every call site below reads it.
+const { BRANDING_THEME_DEFAULTS } = require('../utils/brandingTheme');
+const ROOFMILES_DEFAULTS = BRANDING_THEME_DEFAULTS;
 
 // Loads one contractor's public branding block, or null if the contractor is gone.
 //
@@ -721,7 +723,12 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
     res.status(201).json({ message: 'Account created. Check your email for a verification code.', userId: newUserId });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: 'Signup failed: ' + err.message });
+    // Was `'Signup failed: ' + err.message` — leaked internals to the client on a
+    // PUBLIC, unauthenticated endpoint (Security Standards). Same violation, same
+    // public signup flow, as the verify-email handler below; fixing one door and
+    // leaving the other open would have been incoherent. The real detail is in
+    // error_log via logError above, which is where it belongs.
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -820,7 +827,16 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
     res.json({ message: 'Email verified. You can now log in.' });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: 'Verification failed: ' + err.message });
+    // Was `'Verification failed: ' + err.message` — leaked internals to the client
+    // on a PUBLIC, unauthenticated endpoint (Security Standards). A non-integer
+    // userId made Postgres answer "invalid input syntax for type integer: <the
+    // caller's own probe>", which handed out the column's type and echoed the
+    // probe back; vary it and this was a free schema-enumeration oracle.
+    //
+    // Only the CATCH is generic. The 400 above it — "Invalid or expired code.
+    // Request a new one." — is deliberately untouched: it is actionable, carries
+    // no internals, and is the message a homeowner who mistyped a digit needs.
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -2798,5 +2814,14 @@ router.LANDING_RESOLVE_LIMIT = Object.freeze({ ...LANDING_RESOLVE_LIMIT });
 // than hardcoding it, and a caller cannot tune the live limiter by mutating the
 // object it was built from.
 router.RESEND_CODE_LIMIT = Object.freeze({ ...RESEND_CODE_LIMIT });
+
+// The RoofMiles fallback tokens, re-exported from their home in
+// server/utils/brandingTheme.js. Exported so the drift guard in
+// server/test/brandingTheme.test.js reads the constant the server actually
+// serves rather than re-typing the hex values — a test that re-typed them would
+// go on passing while the two copies diverged, which is exactly how
+// BrandingPreview.jsx ended up three colours away from the server with nothing
+// failing. Already frozen at its source.
+router.ROOFMILES_DEFAULTS = ROOFMILES_DEFAULTS;
 
 module.exports = router;

@@ -14,35 +14,18 @@ const { resendShouldRetry, jobberShouldRetry, anthropicShouldRetry } = require('
 const { refreshTokenIfNeeded, getContractorAccessToken } = require('../../crm/jobber');
 const multer = require('multer');
 const Papa = require('papaparse');
-const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+// S3Client is no longer constructed here — getMediaS3Client() below owns it.
+const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const { deriveOptOutType } = require('../../utils/adminHelpers');
 const { applyTag, backfillTagsForContacts } = require('../../utils/tags');
 const { evaluateAudience } = require('../../cron/jobs/dynamicAudiences');
 
-// Lazy initializer — reads env vars at call time, not at module load, to avoid ERR_INVALID_URL on startup
-let _mediaS3Client = null;
-function getMediaS3Client() {
-  if (!_mediaS3Client) {
-    const endpoint = process.env.B2_ENDPOINT;
-    if (!endpoint) throw new Error('B2_ENDPOINT is not set');
-    _mediaS3Client = new S3Client({
-      endpoint,
-      credentials: {
-        accessKeyId: process.env.B2_MEDIA_KEY_ID,
-        secretAccessKey: process.env.B2_MEDIA_APPLICATION_KEY,
-      },
-      region: 'us-east-005',
-      forcePathStyle: true,
-    });
-  }
-  return _mediaS3Client;
-}
-function buildB2PublicUrl(b2Key) {
-  const base = process.env.B2_PUBLIC_URL_BASE
-    || `https://f005.backblazeb2.com/file/${process.env.B2_MEDIA_BUCKET_NAME}`;
-  return `${base}/${b2Key}`;
-}
+// Moved to server/utils/b2Media.js in C/DL-2 Phase 3b — the logo-upload endpoint
+// became a second caller, and the credential names, endpoint, region and
+// public-URL base must agree between callers or objects land in one bucket and
+// are served from another.
+const { getMediaS3Client, buildB2PublicUrl } = require('../../utils/b2Media');
 
 // ── CAMPAIGN SEND HELPERS ─────────────────────────────────────────────────────
 

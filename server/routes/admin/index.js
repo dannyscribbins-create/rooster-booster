@@ -23,6 +23,8 @@ const { generateSlug, buildInviteUrl } = require('../../utils/inviteTokens');
 const { getInviteHostSlug } = require('../../utils/contractorSlug');
 
 const bcrypt = require('bcrypt');
+const multer = require('multer');
+const { buildB2PublicUrl, hasMediaCredentials, putMediaObject } = require('../../utils/b2Media');
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -570,6 +572,7 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
       `SELECT contractor_id, company_name, company_phone, company_email, company_url,
               company_address, company_city, company_state, company_zip, company_country,
               logo_url, app_logo_url, primary_color, secondary_color, accent_color,
+              landing_bg_color,
               social_facebook, social_instagram, social_google, social_nextdoor, social_website,
               review_url, review_button_text, review_message,
               font_heading, font_body, app_display_name, tagline,
@@ -578,28 +581,54 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
       [contractorId]
     );
     if (result.rows.length === 0) {
+      // ── ZERO-ROW FALLBACK — NEUTRAL, NEVER ANOTHER CONTRACTOR'S BRAND ───────
+      // Until C/DL-2 Phase 3b this block returned Accent Roofing's literals:
+      // their company name, phone, leaksmith.com address, website, Google review
+      // URL and '/AccentRoofing-Logo-White.png'. It was the last hardcoded-tenant
+      // surface on the admin side, and the direct sibling of the CONTRACTOR_NAME
+      // constant Phase 2a removed from the public side.
+      //
+      // THIS WAS MORE THAN COSMETIC, and that is the reason it had to go now
+      // rather than at leisure: the admin Branding form LOADS THIS PAYLOAD AS ITS
+      // INITIAL STATE AND PUTS IT BACK ON SAVE. Contractor #2 opening Branding and
+      // changing one field would have PERSISTED Accent's name, phone and logo into
+      // their own contractor_settings row — and from there into their outbound
+      // email sender name and footer, and onto their public landing page. A
+      // display bug that writes itself into the database is a data bug.
+      //
+      // Everything carrying tenant IDENTITY is null. What remains is either
+      // platform design tokens (the two fonts named in CLAUDE.md's Brand
+      // Standards) or generic non-identifying copy, none of which names anyone.
+      // company_name falls back to the contractor's OWN name — contractors.name is
+      // NOT NULL, so this is always available, and it is the same middle step
+      // loadContractorBranding uses (referrer.js). That way the first save
+      // persists their identity, not a placeholder and not somebody else's.
+      const own = await pool.query('SELECT name FROM contractors WHERE id = $1', [contractorId]);
       return res.json({
         contractor_id: contractorId,
-        company_name: 'Accent Roofing Service',
-        company_phone: '770-277-4869',
-        company_email: 'contact@leaksmith.com',
-        company_url: 'accentroofingservice.com',
+        company_name: own.rows[0]?.name || null,
+        company_phone: null,
+        company_email: null,
+        company_url: null,
         company_address: null, company_city: null, company_state: null,
         company_zip: null, company_country: 'US',
-        logo_url: '/AccentRoofing-Logo-White.png',
+        // No default logo, deliberately: a placeholder borrowed from another
+        // contractor is a white-label breach, not a fallback.
+        logo_url: null,
         app_logo_url: null,
         primary_color: null, secondary_color: null, accent_color: null,
+        landing_bg_color: null,
         social_facebook: null, social_instagram: null, social_google: null,
         social_nextdoor: null, social_website: null,
-        review_url: 'https://g.page/r/CbtYNjHgUCwhEBM/review',
+        review_url: null,
         review_button_text: 'Leave a Review',
-        review_message: 'Enjoying the rewards? Leave us a quick Google review!',
+        review_message: 'Enjoying the rewards? Leave us a quick review!',
         font_heading: 'Montserrat',
         font_body: 'Roboto',
-        app_display_name: 'Rooster Booster',
+        app_display_name: null,
         tagline: 'Refer your neighbors. Earn cash rewards.',
-        email_sender_name: 'Accent Roofing Service',
-        email_footer_text: 'Accent Roofing Service · Powered by Rooster Booster',
+        email_sender_name: null,
+        email_footer_text: null,
         created_at: null, updated_at: null,
       });
     }
@@ -619,6 +648,17 @@ router.put('/api/admin/settings', requirePermission('branding.manage'), async (r
     company_address, company_city, company_state, company_zip, company_country,
     logo_url, app_logo_url,
     primary_color, secondary_color, accent_color,
+    // C/DL-2 Phase 3b. WIRED INTO GET IN THE SAME CHANGE, and that pairing is not
+    // optional. This statement is a full-row upsert: every column below is written
+    // on every call, with an absent key mapping to NULL. The admin Branding form
+    // saves by sending the GET response merged with form state — so a column
+    // present HERE but absent from GET is destroyed the first time an admin saves
+    // anything at all. Adding landing_bg_color to this list alone would have been
+    // strictly worse than doing nothing: a contractor who set their landing
+    // background and later edited their phone number would silently lose it.
+    // Pinned by 'saving an unrelated branding field does not wipe an existing
+    // landing_bg_color' in server/test/adminSettingsBranding.test.js.
+    landing_bg_color,
     social_facebook, social_instagram, social_google, social_nextdoor, social_website,
     review_url, review_button_text, review_message,
     font_heading, font_body, app_display_name, tagline,
@@ -635,8 +675,9 @@ router.put('/api/admin/settings', requirePermission('branding.manage'), async (r
          review_url, review_button_text, review_message,
          font_heading, font_body, app_display_name, tagline,
          email_sender_name, email_footer_text,
+         landing_bg_color,
          updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,NOW())
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,NOW())
        ON CONFLICT (contractor_id) DO UPDATE SET
          company_name=$2, company_phone=$3, company_email=$4, company_url=$5,
          company_address=$6, company_city=$7, company_state=$8, company_zip=$9, company_country=$10,
@@ -646,6 +687,7 @@ router.put('/api/admin/settings', requirePermission('branding.manage'), async (r
          review_url=$21, review_button_text=$22, review_message=$23,
          font_heading=$24, font_body=$25, app_display_name=$26, tagline=$27,
          email_sender_name=$28, email_footer_text=$29,
+         landing_bg_color=$30,
          updated_at=NOW()
        RETURNING *`,
       [
@@ -657,6 +699,7 @@ router.put('/api/admin/settings', requirePermission('branding.manage'), async (r
         review_url, review_button_text, review_message,
         font_heading, font_body, app_display_name, tagline,
         email_sender_name, email_footer_text,
+        landing_bg_color,
       ]
     );
     res.json({ success: true, settings: result.rows[0] });
@@ -665,6 +708,191 @@ router.put('/api/admin/settings', requirePermission('branding.manage'), async (r
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ── ADMIN: CONTRACTOR LOGO UPLOAD (C/DL-2 Phase 3b) ───────────────────────────
+// Before this endpoint there was no way to get a logo into the product at all.
+// The "Brand Color Detection" drop zone in the admin Branding page is an
+// in-browser eyedropper — it reads pixels off a canvas to suggest colours and
+// persists nothing. LP §5's "Admin upload (B2, same pipeline as email media)"
+// described work that did not exist.
+//
+// COLUMN: logo_url, reused. NOT app_logo_url — that column is the second term of
+// three email fallback chains, and redefining it would silently change what
+// those emails render.
+
+// The declared bound and whitelist. Exported (below, with the router) so the
+// suite reads them rather than hardcoding numbers that would break on any tune —
+// the convention referrer.js already uses for LANDING_RESOLVE_LIMIT and
+// RESEND_CODE_LIMIT.
+//
+// ITS OWN LIMIT, not the campaigns router's shared 10MB `upload` instance.
+// Reusing that instance would let a 10MB file be buffered into memory before a
+// single line of handler code runs. A logo is a header image displayed ~180px
+// wide; megabytes of it are a memory-pressure primitive, not a brand asset.
+const LOGO_MIME_EXT = Object.freeze({
+  'image/png':  'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+});
+const LOGO_UPLOAD_LIMIT = Object.freeze({
+  maxBytes: 2 * 1024 * 1024,
+  mimeTypes: Object.freeze(Object.keys(LOGO_MIME_EXT)),
+});
+
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: LOGO_UPLOAD_LIMIT.maxBytes, files: 1 },
+});
+
+// Wraps multer so its own errors become clean client errors. Left unwrapped, a
+// LIMIT_FILE_SIZE propagates to expressErrorHandler and is answered 500 —
+// reporting the caller's oversized file as a server fault and filing an
+// error_log row for it.
+function logoUploadMiddleware(req, res, next) {
+  logoUpload.single('logo')(req, res, err => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      const mb = Math.round(LOGO_UPLOAD_LIMIT.maxBytes / (1024 * 1024));
+      return res.status(413).json({ error: `Logo must be ${mb}MB or smaller.` });
+    }
+    return res.status(400).json({ error: 'Could not read the uploaded file. Attach one image in the "logo" field.' });
+  });
+}
+
+// Returns the mime type the BYTES actually are, or null if they are none of the
+// three accepted formats. Signatures per each format's own spec:
+//
+//   PNG   89 50 4E 47 0D 0A 1A 0A          — the 8-byte signature, PNG spec §5.2
+//   JPEG  FF D8 FF                          — SOI marker followed by the first marker
+//   WEBP  'RIFF' ....  'WEBP'               — RIFF container, format tag at offset 8
+//
+// WHY THIS EXISTS, given the key-extension derivation below already makes a
+// mislabelled file harmless. It is NOT closing an exploit. An SVG stored under a
+// .png key is served by Backblaze as image/png, and no browser sniffs SVG out of
+// a declared image/png — the markup is inert wherever it is opened.
+//
+// What it closes is a GUARANTEE GAP. Without it, "the media bucket contains only
+// real images" was true by convention rather than by construction: any bytes at
+// all could be parked at a PUBLIC, PERMANENT URL under an image content type,
+// because the only thing consulted was a Content-Type header the client wrote.
+// That is a poor property to leave undefended on a surface nobody re-checks
+// later, and it costs twelve bytes of comparison to make it real.
+function detectImageMime(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    return 'image/png';
+  }
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (buffer.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      buffer.subarray(8, 12).toString('latin1') === 'WEBP') {
+    return 'image/webp';
+  }
+  return null;
+}
+
+// Builds the storage key from server-controlled parts only.
+//
+// THE ORIGINAL FILENAME NEVER REACHES THE KEY INTACT, and neither does its
+// extension. Two separate reasons:
+//
+//   TRAVERSAL — the filename is admin-supplied. Left raw, '../../evil.png'
+//   writes outside this contractor's prefix: over another contractor's logo, or
+//   over a backup path in the same bucket. Everything up to the last separator
+//   is dropped, then everything outside [a-z0-9] is collapsed, so no dot pair
+//   can survive into the key.
+//
+//   THE EXTENSION DECIDES THE CONTENT-TYPE B2 SERVES, which is what actually
+//   determines whether a browser treats the stored object as an inert image or
+//   as a document. So it is taken from the VALIDATED mime type, never from the
+//   name. A file called 'logo.svg' declared image/png is stored as '.png' and is
+//   served as an image whatever it contains.
+function buildLogoKey(contractorId, originalName, mimeType) {
+  const base = String(originalName || '').replace(/^.*[\\/]/, '');   // drop any path
+  const stem = base.replace(/\.[^.]*$/, '');                          // drop the extension
+  const safeStem = stem.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'logo';
+  const ext = LOGO_MIME_EXT[mimeType];
+  return `logos/${contractorId}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeStem}.${ext}`;
+}
+
+router.post('/api/admin/branding/logo',
+  requirePermission('branding.manage'),
+  logoUploadMiddleware,
+  async (req, res) => {
+    const adminSession = await verifyAdminSession(req, res);
+    if (!adminSession) return;
+    const { contractorId } = adminSession;
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+
+      // ── SVG IS EXCLUDED, DELIBERATELY, AND MUST STAY EXCLUDED ──────────────
+      // SVG is an XML document that may carry <script>, foreignObject and
+      // external entity references. Inside an <img> tag a browser refuses to
+      // execute any of it, which is why "SVG logos are fine" is true for the page
+      // itself and is the reasoning that will be offered for re-adding it.
+      //
+      // It is not true HERE, because the file does not stay inside an <img>. It
+      // is stored at a PUBLIC Backblaze URL, and that URL can be navigated to
+      // directly. On direct navigation the browser treats image/svg+xml as a
+      // document, in the origin that serves it, and every script in it runs. The
+      // contents are attacker-influenced by construction: this endpoint's whole
+      // job is to accept a file an admin supplies. That amends LP §4's "PNG/SVG"
+      // allowance.
+      //
+      // Anyone reading this before widening the whitelist: the question to answer
+      // is not "is it safe in an <img>" but "is it safe when someone opens the B2
+      // URL in a tab". Same for any other markup-bearing type — SVGZ, XML, HTML.
+      if (!LOGO_UPLOAD_LIMIT.mimeTypes.includes(req.file.mimetype)) {
+        return res.status(400).json({ error: 'Logo must be a PNG, JPEG or WEBP image.' });
+      }
+
+      // THE DECLARED CONTENT-TYPE IS CLIENT-SUPPLIED, so the whitelist above is a
+      // statement of intent, not a control — anything at all can arrive labelled
+      // image/png. The bytes are checked against the label, and they have to
+      // agree. See detectImageMime() for why this is a guarantee rather than a
+      // patched exploit.
+      if (detectImageMime(req.file.buffer) !== req.file.mimetype) {
+        return res.status(400).json({ error: 'That file is not a valid PNG, JPEG or WEBP image.' });
+      }
+
+      if (!hasMediaCredentials()) {
+        return res.status(500).json({ error: 'Media storage is not configured.' });
+      }
+
+      const b2Key = buildLogoKey(contractorId, req.file.originalname, req.file.mimetype);
+      const publicUrl = buildB2PublicUrl(b2Key);
+
+      // STORE FIRST, PERSIST SECOND. The reverse order leaves logo_url pointing
+      // at an object that was never written — every surface renders a broken
+      // image, the admin is told the save succeeded, and nothing is logged.
+      await putMediaObject({
+        key: b2Key,
+        body: req.file.buffer,
+        contentType: req.file.mimetype,
+        contentLength: req.file.size,
+      });
+
+      // TENANCY. contractorId comes from verifyAdminSession and from nowhere
+      // else — never the body, a query param, or the filename. This ON CONFLICT
+      // target IS the guard: one statement, one predicate, so no future call site
+      // can forget it. A logo is the most visible brand asset there is, and
+      // writing it to the wrong row puts one roofer's mark on another roofer's
+      // homeowner-facing page.
+      await pool.query(
+        `INSERT INTO contractor_settings (contractor_id, logo_url, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (contractor_id) DO UPDATE SET logo_url = EXCLUDED.logo_url, updated_at = NOW()`,
+        [contractorId, publicUrl]
+      );
+
+      res.json({ success: true, logo_url: publicUrl });
+    } catch (err) {
+      await logError({ req, error: err, source: 'POST /api/admin/branding/logo' });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
 
 // ── ADMIN: NOTIFICATION SETTINGS ─────────────────────────────────────────────
 router.get('/api/admin/notification-settings', requirePermission('branding'), async (req, res) => {
@@ -1809,6 +2037,12 @@ router.get('/api/admin/jobber-import-status', requirePermission('integrations'),
   if (!await verifyAdminSession(req, res)) return;
   res.json(importState);
 });
+
+// Logo upload bound and MIME whitelist. Exported and already frozen so the suite
+// reads the endpoint's own limits rather than hardcoding them, and so a caller
+// cannot tune the live multer instance by mutating the object it was built from.
+// Same convention as referrer.js's LANDING_RESOLVE_LIMIT / RESEND_CODE_LIMIT.
+router.LOGO_UPLOAD_LIMIT = LOGO_UPLOAD_LIMIT;
 
 module.exports = router;
 
