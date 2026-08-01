@@ -28,6 +28,7 @@ const {
   redeemToken,
   recordScanEvent,
 } = require('../utils/inviteTokens');
+const { resolveHostToContractor } = require('../utils/contractorSlug');
 
 // test seam — inert in production, never called outside server/test/
 // Only the cashout-section call sites below use these overrides.
@@ -132,6 +133,27 @@ const verifyEmailLimiter = rateLimit({
   message: { error: 'Too many verification attempts. Please wait 15 minutes.' }
 });
 
+// ── PUBLIC LANDING RESOLUTION LIMIT (C/DL-2 Phase 2a) ─────────────────────────
+// The one endpoint on this router that takes unauthenticated internet traffic AND
+// performs a write (recordScanEvent), so it needs its own limiter.
+//
+// 30 per 5 minutes per IP. Sized against the shape of the traffic, not by analogy:
+// a single QR scan produces a handful of loads (scan, reload, the browser's
+// prefetch), and a jobsite crew can legitimately share one cell hotspot behind a
+// single NAT address — so a tighter bound would rate-limit real customers. It is
+// still far below what a scraper walking the token space would need.
+//
+// EXPORTED as a plain object (see the bottom of this file) so the test suite reads
+// the threshold instead of hardcoding it, and tuning these numbers cannot break a
+// test.
+const LANDING_RESOLVE_LIMIT = { windowMs: 5 * 60 * 1000, max: 30 };
+
+const landingResolveLimiter = rateLimit({
+  windowMs: LANDING_RESOLVE_LIMIT.windowMs,
+  max: LANDING_RESOLVE_LIMIT.max,
+  message: { error: 'Too many requests. Please wait a few minutes and try again.' }
+});
+
 // ── WARMUP ENTRIES ────────────────────────────────────────────────────────────
 // Must stay in sync with src/constants/shouts.js WARMUP_ENTRIES.
 // Kept server-side to avoid a runtime import of an ES module from CommonJS.
@@ -148,8 +170,124 @@ const WARMUP_ENTRIES_SERVER = [
   { id: "warmup_10", firstName: "Tarence",  lastName: "Tack",      referralCount: 2,  earnings: 1100,  shout: "Staying sharp." },
 ];
 
-// MVP: move to env var (CONTRACTOR_NAME) or DB lookup for multi-contractor support at FORA scale
-const CONTRACTOR_NAME = 'Accent Roofing Service';
+// ── LANDING PAGE BRANDING (C/DL-2 Phase 2a) ───────────────────────────────────
+// Replaces the module constant CONTRACTOR_NAME = 'Accent Roofing Service', which
+// was the platform's last hardcoded tenant identity on a public surface (Phase 0
+// finding C9). Every value below is now read from contractor_settings, keyed by
+// the TOKEN's contractor_id — never by the hostname and never by a client field.
+
+// RoofMiles fallback tokens (LP §5). Any NULL branding column resolves to these so
+// a brand-new contractor has a decent page before uploading anything.
+const ROOFMILES_DEFAULTS = Object.freeze({
+  companyName:     'RoofMiles',
+  primaryColor:    '#F26A1B',
+  secondaryColor:  '#1C2D4D',
+  backgroundColor: '#FFFFFF',
+});
+
+// Loads one contractor's public branding block, or null if the contractor is gone.
+//
+// REUSES primary_color / secondary_color / logo_url. The brand_* columns LP §5
+// listed as "NEW" do not exist and must not be referenced — two competing colour
+// sources on one table is the failure mode that decision avoided.
+//
+// `c.id = $1` IS THE TENANCY PREDICATE, and it is the whole reason this function
+// exists instead of an inline query: one contractor's landing page must never be
+// able to render another's name, colours or logo. It lives here so that this
+// function, not each call site, is the enforcement seam.
+//
+// ADDRESS IS OMITTED, NOT NULLED, when company_address IS NULL (LP-1). The page
+// decides whether to draw the contact row by the key's presence, so a null would
+// render an empty row where no row belongs.
+async function loadContractorBranding(db, contractorId) {
+  const { rows } = await db.query(
+    `SELECT c.slug, c.name AS contractor_name,
+            s.company_name, s.app_display_name,
+            s.primary_color, s.secondary_color, s.landing_bg_color, s.logo_url,
+            s.company_phone, s.company_email, s.company_address
+       FROM contractors c
+       LEFT JOIN contractor_settings s ON s.contractor_id = c.id
+      WHERE c.id = $1`,
+    [contractorId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+
+  const branding = {
+    slug:            row.slug,
+    // THREE-STEP CHAIN, and the middle step is load-bearing. contractors.name is
+    // NOT NULL, so a contractor that has never opened the Branding settings page
+    // still gets its own name rather than the platform's — which matters most on
+    // the signup verification email, where 'RoofMiles' in place of the roofer's
+    // name would read as a phishing attempt to the homeowner receiving it.
+    companyName:     row.company_name || row.contractor_name || ROOFMILES_DEFAULTS.companyName,
+    programName:     row.app_display_name  || null,
+    primaryColor:    row.primary_color     || ROOFMILES_DEFAULTS.primaryColor,
+    secondaryColor:  row.secondary_color   || ROOFMILES_DEFAULTS.secondaryColor,
+    backgroundColor: row.landing_bg_color  || ROOFMILES_DEFAULTS.backgroundColor,
+    // No default logo, deliberately: a placeholder borrowed from another
+    // contractor would be a white-label breach, not a fallback.
+    logoUrl:         row.logo_url          || null,
+    phone:           row.company_phone     || null,
+    email:           row.company_email     || null,
+  };
+  if (row.company_address) branding.address = row.company_address;
+  return branding;
+}
+
+// Renders a full name as first name + last initial — 'Daniel Zylkiewicz' becomes
+// 'Daniel Z.'. Returns null for anything unusable.
+//
+// THE REDACTION HAPPENS HERE, SERVER-SIDE, and that placement is the point: LP §7
+// requires that the full last name is never SENT to the page, not merely never
+// displayed by it. A page that receives the full name has already leaked it,
+// whatever it chooses to render.
+//
+// A single-word name degrades to itself — there is no initial to take, and
+// inventing one would be worse than showing the mononym.
+function toChipName(fullName) {
+  if (typeof fullName !== 'string') return null;
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
+}
+
+// Resolves the referrer chip for a token, or null when there is no chip to show.
+//
+// CHIP RULES BY link_type, and the absence cases matter as much as the presence:
+//   peer  — owned by a referrer (users.full_name).       Chip.
+//   rep   — owned by a field rep (team_members.full_name). Chip.
+//   contractor — general marketing, no personal owner.   NEVER a chip.
+//
+// Degrades to null rather than to a partial chip when the owner row is gone.
+// created_by_user_id and owner_team_member_id are both ON DELETE SET NULL, and
+// production already carries peer rows with a NULL owner, so an ownerless token is
+// an ordinary case and must stay a valid link.
+//
+// The `contractor_id = $2` predicate on both lookups is defence in depth: the
+// token already fixes the tenant, and this makes a cross-tenant owner join
+// impossible even if that ever stopped being true.
+async function loadReferrerChip(db, token) {
+  let fullName = null;
+
+  if (token.link_type === 'peer' && token.created_by_user_id) {
+    const { rows } = await db.query(
+      `SELECT full_name FROM users WHERE id = $1 AND contractor_id = $2`,
+      [token.created_by_user_id, token.contractor_id]
+    );
+    fullName = rows[0]?.full_name ?? null;
+  } else if (token.link_type === 'rep' && token.owner_team_member_id) {
+    const { rows } = await db.query(
+      `SELECT full_name FROM team_members WHERE id = $1 AND contractor_id = $2`,
+      [token.owner_team_member_id, token.contractor_id]
+    );
+    fullName = rows[0]?.full_name ?? null;
+  }
+
+  const displayName = toChipName(fullName);
+  return displayName ? { displayName } : null;
+}
 
 // ── BADGE AWARD HELPER ────────────────────────────────────────────────────────
 // Called after every pipeline sync. Checks pipeline_sync-triggered badges and
@@ -188,31 +326,98 @@ async function checkAndAwardBadges(userId, totalReferralCount) {
   return newlyAwarded;
 }
 
-// ── SELF-SERVE SIGNUP: INVITE LINK VALIDATION ─────────────────────────────────
-// This is the SPA's validation call when someone opens a link carrying a slug
-// (src/App.js:79-82), so it is also the closest thing the product has today to a
-// landing-page load — which is what CD-16 defines as a detectable scan event.
-router.get('/api/invite/:slug', async (req, res) => {
+// ── PUBLIC LANDING RESOLUTION ─────────────────────────────────────────────────
+// The call the landing page makes to learn who it is rendering for. Also the SPA's
+// invite validation call today (src/App.js:79-82), which is why contractorName
+// stays at the TOP LEVEL of the payload alongside the full branding block — the
+// SPA reads data.contractorName and Phase 3 owns the UI.
+//
+// TWO MOUNTS, ONE HANDLER, ONE LIMITER:
+//   GET /api/invite/:slug   a token — "invite" mode
+//   GET /api/invite         no token — "marketing" mode
+// The second mount is what makes a bare subdomain a first-class valid page rather
+// than a 404: accent.roofmiles.com with no token is contractor-marketing mode, and
+// a contractor's subdomain alone is a usable marketing asset (LP §6.4).
+//
+// THE TOKEN IS THE TENANCY AUTHORITY; THE SUBDOMAIN IS COSMETIC ROUTING. Every
+// contractor-scoped value below is read from the TOKEN ROW's contractor_id. The
+// hostname's only jobs are selecting branding when there is no token at all, and
+// being checked for agreement when there is one.
+//
+// A landing-page load against an unredeemed token is a detectable scan event
+// (CD-16) — unchanged from C/DL-1, and deliberately recorded only AFTER the
+// mismatch check, so a tampering attempt never writes to the roster.
+router.get(['/api/invite', '/api/invite/:slug'], landingResolveLimiter, async (req, res) => {
   try {
+    // Cosmetic only. req.hostname is reliable here because server/app.js sets
+    // `trust proxy 1`. Null is an ordinary outcome — apex, localhost, unknown or
+    // reserved subdomain — and never an error.
+    const hostContractor = await resolveHostToContractor(pool, req.hostname);
+    const slug = req.params.slug;
+
+    // ── MARKETING MODE — a bare subdomain, no token ──────────────────────────
+    // Valid, not State 0. Pure read: there is no token here, so nothing is
+    // recorded and nothing is written.
+    if (!slug) {
+      if (!hostContractor) return res.json({ valid: false });
+      const branding = await loadContractorBranding(pool, hostContractor.id);
+      if (!branding) return res.json({ valid: false });
+
+      return res.json({
+        valid: true,
+        mode: 'marketing',
+        contractorId: hostContractor.id,
+        contractorName: branding.companyName,
+        contractor: branding,
+      });
+    }
+
+    // ── INVITE MODE — a token ────────────────────────────────────────────────
     // resolveToken adds the expiry check the inline query never had: a token is
     // resolvable only while active AND unexpired.
-    const token = await resolveToken(pool, req.params.slug);
+    const token = await resolveToken(pool, slug);
     if (!token) return res.json({ valid: false });
+
+    // MISMATCH RULE (binding). Two sources of truth actively disagreeing happens
+    // only through tampering or miswiring, so TRUST NEITHER — not the token, not
+    // the subdomain. Preferring the token would make the subdomain decorative in
+    // the one case where its disagreement is the entire signal.
+    //
+    // The rejection is a bare { valid: false } carrying no branding from EITHER
+    // side. LP §2 State 0's "contractor branding if the slug resolved" governs the
+    // ordinary invalid case — an expired or unknown token, where the subdomain is
+    // the only signal present and nothing is in conflict. A mismatch is different
+    // in kind, and rendering the host's branding would confirm to a prober that
+    // that subdomain resolves to a real contractor. (Ruling: C/DL-2 Phase 2a;
+    // LP §2 amended accordingly.)
+    if (hostContractor && hostContractor.id !== token.contractor_id) {
+      return res.json({ valid: false });
+    }
 
     // Telemetry, never a gate. A failed scan record costs a roster row; a 500
     // here would cost the homeowner their signup. Logged and swallowed on purpose.
     try {
-      await recordScanEvent(pool, req.params.slug);
+      await recordScanEvent(pool, slug);
     } catch (scanErr) {
       await logError({ req, error: scanErr, source: 'GET /api/invite/:slug — scan event' });
     }
 
-    res.json({
+    // Branding by the TOKEN's contractor, never the host's.
+    const branding = await loadContractorBranding(pool, token.contractor_id);
+    const payload = {
       valid: true,
-      contractorName: CONTRACTOR_NAME,
+      mode: 'invite',
       contractorId: token.contractor_id,
+      contractorName: branding ? branding.companyName : ROOFMILES_DEFAULTS.companyName,
       linkType: token.link_type,
-    });
+    };
+    if (branding) payload.contractor = branding;
+
+    // Absent, never null: the page draws the chip by the key's presence.
+    const chip = await loadReferrerChip(pool, token);
+    if (chip) payload.referrer = chip;
+
+    res.json(payload);
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/invite/:slug' });
     // Was `err.message` — leaked internals to the client (Security Standards).
@@ -354,15 +559,30 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
       [newUserId, code, expiresAt]
     );
 
-    // Send verification email via Resend
+    // Send verification email via Resend.
+    //
+    // WHITE-LABELED (C/DL-2 Phase 2a). This was the second consumer of the
+    // hardcoded CONTRACTOR_NAME constant, and the more damaging of the two: every
+    // future contractor's homeowners would have been welcomed to a different
+    // roofer's rewards program. The name comes from the same loader the landing
+    // page uses, keyed by the TOKEN row's contractor — never a client field.
+    //
+    // TWO FORMS, and mixing them is a real bug rather than a nicety: the HTML body
+    // needs escapeHtml because the name is admin-sourced text landing in markup,
+    // but the SUBJECT is plain text, where escaping would turn "Smith & Sons" into
+    // "Smith &amp; Sons" in the recipient's inbox.
+    const signupBranding = await loadContractorBranding(pool, link.contractor_id);
+    const signupCompanyName = signupBranding ? signupBranding.companyName : ROOFMILES_DEFAULTS.companyName;
+    const signupCompanyNameHtml = escapeHtml(signupCompanyName);
+
     await retryWithBackoff(
       () => resend.emails.send({
         from: 'Rooster Booster <noreply@roofmiles.com>',
         to: email,
-        subject: `Your ${CONTRACTOR_NAME} rewards account — verify your email`,
+        subject: `Your ${signupCompanyName} rewards account — verify your email`,
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
-          <h2 style="color:#012854;margin:0 0 8px;">Welcome to ${CONTRACTOR_NAME}'s rewards program!</h2>
+          <h2 style="color:#012854;margin:0 0 8px;">Welcome to ${signupCompanyNameHtml}'s rewards program!</h2>
           <p style="color:#444;margin:0 0 24px;line-height:1.6;">
             You're almost in. Enter the verification code below to activate your account.
           </p>
@@ -2398,5 +2618,11 @@ function _resetTestOverrides() {
 }
 router._setTestOverrides  = _setTestOverrides;
 router._resetTestOverrides = _resetTestOverrides;
+
+// Public landing limiter configuration. Exported so the suite reads the threshold
+// rather than hardcoding it — tuning these numbers must never break a test.
+// Read-only by contract; frozen so a caller cannot tune the live limiter by
+// mutating the object it was built from.
+router.LANDING_RESOLVE_LIMIT = Object.freeze({ ...LANDING_RESOLVE_LIMIT });
 
 module.exports = router;

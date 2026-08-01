@@ -24,6 +24,12 @@
 //               its first invite link. After that it is frozen, because printed
 //               QR codes and texted links already carry it and cannot be recalled.
 //
+//   HOST        (C/DL-2 Phase 2a) A request's Host header resolves to a contractor
+//               through extractSlugFromHost + resolveHostToContractor below. THE
+//               SUBDOMAIN IS COSMETIC ROUTING AND CARRIES NO AUTHORITY: it selects
+//               branding, and nothing more. The token row is the tenancy authority
+//               for every contractor-scoped read and write.
+//
 // NO INTERNAL try/catch — this follows the shared-util exemption ratified in
 // C/DL-1 (see the identical note in server/utils/inviteTokens.js). isSlugMutable
 // deliberately lets PostgreSQL errors propagate instead of wrapping them and
@@ -170,6 +176,99 @@ async function isSlugMutable(db, contractorId) {
   return rows[0].has_links === false;
 }
 
+// Reads the contractor slug out of a request's Host header, or null.
+//
+// PURE — no database, no I/O. The DB half is resolveHostToContractor below.
+//
+// TOTAL FUNCTION, for the same reason isValidSlugFormat is one, only more so: a
+// Host header is attacker-controlled input arriving at an HTTP boundary. A throw
+// here is a 500 on a public marketing page where "neutral branding" was the
+// correct answer. Every rejection path returns null.
+//
+// THE LABEL-COUNT RULE. A host needs MORE THAN TWO labels to carry a subdomain at
+// all. 'roofmiles.com' is two — the bare apex, which per spec amendment A7 belongs
+// to the marketing site and is never a contractor. 'localhost' is one. Without
+// this rule the apex would read its own second-level label ('roofmiles') as a
+// contractor slug and hand the marketing site to whoever registered that slug.
+//
+// Reuses isValidSlugFormat and isReservedSlug rather than re-testing the shape
+// inline, so a host can never resolve to something the onboarding endpoint would
+// have refused to issue. The reserved check is what keeps www./api./admin. with
+// the platform even if a hand-written SQL statement ever parks one of those in
+// contractors.slug — the column has a UNIQUE index but no CHECK constraint.
+//
+// DELIBERATELY NOT case-preserving: Host headers are case-insensitive by RFC and
+// real clients send mixed case, so a case-sensitive compare would 404 a
+// contractor's own printed QR code.
+function extractSlugFromHost(host) {
+  if (typeof host !== 'string') return null;
+
+  let h = host.trim().toLowerCase();
+  if (h === '') return null;
+
+  // Bracketed IPv6 literal — no subdomain to read.
+  if (h.startsWith('[')) return null;
+
+  // Strip the port. Express already strips it from req.hostname, but this
+  // function is also called directly and local development uses localhost:4000.
+  const colon = h.indexOf(':');
+  if (colon !== -1) h = h.slice(0, colon);
+
+  // Fully-qualified names may carry a trailing root dot.
+  if (h.endsWith('.')) h = h.slice(0, -1);
+
+  // Bare IPv4. Same exclusion buildInviteUrl makes for the hosts that cannot
+  // carry a contractor subdomain — without it '192.168.1.10' would offer '192'
+  // as a candidate slug.
+  if (/^[\d.]+$/.test(h)) return null;
+
+  const labels = h.split('.');
+  if (labels.length <= 2) return null;
+
+  const candidate = labels[0];
+  if (!isValidSlugFormat(candidate)) return null;
+  if (isReservedSlug(candidate)) return null;
+  return candidate;
+}
+
+// Resolves a Host header to { id, slug }, or null.
+//
+// NULL IS A VALID OUTCOME, NOT AN ERROR, and three different situations produce
+// it: the host carries no subdomain (apex, localhost), the label is not a legal or
+// is a reserved slug, or no contractor holds it. All three mean the same thing to
+// the caller — "no contractor branding from the host" — so they are deliberately
+// not distinguished. A caller that needs to tell them apart is reading authority
+// into the hostname, which it does not have.
+//
+// READ-ONLY by contract, and it runs on unauthenticated internet traffic.
+//
+// NO try/catch, per the shared-util exemption documented in the header: a failed
+// query propagates to the route handler's own catch, which runs logError(). A
+// swallowed error here would return null — indistinguishable from "unknown host"
+// — and quietly serve a neutral page during a database incident.
+//
+// NOT FILTERED ON contractors.status. Whether a deactivated contractor's subdomain
+// keeps serving its branding is a product decision nobody has made; adding the
+// predicate here would make it silently, and in the wrong place. The landing page
+// is a read-only marketing surface either way.
+//
+// `db` may be a pool or a checked-out client, matching resolveToken and
+// isSlugMutable.
+async function resolveHostToContractor(db, host) {
+  const slug = extractSlugFromHost(host);
+  if (!slug) return null;
+
+  // Exact match, not LOWER(slug): extractSlugFromHost has already lowercased the
+  // candidate, and wrapping the column in a function would make the UNIQUE index
+  // on contractors.slug unusable for this lookup — which runs on every public
+  // landing-page load.
+  const { rows } = await db.query(
+    `SELECT id, slug FROM contractors WHERE slug = $1`,
+    [slug]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   RESERVED_SLUGS,
   SLUG_PATTERN,
@@ -177,4 +276,6 @@ module.exports = {
   isReservedSlug,
   validateSlug,
   isSlugMutable,
+  extractSlugFromHost,
+  resolveHostToContractor,
 };
