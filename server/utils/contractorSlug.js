@@ -269,13 +269,63 @@ async function resolveHostToContractor(db, host) {
   return rows[0] || null;
 }
 
+// The neutral subdomain label used when a contractor has no slug of its own
+// (spec amendment A7). It is in RESERVED_SLUGS above precisely so that no
+// contractor can ever be issued a slug that collides with it.
+const INVITE_FALLBACK_SLUG = 'go';
+
+// Resolves the subdomain label a contractor's PUBLIC invite URLs render on.
+// The return value is fed straight to buildInviteUrl's contractorSlug option.
+//
+// THIS FUNCTION EXISTS TO BE THE ONLY PLACE THAT ANSWERS THIS QUESTION, because
+// the answer is one column away from a permanent mistake. Every one of the five
+// generators has `contractor_id` already in scope and needs `contractors.slug` —
+// so the wrong value is the convenient one at every single call site, and the URL
+// it produces looks entirely plausible in review. These URLs are printed on yard
+// signs, door hangers and truck wraps; a leaked internal id cannot be un-printed.
+// Centralising the lookup means that mistake can only be made once, here, where
+// the leak-guard tests are pointed.
+//
+// NEVER RETURNS NULL, AND NEVER THROWS FOR A MISSING SLUG. Three cases collapse
+// to the neutral host deliberately:
+//   slug IS NULL      the state EVERY contractor except the first is in today —
+//                     the column has no DEFAULT and is deliberately not backfilled
+//   unknown id        a contractor row that is gone
+//   non-string id     the same array/object hazard isSlugMutable documents above
+// A working link with generic branding beats a contractor who cannot share
+// anything at all. The alternative — falling through to the bare apex — is worse
+// than it looks: the apex serves the marketing site and has no /i/ route, so that
+// link is dead on arrival on a printed sign nobody can recall.
+//
+// `id = $1` IS THE TENANCY PREDICATE. Contractor B must never render on
+// contractor A's subdomain. It lives here so this function, not its five callers,
+// is the enforcement seam.
+//
+// NO try/catch, per the shared-util exemption documented in the header: a failed
+// query propagates to the caller's own catch, which runs logError(). Swallowing it
+// would silently move a contractor's printed links onto the neutral host during a
+// database incident.
+//
+// `db` may be a pool or a checked-out client, matching every other function here.
+async function getInviteHostSlug(db, contractorId) {
+  if (typeof contractorId !== 'string' || contractorId === '') return INVITE_FALLBACK_SLUG;
+
+  const { rows } = await db.query(
+    `SELECT slug FROM contractors WHERE id = $1`,
+    [contractorId]
+  );
+  return rows[0]?.slug || INVITE_FALLBACK_SLUG;
+}
+
 module.exports = {
   RESERVED_SLUGS,
   SLUG_PATTERN,
+  INVITE_FALLBACK_SLUG,
   isValidSlugFormat,
   isReservedSlug,
   validateSlug,
   isSlugMutable,
   extractSlugFromHost,
   resolveHostToContractor,
+  getInviteHostSlug,
 };

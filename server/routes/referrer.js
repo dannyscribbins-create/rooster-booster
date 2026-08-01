@@ -28,7 +28,7 @@ const {
   redeemToken,
   recordScanEvent,
 } = require('../utils/inviteTokens');
-const { resolveHostToContractor } = require('../utils/contractorSlug');
+const { resolveHostToContractor, getInviteHostSlug } = require('../utils/contractorSlug');
 
 // test seam — inert in production, never called outside server/test/
 // Only the cashout-section call sites below use these overrides.
@@ -131,6 +131,23 @@ const verifyEmailLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { error: 'Too many verification attempts. Please wait 15 minutes.' }
+});
+
+// ── VERIFICATION CODE RESEND LIMIT (C/DL-2 Phase 2b) ──────────────────────────
+// Unauthenticated, and it sends mail to an address the caller supplies — the exact
+// shape of an abuse primitive, and the same shape as /api/forgot-pin. The numbers
+// therefore match forgotPinLimiter (3 per 15 minutes per IP) rather than being
+// reasoned about independently.
+//
+// EXPORTED as a plain object (see the bottom of this file) so the test suite reads
+// the threshold instead of hardcoding it, and tuning these numbers cannot break a
+// test. Same convention as LANDING_RESOLVE_LIMIT below.
+const RESEND_CODE_LIMIT = { windowMs: 15 * 60 * 1000, max: 3 };
+
+const resendCodeLimiter = rateLimit({
+  windowMs: RESEND_CODE_LIMIT.windowMs,
+  max: RESEND_CODE_LIMIT.max,
+  message: { error: 'Too many code requests. Please try again in 15 minutes.' }
 });
 
 // ── PUBLIC LANDING RESOLUTION LIMIT (C/DL-2 Phase 2a) ─────────────────────────
@@ -807,6 +824,120 @@ router.post('/api/signup/verify-email', verifyEmailLimiter, async (req, res) => 
   }
 });
 
+// ── SELF-SERVE SIGNUP: RESEND VERIFICATION CODE ───────────────────────────────
+// Re-mints the 6-digit code and mails it. Until now EmailVerifyScreen.jsx's Resend
+// button called nothing — it set a 60-second cooldown and told the homeowner the
+// code had been resent. A homeowner whose code never arrived was told it was sent
+// again and waited for an email that did not exist.
+//
+// KEYED ON email + contractorId, NOT userId, and that is a security decision rather
+// than a style one. The verify endpoint above takes userId, so reusing it here would
+// have been the shorter change — but users.id is a sequential integer, which makes a
+// userId-keyed resend a mailbomb primitive: POST 1, 2, 3 … and every account in the
+// table receives mail. Keyed on an address the caller must already know, this
+// endpoint hands out nothing it was not given. contractorId scopes the lookup, which
+// is required and not optional: users is UNIQUE(contractor_id, email), so the same
+// homeowner address can hold an account under two contractors.
+//
+// NON-DISCLOSURE, matching /api/forgot-pin below: ONE genericResponse for every
+// outcome — found, unknown, already verified, missing parameter, and swallowed DB or
+// mail error alike. Anything that varies by outcome turns this into an
+// account-enumeration oracle. Mail failures are swallowed for the same reason.
+//
+// ONE LIVE CODE AT A TIME. Every prior unused code is retired in the same
+// transaction that issues the new one. A 6-digit code is one-in-a-million per guess;
+// leaving the old one live on every press of a button the user can press repeatedly
+// turns that into an unbounded pile of simultaneously-valid codes.
+router.post('/api/signup/resend-code', resendCodeLimiter, async (req, res) => {
+  const { email, contractorId } = req.body;
+  const genericResponse = { message: "If that account still needs verifying, a new code is on its way." };
+  // Fail closed to the same generic response — never reveal the missing-param distinction.
+  if (!email || !contractorId) return res.json(genericResponse);
+
+  try {
+    // email_verified = false is part of the predicate, not a later branch: a verified
+    // account has nothing to verify, and issuing it a code would make this a free
+    // mailer aimed at any address that has ever completed signup.
+    const userResult = await pool.query(
+      `SELECT id, email, contractor_id FROM users
+        WHERE contractor_id = $1 AND LOWER(email) = LOWER($2) AND email_verified = false`,
+      [contractorId, email]
+    );
+
+    if (userResult.rows.length > 0) {
+      const user = userResult.rows[0];
+      const code = String(crypto.randomInt(100000, 1000000));
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour, matching signup
+
+      // ONE TRANSACTION. Retiring the old codes and issuing the new one must not be
+      // separable: a crash between them either leaves the user with no way in
+      // (retired, nothing issued) or defeats the one-code rule (issued, nothing
+      // retired). Both halves commit or neither does.
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          `UPDATE email_verifications SET used_at = NOW()
+            WHERE user_id = $1 AND used_at IS NULL`,
+          [user.id]
+        );
+        await client.query(
+          `INSERT INTO email_verifications (user_id, code, expires_at) VALUES ($1, $2, $3)`,
+          [user.id, code, expiresAt]
+        );
+        await client.query('COMMIT');
+      } catch (txErr) {
+        await client.query('ROLLBACK');
+        throw txErr;
+      } finally {
+        client.release();
+      }
+
+      // WHITE-LABELED, through the same loader and the same two forms as the signup
+      // send above: escaped for the HTML body, raw for the plain-text subject. This
+      // is a second copy of the verification email, and every hardcoded-name bug
+      // Phase 2a removed from the first one is one copy-paste away from reappearing
+      // here — a homeowner who dealt with a roofer and receives mail from a platform
+      // they have never heard of reads it as phishing and deletes it.
+      try {
+        const branding = await loadContractorBranding(pool, user.contractor_id);
+        const companyName = branding ? branding.companyName : ROOFMILES_DEFAULTS.companyName;
+        const companyNameHtml = escapeHtml(companyName);
+
+        await retryWithBackoff(
+          () => resend.emails.send({
+            from: 'Rooster Booster <noreply@roofmiles.com>',
+            to: user.email,
+            subject: `Your ${companyName} rewards account — verify your email`,
+            html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
+          <h2 style="color:#012854;margin:0 0 8px;">Here's your new code for ${companyNameHtml}'s rewards program</h2>
+          <p style="color:#444;margin:0 0 24px;line-height:1.6;">
+            Enter the verification code below to activate your account. Any earlier code you were sent no longer works.
+          </p>
+          <div style="background:#f5f8ff;border:2px solid #D3E3F0;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+            <p style="margin:0 0 8px;font-size:13px;color:#666;letter-spacing:0.05em;text-transform:uppercase;">Your verification code</p>
+            <p style="margin:0;font-size:40px;font-weight:700;color:#012854;letter-spacing:0.15em;font-family:monospace;">${code}</p>
+          </div>
+          <p style="color:#888;font-size:13px;margin:0;">This code expires in 1 hour. If you didn't request this, you can ignore this email.</p>
+        </div>
+      `,
+          }),
+          { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
+        );
+      } catch (emailErr) {
+        await logError({ req, error: emailErr, source: 'POST /api/signup/resend-code — send' });
+        // swallow — do not reveal whether the account exists
+      }
+    }
+
+    res.json(genericResponse);
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/signup/resend-code' });
+    res.json(genericResponse); // always generic, even on DB error
+  }
+});
+
 // ── REFERRER: PIPELINE ────────────────────────────────────────────────────────
 router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
   let referrerName;
@@ -1408,14 +1539,22 @@ router.post('/api/profile/photo', async (req, res) => {
 
 // ── REFERRER: FORGOT PIN ───────────────────────────────────────────────────────
 router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
-  const { email, contractorSlug } = req.body;
+  // THE WIRE FIELD IS MISNAMED, AND DELIBERATELY LEFT THAT WAY. The client sends
+  // `contractorSlug`, but the value it sends is a contractor ID — it is bound to
+  // `contractor_id = $1` below, and always has been. Renaming the request field
+  // would break every deployed client, so the field name stays and the local name
+  // tells the truth instead. C/DL-2 makes this actively dangerous rather than merely
+  // untidy: contractors.slug now exists as a real, different, PUBLIC value, so a
+  // reader who trusts this name would pass the wrong one. The wire field retires
+  // with the unified login in C/DL-3.
+  const { email, contractorSlug: contractorId } = req.body;
   const genericResponse = { message: "If that email is registered, you'll receive a reset link shortly." };
-  if (!contractorSlug) return res.json(genericResponse); // fail closed to the same generic response — never reveal the missing-param distinction
+  if (!contractorId) return res.json(genericResponse); // fail closed to the same generic response — never reveal the missing-param distinction
 
   try {
     const userResult = await pool.query(
       'SELECT id, full_name, email, contractor_id FROM users WHERE contractor_id = $1 AND LOWER(email) = LOWER($2)',
-      [contractorSlug, email]
+      [contractorId, email]
     );
 
     if (userResult.rows.length > 0) {
@@ -1438,7 +1577,32 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
           [user.contractor_id]
         );
         const pinResetSettings = pinResetCs.rows[0] || {};
-        const pinResetFromName = escapeHtml(pinResetSettings.email_sender_name || pinResetSettings.company_name || 'RoofMiles');
+
+        // ESCAPING RULE — escapeHtml APPLIES TO HTML BODIES ONLY.
+        //
+        // Subjects, From: display names, and every other plain-text header carry the
+        // RAW value. There is no markup to inject into, so escaping protects nothing,
+        // and a mail client renders a header literally: "Smith & Sons Roofing" would
+        // arrive in the inbox as "Smith &amp; Sons Roofing", from a company whose own
+        // name looks broken.
+        //
+        // This is the SECOND instance of the same mistake — Phase 2a removed it from
+        // the signup verification email's subject. Both are now pinned by tests
+        // (signupEmailWhiteLabel.test.js, forgotPinEmailEscaping.test.js) so the next
+        // person writing email copy has two correct examples and no broken one.
+        const pinResetFromName = pinResetSettings.email_sender_name || pinResetSettings.company_name || 'RoofMiles';
+
+        // C9, THIRD CONSUMER. The body of this email carried the literal string
+        // 'Accent Roofing Service' — Phase 2a removed the hardcoded contractor name
+        // from the landing payload and the signup email and missed this one, so
+        // every future contractor's referrer would have been asked to reset their
+        // PIN by a company they have never dealt with. Same loader, same three-rung
+        // chain (company_name -> contractors.name -> 'RoofMiles') as the signup send.
+        // Escaped because it lands in markup.
+        const pinResetBranding = await loadContractorBranding(pool, user.contractor_id);
+        const pinResetCompanyName = escapeHtml(
+          pinResetBranding ? pinResetBranding.companyName : ROOFMILES_DEFAULTS.companyName
+        );
 
         await retryWithBackoff(
           () => resend.emails.send({
@@ -1447,7 +1611,7 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
           subject: 'Reset your Rooster Booster PIN',
           html: `
             <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
-              <p style="font-size: 20px; font-weight: 700; color: #012854; margin: 0 0 8px;">Accent Roofing Service</p>
+              <p style="font-size: 20px; font-weight: 700; color: #012854; margin: 0 0 8px;">${pinResetCompanyName}</p>
               <h1 style="font-size: 24px; color: #012854; margin: 0 0 16px;">Reset your PIN</h1>
               <p style="font-size: 15px; color: #444; margin: 0 0 24px;">
                 Someone requested a PIN reset for your Rooster Booster referral account.
@@ -1624,7 +1788,10 @@ router.get('/api/referrer/qr-code', async (req, res) => {
     const { userId, contractorId } = session;
 
     const slug = await getOrCreatePeerInviteLink({ userId, contractorId });
-    const fullUrl = buildInviteUrl(slug);
+    // PUBLIC slug, never contractorId — getInviteHostSlug is the only sanctioned
+    // answer to "which subdomain does this contractor's link render on". Passing
+    // contractorId here would print the internal id on a QR code.
+    const fullUrl = buildInviteUrl(slug, { contractorSlug: await getInviteHostSlug(pool, contractorId) });
 
     // Same QR options as my-invite-link so both surfaces render byte-identical
     // images for the same referrer.
@@ -1649,7 +1816,8 @@ router.get('/api/referrer/my-invite-link', async (req, res) => {
     const { userId, contractorId } = session;
 
     const slug = await getOrCreatePeerInviteLink({ userId, contractorId });
-    const fullUrl = buildInviteUrl(slug);
+    // PUBLIC slug, never contractorId — see the note on the QR endpoint above.
+    const fullUrl = buildInviteUrl(slug, { contractorSlug: await getInviteHostSlug(pool, contractorId) });
 
     // Generate QR code for the invite URL (server-side, existing qrcode package)
     // MVP: QR code generated server-side per request. Full solution: pre-generate and cache as
@@ -2624,5 +2792,11 @@ router._resetTestOverrides = _resetTestOverrides;
 // Read-only by contract; frozen so a caller cannot tune the live limiter by
 // mutating the object it was built from.
 router.LANDING_RESOLVE_LIMIT = Object.freeze({ ...LANDING_RESOLVE_LIMIT });
+
+// Verification-code resend limiter configuration. Exported and frozen for the same
+// two reasons as LANDING_RESOLVE_LIMIT above: the suite reads the threshold rather
+// than hardcoding it, and a caller cannot tune the live limiter by mutating the
+// object it was built from.
+router.RESEND_CODE_LIMIT = Object.freeze({ ...RESEND_CODE_LIMIT });
 
 module.exports = router;

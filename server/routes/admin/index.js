@@ -20,6 +20,7 @@ const { discoverJobberFields } = require('../../crm/jobber');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility');
 const { generateSlug, buildInviteUrl } = require('../../utils/inviteTokens');
+const { getInviteHostSlug } = require('../../utils/contractorSlug');
 
 const bcrypt = require('bcrypt');
 
@@ -510,7 +511,10 @@ router.post('/api/admin/invite-links', requirePermission('referrers.manage'), as
     // generateSlug is 8 bytes (64 bits), replacing randomBytes(5) (40 bits).
     // Applies to newly minted links only — existing slugs resolve unchanged.
     const slug = generateSlug();
-    const fullUrl = buildInviteUrl(slug);
+    // PUBLIC slug, never contractorId. This is the marketing link that ends up on
+    // printed material, so the internal id reaching it is the one mistake that
+    // cannot be corrected after the fact.
+    const fullUrl = buildInviteUrl(slug, { contractorSlug: await getInviteHostSlug(pool, contractorId) });
     await pool.query(
       `INSERT INTO contractor_invite_links (contractor_id, slug, link_type, created_by_user_id, active)
        VALUES ($1, $2, $3, NULL, true)`,
@@ -541,9 +545,13 @@ router.get('/api/admin/invite-links', requirePermission('referrers'), async (req
     );
     // Rendered through the shared builder so this listing and the POST above can
     // never hand out differently-shaped URLs for the same slug.
+    //
+    // ONE lookup for the whole page, not one per row: the query above is already
+    // scoped to `contractor_id = $1`, so every row belongs to this contractor.
+    const hostSlug = await getInviteHostSlug(pool, contractorId);
     const rows = result.rows.map(r => ({
       ...r,
-      fullUrl: buildInviteUrl(r.slug),
+      fullUrl: buildInviteUrl(r.slug, { contractorSlug: hostSlug }),
     }));
     res.json(rows);
   } catch (err) {
