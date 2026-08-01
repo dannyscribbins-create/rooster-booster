@@ -231,6 +231,17 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS email_sender_name VARCHAR(255)`);
   await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS email_footer_text TEXT`);
 
+  // ── C/DL-2 LANDING PAGE — the ONE genuinely missing branding column ──────────
+  // The landing page's --brand-bg has no existing source. Its three siblings DO:
+  // --brand-primary <- primary_color, --brand-secondary <- secondary_color, and
+  // --landing-logo <- logo_url. LP §5 called all four "NEW columns"; that was
+  // written before those columns existed. Adding brand_* twins alongside them was
+  // explicitly rejected — two competing colour sources on one table is precisely
+  // the failure mode this avoids. Nullable with no default: a NULL falls back to
+  // the RoofMiles default token at render time, so a brand-new contractor has a
+  // decent page before uploading anything.
+  await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS landing_bg_color VARCHAR(20)`);
+
   // ── CRM SETTINGS ──────────────────────────────────────────────────────────────
   await pool.query(`CREATE TABLE IF NOT EXISTS contractor_crm_settings (
     contractor_id        TEXT PRIMARY KEY,
@@ -1133,6 +1144,35 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       `INSERT INTO contractors (id, name, status) VALUES ('accent-roofing', 'Accent Roofing Service', 'active')`
     );
   }
+
+  // ── C/DL-2 LANDING PAGE — PUBLIC PER-CONTRACTOR SLUG (LP §6.2) ──────────────
+  // The slug is what appears in a public URL: https://<slug>.roofmiles.com/i/<token>.
+  //
+  // IT IS NOT contractors.id, AND IT IS DELIBERATELY NOT BACKFILLED FROM IT.
+  // The internal id must never reach a public URL — preventing exactly that leak
+  // is the entire reason this column exists as a separate value. A migration that
+  // did `UPDATE contractors SET slug = id` would satisfy every schema check while
+  // defeating the column's only purpose, so there is no backfill here and no
+  // DEFAULT. Every row starts NULL and stays NULL until a slug is set deliberately.
+  //
+  // No slug VALUE is seeded either. Seeding one would mean naming a contractor id
+  // in a migration, which is a standing prohibition; the first real slug is set by
+  // a separate one-off statement after this deploys.
+  await pool.query(`ALTER TABLE contractors ADD COLUMN IF NOT EXISTS slug TEXT`);
+
+  // Standard UNIQUE semantics, NOT `NULLS NOT DISTINCT`. This distinction is
+  // load-bearing rather than stylistic: because nothing is backfilled above, EVERY
+  // contractor row carries slug IS NULL on arrival. Postgres treats NULLs as
+  // distinct by default, so any number of contractors can coexist unslugged.
+  // Under PG15's opt-in NULLS NOT DISTINCT the second contractor row would be
+  // rejected outright and onboarding would break on contractor #2.
+  //
+  // CREATE UNIQUE INDEX IF NOT EXISTS rather than ADD CONSTRAINT in a DO block:
+  // it is idempotent by construction and cannot collide with its own backing index
+  // on re-run (the 42P07 hazard CLAUDE.md documents for the ADD CONSTRAINT form).
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_contractors_slug_unique ON contractors (slug)`
+  );
 
   // TEAM MEMBERS — per-contractor admin accounts replacing shared ADMIN_PASSWORD
   await pool.query(`CREATE TABLE IF NOT EXISTS team_members (
