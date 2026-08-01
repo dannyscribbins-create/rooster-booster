@@ -139,6 +139,34 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
     });
     await waitFor(() => relatedDataCalled, { timeout: 3000 });
 
+    // The handler acks 200 and keeps working, so every gate here has to be a poll
+    // rather than a bare read. client-create writes in a fixed order:
+    //
+    //   syncSingleClient       -> pipeline_cache           (jobber.js:505)
+    //   fetchClientRelatedData -> relatedDataCalled flag   (jobber.js:510)
+    //   upsertAndTagClient     -> jobber_clients           (jobber.js:514)
+    //
+    // Both gates above therefore fire strictly BEFORE the jobber_clients row this
+    // test asserts on exists. Reading that table immediately after them was a race
+    // that only stayed green while the final await happened to land inside the
+    // polling interval — under a fuller suite it lost roughly half the time. This
+    // gate waits on the last write specifically.
+    //
+    // The timeout is swallowed on purpose: waitFor BOUNDS the wait, and the
+    // assertions below are what decide the outcome. Letting it throw would replace
+    // the precise failure message ("jobber_clients row must exist for the new
+    // client") with a generic waitFor timeout, which is strictly less useful when
+    // the row genuinely never arrives.
+    try {
+      await waitFor(async () => {
+        const { rows } = await pool.query(
+          'SELECT 1 FROM jobber_clients WHERE jobber_client_id = $1',
+          ['jc-c2-new']
+        );
+        return rows.length > 0;
+      }, { timeout: 3000 });
+    } catch { /* intentional — fall through so the assertions below report the failure */ }
+
     // Inspect the real table the handler actually writes for a brand-new client.
     const { rows: clientRows } = await pool.query(
       'SELECT contractor_id FROM jobber_clients WHERE jobber_client_id = $1',
