@@ -37,7 +37,7 @@
 //
 // ── HOW THE IMAGE SOURCE IS OBSERVED ─────────────────────────────────────────
 // CRA's jest transform maps an imported image to its BASENAME, so a bundled asset
-// renders as src="AccentRoofing-Logo.png" or src="roofmiles_logo_svg.svg" while a
+// renders as src="AccentRoofing-Logo.png" or src="roofmiles_logo_png.png" while a
 // contractor's uploaded logo renders as the absolute URL from the payload. All
 // three are distinguishable by substring, which is what every assertion below reads.
 // ─────────────────────────────────────────────────────────────────────────────
