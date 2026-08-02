@@ -157,6 +157,46 @@ async function loadReferrerChip(db, token) {
   return displayName ? { displayName } : null;
 }
 
+// Builds the State 0 payload, and the ONLY place that decides how much an
+// invalid landing is allowed to say.
+//
+// TWO KINDS OF INVALID, AND THEY ARE NOT THE SAME KIND OF THING (C/DL-2 Phase
+// 3d-2; the ruling itself is Phase 2a's).
+//
+//   ORDINARY INVALID — unknown, expired or revoked token. The subdomain is the
+//     ONLY signal present and nothing is in conflict with it, so the homeowner
+//     gets the branding of the roofer whose sign they scanned, plus a way to
+//     reach that roofer. LP §2 State 0: "Contractor branding if the slug
+//     resolved." Anything less shows someone holding a dead link a page from a
+//     company they have never heard of.
+//
+//   MISMATCH — the token resolves to one contractor and the subdomain to
+//     another. That is not a stale link; two sources of truth actively
+//     disagreeing happens through tampering or miswiring and nothing else. So
+//     TRUST NEITHER, and say nothing: rendering the HOST's branding would
+//     confirm to a prober that that subdomain resolves to a real contractor,
+//     and rendering the TOKEN's would confirm whose link they are holding.
+//     The mismatch branch below therefore never calls this function.
+//
+// The distinction lives HERE rather than in the HTML route because both callers
+// need it — GET /api/invite/:slug answers the same two cases, and a route-local
+// copy would be the second implementation this whole file exists to prevent.
+//
+// Returns a bare { valid: false } when the host resolved to nothing, which is
+// the neutral State 0 an unrecognised subdomain has always produced.
+async function buildInvalidPayload(db, hostContractor) {
+  if (!hostContractor) return { valid: false };
+
+  const branding = await loadContractorBranding(db, hostContractor.id);
+  if (!branding) return { valid: false };
+
+  // `valid: false` is what the page and the JSON endpoint branch on, and it does
+  // not move. The branding rides alongside it and describes the HOST only — no
+  // contractorId, no linkType, no chip, because there is no trustworthy token to
+  // describe and a rejected resolution must not describe one.
+  return { valid: false, contractor: branding };
+}
+
 /**
  * Resolves a landing request into the payload both the JSON endpoint and the
  * server-rendered page render from.
@@ -200,7 +240,11 @@ async function resolveLanding(db, { host = null, slug = null, req = null } = {})
   // only while active AND unexpired (CD-14 — an expired token is never
   // resurrected).
   const token = await resolveToken(db, slug);
-  if (!token) return { valid: false };
+  // ORDINARY INVALID — unknown, expired or revoked, all indistinguishable here
+  // because resolveToken carries the active and expiry predicates itself. The
+  // host is the only signal left, and it is not in conflict with anything, so
+  // State 0 renders that contractor. See buildInvalidPayload.
+  if (!token) return buildInvalidPayload(db, hostContractor);
 
   // MISMATCH RULE (binding). Two sources of truth actively disagreeing happens
   // only through tampering or miswiring, so TRUST NEITHER — not the token, not
@@ -213,6 +257,11 @@ async function resolveLanding(db, { host = null, slug = null, req = null } = {})
   // the only signal present and nothing is in conflict. A mismatch is different
   // in kind, and rendering the host's branding would confirm to a prober that
   // that subdomain resolves to a real contractor. (Ruling: C/DL-2 Phase 2a.)
+  //
+  // DELIBERATELY NOT buildInvalidPayload. That function attaches the host's
+  // branding, which is exactly the disclosure this branch exists to withhold —
+  // the one line of difference between the two invalid paths, and the reason
+  // they are written as two branches rather than one.
   if (hostContractor && hostContractor.id !== token.contractor_id) {
     return { valid: false };
   }
