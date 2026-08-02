@@ -88,7 +88,7 @@ async function loadContractorBranding(db, contractorId) {
             s.company_name, s.app_display_name,
             s.primary_color, s.secondary_color, s.accent_color, s.landing_bg_color,
             s.logo_url,
-            s.company_phone, s.company_email, s.company_address
+            s.company_phone, s.company_email, s.company_address, s.company_url
        FROM contractors c
        LEFT JOIN contractor_settings s ON s.contractor_id = c.id
       WHERE c.id = $1`,

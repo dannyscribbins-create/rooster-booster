@@ -115,7 +115,7 @@ function resolveColor(value, fallback) {
  *        settings row at all. A throw here is a blank landing page.
  * @returns {{companyName: string, programName: string|null, primaryColor: string,
  *            secondaryColor: string, accentColor: string, backgroundColor: string, logoUrl: string|null,
- *            phone: string|null, email: string|null, address?: string}}
+ *            phone: string|null, email: string|null, address?: string, website?: string}}
  */
 function resolveBrandingTheme(input) {
   const src = (input && typeof input === 'object') ? input : {};
@@ -151,6 +151,24 @@ function resolveBrandingTheme(input) {
   // where no row belongs.
   const address = firstNonEmpty(src.company_address);
   if (address) theme.address = address;
+
+  // WEBSITE IS OMITTED, NOT NULLED, on the same rule as address directly above —
+  // the page draws each contact row by the key's presence, so an always-present
+  // null renders an empty row, or the literal word "null", at a homeowner.
+  //
+  // SOURCED FROM company_url: the admin Company Details "Website URL" field. NOT
+  // social_website, which is a social-links row on the Branding page, and not
+  // review_url.
+  //
+  // CARRIED VERBATIM, and deliberately not normalised here. The column is an
+  // unconstrained VARCHAR(500) with nothing between the admin form and the
+  // database, so both a bare domain and a full URL are real stored values. This
+  // function is pure and cannot see whether the value is about to become an href
+  // or plain text; deciding that — prepending a scheme, refusing a hostile one —
+  // is the render layer's job, the same split safeLogoUrl already makes for
+  // logoUrl.
+  const website = firstNonEmpty(src.company_url);
+  if (website) theme.website = website;
 
   return theme;
 }

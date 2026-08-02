@@ -281,6 +281,76 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
     assert.equal(resolveBrandingTheme({ company_address: '12 Ridge Line Rd' }).address, '12 Ridge Line Rd');
   });
 
+  // ── WEBSITE TOKEN (polish item 3, Phase 1) ─────────────────────────────────
+  // Sits here rather than in a file of its own because `website` is the exact
+  // sibling of `address` directly above: an optional contact value, carried when
+  // set and OMITTED when not. The two rules have to be readable together or the
+  // second one drifts from the first.
+
+  it('[RED] carries the contractor website verbatim when company_url is set', async () => {
+    // SOURCE COLUMN: contractor_settings.company_url — the "Website URL" field on
+    // the admin Company Details page (CompanyDetailsSettings.jsx:341-346). NOT
+    // social_website, which is a social-links row on the Branding page, and NOT
+    // review_url.
+    //
+    // VERBATIM, and that is the whole assertion. The column is an unconstrained
+    // VARCHAR(500) with no normalization anywhere between the admin form and the
+    // database, so BOTH shapes below are real stored values — the Company Details
+    // placeholder asks for a bare domain, the Branding page's sibling field asks
+    // for a full URL. The resolver is pure and must not start editing user data:
+    // deciding what is safe to put in an href is the RENDER layer's job (a
+    // scheme-prepending sibling of safeLogoUrl, Phase 2), not this function's. A
+    // resolver that "helpfully" prepended https:// here would be normalising the
+    // value the page still has to validate anyway, in the one place that cannot
+    // see whether it is about to become an href or plain text.
+    assert.equal(
+      resolveBrandingTheme({ company_url: 'accentroofingservice.com' }).website,
+      'accentroofingservice.com',
+      'a bare-domain company_url must reach the theme unchanged'
+    );
+    assert.equal(
+      resolveBrandingTheme({ company_url: 'https://accentroofingservice.com' }).website,
+      'https://accentroofingservice.com',
+      'a scheme-carrying company_url must reach the theme unchanged too — both shapes are stored today'
+    );
+  });
+
+  it('[GUARD — pre-satisfied today] omits website entirely when company_url is unset, rather than nulling it', async () => {
+    // ⚠ THIS PASSES BEFORE THE FEATURE EXISTS, and that is stated rather than
+    // hidden: no `website` key is emitted at all today, so "no website key" is
+    // trivially true. It is NOT a red test and must not be counted as one.
+    //
+    // ITS VALUE IS ENTIRELY ON GREEN DAY. The obvious implementation —
+    // `website: firstNonEmpty(src.company_url)` alongside phone and email — emits
+    // `website: null` when unset and would fail here. That is the point: the page
+    // draws each contact row by the KEY'S PRESENCE (LP-1, renderFooter:509-519),
+    // so an always-present null renders an empty row, or the literal word "null",
+    // at a homeowner. The address branch below it is the shape to copy.
+    //
+    // OWN-KEY, via Object.hasOwn rather than the `in` used for address above.
+    // Own-key is the property that actually matters: assert.deepEqual in
+    // node:assert/strict is deepSTRICTEqual, which compares own keys, so an
+    // own-key `website: undefined` and an omitted `website` are NOT equal to it —
+    // and brandingTheme.test.js:160 plus the parity deepEqual in
+    // landingResolve.test.js:724 both depend on that distinction.
+    assert.equal(
+      Object.hasOwn(resolveBrandingTheme({}), 'website'), false,
+      'website must be absent, not null, when nothing is stored'
+    );
+    assert.equal(
+      Object.hasOwn(resolveBrandingTheme({ company_url: null }), 'website'), false,
+      'a NULL column must omit the key — this is the shape a DB row has'
+    );
+    assert.equal(
+      Object.hasOwn(resolveBrandingTheme({ company_url: '' }), 'website'), false,
+      "an empty string must omit the key — this is the shape a CLEARED admin field has"
+    );
+    assert.equal(
+      Object.hasOwn(resolveBrandingTheme({ company_url: '   ' }), 'website'), false,
+      'whitespace-only is unset too — firstNonEmpty already trims for every other token'
+    );
+  });
+
   it('falls back to the contractor\'s own name before the platform name', async () => {
     // The middle step of the three-step chain at referrer.js:240, and it is
     // load-bearing rather than decorative: contractors.name is NOT NULL, so a
@@ -404,6 +474,12 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
       ['valid lowercase hex',   { primary_color: '#abcdef' }],
       ['contractor_name only',  { contractor_name: 'Beta Roofing Co' }],
       ['address present',       { company_address: '12 Ridge Line Rd' }],
+      // ⚠ PRE-SATISFIED TODAY (polish item 3, Phase 1) — neither copy emits a
+      // website token, so both return the same object and this passes trivially.
+      // It is here for GREEN day: the website token has to be added to BOTH
+      // copies, and this row is what fails if only the server one is edited.
+      ['website present',       { company_url: 'accentroofingservice.com' }],
+      ['website unset',         { company_url: null }],
       ['non-string scalars',    { primary_color: 123456, secondary_color: true, landing_bg_color: [] }],
       ['null input',            null],
     ];
