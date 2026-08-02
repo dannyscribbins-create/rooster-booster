@@ -539,7 +539,7 @@ router.get('/api/admin/invite-links', requirePermission('referrers'), async (req
   const { contractorId } = adminSession;
   try {
     const result = await pool.query(
-      `SELECT id, slug, link_type, active, created_at
+      `SELECT id, slug, link_type, active, created_at, is_default_marketing, auto_minted
        FROM contractor_invite_links
        WHERE contractor_id=$1 AND active=true
        ORDER BY created_at DESC`,
