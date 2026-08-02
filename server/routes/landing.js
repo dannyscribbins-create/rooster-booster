@@ -332,6 +332,12 @@ h1{font-size:26px;line-height:1.25;}
 p{margin:0;}
 .brand{text-align:center;margin-bottom:18px;}
 .brand-logo{max-width:180px;max-height:72px;height:auto;display:block;margin:0 auto;}
+/* PLATFORM ONLY. A modifier, never a change to .brand-logo itself: that class is
+   worn by every contractor logo, so widening it would resize every white-label
+   header to suit the platform's own artwork. Overrides the two size caps and
+   nothing else - display, height and centring are inherited. The mark is 400x120,
+   so at 220px wide it draws about 66px tall, undistorted and inside the cap. */
+.brand-logo--platform{max-width:220px;max-height:88px;}
 .brand-name{font-family:'Montserrat',ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif;
   font-size:21px;font-weight:700;color:var(--brand-primary);letter-spacing:-0.01em;}
 .chip{display:inline-block;margin-top:12px;padding:7px 15px;border-radius:999px;
@@ -542,7 +548,7 @@ function renderBrandMark(theme) {
   // there is nothing to validate. Served from server/public via the /static mount
   // (server/app.js), which img-src 'self' already permits.
   if (theme.isPlatform) {
-    return `<img class="brand-logo" src="/static/roofmiles-logo.png" alt="${name}">`;
+    return `<img class="brand-logo brand-logo--platform" src="/static/roofmiles-logo.png" alt="${name}">`;
   }
 
   const logo = safeLogoUrl(theme.logoUrl);
