@@ -432,6 +432,38 @@ p{margin:0;}
 .state-3.is-active .ring{animation:ringpop .52s cubic-bezier(.34,1.56,.64,1) both;}
 .state-3.is-active .tick{animation:tickpop .46s cubic-bezier(.34,1.56,.64,1) .22s both;}
 .state-3.is-active .confetti i{animation:confetti 1.1s cubic-bezier(.22,.68,.36,1) .18s both;}
+/* ── DESKTOP VERTICAL CENTERING ──────────────────────────────────────────────
+   The sparse states — State 0, the verify card, the success card, the desktop
+   skip view — are short. On a desktop viewport they sat at the top of a 430px
+   column with a tall band of --brand-bg below them, which reads as a page that
+   failed to finish loading rather than as a deliberate layout.
+
+   AUTO MARGINS, NOT align-items:center AND NOT justify-content:center. The flex
+   centering keywords stop being safe the moment the item is TALLER than the
+   container: they distribute the overflow to both sides, so the top of a long
+   signup form ends up above the scroll origin and cannot be scrolled back to.
+   An auto margin absorbs only POSITIVE free space and collapses to zero when
+   there is none, so tall content falls back to exactly today's top-aligned,
+   fully scrollable behaviour.
+
+   flex-direction:column IS LOAD-BEARING, not tidiness. In the default row
+   direction .wrap becomes a flex item sized to its CONTENT rather than to the
+   container, so a state whose longest line happened to be under 430px would
+   render in a narrower column on desktop than on mobile — a silent width
+   regression driven by copy. In column direction the cross axis stretches it,
+   max-width:430px caps it, and the base margin:0 auto still does the horizontal
+   centering.
+
+   MOBILE IS UNTOUCHED. Below 700px this block never applies, and the base body
+   and .wrap rules are unchanged. 100vh is also a desktop-only value here, which
+   sidesteps the mobile URL-bar viewport problem entirely.
+
+   No backticks anywhere in this comment: PAGE_CSS is a template literal, and a
+   stray backtick closes it and silently truncates every rule that follows. */
+@media (min-width: 700px){
+  body{min-height:100vh;display:flex;flex-direction:column;}
+  .wrap{margin-top:auto;margin-bottom:auto;}
+}
 @media (prefers-reduced-motion:reduce){
   .state.is-active,.stagger>*,.state-3.is-active .ring,.state-3.is-active .tick,
   .state-3.is-active .confetti i{animation:none;opacity:1;transform:none;}
