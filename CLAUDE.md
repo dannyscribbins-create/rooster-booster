@@ -268,8 +268,13 @@ When reading any file during a session, silently audit and flag violations befor
 - `SELECT *` returning data to client → always use explicit column lists
 - `err.message` or `err.stack` in `res.status(500)` responses → replace with `'Internal server error'`
 - `console.log` in production code → remove unless marked `// diagnostic log — intentional`
+- A backtick inside a **comment within a template literal** → remove it, or reword
 
 Report violations and ask whether to fix before or after the assigned task. Never silently leave a violation.
+
+**The backtick rule, because it produces no error and is invisible in review.** A stray `` ` `` inside a comment in a template literal *closes the string*. The remainder does not become a syntax error — it parses as an expression, so the file loads, the server boots, and the tests that do not read that value stay green. In the case that established this rule, a backtick in a CSS comment inside `landing.js`'s `PAGE_CSS` turned the stylesheet into `"…first half…" || \`…second half…\``, and `||` short-circuited on the truthy first half: **everything after the comment was silently dropped from the served page** — the hardcoded `#F26A1B` RoofMiles mark and every `@keyframes` rule. Two existing fences caught it; nothing else would have.
+
+This applies to every template literal carrying markup or styles — `server/routes/landing.js`, and the HTML email bodies in `referrer.js`, `admin/campaigns.js` and the cron jobs. Backticks are natural to write in a comment (quoting a CSS property, an operator, a variable name), which is exactly why this is worth a line here. Use plain words or single quotes instead.
 
 ## Dependency Management Standards
 

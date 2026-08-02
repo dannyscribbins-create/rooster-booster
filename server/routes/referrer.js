@@ -351,6 +351,28 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
     // C/DL-1; 'rep' is new and gets its own source so C/DL-3 can tell a
     // rep-generated signup from a marketing-QR one — labelling it
     // 'contractor_link' would corrupt the data C/DL-3 reads.
+    //
+    // ── A19: THE ROWS THIS BRANCH CREATES ARE THE RE-ATTRIBUTION POPULATION ───
+    // A signup through a `contractor` token — a marketing QR, or the bare
+    // subdomain's auto-minted default (A17/A18) — is stamped
+    // signup_source='contractor_link' with a NULL invited_by_user_id, because
+    // that token has no personal owner to credit.
+    //
+    // Some of those homeowners WERE genuinely referred by a peer and simply
+    // arrived through the marketing path instead of their friend's link. Today
+    // they cannot be credited to that peer: nothing attaches a referrer to a user
+    // row after creation, and the bonus flow reads attribution at conversion
+    // time. A17 widened the marketing path, so this is the class of uncreditable
+    // referrals it manufactures — named here, at the line that creates them,
+    // because a note in a spec is not read by the person editing this branch.
+    //
+    // The attribution engine must be able to RE-ATTRIBUTE a signup after the
+    // fact: set invited_by_user_id and have the bonus flow correctly from that
+    // point. Danny's direction is a multi-gate catch system — signup-time
+    // capture ("were you referred?"), in-app peer attribution, and CRM matching —
+    // rather than one point that must be got right. NOTHING IS BUILT FOR IT HERE;
+    // the query that finds these rows is
+    //   WHERE signup_source = 'contractor_link' AND invited_by_user_id IS NULL.
     let signupSource = 'contractor_link';
     let invitedByUserId = null;
     if (link.link_type === 'peer') {

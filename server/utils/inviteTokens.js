@@ -34,7 +34,8 @@ const TOKEN_COLUMNS = `
   active, created_at, expires_at,
   scanned_at, redeemed_at, redeemed_user_id, superseded_by,
   soft_save_name, soft_save_email, soft_save_phone,
-  consent_affirmed_at, consent_channel
+  consent_affirmed_at, consent_channel,
+  is_default_marketing, auto_minted
 `;
 
 // Mints an opaque slug. 8 bytes = 64 bits of entropy, replacing the legacy
@@ -109,6 +110,95 @@ async function redeemToken(db, slug, userId) {
     [slug, userId]
   );
   return rows[0] || null;
+}
+
+// ── THE DEFAULT MARKETING LINK (C/DL-2 Phase 3d-3, amendment A18) ────────────
+// Returns the token a contractor's BARE SUBDOMAIN serves, minting one on demand
+// the first time there is no default present. Never returns an unusable token;
+// returns null only if the mint could not be completed.
+//
+// WHY THIS EXISTS. A17 puts a working signup on the bare subdomain, and
+// POST /api/signup requires an `inviteSlug` — deliberately, because THE TOKEN IS
+// THE TENANCY AUTHORITY AND THE HOSTNAME IS COSMETIC ROUTING. Marketing mode is
+// the one surface where that rule is under real pressure, since the hostname is
+// the only input the visitor supplied. The answer is not to relax the endpoint
+// but to route marketing mode through a token as well: the hostname selects
+// WHICH contractor's marketing token to look up or mint, and the resulting token
+// row is what stamps contractor_id on the user.
+//
+// WHY IT MINTS RATHER THAN REQUIRING SETUP. A18: auto-mint "exists so the path
+// can never fail closed for a contractor who has configured nothing — which is
+// the state every new contractor starts in." Requiring an admin to mint a link
+// before their own subdomain works would ship a broken page to every contractor
+// on day one, discovered by whoever visited first.
+//
+// ── THE RACE IS RESOLVED BY THE DATABASE, NOT BY THIS FUNCTION ──────────────
+// The SELECT below is an optimisation, NOT the guard. Two concurrent callers can
+// both read "no default" and both proceed to the INSERT; what stops them both
+// succeeding is uniq_default_marketing_link_per_contractor, the partial unique
+// index in db.js. ON CONFLICT DO NOTHING turns the loser's collision into zero
+// rows instead of a 23505, and the loop then re-reads and returns THE WINNER'S
+// token — so every concurrent visitor is served the same slug rather than one of
+// them being handed a row that was never written.
+//
+// The ON CONFLICT arbiter names the index's own predicate, which is what lets
+// PostgreSQL infer a PARTIAL index. It deliberately does not swallow a `slug`
+// collision: that conflict is on a different index, so it still raises, which is
+// correct — a slug collision at 64 bits of entropy is a fault worth hearing about
+// rather than a race to absorb.
+//
+// THREE ATTEMPTS, not a while(true). A loser re-reads and finds the winner on the
+// next pass, so two passes is the normal ceiling; the third is slack for the one
+// case that genuinely needs it — a winner whose transaction rolled back between
+// our INSERT and our re-read. An unbounded loop here would spin against a
+// database problem on a public unauthenticated route.
+//
+// NO try/catch, per the shared-util exemption in this file's header: a failed
+// query propagates to the caller's own catch, which runs logError().
+//
+// `db` may be a pool or a checked-out client, matching every other function here.
+async function resolveDefaultMarketingToken(db, contractorId) {
+  // TYPE-CHECKED rather than merely falsy-checked, for the reason isSlugMutable
+  // documents at length: node-postgres serialises an array to `{a,b}`, which
+  // matches no contractor and would have this function mint an orphan row.
+  if (typeof contractorId !== 'string' || contractorId === '') return null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const existing = await db.query(
+      `SELECT ${TOKEN_COLUMNS}
+         FROM contractor_invite_links
+        WHERE contractor_id = $1
+          AND is_default_marketing = true
+          AND active = true`,
+      [contractorId]
+    );
+    if (existing.rows[0]) return existing.rows[0];
+
+    // link_type='contractor' with BOTH owner columns NULL is the only shape
+    // chk_invite_links_owner permits for this type, and it is the right shape
+    // anyway: a marketing link has no personal owner, which is exactly why the
+    // page it serves renders no referrer chip (A12).
+    //
+    // MULTI-USE AND NEVER REDEEMED. redeemToken's WHERE clause carries
+    // `link_type = 'rep'`, so a signup through this token writes nothing to the
+    // row and cannot deactivate it — one printed truck-wrap URL keeps serving
+    // every homeowner who uses it.
+    //
+    // NO expires_at. This link goes on printed material that cannot be recalled.
+    const minted = await db.query(
+      `INSERT INTO contractor_invite_links
+         (contractor_id, slug, link_type, created_by_user_id, owner_team_member_id,
+          active, is_default_marketing, auto_minted)
+       VALUES ($1, $2, 'contractor', NULL, NULL, true, true, true)
+       ON CONFLICT (contractor_id) WHERE is_default_marketing AND active
+       DO NOTHING
+       RETURNING ${TOKEN_COLUMNS}`,
+      [contractorId, generateSlug()]
+    );
+    if (minted.rows[0]) return minted.rows[0];
+  }
+
+  return null;
 }
 
 // Records that a landing page was loaded against this token (CD-16). Returns
@@ -195,6 +285,7 @@ module.exports = {
   resolveToken,
   redeemToken,
   recordScanEvent,
+  resolveDefaultMarketingToken,
   buildInviteUrl,
   TOKEN_COLUMNS,
 };

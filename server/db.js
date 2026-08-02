@@ -1367,6 +1367,73 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     END $$;
   `);
 
+  // ── DEFAULT MARKETING LINK (C/DL-2 Phase 3d-3, amendment A18) ───────────────
+  // Two facts the bare-subdomain marketing page needs and this table could not
+  // express, both additive and both defaulting to false — so every pre-existing
+  // row (production carries six for the first contractor) lands in exactly the
+  // state it was already in: an ordinary marketing link that is not the default.
+  //
+  //   is_default_marketing  WHICH of a contractor's marketing links their bare
+  //                         subdomain serves. Without it there is no way to
+  //                         honour "admins MAY designate a different existing
+  //                         marketing link as the default", and no way for a
+  //                         second page serve to find the token the first one
+  //                         minted rather than minting another.
+  //
+  //   auto_minted           whether the PLATFORM minted it or a human did. A18
+  //                         requires the admin marketing-links list to label an
+  //                         auto-minted link as automatic, "so an admin never
+  //                         finds a link they did not create and cannot account
+  //                         for" — and a label the list can render has to be a
+  //                         stored fact rather than an inference.
+  //
+  // NOT NULL DEFAULT false needs no table rewrite on PostgreSQL 11+, so this is
+  // safe on a table with existing rows.
+  await pool.query(`
+    ALTER TABLE contractor_invite_links
+      ADD COLUMN IF NOT EXISTS is_default_marketing BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS auto_minted          BOOLEAN NOT NULL DEFAULT false
+  `);
+
+  // ⚠ THE CONCURRENCY GUARD, AND IT MUST LIVE HERE RATHER THAN IN JAVASCRIPT.
+  //
+  // The obvious implementation of auto-mint — SELECT a default, INSERT one if the
+  // SELECT found nothing — races. Every concurrent request reads "no default"
+  // before any of them writes, and all of them insert. The window is small and
+  // the trigger is entirely ordinary: a QR scanned by several people at once at
+  // an event, a link posted to a group chat, a preview crawler fanning out. It
+  // will happen in production and it will never happen in manual testing.
+  //
+  // SCOPED PER CONTRACTOR, and that is the whole point of the leading column. An
+  // index on the marker ALONE would permit exactly one default row across the
+  // entire platform — every contractor after the first would find their bare
+  // subdomain permanently unable to mint, silently, and only the first one would
+  // work. server/test/landingMarketingMode.test.js's two-contractor test is what
+  // catches that specific mistake.
+  //
+  // PARTIAL, on `is_default_marketing AND active`, which is deliberately the same
+  // predicate resolveDefaultMarketingToken() reads by. Two consequences worth
+  // stating: a contractor may hold any number of NON-default marketing links, and
+  // revoking a default (active = false) drops it out of the index so the next
+  // serve can mint a fresh one rather than leaving that subdomain permanently
+  // broken.
+  //
+  // Known edge, deliberately not automated: a default that is still `active` but
+  // has passed its `expires_at` stays in the index, so no replacement can be
+  // minted while it sits there. It is unreachable for an auto-minted default,
+  // which never carries an expiry, and for an admin-designated one it is both
+  // admin-caused and admin-recoverable (revoke it, or clear the flag). Inventing
+  // a self-healing write for a state no test exercises would be worse.
+  //
+  // CREATE UNIQUE INDEX IF NOT EXISTS is idempotent on its own. CLAUDE.md's
+  // 42P07 warning covers `ADD CONSTRAINT ... UNIQUE`, which collides with its own
+  // backing index on re-run; a bare index has no such second identity.
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_default_marketing_link_per_contractor
+      ON contractor_invite_links (contractor_id)
+      WHERE is_default_marketing AND active
+  `);
+
   // Every read of this table is contractor-scoped and nearly all filter active=true
   // (admin/index.js:537, postJobSequence.js:142). Roster-facing indexes are
   // deliberately deferred until C/DL-3 defines the roster's actual query shape.

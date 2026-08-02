@@ -68,6 +68,7 @@ const router = express.Router();
 const { pool } = require('../db');
 const { logError } = require('../middleware/errorLogger');
 const { resolveLanding } = require('../utils/landingResolve');
+const { resolveDefaultMarketingToken } = require('../utils/inviteTokens');
 const { b2PublicOrigin } = require('../utils/b2Media');
 const { escapeHtml } = require('../utils/pendingReferral');
 const { BRANDING_THEME_DEFAULTS } = require('../utils/brandingTheme');
@@ -142,6 +143,41 @@ router.use((req, res, next) => {
 // without a restart and so the gate is reachable from a test.
 function storeBadgesEnabled() {
   return process.env.STORE_BADGES_ACTIVE === 'true';
+}
+
+// ── STORE DESTINATIONS (A14, LP §2 skip-path interstitial) ───────────────────
+// ⚠ THESE ARE PLACEHOLDERS AND THEY POINT AT NOTHING. There are no store
+// listings yet; both the official badge artwork and these two destinations
+// arrive together in the Capacitor session, behind the same gate.
+//
+// DELIBERATELY NOT PLAUSIBLE. A play.google.com or apps.apple.com URL with an
+// invented package id would be worse than an obvious placeholder: it looks real,
+// so it gets tapped, screenshotted for a contractor and pasted into printed
+// material, and it lands on a store 404 with our branding on the referring page.
+// `.invalid` is reserved by RFC 2606 and can never resolve, so a placeholder that
+// escaped the gate would fail loudly instead of quietly.
+//
+// The Capacitor session replaces these two constants and nothing else.
+const STORE_URL_ANDROID = 'https://store-placeholder.invalid/roofmiles/android';
+const STORE_URL_IOS = 'https://store-placeholder.invalid/roofmiles/ios';
+
+// Builds the two destinations for one token, or null while the gate is closed.
+//
+// THE ANDROID URL CARRIES THE TOKEN ON THE INSTALL-REFERRER PARAMETER, which is
+// the only channel that survives the Play Store: Play hands `referrer` to the app
+// on first launch through the install-referrer receiver (DL-B's half, not built
+// here). iOS has no equivalent — the App Store strips everything — which is why
+// the clipboard is not a convenience on that platform but the entire mechanism.
+//
+// Built through URL/searchParams rather than string concatenation so that the
+// real destination, which will already carry an `?id=` package parameter, gets an
+// `&` where this one gets a `?`. Concatenating would produce a second `?` and a
+// silently malformed URL on the day the placeholder is replaced.
+function storeUrlsFor(inviteSlug) {
+  if (!storeBadgesEnabled()) return null;
+  const android = new URL(STORE_URL_ANDROID);
+  android.searchParams.set('referrer', inviteSlug);
+  return { android: android.toString(), ios: STORE_URL_IOS };
 }
 
 // ── ICONS (LP §4) ────────────────────────────────────────────────────────────
@@ -325,6 +361,20 @@ p{margin:0;}
 .skip-link{background:none;border:0;padding:0;font:inherit;font-weight:600;font-size:15px;
   color:var(--brand-secondary);text-decoration:underline;text-underline-offset:3px;cursor:pointer;}
 .skip p{margin-top:7px;font-size:12.5px;opacity:.62;}
+/* The interstitial confirmation. Ships in the document and is revealed on click:
+   the copy is LP-locked, and locked copy belongs in the markup alongside every
+   other locked string on this page rather than in a JavaScript literal.
+   ⚠ Note for anyone reading the skip tests: the confirmation's presence in the
+   SERVED BYTES proves nothing about whether the button worked. It is in the
+   document either way — and moving it into the script does not change that,
+   because a JS string literal is served bytes too. Only the class mutation is
+   evidence of the click. See the RED-report note on landingSkipPath's desktop
+   assertion, which short-circuits on the wrong half of its or-expression.
+   (No backticks in this comment: PAGE_CSS is a template literal, and a stray
+   backtick here closes it and silently truncates the stylesheet.) */
+.skip-note{display:none;margin-top:9px;font-size:13px;font-weight:600;
+  color:var(--brand-primary);opacity:1;}
+.skip-note.is-shown{display:block;}
 .verify-icon{color:var(--brand-primary);display:block;margin:0 auto 12px;}
 .code{display:flex;gap:8px;justify-content:center;margin:18px 0 4px;}
 /* Roboto with tabular figures rather than Roboto Mono. CLAUDE.md's brand tokens
@@ -576,6 +626,7 @@ function renderState1(theme) {
     <div class="skip">
       <button class="skip-link" type="button" id="skip-btn">Skip — just get the app</button>
       <p>We'll copy your referral code so the app can connect you automatically.</p>
+      <p class="skip-note" id="skip-note">Your referral code is copied — see you in the app! ✓</p>
     </div>
   </div>
 </section>`;
@@ -636,16 +687,6 @@ function renderState3() {
     `<i style="--cx:${cx};--cy:${cy};--cr:${cr};background:${color};animation-delay:${(0.18 + i * 0.045).toFixed(3)}s"></i>`
   ).join('');
 
-  // A14: the slot ships, gated. When the flag is unset it renders nothing at all
-  // — not a hidden element, not a broken image. The text placeholders below are
-  // what the official Apple and Google artwork replaces in the Capacitor
-  // session; neither the assets nor the store URLs they would link to exist yet,
-  // so nothing here points at a destination.
-  const badges = storeBadgesEnabled()
-    ? `<div class="store-badge">Download on the App Store</div>
-       <div class="store-badge">Get it on Google Play</div>`
-    : '';
-
   return `<section class="state state-3" id="state-3">
   <div class="card">
     <div class="celebrate">
@@ -655,8 +696,53 @@ function renderState3() {
     </div>
     <h2>You're in, <span id="success-name"></span>!</h2>
     <p>Your account is ready. Download the app to track your referrals and rewards.</p>
-    <div class="badges" data-store-badges>${badges}</div>
+    ${renderBadgeSlot()}
     <p class="hint">Sign in with the email and password you just created.</p>
+  </div>
+</section>`;
+}
+
+// ── THE STORE-BADGE SLOT (A14) ───────────────────────────────────────────────
+// The slot ships, gated. When the flag is unset it renders as an EMPTY container
+// — not a hidden element, not a broken image — and `.badges:empty` collapses its
+// margin so there is no band of dead space. The text placeholders are what the
+// official Apple and Google artwork replaces in the Capacitor session.
+//
+// SHARED by State 3 and the desktop skip view, so the two cannot drift into
+// showing different badges for the same product.
+function renderBadgeSlot() {
+  const badges = storeBadgesEnabled()
+    ? `<div class="store-badge">Download on the App Store</div>
+       <div class="store-badge">Get it on Google Play</div>`
+    : '';
+  return `<div class="badges" data-store-badges>${badges}</div>`;
+}
+
+// ── THE DESKTOP SKIP VIEW ────────────────────────────────────────────────────
+// LP §2's skip-path interstitial: "Desktop/unknown → State 3-style dual-badge
+// view (no clipboard)."
+//
+// ⚠ THIS COPY IS NOT LP-LOCKED — LP specifies the VIEW for this branch and gives
+// it no words. Written to be honest about the one thing that is true here and
+// nowhere else on the skip path: the clipboard is deliberately untouched on
+// desktop, so nothing carries the referral code to the phone, and the visitor's
+// referral is lost unless they come back and sign up. Saying so, and giving them
+// the way back, beats a cheerful dead end. Flagged for Danny rather than slipped
+// in as though LP had blessed it.
+//
+// NO CLIPBOARD WRITE REACHES HERE, and that is a requirement rather than an
+// omission: there is no app on a laptop to paste into, and silently taking over
+// the clipboard of someone who is only reading is a hostile act.
+function renderStateApp() {
+  return `<section class="state state-app" id="state-app">
+  <div class="card">
+    <h2>Get the app</h2>
+    <p>Install RoofMiles on your phone from the App Store or Google Play.</p>
+    ${renderBadgeSlot()}
+    <p class="hint">Your referral code stays on the device you opened this link on. To keep your referral connected, create your account here first.</p>
+    <div class="verify-actions">
+      <button class="linkbtn" type="button" id="app-back-btn">&larr; Back</button>
+    </div>
   </div>
 </section>`;
 }
@@ -844,16 +930,71 @@ function pageScript(nonce, bootstrap) {
     })();
   });
 
-  // ── SKIP PATH ─────────────────────────────────────────────────────────────
-  // DELIBERATELY UNWIRED IN THIS PHASE. The interstitial — clipboard write inside
-  // the click gesture, the ~1.5s confirmation, and the platform-detected store
-  // redirect — is C/DL-3's, and the clipboard half is the reason it needs this
-  // nonce'd handler at all: navigator.clipboard.writeText requires user
-  // activation, so a deferred call has already lost it.
+  // ── SKIP PATH (LP §2 skip-path interstitial) ──────────────────────────────
+  // Copy the token in the same gesture -> show the confirmation -> redirect by
+  // platform. This is the reason the page cannot be JS-free (A8, LP §6.5).
+  const skipBtn = $('skip-btn');
+  const skipNote = $('skip-note');
+
+  // Copies the token. MUST be invoked synchronously from inside the click
+  // handler. navigator.clipboard.writeText requires USER ACTIVATION, and a call
+  // placed behind an await has already lost it — the copy is then refused,
+  // silently, on a real phone, with the page looking perfectly healthy.
   //
-  // ⚠ Until that lands, this button does nothing when tapped. Flagged rather than
-  // hidden: LP §2 locks the copy as part of State 1, and shipping the label
-  // without the behaviour is a visible gap, not an invisible one.
+  // THE PROPERTY ACCESS IS GUARDED, NOT ASSUMED. On an insecure context or an
+  // older engine the clipboard API is absent, so reaching straight for
+  // navigator.clipboard.writeText(...) throws a TypeError SYNCHRONOUSLY — before
+  // the redirect line is ever reached. A try/catch around the awaited promise
+  // does not help, because the throw is on the property access, not the promise.
+  //
+  // (Every comment in this block ships to the visitor's browser, so it avoids
+  // the two words a footer bug would print at them — landingStates.test.js scans
+  // the served document for those and cannot tell script text from copy.)
+  const copyToken = () => {
+    const clip = navigator.clipboard;
+    if (!clip || typeof clip.writeText !== 'function') return;
+    const pending = clip.writeText(boot.inviteSlug);
+    // Fire-and-forget through an async IIFE — this file's own non-blocking
+    // pattern (see resend above), and CLAUDE.md rules out promise chains. The
+    // rejection is swallowed ON PURPOSE: a denied clipboard permission must
+    // never take the redirect down with it. The visitor is then asked in the
+    // app instead; what they must never get is a button that ate the tap.
+    (async () => { try { await pending; } catch (err) { /* degrades — see above */ } })();
+  };
+
+  if (skipBtn) skipBtn.addEventListener('click', () => {
+    const ua = navigator.userAgent || '';
+    const isAndroid = /Android/i.test(ua);
+    // iPadOS 13+ reports a Macintosh UA, so touch points are what tell a modern
+    // iPad from a desktop Safari. Without that clause an iPad takes the desktop
+    // branch and never gets its code copied.
+    const isIOS = /iPad|iPhone|iPod/.test(ua)
+      || (/Macintosh/.test(ua) && Number(navigator.maxTouchPoints) > 1);
+    const isMobile = isAndroid || isIOS;
+
+    // DESKTOP FIRST, AND IT RETURNS BEFORE copyToken(). LP: desktop gets the
+    // dual-badge view and NO clipboard write.
+    if (!isMobile) { show('app'); return; }
+
+    copyToken();
+    // LP's interstitial confirmation, revealed rather than written: the copy is
+    // server-rendered above with every other locked string on this page.
+    if (skipNote) skipNote.classList.add('is-shown');
+
+    // A14's gate governs the DESTINATION as well as the artwork. With the flag
+    // unset there is no store to send anyone to, so the confirmation is where
+    // this ends — the token is on the clipboard either way.
+    const dest = boot.storeUrls && (isAndroid ? boot.storeUrls.android : boot.storeUrls.ios);
+    if (!dest) return;
+
+    // The dwell is the disclosure. It is the only moment the visitor is told
+    // their code was copied, and a redirect fired in the same frame means nobody
+    // reads it.
+    setTimeout(() => { window.location.href = dest; }, 1500);
+  });
+
+  const appBackBtn = $('app-back-btn');
+  if (appBackBtn) appBackBtn.addEventListener('click', () => show(1));
 })();
 </script>`;
 }
@@ -861,47 +1002,110 @@ function pageScript(nonce, bootstrap) {
 // Assembles States 1-3 into the one document they have to share.
 function renderLandingPage(payload, nonce) {
   const theme = payload.contractor || neutralTheme();
+  const storeUrls = storeUrlsFor(payload.inviteSlug);
 
   const body = [
     renderHeader(payload, theme),
     renderState1(theme),
     renderState2(),
     renderState3(),
+    renderStateApp(),
     renderFooter(theme),
     pageScript(nonce, {
       inviteSlug: payload.inviteSlug,
       contractorId: payload.contractorId,
+      // OMITTED, NOT NULLED, while A14's gate is closed — the same
+      // presence-rather-than-value rule the resolver applies to `address` (LP-1),
+      // and for a second reason here: JSON.stringify would write the literal word
+      // "null" into the served document, and landingStates.test.js pins that word
+      // as a homeowner-visible failure because its tag-stripping cannot tell
+      // script content from copy. `boot.storeUrls` reads as undefined either way,
+      // which the guard at the redirect site already handles.
+      ...(storeUrls ? { storeUrls } : {}),
     }),
   ].join('\n');
 
   return renderDocument({ theme, title: theme.companyName, body });
 }
 
-// ── GET /i/:slug — the invite landing page ───────────────────────────────────
+// ── THE TWO LANDING ROUTES ───────────────────────────────────────────────────
+// One handler, two entry points, and the difference between them is one value:
+//
+//   GET /i/:slug   a token — LP's invite mode
+//   GET /          no token — LP §6.4 / A17's MARKETING mode, a contractor's bare
+//                  subdomain, which is the shortest URL we give them and the one
+//                  that ends up on a truck wrap
+//
 // ONE resolution, shared with GET /api/invite/:slug. See landingResolve.js.
 //
 // AN INVALID TOKEN IS STILL A 200, not a 404. LP §2 State 0 is a PAGE — a
 // homeowner holding a dead link should see a branded explanation and a way to
 // reach the contractor, not a browser error. The distinction lives in the body,
 // not the status code.
-router.get('/i/:slug', async (req, res) => {
+//
+// ── WHY THE MARKETING MINT LIVES HERE AND NOT IN resolveLanding() ───────────
+// A18's auto-mint is a PROVISIONING side effect, not a resolution rule, and the
+// two callers of the shared resolver differ in kind rather than in detail:
+//
+//   THIS ROUTE serves a homeowner a page carrying a SIGNUP FORM, and that form
+//     cannot submit without a token — POST /api/signup requires `inviteSlug` and
+//     will keep requiring it, because the token is the tenancy authority. The
+//     mint is what makes the page functional; it exists for the form.
+//
+//   GET /api/invite is the SPA's invite-VALIDATION call. Its marketing branch
+//     exists only because the endpoint carries two mounts, and nothing signs up
+//     through it in that mode. Minting there would provision a permanent database
+//     row as a side effect of a read-only validation call, on a public endpoint.
+//
+// So the resolver stays the pure read it was built as, and three existing tests
+// keep meaning what they say — landingResolve.test.js's "marketing mode writes
+// nothing" and landingResolution.test.js's "a bare-subdomain visit writes
+// nothing" are not obstacles that were worked around here, they are the reason
+// the mint sits at this layer.
+//
+// The mint itself is NOT inlined: resolveDefaultMarketingToken lives in the token
+// service with every other rule about this table, so a future surface that needs
+// a contractor's marketing token has one call to make rather than a query to
+// copy. That is the drift landingResolve.js's header is about, honoured at the
+// layer where it actually applies.
+async function serveLanding(req, res, slug, source) {
   try {
-    const payload = await resolveLanding(pool, {
-      host: req.hostname,
-      slug: req.params.slug,
-      req,
-    });
+    const payload = await resolveLanding(pool, { host: req.hostname, slug, req });
 
-    const html = payload.valid
-      // The slug is threaded from the REQUEST rather than the payload: the page
-      // has to post back the exact token it was served under, and the resolver
-      // has no reason to echo it.
-      ? renderLandingPage({ ...payload, inviteSlug: req.params.slug }, res.locals.cspNonce)
-      : renderInvalidPage(payload);
+    if (!payload.valid) {
+      res.type('html').send(renderInvalidPage(payload));
+      return;
+    }
 
-    res.type('html').send(html);
+    // The slug is threaded from the REQUEST rather than the payload: the page has
+    // to post back the exact token it was served under, and the resolver has no
+    // reason to echo it. Marketing mode is the exception — there is no slug in
+    // the request, which is the whole point of the mode.
+    let inviteSlug = slug;
+    let contractorId = payload.contractorId;
+
+    if (payload.mode === 'marketing') {
+      const token = await resolveDefaultMarketingToken(pool, payload.contractorId);
+      if (!token) {
+        // A branded page whose form cannot submit is worse than an honest dead
+        // end, so this degrades to State 0 with the contractor's own branding
+        // rather than rendering a signup card that would 400 on every attempt.
+        res.type('html').send(renderInvalidPage({ contractor: payload.contractor }));
+        return;
+      }
+      inviteSlug = token.slug;
+      // READ BACK OFF THE TOKEN ROW, not left as the host-derived value. The two
+      // are equal by construction here, and writing it this way is what keeps
+      // that a provable property of the code rather than a comment: every
+      // contractor-scoped value the page carries comes from the token.
+      contractorId = token.contractor_id;
+    }
+
+    res.type('html').send(
+      renderLandingPage({ ...payload, inviteSlug, contractorId }, res.locals.cspNonce)
+    );
   } catch (err) {
-    await logError({ req, error: err, source: 'GET /i/:slug' });
+    await logError({ req, error: err, source });
     // A THROWN ERROR MUST STILL RENDER HTML. The global expressErrorHandler
     // answers JSON, which on this surface would show a homeowner a raw object.
     // Handled here so the failure mode is a plain page rather than a JSON blob,
@@ -912,6 +1116,14 @@ router.get('/i/:slug', async (req, res) => {
       "<p>Something went wrong. Please try again in a moment.</p></body></html>"
     );
   }
-});
+}
+
+router.get('/i/:slug', (req, res) => serveLanding(req, res, req.params.slug, 'GET /i/:slug'));
+
+// MOUNTED LAST-ISH AND DELIBERATELY NARROW. server/app.js mounts this router
+// after every API router, so this cannot shadow one; and on a host carrying no
+// contractor subdomain it renders the neutral State 0 rather than claiming the
+// apex, which per A7/A13 belongs to the marketing site and never reaches Express.
+router.get('/', (req, res) => serveLanding(req, res, null, 'GET / — marketing mode'));
 
 module.exports = router;
