@@ -258,8 +258,18 @@ function themeStyle(theme) {
 // The RoofMiles token set, used when nothing resolved. Spread into a plain object
 // because BRANDING_THEME_DEFAULTS is frozen and callers read optional keys
 // (logoUrl, phone, programName) that it does not carry.
+// isPlatform IS THE ONLY HONEST MARKER, and it has to live on the object rather
+// than be inferred from a value. The tempting shortcut — companyName ===
+// 'RoofMiles' — is wrong: a REAL contractor resolves to that name as the
+// resolver's last resort when neither contractor_settings.company_name nor
+// contractors.name yields anything, and landingStates.test.js:1216 requires that
+// contractor's header to stay styled TEXT. A name comparison would hand them the
+// platform's mark. Set here and nowhere else — adding it to
+// BRANDING_THEME_DEFAULTS or to resolveBrandingTheme would break
+// brandingTheme.test.js's whole-output deepEqual and key-set assertions, and
+// would force a paired edit to the src/ mirror.
 function neutralTheme() {
-  return { ...BRANDING_THEME_DEFAULTS, programName: null, logoUrl: null, phone: null, email: null };
+  return { ...BRANDING_THEME_DEFAULTS, programName: null, logoUrl: null, phone: null, email: null, isPlatform: true };
 }
 
 // ── STYLES ───────────────────────────────────────────────────────────────────
@@ -520,6 +530,21 @@ function renderFooter(theme) {
 // contractor_settings.company_name nor contractors.name yields anything usable.
 function renderBrandMark(theme) {
   const name = escapeHtml(theme.companyName);
+
+  // THE PLATFORM'S OWN MARK, and the one place a logo is correct without a
+  // contractor behind it. Reachable only from neutralTheme(), which is the sole
+  // setter of isPlatform — a contractor theme can never carry it.
+  //
+  // The src DELIBERATELY DOES NOT GO THROUGH safeLogoUrl. That guard validates
+  // contractor-supplied URLs out of an unconstrained TEXT column and must stay
+  // https-only; a same-origin relative path is exactly what it is built to
+  // refuse. This src is a literal in the template with no data reaching it, so
+  // there is nothing to validate. Served from server/public via the /static mount
+  // (server/app.js), which img-src 'self' already permits.
+  if (theme.isPlatform) {
+    return `<img class="brand-logo" src="/static/roofmiles-logo.png" alt="${name}">`;
+  }
+
   const logo = safeLogoUrl(theme.logoUrl);
   return logo
     ? `<img class="brand-logo" src="${escapeHtml(logo)}" alt="${name}">`
