@@ -2,11 +2,18 @@ import { useState } from 'react';
 import { R } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
 import rbLogoSquareWordmark from '../../assets/images/rb logo w wordmark 2000px transparent background.png';
-import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
+// The PLATFORM default mark, used only when the contractor has uploaded none.
+// Replaces a direct import of AccentRoofing-Logo.png — one tenant's logo shown to
+// every homeowner of every other tenant (C/DL-2 Phase 3c).
+import roofMilesLogo from '../../assets/images/roofmiles_logo_svg.svg';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─── Signup Screen ─────────────────────────────────────────────────────────────
-export default function SignupScreen({ inviteSlug, contractorName, onSignupComplete }) {
+//
+// `branding` is the invite payload's contractor block, passed straight through by
+// App.js from GET /api/invite/:slug — the same resolved token set the landing page
+// and the admin preview consume.
+export default function SignupScreen({ inviteSlug, contractorName, branding, onSignupComplete }) {
   const [firstName, setFirstName]         = useState('');
   const [lastName, setLastName]           = useState('');
   const [phone, setPhone]                 = useState('');
@@ -20,6 +27,12 @@ export default function SignupScreen({ inviteSlug, contractorName, onSignupCompl
   const [serverError, setServerError]     = useState('');
   const [fieldErrors, setFieldErrors]     = useState({});
   const cardVisible = useEntrance(80);
+
+  // Same rule as EmailVerifyScreen: the fallback chain ends at the PLATFORM, never
+  // at another contractor. A borrowed logo or a borrowed name on a homeowner-facing
+  // screen is a white-label breach, and reads as phishing to the person looking at it.
+  const companyName = branding?.companyName || contractorName || 'RoofMiles';
+  const logoSrc     = branding?.logoUrl || roofMilesLogo;
 
   // ─── Validation ──────────────────────────────────────────────────────────────
   function validate() {
@@ -168,8 +181,8 @@ export default function SignupScreen({ inviteSlug, contractorName, onSignupCompl
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
       }}>
         <img
-          src={accentRoofingLogo}
-          alt={contractorName || 'Accent Roofing Service'}
+          src={logoSrc}
+          alt={companyName}
           style={{ width: 120, height: 'auto', display: 'block', margin: '0 auto 20px' }}
         />
         <h2 style={{
@@ -182,7 +195,7 @@ export default function SignupScreen({ inviteSlug, contractorName, onSignupCompl
           Create your account
         </h2>
         <p style={{ margin: '0 0 24px', fontSize: 15, color: R.textSecondary }}>
-          Join {contractorName || 'the referral program'} and start earning rewards.
+          Join {branding?.companyName || contractorName || 'the referral program'} and start earning rewards.
         </p>
 
         {/* Server error */}
@@ -415,8 +428,9 @@ export default function SignupScreen({ inviteSlug, contractorName, onSignupCompl
         letterSpacing: '0.06em',
         opacity: cardVisible ? 1 : 0,
         transition: 'opacity 0.5s ease 0.3s',
+        textTransform: 'uppercase',
       }}>
-        ACCENT ROOFING SERVICE · EST. 1989
+        {companyName}
       </p>
 
       <style>{`

@@ -8,6 +8,12 @@
 // ModuleScopePlugin). THE TWO FILES MUST BE EDITED TOGETHER. This is the same
 // arrangement WARMUP_ENTRIES / WARMUP_ENTRIES_SERVER already uses in this repo.
 //
+// ONE INTENTIONAL DIFFERENCE: the `'use strict';` on line 1 below exists ONLY
+// here. The src/ copy must not have it — CRA's eslint flags it under src/, and
+// CRA turns warnings into build errors whenever CI is set, so its presence there
+// fails `CI=true npm run build`. Do not add it to the mirror for symmetry; see
+// that file's header. Everything AFTER the header comments is verbatim.
+//
 // What makes a mirror acceptable here rather than the first step of a drift is
 // that a test fails when they disagree: server/test/brandingTheme.test.js
 // compares the two copies' defaults AND their resolution behaviour across a
@@ -53,10 +59,22 @@ const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 // THERE IS NO DEFAULT LOGO, deliberately, and it is not an omission: a
 // placeholder logo borrowed from another contractor is a white-label breach,
 // not a fallback. The page draws no logo slot when logoUrl is null.
+//
+// accentColor is a PALE TINT OF primaryColor, and that relationship is the whole
+// reason for the value (ruling: C/DL-2 Phase 3c). The accent slot paints soft
+// background washes — progress-bar tracks, avatar circles, section fills — so it
+// has to sit quietly behind the primary rather than compete with it. A tint of
+// the primary keeps the default palette internally coherent instead of
+// introducing a fourth unrelated hue.
+//
+// IT IS NOT SOURCED FROM backgroundColor. The two slots do different jobs:
+// backgroundColor is the page's own canvas, accentColor is a fill drawn ON that
+// canvas, and collapsing them would make every wash invisible on a white page.
 const BRANDING_THEME_DEFAULTS = Object.freeze({
   companyName:     'RoofMiles',
   primaryColor:    '#F26A1B',
   secondaryColor:  '#1C2D4D',
+  accentColor:     '#FDF0E7',
   backgroundColor: '#FFFFFF',
 });
 
@@ -96,7 +114,7 @@ function resolveColor(value, fallback) {
  *        the row loader returned — including null for a contractor with no
  *        settings row at all. A throw here is a blank landing page.
  * @returns {{companyName: string, programName: string|null, primaryColor: string,
- *            secondaryColor: string, backgroundColor: string, logoUrl: string|null,
+ *            secondaryColor: string, accentColor: string, backgroundColor: string, logoUrl: string|null,
  *            phone: string|null, email: string|null, address?: string}}
  */
 function resolveBrandingTheme(input) {
@@ -116,6 +134,11 @@ function resolveBrandingTheme(input) {
 
     primaryColor:    resolveColor(src.primary_color,    BRANDING_THEME_DEFAULTS.primaryColor),
     secondaryColor:  resolveColor(src.secondary_color,  BRANDING_THEME_DEFAULTS.secondaryColor),
+    // SOURCED FROM accent_color, deliberately, and not re-pointed at
+    // landing_bg_color. accent_color is a real column that GET/PUT
+    // /api/admin/settings already round-trips and that admins can already set;
+    // re-sourcing the slot would silently ignore a value they had saved.
+    accentColor:     resolveColor(src.accent_color,     BRANDING_THEME_DEFAULTS.accentColor),
     backgroundColor: resolveColor(src.landing_bg_color, BRANDING_THEME_DEFAULTS.backgroundColor),
 
     logoUrl:         firstNonEmpty(src.logo_url),

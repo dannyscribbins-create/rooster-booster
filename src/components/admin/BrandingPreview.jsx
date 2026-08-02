@@ -1,21 +1,45 @@
 import { useState } from 'react';
 import { AD } from '../../constants/adminTheme';
-
-const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
+import { resolveBrandingTheme } from '../../utils/brandingTheme';
 
 // ─── BrandingPreview ──────────────────────────────────────────────────────────
 // Phone mockup showing Login + Dashboard screens using live formData values.
 // Fonts are already injected into <head> by BrandingProfileSettings's useEffect.
+//
+// ── RESOLVES THROUGH THE SHARED MIRROR (C/DL-2 Phase 3c) ─────────────────────
+// This component used to carry its own fallbacks: #012854 / #CC0000 / #D3E3F0 —
+// ACCENT ROOFING'S navy, red and light blue, the platform's original single-tenant
+// palette, hardcoded before RoofMiles had a default of its own. The server fell
+// back to RoofMiles' #F26A1B / #1C2D4D / #FFFFFF. A contractor who had saved no
+// colours therefore saw ONE BRAND HERE and A DIFFERENT ONE on their live surface,
+// and neither was theirs. Nothing failed; the preview simply lied about what the
+// page would look like.
+//
+// ⚠ AN UNBRANDED CONTRACTOR'S PREVIEW IS NOW ORANGE, NOT NAVY. THAT IS THE
+// CORRECTION, NOT A REGRESSION. #F26A1B is the RoofMiles platform default their
+// live page already renders; the preview finally agrees with it. Anyone who sees
+// the orange, assumes a bug and "restores" the navy has reintroduced the
+// white-label breach. Pinned by src/components/admin/BrandingPreview.test.js.
+//
+// formData IS ALREADY THE RESOLVER'S INPUT SHAPE — it is the GET /api/admin/settings
+// response object, whose column names are exactly the snake_case keys
+// resolveBrandingTheme reads. Extra keys are ignored, so it is passed straight in.
 
 export default function BrandingPreview({ formData }) {
   const [screen, setScreen] = useState('login');
 
-  const primary   = HEX_RE.test(formData.primary_color)   ? formData.primary_color   : '#012854';
-  const secondary = HEX_RE.test(formData.secondary_color) ? formData.secondary_color : '#CC0000';
-  const accent    = HEX_RE.test(formData.accent_color)    ? formData.accent_color    : '#D3E3F0';
+  const theme     = resolveBrandingTheme(formData);
+  const primary   = theme.primaryColor;
+  const secondary = theme.secondaryColor;
+  const accent    = theme.accentColor;
   const fontH     = formData.font_heading    || 'Montserrat';
   const fontB     = formData.font_body       || 'Roboto';
-  const appName   = formData.app_display_name || 'Rooster Booster';
+  // The resolver supplies NO default program name on purpose — 'Rooster Booster'
+  // is this platform's internal codename, not a name any contractor would choose,
+  // and it is exactly as wrong on a white-labeled surface as another contractor's
+  // colour would be. A contractor who has not named their program shows their own
+  // company name instead.
+  const appName   = theme.programName || theme.companyName;
   const tagline   = formData.tagline          || 'Refer your neighbors. Earn cash rewards.';
   const reviewBtn = formData.review_button_text || 'Leave a Review';
 
@@ -78,6 +102,7 @@ export default function BrandingPreview({ formData }) {
             <LoginPreview
               primary={primary} secondary={secondary} accent={accent}
               fontH={fontH} fontB={fontB} appName={appName} tagline={tagline}
+              companyName={theme.companyName}
             />
           ) : (
             <DashboardPreview
@@ -100,7 +125,7 @@ export default function BrandingPreview({ formData }) {
 
 // ─── Login Screen Preview ─────────────────────────────────────────────────────
 
-function LoginPreview({ primary, secondary, accent, fontH, fontB, appName, tagline }) {
+function LoginPreview({ primary, secondary, accent, fontH, fontB, appName, tagline, companyName }) {
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -203,14 +228,20 @@ function LoginPreview({ primary, secondary, accent, fontH, fontB, appName, tagli
         </div>
       </div>
 
-      {/* Footer */}
+      {/* Footer — the contractor's own name, never a hardcoded one.
+          Was 'ACCENT ROOFING SERVICE · EST. 1989' until C/DL-2 Phase 3c: one
+          tenant's name AND a fabricated founding year, shown to every other
+          contractor previewing their own brand. The year is gone rather than
+          made configurable — no column holds it and inventing one for a preview
+          caption is not worth a migration. */}
       <p style={{
         margin: '7px 0 0', fontSize: 7,
         color: 'rgba(255,255,255,0.35)',
         fontFamily: "'Roboto Mono', monospace",
         letterSpacing: '0.06em', textAlign: 'center',
+        textTransform: 'uppercase',
       }}>
-        ACCENT ROOFING SERVICE · EST. 1989
+        {companyName}
       </p>
     </div>
   );

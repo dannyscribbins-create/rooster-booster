@@ -2,11 +2,19 @@ import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
 import rbLogoSquareWordmark from '../../assets/images/rb logo w wordmark 2000px transparent background.png';
-import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
+// The PLATFORM default mark, used only when the contractor has uploaded none.
+// Replaces a direct import of AccentRoofing-Logo.png — one tenant's logo shown to
+// every homeowner of every other tenant (C/DL-2 Phase 3c).
+import roofMilesLogo from '../../assets/images/roofmiles_logo_svg.svg';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─── Email Verify Screen ───────────────────────────────────────────────────────
-export default function EmailVerifyScreen({ userId, email, inviteSlug, contractorName, onVerifyComplete }) {
+//
+// `branding` is the invite payload's contractor block (App.js passes it straight
+// through from GET /api/invite/:slug). It is the SAME resolved token set the
+// landing page and the admin preview consume, so this screen cannot drift from
+// them.
+export default function EmailVerifyScreen({ userId, email, inviteSlug, contractorName, contractorId, branding, onVerifyComplete }) {
   const [code, setCode]                 = useState('');
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState('');
@@ -14,6 +22,15 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendSuccess, setResendSuccess]   = useState(false);
   const cardVisible = useEntrance(80);
+
+  // WHOSE PROGRAM THIS IS. The chain ends at the platform rather than at any
+  // contractor: 'RoofMiles' on a homeowner's screen is merely unhelpful, whereas
+  // another roofer's name there reads as phishing to the person looking at it.
+  const companyName = branding?.companyName || contractorName || 'RoofMiles';
+  // NO BORROWED LOGO, ever. A placeholder taken from another contractor is a
+  // white-label breach, not a fallback — the platform mark is the only honest
+  // stand-in.
+  const logoSrc     = branding?.logoUrl || roofMilesLogo;
 
   // ─── Countdown timer ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -64,11 +81,41 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
   }
 
   // ─── Resend ───────────────────────────────────────────────────────────────────
-  function handleResend() {
-    // MVP: add a dedicated /api/signup/resend-code endpoint that regenerates and resends the code
+  // Until C/DL-2 Phase 3c this function made NO NETWORK CALL. It set the cooldown,
+  // said "Code resent! Check your inbox." and did nothing — so a homeowner whose
+  // code never arrived (the only person who ever presses this) was told a new one
+  // was on its way and waited for an email that did not exist.
+  //
+  // ── KEYED ON email + contractorId, NEVER ON userId ──────────────────────────
+  // A security decision, not a style one, and it mirrors the endpoint's own
+  // (referrer.js). users.id is a sequential integer, so a userId-keyed resend is a
+  // mailbomb primitive: POST 1, 2, 3 … and every account in the table receives
+  // mail. contractorId is required rather than optional because users is
+  // UNIQUE(contractor_id, email) — the same homeowner address can hold an account
+  // under two contractors.
+  //
+  // ── THE STATE IS SET BEFORE THE REQUEST, DELIBERATELY ───────────────────────
+  // The endpoint returns ONE generic 200 for every outcome — found, unknown,
+  // already verified, missing parameter, swallowed DB or mail error alike — so
+  // that it cannot be used to enumerate accounts. Conditioning this message on the
+  // response would move that oracle from the server to the screen and undo the
+  // endpoint's entire design. Setting the copy and the cooldown first makes the
+  // independence structural rather than a promise in a comment, and the failure is
+  // swallowed for the same reason. The lost code is recoverable: the cooldown
+  // expires and the button comes back.
+  async function handleResend() {
     setResendCooldown(60);
     setResendSuccess(true);
     setTimeout(() => setResendSuccess(false), 3000);
+    try {
+      await fetch(`${BACKEND_URL}/api/signup/resend-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, contractorId }),
+      });
+    } catch {
+      // Swallowed on purpose — see above. Never surfaced to the homeowner.
+    }
   }
 
   // ─── Success state ────────────────────────────────────────────────────────────
@@ -151,8 +198,8 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
       }}>
         <img
-          src={accentRoofingLogo}
-          alt={contractorName || 'Accent Roofing Service'}
+          src={logoSrc}
+          alt={companyName}
           style={{ width: 120, height: 'auto', display: 'block', margin: '0 auto 20px' }}
         />
 
@@ -306,8 +353,9 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
         letterSpacing: '0.06em',
         opacity: cardVisible ? 1 : 0,
         transition: 'opacity 0.5s ease 0.3s',
+        textTransform: 'uppercase',
       }}>
-        ACCENT ROOFING SERVICE · EST. 1989
+        {companyName}
       </p>
 
       <style>{`

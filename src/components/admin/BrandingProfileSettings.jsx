@@ -4,6 +4,17 @@ import QRCode from 'qrcode';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import BrandingPreview from './BrandingPreview';
+// The PLATFORM default mark. SVG for in-app rendering; roofmiles_logo_png.png is
+// the counterpart for email, where SVG support is unreliable.
+//
+// NOT rb_logo_* — those are the Rooster Booster mark, which is Accent's white
+// label rather than the platform's identity.
+//
+// BUNDLING AN SVG HERE DOES NOT CONTRADICT the upload endpoint's SVG exclusion.
+// That exclusion covers CONTRACTOR-SUPPLIED files landing on a public bucket,
+// where a direct navigation would execute any script inside them. This file is
+// committed to the repo and served from our own build output.
+import roofMilesLogo from '../../assets/images/roofmiles_logo_svg.svg';
 
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
@@ -191,6 +202,15 @@ function FontSelect({ label, value, onChange, options }) {
 
 const EMPTY_FORM = {
   primary_color: '', secondary_color: '', accent_color: '',
+  // ⚠ SEEDED FROM THE GET RESPONSE ON MOUNT, exactly like the three colours above,
+  // and that is not optional. handleSave sends { ...fullSettingsRef.current,
+  // ...formData }, so a key that exists in formData SHADOWS the loaded payload. A
+  // landing_bg_color left at '' here would overwrite a real saved colour with an
+  // empty string the first time an admin saved anything at all — and a browser
+  // renders an empty string as no colour, so their landing background would simply
+  // vanish. Pinned by 'an existing landing background survives a save that edits
+  // something else' in BrandingProfileSettings.test.js.
+  landing_bg_color: '',
   social_facebook: '', social_instagram: '', social_google: '',
   social_nextdoor: '', social_website: '',
   review_url: '', review_button_text: '', review_message: '',
@@ -222,10 +242,15 @@ export default function BrandingProfileSettings() {
   const [urlLoading, setUrlLoading]           = useState(false);
   const [urlError, setUrlError]               = useState(null);
 
-  const fullSettingsRef = useRef(null);
-  const statusTimer     = useRef(null);
-  const copiedTimer     = useRef(null);
-  const fileInputRef    = useRef(null);
+  // Logo upload state (C/DL-2 Phase 3c)
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError]         = useState(null);
+
+  const fullSettingsRef  = useRef(null);
+  const statusTimer      = useRef(null);
+  const copiedTimer      = useRef(null);
+  const fileInputRef     = useRef(null);   // the colour eyedropper — persists nothing
+  const logoInputRef     = useRef(null);   // the real logo uploader
 
   // Inject keyframe animations once
   useEffect(() => {
@@ -266,6 +291,7 @@ export default function BrandingProfileSettings() {
           primary_color:      settings.primary_color      || '',
           secondary_color:    settings.secondary_color    || '',
           accent_color:       settings.accent_color       || '',
+          landing_bg_color:   settings.landing_bg_color   || '',
           social_facebook:    settings.social_facebook    || '',
           social_instagram:   settings.social_instagram   || '',
           social_google:      settings.social_google      || '',
@@ -344,6 +370,56 @@ export default function BrandingProfileSettings() {
         if (statusTimer.current) clearTimeout(statusTimer.current);
         statusTimer.current = setTimeout(() => setSaveStatus(null), 3000);
       });
+  }
+
+  // Uploads the chosen file to POST /api/admin/branding/logo and adopts the URL it
+  // returns.
+  //
+  // ── THE THIRD LINE IS THE WHOLE POINT ────────────────────────────────────────
+  // Updating fullSettingsRef.current is not bookkeeping, it is the fix for a
+  // data-loss bug this control would otherwise INTRODUCE. handleSave sends
+  // { ...fullSettingsRef.current, ...formData }, and logo_url lives in neither
+  // formData nor anywhere else the save reads — only in that ref, captured on
+  // mount. PUT /api/admin/settings is a full-row upsert, so the ordinary session
+  //
+  //     open Branding (no logo)  ->  upload a logo  ->  edit the tagline  ->  Save
+  //
+  // would write logo_url = NULL and destroy the logo that was just uploaded.
+  // Shipping the uploader without this line would be strictly worse than shipping
+  // nothing: the feature would appear to work and silently undo itself one save
+  // later. Pinned by 'a save after an upload sends the NEW logo_url, not the stale
+  // one' in BrandingProfileSettings.test.js.
+  //
+  // The server cannot defend against this — it was told to write null and did.
+  // See the [CHARACTERIZATION] test in server/test/brandingSaveRoundTrip.test.js.
+  async function handleLogoUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true);
+    setLogoError(null);
+    try {
+      // No Content-Type header, deliberately — the browser must set the multipart
+      // boundary itself, and naming the type by hand strips it.
+      const body = new FormData();
+      body.append('logo', file);
+      const res = await fetch(`${BACKEND_URL}/api/admin/branding/logo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        body,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.logo_url) {
+        setLogoError(data.error || 'Upload failed. Please try again.');
+      } else {
+        setLogoData(prev => ({ ...prev, logo_url: data.logo_url }));
+        if (fullSettingsRef.current) fullSettingsRef.current.logo_url = data.logo_url;
+      }
+    } catch {
+      setLogoError('Upload failed. Please try again.');
+    }
+    setLogoUploading(false);
+    // Clear the input so re-choosing the SAME file fires change again.
+    if (logoInputRef.current) logoInputRef.current.value = '';
   }
 
   function handleCopy() {
@@ -430,14 +506,21 @@ export default function BrandingProfileSettings() {
     <div style={{ display: 'flex', gap: 40, alignItems: 'flex-start', maxWidth: 1220, margin: '0 auto' }}>
       <div style={{ flex: 1, minWidth: 0, maxWidth: 820 }}>
 
-      {/* ── Section 1: Brand Logos (display only) ── */}
+      {/* ── Section 1: Brand Logos ──
+          Until C/DL-2 Phase 3c this card was display-only and said "Logo uploads
+          coming soon — contact support to update", even though
+          POST /api/admin/branding/logo had already shipped in Phase 3b. Nothing
+          called it. */}
       <div style={{ background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: AD.radiusLg, padding: 32, marginBottom: 20 }}>
         <SectionHeading>Brand Logos</SectionHeading>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {[
-            { label: 'App Logo', url: logoData.logo_url },
-            { label: 'Referrer App Logo', url: logoData.app_logo_url },
-          ].map(({ label, url }) => (
+            // Only logo_url is uploadable. app_logo_url is the second term of three
+            // email fallback chains, and pointing this endpoint at it would silently
+            // change what those emails render (ruling: Phase 0 for Phase 3).
+            { label: 'App Logo', url: logoData.logo_url, uploadable: true },
+            { label: 'Referrer App Logo', url: logoData.app_logo_url, uploadable: false },
+          ].map(({ label, url, uploadable }) => (
             <div key={label}>
               <div style={{ fontSize: 12, fontWeight: 500, color: AD.textSecondary, marginBottom: 8 }}>{label}</div>
               {url ? (
@@ -446,14 +529,58 @@ export default function BrandingProfileSettings() {
                   <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace", wordBreak: 'break-all' }}>{url}</span>
                 </div>
               ) : (
-                <span style={{ fontSize: 13, color: AD.textTertiary }}>No logo set</span>
+                /* The platform default, shown so an admin can see what their
+                   surfaces actually render today rather than reading "No logo set"
+                   and having to guess. */
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <img
+                    src={roofMilesLogo}
+                    alt="RoofMiles"
+                    style={{ height: 48, width: 'auto', borderRadius: 6, border: `1px solid ${AD.border}`, background: AD.bgCard, padding: 4, opacity: 0.75 }}
+                  />
+                  <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+                    No logo set — the RoofMiles mark is shown as a placeholder
+                  </span>
+                </div>
+              )}
+
+              {uploadable && (
+                <div style={{ marginTop: 12 }}>
+                  <button
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={logoUploading}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 7,
+                      padding: '8px 16px', borderRadius: AD.radiusMd,
+                      border: `1px solid ${AD.border}`, background: 'transparent',
+                      color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 13,
+                      cursor: logoUploading ? 'not-allowed' : 'pointer',
+                      opacity: logoUploading ? 0.5 : 1, transition: 'opacity 0.15s',
+                    }}
+                  >
+                    <i className={`ph ${logoUploading ? 'ph-spinner' : 'ph-upload-simple'}`}
+                       style={{ fontSize: 14, ...(logoUploading ? { animation: 'rbSpin 1s linear infinite' } : {}) }} />
+                    {logoUploading ? 'Uploading…' : url ? 'Replace Logo' : 'Upload Logo'}
+                  </button>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={handleLogoUpload}
+                  />
+                  <HelperText>
+                    PNG, JPG or WEBP, up to 2MB. SVG is not accepted — it is served from a public
+                    URL where a browser would treat it as a document and run any script inside it.
+                  </HelperText>
+                  {logoError && (
+                    <p style={{ margin: '6px 0 0', fontSize: 12, color: '#ef4444', fontFamily: AD.fontSans }}>{logoError}</p>
+                  )}
+                </div>
               )}
             </div>
           ))}
         </div>
-        <p style={{ margin: '20px 0 0', fontSize: 12, color: AD.textTertiary, fontStyle: 'italic', fontFamily: AD.fontSans }}>
-          Logo uploads coming soon — contact support to update
-        </p>
       </div>
 
       {/* ── Section 2: Brand Colors ── */}
@@ -617,7 +744,7 @@ export default function BrandingProfileSettings() {
             label="Primary Color"
             value={formData.primary_color}
             onChange={v => handleChange('primary_color', v)}
-            placeholder="#012854"
+            placeholder="#F26A1B"
             pendingColor={pendingHex}
             onAssign={hex => handleSwatchAssign('primary_color', hex)}
           />
@@ -625,7 +752,7 @@ export default function BrandingProfileSettings() {
             label="Secondary Color"
             value={formData.secondary_color}
             onChange={v => handleChange('secondary_color', v)}
-            placeholder="#CC0000"
+            placeholder="#1C2D4D"
             pendingColor={pendingHex}
             onAssign={hex => handleSwatchAssign('secondary_color', hex)}
           />
@@ -633,10 +760,24 @@ export default function BrandingProfileSettings() {
             label="Accent Color"
             value={formData.accent_color}
             onChange={v => handleChange('accent_color', v)}
-            placeholder="#D3E3F0"
+            placeholder="#FDF0E7"
             pendingColor={pendingHex}
             onAssign={hex => handleSwatchAssign('accent_color', hex)}
           />
+          {/* C/DL-2 Phase 3c. The column shipped in ff2a871 and the public landing
+              page has read it since Phase 2a, but neither GET nor PUT mentioned it
+              until Phase 3b and no admin could set it until now. */}
+          <div>
+            <ColorRow
+              label="Landing Page Background"
+              value={formData.landing_bg_color}
+              onChange={v => handleChange('landing_bg_color', v)}
+              placeholder="#FFFFFF"
+              pendingColor={pendingHex}
+              onAssign={hex => handleSwatchAssign('landing_bg_color', hex)}
+            />
+            <HelperText>The page background homeowners see when they scan your QR code or open your invite link</HelperText>
+          </div>
         </div>
       </div>
 

@@ -115,11 +115,25 @@ const POPULATED = Object.freeze({
 // The hand-derived expected output for POPULATED. Written out as literals rather
 // than built from POPULATED by a loop, so the mapping cannot satisfy it by
 // construction.
+//
+// ⚠ accentColor WAS ADDED HERE IN C/DL-2 PHASE 3c, and it is the ONE edit that
+// phase made to a pre-existing test file. It is not a weakening and not an
+// accommodation: resolveBrandingTheme gained a fourth colour token by explicit
+// ruling, so this hand-derived literal — which is the WHOLE resolved output,
+// compared with deepEqual — had to gain it too or the test would assert a shape
+// the resolver is no longer specified to produce.
+//
+// POPULATED deliberately carries NO accent_color, so the value below is the
+// DEFAULT rather than a pass-through. accent_color pass-through is covered at
+// 'populated form state is reflected verbatim' in
+// src/components/admin/BrandingPreview.test.js, which feeds accent_color: '#ABCDEF'
+// through the mirror and reads the painted result.
 const POPULATED_EXPECTED = Object.freeze({
   companyName:     'Alpha Roofing Co',
   programName:     'Alpha Rewards',
   primaryColor:    '#123456',
   secondaryColor:  '#654321',
+  accentColor:     '#FDF0E7',
   backgroundColor: '#ABCDEF',
   logoUrl:         'https://cdn.test.invalid/alpha/logo.png',
   phone:           '555-0100',

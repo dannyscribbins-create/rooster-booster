@@ -38,8 +38,10 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "node --test --test-concurrency=1 server/test/*.test.js",
-    "test:react": "react-scripts test",
+    "test": "npm run test:server && npm run test:react",
+    "test:server": "node --test --test-concurrency=1 server/test/*.test.js",
+    "test:react": "react-scripts test --watchAll=false",
+    "test:react:watch": "react-scripts test",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

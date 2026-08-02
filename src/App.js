@@ -63,6 +63,21 @@ export default function App() {
     return params.get('exp') || null;
   });
   const [signupContractorName, setSignupContractorName] = useState(null);
+  // C/DL-2 Phase 3c. Both values arrive in the SAME invite payload the contractor
+  // NAME already comes from, and both were being discarded.
+  //
+  //   contractorId — POST /api/signup/resend-code is keyed on email + contractorId,
+  //     never on userId (users.id is a sequential integer, which would make a
+  //     userId-keyed resend a mailbomb primitive). Without this the Resend button
+  //     cannot address the right account: users is UNIQUE(contractor_id, email), so
+  //     the same homeowner address can hold an account under two contractors.
+  //
+  //   branding — the logo, company name and colours for the signup and verify
+  //     screens, which until now imported Accent Roofing's logo asset and hardcoded
+  //     'ACCENT ROOFING SERVICE · EST. 1989' in their footers. A homeowner who
+  //     scanned contractor #2's QR code was shown contractor #1's brand.
+  const [signupContractorId, setSignupContractorId] = useState(null);
+  const [signupBranding, setSignupBranding]         = useState(null);
   const [showVerify, setShowVerify]       = useState(false);
   const [pendingUserId, setPendingUserId] = useState(null);
   const [pendingEmail, setPendingEmail]   = useState(null);
@@ -86,6 +101,8 @@ export default function App() {
           window.history.replaceState(null, '', window.location.pathname);
         } else {
           setSignupContractorName(data.contractorName);
+          setSignupContractorId(data.contractorId ?? null);
+          setSignupBranding(data.contractor ?? null);
         }
       } catch {
         setSignupSlug(null);
@@ -196,12 +213,16 @@ export default function App() {
       email={pendingEmail}
       inviteSlug={signupSlug}
       contractorName={signupContractorName}
+      contractorId={signupContractorId}
+      branding={signupBranding}
       onVerifyComplete={() => {
         setShowVerify(false);
         setPendingUserId(null);
         setPendingEmail(null);
         setSignupSlug(null);
         setSignupContractorName(null);
+        setSignupContractorId(null);
+        setSignupBranding(null);
       }}
     />
   );
@@ -209,6 +230,7 @@ export default function App() {
     <SignupScreen
       inviteSlug={signupSlug}
       contractorName={signupContractorName}
+      branding={signupBranding}
       onSignupComplete={({ action, userId, email }) => {
         if (action === 'verify') {
           setPendingUserId(userId);

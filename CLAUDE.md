@@ -358,10 +358,15 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
 
 ## Testing
 
-- `npm test` runs the suite via Node's built-in `node:test` with `--test-concurrency=1` (the concurrency flag is load-bearing: Node 24 runs test files in parallel by default and the suites share one database).
+- `npm test` runs BOTH suites and is the single pre-push gate:
+  - `npm run test:server` — `node:test` over `server/test/*.test.js` with `--test-concurrency=1` (the concurrency flag is load-bearing: Node 24 runs test files in parallel by default and the suites share one database).
+  - `npm run test:react` — jest + jsdom over `src/**/*.test.js` via `react-scripts test --watchAll=false` (the flag is what makes it exit instead of entering watch mode; `npm run test:react:watch` is the interactive one).
+  - The two are chained with `&&`, server first, so a red React test blocks a push exactly like a red server test. Consequence to know: if the server suite fails, the React suite does not run that invocation.
+  - ⚠ These were separate commands until C/DL-2 Phase 3c, and component tests were therefore green only when someone remembered to run them. That is precisely how `BrandingPreview.jsx` drifted to Accent Roofing's palette while the server used RoofMiles' — no test was wrong, none of them ran.
+- Never add a React test that only runs under `test:react`-in-watch, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. All 43 tests must be green.
+- Rule: run `npm test` before every push. Both suites must be fully green — as of C/DL-2 Phase 3c that is 571 server tests and 33 React tests. (This line previously read "all 43 tests", a count left behind years of growth; treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand.)
 - Characterization rule: a failing or surprising test result means STOP and report — never adjust production code to satisfy a test, and never silently adjust a test to satisfy the code. Deliberate behavior changes update the relevant test openly and are documented in the session handoff.
 - Migration idempotency proofs must include a reproduction seeded with production's actual pre-existing row shapes, not only fresh-schema runs — a test DB rebuilt from scratch every run can never exercise "a real pre-existing row already in some legacy state," which is exactly what breaks in production and never breaks locally. See `CLAUDE_REGISTRY.md` (ST session, Architecture Notes) for the incident that established this.
 

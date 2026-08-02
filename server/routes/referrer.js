@@ -201,7 +201,7 @@ const WARMUP_ENTRIES_SERVER = [
 // landing page and the admin preview both consume, so the page's fallbacks and
 // the preview's fallbacks cannot be tuned independently of one another. The
 // aliased name is kept because every call site below reads it.
-const { BRANDING_THEME_DEFAULTS } = require('../utils/brandingTheme');
+const { resolveBrandingTheme, BRANDING_THEME_DEFAULTS } = require('../utils/brandingTheme');
 const ROOFMILES_DEFAULTS = BRANDING_THEME_DEFAULTS;
 
 // Loads one contractor's public branding block, or null if the contractor is gone.
@@ -215,14 +215,39 @@ const ROOFMILES_DEFAULTS = BRANDING_THEME_DEFAULTS;
 // able to render another's name, colours or logo. It lives here so that this
 // function, not each call site, is the enforcement seam.
 //
-// ADDRESS IS OMITTED, NOT NULLED, when company_address IS NULL (LP-1). The page
-// decides whether to draw the contact row by the key's presence, so a null would
-// render an empty row where no row belongs.
+// ── RESOLUTION LIVES IN THE SHARED RESOLVER AS OF C/DL-2 PHASE 3c ────────────
+// Every token below used to be resolved HERE, with a bare `||` per column. Phase
+// 3b made this file and the admin preview share their DEFAULTS; this makes them
+// share the RESOLUTION ITSELF. Sharing a constant while duplicating the logic that
+// consumes it is the same drift shape one level down — the two copies agreed on
+// WHAT the fallback was and could still disagree on WHEN to use it.
+//
+// WHAT CHANGED BEHAVIOURALLY, and it is a deliberate fix rather than a refactor
+// side effect: `||` treats every non-empty string as usable, so 'navy', a pasted
+// 'F26A1B', a 3-digit '#abc' and a padded '  #F26A1B  ' all reached the page and
+// rendered as NO COLOUR AT ALL — an invisible CTA or a header with no background,
+// with nothing thrown and nothing logged. The resolver validates the hex and falls
+// back instead. The same trimming rule now applies to company_name and
+// company_address, so a whitespace-only saved name falls through to
+// contractors.name rather than being sent to a homeowner as a blank brand.
+//
+// SLUG IS RE-ATTACHED EXPLICITLY, and that line is load-bearing. The resolver
+// deliberately emits NO slug token — it is an identity value rather than a brand
+// value, with no counterpart in the admin form state that the preview also feeds
+// it (recorded at server/test/brandingTheme.test.js). Every caller of this
+// function still needs it, so `return resolveBrandingTheme(row)` on its own would
+// silently drop it. Pinned by 'the rewire keeps `slug` in the branding block' in
+// server/test/landingBrandingResolver.test.js.
+//
+// ADDRESS IS STILL OMITTED, NOT NULLED, when company_address is unset (LP-1) —
+// the resolver preserves that rule; the page decides whether to draw the contact
+// row by the key's presence, so a null would render an empty row where none belongs.
 async function loadContractorBranding(db, contractorId) {
   const { rows } = await db.query(
     `SELECT c.slug, c.name AS contractor_name,
             s.company_name, s.app_display_name,
-            s.primary_color, s.secondary_color, s.landing_bg_color, s.logo_url,
+            s.primary_color, s.secondary_color, s.accent_color, s.landing_bg_color,
+            s.logo_url,
             s.company_phone, s.company_email, s.company_address
        FROM contractors c
        LEFT JOIN contractor_settings s ON s.contractor_id = c.id
@@ -232,26 +257,9 @@ async function loadContractorBranding(db, contractorId) {
   const row = rows[0];
   if (!row) return null;
 
-  const branding = {
-    slug:            row.slug,
-    // THREE-STEP CHAIN, and the middle step is load-bearing. contractors.name is
-    // NOT NULL, so a contractor that has never opened the Branding settings page
-    // still gets its own name rather than the platform's — which matters most on
-    // the signup verification email, where 'RoofMiles' in place of the roofer's
-    // name would read as a phishing attempt to the homeowner receiving it.
-    companyName:     row.company_name || row.contractor_name || ROOFMILES_DEFAULTS.companyName,
-    programName:     row.app_display_name  || null,
-    primaryColor:    row.primary_color     || ROOFMILES_DEFAULTS.primaryColor,
-    secondaryColor:  row.secondary_color   || ROOFMILES_DEFAULTS.secondaryColor,
-    backgroundColor: row.landing_bg_color  || ROOFMILES_DEFAULTS.backgroundColor,
-    // No default logo, deliberately: a placeholder borrowed from another
-    // contractor would be a white-label breach, not a fallback.
-    logoUrl:         row.logo_url          || null,
-    phone:           row.company_phone     || null,
-    email:           row.company_email     || null,
-  };
-  if (row.company_address) branding.address = row.company_address;
-  return branding;
+  // The row's column names ARE the resolver's input keys, so it is passed
+  // straight through. Extra columns are ignored by design.
+  return { slug: row.slug, ...resolveBrandingTheme(row) };
 }
 
 // Renders a full name as first name + last initial — 'Daniel Zylkiewicz' becomes
