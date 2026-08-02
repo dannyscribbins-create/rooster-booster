@@ -5,7 +5,9 @@ import rbLogoSquareWordmark from '../../assets/images/rb logo w wordmark 2000px 
 // The PLATFORM default mark, used only when the contractor has uploaded none.
 // Replaces a direct import of AccentRoofing-Logo.png — one tenant's logo shown to
 // every homeowner of every other tenant (C/DL-2 Phase 3c).
-import roofMilesLogo from '../../assets/images/roofmiles_logo_svg.svg';
+// Repointed from roofmiles_logo_svg.svg (removed 2026-08-02 — 640KB of base64
+// PNG wrapped in an <svg>). Same mark, icon + wordmark, 22KB.
+import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─── Signup Screen ─────────────────────────────────────────────────────────────

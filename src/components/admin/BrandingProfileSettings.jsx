@@ -4,17 +4,19 @@ import QRCode from 'qrcode';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import BrandingPreview from './BrandingPreview';
-// The PLATFORM default mark. SVG for in-app rendering; roofmiles_logo_png.png is
-// the counterpart for email, where SVG support is unreliable.
+// The PLATFORM default mark — the ICON + WORDMARK file, not the wordmark-only
+// one. This slot is a brand mark standing in where a contractor has uploaded no
+// logo of their own, rather than an inline wordmark set in a sentence.
 //
 // NOT rb_logo_* — those are the Rooster Booster mark, which is Accent's white
 // label rather than the platform's identity.
 //
-// BUNDLING AN SVG HERE DOES NOT CONTRADICT the upload endpoint's SVG exclusion.
-// That exclusion covers CONTRACTOR-SUPPLIED files landing on a public bucket,
-// where a direct navigation would execute any script inside them. This file is
-// committed to the repo and served from our own build output.
-import roofMilesLogo from '../../assets/images/roofmiles_logo_svg.svg';
+// WAS roofmiles_logo_svg.svg, removed 2026-08-02. That file was an SVG in name
+// only: 640KB, because it wrapped a base64 PNG. It bought no vector advantage at
+// any size this mark is drawn, and the same PNG was already the counterpart used
+// for email, where SVG support is unreliable — so one asset now serves both and
+// the SVG-vs-upload-policy note that used to live here is moot.
+import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
 
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
