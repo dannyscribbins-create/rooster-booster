@@ -5,13 +5,43 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('./retryWithBackoff');
 const { resendShouldRetry, twilioShouldRetry, jobberShouldRetry } = require('./retryHelpers');
+// THE CANONICAL escapeHtml. CLAUDE.md names this file as its home: "import from
+// there, never redefine locally."
+//
+// UNTIL C/DL-2 PHASE 3d-1 THAT RULE WAS UNFOLLOWABLE — this function was defined
+// here and omitted from module.exports, so there was no way to import it. That is
+// why six route files each carry their own copy (referrer.js, account.js,
+// admin/cashouts.js, resendWebhook.js, webhooks/jobber.js, crm/pipelineSync.js).
+// Removing those six is a separate change with its own blast radius across the
+// email, webhook, cashout and CRM paths; it is deliberately NOT bundled here.
+//
+// ── THE SINGLE QUOTE IS ESCAPED, AND THAT WAS A REPAIR, NOT A PREFERENCE ────
+// This copy previously escaped & < > " and stopped, making it the WEAKEST of the
+// seven — every local copy already escaped the apostrophe. Exporting it unrepaired
+// would have made the rule followable while handing every future caller the least
+// safe implementation in the repo.
+//
+// It matters because the first caller is a server-rendered public page
+// interpolating contractor-controlled values into markup. `<img src='...'>` and
+// `<div title='...'>` are both legal HTML and both are what a template naturally
+// produces when the value itself contains double quotes. In either, an unescaped
+// `'` closes the attribute and everything after it parses as markup.
+//
+// ORDER IS LOAD-BEARING: the ampersand is replaced FIRST. Escaping `<` before `&`
+// would turn a lone `<` into `&amp;lt;`, which renders to the visitor as the
+// literal text "&lt;".
+//
+// TOTAL FUNCTION by contract — nullish and non-string input yield '' rather than
+// throwing. The landing page interpolates nullable branding columns (phone, email,
+// address), and a throw there is a blank page on a public marketing surface.
 function escapeHtml(s) {
   if (!s || typeof s !== 'string') return '';
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function getPrimaryPhone(client) {
@@ -554,4 +584,7 @@ module.exports = {
   sendPendingInviteSMS,
   sendCreditAttributionEmail,
   sendPendingRewardEmail,
+  // Exported as of C/DL-2 Phase 3d-1. CLAUDE.md has always named this file as
+  // escapeHtml's home; until now it was not actually importable from here.
+  escapeHtml,
 };

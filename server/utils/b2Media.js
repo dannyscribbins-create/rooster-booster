@@ -39,11 +39,33 @@ function getMediaS3Client() {
   return _mediaS3Client;
 }
 
+// The base URL uploaded objects are served from. One expression, two callers, so
+// the CSP that must permit these images can never disagree with the URLs actually
+// written into contractor_settings.logo_url.
+function b2PublicBase() {
+  return process.env.B2_PUBLIC_URL_BASE
+    || `https://f005.backblazeb2.com/file/${process.env.B2_MEDIA_BUCKET_NAME}`;
+}
+
 // Builds the public https URL an uploaded object will be served from.
 function buildB2PublicUrl(b2Key) {
-  const base = process.env.B2_PUBLIC_URL_BASE
-    || `https://f005.backblazeb2.com/file/${process.env.B2_MEDIA_BUCKET_NAME}`;
-  return `${base}/${b2Key}`;
+  return `${b2PublicBase()}/${b2Key}`;
+}
+
+// The ORIGIN (scheme + host + port) of that base — the form a CSP source list
+// wants. Added in C/DL-2 Phase 3d-1 for the landing router's img-src, which must
+// permit contractor logos without widening the global policy.
+//
+// FALLS BACK TO null RATHER THAN THROWING on an unparseable base. A malformed
+// B2_PUBLIC_URL_BASE is a misconfiguration, but a throw here happens at CSP
+// construction time on a public page — trading a missing logo for a dead landing
+// page. The caller omits the source and the page still renders.
+function b2PublicOrigin() {
+  try {
+    return new URL(b2PublicBase()).origin;
+  } catch {
+    return null;
+  }
 }
 
 // True when the media credentials are configured. Callers check this and answer
@@ -80,4 +102,4 @@ async function putMediaObject({ key, body, contentType, contentLength }) {
   );
 }
 
-module.exports = { getMediaS3Client, buildB2PublicUrl, hasMediaCredentials, putMediaObject };
+module.exports = { getMediaS3Client, buildB2PublicUrl, b2PublicOrigin, hasMediaCredentials, putMediaObject };

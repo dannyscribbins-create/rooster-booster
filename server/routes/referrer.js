@@ -21,14 +21,21 @@ const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { verifyReferrerSession } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
 const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
+// recordScanEvent is NOT imported here any more — the only caller was the landing
+// resolution body, which moved to utils/landingResolve.js in C/DL-2 Phase 3d-1.
 const {
   generateSlug,
   buildInviteUrl,
   resolveToken,
   redeemToken,
-  recordScanEvent,
 } = require('../utils/inviteTokens');
-const { resolveHostToContractor, getInviteHostSlug } = require('../utils/contractorSlug');
+const { getInviteHostSlug } = require('../utils/contractorSlug');
+// C/DL-2 Phase 3d-1 — landing resolution moved to a shared module so the
+// server-rendered page and this JSON endpoint run ONE implementation. See that
+// file's header for why a second copy is the failure mode rather than the
+// shortcut. loadContractorBranding is imported rather than redefined here; it has
+// four other call sites in this file (signup email, resend-code, PIN reset).
+const { resolveLanding, loadContractorBranding } = require('../utils/landingResolve');
 
 // test seam — inert in production, never called outside server/test/
 // Only the cashout-section call sites below use these overrides.
@@ -187,134 +194,34 @@ const WARMUP_ENTRIES_SERVER = [
   { id: "warmup_10", firstName: "Tarence",  lastName: "Tack",      referralCount: 2,  earnings: 1100,  shout: "Staying sharp." },
 ];
 
-// ── LANDING PAGE BRANDING (C/DL-2 Phase 2a) ───────────────────────────────────
+// ── WHITE-LABEL FALLBACK NAME (C/DL-2 Phase 2a, narrowed in Phase 3d-1) ───────
 // Replaces the module constant CONTRACTOR_NAME = 'Accent Roofing Service', which
 // was the platform's last hardcoded tenant identity on a public surface (Phase 0
-// finding C9). Every value below is now read from contractor_settings, keyed by
-// the TOKEN's contractor_id — never by the hostname and never by a client field.
-
-// RoofMiles fallback tokens (LP §5). Any NULL branding column resolves to these so
-// a brand-new contractor has a decent page before uploading anything.
+// finding C9).
 //
-// SINGLE SOURCE OF TRUTH as of C/DL-2 Phase 3b: these are no longer declared
-// here. They come from server/utils/brandingTheme.js, the shared resolver the
-// landing page and the admin preview both consume, so the page's fallbacks and
-// the preview's fallbacks cannot be tuned independently of one another. The
-// aliased name is kept because every call site below reads it.
-const { resolveBrandingTheme, BRANDING_THEME_DEFAULTS } = require('../utils/brandingTheme');
+// SINGLE SOURCE OF TRUTH: the RoofMiles fallback tokens (LP §5) are declared in
+// server/utils/brandingTheme.js, the shared resolver the landing page and the
+// admin preview both consume, so the two surfaces' fallbacks cannot be tuned
+// independently. The aliased name is kept because every call site below reads it,
+// and server/test/brandingTheme.test.js pins this file's exported
+// ROOFMILES_DEFAULTS against that module's.
+//
+// ONLY THE DEFAULTS ARE NEEDED HERE AS OF PHASE 3d-1. resolveBrandingTheme itself
+// was called by loadContractorBranding, which moved to utils/landingResolve.js.
+// What remains are four email handlers below that fall back to the platform name
+// when a contractor has no branding row.
+const { BRANDING_THEME_DEFAULTS } = require('../utils/brandingTheme');
 const ROOFMILES_DEFAULTS = BRANDING_THEME_DEFAULTS;
 
-// Loads one contractor's public branding block, or null if the contractor is gone.
+// loadContractorBranding, toChipName and loadReferrerChip MOVED to
+// server/utils/landingResolve.js (C/DL-2 Phase 3d-1), along with the landing
+// resolution body that used to live in the /api/invite callback below.
 //
-// REUSES primary_color / secondary_color / logo_url. The brand_* columns LP §5
-// listed as "NEW" do not exist and must not be referenced — two competing colour
-// sources on one table is the failure mode that decision avoided.
-//
-// `c.id = $1` IS THE TENANCY PREDICATE, and it is the whole reason this function
-// exists instead of an inline query: one contractor's landing page must never be
-// able to render another's name, colours or logo. It lives here so that this
-// function, not each call site, is the enforcement seam.
-//
-// ── RESOLUTION LIVES IN THE SHARED RESOLVER AS OF C/DL-2 PHASE 3c ────────────
-// Every token below used to be resolved HERE, with a bare `||` per column. Phase
-// 3b made this file and the admin preview share their DEFAULTS; this makes them
-// share the RESOLUTION ITSELF. Sharing a constant while duplicating the logic that
-// consumes it is the same drift shape one level down — the two copies agreed on
-// WHAT the fallback was and could still disagree on WHEN to use it.
-//
-// WHAT CHANGED BEHAVIOURALLY, and it is a deliberate fix rather than a refactor
-// side effect: `||` treats every non-empty string as usable, so 'navy', a pasted
-// 'F26A1B', a 3-digit '#abc' and a padded '  #F26A1B  ' all reached the page and
-// rendered as NO COLOUR AT ALL — an invisible CTA or a header with no background,
-// with nothing thrown and nothing logged. The resolver validates the hex and falls
-// back instead. The same trimming rule now applies to company_name and
-// company_address, so a whitespace-only saved name falls through to
-// contractors.name rather than being sent to a homeowner as a blank brand.
-//
-// SLUG IS RE-ATTACHED EXPLICITLY, and that line is load-bearing. The resolver
-// deliberately emits NO slug token — it is an identity value rather than a brand
-// value, with no counterpart in the admin form state that the preview also feeds
-// it (recorded at server/test/brandingTheme.test.js). Every caller of this
-// function still needs it, so `return resolveBrandingTheme(row)` on its own would
-// silently drop it. Pinned by 'the rewire keeps `slug` in the branding block' in
-// server/test/landingBrandingResolver.test.js.
-//
-// ADDRESS IS STILL OMITTED, NOT NULLED, when company_address is unset (LP-1) —
-// the resolver preserves that rule; the page decides whether to draw the contact
-// row by the key's presence, so a null would render an empty row where none belongs.
-async function loadContractorBranding(db, contractorId) {
-  const { rows } = await db.query(
-    `SELECT c.slug, c.name AS contractor_name,
-            s.company_name, s.app_display_name,
-            s.primary_color, s.secondary_color, s.accent_color, s.landing_bg_color,
-            s.logo_url,
-            s.company_phone, s.company_email, s.company_address
-       FROM contractors c
-       LEFT JOIN contractor_settings s ON s.contractor_id = c.id
-      WHERE c.id = $1`,
-    [contractorId]
-  );
-  const row = rows[0];
-  if (!row) return null;
-
-  // The row's column names ARE the resolver's input keys, so it is passed
-  // straight through. Extra columns are ignored by design.
-  return { slug: row.slug, ...resolveBrandingTheme(row) };
-}
-
-// Renders a full name as first name + last initial — 'Daniel Zylkiewicz' becomes
-// 'Daniel Z.'. Returns null for anything unusable.
-//
-// THE REDACTION HAPPENS HERE, SERVER-SIDE, and that placement is the point: LP §7
-// requires that the full last name is never SENT to the page, not merely never
-// displayed by it. A page that receives the full name has already leaked it,
-// whatever it chooses to render.
-//
-// A single-word name degrades to itself — there is no initial to take, and
-// inventing one would be worse than showing the mononym.
-function toChipName(fullName) {
-  if (typeof fullName !== 'string') return null;
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return null;
-  if (parts.length === 1) return parts[0];
-  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
-}
-
-// Resolves the referrer chip for a token, or null when there is no chip to show.
-//
-// CHIP RULES BY link_type, and the absence cases matter as much as the presence:
-//   peer  — owned by a referrer (users.full_name).       Chip.
-//   rep   — owned by a field rep (team_members.full_name). Chip.
-//   contractor — general marketing, no personal owner.   NEVER a chip.
-//
-// Degrades to null rather than to a partial chip when the owner row is gone.
-// created_by_user_id and owner_team_member_id are both ON DELETE SET NULL, and
-// production already carries peer rows with a NULL owner, so an ownerless token is
-// an ordinary case and must stay a valid link.
-//
-// The `contractor_id = $2` predicate on both lookups is defence in depth: the
-// token already fixes the tenant, and this makes a cross-tenant owner join
-// impossible even if that ever stopped being true.
-async function loadReferrerChip(db, token) {
-  let fullName = null;
-
-  if (token.link_type === 'peer' && token.created_by_user_id) {
-    const { rows } = await db.query(
-      `SELECT full_name FROM users WHERE id = $1 AND contractor_id = $2`,
-      [token.created_by_user_id, token.contractor_id]
-    );
-    fullName = rows[0]?.full_name ?? null;
-  } else if (token.link_type === 'rep' && token.owner_team_member_id) {
-    const { rows } = await db.query(
-      `SELECT full_name FROM team_members WHERE id = $1 AND contractor_id = $2`,
-      [token.owner_team_member_id, token.contractor_id]
-    );
-    fullName = rows[0]?.full_name ?? null;
-  }
-
-  const displayName = toChipName(fullName);
-  return displayName ? { displayName } : null;
-}
+// They were module-private here, which meant the server-rendered landing page
+// could not reach them and would have needed its own copy — two mismatch rules
+// and two chip-privacy rules, agreeing on the day they were written and drifting
+// after. loadContractorBranding is imported at the top of this file because four
+// other handlers here still use it for white-labeled email.
 
 // ── BADGE AWARD HELPER ────────────────────────────────────────────────────────
 // Called after every pipeline sync. Checks pipeline_sync-triggered badges and
@@ -374,77 +281,25 @@ async function checkAndAwardBadges(userId, totalReferralCount) {
 // A landing-page load against an unredeemed token is a detectable scan event
 // (CD-16) — unchanged from C/DL-1, and deliberately recorded only AFTER the
 // mismatch check, so a tampering attempt never writes to the roster.
+//
+// ── THE BODY MOVED TO server/utils/landingResolve.js (C/DL-2 Phase 3d-1) ─────
+// This handler is now transport only: read the two inputs off the request, hand
+// them to the shared resolver, serialise the result. The mode selection, the
+// mismatch rule, chip privacy, the scan event and the payload assembly all live
+// in that module because the server-rendered landing page renders from the SAME
+// call. Anything re-inlined here becomes a second implementation of rules that
+// must not have two — see that file's header for the drift this already caused
+// once in this codebase.
+//
+// `req` is forwarded so a failed scan write still logs with a route and method.
 router.get(['/api/invite', '/api/invite/:slug'], landingResolveLimiter, async (req, res) => {
   try {
-    // Cosmetic only. req.hostname is reliable here because server/app.js sets
-    // `trust proxy 1`. Null is an ordinary outcome — apex, localhost, unknown or
-    // reserved subdomain — and never an error.
-    const hostContractor = await resolveHostToContractor(pool, req.hostname);
-    const slug = req.params.slug;
-
-    // ── MARKETING MODE — a bare subdomain, no token ──────────────────────────
-    // Valid, not State 0. Pure read: there is no token here, so nothing is
-    // recorded and nothing is written.
-    if (!slug) {
-      if (!hostContractor) return res.json({ valid: false });
-      const branding = await loadContractorBranding(pool, hostContractor.id);
-      if (!branding) return res.json({ valid: false });
-
-      return res.json({
-        valid: true,
-        mode: 'marketing',
-        contractorId: hostContractor.id,
-        contractorName: branding.companyName,
-        contractor: branding,
-      });
-    }
-
-    // ── INVITE MODE — a token ────────────────────────────────────────────────
-    // resolveToken adds the expiry check the inline query never had: a token is
-    // resolvable only while active AND unexpired.
-    const token = await resolveToken(pool, slug);
-    if (!token) return res.json({ valid: false });
-
-    // MISMATCH RULE (binding). Two sources of truth actively disagreeing happens
-    // only through tampering or miswiring, so TRUST NEITHER — not the token, not
-    // the subdomain. Preferring the token would make the subdomain decorative in
-    // the one case where its disagreement is the entire signal.
-    //
-    // The rejection is a bare { valid: false } carrying no branding from EITHER
-    // side. LP §2 State 0's "contractor branding if the slug resolved" governs the
-    // ordinary invalid case — an expired or unknown token, where the subdomain is
-    // the only signal present and nothing is in conflict. A mismatch is different
-    // in kind, and rendering the host's branding would confirm to a prober that
-    // that subdomain resolves to a real contractor. (Ruling: C/DL-2 Phase 2a;
-    // LP §2 amended accordingly.)
-    if (hostContractor && hostContractor.id !== token.contractor_id) {
-      return res.json({ valid: false });
-    }
-
-    // Telemetry, never a gate. A failed scan record costs a roster row; a 500
-    // here would cost the homeowner their signup. Logged and swallowed on purpose.
-    try {
-      await recordScanEvent(pool, slug);
-    } catch (scanErr) {
-      await logError({ req, error: scanErr, source: 'GET /api/invite/:slug — scan event' });
-    }
-
-    // Branding by the TOKEN's contractor, never the host's.
-    const branding = await loadContractorBranding(pool, token.contractor_id);
-    const payload = {
-      valid: true,
-      mode: 'invite',
-      contractorId: token.contractor_id,
-      contractorName: branding ? branding.companyName : ROOFMILES_DEFAULTS.companyName,
-      linkType: token.link_type,
-    };
-    if (branding) payload.contractor = branding;
-
-    // Absent, never null: the page draws the chip by the key's presence.
-    const chip = await loadReferrerChip(pool, token);
-    if (chip) payload.referrer = chip;
-
-    res.json(payload);
+    // req.hostname is reliable here because server/app.js sets `trust proxy 1`.
+    res.json(await resolveLanding(pool, {
+      host: req.hostname,
+      slug: req.params.slug,
+      req,
+    }));
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/invite/:slug' });
     // Was `err.message` — leaked internals to the client (Security Standards).
@@ -1247,7 +1102,17 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
     res.json({ success: true, fullName: user.full_name, email: user.email, phone: user.phone || null, token, showReviewCard, announcement, announcementSettings });
   } catch (err) {
     await logError({ req, error: err });
-    res.status(500).json({ error: 'Login failed: ' + err.message });
+    // Was `'Login failed: ' + err.message` — leaked internals to the client on a
+    // PUBLIC, unauthenticated endpoint (Security Standards). The third instance
+    // of the identical violation on this router: Phase 3a fixed /api/signup and
+    // /api/signup/verify-email and this one sat untouched between them, which is
+    // worse than never having swept at all — a caller probing for internal detail
+    // simply uses whichever door still answers.
+    //
+    // Only the CATCH is generic. The 401s above are deliberately untouched: they
+    // are actionable, carry no internals, and are identical for a wrong password
+    // and an unknown address, so they stay non-enumerating.
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
