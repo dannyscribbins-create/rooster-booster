@@ -1,6 +1,9 @@
 {
   "name": "rooster-booster",
   "version": "0.1.0",
+  "engines": {
+    "node": "24.x"
+  },
   "private": true,
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1064.0",
