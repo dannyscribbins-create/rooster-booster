@@ -639,68 +639,82 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
   }
 });
 
+// Every column PUT /api/admin/settings is permitted to write. It is a LITERAL
+// WHITELIST and must stay one: the column names below are interpolated into the
+// SQL string (a column name cannot be a $n parameter), so a name sourced from
+// req.body keys would be user input in the statement's structure. Only the VALUES
+// are parameterised. Adding a column here makes it writable; nothing else does.
+//
+// The set is exactly what the previous full-row statement wrote — contractor_id
+// (the ON CONFLICT key) and updated_at (always NOW()) are handled separately and
+// are deliberately absent.
+const SETTINGS_WRITABLE_COLUMNS = Object.freeze([
+  'company_name', 'company_phone', 'company_email', 'company_url',
+  'company_address', 'company_city', 'company_state', 'company_zip', 'company_country',
+  'logo_url', 'app_logo_url',
+  'primary_color', 'secondary_color', 'accent_color',
+  'social_facebook', 'social_instagram', 'social_google', 'social_nextdoor', 'social_website',
+  'review_url', 'review_button_text', 'review_message',
+  'font_heading', 'font_body', 'app_display_name', 'tagline',
+  'email_sender_name', 'email_footer_text',
+  'landing_bg_color',
+]);
+
 router.put('/api/admin/settings', requirePermission('branding.manage'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
-  const {
-    company_name, company_phone, company_email, company_url,
-    company_address, company_city, company_state, company_zip, company_country,
-    logo_url, app_logo_url,
-    primary_color, secondary_color, accent_color,
-    // C/DL-2 Phase 3b. WIRED INTO GET IN THE SAME CHANGE, and that pairing is not
-    // optional. This statement is a full-row upsert: every column below is written
-    // on every call, with an absent key mapping to NULL. The admin Branding form
-    // saves by sending the GET response merged with form state — so a column
-    // present HERE but absent from GET is destroyed the first time an admin saves
-    // anything at all. Adding landing_bg_color to this list alone would have been
-    // strictly worse than doing nothing: a contractor who set their landing
-    // background and later edited their phone number would silently lose it.
-    // Pinned by 'saving an unrelated branding field does not wipe an existing
-    // landing_bg_color' in server/test/adminSettingsBranding.test.js.
-    landing_bg_color,
-    social_facebook, social_instagram, social_google, social_nextdoor, social_website,
-    review_url, review_button_text, review_message,
-    font_heading, font_body, app_display_name, tagline,
-    email_sender_name, email_footer_text,
-  } = req.body;
+  const body = req.body || {};
+
+  // ── KEY PRESENCE, NOT VALUE ─────────────────────────────────────────────────
+  // This statement used to be a FULL-ROW upsert: all 29 columns written on every
+  // call, so a key absent from the request body arrived as undefined and was
+  // persisted as NULL. That made the endpoint safe only for callers sending back
+  // the whole GET payload merged with their edits (BrandingProfileSettings.jsx),
+  // and quietly destructive for any caller sending a subset. CompanyDetailsSettings
+  // sends 9 keys; every save of that page NULLed the other 20 columns — the logo,
+  // all the colours, the socials, the review block, the fonts, the tagline and the
+  // email sender name and footer. Pinned by server/test/adminSettingsPartialSave.test.js.
+  //
+  // A column is now written ONLY IF ITS KEY IS PRESENT in the body. Absent columns
+  // are omitted from the statement entirely: on UPDATE they keep their stored
+  // value, on a first INSERT they take their column default.
+  //
+  // PRESENCE, NEVER NULLNESS, and that distinction is the whole design. A key
+  // present with the value null MUST still write NULL — an admin who empties their
+  // tagline box and saves has to get an empty tagline. COALESCE, or skipping null
+  // values, would preserve data by making deliberate clearing impossible. It would
+  // also break the stale-read characterisation in brandingSaveRoundTrip.test.js,
+  // which sends a stale logo_url: null and correctly expects NULL to be written:
+  // the API cannot distinguish "the client means null" from "the client's copy is
+  // stale", and it is not this endpoint's job to try.
+  const columns = SETTINGS_WRITABLE_COLUMNS.filter(
+    col => Object.prototype.hasOwnProperty.call(body, col)
+  );
+
+  // company_country's historical default. Applied only when the key is PRESENT —
+  // an absent company_country must be omitted like any other absent column, not
+  // silently reset to 'US' on every save.
+  const values = [
+    contractorId,
+    ...columns.map(col => (col === 'company_country' ? (body.company_country ?? 'US') : body[col])),
+  ];
+
+  // With no whitelisted keys present, `columns` is empty and this degrades to a
+  // valid touch-only statement: INSERT (contractor_id, updated_at) ... DO UPDATE
+  // SET updated_at=NOW(). No empty column list, no trailing comma, no crash.
+  const insertColumns = ['contractor_id', ...columns, 'updated_at'].join(', ');
+  const insertValues  = [...values.map((_, i) => `$${i + 1}`), 'NOW()'].join(', ');
+  // $1 is contractor_id, so the column at index i binds to $(i + 2).
+  const updateSet     = [...columns.map((col, i) => `${col}=$${i + 2}`), 'updated_at=NOW()'].join(', ');
+
   try {
     const result = await pool.query(
-      `INSERT INTO contractor_settings (
-         contractor_id, company_name, company_phone, company_email, company_url,
-         company_address, company_city, company_state, company_zip, company_country,
-         logo_url, app_logo_url,
-         primary_color, secondary_color, accent_color,
-         social_facebook, social_instagram, social_google, social_nextdoor, social_website,
-         review_url, review_button_text, review_message,
-         font_heading, font_body, app_display_name, tagline,
-         email_sender_name, email_footer_text,
-         landing_bg_color,
-         updated_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,NOW())
-       ON CONFLICT (contractor_id) DO UPDATE SET
-         company_name=$2, company_phone=$3, company_email=$4, company_url=$5,
-         company_address=$6, company_city=$7, company_state=$8, company_zip=$9, company_country=$10,
-         logo_url=$11, app_logo_url=$12,
-         primary_color=$13, secondary_color=$14, accent_color=$15,
-         social_facebook=$16, social_instagram=$17, social_google=$18, social_nextdoor=$19, social_website=$20,
-         review_url=$21, review_button_text=$22, review_message=$23,
-         font_heading=$24, font_body=$25, app_display_name=$26, tagline=$27,
-         email_sender_name=$28, email_footer_text=$29,
-         landing_bg_color=$30,
-         updated_at=NOW()
+      `INSERT INTO contractor_settings (${insertColumns})
+       VALUES (${insertValues})
+       ON CONFLICT (contractor_id) DO UPDATE SET ${updateSet}
        RETURNING *`,
-      [
-        contractorId, company_name, company_phone, company_email, company_url,
-        company_address, company_city, company_state, company_zip, company_country ?? 'US',
-        logo_url, app_logo_url,
-        primary_color, secondary_color, accent_color,
-        social_facebook, social_instagram, social_google, social_nextdoor, social_website,
-        review_url, review_button_text, review_message,
-        font_heading, font_body, app_display_name, tagline,
-        email_sender_name, email_footer_text,
-        landing_bg_color,
-      ]
+      values
     );
     res.json({ success: true, settings: result.rows[0] });
   } catch (err) {
