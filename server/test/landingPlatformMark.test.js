@@ -82,10 +82,21 @@ const landingPath = slug => `/i/${slug}`;
 // that code does.
 const PLATFORM_MARK_SRC = '/static/roofmiles-logo.png';
 
-// LP §2 State 0's headline, hand-transcribed. Rendered as a literal in
-// renderInvalidPage (it is not passed through escapeHtml), so it matches the RAW
-// markup byte for byte — which is what lets it bound the header region below.
-const INVALID_HEADLINE = "This link isn't active";
+// State 0's headline, hand-transcribed, used as a BYTE OFFSET to bound the
+// header region below. Rendered as a literal in renderInvalidPage — not passed
+// through escapeHtml — so each matches the RAW markup byte for byte, straight
+// apostrophes and all. That property is load-bearing here and survives A21: an
+// escaped headline would arrive as "Let&#039;s" and indexOf would return -1,
+// collapsing the header slice rather than failing an assertion honestly.
+//
+// ── TWO CONSTANTS SINCE A21, WHERE ONE USED TO DO ──────────────────────────
+// RETIRED: `const INVALID_HEADLINE = "This link isn't active"`, which both tests
+// below shared because both variants rendered it. State 0's copy now FORKS, and
+// the two tests in this file deliberately drive DIFFERENT variants — Test 1 a
+// MISMATCH (neutral), Test 2 a revoked token on a resolved subdomain (branded).
+// A single constant would now silently fail to find its offset on one of them.
+const NEUTRAL_HEADLINE = "You'll need a referral link";
+const BRANDED_HEADLINE = "Let's get you the right link";
 
 // The text arm of renderBrandMark. Matching the OPENING TAG rather than the class
 // name alone, so this cannot be satisfied by the word appearing in a comment.
@@ -197,23 +208,26 @@ describe('C/DL-2 polish 1+2 — the neutral/platform header renders the RoofMile
   // so this is the header region — the same slicing landingStates.test.js:1206
   // uses, and what keeps these assertions about the LOGO SLOT rather than about
   // the whole document (the footer's "Powered by RoofMiles" sits well below it).
-  function headerRegion(raw, label) {
+  // `headline` IS A PARAMETER SINCE A21 rather than a file constant: the two
+  // tests drive different State 0 variants and therefore different headlines, and
+  // passing the wrong one collapses the slice to nothing instead of failing.
+  function headerRegion(raw, label, headline) {
     const bodyStart = raw.indexOf('<body');
     assert.ok(bodyStart > 0, `${label}: precondition — the document must have a body`);
-    const headlineAt = raw.indexOf(INVALID_HEADLINE, bodyStart);
+    const headlineAt = raw.indexOf(headline, bodyStart);
     assert.ok(
       headlineAt > bodyStart,
-      `${label}: precondition — the State 0 headline must render, bounding the header region`
+      `${label}: precondition — the State 0 headline "${headline}" must render, bounding the header region`
     );
     return raw.slice(bodyStart, headlineAt);
   }
 
-  function assertStateZeroRendered(res, label) {
+  function assertStateZeroRendered(res, label, headline) {
     assert.equal(res.status, 200, `${label}: State 0 must render (got ${res.status})`);
     assert.match(res.contentType, /text\/html/i, `${label}: it must be HTML, not a JSON error body`);
     assert.ok(
-      res.raw.includes(INVALID_HEADLINE),
-      `${label}: precondition — this must be the State 0 page`
+      res.raw.includes(headline),
+      `${label}: precondition — this must be the State 0 page (expected "${headline}")`
     );
   }
 
@@ -230,8 +244,8 @@ describe('C/DL-2 polish 1+2 — the neutral/platform header renders the RoofMile
 
     const res = await httpGet(port, landingPath(token), { host: hostFor(SLUG_B) });
 
-    assertStateZeroRendered(res, 'neutral State 0');
-    const header = headerRegion(res.raw, 'neutral State 0');
+    assertStateZeroRendered(res, 'neutral State 0', NEUTRAL_HEADLINE);
+    const header = headerRegion(res.raw, 'neutral State 0', NEUTRAL_HEADLINE);
 
     // ── THE CLAIM ────────────────────────────────────────────────────────────
     // Asserted against the RAW markup and the src ATTRIBUTE. The word "RoofMiles"
@@ -274,8 +288,8 @@ describe('C/DL-2 polish 1+2 — the neutral/platform header renders the RoofMile
 
     const res = await httpGet(port, landingPath(revoked), { host: hostFor(SLUG_BARE) });
 
-    assertStateZeroRendered(res, 'branded State 0');
-    const header = headerRegion(res.raw, 'branded State 0');
+    assertStateZeroRendered(res, 'branded State 0', BRANDED_HEADLINE);
+    const header = headerRegion(res.raw, 'branded State 0', BRANDED_HEADLINE);
 
     // ── NON-VACUITY, AND THIS IS THE LOAD-BEARING PRECONDITION ───────────────
     // Proves this response carries the CONTRACTOR theme rather than the neutral

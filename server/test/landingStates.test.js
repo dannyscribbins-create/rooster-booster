@@ -157,10 +157,40 @@ const BADGE_SLOT_MARKER = 'data-store-badges';
 // Hand-transcribed from LANDING_PAGE_SPEC.md §2. Braced tokens are interpolated
 // by the helpers below rather than matched literally.
 const COPY = {
-  // State 0
-  invalidHeadline: "This link isn't active",
-  invalidBody: "This referral link isn't valid or may have expired. If someone sent it to you, ask them for a fresh link",
-  invalidContactSentence: 'or contact',   // "— or contact {Company Name} directly."
+  // ── State 0 — AMENDED A21, POLISH ITEM 3 PHASE 2 ──────────────────────────
+  // LP §2 marks its copy final and requires an amendment to change it. A21 is
+  // that amendment (LANDING_PAGE_SPEC.md §2, DECISION_C_DL_BUILD_SPEC.md §14),
+  // and the constants below are the openly-updated fence rather than a drifted
+  // one. RETIRED, recorded here rather than deleted so a reader of this file can
+  // see WHICH way the decision went:
+  //
+  //   headline  "This link isn't active"
+  //   body      "This referral link isn't valid or may have expired. If someone
+  //              sent it to you, ask them for a fresh link — or contact
+  //              {Company Name} directly."
+  //
+  // The old headline stated the platform's problem rather than the visitor's,
+  // and the body asked a homeowner to relay a technical failure to whoever
+  // texted them. The replacement tells them where a WORKING link comes from.
+  //
+  // THE CONTACT SENTENCE IS GONE ENTIRELY, not reworded — the branded page now
+  // carries a real contact block (phone · website · email) at the top instead of
+  // a sentence pointing at one. `invalidContactSentence` is therefore deleted
+  // rather than updated; nothing on the page corresponds to it any more. The
+  // block itself is fenced in server/test/landingContactBlock.test.js, which
+  // owns every assertion about its rows, ordering and presence gating.
+  //
+  // TWO VARIANTS, TWO HEADLINES. The single old string served both, which is why
+  // one constant used to be enough. Branded and neutral are now different copy.
+  invalidHeadlineBranded: "Let's get you the right link",
+  invalidBodyBranded: company =>
+    `To join ${company}'s referral program, use the link a neighbor or ${company} sent you. ` +
+    "If it's expired, just ask them for a fresh one.",
+  invalidHeadlineNeutral: "You'll need a referral link",
+  invalidBodyNeutral:
+    'RoofMiles referral links come from a contractor or a neighbor who referred you. ' +
+    'Check your texts or email for the link they sent — that link is what connects you ' +
+    'to the right company.',
 
   // State 1
   subhead: name => `Earn cash for referring friends and neighbors to ${name}.`,
@@ -430,14 +460,19 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
       const res = await httpGet(port, landingPath(token), { host: hostFor(SLUG_A) });
       assert.equal(res.status, 200, `${label}: precondition — State 0 must render (got ${res.status})`);
 
+      // ALL THREE CAUSES ARE BRANDED. The host slug resolves in every one of
+      // them and nothing is in conflict, so buildInvalidPayload attaches the
+      // subdomain contractor's branding — which after A21 also decides WHICH
+      // headline renders.
       const text = renderedText(res.raw);
       assert.ok(
-        text.includes(COPY.invalidHeadline),
-        `${label}: LP §2 State 0 headline is locked as "${COPY.invalidHeadline}"`
+        text.includes(COPY.invalidHeadlineBranded),
+        `${label}: the branded State 0 headline is locked as "${COPY.invalidHeadlineBranded}" (A21)`
       );
       assert.ok(
-        text.includes(COPY.invalidBody),
-        `${label}: LP §2 State 0 body copy is locked and missing. Expected to contain: "${COPY.invalidBody}"`
+        text.includes(COPY.invalidBodyBranded(BRAND_A.companyName)),
+        `${label}: the branded State 0 body copy is locked and missing. Expected to contain: ` +
+        `"${COPY.invalidBodyBranded(BRAND_A.companyName)}"`
       );
     }
   });
@@ -458,15 +493,21 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
 
     assert.equal(res.status, 200, `precondition: State 0 must render (got ${res.status})`);
     const text = renderedText(res.raw);
-    assert.ok(text.includes(COPY.invalidHeadline), 'precondition: this must be the State 0 page');
+    assert.ok(text.includes(COPY.invalidHeadlineBranded), 'precondition: this must be the BRANDED State 0 page');
 
     assert.ok(
       text.includes(BRAND_A.companyName),
       `a resolved-slug State 0 must carry the subdomain contractor's name (${BRAND_A.companyName})`
     );
+    // A21 REPLACED THE CONTACT SENTENCE WITH THE BODY COPY ITSELF, which names
+    // the contractor twice — a stronger version of the same claim this assertion
+    // has always made: a branded State 0 must be about THIS company, not a
+    // generic failure page wearing their colours. The old "— or contact {Company}
+    // directly." sentence is gone; the affordance it pointed at is now a real
+    // contact block, fenced in server/test/landingContactBlock.test.js.
     assert.ok(
-      text.includes(`${COPY.invalidContactSentence} ${BRAND_A.companyName}`),
-      `the contact sentence must name the contractor: "${COPY.invalidContactSentence} ${BRAND_A.companyName} directly."`
+      text.includes(COPY.invalidBodyBranded(BRAND_A.companyName)),
+      `the branded body must name the contractor: "${COPY.invalidBodyBranded(BRAND_A.companyName)}"`
     );
     assertCssVar(res.raw, 'brand-primary', BRAND_A.primary, 'a resolved-slug State 0 must carry the contractor theme');
   });
@@ -488,7 +529,7 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
 
     assert.equal(res.status, 200, `precondition: State 0 must render (got ${res.status})`);
     const text = renderedText(res.raw);
-    assert.ok(text.includes(COPY.invalidHeadline), 'precondition: this must be the State 0 page');
+    assert.ok(text.includes(COPY.invalidHeadlineNeutral), 'precondition: this must be the NEUTRAL State 0 page');
     assertCssVar(res.raw, 'brand-secondary', RM.secondary, 'a mismatch must render the NEUTRAL RoofMiles theme');
 
     assert.equal(
@@ -505,26 +546,44 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
     );
   });
 
-  it('[RED] the neutral State 0 variant drops the contact sentence', async () => {
-    // LP §2 State 0: "(Neutral variant drops the contact sentence.)" There is no
-    // contractor to contact, and "or contact RoofMiles directly" would point a
-    // homeowner at a platform they have never heard of.
+  it('[RED] the neutral State 0 variant offers no way to contact anybody', async () => {
+    // ── REWRITTEN UNDER A21, AND THE CLAIM IS THE SAME ONE ────────────────────
+    // This test used to read "the neutral variant drops the contact sentence",
+    // against LP §2's "(Neutral variant drops the contact sentence.)" That
+    // sentence no longer exists on EITHER variant — the branded page carries a
+    // real contact block instead of a line pointing at one — so an assertion
+    // about its absence would now pass on a page that had never rendered it and
+    // would be worth nothing.
     //
-    // NON-VACUITY: the State 0 headline AND the first half of the body sentence
-    // are asserted present first, so this proves the sentence was TRUNCATED
-    // rather than that the page failed to render any copy at all.
+    // WHAT LP ACTUALLY MEANT SURVIVES INTACT: there is nobody to contact here, so
+    // the page must offer no contact route at all. Under the old copy that was
+    // provable by one missing sentence; under the new one it is provable
+    // directly, which is strictly stronger — it now also catches a contact block
+    // leaking onto the neutral page, which is the shape this could break in.
+    //
+    // NON-VACUITY: the neutral headline and body are asserted present first, so
+    // the absences below prove a rendered neutral page carrying no contact route
+    // rather than a page that failed to render.
     const token = await mintToken({ contractorId: TENANT_A, linkType: 'contractor' });
 
     const res = await httpGet(port, landingPath(token), { host: hostFor(SLUG_B) });
 
     assert.equal(res.status, 200, `precondition: State 0 must render (got ${res.status})`);
     const text = renderedText(res.raw);
-    assert.ok(text.includes(COPY.invalidHeadline), 'precondition: this must be the State 0 page');
-    assert.ok(text.includes(COPY.invalidBody), 'precondition: the State 0 body copy must be present');
+    assert.ok(text.includes(COPY.invalidHeadlineNeutral), 'precondition: this must be the NEUTRAL State 0 page');
+    assert.ok(text.includes(COPY.invalidBodyNeutral), 'precondition: the neutral State 0 body copy must be present');
 
     assert.equal(
-      text.includes(COPY.invalidContactSentence), false,
-      'the neutral State 0 variant must drop the "— or contact {Company Name} directly." sentence'
+      /href\s*=\s*["']tel:/i.test(res.raw), false,
+      'a mismatch trusts neither source — a phone number on this page could only have come from one of them'
+    );
+    assert.equal(
+      /href\s*=\s*["']mailto:/i.test(res.raw), false,
+      'a mismatch trusts neither source — an email address on this page could only have come from one of them'
+    );
+    assert.equal(
+      res.raw.includes('data-contact-block'), false,
+      'the contact block is a BRANDED-only affordance; there is no contractor here to contact'
     );
   });
 

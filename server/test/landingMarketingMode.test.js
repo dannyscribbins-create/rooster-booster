@@ -150,8 +150,17 @@ const COL_AUTO = 'auto_minted';
 // Hand-transcribed from LANDING_PAGE_SPEC.md §2. Braced tokens are interpolated
 // by the helpers rather than matched literally.
 const COPY = {
-  invalidHeadline: "This link isn't active",
-  invalidContactSentence: 'or contact',
+  // ── State 0 — AMENDED A21, POLISH ITEM 3 PHASE 2 ──────────────────────────
+  // RETIRED: `invalidHeadline: "This link isn't active"` and
+  // `invalidContactSentence: 'or contact'`. State 0's copy now FORKS — branded
+  // and neutral are different strings — and the contact sentence is gone from
+  // both, replaced on the branded variant by a real contact block. See
+  // LANDING_PAGE_SPEC.md §2 (A21) and server/test/landingContactBlock.test.js.
+  //
+  // ONLY THE NEUTRAL HEADLINE IS NEEDED HERE: this file's single State 0 test
+  // drives an UNCLAIMED subdomain, where no host contractor resolves and the
+  // payload is a bare { valid: false }.
+  invalidHeadlineNeutral: "You'll need a referral link",
   headline: program => `Join the ${program} rewards program`,
   subhead: name => `Earn cash for referring friends and neighbors to ${name}.`,
   cardTitle: 'Create your account',
@@ -509,12 +518,16 @@ describe('C/DL-2 Phase 3d-3 — marketing mode (A17/A18): the bare subdomain as 
     assertRenderedPage(res, 'unclaimed subdomain');
     const text = renderedText(res.raw);
     assert.ok(
-      text.includes(COPY.invalidHeadline),
-      `an unclaimed subdomain must render LP §2 State 0: "${COPY.invalidHeadline}"`
+      text.includes(COPY.invalidHeadlineNeutral),
+      `an unclaimed subdomain must render the NEUTRAL State 0: "${COPY.invalidHeadlineNeutral}"`
     );
+    // A21: the old "drops the contact sentence" assertion is replaced by the
+    // claim it was standing in for — an unresolved host must offer no contact
+    // route at all. Directly provable now, and it also catches a contact block
+    // reaching a page where no contractor resolved.
     assert.equal(
-      text.includes(COPY.invalidContactSentence), false,
-      'the NEUTRAL State 0 variant drops the contact sentence — there is nobody to contact'
+      /href\s*=\s*["'](?:tel|mailto):/i.test(res.raw), false,
+      'an unclaimed subdomain resolves no contractor — a phone or email on this page came from nowhere legitimate'
     );
     assert.equal(
       text.includes(BRAND_A.companyName) || text.includes(BRAND_B.companyName), false,

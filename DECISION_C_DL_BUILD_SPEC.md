@@ -376,3 +376,32 @@ The attribution-engine work must be able to **re-attribute a signup after the fa
 `accent` exists in code and in no spec; `surface` and `text` exist in this spec and in no code. §5's binding rule is "One system, three surfaces, no second implementation" — and FieldRepApp is specified to consume the *same* variables the landing page does (C/DL-3, §5).
 
 **So the gap lands on this build or the next, and it is a real decision either way:** extend the shared resolver with `surface` and `text` now, while the landing page is the only consumer and the change is cheap — or let C/DL-3 extend it and accept that the landing page and FieldRepApp were built against different versions of "the same" token set. **Not resolved here.** Flagged so that whichever session takes it does so deliberately rather than discovering it mid-build.
+
+---
+
+## 14. Amendments — v1.3, 2026-08-02 (C/DL-2 polish item 3)
+
+**A21 — LP §2 STATE 0's COPY IS REPLACED, AND THE CONTACT CARD MOVES TO THE TOP OF THAT PAGE.** LP §2 marks its copy final and requires a spec amendment to change it. This is that amendment; it is written into `LANDING_PAGE_SPEC.md` §2 in place as well, so neither document is the sole record.
+
+**Void:** the headline "This link isn't active", the body "This referral link isn't valid or may have expired. If someone sent it to you, ask them for a fresh link — or contact {Company Name} directly.", and the "(Neutral variant drops the contact sentence.)" rule that governed the difference between the two variants.
+
+The old copy failed on substance rather than tone. Its headline states *the platform's* problem, not the visitor's; its body asks a homeowner to relay a technical failure to whoever texted them; and neither line answers the only question the visitor has, which is **where a working link comes from**. The contact sentence also pointed at an affordance the page did not provide — there was no contact card on State 0, only a sentence suggesting one.
+
+**Shipped copy — the two variants are now different conversations rather than one sentence apart:**
+
+| | Branded (slug resolved) | Neutral (mismatch / unrecognized subdomain) |
+|---|---|---|
+| Headline | "Let's get you the right link" | "You'll need a referral link" |
+| Body | "To join {Company Name}'s referral program, use the link a neighbor or {Company Name} sent you. If it's expired, just ask them for a fresh one." | "RoofMiles referral links come from a contractor or a neighbor who referred you. Check your texts or email for the link they sent — that link is what connects you to the right company." |
+| Secondary | none | "Learn more about RoofMiles" → `https://roofmiles.com` |
+| Contact block | phone · website · email | none |
+
+The branded page names the company twice: the visitor already trusts this roofer, having scanned their sign, and the page's job is to keep them there. The neutral page can name nobody — the mismatch rule (§6.4, ruled C/DL-2 Phase 2a) means trusting neither source — so it explains the *mechanism* instead, for a stranger who has never heard of this platform.
+
+**The roofmiles.com link is neutral-only**, and that is a white-label rule rather than a layout one: on a branded page it invites a homeowner who came for their roofer to leave for a company they have no relationship with. The "Powered by RoofMiles" footer mark stays on both — attribution is not an exit.
+
+**CONTACT BLOCK.** LP's "contact card (if contractor resolved)" survives but is relocated and re-scoped. A dead link is the one screen where reaching a human *is* the task, and a footer is where a homeowner stops looking. Rows render immediately after the message, in order, **each only if its data resolves**: phone (`tel:`) · website (`contractor_settings.company_url` through `safeWebsiteUrl` — href normalized, label the bare domain as typed) · email (`mailto:`). If none resolve, no container renders. **Address is dropped from this page**: it is a destination, not a contact method, and on a dead-link page it is the one row that cannot help.
+
+**FOOTER SUPPRESSION, STATE 0 ONLY.** The footer's phone/email/address rows do not render on State 0, so the number cannot print twice on one short page; the divider, the "Powered by RoofMiles" mark and the Privacy/Terms links are unchanged. **States 1-3 keep their footer contact card in full** — implemented as a parameter on `renderFooter` defaulting to the existing behaviour, never as a change to the shared function, because moving the rule one level up would strip the card off every signup page in the product.
+
+**Fenced by `server/test/landingContactBlock.test.js`** (11 tests: copy fork, row presence gating, positional "above the footer", the globe icon, and a count assertion pinning the phone at exactly one occurrence). The retired strings were pinned in three other suites — `landingStates.test.js`, `landingMarketingMode.test.js`, `landingPlatformMark.test.js` — and all three were updated in the same change, each citing A21 at the site.

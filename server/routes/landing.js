@@ -194,6 +194,7 @@ const ICON_PATHS = {
   phone: 'M222.37,158.46l-47.11-21.11-.13-.06a16,16,0,0,0-15.17,1.4,8.12,8.12,0,0,0-.75.56L134.87,160c-15.42-7.49-31.34-23.29-38.83-38.51l20.78-24.71c.2-.25.39-.5.57-.77a16,16,0,0,0,1.32-15.06l0-.12L97.54,33.64a16,16,0,0,0-16.62-9.52A56.26,56.26,0,0,0,32,80c0,79.4,64.6,144,144,144a56.26,56.26,0,0,0,55.88-48.92A16,16,0,0,0,222.37,158.46ZM176,208A128.14,128.14,0,0,1,48,80,40.2,40.2,0,0,1,82.87,40a.61.61,0,0,0,0,.12l21,47L83.2,111.86a6.13,6.13,0,0,0-.57.77,16,16,0,0,0-1,15.7c9.06,18.53,27.73,37.06,46.46,46.11a16,16,0,0,0,15.75-1.14,8.44,8.44,0,0,0,.74-.56L168.89,152l47,21.05h0s.08,0,.11,0A40.21,40.21,0,0,1,176,208Z',
   mapPin: 'M128,64a40,40,0,1,0,40,40A40,40,0,0,0,128,64Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,128,128Zm0-112a88.1,88.1,0,0,0-88,88c0,31.4,14.51,64.68,42,96.25a254.19,254.19,0,0,0,41.45,38.3,8,8,0,0,0,9.18,0A254.19,254.19,0,0,0,174,200.25c27.45-31.57,42-64.85,42-96.25A88.1,88.1,0,0,0,128,16Zm0,206c-16.53-13-72-60.75-72-118a72,72,0,0,1,144,0C200,161.23,144.53,209,128,222Z',
   check: 'M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z',
+  globe: 'M128,24h0A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm88,104a87.61,87.61,0,0,1-3.33,24H174.16a157.44,157.44,0,0,0,0-48h38.51A87.61,87.61,0,0,1,216,128ZM102,168H154a115.11,115.11,0,0,1-26,45A115.27,115.27,0,0,1,102,168Zm-3.9-16a140.84,140.84,0,0,1,0-48h59.88a140.84,140.84,0,0,1,0,48ZM40,128a87.61,87.61,0,0,1,3.33-24H81.84a157.44,157.44,0,0,0,0,48H43.33A87.61,87.61,0,0,1,40,128ZM154,88H102a115.11,115.11,0,0,1,26-45A115.27,115.27,0,0,1,154,88Zm52.33,0H170.71a135.28,135.28,0,0,0-22.3-45.6A88.29,88.29,0,0,1,206.37,88ZM107.59,42.4A135.28,135.28,0,0,0,85.29,88H49.63A88.29,88.29,0,0,1,107.59,42.4ZM49.63,168H85.29a135.28,135.28,0,0,0,22.3,45.6A88.29,88.29,0,0,1,49.63,168Zm98.78,45.6a135.28,135.28,0,0,0,22.3-45.6h35.66A88.29,88.29,0,0,1,148.41,213.6Z',
 };
 
 // Renders one icon. aria-hidden throughout: every icon on this page sits beside
@@ -402,6 +403,26 @@ p{margin:0;}
   background:var(--brand-accent);color:var(--brand-secondary);font-size:14px;font-weight:500;}
 .hero{text-align:center;margin-bottom:26px;}
 .hero p{margin-top:10px;font-size:16px;opacity:.78;}
+/* The neutral State 0's one onward door. Understated on purpose: a visitor who
+   landed here wanted a contractor, and this is an explanation of what the
+   platform is, not a competing call to action.
+   ⚠ THE PLATFORM'S NAME IS DELIBERATELY NOT WRITTEN IN THIS COMMENT. PAGE_CSS is
+   served inside the document head, and landingStates.test.js's no-logo fence
+   slices its header region from byte 0 - so that word appearing anywhere in the
+   stylesheet reads to it as the platform mark standing in for a contractor's.
+   It caught exactly that when this rule was added. */
+.hero-secondary{margin-top:16px;font-size:14px;}
+.hero-secondary a{color:var(--brand-primary);font-weight:600;text-decoration:underline;
+  text-underline-offset:3px;}
+/* STATE 0 ONLY - the footer's contact rows promoted to the top of the page.
+   A dead link is the one screen where reaching a human IS the task, and a footer
+   is where a homeowner stops looking, so the same rows are drawn beside the
+   message instead. Inherits .contact's grid, gap and centring and overrides only
+   the three properties that make a footnote read as an action: size, weight and
+   colour. The footer's own rows are suppressed on this page, so nothing is
+   duplicated. (No backticks in this comment - PAGE_CSS is a template literal.) */
+.contact--top{font-size:15px;margin:0 0 26px;}
+.contact--top a{opacity:1;font-weight:600;color:var(--brand-primary);}
 .steps{list-style:none;margin:0 0 26px;padding:0;display:grid;gap:16px;}
 .step{display:flex;gap:14px;align-items:flex-start;}
 .step-num{flex:0 0 32px;height:32px;border-radius:999px;background:var(--brand-primary);color:#fff;
@@ -564,15 +585,33 @@ p{margin:0;}
 // for a different contractor would be wrong in a way that is a content and legal
 // decision rather than a build one. Inventing URLs here would bury that.
 // Whoever writes the platform legal pages replaces these two href values.
-function renderFooter(theme) {
+//
+// ── contactRows: THE STATE 0 SUPPRESSION, AND WHY IT IS A PARAMETER ─────────
+// State 0 draws its own contact block at the TOP of the page, so a footer card
+// beneath it would print the same phone number twice on one short document —
+// which reads as a rendering fault rather than as emphasis.
+//
+// A PARAMETER RATHER THAN A CHANGE TO THIS FUNCTION'S BEHAVIOUR. The rule is
+// State 0's, not the footer's: States 1-3 share this same function
+// (renderLandingPage) and their contact card is required by LP §2 and fenced by
+// landingStates.test.js:793. Moving the suppression one level up — into the rows
+// themselves, or into the resolver — would strip the card off every signup page
+// in the product. DEFAULTS TO TRUE so every existing caller is unchanged and the
+// opt-out has to be asked for explicitly.
+//
+// ADDRESS IS NOT RELOCATED. State 0's block carries phone, website and email —
+// the three rows a homeowner can ACT on from a phone. A street address is a
+// destination, not a contact method, and on a dead-link page it is the one line
+// that cannot help; it stays on States 1-3 and is simply absent here.
+function renderFooter(theme, { contactRows = true } = {}) {
   const rows = [];
-  if (theme.phone) {
+  if (contactRows && theme.phone) {
     rows.push(`<a href="tel:${escapeHtml(theme.phone)}">${icon('phone', 'ico', 15)}${escapeHtml(theme.phone)}</a>`);
   }
-  if (theme.email) {
+  if (contactRows && theme.email) {
     rows.push(`<a href="mailto:${escapeHtml(theme.email)}">${icon('envelope', 'ico', 15)}${escapeHtml(theme.email)}</a>`);
   }
-  if (theme.address) {
+  if (contactRows && theme.address) {
     rows.push(`<span>${icon('mapPin', 'ico', 15)}${escapeHtml(theme.address)}</span>`);
   }
 
@@ -582,6 +621,58 @@ function renderFooter(theme) {
   <p class="powered">Powered by <b>RoofMiles</b></p>
   <p class="legal"><a href="#privacy">Privacy</a> &middot; <a href="#terms">Terms</a></p>
 </footer>`;
+}
+
+// ── STATE 0 CONTACT BLOCK ────────────────────────────────────────────────────
+// The contractor's phone, website and email, rendered UP TOP beside the message
+// rather than in the footer. State 0 is the one page where reaching a human IS
+// the task: the visitor came for this company, the link they were handed does
+// not work, and the only useful thing this document can do is put a working
+// route to that company in front of them before they close the tab.
+//
+// ROW ORDER IS PHONE, WEBSITE, EMAIL — fastest to slowest. A homeowner standing
+// in a driveway taps the number; the website is where they go if they would
+// rather look before they speak; email is the one that answers tomorrow.
+//
+// EACH ROW IS DRAWN BY ITS DATA RESOLVING, never structurally. The same
+// presence rule the footer applies (LP-1), for the same reason: a row drawn from
+// an unset column prints an empty line, or the literal word "null", at a
+// homeowner. WEBSITE resolves through safeWebsiteUrl rather than through a
+// truthiness check, so a stored value that cannot become a safe https link draws
+// no row at all rather than a broken one — company_url is an unconstrained
+// VARCHAR(500) and both bare domains and full URLs are real stored values.
+//
+// href IS NORMALISED, THE LABEL IS NOT. safeWebsiteUrl returns parsed.href for
+// the link and the original string for the text, so a homeowner whose roofer's
+// sign says 'accentroofingservice.com' reads exactly that rather than
+// 'https://accentroofingservice.com/'.
+//
+// RETURNS AN EMPTY STRING WHEN NOTHING RESOLVES, and the container goes with it.
+// An empty bordered block on the page of the one contractor who has given a
+// visitor no way to reach them reads as a broken render, not as an absence.
+//
+// data-contact-block IS A TEST HOOK AND IS LOAD-BEARING AS ONE. Proving the
+// block is ABSENT is not possible from the markup without a stable marker —
+// the same problem A14's empty store-badge slot has, solved the same way.
+// server/test/landingContactBlock.test.js asserts on this exact attribute.
+function renderContactBlock(theme) {
+  const rows = [];
+
+  if (theme.phone) {
+    rows.push(`<a href="tel:${escapeHtml(theme.phone)}">${icon('phone', 'ico', 15)}${escapeHtml(theme.phone)}</a>`);
+  }
+
+  const site = safeWebsiteUrl(theme.website);
+  if (site) {
+    rows.push(`<a href="${escapeHtml(site.href)}">${icon('globe', 'ico', 15)}${escapeHtml(site.label)}</a>`);
+  }
+
+  if (theme.email) {
+    rows.push(`<a href="mailto:${escapeHtml(theme.email)}">${icon('envelope', 'ico', 15)}${escapeHtml(theme.email)}</a>`);
+  }
+
+  if (!rows.length) return '';
+  return `<div class="contact contact--top" data-contact-block>${rows.join('')}</div>`;
 }
 
 // ── BRAND MARK ───────────────────────────────────────────────────────────────
@@ -637,26 +728,73 @@ ${body}
 // should see a branded explanation and a way to reach the contractor, not a
 // browser error. The distinction lives in the body, not the status code.
 //
-// TWO VARIANTS, and the difference is one sentence. When the subdomain resolved
-// and nothing was in conflict, the page carries that contractor's branding and
-// tells the visitor to contact them. When it did not — an unrecognised
-// subdomain, or a token/subdomain MISMATCH — the page is neutral and the contact
-// sentence is dropped, because there is nobody to contact and naming either
-// party would confirm to a prober that they exist. The resolver decides which;
-// see buildInvalidPayload in landingResolve.js.
+// TWO VARIANTS, and they are two different conversations rather than one
+// sentence apart. The resolver decides which; see buildInvalidPayload in
+// landingResolve.js.
+//
+// ── AMENDMENT A21 — THE COPY BELOW REPLACES LP §2 STATE 0's ────────────────
+// LP §2 marks its copy final and requires an amendment to change it. A21 is that
+// amendment, written into LANDING_PAGE_SPEC.md §2 in place and mirrored in
+// DECISION_C_DL_BUILD_SPEC.md §14. The retired strings were:
+//
+//   "This link isn't active"
+//   "This referral link isn't valid or may have expired. If someone sent it to
+//    you, ask them for a fresh link — or contact {Company Name} directly."
+//
+// What was wrong with them is not tone. The headline states the platform's
+// problem, not the visitor's, and the body asks a homeowner to relay a technical
+// failure to whoever texted them. Neither tells them the one thing they need,
+// which is where a WORKING link comes from.
+//
+// BRANDED names the company twice and asks for nothing technical: the visitor
+// already trusts this roofer — they scanned their sign — so the page tells them
+// which two places a link arrives from and that asking for a fresh one is normal.
+// The contact block above it is the other half of that sentence.
+//
+// NEUTRAL cannot name anyone. A mismatch or an unrecognised subdomain means
+// trusting neither source (C/DL-2 Phase 2a), so the page explains the MECHANISM
+// instead — what a RoofMiles referral link is and who sends one — because a
+// stranger who mistyped a subdomain has never heard of this platform and "ask
+// them for a fresh link" is meaningless when there is no "them" on the page.
+//
+// THE roofmiles.com LINK IS NEUTRAL-ONLY, and that is a white-label rule rather
+// than a layout one. On a branded page it would invite a homeowner who came for
+// their roofer to leave for a company they have no relationship with. The
+// "Powered by RoofMiles" mark in the footer stays on both: attribution is not an
+// exit.
 function renderInvalidPage(payload) {
   const branded = Boolean(payload.contractor);
   const theme = branded ? payload.contractor : neutralTheme();
+  const company = escapeHtml(theme.companyName);
 
+  const hero = branded
+    ? `<h1>Let's get you the right link</h1>
+    <p>To join ${company}'s referral program, use the link a neighbor or ${company} sent you. If it's expired, just ask them for a fresh one.</p>`
+    : `<h1>You'll need a referral link</h1>
+    <p>RoofMiles referral links come from a contractor or a neighbor who referred you. Check your texts or email for the link they sent — that link is what connects you to the right company.</p>
+    <p class="hero-secondary"><a href="https://roofmiles.com">Learn more about RoofMiles</a></p>`;
+
+  // NEUTRAL RENDERS NO CONTACT BLOCK, and the gate is explicit rather than left
+  // to fall out of the theme being empty. neutralTheme() carries no phone, email
+  // or website today, so this reads as belt-and-braces — but the value it
+  // protects is the mismatch rule: a page that ever grew a contact row from a
+  // half-trusted source would be confirming to a prober that that source
+  // resolves. The rule belongs where the decision is, not in the shape of a
+  // default object someone may later extend.
+  const contact = branded ? renderContactBlock(theme) : '';
+
+  // .stagger's delay ladder is defined for nth-child(1) through (4). The block
+  // is a fourth child only when it renders and the footer follows it — brand,
+  // hero, contact, footer — so every child on both variants still lands on a
+  // defined rung. A fifth would animate with no delay and arrive ahead of the
+  // one above it.
   const body = `<div class="stagger">
   <div class="brand">${renderBrandMark(theme)}</div>
   <div class="hero">
-    <h1>This link isn't active</h1>
-    <p>This referral link isn't valid or may have expired. If someone sent it to you, ask them for a fresh link${
-      branded ? ` — or contact ${escapeHtml(theme.companyName)} directly.` : '.'
-    }</p>
+    ${hero}
   </div>
-  ${renderFooter(theme)}
+  ${contact}
+  ${renderFooter(theme, { contactRows: false })}
 </div>`;
 
   return renderDocument({ theme, title: theme.companyName, body });

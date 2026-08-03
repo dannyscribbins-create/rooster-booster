@@ -23,13 +23,40 @@ This is the page a homeowner lands on when they scan any RoofMiles-scheme QR or 
 All brand-dependent values shown as `{tokens}` resolve from theme variables (§5). Copy is final as written; changes require a spec amendment.
 
 > **AMENDED — A11.** "Copy is final as written" **no longer holds for State 1's signup field list**, which A11 replaces outright. It continues to hold for every other string in this section: headlines, subheads, how-it-works steps, the skip disclosure, and State 0/2/3 copy are all still final and still require an amendment to change.
+>
+> **AMENDED AGAIN — A21.** **State 0's copy is likewise replaced**, by the amendment written into that subsection below. The marker still holds for States 1/2/3 and for every other string here — and A21 is what it looks like when it is honoured rather than ignored.
 
 ### State 0 — Invalid (new; not in mockup)
 Shown when: token unknown/expired/revoked, subdomain slug unrecognized, or token↔subdomain mismatch (§6.4).
 - Contractor branding if the slug resolved; neutral RoofMiles branding if it didn't.
-- Headline: **"This link isn't active"**
-- Body: "This referral link isn't valid or may have expired. If someone sent it to you, ask them for a fresh link — or contact {Company Name} directly." (Neutral variant drops the contact sentence.)
-- Contact card (if contractor resolved) + standard footer.
+- ~~Headline: **"This link isn't active"**~~
+- ~~Body: "This referral link isn't valid or may have expired. If someone sent it to you, ask them for a fresh link — or contact {Company Name} directly." (Neutral variant drops the contact sentence.)~~
+- ~~Contact card (if contractor resolved) + standard footer.~~
+
+> **AMENDED — A21. The three struck lines above are VOID.** State 0's copy forks by variant, gains a contact block, and drops the footer's contact rows. §2's "copy is final as written; changes require a spec amendment" marker is what makes this paragraph necessary — **this is that amendment.** Original text preserved above rather than deleted, per this document's convention.
+>
+> **Why the old copy was replaced.** The headline stated *the platform's* problem, not the visitor's. The body asked a homeowner to relay a technical failure ("this link isn't valid or may have expired") to whoever texted them, and neither line told them the one thing they needed: **where a working link comes from.** The contact sentence pointed at an affordance the page did not actually provide.
+>
+> **BRANDED variant** (the slug resolved):
+> - Headline: **"Let's get you the right link"**
+> - Body: "To join {Company Name}'s referral program, use the link a neighbor or {Company Name} sent you. If it's expired, just ask them for a fresh one."
+> - The company is named **twice**, deliberately — the visitor already trusts this roofer, having scanned their sign, and the page's job is to keep them with that roofer rather than to explain a failure.
+>
+> **NEUTRAL variant** (mismatch, or unrecognized subdomain):
+> - Headline: **"You'll need a referral link"**
+> - Body: "RoofMiles referral links come from a contractor or a neighbor who referred you. Check your texts or email for the link they sent — that link is what connects you to the right company."
+> - Soft secondary: a link to `https://roofmiles.com` reading **"Learn more about RoofMiles"**. This is the **only** place roofmiles.com is linked; branded pages must not carry it, because inviting a homeowner who came for their roofer to leave for the platform is a white-label breach. The footer's "Powered by RoofMiles" mark stays on both variants — attribution is not an exit.
+> - The neutral page explains the **mechanism** rather than naming anyone, because a mismatch means trusting neither source (§6.4, ruling recorded C/DL-2 Phase 2a) and a stranger who mistyped a subdomain has never heard of this platform.
+>
+> **CONTACT BLOCK — up top, branded only.** LP's "contact card (if contractor resolved)" is honoured, but **relocated and re-scoped**. A dead link is the one screen where reaching a human *is* the task, and a footer is where a homeowner stops looking — so the rows render immediately after the message instead.
+> - Rows, in this order, each rendered **only if its data resolves**: **phone** (`tel:`, phone icon) · **website** (`company_url` through `safeWebsiteUrl`, globe icon; href normalized, visible label the bare domain as typed) · **email** (`mailto:`, envelope icon).
+> - If none resolve, **no container renders at all** — an empty card reads as a broken render, not as an absence.
+> - **Address is dropped from this page entirely.** It is a destination, not a contact method, and on a dead-link page it is the one row that cannot help. It is unchanged on States 1-3.
+> - The **globe** icon is added to the page's inline Phosphor set (regular weight), matching the four already there.
+>
+> **FOOTER SUPPRESSION — State 0 only.** The footer's contact rows (phone/email/address) do not render on State 0, so the phone number cannot print twice on one short page. The footer keeps its divider, "Powered by RoofMiles" mark and Privacy/Terms links. **States 1-3 are untouched** — their footer contact card is unchanged and still required by this section.
+>
+> Fenced by `server/test/landingContactBlock.test.js` (11 tests). The retired strings were pinned in three other suites; all three were updated openly in the same change and cite A21 at each site.
 
 ### State 1 — Landing + Signup
 - Header: contractor logo (image slot ~180px wide, centered).
