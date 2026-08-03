@@ -76,6 +76,14 @@ export default function CompanyDetailsSettings() {
   const [dirty, setDirty]           = useState(false);
   const statusTimer                 = useRef(null);
 
+  // The ENTIRE GET /api/admin/settings payload, captured on mount. formData below
+  // holds only the 9 company fields this page displays; everything else the row
+  // carries — the logo, the colours, the socials, the review block, the fonts, the
+  // app display name, the tagline, the email sender name and footer — lives here
+  // and nowhere else in this component. handleSave merges the two so the request
+  // is never a partial payload. Mirrors BrandingProfileSettings.jsx:287.
+  const fullSettingsRef             = useRef({});
+
   const EMPTY_NOTIF = {
     notification_email_payouts: '',
     notification_email_general: '',
@@ -112,6 +120,7 @@ export default function CompanyDetailsSettings() {
           headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
         });
         const d = await r.json();
+        fullSettingsRef.current = d;
         setFormData({
           company_name:    d.company_name    || '',
           company_phone:   d.company_phone   || '',
@@ -192,6 +201,23 @@ export default function CompanyDetailsSettings() {
 
   async function handleSave() {
     setSaving(true);
+    // ── SEND THE WHOLE ROW, NOT JUST THIS PAGE'S NINE FIELDS ──────────────────
+    // Sending formData alone made every save of this page a partial payload, and
+    // PUT /api/admin/settings used to be a full-row upsert that NULLed any column
+    // its request body did not mention. One phone-number correction wiped the
+    // logo, all the colours, the socials, the review block, the fonts, the tagline
+    // and the email footer.
+    //
+    // The server no longer does that — it is key-presence-driven as of
+    // server/test/adminSettingsPartialSave.test.js — so this is DEFENSE IN DEPTH,
+    // not the root-cause fix. It removes the partial payload at the source, so the
+    // data survives independently of what the endpoint's semantics do next.
+    //
+    // SPREAD ORDER IS LOAD-BEARING: loaded settings first, formData last, so the
+    // admin's edits win over the mount-time copy. Reversed, this would silently
+    // discard everything they typed. Pinned by the [GUARD] test in
+    // CompanyDetailsSettings.test.js.
+    const merged = { ...fullSettingsRef.current, ...formData };
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/settings`, {
         method: 'PUT',
@@ -199,7 +225,7 @@ export default function CompanyDetailsSettings() {
           Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(merged),
       });
       const d = await r.json();
       setSaveStatus(d.success ? 'success' : 'error');
