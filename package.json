@@ -38,7 +38,11 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^13.5.0",
-    "react-scripts": "5.0.1"
+    "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^29.1.1",
+    "react-scripts": "5.0.1",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -47,7 +51,10 @@
     "test:server": "node --test --test-concurrency=1 server/test/*.test.js",
     "test:react": "react-scripts test --watchAll=false",
     "test:react:watch": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "dev:vite": "vite",
+    "build:vite": "vite build",
+    "test:react:vite": "vitest run"
   },
   "eslintConfig": {
     "extends": [
