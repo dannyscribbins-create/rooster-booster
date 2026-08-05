@@ -46,10 +46,10 @@
 // break the full-row semantics landing_bg_color's guarantee rests on.
 //
 // ── CONVENTION ───────────────────────────────────────────────────────────────
-// jsdom + @testing-library/react under `react-scripts test`, following the repo's
-// only existing component test (src/App.test.js). ⚠ Runs under
-// `npm run test:react`, NOT under `npm test` — see the note in
-// BrandingPreview.test.js.
+// jsdom + @testing-library/react under Vitest, following the repo's only existing
+// component test (src/App.test.jsx). Runs under `npm run test:react`, which
+// `npm test` chains after the server suite — see the note in
+// BrandingPreview.test.jsx.
 //
 // `fetch` is the ONLY thing replaced, and it is replaced at the true external
 // boundary: the component, its child BrandingPreview, its form state and its save

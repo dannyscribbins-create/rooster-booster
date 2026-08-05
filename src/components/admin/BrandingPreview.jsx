@@ -19,7 +19,7 @@ import { resolveBrandingTheme } from '../../utils/brandingTheme';
 // CORRECTION, NOT A REGRESSION. #F26A1B is the RoofMiles platform default their
 // live page already renders; the preview finally agrees with it. Anyone who sees
 // the orange, assumes a bug and "restores" the navy has reintroduced the
-// white-label breach. Pinned by src/components/admin/BrandingPreview.test.js.
+// white-label breach. Pinned by src/components/admin/BrandingPreview.test.jsx.
 //
 // formData IS ALREADY THE RESOLVER'S INPUT SHAPE — it is the GET /api/admin/settings
 // response object, whose column names are exactly the snake_case keys

@@ -255,8 +255,8 @@ describe('C/DL-1 generator sweep — Part B, live emission', () => {
 
   it('[interim] a slug round-trips through /api/invite/:slug unchanged', async () => {
     // STAGE 1 — the shape production actually serves for the whole C/DL-1 →
-    // C/DL-2 gap. The SPA reads ?signup=<slug> (src/App.js:58-59) and hands that
-    // slug straight to /api/invite/:slug (src/App.js:82). If the emitted slug and
+    // C/DL-2 gap. The SPA reads ?signup=<slug> (src/App.jsx:58-59) and hands that
+    // slug straight to /api/invite/:slug (src/App.jsx:82). If the emitted slug and
     // the resolvable slug ever diverge, every invite link in the wild breaks.
     const linkRes = await httpGet(port, '/api/referrer/my-invite-link', referrerToken);
     assert.equal(linkRes.status, 200, `my-invite-link failed: ${JSON.stringify(linkRes.body)}`);

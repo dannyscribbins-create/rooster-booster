@@ -35,7 +35,7 @@
 //   THE CHARACTERISATION TEST at the bottom proves the API layer CANNOT defend
 //   itself against a save built from a STALE read — that is correct full-row
 //   upsert behaviour, not a bug to fix here. It is the reason the real RED test
-//   for this hazard lives in src/components/admin/BrandingProfileSettings.test.js.
+//   for this hazard lives in src/components/admin/BrandingProfileSettings.test.jsx.
 //
 // NO LIVE BACKBLAZE. @aws-sdk/client-s3 is replaced in require.cache before
 // anything that imports it loads — the same interception logoUpload.test.js uses.
@@ -401,7 +401,7 @@ describe('C/DL-2 Phase 3c — branding save round trip (logo + landing backgroun
     //
     // THEREFORE THE FIX IS IN THE FORM, and its RED test is
     // 'a save after an upload sends the NEW logo_url, not the stale one' in
-    // src/components/admin/BrandingProfileSettings.test.js. That test is the one
+    // src/components/admin/BrandingProfileSettings.test.jsx. That test is the one
     // that must go green in Phase 3c. This one must keep passing unchanged.
     const token = await session(TENANT_A_ID, ownerA);
 

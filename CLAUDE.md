@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 ```bash
 # Development
-npm start          # React frontend on port 3000
+npm start          # Vite dev server on port 3000
 node server.js     # Express backend on port 4000
 
 # Production (Railway)
@@ -13,10 +13,16 @@ npm install        # build step
 node server.js     # start step
 
 # Build
-npm run build      # production React build
+npm run build      # production Vite build → dist/
+
+# Quality
+npm run lint       # ESLint over src/ — react-hooks rules only
+npm test           # lint + server suite + React suite (the single pre-push gate)
 ```
 
-No lint script is configured. `.npmrc` sets `legacy-peer-deps=true` to handle dependency conflicts.
+The frontend builds with **Vite** (`vite.config.mjs`), not create-react-app — react-scripts was removed in the Vite migration. Vercel is configured by `vercel.json` (`framework: vite`, `outputDirectory: dist`). Frontend env vars are `import.meta.env.VITE_*`, never `process.env.REACT_APP_*`.
+
+`npm run lint` is narrow by design: `eslint.config.mjs` enables ONLY `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps`, with no recommended preset. It reproduces exactly what CRA enforced and nothing more — adding a preset would surface hundreds of never-enforced pre-existing violations. `.npmrc` sets `legacy-peer-deps=true` to handle dependency conflicts.
 
 ---
 
@@ -139,7 +145,7 @@ Note: `client_rep_assignments`, `team_members`, and `titles` are also live table
 
 ### Frontend — Component Structure
 
-`src/App.js` is a routing shell (~250 lines — has grown beyond original 135-line target; extraction of pipeline state into a custom hook is a future cleanup item). Do not add component code into App.js.
+`src/App.jsx` is a routing shell (~250 lines — has grown beyond original 135-line target; extraction of pipeline state into a custom hook is a future cleanup item). Do not add component code into App.jsx.
 
 **Two top-level modes:**
 - **Referrer app** — 5-tab bottom nav: Home, Refer, Rankings, Cash Out, Profile
@@ -148,7 +154,8 @@ Note: `client_rep_assignments`, `team_members`, and `titles` are also live table
 #### Folder structure
 ```
 src/
-├── App.js
+├── App.jsx
+├── index.jsx                       ← Vite entry point, referenced by /index.html
 ├── config/
 │   └── contractor.js               ← CONTRACTOR_CONFIG + BACKEND_URL
 ├── constants/
@@ -225,7 +232,9 @@ src/
 - Config: `import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor'`
 
 #### ESLint note
-`react-hooks/exhaustive-deps` warnings are hard Vercel build errors. Every `useEffect` with intentionally omitted dependencies must have `// eslint-disable-next-line react-hooks/exhaustive-deps` on the line immediately above the dependency array.
+Every `useEffect` with intentionally omitted dependencies must have `// eslint-disable-next-line react-hooks/exhaustive-deps` on the line immediately above the dependency array.
+
+Under Vite, ESLint is **not** part of the build — `react-hooks/exhaustive-deps` is no longer a Vercel build error the way it was under CRA's `CI=true`. It is enforced instead by `npm run lint`, which `npm test` runs first, so a violation blocks the pre-push gate rather than the deploy. `eslint.config.mjs` sets `reportUnusedDisableDirectives: 'off'`: `eslint-plugin-react-hooks` v7 understands stable setState setters and refs that the CRA-era v4 flagged, so ~50 existing disable comments now look "unused". They are kept deliberately — they document intent and re-arm if a future plugin version changes its analysis. Do not strip them with `--fix`.
 
 #### Styling
 All styling inline. Never add CSS files. Design tokens: `src/constants/theme.js` (R) and `src/constants/adminTheme.js` (AD).
@@ -302,7 +311,7 @@ This applies to every template literal carrying markup or styles — `server/rou
 - Grep for `TODO` and `FIXME` — action or document in handoff
 - Check for files in server/ or src/ not in CLAUDE.md folder structure
 - Confirm server.js has not grown significantly (target: ~40 lines — app construction lives in server/app.js, not here)
-- Confirm src/App.js has not accumulated component logic
+- Confirm src/App.jsx has not accumulated component logic
 
 ---
 
@@ -363,15 +372,17 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
 
 ## Testing
 
-- `npm test` runs BOTH suites and is the single pre-push gate:
+- `npm test` runs the lint step and BOTH suites, and is the single pre-push gate:
+  - `npm run lint` — ESLint over `src/`, react-hooks rules only (see Commands above).
   - `npm run test:server` — `node:test` over `server/test/*.test.js` with `--test-concurrency=1` (the concurrency flag is load-bearing: Node 24 runs test files in parallel by default and the suites share one database).
-  - `npm run test:react` — jest + jsdom over `src/**/*.test.js` via `react-scripts test --watchAll=false` (the flag is what makes it exit instead of entering watch mode; `npm run test:react:watch` is the interactive one).
-  - The two are chained with `&&`, server first, so a red React test blocks a push exactly like a red server test. Consequence to know: if the server suite fails, the React suite does not run that invocation.
+  - `npm run test:react` — **Vitest** + jsdom over `src/**/*.test.{js,jsx}` via `vitest run` (the `run` subcommand is what makes it exit instead of entering watch mode; `npm run test:react:watch` is the interactive one).
+  - The three are chained with `&&`, lint → server → react, so a red React test blocks a push exactly like a red server test. Consequence to know: if an earlier step fails, the later ones do not run that invocation.
+  - ⚠ `vite.config.mjs` sets `test.include: ['src/**/*.test.{js,jsx}']`. This is NOT cosmetic. Vitest's default glob scans the whole repo and would sweep up `server/test/*.test.js` — and `--test-concurrency=1` is a property of the **node:test invocation**, not of the test files, so another runner importing them bypasses it entirely and executes `initTestDb()`'s `DROP SCHEMA public CASCADE` in parallel workers. That destroyed the local test DB once already. The two runners must never overlap; the include glob is what enforces it structurally rather than by convention.
   - ⚠ These were separate commands until C/DL-2 Phase 3c, and component tests were therefore green only when someone remembered to run them. That is precisely how `BrandingPreview.jsx` drifted to Accent Roofing's palette while the server used RoofMiles' — no test was wrong, none of them ran.
-- Never add a React test that only runs under `test:react`-in-watch, and never split the gate back apart.
+- Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Both suites must be fully green — as of C/DL-2 Phase 3c that is 571 server tests and 33 React tests. (This line previously read "all 43 tests", a count left behind years of growth; treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand.)
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — as of the Vite migration that is **734 server tests and 35 React tests across 6 files**. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count that jumps far above 6 means the include glob has been widened and is picking up the server suite — see the warning above.)
 - Characterization rule: a failing or surprising test result means STOP and report — never adjust production code to satisfy a test, and never silently adjust a test to satisfy the code. Deliberate behavior changes update the relevant test openly and are documented in the session handoff.
 - Migration idempotency proofs must include a reproduction seeded with production's actual pre-existing row shapes, not only fresh-schema runs — a test DB rebuilt from scratch every run can never exercise "a real pre-existing row already in some legacy state," which is exactly what breaks in production and never breaks locally. See `CLAUDE_REGISTRY.md` (ST session, Architecture Notes) for the incident that established this.
 
@@ -449,7 +460,7 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
 
 ### Architecture Boundaries
 - server.js is a lean entry point. No route handlers or business logic.
-- App.js is a routing shell. No component code.
+- App.jsx is a routing shell. No component code.
 - pendingReferral.js is a utility file. No route handling or middleware.
 - `getCRMAdapter(contractorId)` is the multi-contractor hook — never bypass.
 - New referrer routes → referrer.js. New admin routes → admin/ sub-folder. New CRM adapters → crm/[name].js.

@@ -149,10 +149,12 @@ Read the current constraints before building any feature below.
 - Current constraints: server/routes/stripe.js placeholder exists. $20 minimum enforced server-side. Payout approval must trigger payout_announcements.
 - Do not build until: Stripe Connect account registered. LLC amendment complete. Explicitly scheduled by Danny.
 
-**Feature: Vite Migration**
-- Replace CRA with Vite — closes 38 npm audit vulnerabilities confirmed 2026-07-06 (1 critical, 18 high; all CRA/react-scripts build toolchain — see Known Issues item 7).
-- Current constraints: Test on staging branch first. All REACT_APP_ env vars may need renaming to VITE_.
-- Do not build until: Explicitly scheduled by Danny.
+**Feature: Vite Migration — ✅ COMPLETE (2026-08-04, branch `vite-migration`)**
+- Delivered in five phases, each independently gated and separately committed so any regression is bisectable: scaffold → renames → cutover → (Preview verified manually against the live Railway backend) → CRA removal + cleanup.
+- Outcome: react-scripts removed entirely. Build is Vite (`vite.config.mjs`, `dist/`), tests are Vitest, Vercel is driven by `vercel.json` (`framework: vite`). Frontend env vars migrated `REACT_APP_*` → `import.meta.env.VITE_*` — zero `process.env` references remain under `src/`.
+- Audit result: full-tree findings went from 29 (9 low, 5 moderate, 15 high) to 1 high. See Known Issues 7.
+- Package count 1,509 → 450. Production bundle 6.38 MB → 2.50 MB (CRA shipped a 3.5 MB sourcemap; `build.sourcemap` is false).
+- Load-bearing details a future session must not undo: `test:react` is `vitest run` (bare `vitest` never exits and would hang the gate); `vite.config.mjs`'s `test.include` scopes Vitest to `src/` only (see Known Issues 15); `package.json` has NO `"type": "module"` — every `server/` file is CommonJS and adding it breaks the Railway boot.
 
 **Feature: ServiceTitan CRM Adapter**
 - Implement fetchPipeline() in server/crm/servicetitan.js via getCRMAdapter() dispatcher.
@@ -267,9 +269,10 @@ Read the current constraints before building any feature below.
 - Deferred investigation: verify whether Jobber TASKS surface in the requests/assessment data fetched by `ATTRIBUTION_QUERY` and can trigger provisional attribution. May require distinguishing/blocking task-type items from counting as assessment assignments.
 - Do not build until: Explicitly scheduled by Danny. Not investigated yet — this is a registry placeholder only.
 
-**7. npm audit — 38 findings acknowledged and deferred (2026-07-06)**
-- 38 npm audit findings (1 critical, 18 high) confirmed 2026-07-06, all in the react-scripts/webpack-dev-server build toolchain (shell-quote, underscore/jsonpath/bfj, ws, uuid) — build/dev-time dependencies, not runtime code shipped to users or the production server. Pre-existing, unrelated to the tenant-resolution fix.
-- RESOLUTION PATH: the queued Vite migration exits the react-scripts dependency tree and is the actual fix; piecemeal overrides inside react-scripts are not worth the fragility. Fold into the same workstream as the Dependabot sweep (pre-launch cleanup checklist item 5) during roadmap reconciliation.
+**7. npm audit — ✅ RESOLVED by the Vite migration (2026-08-04)**
+- Was: 38 findings (1 critical, 18 high) confirmed 2026-07-06, all in the react-scripts/webpack-dev-server build toolchain (shell-quote, underscore/jsonpath/bfj, ws, uuid) — build/dev-time dependencies, never runtime code shipped to users or the production server.
+- RESOLUTION PATH taken as written: the Vite migration exited the react-scripts dependency tree rather than applying piecemeal overrides. Removing react-scripts alone dropped the full tree from 29 findings (9 low, 5 moderate, 15 high, as re-measured 2026-08-04) to 1.
+- FINAL AUDIT NUMBER: see the Vite Migration entry. The single survivor is unrelated to CRA — `ip-address` reached via the production dependency `express-rate-limit`, an advisory published after the 2026-07-06 count was taken.
 
 **8. `payout_announcements` has no `contractor_id` column (ST session Phase 0 finding, 2026-07-13)**
 - Verified during ST's Phase 0 checklist (adjacent to `cashout_requests`, which the cashout approval flow writes to it): `payout_announcements` is untenanted at the schema level — no `contractor_id` column exists. Not a live leak today — every write/read is reached through an already-tenant-scoped `cashout_request_id` (cashout approval inserts it inside the now-tenant-scoped approve transaction; the referrer-side read joins through `cashout_requests`, and after ST, that join is implicitly contractor-safe). Deliberately out of ST's scope (spec-fenced: "Do NOT touch: payout_announcements").
@@ -289,9 +292,11 @@ Read the current constraints before building any feature below.
 - `GET /api/admin/messages` is gated by `referral_review` (governs every card type, not just flagged_assignment). A `rep_assignment`-holder without `referral_review` never sees the `FlaggedAssignmentCard` but still gets the nav badge and full queue access via Team Management directly. A `referral_review`-holder without `rep_assignment` sees the card and can click through, but the click-through fails closed to the Roster tab (no queue access, no leak).
 - Accepted as-is (Danny-ruled, FA session) — revisit only if a real permission split between these two flags actually emerges in practice.
 
-**12. webhookTenantDerivation.test.js C2 flake — recorded as its own scoped fix (reconfirmed FA session)**
-- First recorded TF session (2026-07-09, see Small follow-ups queue below) as a 1-in-5 timing flake. Reconfirmed twice during the FA session (2026-07-18, 2026-07-19) — both times self-resolved on immediate re-run, no other test affected either time. Three independent sightings across two sessions now — promoted from a follow-up-queue bullet to its own scoped-fix entry: the wait/race in the C2 client-create test needs a real fix (a deterministic wait condition, not a timing-based one), not another "known flaky, ignore" note.
-- Do not build until: its own scoped fix. Until then: this is not a decorative/unreliable red — if it fires in any future session's suite run, re-run once to confirm before reporting it as a real failure.
+**12. Webhook tenant-derivation flake — WIDER THAN ORIGINALLY RECORDED (scope corrected 2026-08-04)**
+- First recorded TF session (2026-07-09, see Small follow-ups queue below) as a 1-in-5 timing flake in the C2 client-create test alone. Reconfirmed twice during the FA session (2026-07-18, 2026-07-19), both times self-resolving on re-run.
+- ⚠ SCOPE CORRECTION (Vite migration, 2026-08-04): it is NOT confined to C2, and not to one file. A single full-suite run produced **5 failures spanning BOTH `webhookTenantDerivation.test.js` AND `webhookContractorResolution.test.js`**. Three consecutive re-runs immediately afterward, with nothing changed, were 734/734.
+- SIGNATURE, so a future session does not mistake it for a real break: every failure reads `waitFor: predicate did not become true within 3000ms`; the FAILING SET VARIES between runs (the same two files run in isolation failed a different subset, 2 of 17); and it only appears under full-suite load. A genuine dependency or code break fails deterministically with an identical set every time — that is the distinguishing test.
+- Do not build until: its own scoped fix (deterministic wait conditions, not timing-based). Until then: on any red confined to those two files with that signature, re-run two or three times before investigating. Treat it as real only if the identical set fails on every run.
 
 **13. is_field_rep / is_attributable schema drift — RESOLVED (Danny, live verification, 2026-07-19)**
 - Production rep id 5 had `is_attributable=true` with `is_field_rep=false` — both originally set via direct SQL before any UI existed for either. The schema permits this contradiction; nothing enforces `is_attributable ⇒ is_field_rep`. Symptom: the FA toggle (`MemberEditDrawer`) and the Roster's `RepStatus` renderer both gate visibility on `is_field_rep`, so an actually-attributable rep rendered as "—" (not a rep) in both places.
@@ -301,6 +306,13 @@ Read the current constraints before building any feature below.
 - No code path anywhere sets `is_field_rep` (or `rep_revenue_visibility`) — no PATCH field, no promotion flow. The "Field Rep" PRESET (`AdminTeamSettings.jsx`) stamps permission JSONB only; the "Field Rep" TITLE is a display label only (titles confer zero permissions by design). Neither touches either flag — stamping a preset or assigning a title is NOT promotion, despite both being named "Field Rep."
 - The RBAC/RepAssignment spec's assumed "promote a General user to field rep" flow was never actually built. Queue as its own named roadmap item (rep-promotion controls session): build the promotion write-path that sets the field flags coherently, and consider a DB constraint or application-level coherence check so `is_attributable=true` structurally requires `is_field_rep=true` (preventing #13's drift from recurring).
 - Do not build until: Explicitly scheduled by Danny.
+
+**15. Test-runner isolation — `--test-concurrency=1` belongs to the INVOCATION, not the files (binding learning, Vite migration 2026-08-04)**
+- `--test-concurrency=1` in `test:server` is a property of the **node:test invocation**, not of the test files themselves. Any OTHER runner that imports `server/test/*.test.js` bypasses it completely and executes DB-destructive setup in parallel workers.
+- Proven the hard way: Vitest's default `include` glob scans the whole repo, so `npm run test:react` swept up all 68 server suites. Each calls `initTestDb()`, which runs `DROP SCHEMA public CASCADE` then `CREATE SCHEMA public` (`server/test/setup.js`). Parallel workers interleaved between those two statements and left the schema dropped. Because that `DROP` had no `IF EXISTS`, the suite could not self-heal — it threw `3F000` in every `before()` hook, cancelling 650 of 734 tests. Recovery required manually issuing `CREATE SCHEMA IF NOT EXISTS public` against `roofmiles_test`. The `IF EXISTS` was added the same session, so the unrecoverable half is now fixed; the overlap hazard is not, and never will be, fixed by that alone.
+- SYMPTOMS TO RECOGNISE: `pg_trgm setup skipped: no schema has been selected to create in`; a large **cancelled** count with **fail 0**; only pure-unit files passing.
+- THE RULE: the two runners must never overlap. This is now enforced structurally by `vite.config.mjs`'s `test.include: ['src/**/*.test.{js,jsx}']`, not by convention. Never point a non-node:test runner at `server/test/`, and never widen that glob. If a server suite ever needs a different runner, give it its own serialised invocation.
+- Production was never at risk at any point: `server/test/setup.js`'s localhost interlock held throughout.
 
 ---
 

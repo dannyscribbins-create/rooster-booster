@@ -283,7 +283,7 @@ async function resolveLanding(db, { host = null, slug = null, req = null } = {})
     valid: true,
     mode: 'invite',
     contractorId: token.contractor_id,
-    // Kept at the TOP LEVEL alongside the branding block: src/App.js reads
+    // Kept at the TOP LEVEL alongside the branding block: src/App.jsx reads
     // data.contractorName today, and moving it would break the live signup
     // screen for a cosmetic gain.
     contractorName: branding ? branding.companyName : BRANDING_THEME_DEFAULTS.companyName,

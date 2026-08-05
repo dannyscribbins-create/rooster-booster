@@ -29,8 +29,8 @@
 // backend problem for a week.
 //
 // ── CONVENTION ───────────────────────────────────────────────────────────────
-// jsdom + @testing-library/react under `react-scripts test`, mirroring
-// BrandingProfileSettings.test.js. `fetch` is the ONLY thing replaced, and it is
+// jsdom + @testing-library/react under Vitest, mirroring
+// BrandingProfileSettings.test.jsx. `fetch` is the ONLY thing replaced, and it is
 // replaced at the true external boundary: the component, its form state and its
 // save path are all real. Nothing below asserts on the mock itself — every
 // assertion reads THE REQUEST THE COMPONENT CHOSE TO SEND, which is the contract

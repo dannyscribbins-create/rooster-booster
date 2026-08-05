@@ -26,15 +26,14 @@
 // and DELETE the three constants above.
 //
 // ── HOW THIS REPO TESTS COMPONENTS, reported rather than assumed ──────────────
-// There is one existing component test, src/App.test.js: a CRA smoke test using
-// @testing-library/react + jsdom under `react-scripts test`. That is the whole
-// convention. It runs under `npm run test:react`, NOT under `npm test` — the
-// latter is `node --test server/test/*.test.js` and cannot load JSX at all.
+// There is one existing component test, src/App.test.jsx: a smoke test using
+// @testing-library/react + jsdom. That is the whole convention.
 //
-// ⚠ CONSEQUENCE THE PHASE REPORT MUST CARRY: these tests are NOT part of the 556
-// that gate a push. Either the push gate grows a `npm run test:react` step or
-// this file is green only when someone remembers to run it. Flagged, not
-// silently accepted.
+// It runs under Vitest, via `npm run test:react` — which `npm test` chains after
+// the server suite, so these tests DO gate a push. The concern originally flagged
+// here (component tests green only when someone remembered to run them) was closed
+// when the two suites were chained; the Vite migration kept that chaining and moved
+// the runner from Jest to Vitest.
 //
 // WHY NOT TEST THE RESOLVER INSTEAD AND CALL IT COVERED: brandingTheme.test.js
 // already proves the mirror resolves correctly, exhaustively. What is unproven is

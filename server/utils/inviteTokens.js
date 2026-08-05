@@ -237,7 +237,7 @@ async function recordScanEvent(db, slug) {
 //   UNSET (stage 1, interim — what production runs today)
 //     -> `${FRONTEND_URL}?signup=<slug>`, byte-identical to the legacy shape.
 //     The SPA reads the slug from this query parameter and ONLY from there
-//     (src/App.js:58-59). It has no /i/:slug route — that route is the C/DL-2
+//     (src/App.jsx:58-59). It has no /i/:slug route — that route is the C/DL-2
 //     landing page. Emitting the token shape before C/DL-2 ships would produce
 //     links that load the app root, find no `signup` param, and die silently.
 //

@@ -36,7 +36,7 @@
 // an invitation and is inside the product.
 //
 // ── HOW THE IMAGE SOURCE IS OBSERVED ─────────────────────────────────────────
-// CRA's jest transform maps an imported image to its BASENAME, so a bundled asset
+// The bundler maps an imported image to a path carrying its BASENAME, so a bundled asset
 // renders as src="AccentRoofing-Logo.png" or src="roofmiles_logo_png.png" while a
 // contractor's uploaded logo renders as the absolute URL from the payload. All
 // three are distinguishable by substring, which is what every assertion below reads.
@@ -72,7 +72,7 @@ const HOMEOWNER_EMAIL = 'homeowner@example.test.invalid';
 const INVITE_SLUG     = 'fixture-invite-slug';
 const NEW_USER_ID     = 4242;
 
-// See the note in EmailVerifyScreen.test.js: written with URLSearchParams because
+// See the note in EmailVerifyScreen.test.jsx: written with URLSearchParams because
 // server/test/linkGeneratorSweep.test.js statically sweeps src/ for the literal
 // Scheme B needle and allows it in exactly one file.
 function goToSignupUrl(slug) {

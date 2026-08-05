@@ -105,8 +105,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
 
   // ── C2 — client-create, accountId primary path ───────────────────────────────
 
-  it('C2 client-create — accountId path resolves contractor A; new client lands under A ' +
-     '(RED: contractor_crm_settings.jobber_account_id column does not exist yet)', async () => {
+  it('C2 client-create — accountId path resolves contractor A; new client lands under A', async () => {
     await seedContractors();
     await seedToken(pool, { contractorId: TENANT_A });
     await pool.query(
@@ -178,8 +177,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
 
   // ── C3 — client-update, accountId primary path ───────────────────────────────
 
-  it('C3 client-update — accountId primary path resolves and processes an existing client under A ' +
-     '(RED: contractor_crm_settings.jobber_account_id column does not exist yet)', async () => {
+  it('C3 client-update — accountId primary path resolves and processes an existing client under A', async () => {
     await seedContractors();
     await seedToken(pool, { contractorId: TENANT_A });
     await seedJobberClient(pool, { contractorId: TENANT_A, jobberClientId: 'jc-c3-existing', name: 'Existing Client' });
@@ -255,8 +253,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
 
   // ── C4 — invoice-paid, accountId path ─────────────────────────────────────────
 
-  it('C4 invoice-paid — accountId path resolves contractor A before any Jobber fetch, no quarantine ' +
-     '(RED: contractor_crm_settings.jobber_account_id column does not exist yet)', async () => {
+  it('C4 invoice-paid — accountId path resolves contractor A before any Jobber fetch, no quarantine', async () => {
     await seedContractors();
     await seedToken(pool, { contractorId: TENANT_A });
     await seedEngagementSettings(pool, { contractorId: TENANT_A, experienceFlowEnabled: false });
@@ -289,8 +286,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
 
   // ── C5 — job-update, accountId path ───────────────────────────────────────────
 
-  it('C5 job-update — accountId path resolves contractor A before any Jobber fetch, no quarantine ' +
-     '(RED: contractor_crm_settings.jobber_account_id column does not exist yet)', async () => {
+  it('C5 job-update — accountId path resolves contractor A before any Jobber fetch, no quarantine', async () => {
     await seedContractors();
     await seedToken(pool, { contractorId: TENANT_A });
     await seedEngagementSettings(pool, { contractorId: TENANT_A, experienceFlowEnabled: true });

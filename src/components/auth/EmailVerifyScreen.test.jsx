@@ -46,8 +46,8 @@
 // Pinned below so a later "improvement" cannot quietly reintroduce it.
 //
 // ── CONVENTION ───────────────────────────────────────────────────────────────
-// jsdom + @testing-library/react under `react-scripts test`, following
-// src/App.test.js. ⚠ Runs under `npm run test:react`, NOT under `npm test`.
+// jsdom + @testing-library/react under Vitest, following src/App.test.jsx.
+// Runs under `npm run test:react`, which `npm test` chains after the server suite.
 // `fetch` is replaced at the true external boundary; every component in the flow
 // is real, and no assertion below reads the mock — each reads the REQUEST THE
 // APP CHOSE TO SEND.

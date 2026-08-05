@@ -28,7 +28,7 @@
 //       valid: true,
 //       mode: 'invite',
 //       contractorId: '<internal id, from the TOKEN row>',
-//       contractorName: '<company_name>',        // kept at top level: src/App.js:88
+//       contractorName: '<company_name>',        // kept at top level: src/App.jsx:88
 //       linkType: 'peer' | 'contractor' | 'rep', // reads it today
 //       referrer: { displayName: 'Daniel Z.' },  // ABSENT for link_type 'contractor'
 //       contractor: {
@@ -45,7 +45,7 @@
 //   INVALID: { valid: false }   — LP State 0. Unknown/expired/revoked token,
 //     unrecognised subdomain, or token↔subdomain mismatch.
 //
-// WHY contractorName STAYS AT THE TOP LEVEL: src/App.js:88 reads `data.contractorName`
+// WHY contractorName STAYS AT THE TOP LEVEL: src/App.jsx:88 reads `data.contractorName`
 // today and Phase 3 owns the UI. Making that field DB-driven is the whole of the C9
 // fix; moving it would break the live signup screen for a cosmetic gain.
 //

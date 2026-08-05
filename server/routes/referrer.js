@@ -262,7 +262,7 @@ async function checkAndAwardBadges(userId, totalReferralCount) {
 
 // ── PUBLIC LANDING RESOLUTION ─────────────────────────────────────────────────
 // The call the landing page makes to learn who it is rendering for. Also the SPA's
-// invite validation call today (src/App.js:79-82), which is why contractorName
+// invite validation call today (src/App.jsx:79-82), which is why contractorName
 // stays at the TOP LEVEL of the payload alongside the full branding block — the
 // SPA reads data.contractorName and Phase 3 owns the UI.
 //

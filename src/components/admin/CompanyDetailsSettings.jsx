@@ -216,7 +216,7 @@ export default function CompanyDetailsSettings() {
     // SPREAD ORDER IS LOAD-BEARING: loaded settings first, formData last, so the
     // admin's edits win over the mount-time copy. Reversed, this would silently
     // discard everything they typed. Pinned by the [GUARD] test in
-    // CompanyDetailsSettings.test.js.
+    // CompanyDetailsSettings.test.jsx.
     const merged = { ...fullSettingsRef.current, ...formData };
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/settings`, {

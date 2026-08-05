@@ -211,7 +211,7 @@ const EMPTY_FORM = {
   // empty string the first time an admin saved anything at all — and a browser
   // renders an empty string as no colour, so their landing background would simply
   // vanish. Pinned by 'an existing landing background survives a save that edits
-  // something else' in BrandingProfileSettings.test.js.
+  // something else' in BrandingProfileSettings.test.jsx.
   landing_bg_color: '',
   social_facebook: '', social_instagram: '', social_google: '',
   social_nextdoor: '', social_website: '',
@@ -390,7 +390,7 @@ export default function BrandingProfileSettings() {
   // Shipping the uploader without this line would be strictly worse than shipping
   // nothing: the feature would appear to work and silently undo itself one save
   // later. Pinned by 'a save after an upload sends the NEW logo_url, not the stale
-  // one' in BrandingProfileSettings.test.js.
+  // one' in BrandingProfileSettings.test.jsx.
   //
   // The server cannot defend against this — it was told to write null and did.
   // See the [CHARACTERIZATION] test in server/test/brandingSaveRoundTrip.test.js.

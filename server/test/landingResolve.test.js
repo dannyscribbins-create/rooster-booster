@@ -281,7 +281,7 @@ describe('C/DL-2 Phase 3d-1 — resolveLanding() extraction', () => {
     assert.equal(p.valid, true);
     assert.equal(p.mode, 'invite');
     assert.equal(p.contractorId, TENANT_A, 'contractorId comes from the TOKEN row');
-    assert.equal(p.contractorName, BRAND_A.companyName, 'contractorName stays at the top level (src/App.js reads it)');
+    assert.equal(p.contractorName, BRAND_A.companyName, 'contractorName stays at the top level (src/App.jsx reads it)');
     assert.equal(p.linkType, 'contractor');
 
     const c = p.contractor;

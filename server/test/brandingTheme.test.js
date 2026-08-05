@@ -126,7 +126,7 @@ const POPULATED = Object.freeze({
 // POPULATED deliberately carries NO accent_color, so the value below is the
 // DEFAULT rather than a pass-through. accent_color pass-through is covered at
 // 'populated form state is reflected verbatim' in
-// src/components/admin/BrandingPreview.test.js, which feeds accent_color: '#ABCDEF'
+// src/components/admin/BrandingPreview.test.jsx, which feeds accent_color: '#ABCDEF'
 // through the mirror and reads the painted result.
 const POPULATED_EXPECTED = Object.freeze({
   companyName:     'Alpha Roofing Co',
