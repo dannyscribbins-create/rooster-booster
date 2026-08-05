@@ -99,7 +99,7 @@ function jsonResponse(body) {
 
 function installFetch({ settings = settingsPayload(), uploadedLogo = NEW_LOGO } = {}) {
   calls = [];
-  global.fetch = jest.fn(async (url, opts = {}) => {
+  global.fetch = vi.fn(async (url, opts = {}) => {
     calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body });
     const u = String(url);
     if (u.includes(LOGO_URL))     return jsonResponse({ success: true, logo_url: uploadedLogo });

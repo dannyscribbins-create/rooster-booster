@@ -45,16 +45,13 @@
     "vitest": "^4.1.10"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+    "start": "vite",
+    "build": "vite build",
     "test": "npm run test:server && npm run test:react",
     "test:server": "node --test --test-concurrency=1 server/test/*.test.js",
-    "test:react": "react-scripts test --watchAll=false",
-    "test:react:watch": "react-scripts test",
-    "eject": "react-scripts eject",
-    "dev:vite": "vite",
-    "build:vite": "vite build",
-    "test:react:vite": "vitest run"
+    "test:react": "vitest run",
+    "test:react:watch": "vitest",
+    "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [

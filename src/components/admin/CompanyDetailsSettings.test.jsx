@@ -100,7 +100,7 @@ function jsonResponse(body) {
 // so the two branches cannot capture each other's traffic.
 function installFetch({ settings = settingsPayload() } = {}) {
   calls = [];
-  global.fetch = jest.fn(async (url, opts = {}) => {
+  global.fetch = vi.fn(async (url, opts = {}) => {
     calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body });
     const u = String(url);
     if (u.includes(NOTIFICATION_URL)) return jsonResponse({

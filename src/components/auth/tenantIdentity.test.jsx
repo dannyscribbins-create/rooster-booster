@@ -256,7 +256,7 @@ describe('C/DL-2 Phase 3c — EmailVerifyScreen carries the contractor, not Acce
 describe('C/DL-2 Phase 3c — the invite payload decides whose brand the homeowner sees', () => {
 
   function installFetch(tenant) {
-    global.fetch = jest.fn(async (url) => {
+    global.fetch = vi.fn(async (url) => {
       const u = String(url);
       if (u.includes(`/api/invite/${INVITE_SLUG}`)) {
         return {

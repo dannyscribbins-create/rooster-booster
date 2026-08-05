@@ -114,7 +114,7 @@ describe('C/DL-2 Phase 3c — EmailVerifyScreen resend', () => {
 
   function installFetch({ resend = jsonResponse(GENERIC_RESEND_BODY) } = {}) {
     calls = [];
-    global.fetch = jest.fn(async (url, opts = {}) => {
+    global.fetch = vi.fn(async (url, opts = {}) => {
       calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body });
       if (String(url).includes(RESEND_URL)) {
         if (resend instanceof Error) throw resend;
@@ -248,7 +248,7 @@ describe('C/DL-2 Phase 3c — contractorId reaches the verify screen from the in
 
   function installFetch() {
     calls = [];
-    global.fetch = jest.fn(async (url, opts = {}) => {
+    global.fetch = vi.fn(async (url, opts = {}) => {
       const u = String(url);
       calls.push({ url: u, method: opts.method || 'GET', body: opts.body });
 
@@ -331,7 +331,7 @@ describe('C/DL-2 Phase 3c — contractorId reaches the verify screen from the in
     const OTHER_CONTRACTOR_ID = 'tnt-other-internal';
     goToSignupUrl(INVITE_SLUG);
     calls = [];
-    global.fetch = jest.fn(async (url, opts = {}) => {
+    global.fetch = vi.fn(async (url, opts = {}) => {
       const u = String(url);
       calls.push({ url: u, method: opts.method || 'GET', body: opts.body });
       if (u.includes(`/api/invite/${INVITE_SLUG}`)) {

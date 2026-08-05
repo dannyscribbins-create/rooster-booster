@@ -20,5 +20,11 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/setupTests.js',
     css: false,
+    // Scope Vitest to the React suites only. Vitest's default include glob
+    // scans the whole repo, which sweeps up server/test/*.test.js — those are
+    // node:test files, so Vitest reports "No test suite found" for each AND
+    // executes them on import, running DB-touching code inside test:react.
+    // server/test is owned by test:server; these two runners must not overlap.
+    include: ['src/**/*.test.{js,jsx}'],
   },
 });
