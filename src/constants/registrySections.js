@@ -1,5 +1,3 @@
-/* eslint-env node */
-
 /**
  * Frontend mirror of server/permissions/registry.js SECTIONS.
  *

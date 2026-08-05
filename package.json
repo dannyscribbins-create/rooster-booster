@@ -39,36 +39,19 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^13.5.0",
     "@vitejs/plugin-react": "^6.0.5",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^29.1.1",
-    "react-scripts": "5.0.1",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"
   },
   "scripts": {
     "start": "vite",
     "build": "vite build",
-    "test": "npm run test:server && npm run test:react",
+    "lint": "eslint src",
+    "test": "npm run lint && npm run test:server && npm run test:react",
     "test:server": "node --test --test-concurrency=1 server/test/*.test.js",
     "test:react": "vitest run",
-    "test:react:watch": "vitest",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "test:react:watch": "vitest"
   }
 }
