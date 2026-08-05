@@ -57,7 +57,7 @@ async function initTestDb() {
   // STEP D — Wipe public schema so every run starts from a truly empty database.
   const wipePool = new Pool({ connectionString: dbUrl });
   try {
-    await wipePool.query('DROP SCHEMA public CASCADE');
+    await wipePool.query('DROP SCHEMA IF EXISTS public CASCADE');
     await wipePool.query('CREATE SCHEMA public');
   } finally {
     await wipePool.end();
