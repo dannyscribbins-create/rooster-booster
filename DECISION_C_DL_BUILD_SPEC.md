@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v1.2 — amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (see §13, amendments A8–A20). Previously v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12). Originally locked v1.0 on 2026-07-24. Governs three build sessions (§4). Changes require a spec amendment.
+**Status:** LOCKED v1.4 — amended 2026-08-08 with pre-auth branding resolution and URL topology (see §15, amendment A22). Previously v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. Governs three build sessions (§4). Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -83,6 +83,9 @@ Settled in the planning session of 2026-07-24 unless noted.
 | **CD-20** | **Lifetimes:** the roster row is permanent until redeemed or dismissed; token expiry runs on its own independent clock; resend always mints fresh per CD-14. *(closed OD-2)* |
 | **CD-21** | **Theme preference lives in a shared user-level preference store**, not a `team_members` column — the client app must be able to read the same store for its own future toggle. **In this arc:** shared store + FieldRepApp light/dark. **Not in this arc:** client-app dark variants, which need their own design pass before they can be built. The client toggle wires to the same store when those exist. *(closed OD-3)* |
 | **CD-22** | **Roster is specced in C/DL-3 and built if the session has room**; otherwise it is the designated fast-follow. Its underlying columns and behaviors ship regardless, since they live on the token row. *(closed OD-4)* |
+| **CD-23** | **Path-based URL topology is REJECTED.** Routing contractor subdomains so `/app` serves the React app would give a branded pre-auth door, but the benefit is web-only and disappears the moment the Capacitor shell ships. Explicit-host topology stands as ruled in A16 (§13) — `app.roofmiles.com` for the app, wildcard for the landing page — and is unchanged here. *(added 2026-08-08, A22 §15)* |
+| **CD-24** | **Branding resolution is its own layer; login contains no branding logic.** Ordered sources: session → host → stored hint → deferred deep link (DL-B, slot only in this arc) → neutral RoofMiles. Three binding rules: the stored hint is **cosmetic only** and never an input to tenancy; session **overrides and rewrites** the hint; logout **preserves** it. *(added 2026-08-08, A22 §15)* |
+| **CD-25** | **The DL-B slot is structural, not a note.** Source 4 ships in C/DL-3 as an explicit no-op resolver occupying its position in the chain, fenced by a **green** test asserting the chain's composition and order. The Capacitor session fills the slot without reopening the login surface. *(added 2026-08-08, A22 §15)* |
 
 ---
 
@@ -273,6 +276,10 @@ The out-of-scope list in §2 is not uniform. Some items become the immediate nex
 - **Decision D (admin-side rep metrics).** Follows E, because E mutates the tree model D visualizes. Note that this arc builds the *rep-facing* node view, so D inherits a working graph component rather than starting cold — D's remaining work is the Owner/Admin analytics surfaces and the catalogue view on the admin side.
 - **DL-B app-side pieces + Capacitor session.** Becomes a near-blocker once this arc ships: the token scheme and associated domains get baked into the app binary, and the iOS clipboard / Android install-referrer skip paths are the fallback layers that catch anyone the landing page doesn't. App Store submission needs both.
 
+  **DL-B now has a named structural consumer** — source 4 of the CD-24 branding resolution chain, which C/DL-3 ships as a no-op resolver holding the slot (CD-25). It is no longer a loose future item that can be rediscovered late; something in the built product is waiting for it. **Carry it forward in every intervening session handoff until it is built.**
+
+  **Verification gate on the Capacitor session — the iOS half carries a web-side prerequisite.** The disclosed-clipboard flow requires **the landing page to write the token to the clipboard**; the native app only *reads* it on first launch. The write lives in a different session's code than the read, which is exactly why it is easy to miss. Android has no equivalent dependency — Play supplies the install-referrer string directly to the receiver. **Before the Capacitor session begins, verify that the landing page's skip-path interstitial actually performs the clipboard write.** If it does not, that is a small landing-page follow-up and it must land *before* the Capacitor session, not during it — otherwise that session builds a correct reader with nothing to read. This is a gate on the Capacitor session, **not** new C/DL-3 scope.
+
 **Independent, no natural pull:**
 - **Marketing-site content at the `roofmiles.com` root.** Mild new urgency only — once wildcard DNS is live and printed QR codes point at the domain, someone will eventually type the bare root and should find something. Doesn't gate anything.
 - **Engagement Intelligence.** Confirmed by Danny: EI is primarily a campaign- and contact-data-robustness concern on the admin side, not a field-rep concern. Today's Focus (CD-10) has a conceptual link but no dependency — expanding it later is a small standalone piece of work, not a reason to pull the EI spec forward.
@@ -405,3 +412,43 @@ The branded page names the company twice: the visitor already trusts this roofer
 **FOOTER SUPPRESSION, STATE 0 ONLY.** The footer's phone/email/address rows do not render on State 0, so the number cannot print twice on one short page; the divider, the "Powered by RoofMiles" mark and the Privacy/Terms links are unchanged. **States 1-3 keep their footer contact card in full** — implemented as a parameter on `renderFooter` defaulting to the existing behaviour, never as a change to the shared function, because moving the rule one level up would strip the card off every signup page in the product.
 
 **Fenced by `server/test/landingContactBlock.test.js`** (11 tests: copy fork, row presence gating, positional "above the footer", the globe icon, and a count assertion pinning the phone at exactly one occurrence). The retired strings were pinned in three other suites — `landingStates.test.js`, `landingMarketingMode.test.js`, `landingPlatformMark.test.js` — and all three were updated in the same change, each citing A21 at the site.
+
+---
+
+## 15. Amendments — v1.4, 2026-08-08 (pre-auth branding resolution and URL topology)
+
+**A22 — PRE-AUTH BRANDING RESOLUTION AND URL TOPOLOGY.** CD-4 locks a unified blended login that is white-labeled, with "branding driven by contractor context." The spec never states **where that contractor context comes from before authentication** — which is the one moment at which the session cannot supply it. That gap is closed here.
+
+The gap has a companion in the URL layer. The React app is currently served from a Vercel-assigned hostname. `roofmiles.com` is attached only to the SaaS landing page and to the contractor-subdomain wiring for branded signup; **neither the referrer app nor the admin panel has been given a `roofmiles.com` host yet.** Both halves are settled below as CD-23 through CD-25.
+
+**CD-23 — URL TOPOLOGY: SIMPLE.**
+
+- **URL topology is as ruled in A16 (§13):** the wildcard `*.roofmiles.com` serves the Railway-rendered landing page, and the React app takes the explicit host `app.roofmiles.com`. **Unchanged by this amendment**; restated here only as the premise the rejection below rests on. A16 remains the authority — one ruling, one home.
+- **Path-based topology is REJECTED.** Routing contractor subdomains so that `/app` serves the React app would give a branded pre-auth door on the web. That benefit is **web-only**, and it disappears entirely once the Capacitor shell ships, because a native app is not served from any hostname at all. Rejected as a temporary nicety at permanent routing cost.
+
+**This rejection is the whole of CD-23's new authority.** A16 predates the question and does not consider it; nothing else in this decision adds to what §13 already settled.
+
+**CD-24 — BRANDING RESOLUTION LAYER. Login must NOT contain branding logic.** Build a resolution layer with an ordered source list; the login screen consumes its result and knows nothing about how it was reached.
+
+| # | Source | Availability |
+|---|---|---|
+| 1 | **Session** | Authenticated, server-authoritative |
+| 2 | **Host** | Web only, when on a contractor subdomain |
+| 3 | **Stored hint** | Persisted from any prior branded arrival — `localStorage` on web, native storage under Capacitor |
+| 4 | **Deferred deep link** | Native only; DL-B. **SLOT ONLY IN THIS ARC** (see CD-25) |
+| 5 | **Neutral RoofMiles** | The correct default state, not a degraded one |
+
+Three binding rules:
+
+- **R1. The stored hint is COSMETIC ONLY — palette and logo.** It must never be an input to tenancy and must never influence which contractor's data is queried. This is the same discipline the landing page already operates under, deriving contractor from the token row server-side (A5, §12; A18, §13), and the same discipline recorded in the existing display-only warning comment in `src/config/contractor.js`.
+- **R2. Session OVERRIDES and REWRITES the stored hint.** If an authenticated session resolves a different contractor than the hint, session wins and the hint is updated to match.
+- **R3. Logout PRESERVES the stored hint.** Logout must not downgrade a returning team member or client to a neutral door.
+
+**CD-25 — THE DL-B SLOT IS STRUCTURAL, NOT A NOTE.** Source 4 ships in C/DL-3 as an **explicit no-op resolver occupying its position in the ordered chain**, accompanied by a **GREEN test asserting the chain's composition and order**. Not a red placeholder — the registry rule against permanently-red decorative tests applies. The Capacitor session then fills the slot (iOS disclosed-clipboard flow, Android install-referrer receiver) **without reopening the login surface.**
+
+**SCOPE SPLIT.**
+
+- **C/DL-3 builds:** the resolution layer, sources 1, 2, 3 and 5, and the source-4 no-op slot with its ordering test.
+- **The Capacitor session builds:** source 4's actual implementation (DL-B).
+
+**A20 INTERACTION — the token-set gap is now load-bearing on this surface.** The shipped theme token set from C/DL-2 is `{primary, secondary, accent, background}`. §5 of this spec names `primary`, `secondary`, `bg`, `surface`, `text`. A20 (§13) flagged that mismatch and deliberately left it unresolved, noting it would land on this build or the next. **It lands here:** if the login surface and FieldRepApp consume the same variables as the landing page — which §5's "one system, three surfaces, no second implementation" requires — then **the `surface` / `text` gap must close in C/DL-3.** Recorded explicitly against A20 so that session does not rediscover it mid-build.
