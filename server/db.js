@@ -1726,6 +1726,60 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     used_at        TIMESTAMP
   )`);
 
+  // ── C/DL-3a — USER PREFERENCES (shared user-level preference store) ─────────
+  // See DECISION_C_DL_BUILD_SPEC.md CD-21. ONE store read by BOTH apps: the
+  // referrer/client app (users) and the team/admin/field-rep side (team_members).
+  // Deliberately NOT a team_members column — the client app must be able to read
+  // the same store when its own light/dark toggle is built.
+  //
+  // PLACEMENT IS LOAD-BEARING, for the same reason as the C/DL-1 block above:
+  // this table carries an FK to team_members, created at ~line 1178. It cannot
+  // live beside contact_tags (~line 928), whose dual-nullable shape it copies —
+  // on a fresh-database boot that would be a forward reference to a table that
+  // does not exist yet.
+  //
+  // Shape follows contact_tags (two nullable id columns + CHECK + partial unique
+  // indexes) with ONE deliberate divergence: contact_tags' CHECK is "at least
+  // one", this one is EXACTLY ONE. A preference row naming two different subjects
+  // has no coherent meaning, and the partial unique indexes below would not catch
+  // it. Do not relax this to the contact_tags form.
+  //
+  // No migration guard, no backfill, no dirty-data hazard: the table is new, so
+  // CREATE TABLE IF NOT EXISTS is idempotent by construction and there is no
+  // pre-existing row anywhere in any legacy state.
+  await pool.query(`CREATE TABLE IF NOT EXISTS user_preferences (
+    id             SERIAL PRIMARY KEY,
+    user_id        INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    team_member_id INTEGER REFERENCES team_members(id) ON DELETE CASCADE,
+    contractor_id  TEXT NOT NULL REFERENCES contractors(id),
+    pref_key       TEXT NOT NULL,
+    pref_value     JSONB NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT user_preferences_exactly_one_subject CHECK (
+         (user_id IS NOT NULL AND team_member_id IS NULL)
+      OR (user_id IS NULL     AND team_member_id IS NOT NULL)
+    )
+  )`);
+  // Partial unique indexes — one preference per (subject, key). CREATE UNIQUE INDEX
+  // IF NOT EXISTS rather than ADD CONSTRAINT: idempotent by construction, and it
+  // cannot collide with its own backing index on re-run (the 42P07 hazard CLAUDE.md
+  // documents for the ADD CONSTRAINT form).
+  //
+  // contractor_id is deliberately NOT a member of either index. The subject already
+  // implies its tenant (users.contractor_id and team_members.contractor_id are both
+  // NOT NULL), so adding it here would WEAKEN these into permitting a duplicate
+  // (subject, key) pair under a second contractor id. These are also the ON CONFLICT
+  // inference targets used by setPreference() in server/utils/userPreferences.js —
+  // that upsert must repeat the WHERE predicate verbatim, since Postgres cannot
+  // infer a partial index without it.
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_user_key_unique
+    ON user_preferences (user_id, pref_key)
+    WHERE user_id IS NOT NULL`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS user_preferences_team_member_key_unique
+    ON user_preferences (team_member_id, pref_key)
+    WHERE team_member_id IS NOT NULL`);
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed
