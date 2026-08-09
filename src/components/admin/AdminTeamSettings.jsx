@@ -34,6 +34,7 @@ const PRESETS = [
       activity: true,
       team: true, 'team.manage': true,
       rep_assignment: true,
+      rep_promotion: true,
     },
   },
   {

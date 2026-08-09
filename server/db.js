@@ -1496,6 +1496,59 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     END $$
   `);
 
+  // ── C/DL-3a PHASE 2A: REP-FLAG COHERENCE CHECK ───────────────────────────────
+  // Every rep ability requires is_field_rep. This is the second of two enforcement
+  // layers — POST /api/admin/team/:id/promote is the first. The DB layer exists
+  // because Known Issue 13's production drift (rep id 5 held is_attributable=true
+  // with is_field_rep=false) was created by DIRECT SQL, before any endpoint existed;
+  // an application-only check could never have prevented it.
+  //
+  // DEFENSIVE BY DESIGN — this block must never be able to abort a boot:
+  //   • Idempotent: skipped outright once the constraint exists.
+  //   • Pre-flight count: if any row already violates coherence, the ADD is SKIPPED
+  //     and a loud warning is logged instead of raising. A legacy drifted row must
+  //     surface as an operator warning, never as a crashed initDB() that takes the
+  //     whole service down (the ST-session incident, CLAUDE_REGISTRY Architecture
+  //     Notes). The next boot after the data is corrected adds the constraint.
+  // The pre-flight count runs in JS, not inside the DO block, DELIBERATELY: a Postgres
+  // RAISE WARNING is delivered to the client only as a 'notice' event, and nothing in
+  // this app attaches a notice listener — the warning would be swallowed silently,
+  // exactly in the case where an operator most needs to see it. console.error reaches
+  // the Railway app log.
+  const { rows: repCoherenceConstraint } = await pool.query(
+    `SELECT 1 FROM pg_constraint WHERE conname = 'team_members_rep_coherence'`
+  );
+  if (repCoherenceConstraint.length === 0) {
+    const { rows: [{ violating }] } = await pool.query(`
+      SELECT COUNT(*)::int AS violating
+      FROM team_members
+      WHERE NOT is_field_rep AND (is_attributable OR rep_revenue_visibility)
+    `);
+    if (violating > 0) {
+      // diagnostic log — intentional
+      console.error(
+        `*** REP COHERENCE CONSTRAINT NOT APPLIED *** ${violating} team_members row(s) have ` +
+        `is_attributable or rep_revenue_visibility set while is_field_rep is false. ` +
+        `initDB() has SKIPPED adding team_members_rep_coherence rather than aborting the boot. ` +
+        `Correct those rows (set is_field_rep = true, or clear the dependent flags) and redeploy — ` +
+        `the constraint applies itself on the next boot. See CLAUDE_REGISTRY.md Known Issue 13.`
+      );
+    } else {
+      // A CHECK has no backing index, so the duplicate_table hazard documented on the
+      // UNIQUE above cannot occur — duplicate_object alone is the complete guard. Kept
+      // as a DO block anyway so a concurrent boot losing the race is a no-op, not a crash.
+      await pool.query(`
+        DO $$ BEGIN
+          ALTER TABLE team_members
+            ADD CONSTRAINT team_members_rep_coherence
+            CHECK (is_field_rep OR (NOT is_attributable AND NOT rep_revenue_visibility));
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
+      `);
+      console.log('✓ migration: team_members.rep_coherence_check'); // diagnostic log — intentional
+    }
+  }
+
   // ── DECISION B SCHEMA (attribution_source, client_rep_assignments, flagged_assignments) ──
   await addDecisionBSchema(pool);
 

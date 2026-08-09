@@ -18,13 +18,17 @@ async function seedCrmSettings(pool, { contractorId, attributionSource = 'assess
 }
 
 // Returns the new team_member id.
-async function seedTeamMember(pool, { contractorId, email, jobberUserId = null, isAttributable = false, fullName = 'Test Rep' }) {
+// is_field_rep defaults to isAttributable: an attributable rep IS a field rep. Required
+// as of C/DL-3a Phase 2A — the team_members_rep_coherence CHECK rejects any row with
+// is_attributable=true while is_field_rep=false. This fixture previously produced exactly
+// that incoherent shape (the Known Issue 13 drift), which the constraint now forbids.
+async function seedTeamMember(pool, { contractorId, email, jobberUserId = null, isAttributable = false, isFieldRep = isAttributable, fullName = 'Test Rep' }) {
   const { rows } = await pool.query(
     `INSERT INTO team_members
-       (contractor_id, email, password_hash, tier, is_attributable, jobber_user_id, full_name)
-     VALUES ($1, $2, 'hash', 'member', $3, $4, $5)
+       (contractor_id, email, password_hash, tier, is_field_rep, is_attributable, jobber_user_id, full_name)
+     VALUES ($1, $2, 'hash', 'member', $3, $4, $5, $6)
      RETURNING id`,
-    [contractorId, email, isAttributable, jobberUserId, fullName]
+    [contractorId, email, isFieldRep, isAttributable, jobberUserId, fullName]
   );
   return rows[0].id;
 }

@@ -241,4 +241,22 @@ describe('team routes — security walls and guards', () => {
     assert.equal(res.body?.error, 'jobber_user_already_mapped', `Expected error key 'jobber_user_already_mapped', got: ${res.body?.error}`);
     await pool.query('UPDATE team_members SET jobber_user_id = NULL WHERE id = $1', [adminMemberId]);
   });
+
+  // ── C/DL-3a Phase 2A: is_attributable removed from this endpoint's contract ──
+  // Rep flags have exactly one writer now (POST /api/admin/team/:id/promote), which
+  // is the only place able to judge coherence across all three at once. Asserted here,
+  // in the PATCH's own suite, so a future re-add to the updates[] builder fails loudly
+  // rather than quietly reopening the Known Issue 13 drift path.
+  it('PATCH /api/admin/team/:id: rejects is_attributable — promote is the only rep-flag writer', async () => {
+    await pool.query('UPDATE team_members SET is_field_rep = true, is_attributable = false WHERE id = $1', [generalMemberId]);
+    const ownerToken = await makeSession(pool, ownerMemberId);
+    const res = await httpRequest(port, 'PATCH', `/api/admin/team/${generalMemberId}`, {
+      is_attributable: true,
+    }, ownerToken);
+
+    assert.equal(res.status, 422, `Expected 422, got ${res.status}: ${JSON.stringify(res.body)}`);
+    const { rows } = await pool.query('SELECT is_attributable FROM team_members WHERE id = $1', [generalMemberId]);
+    assert.equal(rows[0].is_attributable, false, 'PATCH must not write the rep flag');
+    await pool.query('UPDATE team_members SET is_field_rep = false WHERE id = $1', [generalMemberId]);
+  });
 });

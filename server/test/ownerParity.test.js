@@ -52,6 +52,9 @@ const PARITY_TABLE = [
   { group: 'team',             flag: 'team',             method: 'GET',   path: '/api/admin/team',               mode: 'http'  },
   { group: 'team',             flag: 'team.manage',      method: 'POST',  path: '/api/admin/team/1/permissions',  mode: 'guard' },
   { group: 'rep_assignment',   flag: 'rep_assignment',   method: 'GET',   path: '/test/rep-assignment',          mode: 'http'  },
+  // C/DL-3a Phase 2A: guard-level. POST /team/:id/promote writes rep flags if it
+  // reaches the handler body — invoke the guard directly rather than mutating a row.
+  { group: 'rep_promotion',    flag: 'rep_promotion',    method: 'POST',  path: '/api/admin/team/1/promote',     mode: 'guard' },
   // TODO: add billing to owner-parity coverage when billing routes land — genuinely future, no representative route yet
 ];
 

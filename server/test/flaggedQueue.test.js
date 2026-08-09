@@ -39,15 +39,19 @@ function httpRequest(port, method, path, body, token) {
 
 // ── LOCAL SEED HELPERS ────────────────────────────────────────────────────────
 
+// is_field_rep defaults to isAttributable: an attributable rep IS a field rep. Required
+// as of C/DL-3a Phase 2A — the team_members_rep_coherence CHECK rejects any row with
+// is_attributable=true while is_field_rep=false. This fixture previously produced exactly
+// that incoherent shape (the Known Issue 13 drift), which the constraint now forbids.
 async function seedTeamMember(pool, {
   contractorId, email, tier = 'general', permissions = null,
-  isAttributable = false, jobberUserId = null, fullName = 'Test Rep',
+  isAttributable = false, isFieldRep = isAttributable, jobberUserId = null, fullName = 'Test Rep',
 }) {
   const { rows } = await pool.query(
-    `INSERT INTO team_members (contractor_id, email, password_hash, tier, permissions, is_attributable, jobber_user_id, full_name)
-     VALUES ($1, $2, 'hash', $3, $4, $5, $6, $7)
+    `INSERT INTO team_members (contractor_id, email, password_hash, tier, permissions, is_field_rep, is_attributable, jobber_user_id, full_name)
+     VALUES ($1, $2, 'hash', $3, $4, $5, $6, $7, $8)
      RETURNING id`,
-    [contractorId, email, tier, permissions, isAttributable, jobberUserId, fullName]
+    [contractorId, email, tier, permissions, isFieldRep, isAttributable, jobberUserId, fullName]
   );
   return rows[0].id;
 }
@@ -477,13 +481,21 @@ describe('Flagged Assignments queue — migration, routes, engine wiring', () =>
     });
   });
 
-  // ── GROUP 6: is_attributable toggle (existing PATCH /api/admin/team/:id) ───
-  describe('PATCH /api/admin/team/:id — is_attributable whitelist addition', () => {
+  // ── GROUP 6: is_attributable toggle ────────────────────────────────────────
+  // RETARGETED in C/DL-3a Phase 2A. The capability these tests cover is unchanged —
+  // an authorised admin can make a rep attributable or take it away — but its address
+  // moved. is_attributable was removed from PATCH /api/admin/team/:id so that every rep
+  // flag has exactly one writer (POST /:id/promote), the only place able to evaluate
+  // coherence across all three flags at once. The gate moved with it: team.manage no
+  // longer suffices, rep_promotion does. Full coverage of the new endpoint's own
+  // contract (merge semantics, cascade, tenancy) lives in repPromotion.test.js.
+  describe('POST /api/admin/team/:id/promote — is_attributable toggle', () => {
     it('Owner can set is_attributable=true, persisted', async () => {
       const owner = await seedTeamMember(pool, { contractorId: CID_A, email: 'owner-attr1@fa.com', tier: 'owner', permissions: {} });
       const target = await seedTeamMember(pool, { contractorId: CID_A, email: 'target-attr1@fa.com', isAttributable: false });
       const token = await makeSession(pool, { contractorId: CID_A, teamMemberId: owner });
-      const res = await httpRequest(port, 'PATCH', `/api/admin/team/${target}`, { is_attributable: true }, token);
+      // is_field_rep must accompany it — attribution requires field-rep status (coherence).
+      const res = await httpRequest(port, 'POST', `/api/admin/team/${target}/promote`, { is_field_rep: true, is_attributable: true }, token);
       assert.equal(res.status, 200, JSON.stringify(res.body));
       const { rows } = await pool.query('SELECT is_attributable FROM team_members WHERE id = $1', [target]);
       assert.equal(rows[0].is_attributable, true);
@@ -493,26 +505,27 @@ describe('Flagged Assignments queue — migration, routes, engine wiring', () =>
       const owner = await seedTeamMember(pool, { contractorId: CID_A, email: 'owner-attr2@fa.com', tier: 'owner', permissions: {} });
       const target = await seedTeamMember(pool, { contractorId: CID_A, email: 'target-attr2@fa.com', isAttributable: true });
       const token = await makeSession(pool, { contractorId: CID_A, teamMemberId: owner });
-      const res = await httpRequest(port, 'PATCH', `/api/admin/team/${target}`, { is_attributable: false }, token);
+      const res = await httpRequest(port, 'POST', `/api/admin/team/${target}/promote`, { is_attributable: false }, token);
       assert.equal(res.status, 200);
-      const { rows } = await pool.query('SELECT is_attributable FROM team_members WHERE id = $1', [target]);
+      const { rows } = await pool.query('SELECT is_attributable, is_field_rep FROM team_members WHERE id = $1', [target]);
       assert.equal(rows[0].is_attributable, false);
+      assert.equal(rows[0].is_field_rep, true, 'revoking attribution must not silently demote the field rep');
     });
 
     it('rejects a non-boolean is_attributable value with 422', async () => {
       const owner = await seedTeamMember(pool, { contractorId: CID_A, email: 'owner-attr3@fa.com', tier: 'owner', permissions: {} });
       const target = await seedTeamMember(pool, { contractorId: CID_A, email: 'target-attr3@fa.com' });
       const token = await makeSession(pool, { contractorId: CID_A, teamMemberId: owner });
-      const res = await httpRequest(port, 'PATCH', `/api/admin/team/${target}`, { is_attributable: 'yes' }, token);
+      const res = await httpRequest(port, 'POST', `/api/admin/team/${target}/promote`, { is_attributable: 'yes' }, token);
       assert.equal(res.status, 422);
     });
 
-    it('denied without team.manage', async () => {
-      const noPerm = await seedTeamMember(pool, { contractorId: CID_A, email: 'noperm-attr@fa.com', tier: 'admin', permissions: {} });
+    it('denied without rep_promotion', async () => {
+      const noPerm = await seedTeamMember(pool, { contractorId: CID_A, email: 'noperm-attr@fa.com', tier: 'admin', permissions: { 'team.manage': true } });
       const target = await seedTeamMember(pool, { contractorId: CID_A, email: 'target-attr4@fa.com' });
       const token = await makeSession(pool, { contractorId: CID_A, teamMemberId: noPerm });
-      const res = await httpRequest(port, 'PATCH', `/api/admin/team/${target}`, { is_attributable: true }, token);
-      assert.equal(res.status, 403);
+      const res = await httpRequest(port, 'POST', `/api/admin/team/${target}/promote`, { is_field_rep: true, is_attributable: true }, token);
+      assert.equal(res.status, 403, 'team.manage must not carry promotion rights');
     });
   });
 

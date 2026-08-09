@@ -145,6 +145,14 @@ const REGISTRY_SECTIONS = [
     description: 'Assign sales reps to contacts and jobs',
     forward: false,
   },
+  {
+    key: 'rep_promotion',
+    type: 'single',
+    flags: { single: 'rep_promotion' },
+    label: 'Rep Promotion',
+    description: 'Promote a team member to field rep and grant rep abilities (attribution, own-revenue visibility)',
+    forward: false,
+  },
   // ── Forward sections (reserved namespace, not yet enforced) ──────────────────
   {
     key: 'points',
@@ -190,7 +198,7 @@ const PERM_GROUPS = [
   { key: 'marketing',  label: 'Marketing',       icon: 'ph-megaphone', sections: ['campaigns', 'audiences', 'experience'] },
   { key: 'operations', label: 'Operations',      icon: 'ph-gear',      sections: ['referral_review', 'cashouts', 'cashout_approve'] },
   { key: 'finance',    label: 'Finance',         icon: 'ph-bank',      sections: ['finance_settings', 'billing'] },
-  { key: 'admin',      label: 'Administration',  icon: 'ph-shield',    sections: ['branding', 'integrations', 'advanced', 'team', 'rep_assignment'] },
+  { key: 'admin',      label: 'Administration',  icon: 'ph-shield',    sections: ['branding', 'integrations', 'advanced', 'team', 'rep_assignment', 'rep_promotion'] },
   { key: 'forward',    label: 'Coming Soon',     icon: 'ph-clock',     sections: ['points', 'client_portal', 'boost_campaign', 'account_keeping'] },
 ];
 

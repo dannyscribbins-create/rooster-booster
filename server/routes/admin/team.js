@@ -221,10 +221,16 @@ router.post('/api/admin/team/accept-invite', [
 });
 
 // ── PATCH /api/admin/team/:id ─────────────────────────────────────────────────
-// Update full_name, title_id, tier, is_attributable.
+// Update full_name, title_id, tier.
 // Only Owner may edit Admin-tier rows or change tier (Decision A §9).
-// is_attributable (AT-1, FA spec §3): future-only. Flipping it never touches existing
-// client_rep_assignments rows — it only changes what the engine does on the NEXT event.
+//
+// is_attributable was REMOVED from this endpoint in C/DL-3a Phase 2A. It is a rep
+// flag, and every rep flag now has exactly one writer: POST /api/admin/team/:id/promote,
+// which is the only place able to evaluate coherence across all three flags at once.
+// A body carrying it is REJECTED rather than ignored — this endpoint could set
+// is_attributable=true on a member with is_field_rep=false, which is precisely the
+// write that produced Known Issue 13's production drift. A silent no-op would let a
+// stale client believe the toggle worked; the explicit 422 names the replacement.
 router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
   body('full_name').optional().notEmpty().isString().isLength({ max: 200 }),
   body('title_id').optional({ nullable: true }).isInt(),
@@ -234,10 +240,10 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
 
-  // is_attributable is validated manually (not via express-validator's isBoolean, which
-  // lenient-mode-accepts 'yes'/'no' strings) — only a real boolean is ever acceptable.
-  if (req.body.is_attributable !== undefined && typeof req.body.is_attributable !== 'boolean') {
-    return res.status(422).json({ error: 'is_attributable must be a boolean' });
+  if (req.body.is_attributable !== undefined) {
+    return res.status(422).json({
+      error: 'is_attributable is no longer writable here — use POST /api/admin/team/:id/promote',
+    });
   }
 
   const adminSession = await verifyAdminSession(req, res);
@@ -265,7 +271,7 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
     }
 
     // Only Owner may change tier
-    const { full_name, title_id, tier, jobber_user_id, is_attributable } = req.body;
+    const { full_name, title_id, tier, jobber_user_id } = req.body;
     if (tier !== undefined && requesterTier !== 'owner') {
       return res.status(403).json({ error: 'Only Owners may change member tier' });
     }
@@ -289,13 +295,12 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
     if (title_id !== undefined)      { updates.push(`title_id = $${i++}`);      values.push(title_id);      }
     if (tier !== undefined)          { updates.push(`tier = $${i++}`);          values.push(tier);          }
     if (jobber_user_id !== undefined) { updates.push(`jobber_user_id = $${i++}`); values.push(jobber_user_id); }
-    if (is_attributable !== undefined) { updates.push(`is_attributable = $${i++}`); values.push(is_attributable); }
 
     if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
     values.push(targetId);
     const result = await pool.query(
-      `UPDATE team_members SET ${updates.join(', ')} WHERE id = $${i} RETURNING id, email, full_name, tier, title_id, jobber_user_id, is_attributable`,
+      `UPDATE team_members SET ${updates.join(', ')} WHERE id = $${i} RETURNING id, email, full_name, tier, title_id, jobber_user_id`,
       values
     );
     res.json(result.rows[0]);
@@ -307,6 +312,107 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
       });
     }
     await logError({ req, error: err, source: 'PATCH /api/admin/team/:id' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /api/admin/team/:id/promote ──────────────────────────────────────────
+// THE single write-path for the three rep flags (C/DL-3a Phase 2A). After this
+// endpoint, nothing else in the system writes is_field_rep, is_attributable or
+// rep_revenue_visibility — is_attributable was removed from the PATCH above
+// specifically so this is the only writer.
+//
+// COHERENCE (locked): every rep ability requires is_field_rep. Enforced on the MERGED
+// state (payload overlaid on the row's current values), not on the payload alone —
+// sending is_attributable on a member who is ALREADY a field rep is legal. Turning
+// is_field_rep off cascades: both dependent abilities are forced false in the same
+// UPDATE. The team_members_rep_coherence CHECK (db.js) is the second, independent
+// layer — a direct SQL write that bypasses this endpoint is still rejected.
+//
+// rep_revenue_visibility, when granted, exposes the rep's OWN revenue only.
+//
+// Its own permission flag by design: team.manage is deliberately NOT sufficient.
+// Promotion mints attributable reps, and attribution drives payouts.
+//
+// Guard walls (D-b ruling): tenancy + Owner-edits-Admin. The last-owner guard is
+// deliberately NOT applied — this endpoint writes neither `tier` nor `active`, and
+// no invariant requires a minimum number of field reps.
+router.post('/api/admin/team/:id/promote', requirePermission('rep_promotion'), async (req, res) => {
+  // Strict boolean validation, manual for the reason documented on the PATCH above:
+  // express-validator's isBoolean() lenient-mode accepts 'yes'/'no'/1/0. A coerced
+  // truthy string silently granting attribution is exactly the failure to prevent.
+  const REP_FLAGS = ['is_field_rep', 'is_attributable', 'rep_revenue_visibility'];
+  for (const flag of REP_FLAGS) {
+    if (req.body[flag] !== undefined && typeof req.body[flag] !== 'boolean') {
+      return res.status(422).json({ error: `${flag} must be a boolean` });
+    }
+  }
+  if (REP_FLAGS.every(f => req.body[f] === undefined)) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId, teamMemberId } = adminSession;
+  const targetId = parseInt(req.params.id, 10);
+
+  try {
+    const [requesterResult, targetResult] = await Promise.all([
+      pool.query('SELECT tier FROM team_members WHERE id = $1 AND active = true', [teamMemberId]),
+      pool.query(
+        `SELECT tier, contractor_id, is_field_rep, is_attributable, rep_revenue_visibility
+         FROM team_members WHERE id = $1`,
+        [targetId]
+      ),
+    ]);
+
+    if (!requesterResult.rows.length) return res.status(403).json({ error: 'Access denied' });
+    if (!targetResult.rows.length) return res.status(404).json({ error: 'Member not found' });
+
+    const requesterTier = requesterResult.rows[0].tier;
+    const target = targetResult.rows[0];
+
+    // Tenancy — 404, never 403, so a cross-tenant probe cannot confirm an id exists.
+    if (target.contractor_id !== contractorId) return res.status(404).json({ error: 'Member not found' });
+
+    // Only Owner may edit Admin-tier rows (mirrors the PATCH's wall).
+    if (target.tier === 'admin' && requesterTier !== 'owner') {
+      return res.status(403).json({ error: 'Only Owners may edit Admin-tier members' });
+    }
+
+    // Merge payload over current state; coherence is judged on the result.
+    const merged = {
+      is_field_rep:           req.body.is_field_rep           ?? target.is_field_rep,
+      is_attributable:        req.body.is_attributable        ?? target.is_attributable,
+      rep_revenue_visibility: req.body.rep_revenue_visibility ?? target.rep_revenue_visibility,
+    };
+
+    if (!merged.is_field_rep) {
+      // Explicitly asking to switch an ability ON for a non-field-rep is a contradiction.
+      if (req.body.is_attributable === true || req.body.rep_revenue_visibility === true) {
+        return res.status(422).json({
+          error: 'is_attributable and rep_revenue_visibility require is_field_rep',
+        });
+      }
+      // Otherwise this is a demotion: cascade both dependent abilities off.
+      merged.is_attributable = false;
+      merged.rep_revenue_visibility = false;
+    }
+
+    // contractor_id repeated on the write (defense-in-depth, ST money-path pattern):
+    // a mis-routed id from any future UI bug hits zero rows, never another tenant's row.
+    const result = await pool.query(
+      `UPDATE team_members
+       SET is_field_rep = $1, is_attributable = $2, rep_revenue_visibility = $3
+       WHERE id = $4 AND contractor_id = $5
+       RETURNING id, email, full_name, tier, is_field_rep, is_attributable, rep_revenue_visibility`,
+      [merged.is_field_rep, merged.is_attributable, merged.rep_revenue_visibility, targetId, contractorId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Member not found' });
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/admin/team/:id/promote' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

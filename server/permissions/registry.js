@@ -133,6 +133,13 @@ const SECTIONS = [
     description: 'Assign sales reps to contacts and jobs',
     forward: false,
   },
+  {
+    key: 'rep_promotion',
+    type: 'single',
+    flags: { single: 'rep_promotion' },
+    description: 'Promote a team member to field rep and grant rep abilities (attribution, own-revenue visibility)',
+    forward: false,
+  },
 
   // ── FORWARD SECTIONS (reserved namespace, not yet enforced) ──────────────────
   {
