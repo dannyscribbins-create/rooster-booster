@@ -411,13 +411,14 @@ function permsEqual(a, b) {
   return aKeys.every(k => !!b[k]);
 }
 
-function ToggleSwitch({ checked, onChange, disabled }) {
+function ToggleSwitch({ checked, onChange, disabled, ariaLabel }) {
   return (
     <button
       type="button"
       onClick={() => !disabled && onChange && onChange(!checked)}
       disabled={disabled}
       aria-pressed={checked}
+      aria-label={ariaLabel}
       style={{
         width: 36, height: 20, borderRadius: 10, border: 'none', padding: 0,
         background: checked ? AD.blueText : 'rgba(255,255,255,0.12)',
@@ -432,6 +433,29 @@ function ToggleSwitch({ checked, onChange, disabled }) {
         transition: 'left 0.15s', pointerEvents: 'none',
       }} />
     </button>
+  );
+}
+
+// One row of the drawer's Rep Status card: label, helper copy, switch.
+// `indent` marks the two dependent abilities as visually subordinate to the Field
+// Rep switch they hang off. The label doubles as the switch's accessible name —
+// a bare toggle button has no other text of its own.
+function RepToggleRow({ label, description, checked, onChange, disabled, indent = false }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+      marginLeft: indent ? 4 : 0,
+      paddingLeft: indent ? 14 : 0,
+      borderLeft: indent ? `2px solid ${AD.border}` : 'none',
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: AD.textPrimary, marginBottom: 3 }}>{label}</div>
+        <div style={{ fontSize: 11, color: AD.textTertiary, lineHeight: 1.5 }}>{description}</div>
+      </div>
+      <div style={{ flexShrink: 0, paddingTop: 2 }}>
+        <ToggleSwitch checked={checked} onChange={onChange} disabled={disabled} ariaLabel={label} />
+      </div>
+    </div>
   );
 }
 
@@ -451,7 +475,9 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
   const [jobberUsersErr, setJobberUsersErr]       = useState(null);
   const [jobberSearch, setJobberSearch]           = useState('');
   const [jobberMapErr, setJobberMapErr]           = useState(null);
-  const [localIsAttributable, setLocalIsAttributable] = useState(!!member.is_attributable);
+  const [localIsFieldRep, setLocalIsFieldRep]                   = useState(!!member.is_field_rep);
+  const [localIsAttributable, setLocalIsAttributable]           = useState(!!member.is_attributable);
+  const [localRepRevenueVis, setLocalRepRevenueVis]             = useState(!!member.rep_revenue_visibility);
   const successTimerRef                  = useRef(null);
   // Tracks last-saved state so isDirty stays correct across multiple saves
   const baselineRef                      = useRef({
@@ -459,7 +485,9 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
     tier:          member.tier,
     titleId:       member.title_id ?? null,
     jobberUserId:  member.jobber_user_id ?? null,
+    isFieldRep:     !!member.is_field_rep,
     isAttributable: !!member.is_attributable,
+    repRevenueVis:  !!member.rep_revenue_visibility,
     perms:         { ...(member.permissions || {}) },
   });
 
@@ -467,6 +495,11 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
   const readOnly      = myTier !== 'owner' && member.tier === 'admin';
   // Only Owners can change tier, and only when the target is not already an Owner
   const canChangeTier = myTier === 'owner' && member.tier !== 'owner';
+  // Promotion has its own permission flag — team.manage is deliberately NOT
+  // sufficient (the endpoint 403s), so the UI fails closed the same way rather
+  // than offering a control that always errors. Mirrors canSeeQueue below.
+  const { permissions: myPermissions } = usePermissions();
+  const canPromote    = myTier === 'owner' || myPermissions?.rep_promotion === true;
 
   function clearSuccess() {
     setSaveSuccess(false);
@@ -481,8 +514,30 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
     localTier !== baselineRef.current.tier ||
     localTitleId !== baselineRef.current.titleId ||
     localJobberUserId !== baselineRef.current.jobberUserId ||
-    localIsAttributable !== baselineRef.current.isAttributable ||
+    repFlagsChanged() ||
     !permsEqual(workingPerms, baselineRef.current.perms);
+
+  // True when any of the three rep flags differs from the last-saved baseline.
+  // Declared as a function rather than inlined because handleSave needs the same
+  // answer, and the two drifting apart would mean a dirty drawer whose Save button
+  // never sends the change.
+  function repFlagsChanged() {
+    return localIsFieldRep    !== baselineRef.current.isFieldRep
+      || localIsAttributable  !== baselineRef.current.isAttributable
+      || localRepRevenueVis   !== baselineRef.current.repRevenueVis;
+  }
+
+  // Field Rep is the parent switch: turning it OFF resets both dependent abilities
+  // rather than only hiding them. A hidden `true` would be resurrected the moment
+  // the admin re-promoted, and shipped on the next save without them ever seeing it.
+  function setFieldRep(v) {
+    clearSuccess();
+    setLocalIsFieldRep(v);
+    if (!v) {
+      setLocalIsAttributable(false);
+      setLocalRepRevenueVis(false);
+    }
+  }
 
   useEffect(() => () => {
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
@@ -540,14 +595,13 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
     const token = sessionStorage.getItem('rb_admin_token');
     try {
       // Step 1: PATCH identity fields only when something actually changed (compare to last-saved baseline, not stale props)
-      const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier || localTitleId !== baselineRef.current.titleId || localJobberUserId !== baselineRef.current.jobberUserId || localIsAttributable !== baselineRef.current.isAttributable;
+      const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier || localTitleId !== baselineRef.current.titleId || localJobberUserId !== baselineRef.current.jobberUserId;
       if (identityChanged) {
         const body = {};
         if (localName !== baselineRef.current.name)                 body.full_name      = localName;
         if (localTier !== baselineRef.current.tier)                 body.tier           = localTier;
         if (localTitleId !== baselineRef.current.titleId)           body.title_id       = localTitleId;
         if (localJobberUserId !== baselineRef.current.jobberUserId) body.jobber_user_id = localJobberUserId;
-        if (localIsAttributable !== baselineRef.current.isAttributable) body.is_attributable = localIsAttributable;
         const r = await fetch(`${BACKEND_URL}/api/admin/team/${member.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -564,7 +618,29 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
           return;
         }
       }
-      // Step 2: POST permissions — always a full JSONB replace
+      // Step 2: rep flags — POST /:id/promote is their ONLY writer (C/DL-3a Phase 2A).
+      // The general PATCH above rejects a body carrying is_attributable outright.
+      // Only the CHANGED flags are sent: the endpoint merges them over the row's
+      // current state and applies the demotion cascade itself, so a partial body is
+      // the honest description of what the admin actually touched.
+      if (repFlagsChanged() && canPromote) {
+        const repBody = {};
+        if (localIsFieldRep    !== baselineRef.current.isFieldRep)     repBody.is_field_rep           = localIsFieldRep;
+        if (localIsAttributable !== baselineRef.current.isAttributable) repBody.is_attributable        = localIsAttributable;
+        if (localRepRevenueVis !== baselineRef.current.repRevenueVis)  repBody.rep_revenue_visibility = localRepRevenueVis;
+        const rr = await fetch(`${BACKEND_URL}/api/admin/team/${member.id}/promote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(repBody),
+        });
+        if (!rr.ok) {
+          const d = await rr.json();
+          setSaveErr(d.error || 'Failed to update rep status.');
+          setSaving(false);
+          return;
+        }
+      }
+      // Step 3: POST permissions — always a full JSONB replace
       const pr = await fetch(`${BACKEND_URL}/api/admin/team/${member.id}/permissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -576,7 +652,11 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
         setSaving(false);
         return;
       }
-      baselineRef.current = { name: localName, tier: localTier, titleId: localTitleId, jobberUserId: localJobberUserId, isAttributable: localIsAttributable, perms: { ...workingPerms } };
+      baselineRef.current = {
+        name: localName, tier: localTier, titleId: localTitleId, jobberUserId: localJobberUserId,
+        isFieldRep: localIsFieldRep, isAttributable: localIsAttributable, repRevenueVis: localRepRevenueVis,
+        perms: { ...workingPerms },
+      };
       setSaving(false);
       setSaveSuccess(true);
       onSaved();
@@ -799,27 +879,51 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
             )}
           </div>
 
-          {/* Attributable rep toggle (AT-1, FA spec §3) — future-only: flipping this never
-              touches existing client_rep_assignments rows, it only changes what the engine
-              does on the NEXT event. Rendered only for members already promoted to field rep. */}
-          {member.is_field_rep && (
-            <div style={sectionCardStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: AD.textPrimary, marginBottom: 3 }}>Attributable rep</div>
-                  <div style={{ fontSize: 11, color: AD.textTertiary, lineHeight: 1.5 }}>
-                    When on, clients who enter through this rep's link or Jobber appointments are assigned to them.
-                    Turning this off never removes existing assignments.
-                  </div>
-                </div>
-                <ToggleSwitch
-                  checked={localIsAttributable}
-                  onChange={v => { clearSuccess(); setLocalIsAttributable(v); }}
-                  disabled={readOnly}
-                />
+          {/* Rep status (C/DL-3a Phase 2B) — the drawer half of the promotion write-path.
+              Saved via POST /:id/promote, never the general PATCH.
+
+              The two dependent toggles read localIsFieldRep — the DRAWER'S LIVE STATE,
+              not member.is_field_rep — so an unsaved edit can never hold the combination
+              the endpoint and the team_members_rep_coherence CHECK both reject. That
+              combination is exactly Known Issue 13's production drift.
+
+              AT-1 remains binding: flipping any of these changes only what the attribution
+              engine does from the NEXT event. No existing client_rep_assignments row is
+              touched in either direction. */}
+          <PermissionGate flag="rep_promotion" mode="element" tooltip="Requires rep promotion permission.">
+            <div style={{ ...sectionCardStyle, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: AD.textTertiary }}>
+                Rep Status
               </div>
+              <RepToggleRow
+                label="Field rep"
+                description="Marks this member as a field rep. Required before either ability below can be granted."
+                checked={localIsFieldRep}
+                onChange={setFieldRep}
+                disabled={readOnly || !canPromote}
+              />
+              {localIsFieldRep && (
+                <>
+                  <RepToggleRow
+                    indent
+                    label="Attributable"
+                    description="When on, clients who enter through this rep's link or Jobber appointments are assigned to them. Turning this off never removes existing assignments."
+                    checked={localIsAttributable}
+                    onChange={v => { clearSuccess(); setLocalIsAttributable(v); }}
+                    disabled={readOnly || !canPromote}
+                  />
+                  <RepToggleRow
+                    indent
+                    label="Revenue visibility"
+                    description="Lets this rep see their own performance — the clients assigned to them and the revenue they brought in. Never the team's or the company's."
+                    checked={localRepRevenueVis}
+                    onChange={v => { clearSuccess(); setLocalRepRevenueVis(v); }}
+                    disabled={readOnly || !canPromote}
+                  />
+                </>
+              )}
             </div>
-          )}
+          </PermissionGate>
 
           {/* Preset stamp — edit mode only, not shown for Owner targets */}
           {!readOnly && member.tier !== 'owner' && (

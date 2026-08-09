@@ -397,7 +397,92 @@ describe('C/DL-3a Phase 2A — rep-promotion write-path', () => {
     });
   });
 
-  // ══ GROUP 5 — MIGRATION PROOFS (CLAUDE.md binding rules) ════════════════════
+  // ══ GROUP 5 — AUDIT TRAIL (C/DL-3a Phase 2B) ════════════════════════════════
+  // A successful promotion must be attributable to the admin who made it, in the
+  // SAME shape as the existing permission-save entry (team.js:486-491):
+  // activity_log, event_type='admin', category='admin_action', actor and target
+  // carried in the free-text detail. This table has no contractor_id column and
+  // no actor/target columns — that is pre-existing and deliberately not changed here.
+  //
+  // The before→after values are the part that makes this an audit trail rather
+  // than a timestamp: turning is_field_rep off silently zeroes BOTH dependents
+  // server-side, and a bare "flags updated" line could never show that.
+  describe('audit: a successful promote writes one activity_log row', () => {
+    const countLog = async () => {
+      const { rows } = await pool.query('SELECT COUNT(*) AS count FROM activity_log');
+      return Number(rows[0].count);
+    };
+    const newestLog = async () => {
+      const { rows } = await pool.query(
+        'SELECT event_type, detail, category FROM activity_log ORDER BY id DESC LIMIT 1'
+      );
+      return rows[0];
+    };
+
+    it('records the acting admin, the target, and all three flags before→after', async () => {
+      const target = await seedTeamMember(pool, { contractorId: CID_A });
+      const before = await countLog();
+
+      const res = await httpRequest(port, 'POST', `/api/admin/team/${target}/promote`,
+        { is_field_rep: true, is_attributable: true }, ownerAToken);
+      assert.equal(res.status, 200);
+
+      assert.equal(
+        await countLog(), before + 1,
+        'exactly one activity_log row per promotion — never one per flag'
+      );
+
+      const row = await newestLog();
+      assert.equal(row.event_type, 'admin', 'must match the permission-save entry shape');
+      assert.equal(row.category, 'admin_action', 'must match the permission-save entry shape');
+
+      // Actor and target. Substring form ('id=N') is how the permission-save entry
+      // encodes them; asserting both separately means a row that names only the
+      // target — the thing that made Known Issue 14 untraceable — still fails.
+      assert.ok(row.detail.includes(`id=${target}`), `detail must name the target: "${row.detail}"`);
+      assert.ok(row.detail.includes(`id=${ownerA}`), `detail must name the acting admin: "${row.detail}"`);
+
+      assert.ok(row.detail.includes('field_rep false→true'), `detail: "${row.detail}"`);
+      assert.ok(row.detail.includes('attributable false→true'), `detail: "${row.detail}"`);
+      assert.ok(row.detail.includes('revenue_visibility false→false'), `detail: "${row.detail}"`);
+    });
+
+    it('a demotion records the cascade it caused on both dependent flags', async () => {
+      // The case a bare "flags updated" line cannot express. The request carried
+      // is_field_rep:false ALONE — the other two were zeroed by the endpoint's
+      // cascade, and the log is the only place that fact is ever recorded.
+      const target = await seedTeamMember(pool, {
+        contractorId: CID_A, isFieldRep: true, isAttributable: true, repRevenueVisibility: true,
+      });
+      const before = await countLog();
+
+      const res = await httpRequest(port, 'POST', `/api/admin/team/${target}/promote`,
+        { is_field_rep: false }, ownerAToken);
+      assert.equal(res.status, 200);
+      assert.equal(await countLog(), before + 1);
+
+      const row = await newestLog();
+      assert.ok(row.detail.includes('field_rep true→false'), `detail: "${row.detail}"`);
+      assert.ok(
+        row.detail.includes('attributable true→false'),
+        `the cascade must be visible in the audit trail, not only in the row: "${row.detail}"`
+      );
+      assert.ok(row.detail.includes('revenue_visibility true→false'), `detail: "${row.detail}"`);
+    });
+
+    it('a rejected promote writes no audit row', async () => {
+      // 422 (incoherent) and 403 (Owner-edits-Admin wall) both leave the row
+      // untouched, so neither may leave a trace claiming a change happened.
+      const incoherent = await seedTeamMember(pool, { contractorId: CID_A });
+      const before = await countLog();
+      const res = await httpRequest(port, 'POST', `/api/admin/team/${incoherent}/promote`,
+        { is_attributable: true }, ownerAToken);
+      assert.equal(res.status, 422);
+      assert.equal(await countLog(), before, 'a rejected request must not be logged as a change');
+    });
+  });
+
+  // ══ GROUP 6 — MIGRATION PROOFS (CLAUDE.md binding rules) ════════════════════
   // Two rules apply to this migration and neither is satisfiable by a fresh-schema run:
   //
   //   1. DIRTY-DATA REPRODUCTION (Architecture Notes, ST session): the proof must seed

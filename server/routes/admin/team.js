@@ -410,6 +410,23 @@ router.post('/api/admin/team/:id/promote', requirePermission('rep_promotion'), a
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Member not found' });
 
+    // Audit — same shape as the permission-save entry below: one activity_log row
+    // per save, event_type='admin'/category='admin_action', actor and target carried
+    // in the free-text detail (this table has no actor, target or contractor_id
+    // columns). Non-transactional, matching that endpoint.
+    //
+    // The before→after values are what make this an audit trail rather than a
+    // timestamp: a request carrying is_field_rep:false ALONE zeroes both dependent
+    // abilities via the cascade above, and nothing else in the system records that.
+    await pool.query(
+      `INSERT INTO activity_log (event_type, detail, category)
+       VALUES ('admin', $1, 'admin_action')`,
+      [`Rep flags updated for team_member id=${targetId} by team_member id=${teamMemberId}: `
+        + `field_rep ${target.is_field_rep}→${merged.is_field_rep}, `
+        + `attributable ${target.is_attributable}→${merged.is_attributable}, `
+        + `revenue_visibility ${target.rep_revenue_visibility}→${merged.rep_revenue_visibility}`]
+    );
+
     res.json(result.rows[0]);
   } catch (err) {
     await logError({ req, error: err, source: 'POST /api/admin/team/:id/promote' });
