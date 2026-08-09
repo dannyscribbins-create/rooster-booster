@@ -4,15 +4,30 @@
 // BRANDING THEME RESOLVER — CANONICAL COPY (C/DL-2 Phase 3b)
 //
 // ⚠ MIRRORED FILE. An identical copy lives at `src/utils/brandingTheme.js` for
-// the admin BrandingPreview, which cannot reach outside src/ (CRA's
-// ModuleScopePlugin). THE TWO FILES MUST BE EDITED TOGETHER. This is the same
-// arrangement WARMUP_ENTRIES / WARMUP_ENTRIES_SERVER already uses in this repo.
+// the admin BrandingPreview. THE TWO FILES MUST BE EDITED TOGETHER. This is the
+// same arrangement WARMUP_ENTRIES / WARMUP_ENTRIES_SERVER already uses in this
+// repo.
+//
+// WHY A COPY RATHER THAN AN IMPORT — RATIONALE CORRECTED, C/DL-3a Phase 3. This
+// header used to say the preview "cannot reach outside src/ (CRA's
+// ModuleScopePlugin)". CRA is gone (Vite migration, 2026-08-04) and that
+// constraint no longer exists in either direction. The real, still-live reason
+// runs the other way round: the drift guard is a Node test, `package.json`
+// declares no "type", and Node therefore resolves a bare `.js` file in this
+// package as CommonJS — so the src/ copy must STAY CommonJS to be require()-able
+// by the very test that polices it. Vite consumes named imports from CommonJS
+// without ceremony, so the preview's `import { resolveBrandingTheme } from`
+// works unchanged.
 //
 // ONE INTENTIONAL DIFFERENCE: the `'use strict';` on line 1 below exists ONLY
-// here. The src/ copy must not have it — CRA's eslint flags it under src/, and
-// CRA turns warnings into build errors whenever CI is set, so its presence there
-// fails `CI=true npm run build`. Do not add it to the mirror for symmetry; see
-// that file's header. Everything AFTER the header comments is verbatim.
+// here — and it is now a RETAINED CONVENTION, NOT A BUILD REQUIREMENT (also
+// corrected in Phase 3). The old note said CRA's eslint flagged it under src/
+// and CRA turned warnings into build errors under CI, failing
+// `CI=true npm run build`. Neither half survives the migration: ESLint is not
+// part of the Vite build at all, and `eslint.config.mjs` enables only the two
+// react-hooks rules, so nothing raises it. The asymmetry is kept because the
+// mirrored files in this repo all follow it and one rule across all of them
+// beats two that nearly agree. Everything AFTER the header comments is verbatim.
 //
 // What makes a mirror acceptable here rather than the first step of a drift is
 // that a test fails when they disagree: server/test/brandingTheme.test.js

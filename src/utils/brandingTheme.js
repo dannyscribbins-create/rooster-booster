@@ -1,18 +1,21 @@
 // ⚠ NO `'use strict';` HERE, AND ITS ABSENCE IS THE ONE INTENTIONAL DIFFERENCE
-// FROM THE CANONICAL SERVER COPY. Do not "restore" it to make the two files
-// match — that would break the production build.
+// FROM THE CANONICAL SERVER COPY. It is a RETAINED CONVENTION, NOT A BUILD
+// REQUIREMENT — rationale corrected in C/DL-3a Phase 3.
 //
-// This file shipped with it in Phase 3b (5cac111). CRA's eslint config raises
-// `'use strict' is unnecessary inside of modules` for anything under src/, and
-// CRA turns warnings into errors whenever CI is set — so `CI=true npm run build`
-// fails outright with `Failed to compile.`, while a bare `npm run build` exits 0
-// having printed only a warning.
+// WHAT THIS NOTE USED TO SAY, and why it is no longer true. The line shipped
+// here in Phase 3b (5cac111) and was removed in Phase 3c because CRA's eslint
+// config raised `'use strict' is unnecessary inside of modules` for anything
+// under src/, and CRA turned warnings into errors whenever CI was set — so
+// `CI=true npm run build` failed outright. Neither half of that survives the
+// Vite migration (2026-08-04): ESLint is not part of the build at all any more,
+// and `eslint.config.mjs` enables ONLY the two react-hooks rules with no
+// recommended preset, so nothing raises the rule. Restoring the line here would
+// not break anything today.
 //
-// DEPLOYS WERE NOT AFFECTED IN PRACTICE — this was a latent trap, not a live
-// break. It is worth removing anyway: the failure is invisible in the ordinary
-// local build, it would surface on any change to how CI is set, and it would then
-// originate in a file nobody had touched. Removed in Phase 3c.
-// Reproduce with: CI=true npm run build
+// IT STAYS OUT ANYWAY. The mirrored files in this repo all follow the same
+// server-has-it / src-does-not arrangement, and one rule across all of them
+// beats two that nearly agree — the whole point of a mirror is that the diff
+// between the copies is a fixed, known quantity.
 //
 // Nothing here depends on strict-mode semantics, and the drift guard is
 // unaffected: server/test/brandingTheme.test.js compares the two copies'
@@ -26,12 +29,17 @@
 // canonical copy. THE TWO FILES MUST BE EDITED TOGETHER. Same arrangement as
 // WARMUP_ENTRIES (src/constants/shouts.js) and WARMUP_ENTRIES_SERVER.
 //
-// WHY A COPY AND NOT AN IMPORT. CRA's ModuleScopePlugin refuses any import that
-// reaches outside src/, so an admin React component cannot require the server's
-// module. Passing the resolution through an HTTP call instead was rejected: the
-// preview's entire job is to re-render from UNSAVED form state on every
-// keystroke, and there is nothing on the server to ask about a value the admin
-// has not saved yet.
+// WHY A COPY AND NOT AN IMPORT — CORRECTED, C/DL-3a Phase 3. This paragraph used
+// to say CRA's ModuleScopePlugin refuses any import reaching outside src/, so an
+// admin React component could not require the server's module. CRA is gone (Vite
+// migration, 2026-08-04) and that barrier no longer exists; the live reason is
+// the CommonJS one stated further down this header, which runs the other way
+// round — the Node drift guard has to be able to require THIS copy.
+//
+// Passing the resolution through an HTTP call instead was rejected, and that
+// rejection is unaffected by the correction above: the preview's entire job is
+// to re-render from UNSAVED form state on every keystroke, and there is nothing
+// on the server to ask about a value the admin has not saved yet.
 //
 // WHAT MAKES THIS ACCEPTABLE rather than the first step of a drift is that a
 // test fails when the two copies disagree. server/test/brandingTheme.test.js
@@ -51,9 +59,10 @@
 // WHY CommonJS IN AN OTHERWISE-ESM src/. The drift guard is a Node test, and
 // Node resolves a bare `.js` file in this package as CommonJS (package.json
 // declares no "type"), so an ESM copy here could not be loaded by the very test
-// that polices it. Webpack consumes named imports from CommonJS without
-// ceremony, so the preview's `import { resolveBrandingTheme } from` works
-// unchanged.
+// that polices it. THIS IS THE LIVE REASON THE COPY EXISTS. Vite consumes named
+// imports from CommonJS without ceremony (Webpack did too — the bundler changed,
+// the property did not), so the preview's `import { resolveBrandingTheme } from`
+// works unchanged.
 //
 // Everything below this line is a verbatim mirror. Do not edit it here alone.
 // ─────────────────────────────────────────────────────────────────────────────
