@@ -4,6 +4,7 @@ const cors = require('cors');
 const oauthRoutes = require('./routes/oauth');
 const landingRoutes = require('./routes/landing');
 const referrerRoutes = require('./routes/referrer');
+const brandingRoutes = require('./routes/branding');
 const adminRoutes = require('./routes/admin/index');
 const superAdminRoutes = require('./routes/superAdmin');
 const stripeRoutes = require('./routes/stripe');
@@ -56,6 +57,11 @@ function createApp() {
 
   app.use('/', oauthRoutes);
   app.use('/', referrerRoutes);
+  // Public branding resolution — GET /api/branding/:slug (C/DL-3b Phase 1).
+  // Unauthenticated and read-only; it carries its own limiter rather than sharing
+  // referrer.js's landingResolveLimiter. See server/routes/branding.js for why
+  // this is a distinct path from /api/invite/:slug rather than a second mount.
+  app.use('/', brandingRoutes);
   app.use('/', adminRoutes);
   app.use('/', superAdminRoutes);
   app.use('/', stripeRoutes);

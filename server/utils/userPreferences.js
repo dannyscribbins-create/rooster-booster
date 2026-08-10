@@ -17,6 +17,18 @@ const SUBJECT_COLUMNS = {
   team_member: 'team_member_id',
 };
 
+// ── KNOWN PREFERENCE KEYS ────────────────────────────────────────────────────
+// Named here rather than spelled as a literal at each call site, for the same
+// reason STATUS_VARS names its custom properties in one place: pref_key is a bare
+// TEXT column with no constraint, so a reader and a writer that disagree by one
+// character produce NO ERROR ANYWHERE — the read simply returns null forever and
+// the setting appears not to save.
+//
+// theme_mode holds 'light' or 'dark' (spec D8). Its READER shipped in C/DL-3b
+// Phase 1 (GET /api/preferences/theme-mode); its WRITER is the 3c Profile toggle,
+// which must use this same constant.
+const THEME_MODE_PREF_KEY = 'theme_mode';
+
 // Resolves a subjectType to its column, or throws. Fail-closed by design —
 // there is no sensible default subject type.
 function resolveSubjectColumn(subjectType) {
@@ -93,4 +105,4 @@ async function setPreference({ subjectType, subjectId, contractorId, key, value 
   }
 }
 
-module.exports = { getPreference, setPreference };
+module.exports = { getPreference, setPreference, THEME_MODE_PREF_KEY };

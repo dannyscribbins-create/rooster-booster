@@ -36,6 +36,10 @@ const { getInviteHostSlug } = require('../utils/contractorSlug');
 // shortcut. loadContractorBranding is imported rather than redefined here; it has
 // four other call sites in this file (signup email, resend-code, PIN reset).
 const { resolveLanding, loadContractorBranding } = require('../utils/landingResolve');
+// C/DL-3b Phase 1 — the theme provider's stored light/dark read. This is
+// user_preferences' FIRST PRODUCTION CALLER; the store shipped in C/DL-3a with
+// none. Read only — the toggle that writes it is 3c (spec D8).
+const { getPreference, THEME_MODE_PREF_KEY } = require('../utils/userPreferences');
 
 // test seam — inert in production, never called outside server/test/
 // Only the cashout-section call sites below use these overrides.
@@ -2682,6 +2686,52 @@ router.get('/api/referrer/conversions', async (req, res) => {
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: 'Failed to load conversions' });
+  }
+});
+
+// ── THEME MODE PREFERENCE — READ (C/DL-3b Phase 1, spec D8) ──────────────────
+// The one word the theme provider needs on boot: 'light', 'dark', or null.
+//
+// user_preferences' FIRST PRODUCTION CALLER. The table and
+// server/utils/userPreferences.js shipped in C/DL-3a with zero — verified again
+// in this phase's Step 1. getPreference() is server-side and the provider runs in
+// a browser, so D8's "read the stored mode" is not satisfiable without an HTTP
+// surface, and this is the smallest one that does it.
+//
+// READ ONLY, DELIBERATELY. There is no writer because THE TOGGLE IS 3c (D8,
+// explicit). Shipping a writer now would be live surface with a tenancy predicate
+// on it that nothing can reach — more attack surface than feature.
+//
+// REFERRER SESSION ONLY, and that is scope rather than oversight. The provider
+// wraps the login screen and the referrer/rep tree; AdminPanel and the
+// super-admin shell render OUTSIDE it and never read a --rm-* value, so an
+// admin-session path would have no consumer today. userPreferences.js already
+// routes subjectType 'team_member'; the rep half lands in 3c with the rep app.
+//
+// THE VALUE IS VALIDATED HERE RATHER THAN FORWARDED. pref_value is JSONB with no
+// CHECK constraint, so the column will hold anything at all — and
+// deriveThemeTokens THROWS on an unknown mode rather than defaulting, precisely
+// so a bad mode cannot silently paint a dark-mode user a white surface. Without
+// this gate one junk row would turn into a blank app for that user.
+router.get('/api/preferences/theme-mode', async (req, res) => {
+  const session = await verifyReferrerSession(req, res);
+  if (!session) return;
+
+  try {
+    const stored = await getPreference({
+      subjectType: 'user',
+      subjectId: session.userId,
+      contractorId: session.contractorId,
+      key: THEME_MODE_PREF_KEY,
+    });
+
+    // Anything that is not one of the two known modes reads as "unset", which the
+    // provider answers with its light default.
+    const mode = (stored === 'light' || stored === 'dark') ? stored : null;
+    res.json({ mode });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/preferences/theme-mode' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -59,11 +59,38 @@ const SLUG_PATTERN = /^[a-z0-9-]{3,30}$/;
 // carry no contractor subdomain. A contractor holding this slug would collide
 // with it directly.
 //
+// ⚠ 'roofmiles' IS THE PLATFORM'S OWN SECOND-LEVEL LABEL, AND ITS ENTRY IS THE
+// MOST CONSEQUENTIAL ONE HERE (added C/DL-3b Phase 1). A slug FREEZES the moment
+// its contractor mints their first invite link — see isSlugMutable below — because
+// by then a QR code carrying <slug>.roofmiles.com may already be printed on a yard
+// sign or a truck wrap, and printed material cannot be recalled. So a contractor
+// issued 'roofmiles' would hold the platform's own name PERMANENTLY, on physical
+// material, unrecoverable.
+//
+// WHY IT WAS MISSING FOR SO LONG, since the omission looks careless and was not:
+// extractSlugFromHost's label-count rule means the apex can never read its own
+// second-level label as a slug — 'roofmiles.com' is two labels, so 'roofmiles'
+// never reached the contractors lookup from a host. The denylist did not need the
+// entry to be SAFE on that path. The exposure was always on the ISSUING path,
+// validateSlug, which would have handed the label to any contractor who asked.
+// C/DL-3b Phase 1 added resolveSlugToContractor — a second route to that lookup
+// which takes a bare slug and therefore has no label-count rule — and that is
+// what surfaced it. The refactor did not create the exposure.
+//
+// ⚠ THIS LIST MAY GROW BUT MUST NOT SHRINK (spec amendment A22). Every entry is
+// load-bearing infrastructure rather than a preference: removing one does not
+// merely free a name, it hands the platform's own surface to a tenant who can
+// then freeze it. server/test/reservedPlatformSlugs.test.js locks the whole list
+// against removal for exactly this reason, and asserts each entry is refused on
+// ALL THREE paths — extractSlugFromHost, resolveSlugToContractor and validateSlug
+// — because they fail independently.
+//
 // Frozen so a caller cannot mutate the platform's reserved set at runtime.
 const RESERVED_SLUGS = Object.freeze([
   'www', 'api', 'app', 'admin', 'ops', 'mail', 'smtp', 'staging',
   'test', 'dev', 'status', 'help', 'support', 'docs', 'blog',
   'assets', 'cdn', 'go',
+  'roofmiles',
 ]);
 
 // Pre-lowercased lookup set. Built once at module load rather than per call.
@@ -231,6 +258,55 @@ function extractSlugFromHost(host) {
   return candidate;
 }
 
+// Resolves a bare contractor slug to { id, slug }, or null.
+//
+// EXTRACTED FROM resolveHostToContractor (C/DL-3b Phase 1) so a second caller can
+// reach it without going through a Host header. GET /api/branding/:slug takes a
+// contractor slug directly off the URL and has no host to synthesise; before this
+// split it would have needed its own copy of the lookup, and with it the format
+// and reserved rules — three places to keep in agreement instead of one.
+//
+// THE FORMAT AND RESERVED CHECKS RUN HERE, NOT AT THE CALL SITE, and that is the
+// whole point of the function. The denylist is the only thing standing between a
+// reserved label and a tenant: contractors.slug has a UNIQUE index but NO CHECK
+// constraint, so a hand-written statement can park 'app' or 'www' in that column.
+// A caller that queried the table directly would resolve it.
+//
+// INPUT IS NORMALISED (trim + lowercase) rather than trusted. For the host path
+// this is a no-op — extractSlugFromHost already lowercases — so that caller's
+// behaviour is unchanged. For a URL path segment it is not: path segments are
+// case-sensitive, and a hand-typed '?brand=Accent' would otherwise fail the
+// lowercase-only format rule and silently resolve neutral.
+//
+// The column is still compared with an EXACT match rather than LOWER(slug): the
+// INPUT is lowercased, not the column, so the UNIQUE index on contractors.slug
+// remains usable for this lookup — which runs on every public landing-page load.
+//
+// NULL IS A VALID OUTCOME, NOT AN ERROR, and three situations produce it: the
+// value is not a legal slug, it is reserved, or no contractor holds it. All three
+// mean "no contractor branding from this label" to every caller, so they are
+// deliberately not distinguished. A caller that needs to tell them apart is
+// reading authority into a cosmetic value, which it does not have.
+//
+// NOT FILTERED ON contractors.status. Whether a deactivated contractor's subdomain
+// keeps serving its branding is a product decision nobody has made; adding the
+// predicate here would make it silently, and in the wrong place.
+//
+// NO try/catch, per the shared-util exemption documented in the header.
+async function resolveSlugToContractor(db, slug) {
+  if (typeof slug !== 'string') return null;
+  const candidate = slug.trim().toLowerCase();
+
+  if (!isValidSlugFormat(candidate)) return null;
+  if (isReservedSlug(candidate)) return null;
+
+  const { rows } = await db.query(
+    `SELECT id, slug FROM contractors WHERE slug = $1`,
+    [candidate]
+  );
+  return rows[0] || null;
+}
+
 // Resolves a Host header to { id, slug }, or null.
 //
 // NULL IS A VALID OUTCOME, NOT AN ERROR, and three different situations produce
@@ -242,31 +318,22 @@ function extractSlugFromHost(host) {
 //
 // READ-ONLY by contract, and it runs on unauthenticated internet traffic.
 //
+// NOW A COMPOSITION of the two halves it always was: parse the label out of the
+// host, then resolve that label. The format and reserved checks moved into
+// resolveSlugToContractor and are applied there — extractSlugFromHost still runs
+// them first, so they execute twice on this path. That is deliberate redundancy
+// on a pure, allocation-free check, and it means neither function depends on the
+// other having already validated.
+//
 // NO try/catch, per the shared-util exemption documented in the header: a failed
 // query propagates to the route handler's own catch, which runs logError(). A
 // swallowed error here would return null — indistinguishable from "unknown host"
 // — and quietly serve a neutral page during a database incident.
 //
-// NOT FILTERED ON contractors.status. Whether a deactivated contractor's subdomain
-// keeps serving its branding is a product decision nobody has made; adding the
-// predicate here would make it silently, and in the wrong place. The landing page
-// is a read-only marketing surface either way.
-//
 // `db` may be a pool or a checked-out client, matching resolveToken and
 // isSlugMutable.
 async function resolveHostToContractor(db, host) {
-  const slug = extractSlugFromHost(host);
-  if (!slug) return null;
-
-  // Exact match, not LOWER(slug): extractSlugFromHost has already lowercased the
-  // candidate, and wrapping the column in a function would make the UNIQUE index
-  // on contractors.slug unusable for this lookup — which runs on every public
-  // landing-page load.
-  const { rows } = await db.query(
-    `SELECT id, slug FROM contractors WHERE slug = $1`,
-    [slug]
-  );
-  return rows[0] || null;
+  return resolveSlugToContractor(db, extractSlugFromHost(host));
 }
 
 // The neutral subdomain label used when a contractor has no slug of its own
@@ -326,6 +393,7 @@ module.exports = {
   validateSlug,
   isSlugMutable,
   extractSlugFromHost,
+  resolveSlugToContractor,
   resolveHostToContractor,
   getInviteHostSlug,
 };

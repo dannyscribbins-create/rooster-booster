@@ -14,6 +14,7 @@ import EmailPreferences from './components/EmailPreferences';
 import SuperAdminLoginScreen from './components/superAdmin/SuperAdminLoginScreen';
 import SuperAdminShell from './components/superAdmin/SuperAdminShell';
 import AdminSetPasswordScreen from './components/admin/AdminSetPasswordScreen';
+import ThemeProvider from './components/shared/ThemeProvider';
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
 function useReferrerFonts() {
@@ -198,6 +199,19 @@ export default function App() {
     setAnnouncement(null);
   }
 
+  // ── ROUTES THAT RENDER OUTSIDE THE THEME PROVIDER (C/DL-3b Phase 1, Ruling 5) ─
+  // AdminPanel, the /rm-control super-admin shell and the admin set-password
+  // screen are ADMIN surfaces: they use the AD tokens and a dark palette, and
+  // LockedSection's permission scrim on that panel deliberately falls back to its
+  // #012854 / #fbbf24 literals (see src/constants/statusTheme.js:93-118).
+  //
+  // Mounting --rm-* over them would repaint that scrim white in light mode. They
+  // are therefore returned BEFORE the provider is entered, not wrapped by it.
+  // src/components/shared/ThemeProvider.test.jsx asserts a sibling rendered
+  // outside the provider inherits no --rm-* value; these routes are that sibling.
+  //
+  // The static legal pages are outside for a simpler reason: they carry no
+  // contractor branding at all and have no theme to resolve.
   if (window.location.pathname === '/privacy') return <PrivacyPolicy />;
   if (window.location.pathname === '/terms') return <TermsOfService />;
   if (window.location.pathname === '/contractor-terms') return <ContractorTerms />;
@@ -206,75 +220,93 @@ export default function App() {
   if (window.location.pathname === '/rm-control') return <SuperAdminShell />;
   if (adminInviteToken) return <AdminSetPasswordScreen token={adminInviteToken} />;
   if (isAdmin) return <AdminPanel />;
-  if (resetToken) return <ResetPinScreen token={resetToken} />;
-  if (showVerify) return (
-    <EmailVerifyScreen
-      userId={pendingUserId}
-      email={pendingEmail}
-      inviteSlug={signupSlug}
-      contractorName={signupContractorName}
-      contractorId={signupContractorId}
-      branding={signupBranding}
-      onVerifyComplete={() => {
-        setShowVerify(false);
-        setPendingUserId(null);
-        setPendingEmail(null);
-        setSignupSlug(null);
-        setSignupContractorName(null);
-        setSignupContractorId(null);
-        setSignupBranding(null);
-      }}
-    />
-  );
-  if (signupSlug && !loggedIn) return (
-    <SignupScreen
-      inviteSlug={signupSlug}
-      contractorName={signupContractorName}
-      branding={signupBranding}
-      onSignupComplete={({ action, userId, email }) => {
-        if (action === 'verify') {
-          setPendingUserId(userId);
-          setPendingEmail(email);
-          window.history.replaceState(null, '', window.location.pathname);
-          setShowVerify(true);
-          if (pendingExpToken) {
-            const capturedToken = pendingExpToken;
-            setPendingExpToken(null);
-            (async () => {
-              try {
-                await fetch(`${BACKEND_URL}/api/referrer/claim-experience-token`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ token: capturedToken, user_id: userId }),
-                });
-              } catch {
-                // non-critical — token claim failure must never block signup
-              }
-            })();
-          }
-        } else {
-          // action === 'login'
-          setSignupSlug(null);
-          window.history.replaceState(null, '', window.location.pathname);
-        }
-      }}
-    />
-  );
-  if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
 
-  return (
-    <ReferrerApp
-      tab={tab} setTab={setTab}
-      pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited}
-      pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable}
-      userName={userName} userEmail={userEmail}
-      balance={balance} paidCount={paidCount}
-      profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto}
-      showReviewCard={showReviewCard} onDismissReview={handleDismissReview}
-      announcement={announcement} announcementSettings={announcementSettings}
-      showAnnouncement={showAnnouncement} onDismissAnnouncement={handleDismissAnnouncement}
-      onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(''); setProfilePhoto(null); sessionStorage.removeItem('rb_token'); }}
-      onNameUpdate={setUserName}
-    />
-  );
+  // ── EVERYTHING BELOW RENDERS INSIDE THE PROVIDER ────────────────────────────
+  // The login screen and the whole referrer/rep tree.
+  //
+  // ONE PROVIDER INSTANCE WRAPPING THE WHOLE IF-CHAIN, not one per branch. The
+  // provider resolves branding once on mount; wrapping each branch separately
+  // would remount it on every screen transition and re-run the chain — including
+  // its network call — each time. It also keeps the chain shape untouched, which
+  // is what spec D10 asks for: no router in 3b.
+  //
+  // The branches themselves are unchanged; they moved into a hoisted local
+  // function so the chain can stay a flat sequence of early returns rather than
+  // becoming a nest of ternaries.
+  const themedRoute = renderThemedRoute();
+  return <ThemeProvider>{themedRoute}</ThemeProvider>;
+
+  function renderThemedRoute() {
+    if (resetToken) return <ResetPinScreen token={resetToken} />;
+    if (showVerify) return (
+      <EmailVerifyScreen
+        userId={pendingUserId}
+        email={pendingEmail}
+        inviteSlug={signupSlug}
+        contractorName={signupContractorName}
+        contractorId={signupContractorId}
+        branding={signupBranding}
+        onVerifyComplete={() => {
+          setShowVerify(false);
+          setPendingUserId(null);
+          setPendingEmail(null);
+          setSignupSlug(null);
+          setSignupContractorName(null);
+          setSignupContractorId(null);
+          setSignupBranding(null);
+        }}
+      />
+    );
+    if (signupSlug && !loggedIn) return (
+      <SignupScreen
+        inviteSlug={signupSlug}
+        contractorName={signupContractorName}
+        branding={signupBranding}
+        onSignupComplete={({ action, userId, email }) => {
+          if (action === 'verify') {
+            setPendingUserId(userId);
+            setPendingEmail(email);
+            window.history.replaceState(null, '', window.location.pathname);
+            setShowVerify(true);
+            if (pendingExpToken) {
+              const capturedToken = pendingExpToken;
+              setPendingExpToken(null);
+              (async () => {
+                try {
+                  await fetch(`${BACKEND_URL}/api/referrer/claim-experience-token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: capturedToken, user_id: userId }),
+                  });
+                } catch {
+                  // non-critical — token claim failure must never block signup
+                }
+              })();
+            }
+          } else {
+            // action === 'login'
+            setSignupSlug(null);
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        }}
+      />
+    );
+    if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
+
+    return (
+      <ReferrerApp
+        tab={tab} setTab={setTab}
+        pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited}
+        pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable}
+        userName={userName} userEmail={userEmail}
+        balance={balance} paidCount={paidCount}
+        profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto}
+        showReviewCard={showReviewCard} onDismissReview={handleDismissReview}
+        announcement={announcement} announcementSettings={announcementSettings}
+        showAnnouncement={showAnnouncement} onDismissAnnouncement={handleDismissAnnouncement}
+        onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(''); setProfilePhoto(null); sessionStorage.removeItem('rb_token'); }}
+        onNameUpdate={setUserName}
+      />
+    );
+  }
 }
