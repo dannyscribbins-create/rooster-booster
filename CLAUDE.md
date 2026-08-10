@@ -174,7 +174,13 @@ src/
     │   ├── AvatarCircle.jsx
     │   ├── ContactModal.jsx
     │   ├── ErrorBoundary.jsx       ← class component — intentional exception
-    │   └── Skeleton.jsx            ← loading skeleton component
+    │   ├── Skeleton.jsx            ← loading skeleton — one translucent neutral fill, works on light + dark
+    │   ├── LockedSection.jsx       ← locked-but-visible primitive (page/element modes); moved from admin/ in C/DL-3a Phase 4B — still imports AD, full de-AD-ing is 3b/3c
+    │   ├── StateCard.jsx           ← shared card shell for the UI-state primitives
+    │   ├── LoadingIndicator.jsx    ← spinner + label (keyframe rmSpin, not spin)
+    │   ├── EmptyState.jsx
+    │   ├── ErrorState.jsx
+    │   └── SuccessState.jsx
     ├── auth/
     │   ├── LoginScreen.jsx
     │   ├── ResetPinScreen.jsx
@@ -197,6 +203,7 @@ src/
     │   └── AnnouncementPopup.jsx
     └── admin/
         ├── AdminApp.jsx
+        ├── PermissionGate.jsx      ← fail-closed-while-loading RBAC gate; renders shared/LockedSection when denied
         ├── AdminComponents.jsx     ← AdminSidebar, AdminShell, StatCard, Badge, Btn, ADMIN_NAV
         ├── AdminDashboard.jsx
         ├── AdminReferrers.jsx

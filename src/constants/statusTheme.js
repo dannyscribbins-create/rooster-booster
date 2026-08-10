@@ -41,20 +41,30 @@
 // file that was wrong, and the fix is to derive these too — not to nudge a hex.
 
 // Ships as the hardcoded var() fallback inside each primitive.
+//
+// ⚠ WITH ONE DELIBERATE EXCEPTION, warningText — see the LOCKEDSECTION INVERSION
+// note below STATUS_VARS before "fixing" anything that looks inconsistent.
 export const STATUS_LIGHT = Object.freeze({
   danger:      '#DC2626',   // fill/accent   — 4.83:1 on #FFFFFF
   dangerText:  '#B91C1C',   // text          — 6.47:1 on #FFFFFF
   success:     '#16A34A',   // fill/accent   — 3.30:1, graphic threshold only, never text
   successText: '#15803D',   // text          — 5.02:1 on #FFFFFF
+  warning:     '#D97706',   // fill/accent   — 3.10:1, graphic threshold only, never text
+  warningText: '#B45309',   // text          — 4.87:1 on #FFFFFF
 });
 
 // Mounted by the theme provider in 3b/3c. Nothing reads this in Phase 4A — it is
 // here so the two halves of the ruling live in one place and cannot drift apart.
+//
+// Phase 4B DOES read one value from this table directly: LockedSection's lock
+// icon. Again — see the inversion note below.
 export const STATUS_DARK = Object.freeze({
   danger:      '#EF4444',   // fill/accent   — 4.55:1 on #121B31
   dangerText:  '#F87171',   // text          — 6.19:1 on #121B31
   success:     '#16A34A',   // fill/accent   — 5.19:1 on #121B31 (same hex reads well in both)
   successText: '#7DD3AA',   // text          — 9.59:1 on #121B31
+  warning:     '#D97706',   // fill/accent   — same hex both modes, as success is
+  warningText: '#fbbf24',   // text/icon     — 10.4:1 on #121B31; === AD.amberText
 });
 
 // ONE VALUE FOR BOTH MODES, and the translucency is the whole reason. A solid
@@ -76,7 +86,36 @@ export const STATUS_VARS = Object.freeze({
   dangerText:  '--rm-danger-text',
   success:     '--rm-success',
   successText: '--rm-success-text',
+  warning:     '--rm-warning',
+  warningText: '--rm-warning-text',
 });
+
+// ─── THE LOCKEDSECTION INVERSION — DELIBERATE, DO NOT "CORRECT" ──────────────
+//
+// The contract stated at the top of this file is that the LIGHT value ships as
+// the hardcoded var() fallback, because an unmounted page is a light page. That
+// reasoning is sound for every rep-side primitive on the shelf, and statusVar()
+// below still encodes it for all of them.
+//
+// LockedSection (src/components/shared/LockedSection.jsx) is the one component
+// for which the premise is FALSE. Its only live render path today is the ADMIN
+// panel — a dark surface — where an admin without the `team` flag opens Manage
+// Team. So its unmounted home is dark, and it declares its lock icon as
+//
+//     var(--rm-warning-text, #fbbf24)        i.e. the STATUS_DARK value
+//
+// rather than going through statusVar(), which would hand back the light #B45309
+// and repaint a live admin screen with a tone that fails contrast on it.
+//
+// THIS IS NOT statusVar() BEING WRONG, and the fix is not to add a mode argument
+// to it. The rule underneath both cases is the same one: THE FALLBACK IS THE
+// VALUE THAT IS CORRECT WHERE THE COMPONENT ACTUALLY RENDERS WITH NO VARIABLES
+// MOUNTED. For four rep primitives that is the light value; for this one admin
+// primitive it is the dark one. If LockedSection is ever re-homed onto a light
+// rep surface as its primary residence, that fallback flips with it — and
+// src/components/shared/LockedSection.test.jsx fails the moment it does,
+// naming this note.
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Builds the CSS value a primitive declares for one semantic status role:

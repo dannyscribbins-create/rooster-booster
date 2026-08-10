@@ -118,7 +118,7 @@ export default function ReferAFriendTab({ userName, token }) {
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
           }}>
             {linkLoading && (
-              <Skeleton width="180px" height="180px" borderRadius="12px" style={{ background: 'rgba(1,40,84,0.08)' }} />
+              <Skeleton width="180px" height="180px" borderRadius="12px" />
             )}
 
             {!linkLoading && linkError && (

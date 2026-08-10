@@ -528,8 +528,8 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             {/* Loading */}
             {badgesLoading && (
               <div style={{ padding: 16, display: "flex", gap: 10 }}>
-                <Skeleton height="96px" borderRadius="12px" style={{ background: 'rgba(1,40,84,0.08)' }} />
-                <Skeleton height="96px" borderRadius="12px" style={{ background: 'rgba(1,40,84,0.08)' }} />
+                <Skeleton height="96px" borderRadius="12px" />
+                <Skeleton height="96px" borderRadius="12px" />
               </div>
             )}
 

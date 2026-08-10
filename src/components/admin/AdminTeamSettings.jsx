@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import PermissionGate from './PermissionGate';
-import LockedSection from './LockedSection';
+import LockedSection from '../shared/LockedSection';
 import { usePermissions } from '../../hooks/useAdminPermissions';
 import { REGISTRY_SECTIONS, FINANCE_WALL_FLAGS, PERM_GROUPS } from '../../constants/registrySections';
 import AdminFlaggedAssignmentsQueue from './AdminFlaggedAssignmentsQueue';

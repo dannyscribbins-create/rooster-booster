@@ -1,4 +1,4 @@
-import LockedSection from './LockedSection';
+import LockedSection from '../shared/LockedSection';
 import { usePermissions } from '../../hooks/useAdminPermissions';
 
 // ─── PermissionGate ───────────────────────────────────────────────────────────
