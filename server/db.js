@@ -1262,6 +1262,77 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     END $$;
   `);
 
+  // ── C/DL-3b PHASE 2A — UNIFIED-LOGIN EMAIL LOOKUP INDEXES ───────────────────
+  // See CDL_3b_BUILD_SPEC.md §4.2 and decision D1 (verify-then-disambiguate).
+  //
+  // The unified login collects { email, password } and has no tenant information
+  // at all — the React app lives on app.roofmiles.com and `app` is a reserved
+  // slug, so host resolution correctly returns null there. So the lookup has to
+  // search an email across ALL contractors and across BOTH identity tables before
+  // it knows who anybody is. Two facts make that unsound today.
+  //
+  // NON-UNIQUE on users, and that is not an oversight. The only email index on
+  // users is users_contractor_id_email_unique, added directly above, which LEADS
+  // with contractor_id — a tenant-less LOWER(email) predicate cannot use it and
+  // sequential-scans the whole table on every login attempt. This index supports
+  // that predicate. It must NOT be unique: one address holding an account with two
+  // different contractors is a supported state per the tenant rebuild, and it is
+  // precisely the case D1 exists to disambiguate.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_users_lower_email ON users (LOWER(email))
+  `);
+
+  // UNIQUE on team_members, because team_members.email is already globally unique;
+  // this only closes the case-variant hole in a guarantee that already exists.
+  // users is matched with LOWER() everywhere (referrer.js:1058 and friends);
+  // team_members is matched case-SENSITIVELY (admin/index.js:58, and the
+  // OWNER_SEED block below). One endpoint reading both needs the two tables to
+  // agree on what "the same email" means, or a rep whose row was stored as
+  // Jane@x.com is simply unreachable by a login form that normalises input.
+  //
+  // ⚠ THE PRE-CHECK RAISES RATHER THAN RESOLVING, DELIBERATELY. Two rows differing
+  // only by email case are two credential records — two password hashes, two
+  // permission sets, possibly two people. Choosing a survivor is an identity
+  // decision. A migration that silently deleted or merged one could lock a real
+  // person out, or hand one person's session to the other's row, and would do it
+  // during a boot with nobody watching. It fails closed and names the addresses so
+  // an operator resolves it deliberately.
+  //
+  // The shape is absent from production today (verified pre-flight) but stays
+  // REACHABLE: the OWNER_SEED_EMAIL block below inserts whatever letter case the
+  // env var holds, with no normalisation on the way in. That is why the proof in
+  // server/test/unifiedLoginSchema.test.js seeds the shape rather than trusting a
+  // fresh-schema run — the ST-session standing principle.
+  //
+  // WORK-REMAINING WRAPPER (CLAUDE.md, binding): the whole block is gated on the
+  // index not existing yet. Once it does, Postgres enforces the invariant, so the
+  // duplicate scan can never again have anything to find and this is a permanent
+  // no-op — rather than a fail-closed guard that re-fires on every boot the moment
+  // contractor #2 exists. The gate is also what makes the bare CREATE UNIQUE INDEX
+  // idempotent: without it the second boot raises 42P07 on the index name.
+  await pool.query(`
+    DO $$
+    DECLARE
+      dup_list TEXT;
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_class WHERE relname = 'uniq_team_members_lower_email' AND relkind = 'i'
+      ) THEN
+        SELECT string_agg(le, ', ' ORDER BY le) INTO dup_list
+          FROM (
+            SELECT LOWER(email) AS le
+              FROM team_members
+             GROUP BY LOWER(email)
+            HAVING COUNT(*) > 1
+          ) d;
+        IF dup_list IS NOT NULL THEN
+          RAISE EXCEPTION 'team_members case-insensitive email uniqueness aborted: these addresses exist under more than one letter case — %. Each pair is two separate credential records; decide by hand which account survives before re-running. Do not guess.', dup_list;
+        END IF;
+        CREATE UNIQUE INDEX uniq_team_members_lower_email ON team_members (LOWER(email));
+      END IF;
+    END $$;
+  `);
+
   // ── C/DL-1 — CONTRACTOR_INVITE_LINKS TOKEN LAYER ─────────────────────────────
   // See DECISION_C_DL_BUILD_SPEC.md §4 (C/DL-1) and amendment A4. EXTEND, not
   // supersede: signup, the T+24h cron CTA, and the admin invite-link surface all
@@ -1445,8 +1516,15 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // One-time seed: inserts the Accent Roofing Owner account if the email does not yet exist.
   // Reads credentials from env vars OWNER_SEED_EMAIL + OWNER_SEED_PASSWORD.
   if (process.env.OWNER_SEED_EMAIL && process.env.OWNER_SEED_PASSWORD) {
+    // LOWER() on both sides is load-bearing as of C/DL-3b Phase 2A. This check was
+    // case-SENSITIVE, so an env var whose letter case differed from the stored row
+    // missed it, fired the INSERT, and created a second row unreachable by any
+    // LOWER()-normalising login. uniq_team_members_lower_email now rejects that
+    // INSERT outright — which would turn a benign no-op seed into a 23505 that
+    // aborts initDB() and kills the boot. The seed has to agree with the invariant
+    // the same file enforces.
     const { rows: ownerRows } = await pool.query(
-      'SELECT id FROM team_members WHERE email = $1',
+      'SELECT id FROM team_members WHERE LOWER(email) = LOWER($1)',
       [process.env.OWNER_SEED_EMAIL]
     );
     if (ownerRows.length === 0) {
