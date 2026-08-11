@@ -50,7 +50,7 @@ Settled in the Phase 0 review of 2026-08-10. The spec is written around them; th
 - Tenancy comes from the **authenticated row**, never from the request. This is already how session issuance works today (`referrer.js:1066`, `admin/index.js:69`); D1 extends the same principle to lookup.
 - **Cap the candidate set** at 5, ordered deterministically. Without a cap, N bcrypt compares per request is a cheap denial-of-service.
 - **Always run at least one compare.** On zero matches, compare against a dummy hash so response timing does not reveal whether the email exists.
-- `/api/login` **has no rate limiter today.** One is added in this phase. This is not optional given D1 multiplies the work per request.
+- ~~`/api/login` **has no rate limiter today.** One is added in this phase.~~ **CORRECTED IN PHASE 2B — this was factually wrong.** `/api/login` has carried `referrerLoginLimiter` (10 per 15 minutes, per IP) since long before this arc; it is mounted at `referrer.js:1053`, listed in CLAUDE.md's limiter inventory, and named explicitly by `loginErrorDisclosure.test.js`. **Ruling: keep 10/15min.** The real consequence of D1 is not a missing limiter but a changed cost profile — **up to 5 bcrypt compares per request instead of 1, so roughly 5× the CPU for the same request budget.** The candidate cap of 5 is what bounds that work. Fine at current scale; recorded here as a known number rather than a surprise found later under load.
 
 **This retires the Tenant Rebuild §3.5 `contractorSlug` narrowing exception** — not by relaxing it, but by making it unnecessary. `POST /api/forgot-pin` retires the same way: send one reset email **per matching account**, each naming its contractor in the body, with the HTTP response always generic.
 
@@ -169,7 +169,7 @@ The one blocked path is reset: `ResetPinScreen` enforces `^\d{4}$` client-side, 
 Phase 1  Branding chain + theme provider   ──►  no DB
 Phase 2  Unified login (D1/D2)             ──►  DB · Backblaze gate
 Phase 3  Frozen account view (D3)          ──►  no DB
-Phase 4  Persistence + logout (D6/D7)      ──►  DB · Backblaze gate
+Phase 4  Persistence + logout (D6/D7)      ──►  no DB (see §6.2 — created_at already exists)
 Phase 5  Routing, choice screen, login UI  ──►  no DB
 ─────────── DESIGNATED SPLIT POINT ───────────
 Phase 6  Group A + D brand retirement      ──►  no DB
@@ -223,7 +223,7 @@ No migration. Visual review → tests green → diff review → commit.
 
 - A single `POST /api/login` implementing verify-then-disambiguate: candidate gather (both tables, `LOWER(email)`, capped at 5, deterministic order) → compare all → branch on match count.
 - **Dummy-hash compare** on zero matches, for timing parity.
-- **Rate limiter** on the endpoint (it has none today).
+- ~~**Rate limiter** on the endpoint (it has none today).~~ **CORRECTED IN PHASE 2B:** the endpoint already has one (`referrerLoginLimiter`, 10/15min). Kept unchanged — see D1 above for the corrected reasoning and the 5× CPU note.
 - **Choice token** issuance and redemption per D2.
 - `POST /api/forgot-pin` re-shaped: one email per matching account, each naming its contractor; generic response always.
 - `contractorSlug` removed from both request bodies. **Tenant Rebuild §3.5 retires here.**
@@ -295,9 +295,11 @@ No migration. Diff review → commit.
 
 | Change | Why |
 |---|---|
-| `sessions.created_at` (**conditional**) | The 90-day absolute cap needs an issue timestamp. **Verify whether this column already exists before writing anything** — if it does, no migration. |
+| ~~`sessions.created_at` (**conditional**)~~ | **RESOLVED IN PHASE 2B — the column already exists** (`db.js:46`, in the original `CREATE TABLE sessions`). The 90-day absolute cap has its issue timestamp already. |
 
 Sliding expiry itself needs no new column; it bumps `expires_at`.
+
+> **Consequence, confirmed 2026-08-11: Phase 4 has NO schema change and therefore NO Backblaze gate.** The conditional migration §6.2 anticipated is a no-op. Phase 4 is a pure code phase; its STOP is a diff review, not a DB-touching deploy.
 
 ### 6.3 RED tests first
 
@@ -390,6 +392,7 @@ Diff review → commit → deploy → visual verification on a real contractor s
 - **PRE-LAUNCH — step-up re-authentication on sensitive actions.** *(New, from the D7 discussion.)* Long sessions are safe **because** high-consequence actions re-prove the credential — not because the session is short. Require password re-entry regardless of session age for: **cash-out approval / mark-paid · bank and payout detail changes · password changes · team member deactivation · permission and role changes · Stripe Connect actions.** This is the security control that justifies D7's 30-day slide; without it, a 30-day token is a 30-day key to the money paths. Sequence it with the billing/launch hardening work, before any real contractor traffic.
 - **PRE-LAUNCH — `verifyAdminSession()` does not check `team_members.active`** (R4). It queries `sessions` only and never joins `team_members`. Today this is masked because deactivation deletes sessions first and `requirePermission` re-checks — but `PATCH /api/admin/me/title` is session-only with **no** `active` predicate on its UPDATE. Latent, not currently reachable. D3 deliberately avoids depending on it; any future frozen-session work walks straight into it.
 - **PRE-LAUNCH — `err.message` leaked in ~40 500-responses.** Concentrated in `server/routes/account.js` (15 sites) plus `referrer.js:1158`, `admin/cashouts.js:37,156`, `admin/referrers.js:60,103,113`. A Security Standards violation; `referrer.js:1127-1137` documents this exact class being swept twice before and missing a third door. Systematic — its own item, not folded into a feature session.
+- **PRE-LAUNCH — locally redefined `escapeHtml`, swept as one item.** CLAUDE.md binds that `escapeHtml` lives in `server/utils/pendingReferral.js` and is imported, never redefined. Two files hold their own copy: `server/routes/admin/cashouts.js:16-19` and `server/routes/referrer.js:49` *(the second found during C/DL-3b Phase 2B; Danny-ruled to leave in place)*. They are swept **together**, not piecemeal — a partial sweep leaves the codebase with two correct examples and one wrong one, which is how the pattern spread in the first place.
 - **PRE-LAUNCH — non-transactional paired writes.** `team.js:554-555` (deactivate: DELETE sessions + UPDATE active). Joins the 3a-flagged promote-endpoint and permission-save pairs; fix them together.
 - **PRE-LAUNCH — transactional promote audit** *(carried from 3a §8, unchanged)*.
 - **PRE-LAUNCH — hardcoded brand-color literal sweep** *(carried from 3a §8)*. Known remaining: `CashOutTab.jsx:100` gradient; the intentional `LockedSection` `#012854` fallback.
@@ -414,6 +417,8 @@ Diff review → commit → deploy → visual verification on a real contractor s
 - **Job Revenue Capture** and **Landing Page Ambient Branding** — own build-sequence docs in the repo root.
 - **Contractor-#2 gate:** `team_members.email` is globally unique while `users.email` is per-tenant — two contractors cannot share an employee email.
   - **Non-deterministic owner-seed contractor lookup.** *(Found in C/DL-3b Phase 2A; deliberately not fixed there.)* `db.js:1532`'s `SELECT id FROM contractors LIMIT 1`, inside the `OWNER_SEED_EMAIL` block, has no `ORDER BY`. Non-deterministic the moment a second `contractors` row exists — the seeded Owner could land under an arbitrary tenant. Same non-determinism class as the arbitrary-row bug `tenantIsolation.test.js:138,158` fences, in the seed path.
+  - **🔴 HARD BLOCKER — `LoginScreen.jsx` cannot render `choice_required`.** *(Found in C/DL-3b Phase 2B; accepted as a deploy-window gap.)* The unified login returns `{ choice_required, choice_token, identities }` when more than one candidate matches, and the deployed screen reads `data.success` — so it shows its generic error instead of the choice screen. **Unreachable with one contractor** (the multi-match case needs the same email *and* the same password at two tenants). **Reachable the moment a second contractor exists.** The choice screen ships in **Phase 5** (§7.1); until it does, a second contractor must not be created. This is the one item on this list that blocks rather than degrades.
+  - **Team members have NO password reset path at all.** *(Consequence of the Phase 2B forgot-pin ruling — users-only, deliberate.)* `pin_reset_tokens` FKs to `users(id)`, so a `team_members` row has nowhere to hold a reset token and `POST /api/forgot-pin` cannot serve one. Today the only recovery is an admin re-invite. It is not contractor-#2-specific, but it will matter the first time a field rep forgets their password — and reps are the population most likely to. Its own future item; needs the same dual-nullable subject shape `user_preferences` uses, and it overlaps with 3b-2's 2FA blocker (both existing code tables FK to `users(id)` too).
 - **`contractors.slug` backfill.** `getInviteHostSlug`'s header notes that a NULL slug is "the state EVERY contractor except the first is in today." Source 2 cannot resolve a contractor without one, and slug creation must become a required, non-skippable onboarding step.
 
 ### Documentation corrections owed (A23 amendment)
