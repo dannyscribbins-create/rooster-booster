@@ -413,6 +413,7 @@ Diff review → commit → deploy → visual verification on a real contractor s
 
 - **Job Revenue Capture** and **Landing Page Ambient Branding** — own build-sequence docs in the repo root.
 - **Contractor-#2 gate:** `team_members.email` is globally unique while `users.email` is per-tenant — two contractors cannot share an employee email.
+  - **Non-deterministic owner-seed contractor lookup.** *(Found in C/DL-3b Phase 2A; deliberately not fixed there.)* `db.js:1532`'s `SELECT id FROM contractors LIMIT 1`, inside the `OWNER_SEED_EMAIL` block, has no `ORDER BY`. Non-deterministic the moment a second `contractors` row exists — the seeded Owner could land under an arbitrary tenant. Same non-determinism class as the arbitrary-row bug `tenantIsolation.test.js:138,158` fences, in the seed path.
 - **`contractors.slug` backfill.** `getInviteHostSlug`'s header notes that a NULL slug is "the state EVERY contractor except the first is in today." Source 2 cannot resolve a contractor without one, and slug creation must become a required, non-skippable onboarding step.
 
 ### Documentation corrections owed (A23 amendment)
