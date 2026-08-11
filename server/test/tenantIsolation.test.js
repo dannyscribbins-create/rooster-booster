@@ -133,11 +133,17 @@ describe('tenant isolation — two-contractor RED assertions (tenant rebuild S2)
   // ── FIVE CORE TESTS (spec Section 7.1) ────────────────────────────────────────
 
   describe('core: login and session tenant scoping', () => {
-    // Expected RED: login succeeds (200) but the session INSERT at referrer.js:741-744
-    // never carries contractor_id — the column is left NULL. Login may also just ignore
-    // the unknown contractorSlug field entirely (destructure is `{ email, pin }` only) —
-    // that's fine, the stamp assertion below is the actual RED.
-    it('same email under both tenants: login with tenant-A slug + tenant-A PIN stamps the session to tenant A', async () => {
+    // ── REWRITTEN AT C/DL-3b PHASE 2B. The original comment here described the
+    // pre-S2 world (the session INSERT not carrying contractor_id at all) and was
+    // already stale before this phase touched it.
+    //
+    // THIS TEST SURVIVES UNCHANGED, and now holds for a stronger reason. It never
+    // asserted that contractorSlug was the CAUSE — only that the session's tenancy
+    // matches the tenant whose PIN was used. Under D1 the body's contractorSlug is
+    // an ignored extra field, tenant A's PIN is compared against BOTH candidates,
+    // and it opens exactly one. The assertion is now "the only hash your password
+    // opened belongs to tenant A" rather than "we filtered by the slug you sent."
+    it('same email under both tenants: tenant-A PIN stamps the session to tenant A', async () => {
       const email = `shared-login-${Date.now()}@tenant-isolation-test.com`;
       await seedReferrerWithPin(pool, { contractorId: TENANT_A, email, pin: '1111', fullName: 'Tenant A User' });
       await seedReferrerWithPin(pool, { contractorId: TENANT_B, email, pin: '2222', fullName: 'Tenant B User' });
@@ -154,14 +160,40 @@ describe('tenant isolation — two-contractor RED assertions (tenant rebuild S2)
       );
     });
 
-    // Expected RED (or flaky-by-design): today's login query is a GLOBAL
-    // `WHERE LOWER(email) = LOWER($1)` with no contractorSlug filtering, so which of the
-    // two same-email rows lands in result.rows[0] is ordering-dependent, not tenant-derived.
-    // If it happens to pick tenant B's row, bcrypt.compare against tenant B's PIN succeeds
-    // and this 200s where a tenant-scoped login must 401. If it happens to pick tenant A's
-    // row first, this 401s "by accident" — report that as FLAKY-BY-DESIGN, not a pass,
-    // since nothing in the code actually enforces tenant scoping either way.
-    it('same email under both tenants: login with tenant-A slug + tenant-B PIN must NOT succeed', async () => {
+    // ── REWRITTEN AT C/DL-3b PHASE 2B (Danny-ruled). ────────────────────────────
+    //
+    // THE ORIGINAL TEST asserted that "tenant-A slug + tenant-B PIN" must 401, and
+    // its comment recorded the bug it fenced: the pre-rebuild login ran a global
+    // `WHERE LOWER(email) = LOWER($1)`, so which of the two same-email rows landed
+    // in result.rows[0] was ORDERING-dependent rather than tenant-derived. If
+    // ordering happened to surface tenant B's row, tenant B's PIN authenticated
+    // and the request 200'd where a tenant-scoped login had to 401.
+    //
+    // WHAT CHANGED IS THE PREMISE, NOT THE ASSERTION. Under D1 there is no such
+    // thing as a "tenant-A slug", because the request carries no tenant at all —
+    // the form has none to send, and the host cannot supply one (`app` is a
+    // reserved slug). What the person actually did here is present a credential
+    // that is valid for tenant B, and D1's ruling is that this logs them into
+    // tenant B. Retaining a 401 assertion would be re-asserting Tenant Rebuild
+    // §3.5's narrowing exception, which D1 explicitly retires.
+    //
+    // THE BUG IS STILL IMPOSSIBLE — BY A DIFFERENT MECHANISM.
+    //
+    //   OLD: narrow the candidate set to one row using a CLIENT-SUPPLIED value,
+    //        then compare. Tenancy came from the request. Safe only if that value
+    //        is trustworthy, and it was never verified against anything.
+    //   NEW: never narrow. Compare against EVERY candidate. Tenancy comes from
+    //        whichever hash actually opened. rows[0] is never consulted — the
+    //        handler branches on HOW MANY matched, not on which came first.
+    //
+    // So ordering cannot influence the outcome at all. That is strictly stronger
+    // than the slug filter, which only prevented arbitrary selection GIVEN a
+    // trustworthy narrowing value it never actually had.
+    //
+    // The rewritten test below therefore does double duty as the §4.3 hostile-
+    // payload assertion: the body names tenant A, the credential belongs to tenant
+    // B, and the session must follow the credential.
+    it('same email under both tenants: tenant-B PIN logs into tenant B, and a contractorSlug naming tenant A is ignored', async () => {
       const email = `shared-login2-${Date.now()}@tenant-isolation-test.com`;
       await seedReferrerWithPin(pool, { contractorId: TENANT_A, email, pin: '1111', fullName: 'Tenant A User' });
       await seedReferrerWithPin(pool, { contractorId: TENANT_B, email, pin: '2222', fullName: 'Tenant B User' });
@@ -169,9 +201,32 @@ describe('tenant isolation — two-contractor RED assertions (tenant rebuild S2)
       const res = await httpPost(port, '/api/login', { email, pin: '2222', contractorSlug: TENANT_A });
 
       assert.equal(
-        res.status, 401,
-        `expected 401 (no cross-tenant credential match), got ${res.status}: ${JSON.stringify(res.body)}`
+        res.status, 200,
+        `a credential valid for tenant B must authenticate, got ${res.status}: ${JSON.stringify(res.body)}`
       );
+      const { rows } = await pool.query('SELECT contractor_id FROM sessions WHERE token = $1', [res.body.token]);
+      assert.equal(rows.length, 1, 'expected exactly one session row for the returned token');
+      assert.equal(
+        rows[0].contractor_id, TENANT_B,
+        'tenancy must come from the row whose hash opened — never from the contractorSlug the caller sent'
+      );
+    });
+
+    // The case that genuinely must still fail under D1, and the counterweight that
+    // stops the rewrite above from looking like "login got more permissive". A
+    // credential valid for NEITHER tenant authenticates as nothing, and the
+    // assertion is against the sessions TABLE: a handler that answered 401 while
+    // minting a row would pass a response-only check.
+    it('same email under both tenants: a PIN valid for neither tenant is refused and mints nothing', async () => {
+      const email = `shared-login3-${Date.now()}@tenant-isolation-test.com`;
+      await seedReferrerWithPin(pool, { contractorId: TENANT_A, email, pin: '1111', fullName: 'Tenant A User' });
+      await seedReferrerWithPin(pool, { contractorId: TENANT_B, email, pin: '2222', fullName: 'Tenant B User' });
+
+      const res = await httpPost(port, '/api/login', { email, pin: '9999', contractorSlug: TENANT_A });
+
+      assert.equal(res.status, 401, `expected 401, got ${res.status}: ${JSON.stringify(res.body)}`);
+      const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM sessions');
+      assert.equal(rows[0].n, 0, 'a credential matching no candidate must create no session');
     });
   });
 

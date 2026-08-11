@@ -28,9 +28,16 @@
 // in this trade — and it is the character whose correct treatment DIFFERS between
 // the two fields. Same fixture rationale as signupEmailWhiteLabel.test.js.
 //
-// THE WIRE FIELD IS `contractorSlug` AND HOLDS A CONTRACTOR ID. That mismatch is
-// deliberate and documented at the handler (it retires with the unified login in
-// C/DL-3), so the request below sends what a real client sends.
+// THE `contractorSlug` WIRE FIELD RETIRED AT C/DL-3b PHASE 2B. It used to hold a
+// contractor ID despite its name, and the handler narrowed the user lookup by it.
+// It is now ignored entirely: forgot-pin resolves by LOWER(email) across all
+// contractors and sends one reset per matching account.
+//
+// THE REQUEST BELOW STILL SENDS IT, deliberately — a deployed client will keep
+// sending it for a while, and this file is the incidental proof that doing so
+// changes nothing. The single-tenant fixture here resolves to exactly one
+// account either way, so what is under test (the escaping) is unaffected. The
+// retirement itself is covered by server/test/unifiedForgotPin.test.js.
 //
 // RESEND INTERCEPTION — the require.cache pattern from signupEmailWhiteLabel.test.js,
 // installed before anything that constructs a Resend client is required. The stub

@@ -5,7 +5,7 @@ import rbLogoSquareWordmark from '../../assets/images/rb logo w wordmark 2000px 
 import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import useEntrance from '../../hooks/useEntrance';
 
-// ─── Reset PIN Screen ─────────────────────────────────────────────────────────
+// ─── Reset Password Screen ─────────────────────────────────────────────────────────
 export default function ResetPinScreen({ token }) {
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -15,39 +15,46 @@ export default function ResetPinScreen({ token }) {
   const [confirmFocused, setConfirmFocused] = useState(false);
   const cardVisible = useEntrance(80);
 
-  function handleSubmit() {
+  // CD-5 / D12 — the unified 8-character minimum, replacing `^\d{4}$`.
+  //
+  // The old rule refused anything that was not exactly four digits, which meant a
+  // referrer who signed up with a real password could not reset back to one. The
+  // server enforces the same floor (referrer.js, POST /api/reset-pin); this check
+  // exists so the person is told before a round trip, not instead of it.
+  async function handleSubmit() {
     setError("");
-    if (!/^\d{4}$/.test(pin) || !/^\d{4}$/.test(confirmPin)) {
-      setError("Both fields must be exactly 4 digits.");
+    if (pin.length < 8 || confirmPin.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
     if (pin !== confirmPin) {
-      setError("PINs don't match.");
+      setError("Passwords don't match.");
       return;
     }
     setStatus("loading");
-    fetch(`${BACKEND_URL}/api/reset-pin`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, pin }),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setStatus("success");
-          setTimeout(() => {
-            window.history.replaceState({}, '', '/');
-            window.location.reload();
-          }, 1500);
-        } else {
-          setError(data.error || "Something went wrong.");
-          setStatus("idle");
-        }
-      })
-      .catch(() => {
-        setError("Something went wrong. Please try again.");
-        setStatus("idle");
+    // async/await rather than a .then() chain (CLAUDE.md) — in scope because this
+    // function is being rewritten for the policy change anyway.
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/reset-pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, pin }),
       });
+      const data = await res.json();
+      if (data.success) {
+        setStatus("success");
+        setTimeout(() => {
+          window.history.replaceState({}, '', '/');
+          window.location.reload();
+        }, 1500);
+      } else {
+        setError(data.error || "Something went wrong.");
+        setStatus("idle");
+      }
+    } catch {
+      setError("Something went wrong. Please try again.");
+      setStatus("idle");
+    }
   }
 
   const inputStyle = (focused) => ({
@@ -91,9 +98,9 @@ export default function ResetPinScreen({ token }) {
         <h2 style={{
           margin: "0 0 8px", fontSize: 22, fontWeight: 700,
           fontFamily: R.fontSans, color: R.navy,
-        }}>Set a new PIN</h2>
+        }}>Set a new password</h2>
         <p style={{ margin: "0 0 24px", fontSize: 15, color: R.textSecondary }}>
-          Choose a 4-digit PIN for your account.
+          Choose a password of at least 8 characters.
         </p>
 
         {status === "success" ? (
@@ -103,35 +110,41 @@ export default function ResetPinScreen({ token }) {
             color: "#166534", fontSize: 15,
           }}>
             <i className="ph ph-check-circle" style={{ fontSize: 20, flexShrink: 0 }} />
-            PIN updated! Redirecting to sign in…
+            Password updated! Redirecting to sign in…
           </div>
         ) : (
           <>
-            {/* New PIN */}
+            {/* New password */}
             <label style={{
               display: "block", fontSize: 12, fontWeight: 500,
               color: R.textSecondary, marginBottom: 8,
-            }}>New PIN</label>
+            }}>New password</label>
             <div style={{ position: "relative", marginBottom: 16 }}>
               <i className="ph ph-lock" style={{
                 position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
                 fontSize: 16, color: pinFocused ? R.navy : R.textMuted,
                 transition: "color 0.2s", pointerEvents: "none",
               }} />
+              {/* No `.replace(/\D/g, '')` coercion and no maxLength={4} (D12).
+                  The coercion was not a validator — it stripped letters from the
+                  field as the person typed, so a 14-character password vanished
+                  into a couple of digits with nothing said. Worse, 'abc1234'
+                  became '1234', passed the old 4-digit check, and silently set
+                  the account password to 1234. */}
               <input
-                value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                value={pin} onChange={e => setPin(e.target.value)}
                 onFocus={() => setPinFocused(true)} onBlur={() => setPinFocused(false)}
-                type="password" placeholder="4-digit PIN" maxLength={4}
+                type="password" placeholder="At least 8 characters" maxLength={200}
                 style={inputStyle(pinFocused)}
                 onKeyDown={e => e.key === "Enter" && handleSubmit()}
               />
             </div>
 
-            {/* Confirm PIN */}
+            {/* Confirm password */}
             <label style={{
               display: "block", fontSize: 12, fontWeight: 500,
               color: R.textSecondary, marginBottom: 8,
-            }}>Confirm PIN</label>
+            }}>Confirm password</label>
             <div style={{ position: "relative", marginBottom: 8 }}>
               <i className="ph ph-lock" style={{
                 position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
@@ -139,9 +152,9 @@ export default function ResetPinScreen({ token }) {
                 transition: "color 0.2s", pointerEvents: "none",
               }} />
               <input
-                value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                value={confirmPin} onChange={e => setConfirmPin(e.target.value)}
                 onFocus={() => setConfirmFocused(true)} onBlur={() => setConfirmFocused(false)}
-                type="password" placeholder="Confirm PIN" maxLength={4}
+                type="password" placeholder="Confirm password" maxLength={200}
                 style={inputStyle(confirmFocused)}
                 onKeyDown={e => e.key === "Enter" && handleSubmit()}
               />
@@ -172,8 +185,8 @@ export default function ResetPinScreen({ token }) {
               boxShadow: status === "loading" ? "none" : "0 4px 14px rgba(204,0,0,0.35)",
             }}>
               {status === "loading"
-                ? <><i className="ph ph-circle-notch" style={{ fontSize: 16, animation: "spin 0.8s linear infinite" }} /> Setting PIN…</>
-                : <><i className="ph ph-check" style={{ fontSize: 16 }} /> Set PIN</>
+                ? <><i className="ph ph-circle-notch" style={{ fontSize: 16, animation: "spin 0.8s linear infinite" }} /> Setting password…</>
+                : <><i className="ph ph-check" style={{ fontSize: 16 }} /> Set password</>
               }
             </button>
           </>

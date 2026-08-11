@@ -40,6 +40,9 @@ const { resolveLanding, loadContractorBranding } = require('../utils/landingReso
 // user_preferences' FIRST PRODUCTION CALLER; the store shipped in C/DL-3a with
 // none. Read only — the toggle that writes it is 3c (spec D8).
 const { getPreference, THEME_MODE_PREF_KEY } = require('../utils/userPreferences');
+// C/DL-3b Phase 2B — timing parity on a login miss. Shared rather than a third
+// copy of the constant; see that file's header.
+const { DUMMY_BCRYPT_HASH } = require('../utils/dummyHash');
 
 // test seam — inert in production, never called outside server/test/
 // Only the cashout-section call sites below use these overrides.
@@ -331,7 +334,10 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
   if (!emailRe.test(email)) return res.status(400).json({ error: 'Invalid email address.' });
   const phoneRe = /^[\d\s\-\+\(\)]{7,}$/;
   if (!phoneRe.test(phone)) return res.status(400).json({ error: 'Invalid phone number.' });
-  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  // CD-5 / D12 — raised from 6 to the unified 8-character minimum. Signup,
+  // reset-pin and team accept-invite now enforce one policy; before this phase
+  // they enforced 6, "exactly 4 digits", and 8 respectively.
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
   try {
     // Check invite link. resolveToken replaces the inline SELECT and adds the
@@ -1049,30 +1055,183 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
   }
 });
 
-// ── REFERRER: LOGIN ───────────────────────────────────────────────────────────
-router.post('/api/login', referrerLoginLimiter, async (req, res) => {
-  const { email, pin, contractorSlug } = req.body;
-  if (!contractorSlug) return res.status(400).json({ error: 'Missing contractor context.' });
+// ── UNIFIED LOGIN (C/DL-3b Phase 2B — D1 / D2) ────────────────────────────────
+//
+// VERIFY, THEN DISAMBIGUATE. The old handler identified the account and THEN
+// checked the password: narrow `users` by a client-supplied contractorSlug, take
+// rows[0], compare. D1 inverts that order, and the inversion is the whole point.
+//
+// The form collects { email, password } and has no tenant information at all.
+// The host cannot supply it either — the React app lives on app.roofmiles.com and
+// `app` is a reserved slug, so host resolution correctly returns null there.
+// Asking "which company?" BEFORE the password would show an unauthenticated
+// stranger which contractors an address is registered with, which is a real
+// privacy leak. Asking AFTER the password is proven leaks nothing: the person has
+// already demonstrated they hold the credential for every option displayed.
+//
+// TENANCY COMES FROM THE AUTHENTICATED ROW, never from the request. This is
+// already how session ISSUANCE works; D1 extends the same principle to LOOKUP.
+//
+// This also retires Tenant Rebuild §3.5's contractorSlug narrowing exception —
+// not by relaxing it, but by making it unnecessary. See server/test/
+// tenantIsolation.test.js for the mechanism shift spelled out against the
+// arbitrary-row bug the old guard existed to prevent.
+const LOGIN_CANDIDATE_CAP = 5;
+const CHOICE_TOKEN_TTL_MINUTES = 2;
+const INVALID_CREDENTIALS = 'Invalid email or PIN';
+
+// Gathers every identity the address could belong to: the team_members row
+// (globally unique) plus every users row across ALL contractors.
+//
+// TEAM_MEMBERS IS ORDERED FIRST AND THAT IS LOAD-BEARING, not incidental. The cap
+// truncates the combined list, so putting the at-most-one employee row first is
+// what stops an employee whose address also holds many homeowner accounts from
+// being unable to reach the side they actually work in.
+//
+// THE CAP EXISTS BECAUSE bcrypt IS EXPENSIVE. Without it, N compares per request
+// is a cheap denial of service: register one address with many contractors and
+// every login attempt against it costs N hashes. Five is the ceiling per D1.
+//
+// `active = true` stays in the team_members LOOKUP for now. Moving it to a
+// post-compare branch is C/DL-3b Phase 3 (D3) — doing it here would ship the
+// frozen-account behaviour change inside the login rewrite, which is exactly the
+// confusion the phase split exists to prevent.
+async function gatherLoginCandidates(email) {
+  const teamResult = await pool.query(
+    `SELECT id, contractor_id, password_hash, tier, permissions
+       FROM team_members
+      WHERE LOWER(email) = LOWER($1) AND active = true
+      ORDER BY id
+      LIMIT $2`,
+    [email, LOGIN_CANDIDATE_CAP]
+  );
+  const userResult = await pool.query(
+    `SELECT id, contractor_id, full_name, email, phone, pin
+       FROM users
+      WHERE LOWER(email) = LOWER($1)
+      ORDER BY contractor_id, id
+      LIMIT $2`,
+    [email, LOGIN_CANDIDATE_CAP]
+  );
+  const candidates = [
+    ...teamResult.rows.map(row => ({
+      source: 'team_members', id: row.id, contractorId: row.contractor_id, hash: row.password_hash, row,
+    })),
+    ...userResult.rows.map(row => ({
+      source: 'users', id: row.id, contractorId: row.contractor_id, hash: row.pin, row,
+    })),
+  ];
+  return candidates.slice(0, LOGIN_CANDIDATE_CAP);
+}
+
+// Compares one candidate and returns it on a match, or null.
+//
+// The try/catch is not decoration. A malformed or legacy hash makes bcrypt throw,
+// and an uncaught throw here would 500 the endpoint — worse, it would take login
+// down for every OTHER candidate sharing that address, so one bad row could lock
+// out an unrelated person at a different contractor. A hash that cannot be parsed
+// simply does not match. It is logged because it is a real data problem.
+async function compareCandidate(req, secret, candidate) {
   try {
-    const result = await pool.query(
-      'SELECT id, full_name, email, pin, phone, contractor_id FROM users WHERE contractor_id = $1 AND LOWER(email) = LOWER($2)',
-      [contractorSlug, email]
-    );
-    if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid email or PIN' });
-    const user = result.rows[0];
-    const match = await bcrypt.compare(String(pin), user.pin);
-    if (!match) return res.status(401).json({ error: 'Invalid email or PIN' });
+    return (await bcrypt.compare(secret, candidate.hash)) ? candidate : null;
+  } catch (compareErr) {
+    await logError({ req, error: compareErr, source: 'POST /api/login (candidate compare)' });
+    return null;
+  }
+}
 
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    const deviceInfo = req.headers['user-agent'] || null;
-    const ipAddress = req.ip || null;
-    const sessionResult = await pool.query(
-      'INSERT INTO sessions (user_id, token, expires_at, device_info, ip_address, role, contractor_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
-      [user.id, token, expiresAt, deviceInfo, ipAddress, 'referrer', user.contractor_id]
-    );
-    const sessionId = sessionResult.rows[0].id;
+// Resolves display names for the choice screen. COALESCE mirrors the three-rung
+// chain the branding loader uses: the white-label company name, then the
+// contractor's own name, then the platform default.
+async function loadContractorDisplayNames(contractorIds) {
+  if (!contractorIds.length) return new Map();
+  const { rows } = await pool.query(
+    `SELECT c.id, COALESCE(NULLIF(cs.company_name, ''), c.name) AS display_name
+       FROM contractors c
+       LEFT JOIN contractor_settings cs ON cs.contractor_id = c.id
+      WHERE c.id = ANY($1::text[])`,
+    [contractorIds]
+  );
+  return new Map(rows.map(r => [r.id, r.display_name]));
+}
 
+// Re-reads one identity by primary key. Used by choice redemption rather than
+// trusting the blob stored two minutes earlier, so a row that was deleted or
+// deactivated inside the choice window can no longer mint a session.
+async function loadCandidateById(source, id) {
+  if (source === 'team_members') {
+    const { rows } = await pool.query(
+      `SELECT id, contractor_id, password_hash, tier, permissions
+         FROM team_members WHERE id = $1 AND active = true`,
+      [id]
+    );
+    return rows.length
+      ? { source, id: rows[0].id, contractorId: rows[0].contractor_id, hash: rows[0].password_hash, row: rows[0] }
+      : null;
+  }
+  if (source === 'users') {
+    const { rows } = await pool.query(
+      `SELECT id, contractor_id, full_name, email, phone, pin FROM users WHERE id = $1`,
+      [id]
+    );
+    return rows.length
+      ? { source, id: rows[0].id, contractorId: rows[0].contractor_id, hash: rows[0].pin, row: rows[0] }
+      : null;
+  }
+  return null;
+}
+
+// Mints the session for ONE authenticated identity and builds its response body.
+// Reached only after the credential is proven, from exactly two call sites: the
+// single-match branch of /api/login and choice redemption.
+//
+// The session ROLE stays 'referrer' or 'admin' — the two values that already
+// exist. A field rep is a team member and gets 'admin', exactly as
+// POST /api/admin/login has always minted, so no session query anywhere needs to
+// learn a new value. The response carries `role` for the CLIENT to route on;
+// which surface a team member lands on is Phase 5's decision, not the session's.
+async function issueSessionFor(req, candidate) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const deviceInfo = req.headers['user-agent'] || null;
+  const ipAddress = req.ip || null;
+
+  if (candidate.source === 'team_members') {
+    const member = candidate.row;
+    await pool.query(
+      `INSERT INTO sessions (user_id, token, expires_at, device_info, ip_address, role, contractor_id, team_member_id)
+       VALUES (NULL,$1,$2,$3,$4,$5,$6,$7)`,
+      [token, expiresAt, deviceInfo, ipAddress, 'admin', member.contractor_id, member.id]
+    );
+    // Stamp last_login_at. Failure is logged but must never block the response —
+    // the session already exists and is valid. Parity with POST /api/admin/login.
+    try {
+      await pool.query('UPDATE team_members SET last_login_at = NOW() WHERE id = $1', [member.id]);
+    } catch (stampErr) {
+      await logError({ req, error: stampErr, source: 'POST /api/login (last_login_at stamp)' });
+    }
+    return {
+      success: true,
+      token,
+      role: 'team',
+      tier: member.tier,
+      permissions: member.permissions || {},
+    };
+  }
+
+  const user = candidate.row;
+  const sessionResult = await pool.query(
+    'INSERT INTO sessions (user_id, token, expires_at, device_info, ip_address, role, contractor_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+    [user.id, token, expiresAt, deviceInfo, ipAddress, 'referrer', user.contractor_id]
+  );
+  const sessionId = sessionResult.rows[0].id;
+  return await finishReferrerLogin(req, user, token, sessionId, ipAddress);
+}
+
+// The referrer success payload, unchanged from the pre-2B handler: geo lookup,
+// activity log, login-count bump, review card, announcement and its settings.
+// Extracted only so the single-match branch and choice redemption cannot drift.
+async function finishReferrerLogin(req, user, token, sessionId, ipAddress) {
     // Async geo-lookup — do not await, never blocks login response
     if (ipAddress) {
       (async () => {
@@ -1125,7 +1284,102 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
     );
     const announcementSettings = settingsResult.rows[0] || { enabled: true, mode: 'preset_1', custom_message: null };
 
-    res.json({ success: true, fullName: user.full_name, email: user.email, phone: user.phone || null, token, showReviewCard, announcement, announcementSettings });
+  return {
+    success: true,
+    role: 'referrer',
+    fullName: user.full_name,
+    email: user.email,
+    phone: user.phone || null,
+    token,
+    showReviewCard,
+    announcement,
+    announcementSettings,
+  };
+}
+
+// ── POST /api/login ───────────────────────────────────────────────────────────
+//
+// ⚠ THERE IS DELIBERATELY NO isEmail() VALIDATOR ON THIS ROUTE, and it must not
+// acquire one as "obvious hardening". Two reasons:
+//
+//   1. It would buy nothing. A malformed address matches no candidate and gets
+//      the same generic 401 an unknown address gets. Rejecting it at a validator
+//      instead creates a SECOND, distinguishable rejection shape (422 with a
+//      field error) on an endpoint whose entire anti-enumeration posture depends
+//      on every failure looking identical.
+//   2. server/test/loginErrorDisclosure.test.js DEPENDS ON ITS ABSENCE. That test
+//      drives a NUL byte through `email` to provoke a 22021 inside the try block
+//      and prove the catch leaks no internals. A validator would answer first,
+//      the probe would never reach the handler, and the test would silently stop
+//      testing anything — its non-vacuity gate is what would catch that.
+router.post('/api/login', referrerLoginLimiter, async (req, res) => {
+  // The wire field stays `pin` for the currently deployed LoginScreen, and
+  // `password` is accepted alongside it so Phase 5's rewritten screen can send
+  // the honest name without a flag-day deploy. D12: users.pin keeps its COLUMN
+  // name too — this is a label change, never a migration.
+  const { email } = req.body;
+  const secret = req.body.password !== undefined ? req.body.password : req.body.pin;
+
+  try {
+    // Coerced rather than guarded. A missing email falls through to a lookup that
+    // matches nothing, then to the dummy compare, then to the same 401 — so an
+    // absent field is not a distinguishable early return either.
+    const candidates = await gatherLoginCandidates(email == null ? '' : String(email));
+    const secretString = secret == null ? '' : String(secret);
+
+    if (candidates.length === 0) {
+      // TIMING PARITY (D1, binding). Always run at least one compare, so the
+      // response time on a miss does not reveal that the address is unknown.
+      await compareCandidate(req, secretString, { source: 'dummy', hash: DUMMY_BCRYPT_HASH });
+      return res.status(401).json({ error: INVALID_CREDENTIALS });
+    }
+
+    // EVERY candidate is compared — no early exit on the first match. Exiting
+    // early would make the response time depend on the matching row's POSITION,
+    // and it is also what makes the count meaningful: the branch below is on how
+    // many matched, never on which came first. rows[0] is never consulted.
+    //
+    // ⚠ THIS LOOP IS GUARD-PROOFED, AND THE SHAPE OF THE FAILURE IS THE POINT.
+    // Replacing it with `candidates.slice(0, 1)` does NOT error. It collapses the
+    // multi-match branch into a SILENT SINGLE MATCH on the first row — which is
+    // the historical arbitrary-row bug (a global email lookup, tenancy taken from
+    // whichever row ordering happened to surface) restaged inside the new
+    // architecture. Nothing would throw; a person would simply be logged into the
+    // wrong tenant. server/test/unifiedLogin.test.js's compare-count assertion is
+    // what catches it, because a response-shape assertion never would.
+    const results = await Promise.all(
+      candidates.map(candidate => compareCandidate(req, secretString, candidate))
+    );
+    const matched = results.filter(Boolean);
+
+    if (matched.length === 0) return res.status(401).json({ error: INVALID_CREDENTIALS });
+    if (matched.length === 1) return res.json(await issueSessionFor(req, matched[0]));
+
+    // ── MORE THAN ONE MATCH → A CHOICE, NOT A SESSION (D2) ──────────────────
+    // The server cannot mint here: it has proven the credential but does not know
+    // which identity the person means. It must also not ask for the password
+    // again. So it stores the matched set server-side and hands back an opaque
+    // token plus a display list carrying contractor name and role ONLY.
+    const choiceToken = crypto.randomBytes(32).toString('hex');
+    const stored = matched.map((candidate, index) => ({
+      selection: index, source: candidate.source, id: candidate.id, contractor_id: candidate.contractorId,
+    }));
+    await pool.query(
+      `INSERT INTO login_choice_tokens (token, candidates, expires_at)
+       VALUES ($1, $2::jsonb, NOW() + ($3 || ' minutes')::interval)`,
+      [choiceToken, JSON.stringify(stored), String(CHOICE_TOKEN_TTL_MINUTES)]
+    );
+
+    const displayNames = await loadContractorDisplayNames(matched.map(c => c.contractorId));
+    return res.json({
+      choice_required: true,
+      choice_token: choiceToken,
+      identities: matched.map((candidate, index) => ({
+        selection: index,
+        contractor_name: displayNames.get(candidate.contractorId) || ROOFMILES_DEFAULTS.companyName,
+        role: candidate.source === 'team_members' ? 'team' : 'referrer',
+      })),
+    });
   } catch (err) {
     await logError({ req, error: err });
     // Was `'Login failed: ' + err.message` — leaked internals to the client on a
@@ -1138,6 +1392,60 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
     // Only the CATCH is generic. The 401s above are deliberately untouched: they
     // are actionable, carry no internals, and are identical for a wrong password
     // and an unknown address, so they stay non-enumerating.
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── POST /api/login/choice — REDEEM A CHOICE TOKEN (D2) ───────────────────────
+//
+// Takes { choice_token, selection } and NEVER the password again: the credential
+// was already proven when the token was issued, and asking for it a second time
+// would mean holding it in the client across two requests for no gain.
+//
+// Shares referrerLoginLimiter with /api/login — the two halves are one login
+// attempt and belong to one budget.
+router.post('/api/login/choice', referrerLoginLimiter, async (req, res) => {
+  const { choice_token: choiceToken, selection } = req.body;
+  try {
+    // Shape-checked before touching the database so a malformed value costs a
+    // regex rather than a query, and answers with the same generic 401 as a
+    // forgery — this endpoint distinguishes nothing either.
+    if (typeof choiceToken !== 'string' || !/^[0-9a-f]{64}$/.test(choiceToken)) {
+      return res.status(401).json({ error: INVALID_CREDENTIALS });
+    }
+
+    // ⚠ THE BURN IS THE SELECT. One atomic UPDATE ... RETURNING is what makes the
+    // token single-use: two concurrent redemptions race inside Postgres and
+    // exactly one sees a row. A read-then-write pair would let both through.
+    // Expiry and prior consumption are checked in the same predicate, so a
+    // replayed, expired, or forged token are indistinguishable — all three come
+    // back as zero rows and get the same answer.
+    const { rows } = await pool.query(
+      `UPDATE login_choice_tokens SET consumed_at = NOW()
+        WHERE token = $1 AND consumed_at IS NULL AND expires_at > NOW()
+        RETURNING candidates`,
+      [choiceToken]
+    );
+    if (rows.length === 0) return res.status(401).json({ error: INVALID_CREDENTIALS });
+
+    // An out-of-range selection burns the token rather than allowing a retry.
+    // Deliberate: the token is a bearer credential with a 2-minute life, and
+    // letting a caller probe selections against a live one is worth more to an
+    // attacker than a retry is worth to a client that sent the wrong index.
+    const stored = rows[0].candidates;
+    const chosen = Array.isArray(stored)
+      ? stored.find(entry => entry.selection === selection)
+      : null;
+    if (!chosen) return res.status(401).json({ error: INVALID_CREDENTIALS });
+
+    // Re-read rather than trusting the two-minute-old blob, so a row deleted or
+    // deactivated inside the choice window cannot still mint a session.
+    const candidate = await loadCandidateById(chosen.source, chosen.id);
+    if (!candidate) return res.status(401).json({ error: INVALID_CREDENTIALS });
+
+    return res.json(await issueSessionFor(req, candidate));
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/login/choice' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1454,26 +1762,41 @@ router.post('/api/profile/photo', async (req, res) => {
 
 // ── REFERRER: FORGOT PIN ───────────────────────────────────────────────────────
 router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
-  // THE WIRE FIELD IS MISNAMED, AND DELIBERATELY LEFT THAT WAY. The client sends
-  // `contractorSlug`, but the value it sends is a contractor ID — it is bound to
-  // `contractor_id = $1` below, and always has been. Renaming the request field
-  // would break every deployed client, so the field name stays and the local name
-  // tells the truth instead. C/DL-2 makes this actively dangerous rather than merely
-  // untidy: contractors.slug now exists as a real, different, PUBLIC value, so a
-  // reader who trusts this name would pass the wrong one. The wire field retires
-  // with the unified login in C/DL-3.
-  const { email, contractorSlug: contractorId } = req.body;
+  // THE contractorSlug WIRE FIELD RETIRES HERE (C/DL-3b Phase 2B, D1), alongside
+  // the one on /api/login. It is no longer read at all — a client that still
+  // sends it gets the same answer as one that does not.
+  //
+  // WHY THIS ENDPOINT CANNOT BORROW LOGIN'S ANSWER. Login disambiguates with the
+  // password; there is no password here, so nothing is ever proven and the server
+  // may not disclose anything at all. The only safe shape is to send one reset
+  // email PER matching account, each naming its own contractor in the body, and
+  // return the identical generic response every time. The recipient sorts it out
+  // in their inbox — where reaching the mailbox is itself the proof of ownership.
+  //
+  // THE RESPONSE MUST NOT VARY WITH THE MATCH COUNT. If it did, this would leak
+  // strictly more than the old endpoint: not just whether an address is
+  // registered, but with how many contractors.
+  //
+  // CAPPED at the same ceiling as login's candidate gather. Unauthenticated, and
+  // it sends mail to an address the caller supplies — an unbounded fan-out here
+  // is an abuse primitive, not a feature.
+  //
+  // USERS ONLY. team_members has no reset flow to reach (pin_reset_tokens FKs to
+  // users(id)); a team-member reset path is its own future item.
+  const { email } = req.body;
   const genericResponse = { message: "If that email is registered, you'll receive a reset link shortly." };
-  if (!contractorId) return res.json(genericResponse); // fail closed to the same generic response — never reveal the missing-param distinction
 
   try {
     const userResult = await pool.query(
-      'SELECT id, full_name, email, contractor_id FROM users WHERE contractor_id = $1 AND LOWER(email) = LOWER($2)',
-      [contractorId, email]
+      `SELECT id, full_name, email, contractor_id
+         FROM users
+        WHERE LOWER(email) = LOWER($1)
+        ORDER BY contractor_id, id
+        LIMIT $2`,
+      [email == null ? '' : String(email), LOGIN_CANDIDATE_CAP]
     );
 
-    if (userResult.rows.length > 0) {
-      const user = userResult.rows[0];
+    for (const user of userResult.rows) {
       const token = crypto.randomBytes(32).toString('hex');
 
       await pool.query(
@@ -1580,8 +1903,19 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
 router.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
   const { token, pin } = req.body;
 
-  if (!/^\d{4}$/.test(String(pin))) {
-    return res.status(400).json({ error: 'PIN must be exactly 4 digits.' });
+  // CD-5 / D12 — UNIFIED 8-CHARACTER MINIMUM, replacing `^\d{4}$`.
+  //
+  // The old rule did not merely fail to require 8 characters; it actively REFUSED
+  // anything that was not exactly four digits, so a referrer who signed up with a
+  // real password physically could not reset to one. This was the single blocked
+  // path D12 names, and it is why CD-5 is a validator change rather than a
+  // migration: users.pin is TEXT NOT NULL with no length constraint and no CHECK,
+  // and a 14-character alphanumeric already stores and re-authenticates fine.
+  //
+  // Raising the floor breaks nobody. bcrypt does not care what was hashed, so
+  // every existing shorter credential keeps working; this binds new values only.
+  if (typeof pin !== 'string' || pin.length < 8 || pin.length > 200) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   }
 
   if (!token || typeof token !== 'string' || token.trim() === '') {

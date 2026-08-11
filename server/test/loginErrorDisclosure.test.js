@@ -21,13 +21,28 @@
 //   Code Quality       — "`err.message` in `res.status(500)` responses →
 //                         replace with 'Internal server error'."
 //
-// WHAT THE PROBE DOES. A NUL byte inside `contractorSlug` clears the handler's
-// only guard (`if (!contractorSlug) return 400` — the value is truthy), then
-// Postgres refuses it in a text parameter the moment the user lookup runs:
-// 22021, `invalid byte sequence for encoding "UTF8": 0x00`. That reaches the
-// catch block and is concatenated into the response. This is the same probe
-// shape verifyEmailErrorDisclosure.test.js uses against /api/signup, and it is
-// chosen because it fails inside the try rather than at a validator.
+// WHAT THE PROBE DOES. A NUL byte reaches a text parameter in the candidate
+// lookup, and Postgres refuses it: 22021, `invalid byte sequence for encoding
+// "UTF8": 0x00`. That lands in the catch block, where the original bug
+// concatenated it into the response. This is the same probe shape
+// verifyEmailErrorDisclosure.test.js uses against /api/signup, and it is chosen
+// because it fails inside the try rather than at a validator.
+//
+// ── THE PROBE MOVED AT C/DL-3b PHASE 2B, AND THE PREMISE DID NOT ────────────
+// It used to ride in `contractorSlug`, whose only job was to be truthy enough to
+// clear `if (!contractorSlug) return 400` before reaching the query. D1 retires
+// that field entirely (Tenant Rebuild §3.5), so a NUL there now reaches no query
+// at all, produces no 500, and would leave every absence assertion below passing
+// vacuously. The NON-VACUITY GATE is what catches that — it did, loudly, rather
+// than letting this file quietly stop testing anything.
+//
+// It now rides in `email`, which the unified login still binds to
+// `LOWER(email) = LOWER($1)`. Same 22021, same catch block, same premise.
+//
+// ⚠ THIS TEST DEPENDS ON /api/login HAVING NO isEmail() VALIDATOR. One would
+// answer before the handler and the probe would never reach the catch block. Its
+// deliberate absence is documented at the route itself; the two comments are a
+// matched pair and neither should be removed without the other.
 //
 // WHY THIS PHASE. The landing page's whole job is to create accounts, and the
 // login endpoint is the door those accounts walk back through. Shipping a
@@ -57,8 +72,10 @@ const LOGIN_PATH = '/api/login';
 
 const TENANT_A = 'tnt-login-disclosure-a';
 
-// Truthy, clears the `!contractorSlug` guard, and provokes 22021 in the lookup.
-const PROBE_SLUG = 'zz-login-probe-\u0000-zz';
+// Provokes 22021 in the candidate lookup. Shaped like an address so that if a
+// format check is ever added upstream it fails on the NUL rather than on the
+// shape, keeping the reason for any future breakage unambiguous.
+const PROBE_EMAIL = 'zz-login-probe-\u0000-zz@test.invalid';
 
 // Fragments of the Postgres error text that must never reach an unauthenticated
 // caller. Asserted individually rather than as one string so a partial leak — a
@@ -137,15 +154,15 @@ describe('C/DL-2 Phase 3d-1 — POST /api/login error disclosure', () => {
 
   it('[RED] an internal failure returns no internal detail to the unauthenticated caller', async () => {
     const res = await httpPost(port, LOGIN_PATH, {
-      email: 'someone@test.invalid', pin: 'whatever', contractorSlug: PROBE_SLUG,
+      email: PROBE_EMAIL, pin: 'whatever',
     });
 
     // ── NON-VACUITY GATE ─────────────────────────────────────────────────────
-    // Proves the probe genuinely reached the catch block. A 400 would mean the
-    // contractorSlug guard answered before the try; a 401 would mean the lookup
-    // succeeded and returned no rows; a 404 would mean the route is unmounted; a
-    // 429 would mean the limiter answered. All four satisfy every absence
-    // assertion below while testing nothing at all.
+    // Proves the probe genuinely reached the catch block. A 400 or 422 would mean
+    // a validator answered before the try (see the isEmail() note in the header);
+    // a 401 would mean the lookup ran and matched nothing; a 404 would mean the
+    // route is unmounted; a 429 would mean the limiter answered. All of them
+    // satisfy every absence assertion below while testing nothing at all.
     assert.equal(
       res.status, 500,
       `the probe did not reach the login handler's catch block (status ${res.status}, body ${res.raw}) — ` +
@@ -179,7 +196,7 @@ describe('C/DL-2 Phase 3d-1 — POST /api/login error disclosure', () => {
     // all on this same router — answer with exactly this object. A third phrasing
     // on the same public surface is a thing future readers have to guess at.
     const res = await httpPost(port, LOGIN_PATH, {
-      email: 'someone@test.invalid', pin: 'whatever', contractorSlug: PROBE_SLUG,
+      email: PROBE_EMAIL, pin: 'whatever',
     });
 
     assert.equal(
@@ -207,7 +224,7 @@ describe('C/DL-2 Phase 3d-1 — POST /api/login error disclosure', () => {
     // "contains no internals" is never a real assertion — a shorter leak passes it
     // and a longer legitimate message fails it. Replaced with a structural check.
     const res = await httpPost(port, LOGIN_PATH, {
-      email: 'someone@test.invalid', pin: 'whatever', contractorSlug: PROBE_SLUG,
+      email: PROBE_EMAIL, pin: 'whatever',
     });
 
     assert.equal(res.status, 500, `precondition: the probe must reach the catch block, got ${res.status}: ${res.raw}`);
@@ -236,7 +253,7 @@ describe('C/DL-2 Phase 3d-1 — POST /api/login error disclosure', () => {
     // actionable without confirming which accounts exist. Both halves are
     // asserted below.
     const res = await httpPost(port, LOGIN_PATH, {
-      email: realUserEmail, pin: WRONG_PASSWORD, contractorSlug: TENANT_A,
+      email: realUserEmail, pin: WRONG_PASSWORD,
     });
 
     assert.equal(
@@ -256,10 +273,10 @@ describe('C/DL-2 Phase 3d-1 — POST /api/login error disclosure', () => {
     // turn the login endpoint into an account-enumeration oracle. The two answers
     // must be indistinguishable.
     const wrongPass = await httpPost(port, LOGIN_PATH, {
-      email: realUserEmail, pin: WRONG_PASSWORD, contractorSlug: TENANT_A,
+      email: realUserEmail, pin: WRONG_PASSWORD,
     });
     const unknownEmail = await httpPost(port, LOGIN_PATH, {
-      email: 'no-such-person@test.invalid', pin: WRONG_PASSWORD, contractorSlug: TENANT_A,
+      email: 'no-such-person@test.invalid', pin: WRONG_PASSWORD,
     });
 
     assert.equal(wrongPass.status, 401, `precondition: wrong password must be 401, got ${wrongPass.raw}`);
@@ -275,7 +292,7 @@ describe('C/DL-2 Phase 3d-1 — POST /api/login error disclosure', () => {
     // failure paths; this one proves the handler still authenticates, so a fix
     // that made the catch block generic by breaking the try block would not pass.
     const res = await httpPost(port, LOGIN_PATH, {
-      email: realUserEmail, pin: REAL_PASSWORD, contractorSlug: TENANT_A,
+      email: realUserEmail, pin: REAL_PASSWORD,
     });
 
     assert.equal(res.status, 200, `a correct password must still log in, got ${res.status}: ${res.raw}`);

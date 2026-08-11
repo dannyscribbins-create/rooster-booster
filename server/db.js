@@ -1513,6 +1513,56 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       ON contractor_invite_links (contractor_id, active)
   `);
 
+  // ── C/DL-3b PHASE 2B — LOGIN CHOICE TOKENS (D2) ─────────────────────────────
+  // When verify-then-disambiguate finds MORE THAN ONE candidate whose hash the
+  // supplied password opened, the server cannot mint a session — it does not yet
+  // know which identity the person means — and D2 forbids asking them to re-send
+  // the password. It issues a short-lived choice token instead.
+  //
+  // ⚠ WHY THIS IS A TABLE AND NOT A SIGNED STATELESS VALUE. Two independent
+  // reasons, either one sufficient:
+  //
+  //   1. D2's privacy rule. A stateless token has to carry the matched identity
+  //      set INSIDE ITSELF, because there is nowhere else for it to live — which
+  //      means shipping user ids and contractor ids to the client, exactly what
+  //      D2 forbids ("contractor name and role only, never emails, never IDs").
+  //      Encrypting rather than signing only means handing over tenancy-bearing
+  //      data and trusting the cipher to hide it. A row keeps the ids server-side
+  //      and hands out an opaque 64-hex string.
+  //   2. Single-use is unimplementable without state. Statelessness means the
+  //      server keeps no record, so it cannot know a token was already redeemed.
+  //      Adding a burn-list to a stateless design is a table with extra steps.
+  //
+  // ⚠ AND WHY NOT A ROW IN `sessions` WITH role = 'choice'. That is the
+  // half-authenticated-session shape D9 already names as the thing that makes 2FA
+  // decorative. It would not authenticate today — every session query filters on
+  // role — but it puts a non-session in the sessions table, and the next person
+  // to write a session query has to REMEMBER to exclude it. Fail-open by
+  // construction; the query that forgets is the bug. Kept out of that table.
+  //
+  // consumed_at is a burn MARKER, not a delete, mirroring pin_reset_tokens.used_at
+  // — a redeemed token stays visible for the short window it lives, so a replay
+  // is distinguishable from a forgery in the row itself rather than only in a log.
+  //
+  // candidates holds [{ source, id, contractor_id }] and is the ONLY place the
+  // matched set exists. `selection` from the client indexes into it, so "select an
+  // identity that did not match" is not addressable rather than merely refused.
+  await pool.query(`CREATE TABLE IF NOT EXISTS login_choice_tokens (
+    id          SERIAL PRIMARY KEY,
+    token       TEXT UNIQUE NOT NULL,
+    candidates  JSONB NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    consumed_at TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  // Redemption reads by token (already unique-indexed). This index serves the
+  // sessionCleanup sweep, which deletes by expiry.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_login_choice_tokens_expires_at
+      ON login_choice_tokens (expires_at)
+  `);
+  console.log('✓ migration: login_choice_tokens'); // diagnostic log — intentional
+
   // One-time seed: inserts the Accent Roofing Owner account if the email does not yet exist.
   // Reads credentials from env vars OWNER_SEED_EMAIL + OWNER_SEED_PASSWORD.
   if (process.env.OWNER_SEED_EMAIL && process.env.OWNER_SEED_PASSWORD) {
