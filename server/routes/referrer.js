@@ -1110,7 +1110,12 @@ const INVALID_CREDENTIALS = 'Invalid email or PIN';
 // fences both halves.
 async function gatherLoginCandidates(email) {
   const teamResult = await pool.query(
-    `SELECT id, contractor_id, password_hash, tier, permissions, active
+    // is_field_rep is selected for ROUTING, not for authorisation (C/DL-3b Phase 5).
+    // BOOLEAN NOT NULL DEFAULT false (db.js), so it is always a real true/false —
+    // which is what lets the payload report `false` rather than omitting the key.
+    // Scoped to this one flag: is_attributable and rep_revenue_visibility belong to
+    // 3c's CD-7 revenue gate and are deliberately NOT read here.
+    `SELECT id, contractor_id, password_hash, tier, permissions, active, is_field_rep
        FROM team_members
       WHERE LOWER(email) = LOWER($1)
       ORDER BY id
@@ -1252,6 +1257,12 @@ async function issueSessionFor(req, candidate) {
       token,
       role: 'team',
       tier: member.tier,
+      // ROUTING INPUT, C/DL-3b Phase 5. The client decides between the admin panel
+      // and the field-rep surface from tier + this flag; the server reports both
+      // and decides neither. GET /api/session's team branch MUST return the same
+      // value for the same member — see server/test/repRouting.test.js, which
+      // compares the two payloads rather than checking each in isolation.
+      is_field_rep: member.is_field_rep,
       permissions: member.permissions || {},
     };
   }

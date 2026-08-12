@@ -3,7 +3,7 @@ import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import useAdminPermissions, { AdminPermissionsContext } from '../../hooks/useAdminPermissions';
 import { safeAsync } from '../../utils/clientErrorReporter';
-import { AdminShell, AdminInput } from './AdminComponents';
+import { AdminShell } from './AdminComponents';
 import AdminDashboard from './AdminDashboard';
 import AdminReferrers from './AdminReferrers';
 import AdminCashOuts from './AdminCashOuts';
@@ -12,9 +12,7 @@ import AdminEngagement from './AdminEngagement';
 import AdminReferralReview from './AdminReferralReview';
 import AdminCampaigns from './AdminCampaigns';
 import AdminInboxSidebar from './AdminInboxSidebar';
-import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
-import { fetchSession, getAdminToken, setAdminToken } from '../../utils/authStorage';
-import LoadingIndicator from '../shared/LoadingIndicator';
+import { getAdminToken } from '../../utils/authStorage';
 
 function useAdminFonts() {
   useEffect(() => {
@@ -31,114 +29,27 @@ function useAdminFonts() {
   }, []);
 }
 
-function AdminLogin({ onLogin }) {
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠ THE INLINE `AdminLogin` THAT LIVED HERE IS GONE (C/DL-3b Phase 5, CD-4).
+//
+// It was a second, differently-styled door onto the same product, reachable by
+// typing `?admin=true`, and its existence is what made the query string a routing
+// input. One unified door now serves every role
+// (src/components/auth/LoginScreen.jsx) and App.jsx routes by IDENTITY, so this
+// component is only ever rendered for someone already authenticated as a team
+// member whose tier or flags earn them the panel.
+//
+// AUTHENTICATION AND BOOT REHYDRATION MOVED TO App.jsx and are deliberately NOT
+// duplicated here. Two components independently deciding "is this person signed
+// in" is how they eventually disagree; App owns the session, this owns the panel.
+//
+// The frozen-account branch moved with the form. It is better off there: the
+// unified door renders the BRANDED FrozenAccountScreen from the 403 body (D3),
+// where this surface could only ever show a flat sentence, because the panel
+// renders outside ThemeProvider and must not acquire the referrer palette.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  async function handleLogin() {
-    setLoading(true);
-    setError('');
-    try {
-      const r = await fetch(`${BACKEND_URL}/api/admin/login`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const d = await r.json();
-      // C/DL-3b Phase 3 (D3). CHECKED BEFORE THE GENERIC BRANCH, which flattens
-      // every failure to 'Invalid credentials' — the exact sentence this decision
-      // exists to stop showing a deactivated employee whose password was correct.
-      // Branched on the typed CODE, never the status, so re-wording the message
-      // is never a protocol change.
-      //
-      // NO BRANDED FROZEN SCREEN ON THIS SURFACE, deliberately: the admin panel
-      // renders outside ThemeProvider (Phase 1, Ruling 5) and must not acquire the
-      // referrer palette. The 403's branding payload is the unified door's to use;
-      // Phase 5 replaces this inline form with that door.
-      if (d.error === 'account_frozen') setError('This account is inactive. Contact your administrator to have access restored.');
-      else if (d.error) setError('Invalid credentials');
-      else {
-        setAdminToken(d.token);
-        onLogin();
-      }
-    } catch {
-      setError('Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: AD.bgPage, fontFamily: AD.fontSans }}>
-      <div style={{ width: '100%', maxWidth: 380, padding: '0 24px' }}>
-        <div style={{ textAlign: 'center', marginBottom: 8 }}>
-          <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 200, height: 'auto', margin: '0 auto 16px', display: 'block' }} />
-        </div>
-        <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '28px', boxShadow: AD.shadowLg }}>
-          <AdminInput type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Enter admin email" label="Email" onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }} />
-          <AdminInput type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter admin password" label="Password" onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }} />
-          {error && <p style={{ color: AD.red2Text, fontSize: 15, margin: '-8px 0 12px' }}>{error}</p>}
-          <button onClick={handleLogin} style={{
-            width: '100%', marginTop: 16,
-            background: loading
-              ? AD.redDark
-              : `linear-gradient(135deg, ${AD.red} 0%, ${AD.redDark} 100%)`,
-            border: 'none', borderRadius: 10, padding: '16px',
-            color: '#fff', fontSize: 15, fontWeight: 700,
-            fontFamily: AD.fontSans, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            transition: 'transform 0.2s, box-shadow 0.2s, background 0.2s',
-            transform: loading ? 'scale(0.98)' : 'scale(1)',
-            boxShadow: loading ? 'none' : '0 4px 14px rgba(204,0,0,0.35)',
-          }}>
-            {loading
-              ? <><i className="ph ph-circle-notch" style={{ fontSize: 16, animation: 'spin 0.8s linear infinite' }} /> Signing in...</>
-              : <><i className="ph ph-sign-in" style={{ fontSize: 16 }} /> Sign In</>
-            }
-          </button>
-          <p style={{ textAlign: 'center', marginTop: 12, marginBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            <button
-              onClick={() => window.open('/privacy', '_blank')}
-              style={{
-                background: 'none', border: 'none', padding: 0, margin: 0,
-                font: 'inherit', cursor: 'pointer',
-                color: '#888888', fontSize: 12,
-                textDecoration: 'none',
-              }}
-              onMouseEnter={e => e.target.style.textDecoration = 'underline'}
-              onMouseLeave={e => e.target.style.textDecoration = 'none'}
-            >
-              Privacy Policy
-            </button>
-            <span style={{ color: '#cccccc', fontSize: 12 }}>·</span>
-            <button
-              onClick={() => window.open('/contractor-terms', '_blank')}
-              style={{
-                background: 'none', border: 'none', padding: 0, margin: 0,
-                font: 'inherit', cursor: 'pointer',
-                color: '#888888', fontSize: 12,
-                textDecoration: 'none',
-              }}
-              onMouseEnter={e => e.target.style.textDecoration = 'underline'}
-              onMouseLeave={e => e.target.style.textDecoration = 'none'}
-            >
-              Terms of Service
-            </button>
-          </p>
-        </div>
-        <p style={{ margin: '16px 0 0', textAlign: 'center', color: AD.textSecondary, fontSize: 15 }}>Accent Roofing</p>
-      </div>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
-}
-
-export default function AdminPanel() {
-  const [authed, setAuthed]                       = useState(false);
-  // Boot rehydration (C/DL-3b Phase 4, D7). Same shape as App.jsx: lazy
-  // initialiser so a visitor with no stored token never sees a loading state.
-  const [booting, setBooting]                     = useState(() => !!getAdminToken());
+export default function AdminPanel({ onLogout }) {
   const [page, setPage]                           = useState('dashboard');
   const [pendingCount, setPendingCount]           = useState(0);
   const [flaggedUnresolved, setFlaggedUnresolved] = useState(0);
@@ -154,12 +65,14 @@ export default function AdminPanel() {
   const [teamFlagsOpenCount, setTeamFlagsOpenCount] = useState(0);
   const [teamNavRequest, setTeamNavRequest]       = useState(null); // { token, tab } — Inbox deep-link into Settings → Manage Team
 
-  const permState = useAdminPermissions(authed);
+  // `true` unconditionally: App.jsx only renders this component for an
+  // authenticated team member, so there is no unauthenticated state left for this
+  // hook to represent.
+  const permState = useAdminPermissions(true);
 
   useAdminFonts();
 
   useEffect(() => {
-    if (!authed) return;
     safeAsync(async () => {
       const token = getAdminToken();
       const r = await fetch(`${BACKEND_URL}/api/admin/messages`, {
@@ -179,10 +92,13 @@ export default function AdminPanel() {
       if (data.unread_count != null) setNotificationsUnread(data.unread_count);
     }, 'AdminPanel.fetchNotificationsUnread')();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authed]);
+  }, []);
 
-  function handleLogin() {
-    setAuthed(true);
+  // Primes the sidebar badge counts. Was called by the inline login and by this
+  // component's own boot rehydration, both of which moved to App.jsx; it now runs
+  // once on mount, which is the same moment for the same reason — the panel has
+  // just become visible to an authenticated team member.
+  function primeBadgeCounts() {
     const token = getAdminToken();
     const headers = { 'Authorization': `Bearer ${token}` };
     (async () => {
@@ -213,47 +129,30 @@ export default function AdminPanel() {
     })();
   }
 
-  // Validates the stored admin token once, on mount. A deactivated member's
-  // token fails here (verifyAnySession checks team_members.active) and lands on
-  // the login screen, which is the safe direction.
-  //
-  // handleLogin() is reused rather than duplicated so a rehydrated session and a
-  // fresh login prime the badge counts through exactly one code path.
-  useEffect(() => {
-    if (!booting) return;
-    let cancelled = false;
-    (async () => {
-      const session = await fetchSession(getAdminToken());
-      if (cancelled) return;
-      if (session?.role === 'team') handleLogin();
-      setBooting(false);
-    })();
-    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { primeBadgeCounts(); }, []);
 
-  // The panel renders OUTSIDE ThemeProvider (Phase 1, Ruling 5), so this spinner
-  // gets LoadingIndicator's neutral --rm-primary fallback rather than a
-  // contractor accent — which is the correct look for admin chrome.
-  if (booting) return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center',
-      justifyContent: 'center', background: AD.bgPage, fontFamily: AD.fontSans,
-    }}>
-      <LoadingIndicator size={32} label="Restoring your session…" />
-    </div>
-  );
-
-  if (!authed) return <AdminLogin onLogin={handleLogin} />;
+  // ── THE 401 SEAM ────────────────────────────────────────────────────────────
+  // Every page below takes `setLoggedIn` and calls it with `false` when a request
+  // comes back 401 — roughly ten sites, and they are EXPIRY HANDLERS, not logout
+  // controls. The prop name is kept so those ten call sites stay untouched; what
+  // changed is where it points. It used to flip this component's own `authed`
+  // state, which cleared nothing: the bearer token stayed in storage and stayed
+  // valid server-side. It now runs the shared logout, so an expired session
+  // actually ends.
+  //
+  // The argument is ignored deliberately — every existing caller passes `false`,
+  // and there is no meaningful "set logged in to true" from a child page.
+  const handleSessionExpired = () => { onLogout?.(); };
 
   const pages = {
-    dashboard:        <AdminDashboard       setLoggedIn={setAuthed} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} onFlaggedBannerClick={() => { setReferralReviewTab('flagged'); setPage('missing-referrals'); }} />,
-    campaigns:        <AdminCampaigns       setLoggedIn={setAuthed} />,
-    referrers:        <AdminReferrers       setLoggedIn={setAuthed} />,
-    payouts:          <AdminCashOuts        setLoggedIn={setAuthed} />,
-    retention:        <AdminEngagement      setLoggedIn={setAuthed} />,
+    dashboard:        <AdminDashboard       setLoggedIn={handleSessionExpired} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} onFlaggedBannerClick={() => { setReferralReviewTab('flagged'); setPage('missing-referrals'); }} />,
+    campaigns:        <AdminCampaigns       setLoggedIn={handleSessionExpired} />,
+    referrers:        <AdminReferrers       setLoggedIn={handleSessionExpired} />,
+    payouts:          <AdminCashOuts        setLoggedIn={handleSessionExpired} />,
+    retention:        <AdminEngagement      setLoggedIn={handleSessionExpired} />,
     'missing-referrals': <AdminReferralReview initialTab={referralReviewTab} />,
-    activity:         <AdminActivity        setLoggedIn={setAuthed} />,
+    activity:         <AdminActivity        setLoggedIn={handleSessionExpired} />,
   };
 
   function handleNavClick(id) {
@@ -264,7 +163,7 @@ export default function AdminPanel() {
 
   return (
     <AdminPermissionsContext.Provider value={permState}>
-      <AdminShell page={page} setPage={handleNavClick} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
+      <AdminShell page={page} setPage={handleNavClick} onLogout={onLogout} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
         {pages[page]}
       </AdminShell>
       <AdminInboxSidebar

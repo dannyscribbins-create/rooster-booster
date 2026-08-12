@@ -24,7 +24,7 @@ export const ADMIN_NAV = [
   { id: 'activity',         icon: 'ph-clock-clockwise',  label: 'Activity'         },
 ];
 
-export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount }) {
+export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onLogout }) {
   const { full_name, email, tier } = usePermissions();
   const initials    = getInitials(full_name, email);
   const displayName = full_name || email || 'Team Member';
@@ -77,19 +77,54 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
             {tierLabel && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{tierLabel}</div>}
           </div>
         </div>
+
+        {/* ── SIGN OUT (C/DL-3b Phase 5) ────────────────────────────────────
+            ⚠ THE ADMIN PANEL HAD NO SIGN-OUT CONTROL AT ALL. `logoutAdmin()`
+            shipped in Phase 4 — exported, tested, and deliberately without a
+            caller, because the surface to put it on did not exist yet. This is
+            that surface.
+
+            It stopped being a nicety when D7 took the admin TTL from 24 hours to
+            a 30-day sliding window with a 90-day cap: a team member on a shared
+            or borrowed machine had no way to end their own session, on the one
+            surface that carries cash-out approval. The referrer app — the
+            LOWER-privilege surface — could sign out; this one could not.
+
+            Placed under the identity block deliberately: sign-out belongs beside
+            "who am I", not in the nav, where it would sit one slip away from
+            Activity. */}
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            style={{
+              marginTop: 12, width: '100%',
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'transparent', border: 'none',
+              padding: '8px 0', borderRadius: 8, cursor: 'pointer',
+              font: 'inherit', fontSize: 12, fontWeight: 500,
+              color: 'rgba(255,255,255,0.45)',
+              transition: 'color 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = AD.textPrimary; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; }}
+          >
+            <i className="ph ph-sign-out" style={{ fontSize: 16, flexShrink: 0 }} />
+            <span>Sign out</span>
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-export function AdminShell({ children, page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard, onInboxOpen, inboxUnreadCount = 0, settingsTeamNavRequest, settingsTeamOpenFlagCount = 0 }) {
+export function AdminShell({ children, page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onLogout, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard, onInboxOpen, inboxUnreadCount = 0, settingsTeamNavRequest, settingsTeamOpenFlagCount = 0 }) {
   const cachedAgoText = dashboardCachedAt
     ? `Cached ${Math.round((Date.now() - new Date(dashboardCachedAt).getTime()) / 60000)}m ago`
     : null;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
-      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved} pendingReferralCount={pendingReferralCount} />
+      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved} pendingReferralCount={pendingReferralCount} onLogout={onLogout} />
       <div style={{ marginLeft: 230, flex: 1, position: 'relative', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)' }}>
 
         {/* ── Persistent top bar (floats over content) ── */}

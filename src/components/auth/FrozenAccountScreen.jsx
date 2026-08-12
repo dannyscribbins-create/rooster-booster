@@ -1,6 +1,14 @@
-import { R } from '../../constants/theme';
 import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
 import useEntrance from '../../hooks/useEntrance';
+
+// ⚠ REPAINTED ONTO --rm-* IN PHASE 5, and this is a SCOPE ADDITION to §7.1's
+// two-file Group A list. The reason is that the Phase 5 visual check asks for
+// this screen to be looked at in BOTH light and dark: on the R tokens it could
+// not respond to mode at all, so "look at it in dark mode" had no answer.
+//
+// The branding PROP is untouched and still wins — see the note below. What moved
+// onto variables is the CHROME (canvas, card, text), never the contractor colour
+// carried in the 403 body.
 
 // ─── Frozen Account Screen ────────────────────────────────────────────────────
 //
@@ -43,22 +51,23 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
 
   const companyName = branding?.companyName || 'RoofMiles';
   const logoSrc     = branding?.logoUrl || roofMilesLogo;
-  // The accent rule at the top of the card. Falls back to the platform navy
-  // rather than to nothing, so the card is never edgeless.
-  const accentColor = branding?.primaryColor || R.navy;
+  // The accent rule at the top of the card. Null when the payload carried no
+  // colour, and the render then falls through to the theme's own --rm-primary —
+  // so the card is never edgeless, and never borrows another contractor's colour.
+  const accentColor = branding?.primaryColor || null;
 
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
-      background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
-      padding: '32px 24px', fontFamily: R.fontBody,
+      backgroundColor: 'var(--rm-bg, #FFFFFF)',
+      padding: '32px 24px', fontFamily: 'Roboto, system-ui, sans-serif',
     }}>
       <div style={{
         width: '100%', maxWidth: 380,
-        background: R.bgCard, borderRadius: 20,
+        backgroundColor: 'var(--rm-surface, #FFFFFF)', borderRadius: 20,
         overflow: 'hidden',
-        boxShadow: R.shadowLg,
+        boxShadow: '0 12px 32px rgba(0,0,0,0.14)',
         opacity: cardVisible ? 1 : 0,
         transform: cardVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
@@ -66,7 +75,7 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
         {/* The contractor's own colour. A LONGHAND, never the background
             shorthand — jsdom does not expand shorthands, so the test that proves
             the payload's palette reaches the paint could not read it otherwise. */}
-        <div style={{ height: 4, backgroundColor: accentColor }} />
+        <div style={{ height: 4, backgroundColor: accentColor || 'var(--rm-primary, #F26A1B)' }} />
 
         <div style={{ padding: '32px 28px', textAlign: 'center' }}>
           <img
@@ -77,19 +86,21 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
 
           <div style={{
             fontSize: 13, fontWeight: 600, letterSpacing: '0.04em',
-            color: R.textSecondary, fontFamily: R.fontSans, marginBottom: 20,
+            color: 'var(--rm-text, #1C2D4D)', opacity: 0.72,
+            fontFamily: 'Montserrat, system-ui, sans-serif', marginBottom: 20,
           }}>
             {companyName}
           </div>
 
           <h2 style={{
             margin: '0 0 10px', fontSize: 22, fontWeight: 700,
-            fontFamily: R.fontSans, color: R.navy,
+            fontFamily: 'Montserrat, system-ui, sans-serif',
+            color: 'var(--rm-text, #1C2D4D)',
           }}>
             Your account is inactive
           </h2>
 
-          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: R.textSecondary }}>
+          <p style={{ margin: 0, fontSize: 15, lineHeight: 1.55, color: 'var(--rm-text, #1C2D4D)', opacity: 0.75 }}>
             Your access has been turned off. Please contact your administrator to
             have it restored.
           </p>
@@ -101,7 +112,7 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
                 background: 'none', border: 'none', padding: '20px 0 0',
                 width: '100%', textAlign: 'center',
                 font: 'inherit', cursor: 'pointer',
-                color: R.navy, fontWeight: 600, fontSize: 14,
+                color: 'var(--rm-text, #1C2D4D)', opacity: 0.8, fontWeight: 600, fontSize: 14,
               }}
             >
               ← Back to sign in

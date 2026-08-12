@@ -157,9 +157,17 @@ describe('C/DL-3b Phase 3 — LoginScreen reaches the frozen view', () => {
   //
   // BY ROLE, NOT BY TEXT: the screen's own subheading reads "Sign in to view your
   // referral rewards", so getByText(/sign in/i) matches two elements and throws.
+  //
+  // ⚠ UPDATED IN PHASE 5, DELIBERATELY AND FOR A BEHAVIOUR CHANGE, not to make a
+  // red test go green. The field is labelled "Password" now (D12 retired the
+  // PIN-era copy) and the success callback is `onAuthenticated` rather than
+  // `onLogin`, because the unified door hands back a whole session descriptor for
+  // routing instead of four referrer-shaped arguments. The ASSERTIONS below are
+  // untouched — what this screen must do on a 403 is exactly what it had to do
+  // before.
   async function signIn() {
     fireEvent.change(screen.getByPlaceholderText('Email address'), { target: { value: EMAIL } });
-    fireEvent.change(screen.getByPlaceholderText('PIN'), { target: { value: PASSWORD } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: PASSWORD } });
     fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
   }
 
@@ -167,7 +175,7 @@ describe('C/DL-3b Phase 3 — LoginScreen reaches the frozen view', () => {
     // TODAY: LoginScreen does `if (data.error) setError(data.error)`, so this
     // renders the literal string "account_frozen" in the red error box.
     installFetch(jsonResponse(FROZEN_403, { ok: false, status: 403 }));
-    render(<LoginScreen onLogin={() => {}} />);
+    render(<LoginScreen onAuthenticated={() => {}} />);
     await signIn();
 
     await waitFor(() => expect(screen.getByText(/inactive/i)).toBeTruthy());
@@ -176,30 +184,30 @@ describe('C/DL-3b Phase 3 — LoginScreen reaches the frozen view', () => {
     // The raw error code must never reach a human, and the form must be gone
     // rather than merely covered.
     expect(screen.queryByText('account_frozen')).toBeNull();
-    expect(screen.queryByPlaceholderText('PIN')).toBeNull();
+    expect(screen.queryByPlaceholderText('Password')).toBeNull();
   });
 
   it('[RED] a frozen response never signs anyone in', async () => {
     // The client half of "MINT NO SESSION": no onLogin call, so no token is
     // stored and no app state flips to logged-in.
-    const onLogin = vi.fn();
+    const onAuthenticated = vi.fn();
     installFetch(jsonResponse(FROZEN_403, { ok: false, status: 403 }));
-    render(<LoginScreen onLogin={onLogin} />);
+    render(<LoginScreen onAuthenticated={onAuthenticated} />);
     await signIn();
 
     await waitFor(() => expect(screen.getByText(/inactive/i)).toBeTruthy());
-    expect(onLogin).not.toHaveBeenCalled();
+    expect(onAuthenticated).not.toHaveBeenCalled();
   });
 
   it('[RED] an ordinary 401 still shows the inline error and keeps the form', async () => {
     // The regression guard. The frozen branch must not swallow every failure —
     // a wrong password is still a wrong password, on the same screen.
     installFetch(jsonResponse(GENERIC_401, { ok: false, status: 401 }));
-    render(<LoginScreen onLogin={() => {}} />);
+    render(<LoginScreen onAuthenticated={() => {}} />);
     await signIn();
 
     await waitFor(() => expect(screen.getByText(GENERIC_401.error)).toBeTruthy());
-    expect(screen.getByPlaceholderText('PIN')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Password')).toBeTruthy();
     expect(screen.queryByText(/inactive/i)).toBeNull();
   });
 });

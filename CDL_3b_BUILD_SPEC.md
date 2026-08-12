@@ -335,6 +335,12 @@ Sliding expiry itself needs no new column; it bumps `expires_at`.
 - Password policy: 8 characters enforced on set, reset, and signup; a 14-character alphanumeric round-trips through all three.
 - No Accent literal remains in either rewritten file (sweep assertion, not a spot check).
 
+> **⚠ PHASE 5 CARRIED A SMALL SERVER CHANGE, WHICH THIS SECTION DID NOT SCOPE.** Disclosed and approved before building, recorded here so a future reader is not surprised to find server edits in a phase labelled *routing, choice screen, login UI*.
+>
+> Routing by identity needs the identity fact that decides between the admin panel and the rep surface, and **`is_field_rep` was not on the wire**: `POST /api/login`'s team branch and `GET /api/session`'s team branch both omitted it, and `useAdminPermissions.js` fetched it from `/api/admin/me` and dropped it before it reached React. Four small edits — two SELECT lists (`gatherLoginCandidates`, `verifyAnySession`) and two payloads. **No migration**; `is_field_rep` is an existing column from C/DL-3a.
+>
+> **The decisive property is agreement, not presence.** Routing happens at two moments from two endpoints — fresh login and boot rehydration — and if they ever disagreed for the same member, the symptom would be a person landing on one surface when they sign in and a different one when they refresh, with nothing failing anywhere. `server/test/repRouting.test.js` compares the two responses rather than checking each in isolation, and its agreement assertion is deliberately ordered **first** so it is not shadowed by the value checks.
+
 ### 7.3 STOP — and the split decision
 
 Diff review → commit → deploy → **verify in production**. This is where 3b can close cleanly. Decide here whether Phase 6 runs now or becomes its own session.
@@ -429,6 +435,28 @@ Diff review → commit → deploy → visual verification on a real contractor s
   - **Options for the follow-up:** property-based or generated inputs · a key-coverage assertion requiring every field either copy can emit to appear in the table · a source-shape comparison alongside the behavioural one.
   - Not urgent, genuinely important, and it should not be discovered later by a contractor seeing another contractor's data.
 
+### Carried to 3c — from Phase 5
+
+- **🔴 3c REQUIREMENT — AN OWNER-REP OR ADMIN-REP HAS NO ROUTE TO THE REP SURFACE.** *(Phase 5 routing ruling, 2026-08-12. A requirement, not a footnote.)* Routing sends a team member to the rep surface only when `is_field_rep` **and** `tier = 'general'`. An owner or admin who also carries the rep flag therefore lands on the admin panel and **cannot reach the rep surface at all**.
+  - **That is the correct default** — their admin work is the higher-consequence half, and the rejected alternative ("`is_field_rep` decides") produces a **locked-out owner**: no cash-out approval, no team management, recoverable only by a direct database edit. Same shape as the one-way-door deactivation defect found in Phase 3.
+  - **But it leaves multi-surface team members unresolved.** 3c owns the **surface switcher**. The routing rule in `src/App.jsx` (`surfaceFor()`) is written so the switcher **relaxes** it rather than reverses it: an owner-rep gains a second destination instead of changing their first one.
+  - Fenced by `src/components/auth/roleRouting.test.jsx`, which pins all four `tier × is_field_rep` combinations and guard-proofs the two rejected rules.
+- **RULED — the losing token key survives rehydration, and that is deliberate.** On rehydration the losing token key is left in place and its server row remains valid until natural expiry; `clear*Token()` drops the local copy only. Ruled deliberately — adding a server-side kill to the login path trades reliability for cleanliness: a slow or failed request there either blocks a login or is swallowed silently. The device cannot use the token, it expires on its own, and it is the same posture as any abandoned session. Revisit only if session-count hygiene becomes a real concern.
+- **3c — `useAdminPermissions.js` still drops `is_attributable` and `rep_revenue_visibility`.** Phase 5 surfaced **`is_field_rep` only**, deliberately scoped: the other two belong to 3c's CD-7 revenue gate, and a payload nothing reads is API surface acquired by accident. `server/test/repRouting.test.js` asserts both are **absent** from the two auth payloads, so widening them is a deliberate act rather than a one-word edit. CDL_3a §8's note about the context dropping all three **stays open**.
+### 3c — THE THEME-ENGINE PASS (three gaps, ONE design pass)
+
+> **⚠ SOLVE THESE TOGETHER, NOT AS THREE PATCHES.** *(Ruled 2026-08-12 after the Phase 5 visual check.)* All three are the same underlying shape — **the engine derives tokens for text-on-surface and nothing else** — and all three surfaced within an hour of the first surface actually painting from `--rm-*`. Patching them one at a time produces three unrelated special cases in three files; taken together they are one question about what a derived theme owes a rendered surface.
+
+- **GAP 1 — THERE IS NO `on-primary` RENDER TOKEN.** *(Found building the login screen.)* `themeTokens` guarantees `primary` is readable **as text on `surface`**; it says nothing about text **on a primary fill**, and those are different questions. Measured on the platform default `#F26A1B`: **white-on-primary is 3.06:1**, below the AA floor for a button label, in **both** modes. `LoginScreen.jsx` and `ResetPinScreen.jsx` pick the readable foreground locally (`contrastRatio` against white vs `#111111`, landing at 6.16:1). A correct local fix for a real gap, **not** a private theme — the token belongs in `themeTokens` (both copies, plus the drift guard), and 3c's rep surface will be full of filled controls.
+- **GAP 2 — LIGHT MODE HAS NO CONTRAST FLOOR ON `primary` AT ALL.** `BRAND_ON_DARK_MIN_CONTRAST` (5.25) governs **dark mode only**; `deriveLightTokens` passes the contractor's `primaryColor` through unchanged, by design, so the colour they picked is the colour they get. Measured: the platform default's **primary-on-surface in light is 3.06:1** — primary-coloured **text** or a ghost button is illegible on a default palette — while the same token reads 5.59:1 in dark. Phase 5's screens work around it by reserving `primary` for **fills and accents** and drawing all text from `--rm-text`. A light-mode floor is a deliberate decision about overriding a stored contractor value — the same tradeoff `deriveLightTokens`' header already documents for `bg`.
+- **GAP 3 — DARK-MODE LOGO COLLISION.** *(Confirmed visually in dark on login, choice, frozen AND the rep placeholder.)* The RoofMiles mark's "Roof" is dark navy; the derived dark surface is `#121B31` navy. Same family, so it **disappears** — only "Miles" and the icon survive.
+  - **⚠ THE SCALING PROBLEM IS THE POINT, not the platform logo.** This is the **white-label login**: every contractor's `logo_url` renders here. Shipping a dark-variant RoofMiles logo file fixes exactly one tenant and leaves every contractor whose mark contains dark elements broken, **with no mechanism to supply a dark variant**.
+  - **Three options for 3c to rule on:**
+    - **(A)** add `contractor_settings.logo_url_dark`, falling back to `logo_url` — honest, but a column **plus** admin UI **plus** an onboarding step most contractors will not understand.
+    - **(B) RECOMMENDED — give the logo area a light plate in dark mode**, so every logo renders on the surface it was designed for. One rule, every contractor, no new data, no onboarding step.
+    - **(C)** accept it for the neutral RoofMiles palette only — cheapest, but it leaves **the platform's own logo** as the broken one, on the screen a rep opens most.
+- **RELATED, SAME PASS — the body background is a hardcoded light grey.** `useReferrerFonts()` in `App.jsx` sets `document.body.style.background = R.bgPage`, so in dark mode the body behind the app is `rgb(238,242,247)`. Latent today (dark is unreachable until 3c's toggle), visible on mobile overscroll once it ships. **Not a one-line fix:** `body` sits OUTSIDE the provider's wrapper — which is why it was hardcoded — so `var(--rm-bg)` would not resolve there. It needs the provider to set it imperatively, which is a Ruling-5-adjacent decision and belongs in this same pass.
+
 ### Carried to 3b-2 (2FA)
 
 - Mechanism: **emailed 6-digit code**, zero new dependencies. Both existing code tables (`email_verifications`, `verification_codes`) FK to `users(id)` and **cannot hold a code for a team member** — that is the one real blocker, and it is small. Copy `user_preferences`' dual-nullable subject shape with its exactly-one CHECK.
@@ -470,6 +498,14 @@ The admin surfaces carry the same hardcoded Accent identity the referrer surface
 - **Rep flags into React context.** `useAdminPermissions.js:40` builds a five-key object from the server response and silently discards `is_field_rep`, `is_attributable`, `rep_revenue_visibility` (and `title_id`). **The endpoint already selects and returns all three** — no server change needed. Six consumers, all destructuring named subsets, so the change is additive and low-risk; two test fixtures (`LockedSection.test.jsx:259`, `AdminTeamSettings.test.jsx:117-123`) assert shape parity and must be widened.
 - **Revenue: own revenue only** (3a D4, binding).
 - **Rep-facing surfaces** replace 3b's post-login placeholder.
+
+### Folded into LANDING PAGE AMBIENT BRANDING — a scope expansion, not a new item
+
+- **🎨 THE AMBIENT GRADIENT NOW COVERS THE REACT AUTH SURFACES TOO.** *(Ruled 2026-08-12 from the Phase 5 visual check.)* That build already specifies the slow white↔primary gradient — **CSS not JS, a legibility floor, `prefers-reduced-motion` respected** — and was scoped to the **server-rendered landing page only**. It now also covers **login, choice, frozen and the rep placeholder**.
+  - **Why one build rather than two.** These are the same effect on two surfaces; implemented separately they drift, and this repo has a standing example of exactly that (the branding resolver, which drifted once with nothing failing). One implementation, both surfaces.
+  - **The login screen is arguably the BETTER home for it than the landing page.** A homeowner sees the landing page **once**; a rep opens the login **repeatedly**. The effect earns more there than on the surface it was originally scoped to.
+  - **⚠ NOTE THE NAMESPACE CROSSING.** The landing page paints from `--brand-*` (four raw palette colours, server-rendered, pre-auth, **light-only**); the auth surfaces paint from `--rm-*` (five **derived, mode-aware** tokens in React). D11 keeps those namespaces separate deliberately. One gradient across both therefore has to be written against **each surface's own token set**, not by unifying them — unifying is a different decision that D11 already declined.
+  - **CARD SIZING IS RULED AND UNCHANGED:** 400–450px is standard for auth cards and the current cards are in range. **Wider cards read as unfinished, not premium.** The desktop emptiness is a **background** problem, not a card-size problem — recorded so the next reader does not "fix" it by stretching the card.
 
 ### Carried further out
 

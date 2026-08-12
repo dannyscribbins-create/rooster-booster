@@ -199,7 +199,11 @@ async function verifyAnySession(req, res) {
       // a deactivated member must not be restored — both are 401.
       if (!s.team_member_id) return deny();
       const { rows: members } = await pool.query(
-        `SELECT id, tier, permissions, active FROM team_members WHERE id = $1`,
+        // is_field_rep is here for ROUTING on boot rehydration (C/DL-3b Phase 5),
+        // never for authorisation. It must match what POST /api/login reported for
+        // the same member, or a page refresh lands them on a different surface
+        // than signing in did.
+        `SELECT id, tier, permissions, active, is_field_rep FROM team_members WHERE id = $1`,
         [s.team_member_id]
       );
       if (!members.length || !members[0].active) return deny();

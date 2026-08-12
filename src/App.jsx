@@ -15,8 +15,60 @@ import SuperAdminLoginScreen from './components/superAdmin/SuperAdminLoginScreen
 import SuperAdminShell from './components/superAdmin/SuperAdminShell';
 import AdminSetPasswordScreen from './components/admin/AdminSetPasswordScreen';
 import ThemeProvider from './components/shared/ThemeProvider';
-import { fetchSession, getReferrerToken, logoutReferrer, setReferrerToken } from './utils/authStorage';
+import RepPlaceholder from './components/rep/RepPlaceholder';
+import {
+  fetchSession,
+  getReferrerToken, setReferrerToken, clearReferrerToken, logoutReferrer,
+  getAdminToken, setAdminToken, clearAdminToken, logoutAdmin,
+} from './utils/authStorage';
 import LoadingIndicator from './components/shared/LoadingIndicator';
+
+// ─── ROLE ROUTING (C/DL-3b Phase 5, CD-4) ─────────────────────────────────────
+//
+// Which surface an authenticated identity receives. Extracted as a pure function
+// of the session descriptor so the rule is one readable line rather than a
+// condition buried in the middle of the if-chain — and so both entry points into
+// routing (fresh login and boot rehydration) cannot possibly apply it differently.
+//
+//     tier      is_field_rep   →  surface
+//     ───────   ────────────      ─────────────
+//     general   true           →  rep        (3c builds the real thing)
+//     general   false          →  admin      (office staff)
+//     admin     true           →  admin
+//     owner     true           →  admin
+//
+// ⚠ ONLY A GENERAL-TIER FIELD REP IS ROUTED AWAY FROM THE PANEL, and the
+// narrowness is deliberate. "is_field_rep decides" would take the admin panel
+// away from an Owner who happens to carry a rep flag — no cash-out approval, no
+// team management, no route back until 3c ships a surface switcher, recoverable
+// only by a direct database edit. That is the same shape as the one-way-door
+// deactivation defect found in Phase 3.
+//
+// "tier decides" fails the other way: it would route non-rep general-tier office
+// staff onto a rep surface built for someone else.
+//
+// THE RULE IS WRITTEN TO BE RELAXED, NOT REVERSED, when 3c's switcher lands: an
+// owner-rep gains a second destination rather than changing their first one.
+function surfaceFor(session) {
+  if (!session) return 'login';
+  if (session.role === 'referrer') return 'referrer';
+  if (session.role !== 'team') return 'login';
+  return (session.is_field_rep && session.tier === 'general') ? 'rep' : 'admin';
+}
+
+// The boot gate's spinner. Hoisted out of the chain because Phase 5 moved the
+// gate above the admin branch, where it needs its own provider instance —
+// inlining the same markup twice is how two copies drift.
+function BootSpinner() {
+  return (
+    <div style={{
+      minHeight: '100vh', display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+    }}>
+      <LoadingIndicator size={32} label="Signing you in…" />
+    </div>
+  );
+}
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
 function useReferrerFonts() {
@@ -66,7 +118,15 @@ export default function App() {
   // stored token must never see a loading state — there is nothing to rehydrate,
   // so booting starts false and the login screen paints on the first frame. Only
   // someone who might legitimately be logged in pays the round-trip.
-  const [booting, setBooting] = useState(() => !!getReferrerToken());
+  //
+  // EITHER token now, because Phase 5 routes team members from here too.
+  const [booting, setBooting] = useState(() => !!(getAdminToken() || getReferrerToken()));
+
+  // ── THE AUTHENTICATED IDENTITY (C/DL-3b Phase 5) ────────────────────────────
+  // { role, tier?, is_field_rep? } — the descriptor surfaceFor() routes on. Null
+  // until something authenticates. This replaces `?admin=true` as the input to
+  // routing: the query string is no longer consulted anywhere in this file.
+  const [session, setSession] = useState(null);
 
   const [signupSlug, setSignupSlug]       = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -96,7 +156,12 @@ export default function App() {
   const [pendingUserId, setPendingUserId] = useState(null);
   const [pendingEmail, setPendingEmail]   = useState(null);
 
-  const isAdmin = window.location.search.includes("admin=true");
+  // ⚠ `?admin=true` IS GONE AS A ROUTING INPUT (C/DL-3b Phase 5). It used to
+  // return <AdminPanel /> unconditionally, before any identity was known — the
+  // panel then asked for a password, so it never escalated privilege, but the URL
+  // rather than the person chose the surface, and typing it announced the panel's
+  // existence to anyone curious. Routing is by identity now; the parameter is
+  // simply not read.
   const resetToken = new URLSearchParams(window.location.search).get('reset');
   // ?admin_invite= is a separate param from ?reset= — distinct keys, no ambiguity.
   // Checked before isAdmin so an invitee with no session always reaches the set-password screen.
@@ -129,20 +194,39 @@ export default function App() {
   // revoked, malformed, server unreachable — collapses to the same outcome:
   // stop booting, stay logged out, show the login screen. fetchSession() never
   // throws, so there is no partial-state branch to get wrong.
+  // ⚠ THE TEAM TOKEN IS TRIED FIRST, AND THE ORDER IS A DECISION, NOT AN
+  // ACCIDENT. Two token keys exist (`rb_admin_token`, `rb_token`) because 29 files
+  // read the admin one directly, so unifying them was a blast radius this phase
+  // did not need. Going forward at most one is live — the unified door writes the
+  // role's key and drops the other — but a device that used both surfaces BEFORE
+  // Phase 5 can still hold two stale-but-valid tokens.
+  //
+  // On that ambiguity, prefer the team session: a team member holding an old
+  // homeowner token almost certainly wants their team surface, whereas the reverse
+  // requires them to have been a team member in the first place. Neither choice is
+  // an escalation — both tokens are credentials the person legitimately holds, and
+  // the only question is which surface to open on.
   useEffect(() => {
     if (!booting) return;
     let cancelled = false;
     (async () => {
-      const session = await fetchSession(getReferrerToken());
+      const teamToken = getAdminToken();
+      const restored = teamToken ? await fetchSession(teamToken) : null;
       if (cancelled) return;
-      // A team-member token is a VALID session that this surface cannot render
-      // yet — Phase 5 owns where a rep lands (spec §7.1). It is deliberately not
-      // cleared: destroying a working credential to tidy up a screen we have not
-      // built would be the wrong trade.
-      if (session?.role === 'referrer') {
-        setUserName(session.name || '');
-        setUserEmail(session.email || '');
+
+      if (restored?.role === 'team') {
+        setSession(restored);
+        setBooting(false);
+        return;
+      }
+
+      const referrerSession = await fetchSession(getReferrerToken());
+      if (cancelled) return;
+      if (referrerSession?.role === 'referrer') {
+        setUserName(referrerSession.name || '');
+        setUserEmail(referrerSession.email || '');
         setLoggedIn(true);
+        setSession(referrerSession);
       }
       setBooting(false);
     })();
@@ -203,15 +287,46 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, announcement, announcementSettings]);
 
-  function handleLogin(name, email, token, reviewCard, announcementData, settingsData) {
-    setUserName(name);
-    setUserEmail(email);
-    setReferrerToken(token);
-    setShowReviewCard(reviewCard ?? true);
-    setAnnouncement(announcementData ?? null);
-    setAnnouncementSettings(settingsData ?? null);
+  // ── THE ONE PLACE AUTHENTICATION LANDS (C/DL-3b Phase 5) ────────────────────
+  // Called by the unified door with whatever POST /api/login or
+  // POST /api/login/choice returned. Both paths arrive here, so a referrer, a
+  // field rep and an owner are stored and routed by ONE piece of code.
+  //
+  // THE TOKEN IS WRITTEN TO THE KEY THAT MATCHES THE ROLE, and the other key is
+  // dropped. Two keys still exist because 29 files read `rb_admin_token`
+  // directly; what this does is guarantee that from here on at most ONE of them
+  // is live, so the boot-order tie-break above is a legacy concern only.
+  function handleAuthenticated(data) {
+    if (data.role === 'team') {
+      setAdminToken(data.token);
+      clearReferrerToken();
+      setSession({ role: 'team', tier: data.tier, is_field_rep: data.is_field_rep });
+      return;
+    }
+
+    setReferrerToken(data.token);
+    clearAdminToken();
+    setUserName(data.fullName);
+    setUserEmail(data.email);
+    setShowReviewCard(data.showReviewCard ?? true);
+    setAnnouncement(data.announcement ?? null);
+    setAnnouncementSettings(data.announcementSettings ?? null);
     setAnnouncementShown(false);
     setLoggedIn(true);
+    setSession({ role: 'referrer' });
+  }
+
+  // Clears local state first so the UI responds immediately, then deletes the
+  // SERVER row (D6). Used by every surface, so no role can acquire a
+  // client-only logout by accident — the defect D6 exists to close.
+  async function handleLogout() {
+    const wasTeam = session?.role === 'team';
+    setSession(null);
+    setLoggedIn(false);
+    setPipeline([]);
+    setUserName('');
+    setProfilePhoto(null);
+    await (wasTeam ? logoutAdmin() : logoutReferrer());
   }
 
   function handleDismissReview() {
@@ -257,7 +372,27 @@ export default function App() {
   if (window.location.pathname === '/rm-control/login') return <SuperAdminLoginScreen />;
   if (window.location.pathname === '/rm-control') return <SuperAdminShell />;
   if (adminInviteToken) return <AdminSetPasswordScreen token={adminInviteToken} />;
-  if (isAdmin) return <AdminPanel />;
+
+  // ── THE ADMIN BRANCH MUST STAY OUTSIDE THE PROVIDER (Phase 1, Ruling 5) ─────
+  // It moved from "before anything is known" to "after the identity is known",
+  // which is the whole point of Phase 5 — but its POSITION relative to
+  // ThemeProvider is unchanged and load-bearing. The panel uses AD tokens on a
+  // dark palette, and LockedSection's permission scrim falls back to #012854 /
+  // #fbbf24 on the assumption that NOTHING mounts --rm-* over it. Wrap the panel
+  // and that navy veil over blurred, permission-gated content turns white in
+  // light mode.
+  //
+  // The boot gate has to sit above this, because until rehydration finishes there
+  // is no identity to route on — and rendering the panel first and retracting it
+  // is the "flash of the wrong surface" the gate exists to prevent. The spinner
+  // is therefore themed by its own provider instance here, matching the one
+  // inside renderThemedRoute.
+  if (booting) return (
+    <ThemeProvider>
+      <BootSpinner />
+    </ThemeProvider>
+  );
+  if (surfaceFor(session) === 'admin') return <AdminPanel onLogout={handleLogout} />;
 
   // ── EVERYTHING BELOW RENDERS INSIDE THE PROVIDER ────────────────────────────
   // The login screen and the whole referrer/rep tree.
@@ -275,26 +410,17 @@ export default function App() {
   return <ThemeProvider>{themedRoute}</ThemeProvider>;
 
   function renderThemedRoute() {
-    // THE BOOT GATE SITS ABOVE EVERY AUTHENTICATED BRANCH, which is what makes
-    // "no flash of authenticated content" structural rather than a timing
-    // accident: while the token is being validated neither the login screen nor
-    // the app can render, so neither can appear and then be replaced.
+    // THE BOOT GATE MOVED UP AND OUT in Phase 5 — it now sits above the admin
+    // branch, because that branch also needs an identity before it can be routed
+    // to. What it guarantees is unchanged and still structural: while the token
+    // is being validated NO surface can render, so none can appear and then be
+    // replaced. The spinner is still inside a provider, so it is still
+    // contractor-themed (LoadingIndicator's first production consumer, §6.1).
     //
-    // It sits BELOW the provider, so the spinner is already contractor-themed —
-    // this is LoadingIndicator's first production consumer (spec §6.1).
-    //
-    // resetToken and the signup/verify flow are checked AFTER this, and that is
+    // resetToken and the signup/verify flow are checked AFTER it, and that is
     // correct: those screens are reached by a link, and someone arriving on a
     // password-reset link should not have that screen yanked away a moment later
     // because a stale token happened to still validate.
-    if (booting) return (
-      <div style={{
-        minHeight: '100vh', display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <LoadingIndicator size={32} label="Signing you in…" />
-      </div>
-    );
     if (resetToken) return <ResetPinScreen token={resetToken} />;
     if (showVerify) return (
       <EmailVerifyScreen
@@ -349,7 +475,11 @@ export default function App() {
         }}
       />
     );
-    if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
+    // THE REP SURFACE IS INSIDE THE PROVIDER, unlike the admin panel — it is a
+    // white-labeled rep-facing screen that paints from --rm-*, not admin chrome.
+    if (surfaceFor(session) === 'rep') return <RepPlaceholder onLogout={handleLogout} />;
+
+    if (!loggedIn) return <LoginScreen onAuthenticated={handleAuthenticated} />;
 
     return (
       <ReferrerApp
@@ -362,14 +492,9 @@ export default function App() {
         showReviewCard={showReviewCard} onDismissReview={handleDismissReview}
         announcement={announcement} announcementSettings={announcementSettings}
         showAnnouncement={showAnnouncement} onDismissAnnouncement={handleDismissAnnouncement}
-        // Local state clears first so the UI responds immediately; logoutReferrer()
-        // then deletes the SERVER row (D6) and clears the stored token. Before
-        // Phase 4 this was a bare sessionStorage.removeItem and the bearer token
-        // stayed valid server-side for its full lifetime after every logout.
-        onLogout={async () => {
-          setLoggedIn(false); setPipeline([]); setUserName(''); setProfilePhoto(null);
-          await logoutReferrer();
-        }}
+        // One shared handler across all three surfaces now (Phase 5), so no role
+        // can acquire a client-only logout by accident — the defect D6 closed.
+        onLogout={handleLogout}
         onNameUpdate={setUserName}
       />
     );

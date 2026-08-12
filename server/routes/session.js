@@ -60,6 +60,13 @@ router.get('/api/session', async (req, res) => {
         role: 'team',
         contractorId: session.contractorId,
         tier: session.member.tier,
+        // ⚠ MUST AGREE WITH POST /api/login's team payload for the same member
+        // (C/DL-3b Phase 5). Routing happens at two moments — fresh login and boot
+        // rehydration — and if these two sources ever disagreed the symptom would
+        // be a person landing on one surface when they sign in and another when
+        // they refresh, with nothing failing. server/test/repRouting.test.js pins
+        // the agreement rather than each value.
+        is_field_rep: session.member.is_field_rep,
         permissions: session.member.permissions || {},
       });
     }

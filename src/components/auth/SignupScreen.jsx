@@ -53,8 +53,14 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
     }
     if (!password) {
       errors.password = 'Password is required.';
-    } else if (password.length < 6) {
-      errors.password = 'Password must be at least 6 characters.';
+    } else if (password.length < 8) {
+      // D12 — the unified 8-character policy, both sides. Signup enforced 6 here
+      // while the SERVER already required 8 (referrer.js POST /api/signup), so a
+      // 6- or 7-character password passed the client check and was then rejected
+      // by the round trip. Raising it breaks nobody: existing shorter credentials
+      // still authenticate, because bcrypt does not care what was hashed — this
+      // binds new signups and resets only.
+      errors.password = 'Password must be at least 8 characters.';
     }
     if (!confirmPassword) {
       errors.confirmPassword = 'Please confirm your password.';
