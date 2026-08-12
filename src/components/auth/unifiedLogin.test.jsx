@@ -180,14 +180,39 @@ describe('C/DL-3b Phase 5 — the unified login door', () => {
     expect(document.body.textContent).not.toContain('account_frozen');
   });
 
-  it('[RED] carries a quiet team-member affordance (CD-4)', async () => {
+  it('[RED] the copy names NO role — one door, three populations', async () => {
+    // ⚠ THIS REPLACES AN ASSERTION THAT THE OPPOSITE WAS TRUE. Phase 5 first
+    // shipped CD-4's "Team member login" affordance and this test required it.
+    // It was removed by ruling: the door is permanently shared by homeowners,
+    // field reps AND office staff — the Capacitor rep app routes through it too —
+    // so a two-way toggle was presenting a two-way choice to a three-way audience,
+    // in a place where no choice exists. It also had nothing to do: 2B unified the
+    // endpoint, so the server reads the credential and decides.
+    //
+    // Asserted as an ABSENCE because that is the failure mode — someone reading
+    // CD-4 and "restoring" the affordance would not break anything visible.
     installFetch({ login: async () => ok(SINGLE_MATCH_RESPONSE), choice: async () => ok({}) });
     render(<LoginScreen onAuthenticated={() => {}} />);
 
-    // Client-facing BY DEFAULT: the homeowner framing is what an unknown visitor
-    // sees, and the team route is present but quiet.
-    expect(screen.getByText(/referral rewards/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /team member/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /team member/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /homeowner login/i })).toBeNull();
+    // The old homeowner-only framing is gone too — it excluded two of the three.
+    expect(document.body.textContent).not.toMatch(/referral rewards/i);
+  });
+
+  it('[RED] greets with the contractor name, and labels the homeowner line', async () => {
+    installFetch({ login: async () => ok(SINGLE_MATCH_RESPONSE), choice: async () => ok({}) });
+    render(<LoginScreen onAuthenticated={() => {}} />);
+
+    // Neutral RoofMiles is what an unresolved chain answers (source 5), and on a
+    // true first visit that is CORRECT — the platform's own name on the platform's
+    // own door, not a leaked default.
+    expect(screen.getByText(/^Sign in to RoofMiles$/)).toBeTruthy();
+
+    // The one deliberate asymmetry: the only population that can be genuinely
+    // stuck is named, so the other two can read past the line.
+    expect(screen.getByText(/Homeowners: don't have an account\?/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /contact your rep/i })).toBeTruthy();
   });
 });
 

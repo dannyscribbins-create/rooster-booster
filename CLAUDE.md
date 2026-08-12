@@ -147,9 +147,12 @@ Note: `client_rep_assignments`, `team_members`, and `titles` are also live table
 
 `src/App.jsx` is a routing shell (~250 lines — has grown beyond original 135-line target; extraction of pipeline state into a custom hook is a future cleanup item). Do not add component code into App.jsx.
 
-**Two top-level modes:**
+**Three top-level surfaces, chosen by IDENTITY — never by URL** (C/DL-3b Phase 5):
 - **Referrer app** — 5-tab bottom nav: Home, Refer, Rankings, Cash Out, Profile
-- **Admin panel** — accessed via `?admin=true` — sections: Dashboard, Referrers, Cash Outs, Activity Log, Announcements, Referral Review, Engagement, Settings, Contacts, Campaigns, Inbox
+- **Field rep** — 3c placeholder today; reached only by `tier='general'` **and** `is_field_rep`
+- **Admin panel** — sections: Dashboard, Referrers, Cash Outs, Activity Log, Announcements, Referral Review, Engagement, Settings, Contacts, Campaigns, Inbox
+
+⚠ **`?admin=true` NO LONGER DOES ANYTHING.** This line used to read "Admin panel — accessed via `?admin=true`", and that has been false since Phase 5. One unified door (`src/components/auth/LoginScreen.jsx`) serves every role; `src/App.jsx`'s `surfaceFor()` routes on the authenticated session descriptor, and the query string is not consulted. Typing the parameter gets the same login screen as typing nothing. Several server-side notification emails still build `?admin=true` links — they land correctly on that door, and the inert parameter is queued for the pre-launch literal sweep.
 
 #### Folder structure
 ```

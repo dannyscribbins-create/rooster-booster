@@ -48,19 +48,43 @@ import useEntrance from '../../hooks/useEntrance';
 // label fails contrast on the platform's own palette.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CLIENT_COPY = {
-  subtitle: 'Sign in to view your referral rewards',
-  swapTo: 'Team member login',
-};
-const TEAM_COPY = {
-  subtitle: 'Sign in to your team account',
-  swapTo: 'Homeowner login',
-};
+// ─── THE COPY IS ROLE-NEUTRAL, AND THAT IS A RULING ──────────────────────────
+//
+// ⚠ THERE IS NO "TEAM MEMBER LOGIN" AFFORDANCE, AND ONE MUST NOT BE ADDED BACK.
+// CD-4 describes a quiet team-member affordance; Phase 5 shipped one, and it was
+// removed after the ruling below. The reasoning, so it is not re-litigated:
+//
+// THE DOOR IS PERMANENTLY SHARED BY THREE POPULATIONS, NOT TWO — homeowners,
+// field reps, and office staff. The Capacitor rep app routes through this same
+// door, so there is no later split where a two-way toggle becomes true. A
+// two-way choice presented to a three-way audience is wrong at any point in the
+// arc, not merely early.
+//
+// THE PHRASE ITSELF MISDIRECTS. A field rep IS a team member, but "Team member
+// login" reads as office staff — so the population most likely to need
+// reassurance is the one most likely to skip it.
+//
+// AND IT HAD NOTHING TO DO. Phase 2B unified the endpoint: D1's
+// verify-then-disambiguate means the server reads the credential and decides what
+// the person is. The affordance changed copy only. Making it functional would
+// re-introduce the client-side role distinction D1 deliberately removed — any
+// client-supplied "I am a team member" hint is either IGNORED (pointless) or
+// TRUSTED (a tenancy input, forbidden by CD-24 R1). There is no third option.
+//
+// So the copy names no role at all. "Sign in to {companyName}" is correct for all
+// three, and stays correct in the native app, where source 4 of the D4 chain has
+// already resolved the brand at install time.
+//
+// ── THE ONE DELIBERATE ASYMMETRY ────────────────────────────────────────────
+// "Contact your rep" stays prominent and is LABELLED FOR HOMEOWNERS. A homeowner
+// arriving cold is the only population that can be genuinely stuck; reps and
+// office staff reached this door through onboarding and already have credentials.
+// The label is what lets the other two read past it instead of wondering who was
+// supposed to contact them.
 
 export default function LoginScreen({ onAuthenticated }) {
   const { branding, mode } = useContext(ThemeContext);
 
-  const [teamMode, setTeamMode] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -86,9 +110,21 @@ export default function LoginScreen({ onAuthenticated }) {
   const [choice, setChoice] = useState(null);
   const [choiceError, setChoiceError] = useState(null);
 
-  const copy = teamMode ? TEAM_COPY : CLIENT_COPY;
   const companyName = branding?.companyName || 'RoofMiles';
   const logoSrc = branding?.logoUrl || roofMilesLogo;
+
+  // "Sign in to {companyName}", falling back to a role-neutral, brand-neutral line
+  // when the chain has resolved nothing at all.
+  //
+  // THE FALLBACK IS A SAFETY NET, NOT THE FIRST-VISIT CASE. On a true first visit
+  // — no session, no URL hint, no stored hint — the D4 chain answers source 5,
+  // neutral RoofMiles, and this correctly reads "Sign in to RoofMiles". That is
+  // the platform's own name on the platform's own door, not a leaked default.
+  // The fallback covers only the frame before ThemeContext has a branding object
+  // at all.
+  const subtitle = branding?.companyName
+    ? `Sign in to ${branding.companyName}`
+    : 'Sign in to your account';
 
   // The readable foreground for a primary-filled control. Recomputed only when the
   // brand or the mode changes, because it is the same pure derivation the provider
@@ -280,7 +316,7 @@ export default function LoginScreen({ onAuthenticated }) {
           margin: '0 0 24px', fontSize: 15,
           color: 'var(--rm-text, #1C2D4D)', opacity: 0.72,
         }}>
-          {copy.subtitle}
+          {subtitle}
         </p>
 
         <label htmlFor="rm-login-email" style={labelStyle}>Email address</label>
@@ -429,31 +465,17 @@ export default function LoginScreen({ onAuthenticated }) {
           </button>
         )}
 
-        {/* ── THE QUIET AFFORDANCE (CD-4) ──────────────────────────────────
-            Copy only. Both modes post the same body to the same endpoint —
-            the server reads the credential and decides what this person is.
-            Flipping it reveals nothing and grants nothing. */}
+        {/* ── LABELLED FOR HOMEOWNERS, DELIBERATELY ────────────────────────
+            The one place the copy names a population, and it names the only one
+            that can be genuinely stuck. Reps and office staff reached this door
+            through onboarding; the label is what lets them read past this line
+            instead of wondering who was supposed to contact them. See the header. */}
         {!showForgot && (
-          <p style={{ textAlign: 'center', marginTop: 20, marginBottom: 0 }}>
-            <button
-              onClick={() => { setTeamMode(t => !t); setError(''); }}
-              style={{
-                background: 'none', border: 'none', padding: 0, margin: 0,
-                font: 'inherit', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                color: 'var(--rm-text, #1C2D4D)', opacity: 0.6,
-              }}
-            >
-              {copy.swapTo}
-            </button>
-          </p>
-        )}
-
-        {!teamMode && !showForgot && (
           <p style={{
-            textAlign: 'center', marginTop: 16, marginBottom: 0, fontSize: 15,
+            textAlign: 'center', marginTop: 20, marginBottom: 0, fontSize: 15,
             color: 'var(--rm-text, #1C2D4D)', opacity: 0.7,
           }}>
-            Don&apos;t have an account?{' '}
+            Homeowners: don&apos;t have an account?{' '}
             <button
               onClick={() => setShowContact(true)}
               style={{

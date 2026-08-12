@@ -31,7 +31,17 @@ export default function AdminSetPasswordScreen({ token }) {
       const data = await r.json();
       if (r.ok && data.success) {
         setStatus('success');
-        setTimeout(() => window.location.replace('/?admin=true'), 1800);
+        // Bare '/' — `?admin=true` was dropped in C/DL-3b Phase 5. Nothing reads
+        // it any more: routing is by identity, so this invitee lands on the
+        // unified door and signs in with the password they just set.
+        //
+        // ⚠ THIS IS THE ONE PLACE IN THE APP THAT DESTROYS THE QUERY STRING on the
+        // way to the panel — window.location.replace is a real navigation, unlike
+        // signing in, which only flips React state. Harmless here (an invite link
+        // carries no deep-link parameter), but it is the shape that would break
+        // the Stripe Connect return if this pattern were ever copied onto the
+        // login path. src/components/auth/deepLinkSurvival.test.jsx pins that.
+        setTimeout(() => window.location.replace('/'), 1800);
       } else {
         setErrorMsg(data.error || 'Invalid or expired invite');
         setStatus('error');

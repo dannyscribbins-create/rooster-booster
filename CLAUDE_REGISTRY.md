@@ -59,7 +59,7 @@ When building anything that touches a listed feature, read its entry before writ
 
 **Admin Panel**
 - Files: src/components/admin/ (all files), server/routes/admin/ (all files)
-- Admin dashboard at ?admin=true. Sections: Dashboard, Referrers, Cash Outs, Activity Log, Announcements, Referral Review, Engagement, Settings (CRM, Branding, Company, Banking, Notifications, Experience), Contacts, Campaigns, Inbox. 15-minute stats cache. All endpoints behind verifyAdminSession().
+- Reached by IDENTITY, not by URL (C/DL-3b Phase 5): a team member signs in at the one unified door and `surfaceFor()` in src/App.jsx routes them here. ⚠ `?admin=true` is INERT — this line used to say "Admin dashboard at ?admin=true" and that has been false since Phase 5. Sections: Dashboard, Referrers, Cash Outs, Activity Log, Announcements, Referral Review, Engagement, Settings (CRM, Branding, Company, Banking, Notifications, Experience), Contacts, Campaigns, Inbox. 15-minute stats cache. All endpoints behind verifyAdminSession().
 
 **Email Notification Suppression**
 - Files: server/utils/emailSuppression.js, server/routes/admin/notifications.js, server/db.js, src/components/admin/AdminSettingsNotifications.jsx
