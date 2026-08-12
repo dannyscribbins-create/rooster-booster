@@ -1,7 +1,7 @@
 import { createContext, useEffect, useMemo, useState } from 'react';
-import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS } from '../../utils/themeTokens';
+import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
-import { resolveBrandingTheme } from '../../utils/brandingTheme';
+import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 import { resolveBranding, createBrandingContext } from '../../utils/brandingChain';
 import { BACKEND_URL } from '../../config/contractor';
 import { getReferrerToken } from '../../utils/authStorage';

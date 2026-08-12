@@ -418,11 +418,15 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
   });
 
   it('the src/ mirror has not diverged from the canonical server copy', async () => {
-    // THE MIRROR GUARD (Phase 3b ruling). CRA's ModuleScopePlugin refuses any
-    // import reaching outside src/, so BrandingPreview cannot require the
-    // server's module; the resolver is therefore duplicated at
-    // src/utils/brandingTheme.js, on the WARMUP_ENTRIES / WARMUP_ENTRIES_SERVER
-    // precedent already in this repo.
+    // THE MIRROR GUARD (Phase 3b ruling). The canonical resolver is CommonJS
+    // because a dozen server files require() it, and the Vite dev server cannot
+    // serve a CommonJS source file to a browser at all; the resolver is therefore
+    // duplicated at src/utils/brandingTheme.mjs, on the WARMUP_ENTRIES /
+    // WARMUP_ENTRIES_SERVER precedent already in this repo.
+    //
+    // (The original wording here cited CRA's ModuleScopePlugin refusing imports
+    // that reach outside src/. CRA went with the Vite migration on 2026-08-04;
+    // the reason above is the one that is actually load-bearing today.)
     //
     // A mirror is only acceptable while something fails when the copies disagree.
     // This is that something. It compares the DEFAULTS and the RESOLUTION
@@ -435,12 +439,24 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
     // server falls back to RoofMiles' #F26A1B / #1C2D4D / #FFFFFF. A contractor
     // with no saved colours saw one brand in the preview and another on their
     // live surface, neither of them theirs, and nothing failed.
+    //
+    // ⚠ `await import()`, NOT `require()` — CHANGED AT THE VITE DEV PIPELINE FIX,
+    // AND THE GUARD IS STRONGER FOR IT. The mirror used to be CommonJS solely so
+    // this line could require() it, and that shape is exactly what white-screened
+    // `npm start`: the Vite dev server serves source files verbatim, so a
+    // `module.exports =` reached the browser as a module with no exports and every
+    // named import of it failed at link time. The mirror is now ESM (.mjs), which
+    // is the shape the browser actually receives — so this guard reads the real
+    // artefact rather than a CommonJS twin of it. A namespace object from
+    // `import()` also cannot be mutated after the fact, which a require() cache
+    // entry can.
     let mirror;
     try {
-      mirror = require('../../src/utils/brandingTheme');
+      mirror = await import('../../src/utils/brandingTheme.mjs');
     } catch (err) {
       assert.fail(
-        'src/utils/brandingTheme.js is missing — the admin preview has no copy to consume. ' + err.message
+        'src/utils/brandingTheme.mjs is missing or is not a loadable ES module — ' +
+        'the admin preview has no copy to consume. ' + err.message
       );
     }
 

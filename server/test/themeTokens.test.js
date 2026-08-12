@@ -57,8 +57,17 @@ const path = require('node:path');
 function tt() {
   return require('../utils/themeTokens');
 }
+// ⚠ ASYNC, and `await import()` rather than `require()` — CHANGED AT THE VITE DEV
+// PIPELINE FIX. The mirror was CommonJS purely so this could require() it, and
+// that shape is what white-screened `npm start`: Vite's dev server serves source
+// files verbatim, so `module.exports =` reached the browser as a module with zero
+// exports and every named import of it failed at link time. The mirror is ESM
+// (.mjs) now, so this guard reads the exact artefact the browser links rather than
+// a CommonJS twin of it. Same lazy-resolution property as before — the import
+// happens at call time, inside a test, so a missing module fails one assertion
+// with its own message instead of collapsing the file at load.
 function mirror() {
-  return require('../../src/utils/themeTokens');
+  return import('../../src/utils/themeTokens.mjs');
 }
 
 const { BRANDING_THEME_DEFAULTS, resolveBrandingTheme } = require('../utils/brandingTheme');
@@ -383,10 +392,16 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
     // SOURCE-TEXT GUARD, on both copies. The invariants above would all still
     // hold if the module quietly read an env var or stamped a timestamp; purity
     // is what lets this run per-request on the server AND per-keystroke in the
-    // admin preview, exactly as brandingTheme.js's header argues for itself.
+    // admin preview, exactly as brandingTheme.mjs's header argues for itself.
+    //
+    // ⚠ THE TWO COPIES HAVE DIFFERENT EXTENSIONS. The canonical server copy is
+    // CommonJS (.js, require()d across server/); the src/ mirror is ESM (.mjs) so
+    // the Vite dev server can serve it to a browser at all. Spell both out —
+    // pointing this at a .js in src/ silently ENOENTs into an assert.fail, which
+    // is how this line read before the Vite dev pipeline fix.
     const files = [
       path.join(__dirname, '..', 'utils', 'themeTokens.js'),
-      path.join(__dirname, '..', '..', 'src', 'utils', 'themeTokens.js'),
+      path.join(__dirname, '..', '..', 'src', 'utils', 'themeTokens.mjs'),
     ];
     const forbidden = ['process.env', 'Date.now', 'new Date', 'Math.random', 'require(\'../db\')', 'pool'];
 
@@ -400,7 +415,11 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
       for (const needle of forbidden) {
         assert.equal(
           source.includes(needle), false,
-          `${path.basename(path.dirname(file))}/themeTokens.js references ${needle} — the derivation must stay pure`
+          // Named by the path segment that actually distinguishes the two copies.
+          // `basename(dirname(file))` is 'utils' for BOTH of them, so the message
+          // it produced never said which copy had drifted.
+          `${file.includes('src') ? 'src' : 'server'}/utils/${path.basename(file)} references ` +
+          `${needle} — the derivation must stay pure`
         );
       }
     }
@@ -443,10 +462,11 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
   // ── 8. THE MIRROR DRIFT GUARD ──────────────────────────────────────────────
 
   it('the src/ mirror has not diverged from the canonical server copy', async () => {
-    // Same arrangement, and the same justification, as brandingTheme.js's
-    // mirror: the admin surfaces import from src/, the drift guard is a Node
-    // test, and package.json declares no "type" — so the src/ copy must stay
-    // CommonJS to be require()-able by this file.
+    // Same arrangement, and the same justification, as brandingTheme.mjs's
+    // mirror: the admin surfaces import from src/, the canonical copy is CommonJS
+    // because the server require()s it, and a CommonJS file cannot be served to a
+    // browser by the Vite dev server at all — so the src/ copy exists, and is ESM
+    // with a .mjs extension so both the browser and this Node guard can load it.
     //
     // A mirror is only acceptable while something fails when the copies
     // disagree. This is that something, and it compares CONSTANTS and BEHAVIOUR
@@ -455,9 +475,12 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
     const canonical = tt();
     let copy;
     try {
-      copy = mirror();
+      copy = await mirror();
     } catch (err) {
-      assert.fail(`src/utils/themeTokens.js is missing — the rep app has no copy to consume. ${err.message}`);
+      assert.fail(
+        'src/utils/themeTokens.mjs is missing or is not a loadable ES module — ' +
+        `the rep app has no copy to consume. ${err.message}`
+      );
     }
 
     // ── EXPORTED CONSTANTS, key by key so a failure names the value ──────────

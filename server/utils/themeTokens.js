@@ -3,17 +3,33 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // DERIVED THEME TOKENS — CANONICAL COPY (C/DL-3a Phase 3)
 //
-// ⚠ MIRRORED FILE. An identical copy lives at src/utils/themeTokens.js so the
+// ⚠ MIRRORED FILE. An identical copy lives at src/utils/themeTokens.mjs so the
 // React side can consume the same derivation. THE TWO FILES MUST BE EDITED
 // TOGETHER. Same arrangement as brandingTheme.js and as WARMUP_ENTRIES /
 // WARMUP_ENTRIES_SERVER, and acceptable for the same reason: a test fails when
-// they disagree. server/test/themeTokens.test.js requires both copies and
-// compares their exported constants AND their derivation across a brand x mode
-// table.
+// they disagree. server/test/themeTokens.test.js loads both copies — this one by
+// require(), the mirror by `await import()` — and compares their exported
+// constants AND their derivation across a brand x mode table.
 //
-// ONE INTENTIONAL DIFFERENCE: the 'use strict' on line 1 exists ONLY here. See
-// brandingTheme.js's header for why that asymmetry is a retained convention
-// rather than a build requirement. Everything after the header is verbatim.
+// ⚠ THE MIRROR IS ESM WITH A .mjs EXTENSION; THIS COPY IS CommonJS, AND BOTH
+// HALVES OF THAT ARE DELIBERATE. The mirror was CommonJS until the Vite dev
+// pipeline fix, on the since-retired argument that the drift guard had to
+// require() it. The Vite DEV SERVER serves source files verbatim and generates no
+// exports from a `module.exports =` — unlike the production build and unlike
+// Vitest — so the CommonJS mirror reached the browser with ZERO exports and every
+// named import of it failed AT LINK TIME: a blank page, with every gate green,
+// for six days. Do not "align" the two copies' module systems. This one must stay
+// CommonJS because the landing page and the server tests require() it; the mirror
+// must stay ESM because a CommonJS file cannot be served to a browser at all.
+// See brandingTheme.js's header for the full account and
+// src/devServerPipeline.test.js for the test that now covers that pipeline.
+//
+// THE OTHER INTENTIONAL DIFFERENCE: the 'use strict' on line 1 exists ONLY here.
+// See brandingTheme.js's header for why that asymmetry is a retained convention
+// rather than a build requirement. Everything after the header is verbatim EXCEPT
+// two lines in the mirror — its `import` of brandingTheme.mjs, and its `export`
+// block — which carry the same names and values as this file's `require` and
+// `module.exports`.
 //
 // ── WHAT THIS IS ─────────────────────────────────────────────────────────────
 // One pure function turning a contractor's resolved brand colours plus a mode

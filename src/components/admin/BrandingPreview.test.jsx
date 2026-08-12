@@ -54,7 +54,7 @@
 
 import { render, screen, fireEvent } from '@testing-library/react';
 import BrandingPreview from './BrandingPreview';
-import { BRANDING_THEME_DEFAULTS } from '../../utils/brandingTheme';
+import { BRANDING_THEME_DEFAULTS } from '../../utils/brandingTheme.mjs';
 
 // The RoofMiles fallback tokens. Written as HAND-CHECKED LITERALS, deliberately
 // not imported, so these expectations cannot be satisfied by the module under

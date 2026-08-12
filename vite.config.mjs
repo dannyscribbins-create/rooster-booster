@@ -26,5 +26,22 @@ export default defineConfig({
     // executes them on import, running DB-touching code inside test:react.
     // server/test is owned by test:server; these two runners must not overlap.
     include: ['src/**/*.test.{js,jsx}'],
+    // --experimental-vm-modules is required by ONE test —
+    // src/devServerPipeline.test.js — which links the dev server's own module
+    // graph with vm.SourceTextModule to prove the app still mounts under the
+    // pipeline `npm start` uses. That flag is a PROCESS flag: it cannot be set
+    // from inside a test file, so it has to be declared here, for the pool.
+    //
+    // ⚠ TOP-LEVEL, NOT UNDER poolOptions. Vitest 4 removed `poolOptions` and
+    // promoted its contents; nested here it is silently ignored apart from one
+    // DEPRECATED line, and the test then fails with the misleading
+    // "vm.SourceTextModule is not a constructor" rather than anything about the
+    // flag.
+    //
+    // Cost is one ExperimentalWarning line per worker on stderr. The
+    // alternative — spawning a flagged child process from the test — buys
+    // nothing except indirection, since the flag would still have to be written
+    // down somewhere.
+    execArgv: ['--experimental-vm-modules'],
   },
 });

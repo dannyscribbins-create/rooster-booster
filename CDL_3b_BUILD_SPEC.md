@@ -403,6 +403,7 @@ Diff review → commit → deploy → visual verification on a real contractor s
 - **Railway console:** one statement at a time.
 - **Run `CI=true npm run build` locally** before any frontend push — Vercel treats ESLint warnings as errors.
 - **`npm test` green before every push.** Baseline 784 / 128 across 10 files; the count only grows.
+- **⚠ VITEST 4 REMOVED `poolOptions`; its contents are now TOP-LEVEL under `test`.** *(Hit during the Vite dev pipeline fix, 2026-08-12.)* `vite.config.mjs` sets `test.execArgv: ['--experimental-vm-modules']` for `src/devServerPipeline.test.js`, which links the dev server's module graph with `vm.SourceTextModule`. **Nested under `poolOptions.forks`, `execArgv` is silently ignored** apart from one `DEPRECATED` line in the output — and the test then fails with `vm.SourceTextModule is not a constructor`, a message that points nowhere near the cause. The note lives in the config comment too; it is repeated here because the failure is unrecognisable from its symptom.
 - **Standing orders, unchanged:** do **not** click the Jobber OAuth Connect button; do **not** add new hardcoded `'accent-roofing'` references.
 
 ---
@@ -422,6 +423,10 @@ Diff review → commit → deploy → visual verification on a real contractor s
 - **PRE-LAUNCH — transactional promote audit** *(carried from 3a §8, unchanged)*.
 - **PRE-LAUNCH — hardcoded brand-color literal sweep** *(carried from 3a §8)*. Known remaining: `CashOutTab.jsx:100` gradient; the intentional `LockedSection` `#012854` fallback.
 - **PRE-LAUNCH — `console.error` without the `// diagnostic log — intentional` marker:** `referrer.js:1040,1552,1563,1570,1623,1629`; `App.jsx:144`. All are paired with `logError()`, so nothing is lost — only the marker is missing.
+- **PRE-LAUNCH — DRIFT GUARD CASE-TABLE GAP.** *(Found during the Vite dev pipeline fix session, 2026-08-12.)* The behaviour half of the branding/theme drift guards (`server/test/brandingTheme.test.js`, `server/test/themeTokens.test.js`) compares the two copies across a **hand-written fixed input table**. During that session a **real behavioural drift — adding `src.social_website` as a second fallback for the website token in the `src/` copy alone — PASSED the guard**, because no case in the table sets that field. **Pre-existing and unchanged by the ESM conversion**: the same table ran under `require()`.
+  - **Consequence: "the guards are non-vacuous" is proven for the drifts that have been tested and UNPROVEN in general.** The guard is only as strong as its case list, and the case list is maintained by hand. These are the **only** drift guards in the codebase and they protect a white-labeling correctness property — the failure mode is a contractor seeing another contractor's brand, which is exactly the drift that already happened once (BrandingPreview's Accent palette vs the server's RoofMiles palette) with nothing failing.
+  - **Options for the follow-up:** property-based or generated inputs · a key-coverage assertion requiring every field either copy can emit to appear in the table · a source-shape comparison alongside the behavioural one.
+  - Not urgent, genuinely important, and it should not be discovered later by a contractor seeing another contractor's data.
 
 ### Carried to 3b-2 (2FA)
 

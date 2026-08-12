@@ -31,9 +31,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { render, screen, waitFor } from '@testing-library/react';
-import { RENDER_TOKEN_KEYS, deriveThemeTokens } from '../../utils/themeTokens';
+import { RENDER_TOKEN_KEYS, deriveThemeTokens } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
-import { resolveBrandingTheme, BRANDING_THEME_DEFAULTS } from '../../utils/brandingTheme';
+import { resolveBrandingTheme, BRANDING_THEME_DEFAULTS } from '../../utils/brandingTheme.mjs';
 import { BRAND_HINT_STORAGE_KEY } from '../../utils/brandingChain';
 import ThemeProvider, { ThemeContext, themeVariables, DEFAULT_THEME_MODE } from './ThemeProvider';
 import { useContext } from 'react';

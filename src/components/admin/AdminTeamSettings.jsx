@@ -4,7 +4,7 @@ import { BACKEND_URL } from '../../config/contractor';
 import PermissionGate from './PermissionGate';
 import LockedSection from '../shared/LockedSection';
 import { usePermissions } from '../../hooks/useAdminPermissions';
-import { REGISTRY_SECTIONS, FINANCE_WALL_FLAGS, PERM_GROUPS } from '../../constants/registrySections';
+import { REGISTRY_SECTIONS, FINANCE_WALL_FLAGS, PERM_GROUPS } from '../../constants/registrySections.mjs';
 import AdminFlaggedAssignmentsQueue from './AdminFlaggedAssignmentsQueue';
 import { getAdminToken } from '../../utils/authStorage';
 

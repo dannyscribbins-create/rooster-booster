@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AD } from '../../constants/adminTheme';
-import { resolveBrandingTheme } from '../../utils/brandingTheme';
+import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 
 // ─── BrandingPreview ──────────────────────────────────────────────────────────
 // Phone mockup showing Login + Dashboard screens using live formData values.

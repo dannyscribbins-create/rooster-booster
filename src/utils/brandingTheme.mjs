@@ -1,6 +1,8 @@
-// ⚠ NO `'use strict';` HERE, AND ITS ABSENCE IS THE ONE INTENTIONAL DIFFERENCE
-// FROM THE CANONICAL SERVER COPY. It is a RETAINED CONVENTION, NOT A BUILD
-// REQUIREMENT — rationale corrected in C/DL-3a Phase 3.
+// ⚠ NO `'use strict';` HERE. It is one of the TWO intentional differences from
+// the canonical server copy (the other is the module system — see below), and it
+// is a RETAINED CONVENTION, NOT A BUILD REQUIREMENT — rationale corrected in
+// C/DL-3a Phase 3. ESM is strict-mode by definition in any case, so as of the
+// Vite dev pipeline fix this file is strict whether the line is present or not.
 //
 // WHAT THIS NOTE USED TO SAY, and why it is no longer true. The line shipped
 // here in Phase 3b (5cac111) and was removed in Phase 3c because CRA's eslint
@@ -29,12 +31,20 @@
 // canonical copy. THE TWO FILES MUST BE EDITED TOGETHER. Same arrangement as
 // WARMUP_ENTRIES (src/constants/shouts.js) and WARMUP_ENTRIES_SERVER.
 //
-// WHY A COPY AND NOT AN IMPORT — CORRECTED, C/DL-3a Phase 3. This paragraph used
-// to say CRA's ModuleScopePlugin refuses any import reaching outside src/, so an
-// admin React component could not require the server's module. CRA is gone (Vite
-// migration, 2026-08-04) and that barrier no longer exists; the live reason is
-// the CommonJS one stated further down this header, which runs the other way
-// round — the Node drift guard has to be able to require THIS copy.
+// WHY A COPY AND NOT AN IMPORT — RESTATED AT THE VITE DEV PIPELINE FIX, because
+// both of this paragraph's previous answers are now retired. It first said CRA's
+// ModuleScopePlugin refuses any import reaching outside src/; CRA is gone (Vite
+// migration, 2026-08-04) and that barrier went with it. It then said the Node
+// drift guard has to be able to `require()` this copy; the guard uses
+// `await import()` now and no longer cares.
+//
+// THE LIVE REASON IS THE SERVER COPY'S MODULE SYSTEM. server/utils/brandingTheme.js
+// is CommonJS and has to stay that way — a dozen server files `require()` it
+// under Node's CJS resolution — and the Vite dev server cannot serve a CommonJS
+// source file to a browser at all. That is not a theoretical limit; it is the
+// exact failure this whole header now documents. Importing the server copy
+// directly from a React component would reproduce the white screen, one
+// directory further up.
 //
 // Passing the resolution through an HTTP call instead was rejected, and that
 // rejection is unaffected by the correction above: the preview's entire job is
@@ -56,15 +66,42 @@
 // BrandingPreview onto this module and deleting those three constants is
 // Phase 3c.
 //
-// WHY CommonJS IN AN OTHERWISE-ESM src/. The drift guard is a Node test, and
-// Node resolves a bare `.js` file in this package as CommonJS (package.json
-// declares no "type"), so an ESM copy here could not be loaded by the very test
-// that polices it. THIS IS THE LIVE REASON THE COPY EXISTS. Vite consumes named
-// imports from CommonJS without ceremony (Webpack did too — the bundler changed,
-// the property did not), so the preview's `import { resolveBrandingTheme } from`
-// works unchanged.
+// WHY ESM, AND WHY THE .mjs EXTENSION — REWRITTEN AT THE VITE DEV PIPELINE FIX.
 //
-// Everything below this line is a verbatim mirror. Do not edit it here alone.
+// ⚠ THIS FILE USED TO BE CommonJS, AND THE HEADER USED TO ARGUE THAT IT HAD TO
+// BE. THAT RATIONALE IS RETIRED, NOT MERELY WRONG. It said: the drift guard is a
+// Node test, `require()` cannot load ESM, therefore the mirror must be CJS so the
+// guard can read it. The premise about `require()` was the mistake — a Node test
+// can `await import()` an ES module perfectly well, and node:test supports async
+// test bodies. The guard now does exactly that. DO NOT "RESTORE" THE CommonJS
+// SHAPE: it is what broke the app.
+//
+// It broke it like this. There are three module pipelines in this repo and they
+// disagree. The production build (rolldown + the commonjs plugin) interops CJS
+// source files; Vitest, resolving Node-side, interops CJS source files; THE VITE
+// DEV SERVER DOES NOT — it serves source files essentially verbatim, generating
+// no export statements from a `module.exports =`. So the browser linked this
+// module with ZERO exports and `import { resolveBrandingTheme }` failed AT LINK
+// TIME, before any code ran, which is why the symptom was a blank page rather
+// than a partial render. `npm start` was unusable for six days with every gate
+// green, because the two pipelines that interop CJS were both tested and the one
+// developers actually use was not.
+//
+// .mjs IS REQUIRED, NOT STYLISTIC. package.json declares no "type" field, so Node
+// parses a bare `.js` in this package as CommonJS and `export` is a SyntaxError
+// there. The extension is what makes the same bytes loadable by both consumers:
+// the browser (via Vite, which needs the ESM syntax) and the Node drift guard
+// (via `await import()`, which needs the extension).
+//
+// THE COVERING TEST for the pipeline itself is src/devServerPipeline.test.js,
+// which boots a dev server, links its module graph the way a browser does, and
+// asserts the app mounts. That is the gap this file's old shape sat in.
+//
+// Everything below this line is a verbatim mirror, WITH ONE EXCEPTION: the final
+// export statement, which is `export { … }` here and `module.exports = { … }` in
+// the server copy. Same names, same values, different module system — the two
+// intentional differences ('use strict' and this one) are both stated in this
+// header, and everything else must match. Do not edit it here alone.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Strict six-digit hex only. The 3-digit CSS shorthand (#abc) is DELIBERATELY
@@ -192,4 +229,6 @@ function resolveBrandingTheme(input) {
   return theme;
 }
 
-module.exports = { resolveBrandingTheme, BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE: HEX_RE };
+// ⚠ THE ONE LINE THAT IS NOT A VERBATIM MIRROR. The server copy ends with
+// `module.exports = { … }`; same three names, same three values. See the header.
+export { resolveBrandingTheme, BRANDING_THEME_DEFAULTS, HEX_RE as BRANDING_HEX_RE };

@@ -19,7 +19,7 @@
 // NO PRODUCTION CONTRACTOR ID OR SLUG LITERALS anywhere in this file (house rule).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { resolveBrandingTheme, BRANDING_THEME_DEFAULTS } from './brandingTheme';
+import { resolveBrandingTheme, BRANDING_THEME_DEFAULTS } from './brandingTheme.mjs';
 import {
   BRAND_HINT_STORAGE_KEY,
   BRANDING_SOURCES,

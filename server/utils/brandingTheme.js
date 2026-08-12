@@ -3,31 +3,49 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // BRANDING THEME RESOLVER — CANONICAL COPY (C/DL-2 Phase 3b)
 //
-// ⚠ MIRRORED FILE. An identical copy lives at `src/utils/brandingTheme.js` for
+// ⚠ MIRRORED FILE. An identical copy lives at `src/utils/brandingTheme.mjs` for
 // the admin BrandingPreview. THE TWO FILES MUST BE EDITED TOGETHER. This is the
 // same arrangement WARMUP_ENTRIES / WARMUP_ENTRIES_SERVER already uses in this
 // repo.
 //
-// WHY A COPY RATHER THAN AN IMPORT — RATIONALE CORRECTED, C/DL-3a Phase 3. This
-// header used to say the preview "cannot reach outside src/ (CRA's
-// ModuleScopePlugin)". CRA is gone (Vite migration, 2026-08-04) and that
-// constraint no longer exists in either direction. The real, still-live reason
-// runs the other way round: the drift guard is a Node test, `package.json`
-// declares no "type", and Node therefore resolves a bare `.js` file in this
-// package as CommonJS — so the src/ copy must STAY CommonJS to be require()-able
-// by the very test that polices it. Vite consumes named imports from CommonJS
-// without ceremony, so the preview's `import { resolveBrandingTheme } from`
-// works unchanged.
+// ⚠ THE MIRROR IS ESM WITH A .mjs EXTENSION; THIS COPY IS CommonJS. That is the
+// second intentional difference (see the 'use strict' note below for the first),
+// and it is deliberate in both directions — do not "align" them.
 //
-// ONE INTENTIONAL DIFFERENCE: the `'use strict';` on line 1 below exists ONLY
-// here — and it is now a RETAINED CONVENTION, NOT A BUILD REQUIREMENT (also
+// WHY A COPY RATHER THAN AN IMPORT — RATIONALE CORRECTED TWICE, most recently at
+// the Vite dev pipeline fix. This header first said the preview "cannot reach
+// outside src/ (CRA's ModuleScopePlugin)"; CRA is gone (Vite migration,
+// 2026-08-04) and that constraint went with it. It then said the src/ copy must
+// STAY CommonJS so the Node drift guard could require() it. THAT SECOND ANSWER
+// WAS THE MISTAKE, AND IT COST SIX DAYS OF `npm start`.
+//
+// The Vite DEV SERVER serves source files essentially verbatim — it generates no
+// export statements from a `module.exports =`, unlike the production build
+// (rolldown + the commonjs plugin) and unlike Vitest (Node-side resolution). So a
+// CommonJS mirror reached the browser as a module with ZERO exports and the
+// preview's `import { resolveBrandingTheme }` failed AT LINK TIME, before any
+// code ran: a blank page, with every gate green. The mirror is now ESM, and the
+// drift guard uses `await import()`, which reads the artefact the browser
+// actually links.
+//
+// THE LIVE REASON FOR A COPY IS THIS FILE'S OWN MODULE SYSTEM. It must stay
+// CommonJS — a dozen server files require() it — and the dev server cannot serve
+// a CommonJS source file to a browser at all. Importing this copy from a React
+// component would reproduce the white screen, one directory further up.
+//
+// Covering test for the pipeline itself: src/devServerPipeline.test.js.
+//
+// THE OTHER INTENTIONAL DIFFERENCE: the `'use strict';` on line 1 below exists
+// ONLY here — and it is now a RETAINED CONVENTION, NOT A BUILD REQUIREMENT (also
 // corrected in Phase 3). The old note said CRA's eslint flagged it under src/
 // and CRA turned warnings into build errors under CI, failing
 // `CI=true npm run build`. Neither half survives the migration: ESLint is not
 // part of the Vite build at all, and `eslint.config.mjs` enables only the two
 // react-hooks rules, so nothing raises it. The asymmetry is kept because the
 // mirrored files in this repo all follow it and one rule across all of them
-// beats two that nearly agree. Everything AFTER the header comments is verbatim.
+// beats two that nearly agree. Everything AFTER the header comments is verbatim
+// EXCEPT the final export line: `module.exports = { … }` here, `export { … }`
+// there, same three names and same three values.
 //
 // What makes a mirror acceptable here rather than the first step of a drift is
 // that a test fails when they disagree: server/test/brandingTheme.test.js

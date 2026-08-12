@@ -1,22 +1,36 @@
-// ⚠ NO 'use strict' HERE, AND ITS ABSENCE IS THE ONE INTENTIONAL DIFFERENCE FROM
-// THE CANONICAL SERVER COPY. Kept as a convention rather than a requirement: the
-// build no longer cares either way (see brandingTheme.js's header for the full
-// note), but the two brandingTheme.js copies are arranged this way and one rule
-// across all four mirrored files beats two that nearly agree.
+// ⚠ NO 'use strict' HERE. One of the TWO intentional differences from the
+// canonical server copy — the other is the module system, below. Kept as a
+// convention rather than a requirement: the build no longer cares either way
+// (see brandingTheme.mjs's header for the full note), the two brandingTheme
+// copies are arranged this way, and ESM is strict-mode by definition regardless.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // DERIVED THEME TOKENS — MIRRORED COPY (C/DL-3a Phase 3)
 //
 // ⚠ THIS FILE IS A MIRROR of server/utils/themeTokens.js, which is the canonical
 // copy. THE TWO FILES MUST BE EDITED TOGETHER. Same arrangement as
-// src/utils/brandingTheme.js, and as WARMUP_ENTRIES / WARMUP_ENTRIES_SERVER.
+// src/utils/brandingTheme.mjs, and as WARMUP_ENTRIES / WARMUP_ENTRIES_SERVER.
 //
-// WHY A COPY AND NOT AN IMPORT, and WHY CommonJS IN AN OTHERWISE-ESM src/. The
-// drift guard is a Node test (server/test/themeTokens.test.js) and package.json
-// declares no "type", so Node resolves a bare .js file in this package as
-// CommonJS — an ESM copy here could not be loaded by the very test that polices
-// it. Vite consumes named imports from CommonJS without ceremony, so a React
-// import of this module works unchanged.
+// WHY A COPY AND NOT AN IMPORT, and WHY ESM WITH A .mjs EXTENSION — REWRITTEN AT
+// THE VITE DEV PIPELINE FIX.
+//
+// ⚠ THIS FILE USED TO BE CommonJS, ON THE ARGUMENT THAT THE NODE DRIFT GUARD HAD
+// TO `require()` IT. THAT RATIONALE IS RETIRED, NOT MERELY WRONG — the guard in
+// server/test/themeTokens.test.js uses `await import()` now, which loads an ES
+// module without complaint. DO NOT "RESTORE" THE CommonJS SHAPE: the Vite dev
+// server serves source files verbatim and generates no exports from a
+// `module.exports =`, so a CJS module here links with zero exports in the browser
+// and every named import of it fails AT LINK TIME — a blank page, not an error
+// beside a rendered app. See brandingTheme.mjs's header for the full account, and
+// src/devServerPipeline.test.js for the test that now covers that pipeline.
+//
+// .mjs IS REQUIRED, NOT STYLISTIC: package.json declares no "type", so Node parses
+// a bare .js here as CommonJS and `export` is a SyntaxError. The extension is what
+// lets one file serve both the browser and the Node guard.
+//
+// The live reason for a COPY rather than an import is that server/utils/themeTokens.js
+// is CommonJS and must stay so — the landing page and the server tests `require()`
+// it — and a CommonJS file cannot be served to a browser by the dev server at all.
 //
 // WHAT MAKES A MIRROR ACCEPTABLE rather than the first step of a drift is that a
 // test fails when the copies disagree. That guard compares the exported
@@ -25,10 +39,16 @@
 // paint two different apps. The precedent is not theoretical — the branding
 // resolver drifted exactly this way once, and nothing failed.
 //
-// Everything below this line is a verbatim mirror. Do not edit it here alone.
+// Everything below this line is a verbatim mirror, WITH TWO EXCEPTIONS — the
+// import of brandingTheme immediately below, and the export statement at the end
+// of the file. Both are the same names and the same values as the server copy's
+// `require` and `module.exports`, in ESM spelling. Everything else must match.
+// Do not edit it here alone.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE } = require('./brandingTheme');
+// ⚠ NOT A VERBATIM MIRROR LINE. Server copy: `const { … } = require('./brandingTheme')`.
+// The .mjs extension is mandatory — Node's ESM resolver does not guess extensions.
+import { BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE } from './brandingTheme.mjs';
 
 // ─── TUNABLE CONSTANTS ───────────────────────────────────────────────────────
 // EVERYTHING IN THIS BLOCK IS VISUALLY TUNABLE except TEXT_CONTRAST_MIN. Move
@@ -357,7 +377,8 @@ function themeCssVariables(tokens) {
   return vars;
 }
 
-module.exports = {
+// ⚠ NOT A VERBATIM MIRROR LINE. Server copy: `module.exports = { … }`, same names.
+export {
   deriveThemeTokens,
   themeCssVariables,
   hexToRgb,

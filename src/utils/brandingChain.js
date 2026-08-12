@@ -57,7 +57,7 @@
 // two ways the inference can still be wrong, and why both are harmless.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { resolveBrandingTheme } from './brandingTheme';
+import { resolveBrandingTheme } from './brandingTheme.mjs';
 import { BACKEND_URL } from '../config/contractor';
 // Extracted to a shared helper in Phase 4 — authStorage.js needs the identical
 // guard now that the bearer token lives in localStorage too.

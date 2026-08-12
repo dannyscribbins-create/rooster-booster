@@ -3,17 +3,27 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { SECTIONS } = require('../permissions/registry');
-const { REGISTRY_SECTIONS } = require('../../src/constants/registrySections');
 
 // ── REGISTRY MIRROR DRIFT GUARD ───────────────────────────────────────────────
-// Ensures src/constants/registrySections.js stays in sync with
+// Ensures src/constants/registrySections.mjs stays in sync with
 // server/permissions/registry.js.
 //
-// If this fails: update src/constants/registrySections.js to match the backend
+// If this fails: update src/constants/registrySections.mjs to match the backend
 // registry. Do NOT change this test or add phantom entries to the mirror.
+//
+// ⚠ `await import()` INSIDE THE TEST, not a top-level require — CHANGED AT THE
+// VITE DEV PIPELINE FIX. The mirror was CommonJS so that a require() here could
+// read it, and that shape is what white-screened `npm start`: Vite's dev server
+// serves source files verbatim, so `module.exports =` reached the browser as a
+// module with zero exports and AdminTeamSettings.jsx's named import of it failed
+// at LINK time — which, because App.jsx imports AdminApp statically, blanked the
+// whole app rather than just the admin panel. The mirror is ESM (.mjs) now, so
+// this guard reads the exact artefact the browser links.
 
 describe('registry mirror drift guard', () => {
-  it('src/constants/registrySections.js matches server/permissions/registry.js', () => {
+  it('src/constants/registrySections.mjs matches server/permissions/registry.js', async () => {
+    const { REGISTRY_SECTIONS } = await import('../../src/constants/registrySections.mjs');
+
     const backendMap = new Map(SECTIONS.map(s => [s.key, s]));
     const mirrorMap  = new Map(REGISTRY_SECTIONS.map(s => [s.key, s]));
 
@@ -25,7 +35,7 @@ describe('registry mirror drift guard', () => {
       phantomKeys,
       [],
       `Mirror contains keys absent from the backend registry: [${phantomKeys.join(', ')}]. ` +
-        `Remove them from src/constants/registrySections.js.`
+        `Remove them from src/constants/registrySections.mjs.`
     );
 
     // 2 — mirror covers every backend key
@@ -36,7 +46,7 @@ describe('registry mirror drift guard', () => {
       missingKeys,
       [],
       `Backend registry contains keys absent from the mirror: [${missingKeys.join(', ')}]. ` +
-        `Add them to src/constants/registrySections.js.`
+        `Add them to src/constants/registrySections.mjs.`
     );
 
     // 3 — type, flags, and forward status must match for every shared key
@@ -75,19 +85,19 @@ describe('registry mirror drift guard', () => {
       typeMismatches,
       [],
       `Type mismatches between backend and mirror:\n  ${typeMismatches.join('\n  ')}\n` +
-        `Fix src/constants/registrySections.js.`
+        `Fix src/constants/registrySections.mjs.`
     );
     assert.deepEqual(
       flagMismatches,
       [],
       `Flag mismatches between backend and mirror:\n  ${flagMismatches.join('\n  ')}\n` +
-        `Fix src/constants/registrySections.js.`
+        `Fix src/constants/registrySections.mjs.`
     );
     assert.deepEqual(
       forwardMismatches,
       [],
       `Forward-status mismatches:\n  ${forwardMismatches.join('\n  ')}\n` +
-        `Fix src/constants/registrySections.js.`
+        `Fix src/constants/registrySections.mjs.`
     );
   });
 });

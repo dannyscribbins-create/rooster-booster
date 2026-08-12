@@ -6,6 +6,21 @@
  *
  * Fields here match the backend exactly: key, type, flags (view/manage/single),
  * forward.  The `label` field is frontend-only (not in the backend registry).
+ *
+ * ⚠ ESM WITH A .mjs EXTENSION, AND IT MUST STAY THAT WAY. This file was CommonJS
+ * until the Vite dev pipeline fix, on the same retired argument the two branding
+ * mirrors carried: that the Node drift guard had to `require()` it. The guard
+ * uses `await import()` now.
+ *
+ * DO NOT "RESTORE" THE CommonJS SHAPE. The Vite dev server serves source files
+ * verbatim and generates no export statements from a `module.exports =`, so a CJS
+ * module here reaches the browser with zero exports and AdminTeamSettings.jsx's
+ * `import { REGISTRY_SECTIONS, … }` fails AT LINK TIME. Because App.jsx imports
+ * AdminApp statically, that link failure blanks the WHOLE app — referrer surface
+ * included — not just the admin panel. .mjs is required rather than stylistic:
+ * package.json declares no "type", so Node parses a bare .js here as CommonJS and
+ * `export` is a SyntaxError. See src/utils/brandingTheme.mjs's header for the full
+ * account and src/devServerPipeline.test.js for the covering test.
  */
 const REGISTRY_SECTIONS = [
   // ── Active sections ──────────────────────────────────────────────────────────
@@ -202,4 +217,4 @@ const PERM_GROUPS = [
   { key: 'forward',    label: 'Coming Soon',     icon: 'ph-clock',     sections: ['points', 'client_portal', 'boost_campaign', 'account_keeping'] },
 ];
 
-module.exports = { REGISTRY_SECTIONS, FINANCE_WALL_FLAGS, PERM_GROUPS };
+export { REGISTRY_SECTIONS, FINANCE_WALL_FLAGS, PERM_GROUPS };
