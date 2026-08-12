@@ -9,6 +9,7 @@ import ReferAFriendTab from './ReferAFriendTab';
 import AnnouncementPopup from './AnnouncementPopup';
 import PendingMatchPopup from './PendingMatchPopup';
 import ExperiencePopup from './ExperiencePopup';
+import { getReferrerToken } from '../../utils/authStorage';
 
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
 function BottomNav({ tab, setTab }) {
@@ -127,7 +128,7 @@ export default function ReferrerApp({
   const [openManageAccount, setOpenManageAccount]   = useState(false);
 
   async function fetchBankStatus() {
-    const token = sessionStorage.getItem('rb_token');
+    const token = getReferrerToken();
     if (!token) return;
     try {
       const r = await fetch(`${BACKEND_URL}/api/referrer/stripe/bank-status`, {
@@ -153,7 +154,7 @@ export default function ReferrerApp({
 
   // Check for unseen pending referral match once on mount after login
   useEffect(() => {
-    const token = sessionStorage.getItem('rb_token');
+    const token = getReferrerToken();
     if (!token) return;
     (async () => {
       try {
@@ -172,7 +173,7 @@ export default function ReferrerApp({
 
   // Check for pending experience prompt once on mount after login
   useEffect(() => {
-    const token = sessionStorage.getItem('rb_token');
+    const token = getReferrerToken();
     if (!token) return;
     (async () => {
       try {
@@ -193,10 +194,10 @@ export default function ReferrerApp({
   }, []);
 
   const screens = {
-    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited} pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={sessionStorage.getItem('rb_token')} onViewAllReferrals={() => { setTab("profile"); setHighlightReferrals(true); }} bankStatus={bankStatus} onOpenBankSetup={handleOpenBankSetup} />,
-    cashout:   <CashOut pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} bankStatus={bankStatus} setTab={setTab} onOpenBankSetup={handleOpenBankSetup} token={sessionStorage.getItem('rb_token')} />,
-    refer:     <ReferAFriendTab userName={userName} token={sessionStorage.getItem('rb_token')} />,
-    rankings:  <Rankings token={sessionStorage.getItem('rb_token')} />,
+    dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited} pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={getReferrerToken()} onViewAllReferrals={() => { setTab("profile"); setHighlightReferrals(true); }} bankStatus={bankStatus} onOpenBankSetup={handleOpenBankSetup} />,
+    cashout:   <CashOut pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} bankStatus={bankStatus} setTab={setTab} onOpenBankSetup={handleOpenBankSetup} token={getReferrerToken()} />,
+    refer:     <ReferAFriendTab userName={userName} token={getReferrerToken()} />,
+    rankings:  <Rankings token={getReferrerToken()} />,
     profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} onNameUpdate={onNameUpdate} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} highlightReferrals={highlightReferrals} onResetHighlight={() => setHighlightReferrals(false)} bankStatus={bankStatus} refreshBankStatus={fetchBankStatus} openManageAccount={openManageAccount} onResetOpenManageAccount={() => setOpenManageAccount(false)} />,
   };
 
@@ -205,7 +206,7 @@ export default function ReferrerApp({
       {pendingMatch && (
         <PendingMatchPopup
           match={pendingMatch}
-          token={sessionStorage.getItem('rb_token')}
+          token={getReferrerToken()}
           onClose={() => setPendingMatch(null)}
           onViewPipeline={() => { setTab('profile'); window.scrollTo(0, 0); }}
         />

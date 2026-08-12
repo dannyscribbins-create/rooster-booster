@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { BACKEND_URL } from '../config/contractor';
+import { getAdminToken } from '../utils/authStorage';
 
 // ─── Admin Permissions Context ────────────────────────────────────────────────
 // Source of truth for the current admin user's tier + permissions JSONB.
@@ -28,7 +29,7 @@ export default function useAdminPermissions(authed) {
     setState({ tier: null, permissions: {}, loading: true, full_name: null, email: null });
     (async () => {
       try {
-        const token = sessionStorage.getItem('rb_admin_token');
+        const token = getAdminToken();
         const r = await fetch(`${BACKEND_URL}/api/admin/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });

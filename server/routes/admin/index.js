@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 const { logError } = require('../../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../../utils/dateUtils');
+const { SESSION_SLIDE_MS } = require('../../utils/sessionPolicy');
 const { runBackup } = require('../../utils/backup');
 const { runVerify } = require('../../utils/restore-verify');
 const { Resend } = require('resend');
@@ -87,7 +88,9 @@ router.post('/api/admin/login', adminLoginLimiter, [
       return res.status(403).json(await buildFrozenAccountBody(pool, teamMember.contractor_id));
     }
     const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // 30-day window, slid on use up to a 90-day ceiling (C/DL-3b Phase 4, D7).
+    // ONE policy for all three roles — see server/utils/sessionPolicy.js.
+    const expiresAt = new Date(Date.now() + SESSION_SLIDE_MS);
     await pool.query(
       'INSERT INTO sessions (user_id, token, expires_at, role, contractor_id, team_member_id) VALUES (NULL,$1,$2,$3,$4,$5)',
       [token, expiresAt, 'admin', teamMember.contractor_id, teamMember.id]

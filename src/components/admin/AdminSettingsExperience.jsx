@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { Btn } from './AdminComponents';
+import { getAdminToken } from '../../utils/authStorage';
 
 const sectionLabel = {
   margin: '0 0 16px', fontSize: 13, fontWeight: 600,
@@ -32,7 +33,7 @@ export default function AdminSettingsExperience() {
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/about`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         if (!r.ok) return;
         const d = await r.json();
@@ -51,7 +52,7 @@ export default function AdminSettingsExperience() {
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/retention-settings`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         if (!r.ok) return;
         const d = await r.json();
@@ -72,7 +73,7 @@ export default function AdminSettingsExperience() {
       const payload = { ...(aboutPayload || {}), booking_enabled: bookingEnabled };
       const r = await fetch(`${BACKEND_URL}/api/admin/about`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify(payload),
       });
       const d = await r.json();
@@ -103,7 +104,7 @@ export default function AdminSettingsExperience() {
       };
       const r = await fetch(`${BACKEND_URL}/api/admin/retention-settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify(payload),
       });
       const d = await r.json();

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import AdminContactDetailDrawer from './AdminContactDetailDrawer';
+import { getAdminToken } from '../../utils/authStorage';
 
 // ── Small modal wrapper ───────────────────────────────────────────────────────
 function Modal({ onClose, children }) {
@@ -515,7 +516,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
   const [refreshing,       setRefreshing]       = useState(false);
   const [metricsData,      setMetricsData]      = useState(null);
 
-  const token   = sessionStorage.getItem('rb_admin_token');
+  const token   = getAdminToken();
   const headers = { Authorization: `Bearer ${token}` };
 
   useEffect(() => {

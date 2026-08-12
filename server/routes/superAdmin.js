@@ -8,6 +8,7 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
+const { SESSION_SLIDE_MS } = require('../utils/sessionPolicy');
 
 const superAdminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -42,7 +43,8 @@ router.post('/api/rm-control/login', superAdminLoginLimiter, [
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // 30-day window, slid on use up to a 90-day ceiling (C/DL-3b Phase 4, D7).
+    const expiresAt = new Date(Date.now() + SESSION_SLIDE_MS);
     await pool.query(
       'INSERT INTO sessions (user_id, token, expires_at, role) VALUES (NULL, $1, $2, $3)',
       [token, expiresAt, 'super_admin']

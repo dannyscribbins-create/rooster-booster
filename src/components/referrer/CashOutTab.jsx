@@ -7,6 +7,7 @@ import rbLogoIcon from '../../assets/images/rb logo 1024px transparent backgroun
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import Skeleton from '../shared/Skeleton';
+import { getReferrerToken } from '../../utils/authStorage';
 
 // id values must match contractor_settings.enabled_payout_methods valid set
 const ALL_METHODS = [
@@ -449,7 +450,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",
-                      "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}`,
+                      "Authorization": `Bearer ${getReferrerToken()}`,
                     },
                     body: JSON.stringify({
                       amount: parseFloat(amount),

@@ -5,6 +5,7 @@ import { Btn } from './AdminComponents';
 import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import { R } from '../../constants/theme';
+import { getAdminToken } from '../../utils/authStorage';
 
 const PRESET_MESSAGES = {
   preset_1: "Great news — your $[Amount] payout for referring [Referred Name] has been approved and is on its way! We appreciate you so much.",
@@ -183,7 +184,7 @@ export default function AdminSettingsNotifications() {
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/notification-preferences`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         if (!r.ok) return;
         const d = await r.json();
@@ -202,7 +203,7 @@ export default function AdminSettingsNotifications() {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/notification-preferences`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify({ trigger_key: triggerKey, email_enabled: value }),
       });
       if (!r.ok) throw new Error('not ok');
@@ -220,7 +221,7 @@ export default function AdminSettingsNotifications() {
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/engagement-cadence`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         if (!r.ok) return;
         const d = await r.json();
@@ -239,7 +240,7 @@ export default function AdminSettingsNotifications() {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/engagement-cadence/${month}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify({ is_enabled: value }),
       });
       if (!r.ok) throw new Error('not ok');
@@ -258,7 +259,7 @@ export default function AdminSettingsNotifications() {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/engagement-cadence/${month}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify({ subject: cadenceEditDraft.subject, body: cadenceEditDraft.body }),
       });
       if (!r.ok) throw new Error('not ok');
@@ -276,7 +277,7 @@ export default function AdminSettingsNotifications() {
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/announcement-settings`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         if (!r.ok) return;
         const d = await r.json();
@@ -295,7 +296,7 @@ export default function AdminSettingsNotifications() {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/announcement-settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify({ enabled, mode, customMessage }),
       });
       const d = await r.json();
@@ -314,7 +315,7 @@ export default function AdminSettingsNotifications() {
     try {
       await fetch(`${BACKEND_URL}/api/admin/announcement-settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify({ enabled: next, mode, customMessage }),
       });
     } catch {

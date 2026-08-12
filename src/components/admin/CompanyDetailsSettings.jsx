@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import { getAdminToken } from '../../utils/authStorage';
 
 function SettingsInput({ label, value, onChange, placeholder, type = 'text' }) {
   return (
@@ -117,7 +118,7 @@ export default function CompanyDetailsSettings() {
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/settings`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         const d = await r.json();
         fullSettingsRef.current = d;
@@ -145,7 +146,7 @@ export default function CompanyDetailsSettings() {
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/notification-settings`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         const d = await r.json();
         setNotifData({
@@ -166,7 +167,7 @@ export default function CompanyDetailsSettings() {
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/about`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         const d = await r.json();
         setAboutEnabled(d.enabled ?? false);
@@ -222,7 +223,7 @@ export default function CompanyDetailsSettings() {
       const r = await fetch(`${BACKEND_URL}/api/admin/settings`, {
         method: 'PUT',
         headers: {
-          Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+          Authorization: `Bearer ${getAdminToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(merged),
@@ -245,7 +246,7 @@ export default function CompanyDetailsSettings() {
       const r = await fetch(`${BACKEND_URL}/api/admin/notification-settings`, {
         method: 'PUT',
         headers: {
-          Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+          Authorization: `Bearer ${getAdminToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(notifData),
@@ -267,7 +268,7 @@ export default function CompanyDetailsSettings() {
       const r = await fetch(`${BACKEND_URL}/api/admin/about`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+          Authorization: `Bearer ${getAdminToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

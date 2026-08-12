@@ -5,6 +5,7 @@ const oauthRoutes = require('./routes/oauth');
 const landingRoutes = require('./routes/landing');
 const referrerRoutes = require('./routes/referrer');
 const brandingRoutes = require('./routes/branding');
+const sessionRoutes = require('./routes/session');
 const adminRoutes = require('./routes/admin/index');
 const superAdminRoutes = require('./routes/superAdmin');
 const stripeRoutes = require('./routes/stripe');
@@ -62,6 +63,12 @@ function createApp() {
   // referrer.js's landingResolveLimiter. See server/routes/branding.js for why
   // this is a distinct path from /api/invite/:slug rather than a second mount.
   app.use('/', brandingRoutes);
+  // Session lifecycle — GET /api/session, POST /api/logout (C/DL-3b Phase 4).
+  // Role-agnostic by construction: the caller does not yet know which surface
+  // its stored token belongs to, so these cannot live under referrer.js or
+  // admin/. Mounted before adminRoutes for the same reason branding.js is —
+  // it owns two exact paths and can shadow nothing.
+  app.use('/', sessionRoutes);
   app.use('/', adminRoutes);
   app.use('/', superAdminRoutes);
   app.use('/', stripeRoutes);

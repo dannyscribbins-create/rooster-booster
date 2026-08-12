@@ -3,6 +3,7 @@ import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn } from './AdminComponents';
 import AdminPendingReferrals from './AdminPendingReferrals';
+import { getAdminToken } from '../../utils/authStorage';
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ function FlaggedTab() {
     setLoading(true);
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/flagged-referrals`, {
-        headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Authorization': `Bearer ${getAdminToken()}` },
       });
       const d = await r.json();
       setFlagged(d.flagged || []);
@@ -79,7 +80,7 @@ function FlaggedTab() {
       const r = await fetch(`${BACKEND_URL}/api/admin/flagged-referrals/${id}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+          'Authorization': `Bearer ${getAdminToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -240,7 +241,7 @@ function MissingTab() {
   const [resolveError, setResolveError]     = useState({});
   const [toast, setToast]             = useState('');
 
-  const token = sessionStorage.getItem('rb_admin_token');
+  const token = getAdminToken();
 
   const fetchReports = useCallback(async () => {
     setLoading(true);

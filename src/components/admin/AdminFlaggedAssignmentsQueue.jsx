@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import { getAdminToken } from '../../utils/authStorage';
 
 // Generic flag_reason rendering (FA spec §4.3) — plain-language label for whatever
 // reason the engine flagged, with a safe fallback so an unrecognized future flag_reason
@@ -198,7 +199,7 @@ export default function AdminFlaggedAssignmentsQueue({ onOpenCountChange }) {
   const fetchOpenCount = useCallback(async () => {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/team/flagged-assignments?status=open`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       const d = await r.json();
       if (r.ok && Array.isArray(d.flags) && onOpenCountChange) onOpenCountChange(d.flags.length);
@@ -212,7 +213,7 @@ export default function AdminFlaggedAssignmentsQueue({ onOpenCountChange }) {
     setErr(null);
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/team/flagged-assignments?status=${status}`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Failed to load flagged assignments');
@@ -237,7 +238,7 @@ export default function AdminFlaggedAssignmentsQueue({ onOpenCountChange }) {
     async function fetchReps() {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/team`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         const d = await r.json();
         if (r.ok && Array.isArray(d)) {
@@ -255,7 +256,7 @@ export default function AdminFlaggedAssignmentsQueue({ onOpenCountChange }) {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/team/flagged-assignments/${flagId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify({ action: 'assign', rep_id: repId }),
       });
       if (!r.ok) return false;
@@ -274,7 +275,7 @@ export default function AdminFlaggedAssignmentsQueue({ onOpenCountChange }) {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/team/flagged-assignments/${flagId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify({ action: 'dismiss', note: note || undefined }),
       });
       if (!r.ok) return false;

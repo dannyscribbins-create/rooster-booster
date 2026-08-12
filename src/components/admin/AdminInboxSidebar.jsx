@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
+import { getAdminToken } from '../../utils/authStorage';
 
 function relativeTime(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -88,7 +89,7 @@ function MissingReferralCard({ msg, onMarkRead, onNavigate }) {
 
   const handleOpenReport = safeAsync(async () => {
     if (isUnread) {
-      const token = sessionStorage.getItem('rb_admin_token');
+      const token = getAdminToken();
       const r = await fetch(`${BACKEND_URL}/api/admin/messages/${msg.id}/read`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
@@ -152,7 +153,7 @@ function FlaggedAssignmentCard({ msg, onMarkRead, onNavigate }) {
 
   const handleOpenQueue = safeAsync(async () => {
     if (isUnread) {
-      const token = sessionStorage.getItem('rb_admin_token');
+      const token = getAdminToken();
       const r = await fetch(`${BACKEND_URL}/api/admin/messages/${msg.id}/read`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
@@ -220,7 +221,7 @@ function SuggestionBoxCard({ msg, onMarkRead }) {
   const truncated = text.length > 100 && !expanded;
 
   const handleMarkRead = safeAsync(async () => {
-    const token = sessionStorage.getItem('rb_admin_token');
+    const token = getAdminToken();
     const r = await fetch(`${BACKEND_URL}/api/admin/messages/${msg.id}/read`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
@@ -300,7 +301,7 @@ export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onN
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchMessages = useCallback(safeAsync(async () => {
     setLoading(true);
-    const token = sessionStorage.getItem('rb_admin_token');
+    const token = getAdminToken();
     const r = await fetch(`${BACKEND_URL}/api/admin/messages`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -313,7 +314,7 @@ export default function AdminInboxSidebar({ isOpen, onClose, onUnreadChange, onN
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const markNotificationsRead = useCallback(safeAsync(async () => {
-    const token = sessionStorage.getItem('rb_admin_token');
+    const token = getAdminToken();
     const r = await fetch(`${BACKEND_URL}/api/admin/notifications`, {
       headers: { Authorization: `Bearer ${token}` },
     });

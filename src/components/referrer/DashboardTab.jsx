@@ -11,6 +11,7 @@ import AvatarCircle from '../shared/AvatarCircle';
 import Skeleton from '../shared/Skeleton';
 import ContractorAboutModal from './ContractorAboutModal';
 import BookingFormModal from './BookingFormModal';
+import { getReferrerToken } from '../../utils/authStorage';
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals, bankStatus, onOpenBankSetup }) {
@@ -94,7 +95,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/referrer/qr-code`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+          headers: { Authorization: `Bearer ${getReferrerToken()}` },
         });
         const data = await r.json();
         if (data.qrCodeDataUrl) {

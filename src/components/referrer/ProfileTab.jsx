@@ -14,6 +14,7 @@ import BadgeCelebrationPopup from './BadgeCelebrationPopup';
 import ManageAccount from './ManageAccount';
 import MissingReferralModal from './MissingReferralModal';
 import { safeAsync } from '../../utils/clientErrorReporter';
+import { getReferrerToken } from '../../utils/authStorage';
 
 const CHANNEL_LABEL_MAP = {
   qr_code:                  'In-app QR code',
@@ -76,7 +77,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
+          Authorization: `Bearer ${getReferrerToken()}`,
         },
         body: JSON.stringify({ badgeIds: ids }),
       });
@@ -90,7 +91,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
     setBadgesError(false);
     try {
       const r = await fetch(`${BACKEND_URL}/api/referrer/badges`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem("rb_token")}` },
+        headers: { Authorization: `Bearer ${getReferrerToken()}` },
       });
       const data = await r.json();
       setBadges(data);
@@ -110,7 +111,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/referrer/leaderboard?period=alltime`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+          headers: { Authorization: `Bearer ${getReferrerToken()}` },
         });
         const d = await r.json();
         setShoutOptOut(d.shout_opt_out ?? false);
@@ -128,7 +129,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
     setMissingLoading(true);
     try {
       const r = await fetch(`${BACKEND_URL}/api/referrer/missing-referrals`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+        headers: { Authorization: `Bearer ${getReferrerToken()}` },
       });
       const data = await r.json();
       setMissingReports(Array.isArray(data) ? data : []);
@@ -147,7 +148,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/referrer/conversions`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+          headers: { Authorization: `Bearer ${getReferrerToken()}` },
         });
         const data = await r.json();
         setConversions(Array.isArray(data.conversions) ? data.conversions : []);
@@ -180,7 +181,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
+          Authorization: `Bearer ${getReferrerToken()}`,
         },
         body: JSON.stringify({ shout_opt_out: optOut, pinned_shout: pinned }),
       });
@@ -217,7 +218,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}`,
+            "Authorization": `Bearer ${getReferrerToken()}`,
           },
           body: JSON.stringify({ photo: base64 }),
         });

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn } from './AdminComponents';
+import { getAdminToken } from '../../utils/authStorage';
 
 const LABEL_OPTIONS = [
   { value: '',             label: 'Select label...' },
@@ -36,7 +37,7 @@ export default function AdminFlaggedReferrals() {
   const fetchFlagged = useCallback(() => {
     setLoading(true);
     return fetch(`${BACKEND_URL}/api/admin/flagged-referrals`, {
-      headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+      headers: { 'Authorization': `Bearer ${getAdminToken()}` },
     })
       .then(r => r.json())
       .then(d => { setFlagged(d.flagged || []); setLoading(false); })
@@ -50,7 +51,7 @@ export default function AdminFlaggedReferrals() {
     fetch(`${BACKEND_URL}/api/admin/flagged-referrals/${id}`, {
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+        'Authorization': `Bearer ${getAdminToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

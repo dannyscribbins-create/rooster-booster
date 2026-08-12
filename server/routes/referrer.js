@@ -13,6 +13,7 @@ const axios = require('axios');
 const { logError } = require('../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../utils/dateUtils');
+const { SESSION_SLIDE_MS } = require('../utils/sessionPolicy');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { resendShouldRetry } = require('../utils/retryHelpers');
 const { sendAdminNotification, resolveNotificationRecipient } = require('../utils/notificationEmail');
@@ -1226,7 +1227,9 @@ async function loadCandidateById(source, id) {
 // which surface a team member lands on is Phase 5's decision, not the session's.
 async function issueSessionFor(req, candidate) {
   const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  // 30-day window, then slid forward on use up to a 90-day ceiling (D7).
+  // Was 24 hours; see server/utils/sessionPolicy.js for the whole policy.
+  const expiresAt = new Date(Date.now() + SESSION_SLIDE_MS);
   const deviceInfo = req.headers['user-agent'] || null;
   const ipAddress = req.ip || null;
 

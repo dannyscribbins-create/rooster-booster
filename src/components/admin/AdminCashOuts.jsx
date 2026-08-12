@@ -4,6 +4,7 @@ import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Badge, Btn } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
 import { safeAsync } from '../../utils/clientErrorReporter';
+import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
 
 const METHOD_CONFIG = {
   stripe_ach: { icon: 'ph-bank',           label: 'Stripe ACH',    bg: AD.blueBg,                    color: AD.blueText,      border: `${AD.blue}30` },
@@ -30,8 +31,8 @@ function MethodBadge({ method }) {
 }
 
 export default function AdminCashOuts({ setLoggedIn }) {
-  const adminToken = () => sessionStorage.getItem('rb_admin_token');
-  const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
+  const adminToken = () => getAdminToken();
+  const on401 = () => { clearAdminToken(); setLoggedIn(false); };
   const [cashouts, setCashouts] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState('all');

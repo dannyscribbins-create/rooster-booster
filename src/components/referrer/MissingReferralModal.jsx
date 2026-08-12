@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { R } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
+import { getReferrerToken } from '../../utils/authStorage';
 
 const CHANNEL_OPTIONS = [
   { value: '',                        label: 'Select a channel...',              disabled: true  },
@@ -31,7 +32,7 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
+          Authorization: `Bearer ${getReferrerToken()}`,
         },
         body: JSON.stringify({
           referred_name:    referredName.trim(),

@@ -3,6 +3,7 @@ import { Star, SmileyMeh, CheckCircle, ShareNetwork } from '@phosphor-icons/reac
 import { R } from '../../constants/theme';
 import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
+import { getReferrerToken } from '../../utils/authStorage';
 
 const AMBER = '#F59E0B';
 const GREEN = '#16A34A';
@@ -64,7 +65,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
   const [hasLeftForReview, setHasLeftForReview] = useState(false);
   const [copied,           setCopied]           = useState(false);
   const autoAdvanceTimer = useRef(null);
-  const token = sessionStorage.getItem('rb_token');
+  const token = getReferrerToken();
 
   // Auto-advance return-acknowledgment screen after 2.5 s (good path only)
   useEffect(() => {

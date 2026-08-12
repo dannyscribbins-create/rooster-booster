@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { getControlToken, logoutControl } from '../../utils/authStorage';
 
 const NAVY = '#012854';
 
@@ -7,15 +8,20 @@ const NAVY = '#012854';
 // scope for Phase 1. This shell confirms successful login and holds the route.
 export default function SuperAdminShell() {
   useEffect(() => {
-    const token = sessionStorage.getItem('rm_control_token');
+    const token = getControlToken();
     if (!token) {
       window.location.href = '/rm-control/login';
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleLogout() {
-    sessionStorage.removeItem('rm_control_token');
+  // Awaits the server-side delete (D6) BEFORE navigating away. The redirect
+  // tears down this document, and an in-flight fetch dies with it — so firing
+  // and forgetting here would leave the most privileged session in the system
+  // alive on the server. This is the one surface where that ordering matters
+  // enough to make the handler async.
+  async function handleLogout() {
+    await logoutControl();
     window.location.href = '/rm-control/login';
   }
 

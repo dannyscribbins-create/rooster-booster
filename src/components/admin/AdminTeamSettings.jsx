@@ -6,6 +6,7 @@ import LockedSection from '../shared/LockedSection';
 import { usePermissions } from '../../hooks/useAdminPermissions';
 import { REGISTRY_SECTIONS, FINANCE_WALL_FLAGS, PERM_GROUPS } from '../../constants/registrySections';
 import AdminFlaggedAssignmentsQueue from './AdminFlaggedAssignmentsQueue';
+import { getAdminToken } from '../../utils/authStorage';
 
 // ── PRESET DEFINITIONS (§8.1) ─────────────────────────────────────────────────
 // Presets are one-time STAMPS: selecting a preset populates the permission set on
@@ -164,7 +165,7 @@ function AddMemberModal({ creatorTier, onClose, onSuccess }) {
     if (!fullName.trim())  { setErr('Full name is required.'); return; }
     setSaving(true);
     setErr(null);
-    const token = sessionStorage.getItem('rb_admin_token');
+    const token = getAdminToken();
     try {
       // Step 1: create the member (no password — invite flow)
       const r = await fetch(`${BACKEND_URL}/api/admin/team`, {
@@ -549,7 +550,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
       setJobberUsersLoading(true);
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/jobber-users`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         const data = await r.json();
         if (!r.ok) {
@@ -592,7 +593,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
     setSaving(true);
     setSaveErr(null);
     setJobberMapErr(null);
-    const token = sessionStorage.getItem('rb_admin_token');
+    const token = getAdminToken();
     try {
       // Step 1: PATCH identity fields only when something actually changed (compare to last-saved baseline, not stale props)
       const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier || localTitleId !== baselineRef.current.titleId || localJobberUserId !== baselineRef.current.jobberUserId;
@@ -1167,7 +1168,7 @@ function ManageTitlesSection({ titles, onRefresh }) {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/titles`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify({ name }),
       });
       const d = await r.json();
@@ -1204,7 +1205,7 @@ function ManageTitlesSection({ titles, onRefresh }) {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/titles/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAdminToken()}` },
         body: JSON.stringify({ name }),
       });
       const d = await r.json();
@@ -1230,7 +1231,7 @@ function ManageTitlesSection({ titles, onRefresh }) {
         : `${BACKEND_URL}/api/admin/titles/${id}`;
       const r = await fetch(url, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (r.status === 409) {
         const d = await r.json();
@@ -1496,7 +1497,7 @@ export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChang
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/team/flagged-assignments?status=open`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
         });
         const d = await r.json();
         if (r.ok && Array.isArray(d.flags)) reportOpenFlagCount(d.flags.length);
@@ -1510,7 +1511,7 @@ export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChang
   async function fetchTitles() {
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/titles`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       const data = await r.json();
       if (r.ok) setTitles(Array.isArray(data) ? data : []);
@@ -1523,7 +1524,7 @@ export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChang
     setLoading(true);
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/team`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Failed to load team');
@@ -1541,7 +1542,7 @@ export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChang
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/team/${memberId}/deactivate`, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Deactivation failed');
@@ -1560,7 +1561,7 @@ export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChang
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/team/${memberId}/resend-invite`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Resend failed');

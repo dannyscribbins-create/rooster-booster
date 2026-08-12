@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import { getAdminToken } from '../../utils/authStorage';
 
 const OPTIONS = [
   {
@@ -28,7 +29,7 @@ const METHODS = [
 ];
 
 export default function BankingSettings() {
-  const adminToken = () => sessionStorage.getItem('rb_admin_token');
+  const adminToken = () => getAdminToken();
 
   const [initLoading, setInitLoading]   = useState(true);
   const [automation, setAutomation]     = useState('manual_all');

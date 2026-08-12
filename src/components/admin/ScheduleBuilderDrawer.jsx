@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
+import { getAdminToken } from '../../utils/authStorage';
 
 const MODELS = [
   {
@@ -778,7 +779,7 @@ export default function ScheduleBuilderDrawer({ schedule, allLabels, onSave, onC
         method,
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify(payload),
       });

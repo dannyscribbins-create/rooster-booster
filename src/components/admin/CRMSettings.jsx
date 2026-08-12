@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import Skeleton from '../shared/Skeleton';
+import { getAdminToken } from '../../utils/authStorage';
 
 // ── Local design primitives ───────────────────────────────────────────────────
 
@@ -257,7 +258,7 @@ export default function CRMSettings() {
   const cfmDismissToast = useCallback(() => setCfmToast(null), []);
 
   function authHeaders() {
-    return { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` };
+    return { Authorization: `Bearer ${getAdminToken()}` };
   }
 
   async function loadStatus() {

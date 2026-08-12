@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import ScheduleBuilderDrawer from './ScheduleBuilderDrawer';
+import { getAdminToken } from '../../utils/authStorage';
 
 const MODEL_PILL = {
   escalating: { label: 'Escalating', bg: AD.blueBg,     color: AD.blueText  },
@@ -181,7 +182,7 @@ export default function ReferralProgramSettings() {
   const loadSchedules = useCallback(async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/admin/schedules`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
       });
       if (!res.ok) throw new Error('Failed to load');
       const data = await res.json();
@@ -208,7 +209,7 @@ export default function ReferralProgramSettings() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify({ is_active: newActive }),
       });

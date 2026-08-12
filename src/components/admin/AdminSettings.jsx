@@ -10,6 +10,7 @@ import AdminSettingsNotifications from './AdminSettingsNotifications';
 import AdminSettingsExperience from './AdminSettingsExperience';
 import AdminTeamSettings from './AdminTeamSettings';
 import AdminSettingsMyProfile from './AdminSettingsMyProfile';
+import { getAdminToken } from '../../utils/authStorage';
 
 const SETTINGS_NAV = [
   { id: 'my-profile',    icon: 'ph-user-circle',     label: 'My Profile'       },
@@ -90,7 +91,7 @@ function SystemSettings() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+          'Authorization': `Bearer ${getAdminToken()}`,
         },
       });
       const data = await res.json();
@@ -116,7 +117,7 @@ function SystemSettings() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+          'Authorization': `Bearer ${getAdminToken()}`,
         },
       });
       const data = await res.json();

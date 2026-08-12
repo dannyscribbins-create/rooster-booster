@@ -17,6 +17,7 @@ import BrandingPreview from './BrandingPreview';
 // for email, where SVG support is unreliable — so one asset now serves both and
 // the SVG-vs-upload-policy note that used to live here is moot.
 import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
+import { getAdminToken } from '../../utils/authStorage';
 
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
@@ -277,7 +278,7 @@ export default function BrandingProfileSettings() {
   // Mount: fetch settings + invite links in parallel
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const token = sessionStorage.getItem('rb_admin_token');
+    const token = getAdminToken();
     const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
       fetch(`${BACKEND_URL}/api/admin/settings`,      { headers }).then(r => r.json()),
@@ -350,7 +351,7 @@ export default function BrandingProfileSettings() {
     fetch(`${BACKEND_URL}/api/admin/settings`, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+        Authorization: `Bearer ${getAdminToken()}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(merged),
@@ -406,7 +407,7 @@ export default function BrandingProfileSettings() {
       body.append('logo', file);
       const res = await fetch(`${BACKEND_URL}/api/admin/branding/logo`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
         body,
       });
       const data = await res.json();
@@ -474,7 +475,7 @@ export default function BrandingProfileSettings() {
     setExtractedColors([]);
     setSelectedSwatchIdx(null);
     try {
-      const token = sessionStorage.getItem('rb_admin_token');
+      const token = getAdminToken();
       const res = await fetch(
         `${BACKEND_URL}/api/admin/extract-colors?url=${encodeURIComponent(urlInput.trim())}`,
         { headers: { Authorization: `Bearer ${token}` } }

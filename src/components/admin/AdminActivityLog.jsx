@@ -4,6 +4,7 @@ import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Badge } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
 import AdminContactDetailDrawer from './AdminContactDetailDrawer';
+import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
 
 const CATEGORY_FILTERS = [
   { id: 'all',          label: 'All'           },
@@ -39,8 +40,8 @@ const badgeMap = {
 };
 
 export default function AdminActivity({ setLoggedIn }) {
-  const adminToken = () => sessionStorage.getItem('rb_admin_token');
-  const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
+  const adminToken = () => getAdminToken();
+  const on401 = () => { clearAdminToken(); setLoggedIn(false); };
 
   const [activity, setActivity]                   = useState([]);
   const [loading, setLoading]                     = useState(true);

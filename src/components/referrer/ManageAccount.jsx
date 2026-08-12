@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { R } from '../../constants/theme';
 import { BACKEND_URL, STRIPE_PUBLISHABLE_KEY } from '../../config/contractor';
+import { getReferrerToken } from '../../utils/authStorage';
 
 // Defined outside ManageAccount so it's a stable reference across renders
 function Toggle({ on, onToggle, disabled }) {
@@ -90,7 +91,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/account/me`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+          headers: { Authorization: `Bearer ${getReferrerToken()}` },
         });
         const data = await r.json();
         setAcct(data);
@@ -109,7 +110,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/account/sessions`, {
-          headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+          headers: { Authorization: `Bearer ${getReferrerToken()}` },
         });
         const data = await r.json();
         setSessions(Array.isArray(data) ? data : []);
@@ -163,7 +164,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
   function authHeaders() {
     return {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`,
+      Authorization: `Bearer ${getReferrerToken()}`,
     };
   }
 
@@ -361,7 +362,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
         method: 'POST', headers: authHeaders(),
       });
       const r = await fetch(`${BACKEND_URL}/api/account/sessions`, {
-        headers: { Authorization: `Bearer ${sessionStorage.getItem('rb_token')}` },
+        headers: { Authorization: `Bearer ${getReferrerToken()}` },
       });
       const data = await r.json();
       setSessions(Array.isArray(data) ? data : []);
@@ -378,8 +379,11 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
       });
       const d = await r.json();
       if (!r.ok) { setDeleteError(d.error || 'Failed'); return; }
-      sessionStorage.removeItem('rb_token');
-      onLogout();
+      // NO LOCAL CLEAR BEFORE onLogout(). Since Phase 4, onLogout() performs a
+      // SERVER-side logout, and it needs the token to name the row it deletes —
+      // clearing here first would silently reduce that to the old client-only
+      // behaviour and leave a live session row behind for a deleted account.
+      await onLogout();
     } catch { setDeleteError('Failed to delete account'); }
     finally { setDeleteLoading(false); }
   }
@@ -401,7 +405,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`
+            Authorization: `Bearer ${getReferrerToken()}`
           }
         }
       );
@@ -442,7 +446,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`
+          Authorization: `Bearer ${getReferrerToken()}`
         },
         body: JSON.stringify({ financialConnectionsAccountId })
       });
@@ -464,7 +468,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionStorage.getItem('rb_token')}`
+          Authorization: `Bearer ${getReferrerToken()}`
         }
       });
       const data = await res.json();

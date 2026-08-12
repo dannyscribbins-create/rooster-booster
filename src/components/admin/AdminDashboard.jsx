@@ -4,6 +4,7 @@ import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, StatCard, PipelineBar } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
 import { usePermissions } from '../../hooks/useAdminPermissions';
+import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
 
 export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats, onSettingsClick, onFlaggedBannerClick }) {
   const { full_name } = usePermissions();
@@ -17,9 +18,9 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
     setLoading(true); setError(''); setCrmNotConnected(false);
     try {
       const r = await fetch(`${BACKEND_URL}/api/admin/stats${forceRefresh ? '?refresh=true' : ''}`, {
-        headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+        headers: { 'Authorization': `Bearer ${getAdminToken()}` },
       });
-      if (r.status === 401) { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); return; }
+      if (r.status === 401) { clearAdminToken(); setLoggedIn(false); return; }
       const d = await r.json();
       if (d.error === 'crm_not_connected') { setCrmNotConnected(true); }
       else if (d.error) { setError(d.error); }
@@ -37,7 +38,7 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
     (async () => {
       try {
         const r = await fetch(`${BACKEND_URL}/api/admin/flagged-referrals/summary`, {
-          headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_admin_token')}` },
+          headers: { 'Authorization': `Bearer ${getAdminToken()}` },
         });
         if (!r.ok) return;
         const d = await r.json();

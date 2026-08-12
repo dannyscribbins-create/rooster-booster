@@ -5,6 +5,7 @@ import { AdminPageHeader, Btn } from './AdminComponents';
 import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import { R } from '../../constants/theme';
+import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
 
 // ─── Copied from App.js for preview (will be cleaned up in Phase 4) ───────────
 const PRESET_MESSAGES = {
@@ -126,8 +127,8 @@ function AnnouncementPopup({ announcement, referrerFirstName, onDismiss, setting
 const PREVIEW_NAMES = ['Paige Turner', 'Grant Gable', 'Nail Armstrong', 'Victor Valley', 'Pete Pitch', 'Ridgeard Runner', 'Flash Feltman', 'Tarence Tack', 'Roger Ringshank', 'Galvan Ized'];
 
 export default function AdminAnnouncementSettings({ setLoggedIn }) {
-  const adminToken = () => sessionStorage.getItem('rb_admin_token');
-  const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
+  const adminToken = () => getAdminToken();
+  const on401 = () => { clearAdminToken(); setLoggedIn(false); };
 
   const [enabled, setEnabled] = useState(true);
   const [mode, setMode] = useState('preset_1');

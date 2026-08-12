@@ -59,6 +59,9 @@
 
 import { resolveBrandingTheme } from './brandingTheme';
 import { BACKEND_URL } from '../config/contractor';
+// Extracted to a shared helper in Phase 4 — authStorage.js needs the identical
+// guard now that the bearer token lives in localStorage too.
+import { safeLocalStorage } from './safeStorage';
 
 // ⚠ THE FIRST AND ONLY localStorage KEY IN THIS CODEBASE, AND THAT IS DELIBERATE
 // (spec D5). Everything else here uses sessionStorage, and this is not an
@@ -347,17 +350,6 @@ export function createBrandingContext(overrides = {}) {
     session: null,
     ...overrides,
   };
-}
-
-// localStorage access can THROW on the property itself, not merely on its
-// methods, when storage is disabled by policy. Resolved once here so every source
-// gets a null-ish object instead of a landmine.
-function safeLocalStorage() {
-  try {
-    return window.localStorage ?? null;
-  } catch {
-    return null;
-  }
 }
 
 // The one network call in this file. Never throws: a failed lookup is a

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn } from './AdminComponents';
+import { getAdminToken } from '../../utils/authStorage';
 
 function timeAgo(iso) {
   if (!iso) return '—';
@@ -55,7 +56,7 @@ export default function AdminPendingReferrals() {
   const [confirmSuccess, setConfirmSuccess] = useState({});
   const [actionError, setActionError]     = useState({});
 
-  const token = sessionStorage.getItem('rb_admin_token');
+  const token = getAdminToken();
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);

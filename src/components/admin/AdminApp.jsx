@@ -13,6 +13,8 @@ import AdminReferralReview from './AdminReferralReview';
 import AdminCampaigns from './AdminCampaigns';
 import AdminInboxSidebar from './AdminInboxSidebar';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
+import { fetchSession, getAdminToken, setAdminToken } from '../../utils/authStorage';
+import LoadingIndicator from '../shared/LoadingIndicator';
 
 function useAdminFonts() {
   useEffect(() => {
@@ -57,7 +59,7 @@ function AdminLogin({ onLogin }) {
       if (d.error === 'account_frozen') setError('This account is inactive. Contact your administrator to have access restored.');
       else if (d.error) setError('Invalid credentials');
       else {
-        sessionStorage.setItem('rb_admin_token', d.token);
+        setAdminToken(d.token);
         onLogin();
       }
     } catch {
@@ -134,6 +136,9 @@ function AdminLogin({ onLogin }) {
 
 export default function AdminPanel() {
   const [authed, setAuthed]                       = useState(false);
+  // Boot rehydration (C/DL-3b Phase 4, D7). Same shape as App.jsx: lazy
+  // initialiser so a visitor with no stored token never sees a loading state.
+  const [booting, setBooting]                     = useState(() => !!getAdminToken());
   const [page, setPage]                           = useState('dashboard');
   const [pendingCount, setPendingCount]           = useState(0);
   const [flaggedUnresolved, setFlaggedUnresolved] = useState(0);
@@ -156,7 +161,7 @@ export default function AdminPanel() {
   useEffect(() => {
     if (!authed) return;
     safeAsync(async () => {
-      const token = sessionStorage.getItem('rb_admin_token');
+      const token = getAdminToken();
       const r = await fetch(`${BACKEND_URL}/api/admin/messages`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -166,7 +171,7 @@ export default function AdminPanel() {
       }
     }, 'AdminPanel.fetchInboxUnreadCount')();
     safeAsync(async () => {
-      const token = sessionStorage.getItem('rb_admin_token');
+      const token = getAdminToken();
       const r = await fetch(`${BACKEND_URL}/api/admin/notifications`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -178,7 +183,7 @@ export default function AdminPanel() {
 
   function handleLogin() {
     setAuthed(true);
-    const token = sessionStorage.getItem('rb_admin_token');
+    const token = getAdminToken();
     const headers = { 'Authorization': `Bearer ${token}` };
     (async () => {
       const fetchJson = async (url) => { const r = await fetch(url, { headers }); return r.json(); };
@@ -207,6 +212,37 @@ export default function AdminPanel() {
       }
     })();
   }
+
+  // Validates the stored admin token once, on mount. A deactivated member's
+  // token fails here (verifyAnySession checks team_members.active) and lands on
+  // the login screen, which is the safe direction.
+  //
+  // handleLogin() is reused rather than duplicated so a rehydrated session and a
+  // fresh login prime the badge counts through exactly one code path.
+  useEffect(() => {
+    if (!booting) return;
+    let cancelled = false;
+    (async () => {
+      const session = await fetchSession(getAdminToken());
+      if (cancelled) return;
+      if (session?.role === 'team') handleLogin();
+      setBooting(false);
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The panel renders OUTSIDE ThemeProvider (Phase 1, Ruling 5), so this spinner
+  // gets LoadingIndicator's neutral --rm-primary fallback rather than a
+  // contractor accent — which is the correct look for admin chrome.
+  if (booting) return (
+    <div style={{
+      minHeight: '100vh', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', background: AD.bgPage, fontFamily: AD.fontSans,
+    }}>
+      <LoadingIndicator size={32} label="Restoring your session…" />
+    </div>
+  );
 
   if (!authed) return <AdminLogin onLogin={handleLogin} />;
 

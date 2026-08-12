@@ -15,6 +15,8 @@ import SuperAdminLoginScreen from './components/superAdmin/SuperAdminLoginScreen
 import SuperAdminShell from './components/superAdmin/SuperAdminShell';
 import AdminSetPasswordScreen from './components/admin/AdminSetPasswordScreen';
 import ThemeProvider from './components/shared/ThemeProvider';
+import { fetchSession, getReferrerToken, logoutReferrer, setReferrerToken } from './utils/authStorage';
+import LoadingIndicator from './components/shared/LoadingIndicator';
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
 function useReferrerFonts() {
@@ -54,6 +56,17 @@ export default function App() {
   const [announcementSettings, setAnnouncementSettings] = useState(null);
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [announcementShown, setAnnouncementShown] = useState(false);
+
+  // ── BOOT REHYDRATION (C/DL-3b Phase 4, D7 piece 2) ──────────────────────────
+  // Before this, loggedIn hard-initialised to false while a perfectly valid
+  // token sat in storage, which is why an accidental refresh dumped people back
+  // to the login screen.
+  //
+  // THE INITIALISER IS LAZY AND CHECKS FOR A TOKEN FIRST. A visitor with no
+  // stored token must never see a loading state — there is nothing to rehydrate,
+  // so booting starts false and the login screen paints on the first frame. Only
+  // someone who might legitimately be logged in pays the round-trip.
+  const [booting, setBooting] = useState(() => !!getReferrerToken());
 
   const [signupSlug, setSignupSlug]       = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -112,13 +125,38 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Validates the stored token once, on mount. Every failure mode — expired,
+  // revoked, malformed, server unreachable — collapses to the same outcome:
+  // stop booting, stay logged out, show the login screen. fetchSession() never
+  // throws, so there is no partial-state branch to get wrong.
+  useEffect(() => {
+    if (!booting) return;
+    let cancelled = false;
+    (async () => {
+      const session = await fetchSession(getReferrerToken());
+      if (cancelled) return;
+      // A team-member token is a VALID session that this surface cannot render
+      // yet — Phase 5 owns where a rep lands (spec §7.1). It is deliberately not
+      // cleared: destroying a working credential to tidy up a screen we have not
+      // built would be the wrong trade.
+      if (session?.role === 'referrer') {
+        setUserName(session.name || '');
+        setUserEmail(session.email || '');
+        setLoggedIn(true);
+      }
+      setBooting(false);
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (loggedIn && userName) {
       (async () => {
         setLoading(true);
         try {
           const res = await fetch(`${BACKEND_URL}/api/pipeline?referrer=${encodeURIComponent(userName)}`, {
-            headers: { "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}` },
+            headers: { "Authorization": `Bearer ${getReferrerToken()}` },
           });
           if (res.status === 429) {
             setPipelineRateLimited(true);
@@ -145,7 +183,7 @@ export default function App() {
         } catch (err) { console.error(err); setLoading(false); }
         try {
           const res = await fetch(`${BACKEND_URL}/api/profile/photo`, {
-            headers: { "Authorization": `Bearer ${sessionStorage.getItem("rb_token")}` },
+            headers: { "Authorization": `Bearer ${getReferrerToken()}` },
           });
           const data = await res.json();
           if (data.photo) setProfilePhoto(data.photo);
@@ -168,7 +206,7 @@ export default function App() {
   function handleLogin(name, email, token, reviewCard, announcementData, settingsData) {
     setUserName(name);
     setUserEmail(email);
-    sessionStorage.setItem("rb_token", token);
+    setReferrerToken(token);
     setShowReviewCard(reviewCard ?? true);
     setAnnouncement(announcementData ?? null);
     setAnnouncementSettings(settingsData ?? null);
@@ -180,7 +218,7 @@ export default function App() {
     setShowReviewCard(false);
     fetch(`${BACKEND_URL}/api/review/dismiss`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${sessionStorage.getItem('rb_token')}` },
+      headers: { 'Authorization': `Bearer ${getReferrerToken()}` },
     }).catch(() => {}); // fire-and-forget
   }
 
@@ -190,7 +228,7 @@ export default function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionStorage.getItem('rb_token')}`,
+          'Authorization': `Bearer ${getReferrerToken()}`,
         },
         body: JSON.stringify({ announcementId: announcement.id }),
       }).catch(() => {});
@@ -237,6 +275,26 @@ export default function App() {
   return <ThemeProvider>{themedRoute}</ThemeProvider>;
 
   function renderThemedRoute() {
+    // THE BOOT GATE SITS ABOVE EVERY AUTHENTICATED BRANCH, which is what makes
+    // "no flash of authenticated content" structural rather than a timing
+    // accident: while the token is being validated neither the login screen nor
+    // the app can render, so neither can appear and then be replaced.
+    //
+    // It sits BELOW the provider, so the spinner is already contractor-themed —
+    // this is LoadingIndicator's first production consumer (spec §6.1).
+    //
+    // resetToken and the signup/verify flow are checked AFTER this, and that is
+    // correct: those screens are reached by a link, and someone arriving on a
+    // password-reset link should not have that screen yanked away a moment later
+    // because a stale token happened to still validate.
+    if (booting) return (
+      <div style={{
+        minHeight: '100vh', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <LoadingIndicator size={32} label="Signing you in…" />
+      </div>
+    );
     if (resetToken) return <ResetPinScreen token={resetToken} />;
     if (showVerify) return (
       <EmailVerifyScreen
@@ -304,7 +362,14 @@ export default function App() {
         showReviewCard={showReviewCard} onDismissReview={handleDismissReview}
         announcement={announcement} announcementSettings={announcementSettings}
         showAnnouncement={showAnnouncement} onDismissAnnouncement={handleDismissAnnouncement}
-        onLogout={() => { setLoggedIn(false); setPipeline([]); setUserName(''); setProfilePhoto(null); sessionStorage.removeItem('rb_token'); }}
+        // Local state clears first so the UI responds immediately; logoutReferrer()
+        // then deletes the SERVER row (D6) and clears the stored token. Before
+        // Phase 4 this was a bare sessionStorage.removeItem and the bearer token
+        // stayed valid server-side for its full lifetime after every logout.
+        onLogout={async () => {
+          setLoggedIn(false); setPipeline([]); setUserName(''); setProfilePhoto(null);
+          await logoutReferrer();
+        }}
         onNameUpdate={setUserName}
       />
     );

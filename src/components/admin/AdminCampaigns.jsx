@@ -4,6 +4,7 @@ import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import { AdminPageHeader, Btn, Badge } from './AdminComponents';
 import AdminCampaignDetail from './AdminCampaignDetail';
 import AdminContactsTab from './AdminContactsTab';
+import { getAdminToken } from '../../utils/authStorage';
 
 const STATUS_BADGE = {
   draft:           'neutral',
@@ -3132,7 +3133,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
   const [builderAudiencesLoading,  setBuilderAudiencesLoading]  = useState(false);
   const [audienceLoadSaving,       setAudienceLoadSaving]       = useState(false);
 
-  const token   = sessionStorage.getItem('rb_admin_token');
+  const token   = getAdminToken();
   const headers = { Authorization: `Bearer ${token}` };
 
   useEffect(() => {

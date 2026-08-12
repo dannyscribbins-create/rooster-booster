@@ -3,6 +3,7 @@ import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
+import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
 
 const PERIODS = [
   { key: 'monthly',   label: 'Monthly'   },
@@ -174,8 +175,8 @@ function ToggleRow({ label, sublabel, value, onChange }) {
 }
 
 export default function AdminEngagement({ setLoggedIn }) {
-  const adminToken = () => sessionStorage.getItem('rb_admin_token');
-  const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
+  const adminToken = () => getAdminToken();
+  const on401 = () => { clearAdminToken(); setLoggedIn(false); };
 
   const [loading, setLoading]       = useState(true);
   const [loadError, setLoadError]   = useState('');

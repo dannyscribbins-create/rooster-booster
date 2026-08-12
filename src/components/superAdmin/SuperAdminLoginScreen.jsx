@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { BACKEND_URL } from '../../config/contractor';
+import { setControlToken } from '../../utils/authStorage';
 
 const NAVY = '#012854';
 
@@ -29,7 +30,7 @@ export default function SuperAdminLoginScreen() {
         setLoading(false);
         return;
       }
-      sessionStorage.setItem('rm_control_token', data.token);
+      setControlToken(data.token);
       window.location.href = '/rm-control';
     } catch {
       setError('Something went wrong. Please try again.');

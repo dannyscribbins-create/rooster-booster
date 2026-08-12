@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { usePermissions } from '../../hooks/useAdminPermissions';
+import { getAdminToken } from '../../utils/authStorage';
 
 export default function AdminSettingsMyProfile() {
   const { full_name, email, tier } = usePermissions();
@@ -15,7 +16,7 @@ export default function AdminSettingsMyProfile() {
   const saveMsgTimerRef                     = useRef(null);
 
   useEffect(() => {
-    const token = sessionStorage.getItem('rb_admin_token');
+    const token = getAdminToken();
     (async () => {
       try {
         const [meRes, titlesRes] = await Promise.all([
@@ -50,7 +51,7 @@ export default function AdminSettingsMyProfile() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionStorage.getItem('rb_admin_token')}`,
+          Authorization: `Bearer ${getAdminToken()}`,
         },
         body: JSON.stringify({ title_id: newId }),
       });

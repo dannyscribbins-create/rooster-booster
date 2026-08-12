@@ -4,6 +4,7 @@ import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTh
 import { resolveBrandingTheme } from '../../utils/brandingTheme';
 import { resolveBranding, createBrandingContext } from '../../utils/brandingChain';
 import { BACKEND_URL } from '../../config/contractor';
+import { getReferrerToken } from '../../utils/authStorage';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE THEME PROVIDER — C/DL-3b Phase 1, spec D8
@@ -109,13 +110,15 @@ export function themeVariables(brand, mode) {
 // the caller falls back to DEFAULT_THEME_MODE, which is the same answer the
 // endpoint gives for an unset preference.
 //
-// ⚠ READS rb_token FROM sessionStorage, which is where the token lives TODAY.
-// Spec D7 moves it to localStorage in Phase 4; this is the one line here that
-// changes when it does.
+// READS THE REFERRER TOKEN THROUGH THE authStorage SEAM (C/DL-3b Phase 4). This
+// comment used to warn that the token lived in sessionStorage and that D7 would
+// move it; that move has happened, and this file no longer knows or cares which
+// store backs it. getReferrerToken() never throws, but the try/catch stays as a
+// belt-and-braces guard on a path that must not be able to unstyle the app.
 async function fetchThemeModeFromApi() {
   let token = null;
   try {
-    token = window.sessionStorage?.getItem('rb_token') ?? null;
+    token = getReferrerToken() ?? null;
   } catch {
     return null;
   }

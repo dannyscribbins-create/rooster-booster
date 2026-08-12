@@ -6,10 +6,11 @@ import { AdminPageHeader, StatCard, Badge, Btn, AdminInput } from './AdminCompon
 import Skeleton from '../shared/Skeleton';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import AdminContactsTab from './AdminContactsTab';
+import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
 
 export default function AdminReferrers({ setLoggedIn }) {
-  const adminToken = () => sessionStorage.getItem('rb_admin_token');
-  const on401 = () => { sessionStorage.removeItem('rb_admin_token'); setLoggedIn(false); };
+  const adminToken = () => getAdminToken();
+  const on401 = () => { clearAdminToken(); setLoggedIn(false); };
   const [sectionView, setSectionView] = useState('all'); // 'all' | 'app-users' | 'contacts'
   const [users, setUsers]           = useState([]);
   const [loading, setLoading]       = useState(true);
