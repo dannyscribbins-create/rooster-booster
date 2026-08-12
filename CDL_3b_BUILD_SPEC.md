@@ -345,6 +345,28 @@ Diff review → commit → deploy → **verify in production**. This is where 3b
 
 **Plain-language goal:** stop Accent Roofing's identity from appearing in every other contractor's app.
 
+### 8.0 Phase 0 — settings-backing classification *(do this FIRST; report before proposing a build plan)*
+
+*(Danny ruling. Surfaced here, in Phase 0, deliberately — not discovered mid-build.)*
+
+Phase 6 retires the referrer surfaces from `CONTRACTOR_CONFIG` to a session-sourced branding context. For contractor **identity** — name, phone, email, website, logo, colours — **the admin configuration already exists**: `contractor_settings` has the columns, Branding Settings and Company Details already edit them, and `resolveBrandingTheme` already reads them. For those keys Phase 6 is pointing the referrer app at data it is currently ignoring, nothing more.
+
+**But not every hardcoded value has a settings column behind it.** Phase 0 must classify, for **each of the seven consuming components**, what the value it needs actually is:
+
+| | Category | Work it implies |
+|---|---|---|
+| **(a)** | Already a `contractor_settings` column **with** admin UI | Wire it. Done. |
+| **(b)** | A column with **no** admin UI | Needs an admin control. |
+| **(c)** | Neither | Needs a column **and** a control — or a deliberate ruling to template the contractor name into fixed copy for now. |
+
+**This changes Phase 6's shape.** If several land in (b) or (c), the phase owns **admin UI work**, not just a rewiring — a materially different build. **Report the classification before proposing a build plan.**
+
+**Candidates checked while recording this note** *(two of the seven; the other five are Phase 0's job)*:
+
+- **`AnnouncementPopup.jsx:9` `preset_2` — confirmed category (c).** "Thank you for being part of the Accent Roofing family" is a hardcoded **string in a preset**, not a settings read. No column backs it. **And it is a TRIPLET, not a pair** — see the Admin Panel Brand Retirement note in §10: byte-identical copies live at `AnnouncementPopup.jsx:9` (referrer, retires here), `AdminAnnouncementSettings.jsx:12` and `AdminSettingsNotifications.jsx:11` (both admin, retire in that build). §8.2's "the two must change together" understates it by one file.
+- **`reviewMessage` / `reviewButtonText` — NOT category (c). They are category (a).** *(Correction to the ruling as first stated; recorded so Phase 0 does not re-derive it.)* Both columns exist — `review_button_text`, `review_message` in the original `CREATE TABLE` (`db.js:220-221`). Branding Settings already edits both (`BrandingProfileSettings.jsx:803-804`), and `GET`/`PATCH` already whitelist them (`admin/index.js:599,679`). The only gap is the consumer: `DashboardTab.jsx:586,610` reads `CONTRACTOR_CONFIG` instead of the settings. **Pure rewiring, no admin work.**
+  - ⚠ **Default-copy divergence found in passing.** The server default is `'Enjoying the rewards? Leave us a quick review!'` (`admin/index.js:647`); `contractor.js:30` and the admin placeholder both say `'…quick Google review!'`. A contractor who never touches the field gets different copy depending on which path answers. Reconcile during the rewiring — this is exactly the class of drift the rewiring exposes.
+
 ### 8.1 The real scope — larger than the inventory says
 
 `HARDCODED_ACCENT_INVENTORY.md` lists `contractor.js:23-24` (two keys). In fact **eight of the nine keys are Accent-specific** — `name`, `logoUrl`, `reviewUrl`, `phone`, `email`, `website`, plus `reviewMessage` / `reviewButtonText` which are generic copy a contractor would want to control. Only `BACKEND_URL` and `STRIPE_PUBLISHABLE_KEY` are platform-level.
