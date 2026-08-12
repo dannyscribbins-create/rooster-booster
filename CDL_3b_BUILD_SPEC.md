@@ -404,6 +404,13 @@ Diff review → commit → deploy → visual verification on a real contractor s
 - Needs: enrolment flag on `team_members` · a half-authenticated session state (a token minted after password success but before second-factor success **must not** be usable as a normal session, or 2FA is decorative) · rate limiting · a recovery path for a rep who loses email access.
 - **SMS is disqualified** — 10DLC unresolved, and the one existing SMS path is dark.
 
+### Carried out of Phase 3 (D3 as built)
+
+- **🟡 DECISION E INPUT — a frozen rep who also holds a homeowner account still has a working door.** *(Consequence of the Phase 3 partition ruling, Danny-approved as correct behaviour.)* The 403 fires only when **no live identity matched**. So when one address opens both a deactivated `team_members` row and a live `users` row, the person is logged straight into the homeowner side and never sees the frozen screen. **This is right, not a defect:** they genuinely do have a working account, and offering a dead option beside a live one is worse than not offering it. But **Decision E (rep lifecycle / offboarding) must answer it deliberately rather than inherit it** — "deactivate the rep" does not mean "this person can no longer sign in", and E is where that distinction gets a ruling. Fenced by `server/test/frozenAccount.test.js`'s *a live referrer row wins outright when the team row is frozen*.
+- **A frozen `team_members` row now occupies one of the five candidate slots** it previously never entered, because the `active` predicate left the gather (D3). `team_members` is ordered first — **that ordering is what keeps the frozen answer reachable at all** — so the displacement lands on the *fifth* homeowner candidate of someone holding 5+ `users` accounts **plus** a frozen employee row. Vanishingly unlikely, structurally real, recorded so it is a known number rather than a surprise found under load.
+- **`HARDCODED_ACCENT_INVENTORY.md` is a PARTIAL SAMPLE, not a map** — ruled here after its **third** verified miss (see Documentation corrections below). **Phase 6 opens with a fresh grep and does not work from the list.** A header note to that effect is now on the inventory itself.
+- **`AdminApp.jsx`'s hardcoded `Accent Roofing` string is an ADMIN-BRANDING item, not a Group D referrer fix.** The admin panel is **co-branded neutral by decision** — RoofMiles chrome, contractor logo, contractor accent colour on primary buttons only — so it has a different target from the referrer surfaces even though it gets swept in the same pass.
+
 ### Carried to 3c
 
 - **Theme toggle UI** in Profile (D8). 3b wires the read; 3c builds the switch.
@@ -426,7 +433,7 @@ Diff review → commit → deploy → visual verification on a real contractor s
 - `DECISION_C_DL_BUILD_SPEC.md` **§5** — "surface and text do not exist today" is **closed** by 3a Phase 3. `RENDER_TOKEN_KEYS` is exactly `['primary','secondary','bg','surface','text']`.
 - `DECISION_C_DL_BUILD_SPEC.md` **A20 / §15** — the surface/text gap is **already closed**. `--brand-*` (four tokens, landing page) and `--rm-*` (five tokens, React) are **different layers, not a gap** (D11).
 - **`CLAUDE.md` is materially stale** — test counts (says 734/35 across 6; actual 784/128 across 10), backend folder structure (omits 13 files), frontend structure (omits 10, and lists `AdminSettingsEngagement.jsx`, which does not exist — the file is `AdminSettingsExperience.jsx`), and the database table list (omits 11 tables). Owed a full doc pass.
-- **`HARDCODED_ACCENT_INVENTORY.md`** — Group A understates `AnnouncementPopup.jsx` (copy string as well as logo); Group D undercounts badly (§8.1).
+- **`HARDCODED_ACCENT_INVENTORY.md` has been WRONG EVERY TIME IT HAS BEEN CHECKED AGAINST SOURCE — three for three.** Group A understates `AnnouncementPopup.jsx` (copy string as well as logo); Group D undercounted 2 keys where there are 8, across 7 components rather than 1 (§8.1); and `AdminApp.jsx`'s admin-login `Accent Roofing` literal *(found in Phase 3)* appears on **no group list at all**. **Ruling: it is a partial sample, not a map.** Phase 6 opens with a fresh grep and treats the file as a starting hint only.
 
 ---
 

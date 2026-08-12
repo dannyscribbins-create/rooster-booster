@@ -44,7 +44,18 @@ function AdminLogin({ onLogin }) {
         body: JSON.stringify({ email, password }),
       });
       const d = await r.json();
-      if (d.error) setError('Invalid credentials');
+      // C/DL-3b Phase 3 (D3). CHECKED BEFORE THE GENERIC BRANCH, which flattens
+      // every failure to 'Invalid credentials' — the exact sentence this decision
+      // exists to stop showing a deactivated employee whose password was correct.
+      // Branched on the typed CODE, never the status, so re-wording the message
+      // is never a protocol change.
+      //
+      // NO BRANDED FROZEN SCREEN ON THIS SURFACE, deliberately: the admin panel
+      // renders outside ThemeProvider (Phase 1, Ruling 5) and must not acquire the
+      // referrer palette. The 403's branding payload is the unified door's to use;
+      // Phase 5 replaces this inline form with that door.
+      if (d.error === 'account_frozen') setError('This account is inactive. Contact your administrator to have access restored.');
+      else if (d.error) setError('Invalid credentials');
       else {
         sessionStorage.setItem('rb_admin_token', d.token);
         onLogin();

@@ -4,6 +4,7 @@ import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
 import rbLogoSquareWordmark from '../../assets/images/rb logo w wordmark 2000px transparent background.png';
 import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import ContactModal from '../shared/ContactModal';
+import FrozenAccountScreen from './FrozenAccountScreen';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─── Login Screen ─────────────────────────────────────────────────────────────
@@ -19,6 +20,11 @@ export default function LoginScreen({ onLogin }) {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotStatus, setForgotStatus] = useState("idle"); // idle | loading | sent | error
   const [forgotError, setForgotError] = useState("");
+  // C/DL-3b Phase 3 (D3). Holds the 403 body's branding when the credential was
+  // PROVEN but the account is deactivated. Null the rest of the time, so its
+  // truthiness is the whole state machine — there is no session, no token and no
+  // half-authenticated mode to represent.
+  const [frozenAccount, setFrozenAccount] = useState(null);
 
   function handleForgotPin() {
     if (!forgotEmail) return;
@@ -52,7 +58,16 @@ export default function LoginScreen({ onLogin }) {
       .then(res => res.json())
       .then(data => {
         setLoading(false);
-        if (data.error) {
+        // BRANCHED ON THE TYPED CODE, NOT THE STATUS. 'account_frozen' is the
+        // protocol; the copy belongs to the screen, so re-wording the message can
+        // never be a protocol change. Checked BEFORE the generic branch below —
+        // that one does setError(data.error), which would print the literal
+        // string "account_frozen" at a person in a red box.
+        if (data.error === 'account_frozen') {
+          // branding is present whenever the server could read the contractor;
+          // the frozen screen falls back to the platform brand when it is not.
+          setFrozenAccount({ branding: data.branding ?? null });
+        } else if (data.error) {
           setError(data.error);
         } else {
           onLogin(data.fullName, data.email, data.token, data.showReviewCard ?? true, data.announcement ?? null, data.announcementSettings ?? null);
@@ -62,6 +77,21 @@ export default function LoginScreen({ onLogin }) {
         setLoading(false);
         setError("Something went wrong. Please try again.");
       });
+  }
+
+  // ── THE FROZEN VIEW REPLACES THE FORM, RATHER THAN COVERING IT (D3) ────────
+  // Leaving the credential fields on screen would invite exactly the retry loop
+  // this decision exists to end — a deactivated person hammering a password that
+  // is genuinely correct until the rate limiter locks them out. `onBack` returns
+  // to the form for someone who owns a second account, and clears the password
+  // rather than leaving it sitting in state behind a different screen.
+  if (frozenAccount) {
+    return (
+      <FrozenAccountScreen
+        branding={frozenAccount.branding}
+        onBack={() => { setFrozenAccount(null); setPass(""); }}
+      />
+    );
   }
 
   const inputStyle = (field) => ({

@@ -43,6 +43,10 @@ const { getPreference, THEME_MODE_PREF_KEY } = require('../utils/userPreferences
 // C/DL-3b Phase 2B — timing parity on a login miss. Shared rather than a third
 // copy of the constant; see that file's header.
 const { DUMMY_BCRYPT_HASH } = require('../utils/dummyHash');
+// C/DL-3b Phase 3 — the verified-but-frozen answer (D3). Shared with
+// POST /api/admin/login so the two doors cannot disagree about what a frozen
+// account looks like; see that file's header for when it may be called.
+const { buildFrozenAccountBody } = require('../utils/frozenAccount');
 
 // test seam — inert in production, never called outside server/test/
 // Only the cashout-section call sites below use these overrides.
@@ -1092,15 +1096,22 @@ const INVALID_CREDENTIALS = 'Invalid email or PIN';
 // is a cheap denial of service: register one address with many contractors and
 // every login attempt against it costs N hashes. Five is the ceiling per D1.
 //
-// `active = true` stays in the team_members LOOKUP for now. Moving it to a
-// post-compare branch is C/DL-3b Phase 3 (D3) — doing it here would ship the
-// frozen-account behaviour change inside the login rewrite, which is exactly the
-// confusion the phase split exists to prevent.
+// ⚠ `active = true` IS DELIBERATELY ABSENT FROM THE team_members LOOKUP, AND
+// PUTTING IT BACK IS A BUG (C/DL-3b Phase 3, D3). A deactivated member must be
+// GATHERED and COMPARED like anyone else; whether their account is frozen is
+// decided in the handler, after their password has actually opened the hash.
+//
+// Filtering here is what produced the old misleading 401 — a deactivated person
+// with the CORRECT password was told their credentials were invalid and retried
+// until the rate limiter locked them out. Filtering AFTER the compare is what
+// keeps the honest answer from becoming an account enumerator: nothing different
+// is said until the credential is proven. server/test/frozenAccount.test.js
+// fences both halves.
 async function gatherLoginCandidates(email) {
   const teamResult = await pool.query(
-    `SELECT id, contractor_id, password_hash, tier, permissions
+    `SELECT id, contractor_id, password_hash, tier, permissions, active
        FROM team_members
-      WHERE LOWER(email) = LOWER($1) AND active = true
+      WHERE LOWER(email) = LOWER($1)
       ORDER BY id
       LIMIT $2`,
     [email, LOGIN_CANDIDATE_CAP]
@@ -1115,10 +1126,16 @@ async function gatherLoginCandidates(email) {
   );
   const candidates = [
     ...teamResult.rows.map(row => ({
-      source: 'team_members', id: row.id, contractorId: row.contractor_id, hash: row.password_hash, row,
+      source: 'team_members', id: row.id, contractorId: row.contractor_id, hash: row.password_hash,
+      active: row.active, row,
     })),
+    // A users row has NO active column and cannot be frozen — deactivation is a
+    // team-membership concept. `true` is the honest constant, not a placeholder:
+    // it keeps one candidate shape so the handler's partition never has to ask
+    // which table a candidate came from.
     ...userResult.rows.map(row => ({
-      source: 'users', id: row.id, contractorId: row.contractor_id, hash: row.pin, row,
+      source: 'users', id: row.id, contractorId: row.contractor_id, hash: row.pin,
+      active: true, row,
     })),
   ];
   return candidates.slice(0, LOGIN_CANDIDATE_CAP);
@@ -1158,15 +1175,29 @@ async function loadContractorDisplayNames(contractorIds) {
 // Re-reads one identity by primary key. Used by choice redemption rather than
 // trusting the blob stored two minutes earlier, so a row that was deleted or
 // deactivated inside the choice window can no longer mint a session.
+//
+// ⚠ THE active PREDICATE MOVED OUT OF THIS QUERY TOO (D3), for the same reason it
+// left the gather. A deactivation landing inside the two-minute choice window used
+// to come back as a generic 401 — the same misleading answer, reached by a longer
+// route. It is now REPORTED rather than filtered: the caller reads `active` and
+// answers 403 account_frozen.
+//
+// THE GUARANTEE IS UNCHANGED — a frozen row still mints NOTHING. A row that is
+// GONE still returns null and still gets the generic 401, and that distinction is
+// deliberate: a deleted identity is indistinguishable from a forged token and must
+// stay in the generic bucket.
 async function loadCandidateById(source, id) {
   if (source === 'team_members') {
     const { rows } = await pool.query(
-      `SELECT id, contractor_id, password_hash, tier, permissions
-         FROM team_members WHERE id = $1 AND active = true`,
+      `SELECT id, contractor_id, password_hash, tier, permissions, active
+         FROM team_members WHERE id = $1`,
       [id]
     );
     return rows.length
-      ? { source, id: rows[0].id, contractorId: rows[0].contractor_id, hash: rows[0].password_hash, row: rows[0] }
+      ? {
+        source, id: rows[0].id, contractorId: rows[0].contractor_id,
+        hash: rows[0].password_hash, active: rows[0].active, row: rows[0],
+      }
       : null;
   }
   if (source === 'users') {
@@ -1175,7 +1206,10 @@ async function loadCandidateById(source, id) {
       [id]
     );
     return rows.length
-      ? { source, id: rows[0].id, contractorId: rows[0].contractor_id, hash: rows[0].pin, row: rows[0] }
+      ? {
+        source, id: rows[0].id, contractorId: rows[0].contractor_id,
+        hash: rows[0].pin, active: true, row: rows[0],
+      }
       : null;
   }
   return null;
@@ -1353,15 +1387,44 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
     const matched = results.filter(Boolean);
 
     if (matched.length === 0) return res.status(401).json({ error: INVALID_CREDENTIALS });
-    if (matched.length === 1) return res.json(await issueSessionFor(req, matched[0]));
+
+    // ── THE FROZEN BRANCH (D3), AND ITS POSITION IS THE DESIGN ───────────────
+    // Everything above this line is identical for a frozen account and a live
+    // one, which is what stops the 403 below from enumerating addresses: it is
+    // unreachable without a hash that actually opened.
+    //
+    // PARTITION RATHER THAN FILTER. A frozen identity is not a destination, so it
+    // never reaches issueSessionFor and never appears on the choice screen — a
+    // choice list is "where you can go", and an option that always fails is worse
+    // than one that is absent. But it must not simply vanish either: when it is
+    // the ONLY thing the credential opened, it is exactly the person D3 exists to
+    // answer, and dropping it would restore the misleading 401 through the back
+    // door.
+    //
+    // In practice `frozen` holds at most one row — team_members.email is globally
+    // unique and a users row cannot be deactivated — but nothing here depends on
+    // that, so a future per-tenant employee table does not quietly break it.
+    const live = matched.filter(candidate => candidate.active);
+    const frozen = matched.filter(candidate => !candidate.active);
+
+    if (live.length === 0) {
+      // MINTS NOTHING (D3, binding). No session, no choice token, no
+      // half-privileged state — the screen this feeds needs no authenticated
+      // data. Tenancy for the branding comes from the AUTHENTICATED ROW.
+      return res.status(403).json(await buildFrozenAccountBody(pool, frozen[0].contractorId));
+    }
+
+    if (live.length === 1) return res.json(await issueSessionFor(req, live[0]));
 
     // ── MORE THAN ONE MATCH → A CHOICE, NOT A SESSION (D2) ──────────────────
     // The server cannot mint here: it has proven the credential but does not know
     // which identity the person means. It must also not ask for the password
     // again. So it stores the matched set server-side and hands back an opaque
     // token plus a display list carrying contractor name and role ONLY.
+    //
+    // BUILT FROM `live`, NOT `matched` — a frozen identity is not offered (D3).
     const choiceToken = crypto.randomBytes(32).toString('hex');
-    const stored = matched.map((candidate, index) => ({
+    const stored = live.map((candidate, index) => ({
       selection: index, source: candidate.source, id: candidate.id, contractor_id: candidate.contractorId,
     }));
     await pool.query(
@@ -1370,11 +1433,11 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
       [choiceToken, JSON.stringify(stored), String(CHOICE_TOKEN_TTL_MINUTES)]
     );
 
-    const displayNames = await loadContractorDisplayNames(matched.map(c => c.contractorId));
+    const displayNames = await loadContractorDisplayNames(live.map(c => c.contractorId));
     return res.json({
       choice_required: true,
       choice_token: choiceToken,
-      identities: matched.map((candidate, index) => ({
+      identities: live.map((candidate, index) => ({
         selection: index,
         contractor_name: displayNames.get(candidate.contractorId) || ROOFMILES_DEFAULTS.companyName,
         role: candidate.source === 'team_members' ? 'team' : 'referrer',
@@ -1442,6 +1505,14 @@ router.post('/api/login/choice', referrerLoginLimiter, async (req, res) => {
     // deactivated inside the choice window cannot still mint a session.
     const candidate = await loadCandidateById(chosen.source, chosen.id);
     if (!candidate) return res.status(401).json({ error: INVALID_CREDENTIALS });
+
+    // A DEACTIVATION LANDING INSIDE THE WINDOW GETS THE HONEST ANSWER (D3). This
+    // person's credential was proven two minutes ago — the choice token IS that
+    // proof — so the same reasoning that makes the 403 safe on /api/login makes it
+    // safe here. Still mints nothing.
+    if (!candidate.active) {
+      return res.status(403).json(await buildFrozenAccountBody(pool, candidate.contractorId));
+    }
 
     return res.json(await issueSessionFor(req, candidate));
   } catch (err) {

@@ -21,6 +21,10 @@ const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility');
 const { generateSlug, buildInviteUrl } = require('../../utils/inviteTokens');
 const { getInviteHostSlug } = require('../../utils/contractorSlug');
+// C/DL-3b Phase 3 — the verified-but-frozen answer (D3). Shared with the unified
+// POST /api/login so the two doors cannot disagree about what a frozen account
+// looks like; see that file's header for when it may be called.
+const { buildFrozenAccountBody } = require('../../utils/frozenAccount');
 
 const bcrypt = require('bcrypt');
 const multer = require('multer');
@@ -54,8 +58,18 @@ router.post('/api/admin/login', adminLoginLimiter, [
   if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
   try {
     const { email, password } = req.body;
+    // ⚠ `active = true` IS DELIBERATELY ABSENT FROM THIS LOOKUP, AND PUTTING IT
+    // BACK IS A BUG (C/DL-3b Phase 3, D3). It used to sit right here, which is
+    // what made a deactivated member's CORRECT password come back as 'Invalid
+    // credentials' — indistinguishable from a typo, so they retried until the
+    // 5-per-15-minute limiter locked them out.
+    //
+    // The predicate did not disappear; it MOVED BELOW THE COMPARE. Deleting it
+    // outright would turn this endpoint into an account enumerator, which is
+    // worse than the bug. Nothing different may be said until the password is
+    // proven. server/test/frozenAccount.test.js fences both halves.
     const result = await pool.query(
-      'SELECT id, password_hash, contractor_id, tier, permissions FROM team_members WHERE email = $1 AND active = true',
+      'SELECT id, password_hash, contractor_id, tier, permissions, active FROM team_members WHERE email = $1',
       [email]
     );
     const storedHash = result.rows.length ? result.rows[0].password_hash : DUMMY_BCRYPT_HASH;
@@ -64,6 +78,14 @@ router.post('/api/admin/login', adminLoginLimiter, [
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     const teamMember = result.rows[0];
+
+    // ── THE FROZEN BRANCH (D3) — PASSWORD ALREADY PROVEN ────────────────────
+    // Mints no session. The branding travels in the body because this server has
+    // just proven the credential and therefore knows the contractor, while the
+    // device asking may know nothing at all.
+    if (!teamMember.active) {
+      return res.status(403).json(await buildFrozenAccountBody(pool, teamMember.contractor_id));
+    }
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await pool.query(
