@@ -31,6 +31,7 @@ import BookingFormModal from './BookingFormModal';
 import ReferAFriendTab from './ReferAFriendTab';
 import ExperiencePopup from './ExperiencePopup';
 import DashboardTab from './DashboardTab';
+import AnnouncementPopup from './AnnouncementPopup';
 
 // Full resolveBrandingTheme-shaped payloads, every value distinct between the two
 // so no assertion can pass by coincidence.
@@ -54,7 +55,22 @@ const BRAND_B = Object.freeze({
   reviewButtonText: 'Rate Beta', reviewMessage: 'How did Beta do?',
 });
 
-const SLUG = { [BRAND_A.companyName]: 'alpha', [BRAND_B.companyName]: 'beta' };
+// ⚠ THE ABSENT BRAND IS THE PRIMARY FIXTURE, NOT AN EDGE CASE. reviewUrl and
+// logoUrl are deliberately allowed to be null (identity-bearing values get no
+// defaults), and every 6B/6C test used a fixture where BOTH were populated — so
+// nothing exercised the state the product actually shipped in.
+const BRAND_BARE = Object.freeze({
+  ...BRAND_A,
+  companyName: 'Bare Roofing Co',
+  logoUrl: null,
+  reviewUrl: null,
+});
+
+const SLUG = {
+  [BRAND_A.companyName]: 'alpha',
+  [BRAND_B.companyName]: 'beta',
+  [BRAND_BARE.companyName]: 'bare',
+};
 
 function makeStorage() {
   const map = new Map();
@@ -265,20 +281,59 @@ describe('C/DL-3b Phase 6B — no Accent literal survives in the rewired files',
     'src/components/admin/AdminCampaigns.jsx',
   ];
 
+  // ⚠ NORMALISE BEFORE COMPARING. A LITERAL SWEEP MATCHES FORMATTING, NOT VALUES.
+  //
+  // This list previously held `770-277-4869` and nothing else for the phone — so
+  // a `tel:` href in ContactModal, carrying the SAME NUMBER with its separators
+  // removed, matched nothing and survived the entire Phase 6 sweep. The modal
+  // displayed the right contractor's number and dialled the wrong one, live in
+  // production, on the tap target a homeowner on a phone actually presses.
+  //
+  // Values with more than one rendering, and how each is handled:
+  //   PHONE — dashes, spaces, dots, parens, +1 prefix, or bare digits.
+  //           Normalised by stripping every non-digit from BOTH sides.
+  //   URL   — with/without scheme, with/without www, with/without trailing slash.
+  //           Normalised by stripping scheme, www. and any trailing slash.
+  //   EMAIL — the one single-rendering case here; compared as-is, lowercased.
+  //   NAMES / IDENTIFIERS — compared as-is; they have no alternate spelling.
+  const normalise = {
+    digits: text => text.replace(/\D/g, ''),
+    url:    text => text.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, ''),
+    plain:  text => text.toLowerCase(),
+  };
+
+  // Each needle declares HOW it must be compared, not just what it is.
   const ACCENT = [
-    'Accent Roofing', 'AccentRoofing', 'accentRoofingLogo',
-    'leaksmith.com', '770-277-4869', 'accentroofingservice',
-    'CbtYNjHgUCwhEBM',            // the Google review link's id
-    'CONTRACTOR_CONFIG',          // the module itself — the delivery mechanism goes too
+    { kind: 'plain',  value: 'Accent Roofing' },
+    { kind: 'plain',  value: 'AccentRoofing' },
+    { kind: 'plain',  value: 'accentRoofingLogo' },
+    { kind: 'plain',  value: 'leaksmith.com' },
+    { kind: 'plain',  value: 'accentroofingservice' },
+    { kind: 'plain',  value: 'CbtYNjHgUCwhEBM' },  // the g.page short link's id
+    { kind: 'plain',  value: 'CONTRACTOR_CONFIG' }, // the delivery mechanism goes too
+    { kind: 'digits', value: '770-277-4869' },      // ⚠ matches ANY rendering of the number
   ];
 
   for (const file of FILES) {
     it(`[RED] ${file} carries no Accent literal and no CONTRACTOR_CONFIG read`, () => {
       const source = fs.readFileSync(path.resolve(process.cwd(), file), 'utf8');
-      const found = ACCENT.filter(literal => source.includes(literal));
+
+      const found = ACCENT.filter(({ kind, value }) => {
+        if (kind === 'digits') {
+          // Compare digit-runs, so dashed, bare, parenthesised, dotted and
+          // country-prefixed renderings are all the same needle.
+          const target = normalise.digits(value);
+          return (source.match(/[\d][\d\s().+-]{6,}[\d]/g) || [])
+            .some(run => normalise.digits(run).endsWith(target));
+        }
+        return normalise.plain(source).includes(normalise.plain(value));
+      }).map(n => n.value);
+
       expect(found,
         `${file} still carries: ${found.join(', ')}. Contractor identity comes from ` +
-        'ThemeContext (the D4 chain), never from a hardcoded module.'
+        'ThemeContext (the D4 chain), never from a hardcoded module. NOTE: phone ' +
+        'needles match ANY rendering — a hit may be formatted differently from the ' +
+        'needle shown.'
       ).toEqual([]);
     });
   }
@@ -334,5 +389,96 @@ describe('C/DL-3b Phase 6D — CONTRACTOR_CONFIG is gone, not merely unused', ()
       `these files still import CONTRACTOR_CONFIG, which no longer exists — they will read ` +
       `undefined and render blanks with nothing failing: ${offenders.join(', ')}`
     ).toEqual([]);
+  });
+});
+
+// ── ABSENT VALUES MUST NOT RENDER DEAD TARGETS ───────────────────────────────
+//
+// ⚠ THIS IS THE FIFTH VACUITY INSTANCE OF THE PHASE AND THE FIRST TO REACH
+// PRODUCTION. The 6C DashboardTab test asserted `reviewMessage` and
+// `reviewButtonText` — both DEFAULTED, so both always render whatever happens.
+// Nothing exercised `reviewUrl`, which is NOT defaulted. The card therefore
+// shipped rendering a button whose href resolved to the app's own origin plus a
+// literal "null" path:
+// window.open(null) stringifies null to "null" per USVString conversion and
+// resolves it against the document.
+//
+// THE RULE: when a value is deliberately allowed to be absent, THE ABSENT CASE IS
+// THE PRIMARY TEST. Asserting a component's DEFAULTED values cannot see a bug in
+// its NON-DEFAULTED ones.
+describe('C/DL-3b correction — absent branding values render nothing, never a dead target', () => {
+
+  it('[RED] no review URL → the review card is ABSENT, not disabled and not dead-linked', async () => {
+    renderForBrand(BRAND_BARE, (
+      <DashboardTab
+        setTab={() => {}} pipeline={[]} loading={false}
+        pipelineRateLimited={false} pipelineStale={false} pipelineStaleSince={null}
+        pipelineUnavailable={false} userName="Dana Referrer" balance={0} paidCount={0}
+        profilePhoto={null} showReviewCard onDismissReview={() => {}}
+        sessionToken="t" onViewAllReferrals={() => {}} bankStatus={null}
+        onOpenBankSetup={() => {}}
+      />
+    ));
+    await waitFor(() => expect(document.body.textContent).toContain('Dana'));
+
+    // No placeholder, no disabled button, no dead link — the card simply is not there.
+    expect(screen.queryByText(BRAND_BARE.reviewMessage ?? 'Enjoying the rewards? Leave us a quick review!')).toBeNull();
+    expect(screen.queryByRole('button', { name: /leave a review/i })).toBeNull();
+  });
+
+  it('[RED] no logo → neither AnnouncementPopup nor CashOutTab renders a broken image', async () => {
+    // Both were introduced in 6C: the hardcoded logo they replaced could never be
+    // null, so neither acquired a guard while every other logoUrl consumer has one.
+    renderForBrand(BRAND_BARE, (
+      <AnnouncementPopup
+        announcement={{ id: 1, amount: '50.00', referred_name: 'Sam Homeowner' }}
+        referrerFirstName="Dana" onDismiss={() => {}}
+        settings={{ enabled: true, mode: 'preset_2', custom_message: null }}
+      />
+    ));
+    await waitFor(() => expect(document.body.textContent).toContain(BRAND_BARE.companyName));
+
+    for (const img of document.querySelectorAll('img')) {
+      const src = img.getAttribute('src');
+      expect(src, 'an <img> was rendered with no usable src').toBeTruthy();
+      expect(src).not.toMatch(/^(null|undefined)$/);
+    }
+  });
+});
+
+// ── THE BROAD ASSERTION ──────────────────────────────────────────────────────
+// Across the app, not per component: the per-component tests above can only see
+// the components someone remembered to write a test for, and this class of bug is
+// created by a mechanical edit (replace a literal with a nullable value) that
+// touches files nobody is thinking about.
+describe('C/DL-3b correction — no navigation target anywhere resolves to null/undefined', () => {
+  const BAD = /(^|\/)(null|undefined)$/;
+
+  it('[RED] no src, href or window.open target is a stringified null', async () => {
+    const surfaces = [
+      ['AnnouncementPopup', (
+        <AnnouncementPopup
+          announcement={{ id: 1, amount: '50.00', referred_name: 'Sam Homeowner' }}
+          referrerFirstName="Dana" onDismiss={() => {}}
+          settings={{ enabled: true, mode: 'preset_2', custom_message: null }}
+        />
+      )],
+      ['ContactModal', <ContactModal isOpen onClose={() => {}} />],
+    ];
+
+    for (const [label, ui] of surfaces) {
+      const { unmount } = renderForBrand(BRAND_BARE, ui);
+      await waitFor(() => expect(document.querySelectorAll('*').length).toBeGreaterThan(3));
+
+      for (const el of document.querySelectorAll('[src],[href]')) {
+        for (const attr of ['src', 'href']) {
+          const value = el.getAttribute(attr);
+          if (value === null) continue;
+          expect(value, `${label}: <${el.tagName.toLowerCase()} ${attr}="${value}">`).not.toMatch(BAD);
+          expect(value, `${label}: <${el.tagName.toLowerCase()} ${attr}> is empty`).not.toBe('');
+        }
+      }
+      unmount();
+    }
   });
 });

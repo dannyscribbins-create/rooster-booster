@@ -92,9 +92,16 @@ async function loadContractorBranding(db, contractorId) {
             -- The review trio (C/DL-3b Phase 6A). Selected here because this is
             -- the ONE loader behind both the landing page and GET /api/branding/:slug,
             -- so the referrer app gets them without a second delivery path.
-            s.review_url, s.review_button_text, s.review_message
+            s.review_url, s.review_button_text, s.review_message,
+            -- ⚠ A THIRD TABLE, and the reason is the review-URL derivation.
+            -- google_place_id lives on contractor_about (entered via Company
+            -- Details → About Us) while review_url lives on contractor_settings
+            -- (entered via Branding). The resolver derives one from the other when
+            -- the override is unset, so BOTH have to arrive in the same row.
+            ca.google_place_id
        FROM contractors c
        LEFT JOIN contractor_settings s ON s.contractor_id = c.id
+       LEFT JOIN contractor_about ca ON ca.contractor_id = c.id
       WHERE c.id = $1`,
     [contractorId]
   );

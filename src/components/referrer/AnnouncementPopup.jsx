@@ -9,7 +9,7 @@ const PRESET_MESSAGES = {
   preset_2: "Your cashout request of $[Amount] for referring [Referred Name] has been approved. Thank you for being part of the [Company] family.",
 };
 
-export function resolveMessage(settings, referrerFirstName, amount, referredName) {
+export function resolveMessage(settings, referrerFirstName, amount, referredName, companyName) {
   let template = '';
   if (settings.mode === 'custom' && settings.custom_message) {
     template = `Hey ${referrerFirstName}, ${settings.custom_message}`;
@@ -22,7 +22,12 @@ export function resolveMessage(settings, referrerFirstName, amount, referredName
     .replace(/\[Referred Name\]/g, referredName)
     // [Company] joins the existing placeholder set (C/DL-3b Phase 6C) rather than
     // becoming a separate mechanism — the admin previews show the same token.
-    .replace(/\[Company\]/g, branding.companyName);
+    //
+    // ⚠ PASSED IN, NOT CLOSED OVER. This function is MODULE-LEVEL; 6C referenced
+    // `branding` here directly, which is only in scope inside the component, so
+    // every render with a [Company] template threw a ReferenceError. It shipped —
+    // the 6C sweep proved the literal was gone and nothing rendered the component.
+    .replace(/\[Company\]/g, companyName || '');
 }
 
 export default function AnnouncementPopup({ announcement, referrerFirstName, onDismiss, settings }) {
@@ -37,7 +42,7 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
 
   if (!announcement || !settings) return null;
 
-  const message = resolveMessage(settings, referrerFirstName, announcement.amount, announcement.referredName);
+  const message = resolveMessage(settings, referrerFirstName, announcement.amount, announcement.referredName, branding.companyName);
 
   return (
     <div style={{
@@ -60,9 +65,21 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
           display: "flex", alignItems: "center", justifyContent: "center",
           gap: 16, marginBottom: 24,
         }}>
-          <img src={branding.logoUrl} alt={branding.companyName}
-            style={{ height: 36, width: "auto", objectFit: "contain" }} />
-          <div style={{ width: 1, height: 28, background: "rgba(0,0,0,0.1)" }} />
+          {/* ⚠ GUARDED. Introduced unguarded in 6C because the hardcoded logo it
+              replaced could never be null; every other logoUrl consumer guards.
+              Conditional render rather than a platform-mark fallback — this is an
+              in-app celebration popup, not an auth screen, and the contractor's
+              name already appears in the copy beside it.
+
+              THE DIVIDER GOES WITH IT: a separator with nothing on one side is a
+              stray line, so the lockup collapses to the platform mark alone. */}
+          {branding.logoUrl && (
+            <>
+              <img src={branding.logoUrl} alt={branding.companyName}
+                style={{ height: 36, width: "auto", objectFit: "contain" }} />
+              <div style={{ width: 1, height: 28, background: "rgba(0,0,0,0.1)" }} />
+            </>
+          )}
           <img src={rbLogoIcon} alt="Rooster Booster"
             style={{ height: 28, width: "auto", objectFit: "contain" }} />
         </div>

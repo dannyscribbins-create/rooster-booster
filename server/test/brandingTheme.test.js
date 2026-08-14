@@ -312,6 +312,58 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
     assert.equal(theme.reviewMessage,    'Enjoying the rewards? Leave us a quick review!');
   });
 
+  // ── REVIEW URL DERIVATION FROM google_place_id ─────────────────────────────
+  //
+  // ⚠ THE ABSENT CASE IS THE PRIMARY TEST, NOT THE EDGE CASE. reviewUrl is
+  // deliberately allowed to be null, and the 6C DashboardTab test asserted only
+  // reviewMessage and reviewButtonText — both DEFAULTED, so both always render.
+  // Nothing exercised the non-defaulted field, so nothing saw that the card
+  // rendered a dead link. When a value is deliberately allowed to be absent, the
+  // ABSENT case is what the tests must lead with.
+  it('[RED] ABSENT — no review_url and no google_place_id resolves to null', async () => {
+    const theme = resolveBrandingTheme({});
+    assert.equal(theme.reviewUrl, null,
+      'with neither field set there is nothing to link to, and null is what tells the ' +
+      'consumer not to draw the card at all');
+  });
+
+  it('[RED] derives a write-review URL from google_place_id when review_url is empty', async () => {
+    // Production state that surfaced this: contractor_about.google_place_id is
+    // POPULATED (entered via Company Details, and already driving the About
+    // modal's Google rating), while contractor_settings.review_url is EMPTY. The
+    // value the card needs was in the database the whole time, under a different
+    // field, in a different table.
+    const theme = resolveBrandingTheme({ google_place_id: 'ChIJtest123' });
+    assert.equal(theme.reviewUrl, 'https://search.google.com/local/writereview?placeid=ChIJtest123');
+  });
+
+  it('[RED] review_url WINS over derivation — it is a genuine override', async () => {
+    // ⚠ NOT A COURTESY, AND THE REASON IS TECHNICAL. A `g.page/r/…` short link is
+    // CID-derived, NOT a Place ID: it cannot be regenerated from a Place ID and a
+    // Place ID cannot be recovered from it. A contractor holding one — or pointing
+    // at a non-Google review destination entirely — must keep it.
+    const theme = resolveBrandingTheme({
+      review_url: 'https://g.page/r/alpha/review',
+      google_place_id: 'ChIJtest123',
+    });
+    assert.equal(theme.reviewUrl, 'https://g.page/r/alpha/review');
+  });
+
+  it('[RED] a cleared review_url falls through to derivation, not to null', async () => {
+    // Empty string is a cleared form field, and the resolver already treats that
+    // as unset everywhere else. Clearing the override should reveal the derived
+    // value, not switch the card off while a usable Place ID sits in the database.
+    const theme = resolveBrandingTheme({ review_url: '', google_place_id: 'ChIJtest123' });
+    assert.equal(theme.reviewUrl, 'https://search.google.com/local/writereview?placeid=ChIJtest123');
+  });
+
+  it('[RED] the Place ID is URL-encoded, never interpolated raw', async () => {
+    // The column is free text an admin pasted. Interpolating it unencoded puts
+    // attacker-influenced characters into a URL the app hands to window.open.
+    const theme = resolveBrandingTheme({ google_place_id: 'a b&c=d' });
+    assert.equal(theme.reviewUrl, 'https://search.google.com/local/writereview?placeid=a%20b%26c%3Dd');
+  });
+
   it('[RED] treats a cleared review field as unset, like every other token', async () => {
     // Empty string is what a form field the admin cleared reads; NULL is what the
     // column reads. Same intent, same answer — the rule firstNonEmpty already
@@ -590,6 +642,10 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
       ['review trio null',      { review_url: null, review_button_text: null, review_message: null }],
       ['review url only',       { review_url: 'https://g.page/r/beta/review' }],
       ['review copy only',      { review_button_text: 'Leave feedback', review_message: 'Tell us how it went.' }],
+      ['place id only',         { google_place_id: 'ChIJtest123' }],
+      ['place id + review_url', { google_place_id: 'ChIJtest123', review_url: 'https://g.page/r/alpha/review' }],
+      ['place id + empty url',  { google_place_id: 'ChIJtest123', review_url: '' }],
+      ['place id needing encoding', { google_place_id: 'a b&c=d' }],
       ['explicit nulls',        { company_name: null, primary_color: null, landing_bg_color: null, logo_url: null }],
       ['empty strings',         { company_name: '', primary_color: '', secondary_color: '', landing_bg_color: '', company_address: '' }],
       ['malformed hex',         { primary_color: 'navy', secondary_color: 'F26A1B', landing_bg_color: '#abc' }],

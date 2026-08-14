@@ -543,7 +543,18 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
       </div>
 
       {/* Google Review Banner */}
-      {showReviewCard && (
+      {/* ⚠ GATED ON A USABLE REVIEW URL, NOT JUST ON showReviewCard.
+          reviewUrl is deliberately allowed to be null (identity-bearing values get
+          no defaults), and with review_url empty this card shipped rendering a
+          button whose window.open(null) resolved to the app's own origin plus a literal "null" path —
+          `null` stringifies to "null" per USVString conversion and resolves
+          against the document.
+
+          NO PLACEHOLDER, NO DISABLED BUTTON, NO DEAD LINK: a review card with
+          nothing to link to has no job to do, so it is absent. The URL now derives
+          from google_place_id when review_url is unset, so this is only reached by
+          a contractor with neither. */}
+      {showReviewCard && branding.reviewUrl && (
         <div style={{ padding: "16px 20px 0" }}>
           <AnimCard delay={600} screenKey="dashboard">
             <div style={{

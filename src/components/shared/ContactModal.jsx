@@ -9,6 +9,17 @@ import { useBranding } from './ThemeProvider';
 // so the contractor's own details were always available here.
 export default function ContactModal({ isOpen, onClose }) {
   const branding = useBranding();
+
+  // ⚠ ONE VALUE, ONE REPRESENTATION. This href was a hardcoded `tel:` pointing at
+  // one tenant, and it SURVIVED the Phase 6C sweep because that sweep's needle was
+  // the DASHED rendering of the number while a tel: URI carries digits only. The
+  // modal displayed the right contractor's number and dialled the wrong one —
+  // worse than the original bug, because it looks correct to anyone checking
+  // visually. (The literals are not quoted here: the sweep reads source text.)
+  //
+  // Derived here rather than stored separately so the two can never disagree
+  // again. Null-safe: no phone means no link is drawn at all.
+  const dialDigits = branding.phone ? branding.phone.replace(/\D/g, '') : null;
   if (!isOpen) return null;
   return (
     <div
@@ -48,11 +59,13 @@ export default function ContactModal({ isOpen, onClose }) {
         {/* Divider */}
         <div style={{ borderTop: `1px solid ${R.border}`, marginBottom: 16 }} />
 
-        {/* Phone */}
+        {/* Phone — drawn only when there is one. An absent value must not leave a
+            row with a dead `tel:null` behind it. */}
+        {dialDigits && (
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <i className="ph ph-phone" style={{ fontSize: 22, color: R.navy, flexShrink: 0 }} />
           <a
-            href="tel:7702774869"
+            href={`tel:${dialDigits}`}
             style={{ color: R.navy, fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
             onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
             onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
@@ -60,8 +73,10 @@ export default function ContactModal({ isOpen, onClose }) {
             {branding.phone}
           </a>
         </div>
+        )}
 
-        {/* Email */}
+        {/* Email — same rule as the phone row above. */}
+        {branding.email && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
           <i className="ph ph-envelope" style={{ fontSize: 22, color: R.navy, flexShrink: 0 }} />
           <a
@@ -73,6 +88,7 @@ export default function ContactModal({ isOpen, onClose }) {
             {branding.email}
           </a>
         </div>
+        )}
 
         {/* Close button */}
         <button

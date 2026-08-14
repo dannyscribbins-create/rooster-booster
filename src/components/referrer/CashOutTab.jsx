@@ -158,9 +158,17 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
               opacity: logosVisible ? 1 : 0,
               transition: "opacity 300ms ease-in-out",
             }}>
-              <img src={branding.logoUrl} alt={branding.companyName}
-                style={{ height: 36, width: "auto", objectFit: "contain" }} />
-              <div style={{ width: 1, height: 28, background: R.border }} />
+              {/* ⚠ GUARDED — same class as AnnouncementPopup's, introduced in the
+                  same 6C edit for the same reason: the hardcoded logo it replaced
+                  could never be null. The divider goes with it, or a separator is
+                  left with nothing on one side. */}
+              {branding.logoUrl && (
+                <>
+                  <img src={branding.logoUrl} alt={branding.companyName}
+                    style={{ height: 36, width: "auto", objectFit: "contain" }} />
+                  <div style={{ width: 1, height: 28, background: R.border }} />
+                </>
+              )}
               <img src={rbLogoIcon} alt="Rooster Booster"
                 style={{ height: 28, width: "auto", objectFit: "contain" }} />
             </div>

@@ -109,6 +109,11 @@
 // shared across both surfaces is worth more than two that nearly agree.
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
+// Google's canonical write-review entry point. The Place ID is appended,
+// URL-encoded. Named rather than inlined so the one place Google's URL shape
+// lives is greppable if they ever change it.
+const GOOGLE_WRITE_REVIEW_BASE = 'https://search.google.com/local/writereview?placeid=';
+
 // The RoofMiles fallback tokens (LP §5). A brand-new contractor gets a decent
 // page from these before uploading anything.
 //
@@ -242,7 +247,30 @@ function resolveBrandingTheme(input) {
     // NULL vs DEFAULTED IS THE SAME SPLIT logoUrl ALREADY MAKES — see the note on
     // BRANDING_THEME_DEFAULTS. The consumer decides whether to draw the review
     // card from reviewUrl's presence; the copy is always safe to render.
-    reviewUrl:       firstNonEmpty(src.review_url),
+    // ── PRECEDENCE: OVERRIDE, THEN DERIVE, THEN NOTHING ────────────────────
+    // review_url if set → else derive from google_place_id → else null.
+    //
+    // ⚠ THE PLACE ID IS CANONICAL AND review_url IS A GENUINE OVERRIDE, not a
+    // courtesy. A Place ID is a stable identifier entered once; a write-review URL
+    // is a formatted string whose shape Google controls. Deriving gives one input
+    // and no way for the two to disagree.
+    //
+    // THE OVERRIDE IS LOAD-BEARING FOR A TECHNICAL REASON: a `g.page/r/…` short
+    // link is CID-derived, NOT a Place ID. It cannot be regenerated from a Place
+    // ID, and a Place ID cannot be recovered from it — so a contractor holding
+    // one, or pointing at a non-Google destination entirely, must keep it.
+    //
+    // ⚠ NOT social_google, DELIBERATELY. That column is a Google Business PROFILE
+    // link used in campaign email footers. A profile link and a write-review link
+    // are different destinations; conflating them sends campaign readers to a
+    // review form. Recorded as an explicit non-goal.
+    //
+    // ENCODED, never interpolated raw: the column is free text an admin pasted,
+    // and this string is handed to window.open.
+    reviewUrl:       firstNonEmpty(src.review_url)
+                       || (firstNonEmpty(src.google_place_id)
+                            ? `${GOOGLE_WRITE_REVIEW_BASE}${encodeURIComponent(src.google_place_id.trim())}`
+                            : null),
     reviewButtonText: firstNonEmpty(src.review_button_text) || BRANDING_THEME_DEFAULTS.reviewButtonText,
     reviewMessage:   firstNonEmpty(src.review_message)     || BRANDING_THEME_DEFAULTS.reviewMessage,
   };

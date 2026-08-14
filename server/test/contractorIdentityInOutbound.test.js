@@ -44,13 +44,47 @@ const path = require('node:path');
 // sweep would otherwise have to exempt its own test, which is the exemption that
 // eventually swallows a real hit.
 const TENANT = ['Ac', 'cent Roo', 'fing'].join('');
+
+// ⚠ NORMALISE BEFORE COMPARING — A LITERAL SWEEP MATCHES FORMATTING, NOT VALUES.
+//
+// The first version of this list held the phone number in its DASHED rendering
+// only. A `tel:` href carries digits with no separators — the same number in a
+// different rendering — so it matched nothing and survived the entire Phase 6
+// sweep, live in production, on the tap target a homeowner presses. Each needle
+// now declares HOW it is compared.
+//
+//   digits — any rendering of a phone number: dashes, dots, parens, +1, or bare
+//   url    — with/without scheme, with/without www., with/without trailing slash
+//   plain  — names and identifiers, which have no alternate spelling; email too,
+//            the one single-rendering case here
 const NEEDLES = [
-  TENANT,
-  TENANT.replace(' ', ''),
-  ['leak', 'smith.com'].join(''),
-  ['770-', '277-4869'].join(''),
-  ['accent', 'roofingservice'].join(''),
+  { kind: 'plain',  value: TENANT },
+  { kind: 'plain',  value: TENANT.replace(' ', '') },
+  { kind: 'plain',  value: ['leak', 'smith.com'].join('') },
+  { kind: 'url',    value: ['accent', 'roofingservice.com'].join('') },
+  { kind: 'digits', value: ['770-', '277-4869'].join('') },
 ];
+
+const normalise = {
+  digits: text => text.replace(/\D/g, ''),
+  url:    text => text.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, ''),
+  plain:  text => text.toLowerCase(),
+};
+
+// Returns the needles present in `source`, comparing each by its own rule.
+function hits(source) {
+  return NEEDLES.filter(({ kind, value }) => {
+    if (kind === 'digits') {
+      const target = normalise.digits(value);
+      return (source.match(/[\d][\d\s().+-]{6,}[\d]/g) || [])
+        .some(run => normalise.digits(run).endsWith(target));
+    }
+    if (kind === 'url') {
+      return normalise.url(source).includes(normalise.url(value));
+    }
+    return normalise.plain(source).includes(normalise.plain(value));
+  }).map(n => n.value);
+}
 
 // Server files that compose outbound content — email bodies, subjects, AI prompts.
 const FILES = [
@@ -63,7 +97,7 @@ describe('C/DL-3b Phase 6C — outbound content carries no hardcoded tenant iden
   for (const file of FILES) {
     it(`${file} contains no hardcoded tenant identity`, () => {
       const source = fs.readFileSync(path.resolve(process.cwd(), file), 'utf8');
-      const found = NEEDLES.filter(needle => source.includes(needle));
+      const found = hits(source);
       assert.deepEqual(
         found, [],
         `${file} still carries: ${found.join(', ')}. The contractor's identity is a fact ` +
@@ -92,14 +126,13 @@ describe('C/DL-3b Phase 6C — outbound content carries no hardcoded tenant iden
       'renamed? A prompt this test cannot find is a prompt it cannot police.');
 
     for (const [index, prompt] of prompts.entries()) {
-      for (const needle of NEEDLES) {
-        assert.equal(
-          prompt.includes(needle), false,
-          `AI prompt #${index + 1} names '${needle}' in its own instructions. AN EXAMPLE IS AN ` +
-          'INSTRUCTION: the model will reuse that business name in copy generated for unrelated ' +
-          'contractors, and nothing downstream would catch it.'
-        );
-      }
+      const found = hits(prompt);
+      assert.deepEqual(
+        found, [],
+        `AI prompt #${index + 1} names ${found.join(', ')} in its own instructions. AN EXAMPLE IS ` +
+        'AN INSTRUCTION: the model will reuse that business name in copy generated for unrelated ' +
+        'contractors, and nothing downstream would catch it.'
+      );
     }
 
     // NON-VACUITY, on the SUBJECT-LINE prompt specifically — identified by its own

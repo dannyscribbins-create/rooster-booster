@@ -2828,10 +2828,14 @@ router.get('/api/referrer/experience-prompt', async (req, res) => {
     const { userId } = session;
 
     const result = await pool.query(
-      `SELECT ep.id, ep.response_type, ep.triggered_at, ca.google_place_id,
+      // ⚠ ca.google_place_id AND ITS JOIN WERE REMOVED (C/DL-3b correction). The
+      // field was selected, returned in the payload, and read by nothing —
+      // ExperiencePopup takes its review link from the branding context. Unread
+      // payload is API surface acquired by accident, the same reasoning that
+      // scoped Phase 5's auth change to is_field_rep alone.
+      `SELECT ep.id, ep.response_type, ep.triggered_at,
               u.referral_code
        FROM experience_prompts ep
-       LEFT JOIN contractor_about ca ON ca.contractor_id = ep.contractor_id
        LEFT JOIN users u ON u.id = ep.user_id
        WHERE ep.user_id = $1 AND ep.response_type = 'pending'
        ORDER BY ep.triggered_at DESC LIMIT 1`,
@@ -2847,7 +2851,6 @@ router.get('/api/referrer/experience-prompt', async (req, res) => {
         id:            row.id,
         response_type: row.response_type,
         triggered_at:  row.triggered_at,
-        google_place_id: row.google_place_id,
         ...(referralLink ? { referral_link: referralLink } : {}),
       },
     });
