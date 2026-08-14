@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
-import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
+import { useBranding } from '../shared/ThemeProvider';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 
 // ─── Announcement Popup ───────────────────────────────────────────────────────
 const PRESET_MESSAGES = {
   preset_1: "Great news — your $[Amount] payout for referring [Referred Name] has been approved and is on its way! We appreciate you so much.",
-  preset_2: "Your cashout request of $[Amount] for referring [Referred Name] has been approved. Thank you for being part of the Accent Roofing family.",
+  preset_2: "Your cashout request of $[Amount] for referring [Referred Name] has been approved. Thank you for being part of the [Company] family.",
 };
 
 export function resolveMessage(settings, referrerFirstName, amount, referredName) {
@@ -19,10 +19,14 @@ export function resolveMessage(settings, referrerFirstName, amount, referredName
   return template
     .replace(/\[First Name\]/g, referrerFirstName)
     .replace(/\[Amount\]/g, `$${parseFloat(amount).toLocaleString()}`)
-    .replace(/\[Referred Name\]/g, referredName);
+    .replace(/\[Referred Name\]/g, referredName)
+    // [Company] joins the existing placeholder set (C/DL-3b Phase 6C) rather than
+    // becoming a separate mechanism — the admin previews show the same token.
+    .replace(/\[Company\]/g, branding.companyName);
 }
 
 export default function AnnouncementPopup({ announcement, referrerFirstName, onDismiss, settings }) {
+  const branding = useBranding();
   const [cardVisible, setCardVisible] = useState(false);
 
   useEffect(() => {
@@ -56,7 +60,7 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
           display: "flex", alignItems: "center", justifyContent: "center",
           gap: 16, marginBottom: 24,
         }}>
-          <img src={accentRoofingLogo} alt="Accent Roofing Service"
+          <img src={branding.logoUrl} alt={branding.companyName}
             style={{ height: 36, width: "auto", objectFit: "contain" }} />
           <div style={{ width: 1, height: 28, background: "rgba(0,0,0,0.1)" }} />
           <img src={rbLogoIcon} alt="Rooster Booster"

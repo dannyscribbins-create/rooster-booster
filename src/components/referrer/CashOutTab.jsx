@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
+import { useBranding } from '../shared/ThemeProvider';
 import { BACKEND_URL } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
-import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
@@ -26,6 +26,7 @@ const DETAIL_LABELS = {
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
 export default function CashOut({ pipeline, loading, userName, userEmail, bankStatus, setTab, onOpenBankSetup, token }) {
+  const branding = useBranding();
   const [method, setMethod] = useState(null);
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
@@ -157,7 +158,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
               opacity: logosVisible ? 1 : 0,
               transition: "opacity 300ms ease-in-out",
             }}>
-              <img src={accentRoofingLogo} alt="Accent Roofing Service"
+              <img src={branding.logoUrl} alt={branding.companyName}
                 style={{ height: 36, width: "auto", objectFit: "contain" }} />
               <div style={{ width: 1, height: 28, background: R.border }} />
               <img src={rbLogoIcon} alt="Rooster Booster"

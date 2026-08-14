@@ -9,7 +9,15 @@ import { getAdminToken } from '../../utils/authStorage';
 
 const PRESET_MESSAGES = {
   preset_1: "Great news — your $[Amount] payout for referring [Referred Name] has been approved and is on its way! We appreciate you so much.",
-  preset_2: "Your cashout request of $[Amount] for referring [Referred Name] has been approved. Thank you for being part of the Accent Roofing family.",
+  // ⚠ [Company] IS SUBSTITUTED AT RENDER, like [Amount] and [Referred Name]
+  // (C/DL-3b Phase 6C). This string is ONE STRING IN THREE PLACES — the referrer
+  // popup plus these two admin previews — and leaving two hardcoded while one went
+  // dynamic is exactly the duplicated-literal divergence CLAUDE.md's rule targets.
+  //
+  // ⚠ THIS FILE'S ADMIN BRANDING IS NOT IN SCOPE. Only this string changed; the
+  // chrome, the logo import, the layout and every other Accent literal here remain
+  // owned by the Admin Panel Brand Retirement build.
+  preset_2: "Your cashout request of $[Amount] for referring [Referred Name] has been approved. Thank you for being part of the [Company] family.",
 };
 
 function resolveMessage(settings, referrerFirstName, amount, referredName) {

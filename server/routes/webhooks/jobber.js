@@ -16,6 +16,7 @@ const axios = require('axios');
 const { pool } = require('../../db');
 const { syncSingleClient } = require('../../crm/pipelineSync');
 const { logError } = require('../../middleware/errorLogger');
+const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../../utils/retryHelpers');
 const { Resend } = require('resend');
@@ -878,8 +879,13 @@ router.post('/jobber/invoice-paid', async (req, res) => {
             );
             const brandRow = brandResult.rows[0] || {};
             const appDisplayName = brandRow.app_display_name || 'Rooster Booster';
-            const emailSenderName = brandRow.email_sender_name || 'Accent Roofing Service';
-            const emailFooterText = brandRow.email_footer_text || 'Accent Roofing Service · Powered by Rooster Booster';
+            // Contractor-derived, with the PLATFORM default as the only fallback
+            // (C/DL-3b Phase 6C). These two literals previously addressed every
+            // contractor's homeowner by one specific tenant's business name.
+            // The retired literal is not quoted here — the sweep reads source text.
+            const emailSenderName = brandRow.email_sender_name || BRANDING_THEME_DEFAULTS.companyName;
+            const emailFooterText = brandRow.email_footer_text
+              || `${emailSenderName} · Powered by ${appDisplayName}`;
 
             const firstName = clientName.split(' ')[0] || clientName;
             const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { AD, TAG_COLORS } from '../../constants/adminTheme';
-import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
+import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn, Badge } from './AdminComponents';
 import AdminCampaignDetail from './AdminCampaignDetail';
 import AdminContactsTab from './AdminContactsTab';
@@ -1097,6 +1097,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
   const [ctaEnabled,     setCtaEnabled]     = useState(false);
   const [ctaUrl,         setCtaUrl]         = useState('');
   const [ctaOptions,     setCtaOptions]     = useState({});
+  const [companyName, setCompanyName] = useState('');
   const [loadingContext, setLoadingContext] = useState(true);
   const [saving,         setSaving]         = useState(false);
   const [previewMode,    setPreviewMode]    = useState('without');
@@ -1160,6 +1161,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
       if (contextRes.ok) {
         const data = await contextRes.json();
         setCtaOptions(data.ctaOptions || {});
+        setCompanyName(data.companyName || '');
         const s = data.saved;
         if (s?.message_preset) {
           setSelectedPreset(s.message_preset);
@@ -1256,8 +1258,6 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           contacts: [{ name: previewContact.client_name || previewContact.name || '', job_type: previewContact.job_type || '' }],
           messageType: presetTypeMap[selectedPreset] || selectedPreset,
           ctaType: ctaTypeFromUrl,
-          contractorName: CONTRACTOR_CONFIG.name || '',
-          senderName: CONTRACTOR_CONFIG.name || '',
           customMessage: selectedPreset === 'write_own' ? (messageBody || '') : '',
           selectedTone,
         }),
@@ -1294,8 +1294,6 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messageType: presetTypeMap[selectedPreset] || selectedPreset,
-          contractorName: CONTRACTOR_CONFIG.name || '',
-          senderName: CONTRACTOR_CONFIG.name || '',
         }),
       });
       const data = await res.json();
@@ -1874,8 +1872,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
           {/* R3 — Preview card */}
           <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 14, padding: '20px 24px', fontFamily: AD.fontSans }}>
             <div style={{ fontSize: 12, color: AD.textTertiary, marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${AD.border}` }}>
-              From: Accent Roofing Service
-              {/* TODO: pass company name through messaging-context response */}
+              From: {companyName || 'your business'}
             </div>
             {imageUrl && (
               <img

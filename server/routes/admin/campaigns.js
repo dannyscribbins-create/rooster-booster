@@ -1,5 +1,42 @@
 const express = require('express');
+const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
+
 const router = express.Router();
+
+// ── THE CONTRACTOR'S OWN NAME, FROM THE SESSION (C/DL-3b Phase 6C) ───────────
+// Five sites in this file hardcoded ONE tenant's business name, and two more took
+// it from the REQUEST BODY. Both are the same defect: the contractor's identity
+// is a fact about the authenticated session, not a constant and not a client
+// input. campaigns.js:350 fed it straight into `emailSubject`, so every
+// contractor's outbound campaign email carried the wrong company's name.
+//
+// ⚠ THE RETIRED LITERAL IS DELIBERATELY NOT QUOTED ANYWHERE IN THIS FILE — the
+// Phase 6C sweep reads SOURCE TEXT, and a comment naming it is indistinguishable
+// from the literal to that sweep. Same rule as the login screen's footer note.
+//
+// THE THREE-STEP CHAIN MATCHES loadContractorBranding's, deliberately — settings
+// name, then the contractor's OWN name (contractors.name is NOT NULL), then the
+// PLATFORM default. Never another contractor's name at any step.
+async function resolveContractorIdentity(contractorId) {
+  const fallback = BRANDING_THEME_DEFAULTS.companyName;
+  try {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(NULLIF(cs.company_name, ''), c.name)                                AS business_name,
+              COALESCE(NULLIF(cs.email_sender_name, ''), NULLIF(cs.company_name, ''), c.name) AS sender_name
+         FROM contractors c
+         LEFT JOIN contractor_settings cs ON cs.contractor_id = c.id
+        WHERE c.id = $1`,
+      [contractorId]
+    );
+    return {
+      contractorName: rows[0]?.business_name || fallback,
+      senderName:     rows[0]?.sender_name   || fallback,
+    };
+  } catch {
+    // A name lookup must never take down a send or an AI call.
+    return { contractorName: fallback, senderName: fallback };
+  }
+}
 const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
 const { requirePermission } = require('../../middleware/permissions');
@@ -346,8 +383,9 @@ async function executeBatchSend(campaignId, req, contractorId) {
   const campaign = campaignResult.rows[0];
 
   const batchNumber = campaign.current_batch;
-  // MVP: contractor name hardcoded — replace with session lookup at multi-contractor scale
-  const contractorName = 'Accent Roofing Service';
+  // Session-derived (C/DL-3b Phase 6C). The joined settings row already carries
+  // it; the platform default is the only fallback, never another contractor.
+  const contractorName = campaign.company_name || BRANDING_THEME_DEFAULTS.companyName;
   const campaignData = { ...campaign, contractor_name: contractorName };
   const emailSubject = campaign.subject_line || `A message from ${contractorName || 'us'}`;
   const contractorSettings = {
@@ -1187,7 +1225,11 @@ router.get('/api/admin/campaigns/:id/messaging-context', requirePermission('camp
       [id]
     );
 
-    res.json({ saved, ctaOptions, image: imageResult.rows[0] || null });
+    // companyName joins the payload here rather than being sent UP from the
+    // client (C/DL-3b Phase 6C) — this is the endpoint the pre-existing
+    // 'TODO: pass company name through messaging-context response' pointed at.
+    const { contractorName } = await resolveContractorIdentity(contractorId);
+    res.json({ saved, ctaOptions, image: imageResult.rows[0] || null, companyName: contractorName });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/campaigns/:id/messaging-context' });
     res.status(500).json({ error: 'Internal server error' });
@@ -1261,7 +1303,7 @@ router.get('/api/admin/campaigns/:id/review-summary', requirePermission('campaig
       `SELECT company_name FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
       [contractorId]
     );
-    const companyName = settingsResult.rows[0]?.company_name || 'Accent Roofing Service';
+    const companyName = settingsResult.rows[0]?.company_name || BRANDING_THEME_DEFAULTS.companyName;
 
     const imageResult = await pool.query(
       'SELECT public_url FROM campaign_images WHERE campaign_id = $1 LIMIT 1',
@@ -2009,8 +2051,8 @@ router.post('/api/admin/campaigns/:id/retry-batch', requirePermission('campaigns
     );
     if (campaignResult.rows.length === 0) return res.status(404).json({ error: 'Campaign not found' });
     const campaign = campaignResult.rows[0];
-    // MVP: contractor name hardcoded — replace with session lookup at multi-contractor scale
-    const campaignData = { ...campaign, contractor_name: 'Accent Roofing Service' };
+    // Session-derived (C/DL-3b Phase 6C) — the joined settings row carries it.
+    const campaignData = { ...campaign, contractor_name: campaign.company_name || BRANDING_THEME_DEFAULTS.companyName };
     const contractorSettings = {
       font_heading:      campaign.font_heading,
       font_body:         campaign.font_body,
@@ -2700,7 +2742,12 @@ router.post('/api/admin/campaigns/:id/ai-rapport', requirePermission('campaigns.
   const id = parseInt(req.params.id, 10);
   if (!id || id < 1) return res.status(400).json({ error: 'Invalid campaign ID' });
 
-  const { contacts, messageType, ctaType, contractorName = '', senderName = '', customMessage = '' } = req.body;
+  // ⚠ contractorName / senderName ARE NO LONGER READ FROM THE BODY (Phase 6C).
+  // The server knows who this is from the authenticated session; accepting the
+  // client's word for it is the same class of mistake D1 removed from login, and
+  // the only sender was AdminCampaigns reading a hardcoded module.
+  const { contacts, messageType, ctaType, customMessage = '' } = req.body;
+  const { contractorName, senderName } = await resolveContractorIdentity(contractorId);
   if (!Array.isArray(contacts) || contacts.length === 0) {
     return res.status(400).json({ error: 'contacts must be a non-empty array' });
   }
@@ -2865,7 +2912,9 @@ router.post('/api/admin/campaigns/:id/generate-subject-lines', requirePermission
   const id = parseInt(req.params.id, 10);
   if (!id || id < 1) return res.status(400).json({ error: 'Invalid campaign ID' });
 
-  const { messageType = '', contractorName = '', senderName = '' } = req.body;
+  // See the note on the rapport endpoint: derived from the session, not the body.
+  const { messageType = '' } = req.body;
+  const { contractorName, senderName } = await resolveContractorIdentity(contractorId);
 
   try {
     const campaignResult = await pool.query(
@@ -2881,7 +2930,8 @@ router.post('/api/admin/campaigns/:id/generate-subject-lines', requirePermission
 Your job is to generate exactly 3 email subject lines for a campaign message.
 
 Rules you must always follow:
-- Every subject line must include the sender's name or business name naturally — not bolted on at the end, but written into the subject line as part of the phrase. For example: "Danny at Accent Roofing wanted to reach out" or "A quick note from Accent Roofing Service"
+- Every subject line must include the sender's name or business name naturally — not bolted on at the end, but written into the subject line as part of the phrase. For example: "{Sender} at {Business} wanted to reach out" or "A quick note from {Business}", substituting the actual names given below
+- ⚠ Use ONLY the sender and business names supplied below. Never invent a business name, and never reuse one from these instructions
 - Subject lines must be concise — between 6 and 12 words
 - Do not use clickbait, hype, urgency, or pressure language
 - Do not use emoji

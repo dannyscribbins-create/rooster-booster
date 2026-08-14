@@ -29,6 +29,8 @@ import ContactModal from '../shared/ContactModal';
 import ContractorAboutModal from './ContractorAboutModal';
 import BookingFormModal from './BookingFormModal';
 import ReferAFriendTab from './ReferAFriendTab';
+import ExperiencePopup from './ExperiencePopup';
+import DashboardTab from './DashboardTab';
 
 // Full resolveBrandingTheme-shaped payloads, every value distinct between the two
 // so no assertion can pass by coincidence.
@@ -179,6 +181,56 @@ describe('C/DL-3b Phase 6B — each component renders its own contractor', () =>
     );
   });
 
+  it('[RED] ExperiencePopup names the contractor and links to ITS review URL', async () => {
+    // Added at the 6C checkpoint. 6B rewired this file but covered it by source
+    // sweep only — and the sweep proves the literal is GONE, never that the right
+    // value ARRIVES. After BookingFormModal that gap is demonstrated rather than
+    // theoretical.
+    await underBothBrands(
+      <ExperiencePopup
+        prompt={{ id: 1, referral_link: 'https://ref.test.invalid/dana' }}
+        onDismiss={() => {}}
+      />,
+      brand => document.body.textContent.includes(brand.companyName),
+      async (brand, other) => {
+        expect(document.body.textContent).toContain(brand.companyName);
+        expect(document.body.textContent).not.toContain(other.companyName);
+      }
+    );
+  });
+
+  it('[RED] DashboardTab’s review card carries the contractor’s own message and button', async () => {
+    // ⚠ NARROW BY DESIGN, AND DELIBERATELY NOT "IMPROVED" INTO A FULL RENDER.
+    // This component takes seventeen props. A realistic render would be mostly
+    // fixture scaffolding proving nothing about branding, and the scaffolding
+    // would then need maintaining every time the component's props changed — cost
+    // with no coverage attached.
+    //
+    // The review card is the ONLY place DashboardTab paints contractor-owned
+    // values, and it is what the review trio was delivered for. So the props below
+    // are the minimum that makes that card render, and nothing more is invented to
+    // look thorough. Narrow-and-honest beats broad-and-decorative: a test that
+    // renders everything and asserts on branding covers no more branding than this
+    // one, while implying it covers the component.
+    await underBothBrands(
+      <DashboardTab
+        setTab={() => {}} pipeline={[]} loading={false}
+        pipelineRateLimited={false} pipelineStale={false} pipelineStaleSince={null}
+        pipelineUnavailable={false} userName="Dana Referrer" balance={0} paidCount={0}
+        profilePhoto={null} showReviewCard onDismissReview={() => {}}
+        sessionToken="t" onViewAllReferrals={() => {}} bankStatus={null}
+        onOpenBankSetup={() => {}}
+      />,
+      brand => document.body.textContent.includes(brand.reviewMessage),
+      async (brand, other) => {
+        expect(document.body.textContent).toContain(brand.reviewMessage);
+        expect(document.body.textContent).toContain(brand.reviewButtonText);
+        expect(document.body.textContent).not.toContain(other.reviewMessage);
+        expect(document.body.textContent).not.toContain(other.reviewButtonText);
+      }
+    );
+  });
+
   it('[RED] ReferAFriendTab’s step copy names the contractor, not Accent', async () => {
     // Separate from that file's CONTRACTOR_CONFIG reads: line 234 hardcodes the
     // name inside body copy, so it survives a rewiring that only touches the
@@ -207,6 +259,10 @@ describe('C/DL-3b Phase 6B — no Accent literal survives in the rewired files',
     'src/components/referrer/ReferAFriendTab.jsx',
     'src/components/referrer/ExperiencePopup.jsx',
     'src/components/referrer/DashboardTab.jsx',
+    // Added in 6C — Group A's remaining two, plus the admin campaign surface.
+    'src/components/referrer/AnnouncementPopup.jsx',
+    'src/components/referrer/CashOutTab.jsx',
+    'src/components/admin/AdminCampaigns.jsx',
   ];
 
   const ACCENT = [
