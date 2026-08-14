@@ -103,12 +103,39 @@ const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 // IT IS NOT SOURCED FROM backgroundColor. The two slots do different jobs:
 // backgroundColor is the page's own canvas, accentColor is a fill drawn ON that
 // canvas, and collapsing them would make every wash invisible on a white page.
+// ⚠ reviewButtonText / reviewMessage JOINED THIS BLOCK IN C/DL-3b PHASE 6A, AND
+// THEIR VALUES ARE A RULING, NOT A CHOICE MADE HERE. Two spellings of the message
+// existed: this one, from GET /api/admin/settings' zero-row block, and
+// '…quick GOOGLE review!' in src/config/contractor.js and the admin placeholder.
+//
+// THE RULE, WHICH GENERALISES: WHEN A DEFAULT EXISTS IN TWO PLACES, THE ONE THAT
+// REACHES PRODUCTION USERS IS CANONICAL — the other is a copy that drifted. This
+// is the value a contractor who never touches the field actually receives, so
+// changing it would silently alter live copy for every such contractor.
+//
+// admin/index.js's zero-row block now READS THESE rather than re-typing them, so
+// the two cannot drift apart again.
+//
+// ── THE RULE, WHICH IS WHY THERE IS NO DEFAULT REVIEW URL ───────────────────
+// IDENTITY-BEARING VALUES GET NO DEFAULTS. A logo, a review link, a phone
+// number — anything that identifies WHO the contractor is — resolves to null
+// when unset, and the consumer decides whether to draw the thing at all.
+//
+// The two failure modes a default would produce are both worse than an absent
+// element: borrowing another contractor's value is a white-label breach, and
+// fabricating one sends a homeowner somewhere that does not exist.
+//
+// GENERIC COPY IS THE OPPOSITE CASE and may be defaulted freely — reviewButtonText
+// and reviewMessage above name nobody, so a platform default is honest for every
+// contractor. That is the line: does the value say WHO, or does it say WHAT.
 const BRANDING_THEME_DEFAULTS = Object.freeze({
-  companyName:     'RoofMiles',
-  primaryColor:    '#F26A1B',
-  secondaryColor:  '#1C2D4D',
-  accentColor:     '#FDF0E7',
-  backgroundColor: '#FFFFFF',
+  companyName:      'RoofMiles',
+  primaryColor:     '#F26A1B',
+  secondaryColor:   '#1C2D4D',
+  accentColor:      '#FDF0E7',
+  backgroundColor:  '#FFFFFF',
+  reviewButtonText: 'Leave a Review',
+  reviewMessage:    'Enjoying the rewards? Leave us a quick review!',
 });
 
 // Returns the first argument that is a non-empty string, else null.
@@ -177,6 +204,24 @@ function resolveBrandingTheme(input) {
     logoUrl:         firstNonEmpty(src.logo_url),
     phone:           firstNonEmpty(src.company_phone),
     email:           firstNonEmpty(src.company_email),
+
+    // ── THE REVIEW TRIO (C/DL-3b Phase 6A) ─────────────────────────────────
+    // Added because Phase 6's Phase 0 found a state the settings-backing gate had
+    // no name for: all three had a column, admin UI and a PATCH whitelist entry,
+    // and NO DELIVERY PATH — nothing carried them to the referrer app. Widening
+    // this resolver was chosen over a second authenticated read, because a second
+    // delivery path is a second shape that can drift from the first.
+    //
+    // PUBLIC BY CONSTRUCTION, all three: a Google review link is printed on yard
+    // signs and invoices, and the button text and message are copy a homeowner
+    // reads. Nothing here changes GET /api/branding/:slug's disclosure posture.
+    //
+    // NULL vs DEFAULTED IS THE SAME SPLIT logoUrl ALREADY MAKES — see the note on
+    // BRANDING_THEME_DEFAULTS. The consumer decides whether to draw the review
+    // card from reviewUrl's presence; the copy is always safe to render.
+    reviewUrl:       firstNonEmpty(src.review_url),
+    reviewButtonText: firstNonEmpty(src.review_button_text) || BRANDING_THEME_DEFAULTS.reviewButtonText,
+    reviewMessage:   firstNonEmpty(src.review_message)     || BRANDING_THEME_DEFAULTS.reviewMessage,
   };
 
   // ADDRESS IS OMITTED, NOT NULLED (LP-1). The footer decides whether to draw

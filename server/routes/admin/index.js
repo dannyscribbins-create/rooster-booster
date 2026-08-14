@@ -10,6 +10,9 @@ const rateLimit = require('express-rate-limit');
 const { logError } = require('../../middleware/errorLogger');
 const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../../utils/dateUtils');
+// Zero-row settings defaults are read from the resolver rather than re-typed
+// (C/DL-3b Phase 6A) — see the review_button_text / review_message lines below.
+const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
 const { SESSION_SLIDE_MS } = require('../../utils/sessionPolicy');
 const { runBackup } = require('../../utils/backup');
 const { runVerify } = require('../../utils/restore-verify');
@@ -646,8 +649,12 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
         social_facebook: null, social_instagram: null, social_google: null,
         social_nextdoor: null, social_website: null,
         review_url: null,
-        review_button_text: 'Leave a Review',
-        review_message: 'Enjoying the rewards? Leave us a quick review!',
+        // READ FROM THE RESOLVER, NOT RE-TYPED (C/DL-3b Phase 6A). These two
+        // literals lived here AND in src/config/contractor.js, in two different
+        // spellings — this one reaches production users, so it is canonical and
+        // now has exactly one home.
+        review_button_text: BRANDING_THEME_DEFAULTS.reviewButtonText,
+        review_message: BRANDING_THEME_DEFAULTS.reviewMessage,
         font_heading: 'Montserrat',
         font_body: 'Roboto',
         app_display_name: null,

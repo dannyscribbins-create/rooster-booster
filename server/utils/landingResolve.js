@@ -88,7 +88,11 @@ async function loadContractorBranding(db, contractorId) {
             s.company_name, s.app_display_name,
             s.primary_color, s.secondary_color, s.accent_color, s.landing_bg_color,
             s.logo_url,
-            s.company_phone, s.company_email, s.company_address, s.company_url
+            s.company_phone, s.company_email, s.company_address, s.company_url,
+            -- The review trio (C/DL-3b Phase 6A). Selected here because this is
+            -- the ONE loader behind both the landing page and GET /api/branding/:slug,
+            -- so the referrer app gets them without a second delivery path.
+            s.review_url, s.review_button_text, s.review_message
        FROM contractors c
        LEFT JOIN contractor_settings s ON s.contractor_id = c.id
       WHERE c.id = $1`,

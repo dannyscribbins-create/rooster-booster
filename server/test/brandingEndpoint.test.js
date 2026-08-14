@@ -268,10 +268,30 @@ describe('C/DL-3b Phase 1 Step 2 — GET /api/branding/:slug', () => {
     // A SWEEP, because the failure mode is an ADDED key, and a spot check only
     // ever catches the keys someone already thought of. The allowlist below is
     // exactly resolveBrandingTheme's output; anything else is a finding.
+    //
+    // ⚠ WIDENED IN C/DL-3b PHASE 6A BY EXPLICIT RULING, AND THE WIDENING WAS THE
+    // DECISION — not an accommodation to make a red test green. The three review
+    // fields had a column, admin UI and a PATCH whitelist entry but NO delivery
+    // path to the referrer app; the ruling was to widen THIS payload rather than
+    // add a second authenticated read, because a second delivery path is a second
+    // shape that can drift from the first.
+    //
+    // WHY IT DOES NOT CHANGE THIS ENDPOINT'S DISCLOSURE POSTURE: all three are
+    // public by construction. A review URL is a Google Business link printed on
+    // yard signs and invoices; the button text and message are copy a homeowner
+    // reads on the surface. None of it is private, none of it is tenancy-bearing,
+    // and none of it helps walk the slug space — which is what this endpoint's
+    // non-enumerability actually protects.
+    //
+    // THE SWEEP ITSELF IS UNWEAKENED. It is still an exact allowlist and still
+    // fails on any key nobody added deliberately; three names were added to it,
+    // and the two assertions below — no contractor id in any key OR VALUE, no slug
+    // echoed — are untouched.
     const ALLOWED = new Set([
       'companyName', 'programName',
       'primaryColor', 'secondaryColor', 'accentColor', 'backgroundColor',
       'logoUrl', 'phone', 'email', 'address', 'website',
+      'reviewUrl', 'reviewButtonText', 'reviewMessage',
     ]);
 
     for (const slug of [SLUG_A, SLUG_B, SLUG_UNKNOWN, SLUG_RESERVED]) {

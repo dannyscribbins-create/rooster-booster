@@ -110,6 +110,12 @@ const POPULATED = Object.freeze({
   company_phone:    '555-0100',
   company_email:    'hello@alpha.test.invalid',
   company_address:  '12 Ridge Line Rd',
+  // The review trio (C/DL-3b Phase 6A), values distinct from every default on the
+  // same rule the block header states — a pass-through failure must not be able to
+  // hide behind a coincidental match with the platform default.
+  review_url:         'https://g.page/r/alpha/review',
+  review_button_text: 'Rate Alpha',
+  review_message:     'How did Alpha do?',
 });
 
 // The hand-derived expected output for POPULATED. Written out as literals rather
@@ -139,6 +145,18 @@ const POPULATED_EXPECTED = Object.freeze({
   phone:           '555-0100',
   email:           'hello@alpha.test.invalid',
   address:         '12 Ridge Line Rd',
+  // ⚠ ADDED IN C/DL-3b PHASE 6A, on exactly the accentColor precedent noted above:
+  // this literal is the WHOLE resolved output compared with deepEqual, so a
+  // deliberate widening of the resolver has to be reflected here or the test
+  // asserts a shape the resolver is no longer specified to produce.
+  //
+  // ⚠ ORDER MATTERS AND IT WAS FOLLOWED: the mirror drift guards were extended and
+  // PROVEN BY INJECTION on all three new fields BEFORE this fence was touched.
+  // Updating the fence first would have taught it to accept the new shape, and the
+  // guard proof would then have been run against a table edited to fit.
+  reviewUrl:        'https://g.page/r/alpha/review',
+  reviewButtonText: 'Rate Alpha',
+  reviewMessage:    'How did Alpha do?',
 });
 
 describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
@@ -169,6 +187,7 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
     for (const key of [
       'companyName', 'programName', 'primaryColor', 'secondaryColor',
       'backgroundColor', 'logoUrl', 'phone', 'email',
+      'reviewUrl', 'reviewButtonText', 'reviewMessage',
     ]) {
       assert.ok(key in theme, `resolveBrandingTheme omitted the '${key}' token`);
     }
@@ -192,8 +211,13 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
       `INSERT INTO contractor_settings
          (contractor_id, company_name, app_display_name,
           primary_color, secondary_color, landing_bg_color, logo_url,
-          company_phone, company_email, company_address)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          company_phone, company_email, company_address,
+          -- The review trio (C/DL-3b Phase 6A). Inserted so the ROW leg carries
+          -- them too: without this the row leg reads NULL while the form leg reads
+          -- values, and the equivalence this test exists to prove would fail for a
+          -- reason that has nothing to do with row-vs-form.
+          review_url, review_button_text, review_message)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT (contractor_id) DO UPDATE SET
          company_name = EXCLUDED.company_name`,
       [
@@ -201,6 +225,7 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
         POPULATED.primary_color, POPULATED.secondary_color,
         POPULATED.landing_bg_color, POPULATED.logo_url,
         POPULATED.company_phone, POPULATED.company_email, POPULATED.company_address,
+        POPULATED.review_url, POPULATED.review_button_text, POPULATED.review_message,
       ]
     );
     const { rows } = await pool.query(
@@ -240,6 +265,61 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
       assert.equal(theme.secondaryColor,  '#1C2D4D', `${label}: wrong secondary default`);
       assert.equal(theme.backgroundColor, '#FFFFFF', `${label}: wrong background default`);
     }
+  });
+
+  // ── THE REVIEW TRIO (C/DL-3b Phase 6A) ──────────────────────────────────────
+  //
+  // WHY THESE THREE JOINED THE RESOLVER. Phase 6's Phase 0 found a fourth state
+  // the (a)/(b)/(c) classification gate did not have a name for: `review_url`,
+  // `review_button_text` and `review_message` each had a column, admin UI AND a
+  // PATCH whitelist entry — and NO DELIVERY PATH. `loadContractorBranding` did not
+  // select them and this resolver did not emit them, so nothing reached the
+  // referrer app. Ruled: widen the public payload rather than add a second
+  // authenticated read, because a second delivery path is a second shape that can
+  // drift from the first.
+  //
+  // ALL THREE ARE PUBLIC BY CONSTRUCTION — a Google review link is printed on yard
+  // signs and invoices — so this does not change the endpoint's disclosure posture.
+  it('[RED] resolves the review trio from settings', async () => {
+    const theme = resolveBrandingTheme({
+      review_url:         'https://g.page/r/alpha/review',
+      review_button_text: 'Rate us',
+      review_message:     'How did we do?',
+    });
+    assert.equal(theme.reviewUrl,        'https://g.page/r/alpha/review');
+    assert.equal(theme.reviewButtonText, 'Rate us');
+    assert.equal(theme.reviewMessage,    'How did we do?');
+  });
+
+  it('[RED] defaults the review COPY but never invents a review URL', async () => {
+    // ⚠ THE ASYMMETRY IS DELIBERATE AND MATCHES logoUrl's RULE. Button text and
+    // message are generic copy with a real platform default; a review URL is one
+    // contractor's Google Business link and there is no honest stand-in. Emitting
+    // another contractor's link would be a white-label breach, and emitting a
+    // fabricated one would send homeowners somewhere that does not exist — so the
+    // absence is reported as null and the consumer decides whether to draw the card.
+    const theme = resolveBrandingTheme({});
+    assert.equal(theme.reviewUrl, null, 'a missing review URL must be null, never a default');
+
+    // ⚠ THE DEFAULT COPY IS THE SERVER'S, BY RULING. Two spellings existed:
+    // 'Enjoying the rewards? Leave us a quick review!' (admin/index.js's zero-row
+    // block, which is what a contractor who never touches the field actually
+    // receives) and '…quick GOOGLE review!' (src/config/contractor.js and the
+    // admin placeholder). THE ONE THAT REACHES PRODUCTION USERS IS CANONICAL; the
+    // other is a copy that drifted. Asserted here as literals so the ruling is
+    // pinned rather than inherited from whichever constant is imported.
+    assert.equal(theme.reviewButtonText, 'Leave a Review');
+    assert.equal(theme.reviewMessage,    'Enjoying the rewards? Leave us a quick review!');
+  });
+
+  it('[RED] treats a cleared review field as unset, like every other token', async () => {
+    // Empty string is what a form field the admin cleared reads; NULL is what the
+    // column reads. Same intent, same answer — the rule firstNonEmpty already
+    // applies to every other value here.
+    const theme = resolveBrandingTheme({ review_url: '', review_button_text: '', review_message: '' });
+    assert.equal(theme.reviewUrl,        null);
+    assert.equal(theme.reviewButtonText, 'Leave a Review');
+    assert.equal(theme.reviewMessage,    'Enjoying the rewards? Leave us a quick review!');
   });
 
   it('never falls back to Accent Roofing\'s palette', async () => {
@@ -464,7 +544,14 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
     // Key by key rather than one deepEqual, so a failure names the value that
     // diverged instead of printing two objects to compare by eye.
     const canonical = defaults();
-    for (const key of ['companyName', 'primaryColor', 'secondaryColor', 'backgroundColor']) {
+    // reviewButtonText / reviewMessage added in Phase 6A. Without them a drifted
+    // DEFAULT is caught only behaviourally, by the resolution table below — which
+    // works, but reports "the two copies resolve this input differently" instead
+    // of naming the constant that moved.
+    for (const key of [
+      'companyName', 'primaryColor', 'secondaryColor', 'backgroundColor',
+      'reviewButtonText', 'reviewMessage',
+    ]) {
       assert.equal(
         mirror.BRANDING_THEME_DEFAULTS[key], canonical[key],
         `MIRROR DRIFT on default '${key}': src/ has ${JSON.stringify(mirror.BRANDING_THEME_DEFAULTS[key])}, ` +
@@ -484,6 +571,25 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
     const cases = [
       ['fully populated',       { ...POPULATED }],
       ['everything unset',      {}],
+      // ── THE REVIEW TRIO (C/DL-3b Phase 6A) ────────────────────────────────
+      // ⚠ THESE CASES EXIST BECAUSE OF §10's RECORDED GUARD GAP, AND THEY ARE
+      // THE EXACT SHAPE THAT GAP DESCRIBES. A real behavioural drift —
+      // `src.social_website` added as a second fallback in the src/ copy alone —
+      // PASSED this guard, because no case in the table SET that field. Three new
+      // fields are the same shape, so each one gets a case that sets it to a
+      // distinctive value, a case that clears it, and a case that leaves it out.
+      //
+      // ⚠ AND NOTE WHAT THIS TABLE CANNOT DO. It compares the two copies against
+      // each other, so it is STRUCTURALLY BLIND to a field missing from BOTH —
+      // adding these rows before the implementation existed would have passed
+      // vacuously. Their value is proven by INJECTION (drift one copy, watch it
+      // fail), not by their presence. The RED signal for the feature itself comes
+      // from the resolver assertions above, never from here.
+      ['review trio populated', { review_url: 'https://g.page/r/alpha/review', review_button_text: 'Rate us', review_message: 'How did we do?' }],
+      ['review trio empty',     { review_url: '', review_button_text: '', review_message: '' }],
+      ['review trio null',      { review_url: null, review_button_text: null, review_message: null }],
+      ['review url only',       { review_url: 'https://g.page/r/beta/review' }],
+      ['review copy only',      { review_button_text: 'Leave feedback', review_message: 'Tell us how it went.' }],
       ['explicit nulls',        { company_name: null, primary_color: null, landing_bg_color: null, logo_url: null }],
       ['empty strings',         { company_name: '', primary_color: '', secondary_color: '', landing_bg_color: '', company_address: '' }],
       ['malformed hex',         { primary_color: 'navy', secondary_color: 'F26A1B', landing_bg_color: '#abc' }],
