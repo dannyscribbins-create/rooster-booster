@@ -283,3 +283,56 @@ describe('C/DL-3b Phase 6B — no Accent literal survives in the rewired files',
     });
   }
 });
+
+// ── THE TEARDOWN ─────────────────────────────────────────────────────────────
+describe('C/DL-3b Phase 6D — CONTRACTOR_CONFIG is gone, not merely unused', () => {
+
+  it('src/config/contractor.js exports platform values ONLY', () => {
+    // ⚠ ASSERTED ON THE SOURCE, NOT ON AN IMPORT. `import { CONTRACTOR_CONFIG }`
+    // of a non-existent export yields `undefined` under Vite's dev/test pipeline
+    // rather than throwing, so an import-based check would pass just as happily
+    // against a file that still defined it. Reading the file is the only form of
+    // this assertion that can actually fail — the lesson from three consecutive
+    // vacuity findings this phase.
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'src/config/contractor.js'), 'utf8');
+
+    expect(source).not.toMatch(/export\s+const\s+CONTRACTOR_CONFIG/);
+
+    // NON-VACUITY: prove the file is the real one and still exports what the app
+    // needs, rather than being empty or renamed — either of which would satisfy
+    // the negative above while breaking every consumer.
+    expect(source).toMatch(/export\s+const\s+BACKEND_URL/);
+    expect(source).toMatch(/export\s+const\s+STRIPE_PUBLISHABLE_KEY/);
+  });
+
+  it('no file in src/ imports CONTRACTOR_CONFIG', () => {
+    // The module could be deleted and a consumer left behind — that consumer would
+    // read `undefined` and render blanks, silently. This walks src/ rather than
+    // trusting the per-file sweep above, which covers only the rewired files.
+    const offenders = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.(js|jsx)$/.test(entry.name)) continue;
+        // ⚠ TEST FILES ARE EXCLUDED, and the exclusion is narrow on purpose: the
+        // sweep needle above IS the string `CONTRACTOR_CONFIG`, so a test file
+        // naming it is the guard working, not a violation. Production code is what
+        // this walks.
+        if (/\.test\.(js|jsx)$/.test(entry.name)) continue;
+        const source = fs.readFileSync(full, 'utf8');
+        // The character class excludes NEWLINES as well as the closing brace.
+        // Allowing newlines lets one import statement's match run all the way to
+        // an unrelated mention pages later — which is how this check first
+        // flagged its own file.
+        if (/import\s*\{[^}\r\n]*CONTRACTOR_CONFIG/.test(source)) offenders.push(full);
+      }
+    };
+    walk(path.resolve(process.cwd(), 'src'));
+
+    expect(offenders,
+      `these files still import CONTRACTOR_CONFIG, which no longer exists — they will read ` +
+      `undefined and render blanks with nothing failing: ${offenders.join(', ')}`
+    ).toEqual([]);
+  });
+});

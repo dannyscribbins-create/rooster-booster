@@ -160,7 +160,7 @@ src/
 ├── App.jsx
 ├── index.jsx                       ← Vite entry point, referenced by /index.html
 ├── config/
-│   └── contractor.js               ← CONTRACTOR_CONFIG + BACKEND_URL
+│   └── contractor.js               ← BACKEND_URL + STRIPE_PUBLISHABLE_KEY (platform only)
 ├── constants/
 │   ├── theme.js                    ← R design tokens + STATUS_CONFIG
 │   ├── adminTheme.js               ← AD admin design tokens + TAG_COLORS
@@ -239,7 +239,8 @@ src/
 #### Import conventions
 - Referrer: `import { R } from '../../constants/theme'`
 - Admin: `import { AD } from '../../constants/adminTheme'`
-- Config: `import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor'`
+- Config: `import { BACKEND_URL } from '../../config/contractor'`
+- ⚠ **Contractor identity comes from `useBranding()`** (`src/components/shared/ThemeProvider.jsx`), never from a config module. `CONTRACTOR_CONFIG` was **deleted in C/DL-3b Phase 6** — it held one tenant's name, logo, phone, email, website and review link and shipped them to every contractor. `src/config/contractor.js` is platform-level only and nothing contractor-specific may be added back.
 
 #### ESLint note
 Every `useEffect` with intentionally omitted dependencies must have `// eslint-disable-next-line react-hooks/exhaustive-deps` on the line immediately above the dependency array.
@@ -281,7 +282,7 @@ When reading any file during a session, silently audit and flag violations befor
 - Callbacks → must be async/await
 - Class components → must be functional (except ErrorBoundary.jsx — intentional)
 - Missing try/catch on async functions → must be wrapped
-- Hardcoded contractor_id or credentials → must use env vars or CONTRACTOR_CONFIG
+- Hardcoded contractor_id or credentials → must use env vars; contractor **identity** comes from `useBranding()` / the D4 branding chain, never a config module
 - Unparameterized SQL → always use `$1`/`$2` placeholders, never concatenate user values
 - Missing retryWithBackoff on external API calls → all Jobber, Resend, Twilio, Stripe, Anthropic calls must use it
 - `SELECT *` returning data to client → always use explicit column lists

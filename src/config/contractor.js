@@ -1,34 +1,37 @@
-// ─── Config ───────────────────────────────────────────────────────────────────
+// ─── Platform Config ──────────────────────────────────────────────────────────
+//
+// ⚠ THIS FILE HOLDS PLATFORM-LEVEL VALUES ONLY. NOTHING CONTRACTOR-SPECIFIC MAY
+// BE ADDED BACK — not a name, not a logo, not a phone number, not a colour.
+//
+// ── WHAT USED TO BE HERE, AND WHY IT IS GONE (C/DL-3b Phase 6) ───────────────
+// `CONTRACTOR_CONFIG` held ONE tenant's identity as module constants:
+// contractorId, name, logoUrl, reviewUrl, reviewButtonText, reviewMessage, phone,
+// email and website. Nine keys, eight of them that tenant's, read by six
+// components and shipped to every contractor.
+//
+// It was not a styling problem. A homeowner referred by contractor #2 opened the
+// app and saw contractor #1's phone number, email, website and Google review link
+// — and `ContactModal`, reached from the login screen behind "Homeowners: don't
+// have an account? Contact your rep", meant the one instruction the product gives
+// a stranded homeowner **routed their support call to a competitor**.
+//
+// ── WHERE CONTRACTOR IDENTITY COMES FROM NOW ────────────────────────────────
+// The D4 branding chain (`src/utils/brandingChain.js`) resolves it, ThemeProvider
+// publishes it, and components read it through `useBranding()`. One seam, one
+// answer, and it is the CONTRACTOR'S OWN data from `contractor_settings` rather
+// than a constant compiled into the bundle.
+//
+// `contractorId` needed no migration at all — Phase 5 removed its last reader
+// when the unified login stopped sending the retired `contractorSlug`, so it was
+// already dead when this file was cut down.
+//
+// THE GUARD: `src/components/referrer/contractorBranding.test.jsx` sweeps the
+// rewired components for the string `CONTRACTOR_CONFIG` as well as for Accent
+// literals — the delivery mechanism is swept alongside the values it delivered,
+// so re-introducing the module in order to "just hardcode one thing" fails.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
 // Get value from Stripe Dashboard → Developers → API Keys → Publishable key
 export const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
-
-// ─── Contractor Config (white-label) ──────────────────────────────────────────
-// Display/branding config only. contractorId below may NEVER be used to select whose data
-// to serve, on any endpoint.
-//
-// ── THE contractorSlug EXCEPTION IS RETIRED (C/DL-3b Phase 2B, decision D1) ──────────────
-// TENANT_RESOLUTION_REBUILD_SPEC.md Section 3.5 carved out two pre-session endpoints —
-// POST /api/login and POST /api/forgot-pin — that accepted a contractorSlug field and used
-// it to scope a WHERE clause. Both endpoints now IGNORE that field entirely.
-//
-// It was not retired by finding the host-based resolution the old note anticipated. It was
-// retired by making the narrowing unnecessary: login gathers every candidate across all
-// contractors, compares the password against each, and takes its tenancy from whichever row
-// authenticated; forgot-pin sends one reset per matching account and answers generically
-// either way. Tenancy comes from the authenticated row, never from the request.
-//
-// LoginScreen.jsx still SENDS the field, and that is harmless — the server does not read it.
-// Both call sites are removed when Phase 5 rewrites the screen (spec §7.1).
-export const CONTRACTOR_CONFIG = {
-  contractorId:     'accent-roofing-dev', // must match the live contractors.id — see backend-literal reconciliation (registry Known Issues 2a)
-  name:             'Accent Roofing Service',
-  logoUrl:          '/AccentRoofing-Logo-White.png',
-  reviewUrl:        'https://g.page/r/CbtYNjHgUCwhEBM/review',
-  reviewButtonText: 'Leave a Review',
-  reviewMessage:    'Enjoying the rewards? Leave us a quick Google review!',
-  phone:            '770-277-4869',
-  email:            'contact@leaksmith.com',
-  website:          'accentroofingservice.com',
-};

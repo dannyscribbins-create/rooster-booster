@@ -361,16 +361,21 @@ Phase 6 retires the referrer surfaces from `CONTRACTOR_CONFIG` to a session-sour
 
 | | Category | Work it implies |
 |---|---|---|
-| **(a)** | Already a `contractor_settings` column **with** admin UI | Wire it. Done. |
+| **(a)** | Already a `contractor_settings` column **with** admin UI **and a delivery path** | Wire it. Done. |
 | **(b)** | A column with **no** admin UI | Needs an admin control. |
 | **(c)** | Neither | Needs a column **and** a control — or a deliberate ruling to template the contractor name into fixed copy for now. |
+| **(d)** | Column **and** admin UI **and** whitelist — but **NOTHING DELIVERS IT** to the surface that needs it | Needs a **payload** decision. Not admin work; not "done" either. |
+
+> **⚠ (d) WAS ADDED AFTER PHASE 0 RAN, BECAUSE THE GATE AS FIRST WRITTEN MISSED IT.** `review_url`, `review_button_text` and `review_message` each had a column, admin UI **and** a PATCH whitelist entry — every test (a) applied — and **no endpoint carried them to the referrer app**. `loadContractorBranding` did not select them and `resolveBrandingTheme` did not emit them, so "(a) → wire it, done" was **false** for three of the eight keys.
+>
+> **THE CORRECTION THAT GENERALISES: a value is only category (a) if it can be READ by the surface that needs it.** Storage, an editor and a validator are three of four conditions; **delivery is the fourth**, and it is the one that leaves no trace in the schema or the admin panel, so it is the one a classification built from those two places cannot see. **Ask about delivery explicitly.** Ruled in Phase 6A: widen the public payload rather than add a second authenticated read — a second delivery path is a second shape that can drift from the first.
 
 **This changes Phase 6's shape.** If several land in (b) or (c), the phase owns **admin UI work**, not just a rewiring — a materially different build. **Report the classification before proposing a build plan.**
 
 **Candidates checked while recording this note** *(two of the seven; the other five are Phase 0's job)*:
 
 - **`AnnouncementPopup.jsx:9` `preset_2` — confirmed category (c).** "Thank you for being part of the Accent Roofing family" is a hardcoded **string in a preset**, not a settings read. No column backs it. **And it is a TRIPLET, not a pair** — see the Admin Panel Brand Retirement note in §10: byte-identical copies live at `AnnouncementPopup.jsx:9` (referrer, retires here), `AdminAnnouncementSettings.jsx:12` and `AdminSettingsNotifications.jsx:11` (both admin, retire in that build). §8.2's "the two must change together" understates it by one file.
-- **`reviewMessage` / `reviewButtonText` — NOT category (c). They are category (a).** *(Correction to the ruling as first stated; recorded so Phase 0 does not re-derive it.)* Both columns exist — `review_button_text`, `review_message` in the original `CREATE TABLE` (`db.js:220-221`). Branding Settings already edits both (`BrandingProfileSettings.jsx:803-804`), and `GET`/`PATCH` already whitelist them (`admin/index.js:599,679`). The only gap is the consumer: `DashboardTab.jsx:586,610` reads `CONTRACTOR_CONFIG` instead of the settings. **Pure rewiring, no admin work.**
+- **`reviewMessage` / `reviewButtonText` — NOT category (c). They are category (a).** *(Correction to the ruling as first stated; recorded so Phase 0 does not re-derive it.)* Both columns exist — `review_button_text`, `review_message` in the original `CREATE TABLE` (`db.js:220-221`). Branding Settings already edits both (`BrandingProfileSettings.jsx:804-805` — **corrected in Phase 6D**; 803 is `review_url`), and `GET`/`PATCH` already whitelist them (`admin/index.js:599,679`). The only gap is the consumer: `DashboardTab.jsx:586,610` reads `CONTRACTOR_CONFIG` instead of the settings. **Pure rewiring, no admin work.**
   - ⚠ **Default-copy divergence found in passing.** The server default is `'Enjoying the rewards? Leave us a quick review!'` (`admin/index.js:647`); `contractor.js:30` and the admin placeholder both say `'…quick Google review!'`. A contractor who never touches the field gets different copy depending on which path answers. Reconcile during the rewiring — this is exactly the class of drift the rewiring exposes.
 
 ### 8.1 The real scope — larger than the inventory says
@@ -379,12 +384,18 @@ Phase 6 retires the referrer surfaces from `CONTRACTOR_CONFIG` to a session-sour
 
 **Seven components consume `CONTRACTOR_CONFIG`'s Accent data**, four of which appear on **no** inventory group list: `DashboardTab`, `ExperiencePopup`, `ReferAFriendTab`, `BookingFormModal` — alongside `AdminCampaigns`, `ContractorAboutModal`, and `LoginScreen` (retired in Phase 5).
 
+> **⚠ CORRECTED IN PHASE 6D, from the fresh grep.** The count above is right but the SET is not, and neither is the key count.
+> - **NINE keys go, not eight.** `contractorId` is the ninth, and it needed no work at all — Phase 5 removed its last reader when the unified login stopped sending the retired `contractorSlug`. It was already dead.
+> - **`ContactModal` is an eighth consumer, on no list**, and the most consequential one: it is reached from the LOGIN screen and hardcoded the phone number and email a stranded homeowner is told to call.
+> - **`ReferAFriendTab` carries a NINTH site** separate from its config reads — the contractor's name hardcoded inside step copy (`:234`), which a rewiring of the contact block alone would have left.
+> - **The SERVER carried the same defect**, missed because Phase 0 swept `src/` only: five hardcoded names in `admin/campaigns.js` (one feeding `emailSubject` on outbound homeowner email) and two fallbacks in `webhooks/jobber.js`. Folded into 6C by ruling.
+
 ### 8.2 What gets built
 
 - A **session-sourced branding context** — the same mechanism Group A needs, feeding all seven components. Post-auth, `contractor_id` is on the session, so this is source 1 of the D4 chain doing its job.
 - Remaining **Group A**: `AnnouncementPopup.jsx`, `CashOutTab.jsx`.
-- **`AnnouncementPopup.jsx:9` also carries a hardcoded Accent string in its `preset_2` copy** — the inventory documents only the logo. Its twin lives at `AdminAnnouncementSettings.jsx:12`; **the two must change together** (duplicate copy across two files, a CLAUDE.md violation waiting to happen).
-- `CONTRACTOR_CONFIG` reduced to platform-level exports only.
+- **`AnnouncementPopup.jsx:9` also carries a hardcoded Accent string in its `preset_2` copy** — the inventory documents only the logo. ⚠ **CORRECTED: it is a TRIPLET, not a twin** — `AdminAnnouncementSettings.jsx:13` **and** `AdminSettingsNotifications.jsx:12`. **All three changed together in 6C** (ruled), using a `[Company]` placeholder alongside the existing `[Amount]` / `[Referred Name]` set. The two admin files received **that one string and nothing else**; their chrome, logos and every other literal remain owned by the Admin Panel Brand Retirement build.
+- `CONTRACTOR_CONFIG` **deleted**; `src/config/contractor.js` keeps `BACKEND_URL` and `STRIPE_PUBLISHABLE_KEY` only. **The default-copy divergence is resolved in the same move** — the server's `'Enjoying the rewards? Leave us a quick review!'` is canonical and now lives once, in `BRANDING_THEME_DEFAULTS`, with `admin/index.js` reading it rather than re-typing it. The client's `'…quick GOOGLE review!'` went with the module.
 
 ### 8.3 RED tests first
 
@@ -403,7 +414,9 @@ Diff review → commit → deploy → visual verification on a real contractor s
 - **RED-first, always.** Show the failing test for the correct reason before implementing. No permanently-red decorative tests.
 - **Guard-proof every safety mechanism.** Disable the guard → confirm RED → restore. Named guard-proofs: per-candidate compare (§4.3), hostile-payload tenancy (§4.3), enumeration predicate (§5.2), logout deletion (§6.3), two-contractor branding (§8.3).
 - **Characterization rule.** Stop and report when a test fails for an unexpected reason. **Never** change production code to satisfy a test.
-- **Exact-path git staging only.** Never `git add -A` / `git add .`. **Six** files stay unstaged all session: `.claude/settings.local.json`, `HARDCODED_ACCENT_INVENTORY.md`, `docs/desktop.ini`, `docs/superpowers/plans/2026-05-26-grouped-filter-jobber-clients.md`, `RoofMiles_BuildSequence_JobRevenueCapture.docx`, `RoofMiles_BuildSequence_LandingAmbientBranding.docx`.
+- **Exact-path git staging only.** Never `git add -A` / `git add .`. **FIVE** files stay unstaged: `.claude/settings.local.json`, `docs/desktop.ini`, `docs/superpowers/plans/2026-05-26-grouped-filter-jobber-clients.md`, `RoofMiles_BuildSequence_JobRevenueCapture.docx`, `RoofMiles_BuildSequence_LandingAmbientBranding.docx`.
+  - **⚠ WAS SIX. `HARDCODED_ACCENT_INVENTORY.md` WAS COMMITTED IN PHASE 6D and is now TRACKED** — do not go looking for a sixth. It left the list because Phase 6 was instructed to update its header with the ContactModal finding, and that edit is deliberate content rather than working-tree noise.
+  - **The rule's purpose, so the next judgment call is easier:** this list keeps *incidental* working-tree noise out of deliberate commits. **It is not a prohibition on editing those files when asked.** A file leaves the list the moment it carries content someone deliberately wrote.
 - **Backblaze backup gate** before every DB-touching deploy — Phase 2, and Phase 4 if its conditional migration is needed. This session touches auth; the gate is not skippable.
 - **STOP checkpoint between every phase.** Diffs reviewed before anything is committed. One Claude Code prompt per phase, delivered as a single fenced block.
 - **Railway console:** one statement at a time.
@@ -430,6 +443,11 @@ Diff review → commit → deploy → visual verification on a real contractor s
 - **PRE-LAUNCH — transactional promote audit** *(carried from 3a §8, unchanged)*.
 - **PRE-LAUNCH — hardcoded brand-color literal sweep** *(carried from 3a §8)*. Known remaining: `CashOutTab.jsx:100` gradient; the intentional `LockedSection` `#012854` fallback. **Added from Phase 5: the five notification-email `?admin=true` links** — `pipelineSync.js:268`, `referrer.js:552`, `referrer.js:2774`, `resendWebhook.js:228`, `resendWebhook.js:310`. The parameter is inert and the links work as-is; they are swept **here rather than separately** because those same template literals carry `#012854`, and the block should be touched once, not twice.
 - **PRE-LAUNCH — `console.error` without the `// diagnostic log — intentional` marker:** `referrer.js:1040,1552,1563,1570,1623,1629`; `App.jsx:144`. All are paired with `logError()`, so nothing is lost — only the marker is missing.
+- **⚠ ACKNOWLEDGED AND DEFERRED — `nanoid` HIGH advisory (GHSA-2v37-7h3g-55p8).** *(2026-08-14, at the close of Phase 6. This entry IS the explicit acknowledgement the Dependency Management Standard requires for a HIGH finding.)*
+  - **What it is:** `nanoid <3.3.18`, reached as `vite@8.2.0 → postcss@8.5.25 → nanoid@3.3.17`. Custom generators can loop indefinitely when `size` is zero. **Nothing installed it** — `npm audit` returned 0 vulnerabilities earlier in the same session; the advisory was newly published against a dependency already present.
+  - **Why it is not urgent:** a **transitive devDependency of the build toolchain**, not in the Railway runtime, and the exploit requires calling a custom generator with `size: 0`, which nothing in this repo does.
+  - **⚠ WHY IT IS DEFERRED RATHER THAN FIXED NOW — THE DECIDING FACTOR IS TIMING, NOT SEVERITY.** `npm audit fix` moves a Vite sub-dependency. Doing that in the same push as a phase-closing, user-visible deploy puts a **build-toolchain change alongside a feature change**, and if anything breaks you cannot tell which caused it. Same discipline that split the Vite dev pipeline fix out of Phase 5.
+  - **Deferral target: the next dependency pass**, where it can move on its own and be verified on its own. **Do not run `npm audit fix` as part of a feature session.**
 - **🔴 PRE-LAUNCH — SWALLOWED CATCH BLOCKS, WITH A NAMED EXAMPLE OF WHAT THEY COST.** *(New item — no distinct swallowed-error audit existed; the nearest entry is the `console.error` marker one above, which is a different concern.)*
   - **THE EXAMPLE, from Phase 6C.** A missing `require` left `BRANDING_THEME_DEFAULTS` undefined inside the invoice-paid webhook's experience-invite branch. The handler threw — and **swallowed it**. The observable result: **a homeowner never receives their invite email, and nothing anywhere reports it.** No error row, no log line, no failed response. The only reason it was caught is that `invoicePaidWebhook.test.js` asserts the email is sent and timed out waiting.
   - **The tooling error was mine and is fixed. The swallowing is pre-existing and is the actual finding** — it is what turned a hard crash into a silent non-delivery, and it would have done the same for any other throw on that path.
@@ -484,6 +502,7 @@ Diff review → commit → deploy → visual verification on a real contractor s
   - **6C — a slice keyed on text shared by two prompts.** `indexOf('You are an expert email marketing copywriter')` matched the **rapport** prompt while the test claimed to check the **subject-line** one. Found only by that test's **own non-vacuity assertion**.
   - **⚠ NONE OF THE THREE WAS FINDABLE BY READING, and the third was inside a test written specifically to catch vacuity.** Reviewing the code, reviewing the test, and running the suite all reported success in every case.
   - **THE CONCLUSION TO ACT ON: non-vacuity assertions belong in tests that look TOO SIMPLE to need them, because that is precisely where this keeps happening.** A grep-a-file test, a render-and-check test, a slice-a-string test — each looks self-evidently correct, and each was wrong. **Green is not evidence. A proven RED is.**
+- **📌 THE PATTERN ANTICIPATED RATHER THAN DISCOVERED — 6D's teardown guard.** *(Fourth instance in Phase 6, and the first one seen coming.)* The obvious way to assert `CONTRACTOR_CONFIG` is gone is to import it and check for `undefined`. **That check cannot fail:** `import { CONTRACTOR_CONFIG }` of a missing export yields `undefined` under Vite's pipeline rather than throwing, so it would pass just as happily against a file that still defined the module. The guard therefore reads the **file's source text**, which is the only form of the assertion with a reachable failure — and it was written that way **before** being proven, then guard-proofed by restoring the export. Three findings taught the shape; the fourth applied it.
 - **📌 A NEW CLASS OF LITERAL — ONE THAT BIASES GENERATED TEXT RATHER THAN APPEARING IN OUTPUT.** *(Phase 6C.)* The subject-line AI prompt's worked **example** named a real tenant. That is an **instruction**: the model is steered toward that business name and will reuse it in copy generated for unrelated contractors — with **no literal anywhere in the output path to grep for**. It cannot be caught by sweeping generated text, only by asserting on the **shipped prompt template**, which is why `server/test/contractorIdentityInOutbound.test.js` reads the template rather than any response. Any future prompt that carries an example, a persona, or a sample output belongs under the same assertion.
 
 ### 3c — THE D4 BRANDING CHAIN: R2 IS THE ONE BINDING RULE NOT YET HONOURED
@@ -557,6 +576,13 @@ The admin surfaces carry the same hardcoded Accent identity the referrer surface
 - **Rep flags into React context.** `useAdminPermissions.js:40` builds a five-key object from the server response and silently discards `is_field_rep`, `is_attributable`, `rep_revenue_visibility` (and `title_id`). **The endpoint already selects and returns all three** — no server change needed. Six consumers, all destructuring named subsets, so the change is additive and low-risk; two test fixtures (`LockedSection.test.jsx:259`, `AdminTeamSettings.test.jsx:117-123`) assert shape parity and must be widened.
 - **Revenue: own revenue only** (3a D4, binding).
 - **Rep-facing surfaces** replace 3b's post-login placeholder.
+
+### Its own build — THE LEGAL PAGES, BLOCKED ON THE LLC AMENDMENT
+
+- **🔴 `PrivacyPolicy.jsx`, `TermsOfService.jsx` and `ContractorTerms.jsx` name one tenant as the OPERATING ENTITY.** *(Found by Phase 6's fresh grep; ruled OUT of Phase 6.)* `PrivacyPolicy:139-141` (name, phone, email), `TermsOfService:45,51,108`, `ContractorTerms:119`.
+  - **THIS IS NOT A BRANDING PROBLEM AND MUST NOT BE FIXED AS ONE.** They name the wrong **legal party**, not the wrong logo. The correct text almost certainly names **RoofMiles / Level 5 Roofing Partners LLC** as platform operator with the contractor named separately — and **nobody can write that until the LLC amendment lands.** Templating a company name into them would produce a document that is wrong in a new way.
+  - **⚠ THEY RENDER OUTSIDE `ThemeProvider` DELIBERATELY AND CORRECTLY** (`App.jsx` returns them before the provider is entered) because **they must be reachable without a session**. That is not the defect and **must not be "fixed"** by wrapping them to give a branding mechanism somewhere to attach.
+  - **BLOCKED, not deferred.** Sequence it after the LLC amendment, with whoever owns the legal text.
 
 ### Folded into LANDING PAGE AMBIENT BRANDING — a scope expansion, not a new item
 
