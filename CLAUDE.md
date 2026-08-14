@@ -1,6 +1,8 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **When working on any feature listed in the Feature Registry or Pending Features, read `CLAUDE_REGISTRY.md` before writing any code.**
+>
+> **`PRE_LAUNCH_CHECKLIST.md` (repo root) is the CANONICAL index of all open and deferred work** — pre-launch items, C/DL-3b-2, C/DL-3c, Decision E, contractor-ID reconciliation, and the named builds. Read it when picking up work or closing a session. Detail stays in the documents it points at; **add what you defer before writing the handoff, not after.**
 
 ## Commands
 ```bash
@@ -396,6 +398,84 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
 - Rule: run `npm test` before every push. Lint must be clean and both suites fully green — as of the Vite migration that is **734 server tests and 35 React tests across 6 files**. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count that jumps far above 6 means the include glob has been widened and is picking up the server suite — see the warning above.)
 - Characterization rule: a failing or surprising test result means STOP and report — never adjust production code to satisfy a test, and never silently adjust a test to satisfy the code. Deliberate behavior changes update the relevant test openly and are documented in the session handoff.
 - Migration idempotency proofs must include a reproduction seeded with production's actual pre-existing row shapes, not only fresh-schema runs — a test DB rebuilt from scratch every run can never exercise "a real pre-existing row already in some legacy state," which is exactly what breaks in production and never breaks locally. See `CLAUDE_REGISTRY.md` (ST session, Architecture Notes) for the incident that established this.
+
+---
+
+## Test Design — learnings that cost production bugs to acquire
+
+*Read before writing a test, not after it goes green. Every rule below was learned by shipping
+something a green suite did not catch.*
+
+### A test's own greenness is not evidence that it tests anything
+
+**Six vacuity instances were found in C/DL-3b, in six different shapes. None was findable by
+reading; every one was found by forcing the failure.**
+
+1. **A case row proves nothing until the field exists.** Five rows added to the branding drift
+   guard passed vacuously — that guard compares two copies, so a field absent from **both** is
+   invisible to it. Rows are scaffolding; **injection is the mechanism.**
+2. **An assertion against a state that cannot display the value proves nothing.**
+   `BookingFormModal` renders branding only on its success screen, so a test of the idle form
+   would have passed whatever the wiring said.
+3. **A slice keyed on shared text checks the wrong thing.** `indexOf('You are an expert…')`
+   matched the first of **two** prompts while the test claimed to check the second.
+4. **An import-based check for a deleted export cannot fail** — under Vite a missing named
+   import yields `undefined` rather than throwing. Read the source text instead.
+5. **A test asserting a component's DEFAULTED fields cannot see a bug in its NON-DEFAULTED
+   one.** This one reached production: the review card asserted `reviewMessage` and
+   `reviewButtonText` (both defaulted, both always render) while `reviewUrl` was null and the
+   button linked to a stringified `null`.
+   **⚠ WHEN A VALUE MAY LEGITIMATELY BE ABSENT, THE ABSENT CASE IS THE PRIMARY TEST.**
+6. **A sweep proves a string is ABSENT. It proves NOTHING about whether the code still runs.**
+   `AnnouncementPopup` threw a `ReferenceError` on every render while its literal sweep passed
+   — the sweep was correct, the component simply no longer ran. **Any file a sweep touches
+   needs at least one render test, however trivial.**
+
+**The conclusion:** non-vacuity assertions belong in tests that look **too simple to need
+them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this
+keeps happening.
+
+### Sweeps have two independent gaps
+
+- **Formatting, not values.** `770-277-4869` and `7702774869` are the same number and do not
+  match. **Normalise before comparing** — strip non-digits for phones; strip scheme, `www.`
+  and trailing slash for URLs. A `tel:` href dialled the wrong company through a sweep that
+  reported clean.
+- **The hand-maintained FILES list — NOT FIXED.** Every sweep iterates a list someone typed.
+  New files are invisible until remembered, and **nothing announces the omission**. A clean
+  sweep is evidence about the listed files only. Prefer walking a directory tree.
+
+### Retirements need a producer sweep, not only a consumer assertion
+
+Proving a value is ignored is **not** proving nothing depended on it. Grep the **producers**
+repo-wide — server routes, email templates, redirects — and enumerate **consumers** repo-wide
+too, remembering that a consumer need not sit on the obvious path: any component can read
+`window.location` directly.
+
+### Two rules about defaults
+
+- **Canonical-default rule.** When a default exists in two places, **the one that reaches
+  production users is canonical**; the other is a copy that drifted.
+- **Identity-bearing values get no defaults.** A logo, a review link, a phone number —
+  anything that says **who** the contractor is — resolves to `null` when unset, and the
+  consumer decides whether to draw the element. Borrowing another contractor's value is a
+  white-label breach; fabricating one sends a homeowner somewhere that does not exist. Generic
+  copy is the opposite case and may be defaulted freely. **The line is: does the value say
+  WHO, or does it say WHAT.**
+
+### A literal can bias generated text without ever appearing in output
+
+An AI prompt whose worked **example** names a real tenant is **instructing** the model toward
+it. No sweep of generated copy can catch it. Assert on the **shipped prompt template**.
+
+### Classifying whether a value is "wired up" has five states, not three
+
+Storage, an editor and a validator are three conditions — **delivery is the fourth**, and
+**derivability is the fifth**. Both are invisible to a check built from the schema and the
+admin panel, because both look complete. Ask: *"does anything carry this to the surface that
+needs it?"* and *"can this be constructed from something already stored?"* — and ask the second
+about the fields that look **empty**, not the ones that look finished.
+→ `CDL_3b_BUILD_SPEC.md` §8.0 categories (d) and (e).
 
 ---
 

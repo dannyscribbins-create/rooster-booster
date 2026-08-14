@@ -220,6 +220,16 @@ Read the current constraints before building any feature below.
 
 ## Known Issues / Pre-launch Cleanup
 
+> **⚠ THIS IS NO LONGER THE PRE-LAUNCH LIST. `PRE_LAUNCH_CHECKLIST.md` (repo root) IS.**
+> *(Routing fix, 2026-08-14.)* Deferred work had accumulated in five places that did not
+> reference each other, and a closed phase's build spec is not somewhere the next session
+> reads. The checklist is now the single index of what is **open**, grouped by **owner**.
+>
+> **This section keeps the DETAIL and the resolved history**, which is worth having — several
+> entries below are marked RESOLVED and record how. The checklist points here by number
+> (e.g. "registry Known Issues 8"). **When you close one of these, tick it in the checklist
+> too**; when you open a new one, add it in both places.
+
 **1. Scheduler silent on disconnect + possibly never registered (Session 92 finding)**
 - `POST /api/admin/crm/disconnect` deletes the tokens row (`admin/index.js:1101`); `runScheduledSync` (`crm/pipelineSync.js:793`) guards on `SELECT DISTINCT contractor_id FROM tokens WHERE access_token IS NOT NULL` and skips with only `[scheduler] No contractors with tokens — skipping cycle`. HOWEVER live deploy logs (July 2 18:28 EDT deploy, multiple :00/:30 UTC boundaries elapsed) show ZERO [scheduler] lines of ANY kind — neither skip nor start — suggesting `startCronJobs()` may not actually be invoked from the production entry point. Verification pending. Fixes pending review: (a) confirm/repair cron registration, (b) prominent skip logging, (c) sync-staleness alert via logError when `sync_state.last_synced_at` exceeds threshold, (d) launch consideration: contractor OAuth disconnect silently halts their pipeline sync with no recovery signal.
 
