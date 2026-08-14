@@ -1,4 +1,4 @@
-import { createContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
 import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
@@ -151,6 +151,30 @@ export const ThemeContext = createContext({
   branding: NEUTRAL_BRANDING,
   source: null,
 });
+
+/**
+ * The contractor's resolved identity, for components that render it.
+ *
+ * ⚠ THE REPLACEMENT FOR `CONTRACTOR_CONFIG` (C/DL-3b Phase 6B). That module held
+ * ONE tenant's name, phone, email, website, logo and Google review link, and six
+ * components read it — so every contractor's app showed Accent Roofing's details.
+ * Not a styling problem: a homeowner referred by contractor #2 was given
+ * contractor #1's phone number to call.
+ *
+ * ONE HOOK RATHER THAN SIX useContext CALLS, so there is a single documented place
+ * where "how does a component learn who the contractor is" is answered — and a
+ * single seam for 3c to extend when source 1 starts answering from the session.
+ *
+ * ALWAYS RETURNS A COMPLETE THEME. The chain is total: with nothing resolved it
+ * answers the neutral platform set, so a consumer never handles null. Values that
+ * IDENTIFY the contractor (logoUrl, reviewUrl) may still be null individually —
+ * see brandingTheme.js's rule — and the consumer decides whether to draw them.
+ *
+ * @returns {object} resolveBrandingTheme's output.
+ */
+export function useBranding() {
+  return useContext(ThemeContext).branding ?? NEUTRAL_BRANDING;
+}
 
 export default function ThemeProvider({
   children,

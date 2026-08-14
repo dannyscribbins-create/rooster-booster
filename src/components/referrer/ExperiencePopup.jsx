@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Star, SmileyMeh, CheckCircle, ShareNetwork } from '@phosphor-icons/react';
 import { R } from '../../constants/theme';
-import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
+import { BACKEND_URL } from '../../config/contractor';
+import { useBranding } from '../shared/ThemeProvider';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import { getReferrerToken } from '../../utils/authStorage';
 
@@ -57,6 +58,7 @@ function SlidePanel({ children }) {
 }
 
 export default function ExperiencePopup({ prompt, onDismiss }) {
+  const branding = useBranding();
   const [slide,            setSlide]            = useState(0);
   const [direction,        setDirection]        = useState(null);
   const [text,             setText]             = useState('');
@@ -126,7 +128,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
   }
 
   const handleLeaveReview = safeAsync(async () => {
-    const reviewUrl = CONTRACTOR_CONFIG.reviewUrl;
+    const reviewUrl = branding.reviewUrl;
     if (reviewUrl && reviewUrl !== '#') {
       window.open(reviewUrl, '_blank', 'noopener,noreferrer');
       setHasLeftForReview(true);
@@ -160,7 +162,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
 
   const handleShare = safeAsync(async () => {
     const referralLink = prompt.referral_link || window.location.origin;
-    const message      = `I just finished my project with ${CONTRACTOR_CONFIG.name} and I'd like to introduce you to them. Download their app to learn more: ${referralLink}`;
+    const message      = `I just finished my project with ${branding.companyName} and I'd like to introduce you to them. Download their app to learn more: ${referralLink}`;
     if (navigator.share) {
       try {
         await navigator.share({ text: message });
@@ -217,7 +219,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
               How'd everything go?
             </div>
             <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
-              Your feedback helps {CONTRACTOR_CONFIG.name} keep delivering great work.
+              Your feedback helps {branding.companyName} keep delivering great work.
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
               <button
@@ -403,7 +405,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
               Got anyone in mind?
             </div>
             <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
-              Share your personal link — they'll get to explore {CONTRACTOR_CONFIG.name} before committing to anything.
+              Share your personal link — they'll get to explore {branding.companyName} before committing to anything.
             </div>
             <button
               onClick={handleShare}
@@ -450,7 +452,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 You're all set!
               </div>
               <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, lineHeight: 1.5, marginBottom: 28 }}>
-                Thanks for being part of the {CONTRACTOR_CONFIG.name} community.
+                Thanks for being part of the {branding.companyName} community.
               </div>
               <button
                 onClick={() => {

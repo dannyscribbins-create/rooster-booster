@@ -3,7 +3,8 @@ import { ShareNetwork, X, Lock, DownloadSimple } from '@phosphor-icons/react';
 import { R } from '../../constants/theme';
 import { getNextPayout } from '../../constants/boostSchedule';
 import RewardScheduleCard from './RewardScheduleCard';
-import { CONTRACTOR_CONFIG, BACKEND_URL } from '../../config/contractor';
+import { BACKEND_URL } from '../../config/contractor';
+import { useBranding } from '../shared/ThemeProvider';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import StatusBadge from '../shared/StatusBadge';
@@ -15,6 +16,7 @@ import { getReferrerToken } from '../../utils/authStorage';
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals, bankStatus, onOpenBankSetup }) {
+  const branding = useBranding();
   const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
   const progressPct = Math.min((soldCount / 7) * 100, 100);
@@ -346,7 +348,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                 Book Your Free Inspection
               </p>
               <p style={{ margin: '0 0 14px', fontSize: 13, color: 'rgba(211,227,240,0.75)', fontFamily: R.fontBody, lineHeight: 1.5 }}>
-                Schedule your free roof inspection with {CONTRACTOR_CONFIG.name || 'us'} today.
+                Schedule your free roof inspection with {branding.companyName || 'us'} today.
               </p>
               <button
                 onClick={() => setShowBookingModal(true)}
@@ -436,7 +438,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               onMouseLeave={e => e.currentTarget.style.boxShadow = R.shadow}
             >
               <p style={{ margin: '0 0 8px', fontSize: 12, color: R.textMuted, fontFamily: R.fontMono, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                About {CONTRACTOR_CONFIG.name || 'Your Contractor'}
+                About {branding.companyName || 'Your Contractor'}
               </p>
               {aboutData.google_rating != null && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}>
@@ -584,10 +586,10 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                   fontFamily: R.fontBody,
                   lineHeight: 1.4,
                 }}>
-                  {CONTRACTOR_CONFIG.reviewMessage}
+                  {branding.reviewMessage}
                 </p>
                 <button
-                  onClick={() => window.open(CONTRACTOR_CONFIG.reviewUrl, '_blank', 'noopener,noreferrer')}
+                  onClick={() => window.open(branding.reviewUrl, '_blank', 'noopener,noreferrer')}
                   style={{
                     background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
                     border: "none",
@@ -608,7 +610,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                   onMouseLeave={e => e.currentTarget.style.transform = "translateY(0)"}
                 >
                   <i className="ph ph-star" aria-hidden="true" style={{ fontSize: 15 }} />
-                  {CONTRACTOR_CONFIG.reviewButtonText}
+                  {branding.reviewButtonText}
                 </button>
               </div>
             </div>

@@ -1,5 +1,5 @@
 import { R } from '../../constants/theme';
-import { CONTRACTOR_CONFIG } from '../../config/contractor';
+import { useBranding } from '../shared/ThemeProvider';
 import { Clock, MapPin, Star } from '@phosphor-icons/react';
 
 const AWARD_LABELS = {
@@ -24,9 +24,10 @@ const AWARD_LABELS = {
 };
 
 export default function ContractorAboutModal({ visible, onContinue, onBook, aboutData }) {
+  const branding = useBranding();
   if (!visible || !aboutData) return null;
 
-  const contractorName = CONTRACTOR_CONFIG.name || 'Your Contractor';
+  const contractorName = branding.companyName || 'Your Contractor';
 
   return (
     <div
@@ -62,9 +63,9 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
 
           {/* Header */}
           <div style={{ marginBottom: 20, textAlign: 'center' }}>
-            {CONTRACTOR_CONFIG.logoUrl ? (
+            {branding.logoUrl ? (
               <img
-                src={CONTRACTOR_CONFIG.logoUrl}
+                src={branding.logoUrl}
                 alt={contractorName}
                 style={{ height: 48, width: 'auto', objectFit: 'contain', marginBottom: 12, display: 'block', margin: '0 auto 12px' }}
               />

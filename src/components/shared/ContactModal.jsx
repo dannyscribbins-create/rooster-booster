@@ -1,7 +1,14 @@
 import { R } from '../../constants/theme';
+import { useBranding } from './ThemeProvider';
 
 // Contact Modal
+// ⚠ ON NO INVENTORY LIST BEFORE PHASE 6 (fourth verified miss). This modal is
+// reached from the LOGIN screen, so its hardcoded number was the first thing a
+// stranded homeowner at contractor #2 was told to call — and it rang Accent
+// Roofing. Both consumers (LoginScreen, ProfileTab) render inside ThemeProvider,
+// so the contractor's own details were always available here.
 export default function ContactModal({ isOpen, onClose }) {
+  const branding = useBranding();
   if (!isOpen) return null;
   return (
     <div
@@ -50,7 +57,7 @@ export default function ContactModal({ isOpen, onClose }) {
             onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
             onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
           >
-            770-277-4869
+            {branding.phone}
           </a>
         </div>
 
@@ -58,12 +65,12 @@ export default function ContactModal({ isOpen, onClose }) {
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
           <i className="ph ph-envelope" style={{ fontSize: 22, color: R.navy, flexShrink: 0 }} />
           <a
-            href="mailto:contact@leaksmith.com"
+            href={`mailto:${branding.email}`}
             style={{ color: R.navy, fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
             onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
             onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
           >
-            contact@leaksmith.com
+            {branding.email}
           </a>
         </div>
 

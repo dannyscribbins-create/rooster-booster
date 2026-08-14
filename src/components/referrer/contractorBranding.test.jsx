@@ -1,0 +1,229 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// C/DL-3b — PHASE 6B — THE REFERRER SURFACES RENDER THEIR OWN CONTRACTOR
+//
+// Governing spec: CDL_3b_BUILD_SPEC.md §8.1-8.3.
+//
+// THE DEFECT. Six components read `CONTRACTOR_CONFIG` — a hardcoded module
+// holding ONE tenant's identity. Every contractor's app showed Accent Roofing's
+// name, phone, email, website, logo and Google review link. Not a styling
+// problem: a homeowner referred by contractor #2 was given contractor #1's phone
+// number to call.
+//
+// ⚠ TWO CONTRACTORS, ALWAYS, AND EVERY ASSERTION IS A PAIR. Each test renders the
+// same component under brand A and brand B and asserts BOTH that the right values
+// appear AND that the other contractor's do not. A single-contractor fixture
+// cannot tell "reads the branding context" from "happens to be hardcoded to the
+// value I chose" — which is exactly the bug being fixed, so a test that could not
+// distinguish them would be theatre.
+//
+// THE SWEEP AT THE BOTTOM is the backstop: a literal on a branch no test renders
+// is invisible to the assertions above, and that is how the four components on no
+// inventory list survived three previous passes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import fs from 'node:fs';
+import path from 'node:path';
+import ThemeProvider from '../shared/ThemeProvider';
+import ContactModal from '../shared/ContactModal';
+import ContractorAboutModal from './ContractorAboutModal';
+import BookingFormModal from './BookingFormModal';
+import ReferAFriendTab from './ReferAFriendTab';
+
+// Full resolveBrandingTheme-shaped payloads, every value distinct between the two
+// so no assertion can pass by coincidence.
+const BRAND_A = Object.freeze({
+  companyName: 'Alpha Roofing Co', programName: null,
+  primaryColor: '#123456', secondaryColor: '#654321',
+  accentColor: '#FDF0E7', backgroundColor: '#FFFFFF',
+  logoUrl: 'https://cdn.test.invalid/alpha-logo.png',
+  phone: '555-0100', email: 'hello@alpha.test.invalid', website: 'alpha.test.invalid',
+  reviewUrl: 'https://g.page/r/alpha/review',
+  reviewButtonText: 'Rate Alpha', reviewMessage: 'How did Alpha do?',
+});
+
+const BRAND_B = Object.freeze({
+  companyName: 'Beta Exteriors', programName: null,
+  primaryColor: '#0A0B0C', secondaryColor: '#0D0E0F',
+  accentColor: '#FDF0E7', backgroundColor: '#FFFFFF',
+  logoUrl: 'https://cdn.test.invalid/beta-logo.png',
+  phone: '555-0222', email: 'hello@beta.test.invalid', website: 'beta.test.invalid',
+  reviewUrl: 'https://g.page/r/beta/review',
+  reviewButtonText: 'Rate Beta', reviewMessage: 'How did Beta do?',
+});
+
+const SLUG = { [BRAND_A.companyName]: 'alpha', [BRAND_B.companyName]: 'beta' };
+
+function makeStorage() {
+  const map = new Map();
+  return {
+    getItem: k => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => { map.set(k, String(v)); },
+    removeItem: k => { map.delete(k); },
+  };
+}
+
+// Resolves through source 2.5 (?brand=) so the real chain runs rather than a
+// context being hand-injected past it.
+function contextFor(brand) {
+  const slug = SLUG[brand.companyName];
+  return {
+    hostname: 'app.roofmiles.test',
+    search: `?brand=${slug}`,
+    storage: makeStorage(),
+    fetchBranding: async s => (s === slug ? { ...brand } : null),
+    session: null,
+  };
+}
+
+function renderForBrand(brand, ui) {
+  return render(
+    <ThemeProvider context={contextFor(brand)} fetchStoredMode={async () => null}>
+      {ui}
+    </ThemeProvider>
+  );
+}
+
+/**
+ * Renders `ui` under both brands and runs `assertFn(brand, other)` for each.
+ *
+ * `readyWhen(brand)` is per-test rather than a shared "the company name appeared"
+ * check, because NOT EVERY COMPONENT PRINTS THE NAME — ContactModal renders only a
+ * phone number and an email address. A shared gate keyed on the name waits forever
+ * on those, and the failure looks like the component ignoring its branding when in
+ * fact it is rendering it correctly.
+ */
+async function underBothBrands(ui, readyWhen, assertFn) {
+  for (const [brand, other] of [[BRAND_A, BRAND_B], [BRAND_B, BRAND_A]]) {
+    const { unmount } = renderForBrand(brand, typeof ui === 'function' ? ui(brand) : ui);
+    await waitFor(() => expect(readyWhen(brand)).toBeTruthy());
+    await assertFn(brand, other);
+    unmount();
+  }
+}
+
+beforeEach(() => {
+  global.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+});
+afterEach(() => { delete global.fetch; });
+
+describe('C/DL-3b Phase 6B — each component renders its own contractor', () => {
+
+  it('[RED] ContactModal shows the contractor’s own phone and email', async () => {
+    // ⚠ ON NO INVENTORY LIST. Reached from the LOGIN screen — so this hardcoded
+    // phone number was the first thing a stranded homeowner at contractor #2 was
+    // told to call, and it rang Accent Roofing.
+    await underBothBrands(
+      <ContactModal isOpen onClose={() => {}} />,
+      brand => document.body.textContent.includes(brand.phone),
+      async (brand, other) => {
+      expect(document.body.textContent).toContain(brand.phone);
+      expect(document.body.textContent).toContain(brand.email);
+      expect(document.body.textContent).not.toContain(other.phone);
+      expect(document.body.textContent).not.toContain(other.email);
+      }
+    );
+  });
+
+  it('[RED] ContractorAboutModal shows the contractor’s own name and logo', async () => {
+    await underBothBrands(
+      // aboutData must be TRUTHY — the component returns null without it, which
+      // renders an empty body and looks like a branding failure.
+      <ContractorAboutModal visible onContinue={() => {}} onBook={() => {}} aboutData={{ blurb: 'x' }} />,
+      brand => document.querySelector(`img[src="${brand.logoUrl}"]`),
+      async (brand, other) => {
+        const logo = document.querySelector(`img[src="${brand.logoUrl}"]`);
+        expect(logo, 'the contractor’s own logo must be the one rendered').toBeTruthy();
+        expect(document.querySelector(`img[src="${other.logoUrl}"]`)).toBeNull();
+      }
+    );
+  });
+
+  it('[RED] BookingFormModal shows the contractor’s own logo on its success screen', async () => {
+    // ⚠ THE BRANDING ONLY APPEARS AFTER A SUCCESSFUL SUBMIT — the idle form shows
+    // none of it. So the test drives a real booking rather than rendering the
+    // modal and looking: asserting on the idle state would pass whatever the
+    // wiring said, because there is nothing on screen to be wrong.
+    //
+    // This is also why the source sweep matters more here than elsewhere: a
+    // literal on a success-only branch is invisible to any test that does not
+    // reach it, which is precisely how this file stayed off every inventory list.
+    global.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true }) }));
+
+    await underBothBrands(
+      <BookingFormModal visible onClose={() => {}} onBookingSuccess={() => {}} sessionToken="t" />,
+      () => screen.queryByPlaceholderText('Full Name *'),
+      async (brand, other) => {
+        fireEvent.change(screen.getByPlaceholderText('Full Name *'), { target: { value: 'Dana Referrer' } });
+        fireEvent.change(screen.getByPlaceholderText('Phone Number *'), { target: { value: '555-0999' } });
+        fireEvent.click(screen.getByRole('button', { name: /request inspection/i }));
+
+        await waitFor(() => expect(document.querySelector(`img[src="${brand.logoUrl}"]`)).toBeTruthy());
+        expect(document.querySelector(`img[src="${other.logoUrl}"]`)).toBeNull();
+      }
+    );
+  });
+
+  it('[RED] ReferAFriendTab shows the contractor’s own phone, email and website', async () => {
+    await underBothBrands(
+      <ReferAFriendTab userName="Dana Referrer" token="t" />,
+      brand => document.body.textContent.includes(brand.phone),
+      async (brand, other) => {
+        for (const own of [brand.phone, brand.email, brand.website]) {
+          expect(document.body.textContent).toContain(own);
+        }
+        for (const theirs of [other.phone, other.email, other.website]) {
+          expect(document.body.textContent).not.toContain(theirs);
+        }
+      }
+    );
+  });
+
+  it('[RED] ReferAFriendTab’s step copy names the contractor, not Accent', async () => {
+    // Separate from that file's CONTRACTOR_CONFIG reads: line 234 hardcodes the
+    // name inside body copy, so it survives a rewiring that only touches the
+    // contact block. On no inventory list.
+    await underBothBrands(
+      <ReferAFriendTab userName="Dana Referrer" token="t" />,
+      brand => document.body.textContent.includes(brand.companyName),
+      async () => {
+        expect(document.body.textContent).toMatch(/reaches out to schedule a free roof inspection/i);
+        expect(document.body.textContent).not.toMatch(/Accent Roofing/i);
+      }
+    );
+  });
+});
+
+// ── THE SWEEP ────────────────────────────────────────────────────────────────
+// Source text, not rendered output: the failure mode is a literal on a branch no
+// test happens to render — a fallback, an error state, a share message. Reading
+// the file catches every branch at once, and it is what the four components on no
+// inventory list needed.
+describe('C/DL-3b Phase 6B — no Accent literal survives in the rewired files', () => {
+  const FILES = [
+    'src/components/shared/ContactModal.jsx',
+    'src/components/referrer/ContractorAboutModal.jsx',
+    'src/components/referrer/BookingFormModal.jsx',
+    'src/components/referrer/ReferAFriendTab.jsx',
+    'src/components/referrer/ExperiencePopup.jsx',
+    'src/components/referrer/DashboardTab.jsx',
+  ];
+
+  const ACCENT = [
+    'Accent Roofing', 'AccentRoofing', 'accentRoofingLogo',
+    'leaksmith.com', '770-277-4869', 'accentroofingservice',
+    'CbtYNjHgUCwhEBM',            // the Google review link's id
+    'CONTRACTOR_CONFIG',          // the module itself — the delivery mechanism goes too
+  ];
+
+  for (const file of FILES) {
+    it(`[RED] ${file} carries no Accent literal and no CONTRACTOR_CONFIG read`, () => {
+      const source = fs.readFileSync(path.resolve(process.cwd(), file), 'utf8');
+      const found = ACCENT.filter(literal => source.includes(literal));
+      expect(found,
+        `${file} still carries: ${found.join(', ')}. Contractor identity comes from ` +
+        'ThemeContext (the D4 chain), never from a hardcoded module.'
+      ).toEqual([]);
+    });
+  }
+});

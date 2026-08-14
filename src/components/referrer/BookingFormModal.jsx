@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
-import { BACKEND_URL, CONTRACTOR_CONFIG } from '../../config/contractor';
+import { BACKEND_URL } from '../../config/contractor';
+import { useBranding } from '../shared/ThemeProvider';
 import { X, CheckCircle } from '@phosphor-icons/react';
 
 export default function BookingFormModal({ visible, onClose, onBookingSuccess, sessionToken }) {
+  const branding = useBranding();
   const [name, setName]                   = useState('');
   const [phone, setPhone]                 = useState('');
   const [email, setEmail]                 = useState('');
@@ -97,15 +99,15 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             textAlign: 'center', gap: 12,
           }}>
-            {CONTRACTOR_CONFIG.logoUrl ? (
+            {branding.logoUrl ? (
               <img
-                src={CONTRACTOR_CONFIG.logoUrl}
-                alt={CONTRACTOR_CONFIG.name}
+                src={branding.logoUrl}
+                alt={branding.companyName}
                 style={{ maxWidth: 160, width: '100%', height: 'auto', objectFit: 'contain', display: 'block' }}
               />
             ) : (
               <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#fff', fontFamily: R.fontSans }}>
-                {CONTRACTOR_CONFIG.name}
+                {branding.companyName}
               </p>
             )}
             <CheckCircle size={64} weight="fill" color="#22C55E" />

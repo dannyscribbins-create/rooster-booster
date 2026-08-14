@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Copy, DownloadSimple, Phone, Envelope, ShareNetwork, GlobeSimple } from '@phosphor-icons/react';
 import { R } from '../../constants/theme';
-import { CONTRACTOR_CONFIG, BACKEND_URL } from '../../config/contractor';
+import { BACKEND_URL } from '../../config/contractor';
+import { useBranding } from '../shared/ThemeProvider';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import Skeleton from '../shared/Skeleton';
 
 // ─── Refer a Friend ───────────────────────────────────────────────────────────
 export default function ReferAFriendTab({ userName, token }) {
+  const branding = useBranding();
   const firstName = userName ? userName.split(' ')[0] : 'there';
 
   const [inviteUrl, setInviteUrl]         = useState(null);
@@ -53,8 +55,8 @@ export default function ReferAFriendTab({ userName, token }) {
     if (!inviteUrl) return;
     if (navigator.share) {
       navigator.share({
-        title: `Join ${CONTRACTOR_CONFIG.name}'s rewards program`,
-        text: `Sign up and start earning rewards for referring friends to ${CONTRACTOR_CONFIG.name}!`,
+        title: `Join ${branding.companyName}'s rewards program`,
+        text: `Sign up and start earning rewards for referring friends to ${branding.companyName}!`,
         url: inviteUrl,
       });
     } else {
@@ -71,13 +73,13 @@ export default function ReferAFriendTab({ userName, token }) {
   };
 
   const handleShareContact = () => {
-    const lines = [CONTRACTOR_CONFIG.name];
-    if (CONTRACTOR_CONFIG.phone) lines.push(`📞 ${CONTRACTOR_CONFIG.phone}`);
-    if (CONTRACTOR_CONFIG.email) lines.push(`✉️ ${CONTRACTOR_CONFIG.email}`);
-    if (CONTRACTOR_CONFIG.website) lines.push(`🌐 ${CONTRACTOR_CONFIG.website}`);
+    const lines = [branding.companyName];
+    if (branding.phone) lines.push(`📞 ${branding.phone}`);
+    if (branding.email) lines.push(`✉️ ${branding.email}`);
+    if (branding.website) lines.push(`🌐 ${branding.website}`);
     const text = lines.join('\n');
     if (navigator.share) {
-      navigator.share({ title: CONTRACTOR_CONFIG.name, text });
+      navigator.share({ title: branding.companyName, text });
     } else {
       navigator.clipboard.writeText(text).then(() => {
         setContactCopied(true);
@@ -86,8 +88,8 @@ export default function ReferAFriendTab({ userName, token }) {
     }
   };
 
-  const phoneDigits = CONTRACTOR_CONFIG.phone
-    ? CONTRACTOR_CONFIG.phone.replace(/\D/g, '')
+  const phoneDigits = branding.phone
+    ? branding.phone.replace(/\D/g, '')
     : '';
 
   return (
@@ -231,7 +233,7 @@ export default function ReferAFriendTab({ userName, token }) {
           <div style={{ background: R.bgCard, borderRadius: 16, boxShadow: R.shadow, overflow: 'hidden' }}>
             {[
               { n: 1, title: 'Share your link', desc: 'Send your personal invite link or show your QR code in person.' },
-              { n: 2, title: 'They get an inspection', desc: 'Accent Roofing reaches out to schedule a free roof inspection.' },
+              { n: 2, title: 'They get an inspection', desc: `${branding.companyName} reaches out to schedule a free roof inspection.` },
               { n: 3, title: 'You earn cash', desc: 'When the job is sold and paid, your bonus hits your balance.' },
             ].map((step, i) => (
               <div
@@ -277,40 +279,40 @@ export default function ReferAFriendTab({ userName, token }) {
                 Copied!
               </span>
             )}
-            {CONTRACTOR_CONFIG.phone && (
+            {branding.phone && (
               <a
                 href={`tel:${phoneDigits}`}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '15px 18px', textDecoration: 'none',
-                  borderBottom: (CONTRACTOR_CONFIG.email || CONTRACTOR_CONFIG.website) ? `1px solid ${R.border}` : 'none',
+                  borderBottom: (branding.email || branding.website) ? `1px solid ${R.border}` : 'none',
                 }}
               >
                 <Phone size={20} color={R.navy} weight="duotone" />
-                <span style={{ fontFamily: R.fontBody, fontSize: 15, color: R.textPrimary }}>{CONTRACTOR_CONFIG.phone}</span>
+                <span style={{ fontFamily: R.fontBody, fontSize: 15, color: R.textPrimary }}>{branding.phone}</span>
               </a>
             )}
-            {CONTRACTOR_CONFIG.email && (
+            {branding.email && (
               <a
-                href={`mailto:${CONTRACTOR_CONFIG.email}`}
+                href={`mailto:${branding.email}`}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '15px 18px', textDecoration: 'none',
-                  borderBottom: CONTRACTOR_CONFIG.website ? `1px solid ${R.border}` : 'none',
+                  borderBottom: branding.website ? `1px solid ${R.border}` : 'none',
                 }}
               >
                 <Envelope size={20} color={R.navy} weight="duotone" />
-                <span style={{ fontFamily: R.fontBody, fontSize: 15, color: R.textPrimary }}>{CONTRACTOR_CONFIG.email}</span>
+                <span style={{ fontFamily: R.fontBody, fontSize: 15, color: R.textPrimary }}>{branding.email}</span>
               </a>
             )}
-            {CONTRACTOR_CONFIG.website && (
+            {branding.website && (
               <a
-                href={`https://${CONTRACTOR_CONFIG.website}`}
+                href={`https://${branding.website}`}
                 target="_blank" rel="noreferrer"
                 style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '15px 18px', textDecoration: 'none' }}
               >
                 <GlobeSimple size={20} color={R.navy} weight="duotone" />
-                <span style={{ fontFamily: R.fontBody, fontSize: 15, color: R.textPrimary }}>{CONTRACTOR_CONFIG.website}</span>
+                <span style={{ fontFamily: R.fontBody, fontSize: 15, color: R.textPrimary }}>{branding.website}</span>
               </a>
             )}
           </div>
