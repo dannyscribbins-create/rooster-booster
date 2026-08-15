@@ -161,17 +161,34 @@ Note: `client_rep_assignments`, `team_members`, and `titles` are also live table
 src/
 ├── App.jsx
 ├── index.jsx                       ← Vite entry point, referenced by /index.html
+├── reportWebVitals.js
+├── setupTests.js                   ← Vitest setup (jest-dom matchers), named by vite.config.mjs
 ├── config/
-│   └── contractor.js               ← BACKEND_URL + STRIPE_PUBLISHABLE_KEY (platform only)
+│   ├── contractor.js               ← BACKEND_URL + STRIPE_PUBLISHABLE_KEY (platform only)
+│   └── featureFlags.js             ← isFlagEnabled() + isRmControlEnabled() — allow-list parse, fails closed
 ├── constants/
 │   ├── theme.js                    ← R design tokens + STATUS_CONFIG
 │   ├── adminTheme.js               ← AD admin design tokens + TAG_COLORS
+│   ├── statusTheme.js              ← STATUS_VARS + STATUS_LIGHT/STATUS_DARK (the six status tokens)
 │   ├── boostSchedule.js            ← BOOST_TABLE + getNextPayout() (predictive UI only)
 │   ├── badges.js                   ← BADGES array
+│   ├── registrySections.mjs
 │   └── shouts.js                   ← WARMUP_ENTRIES (must stay in sync with WARMUP_ENTRIES_SERVER)
 ├── hooks/
-│   └── useEntrance.js
+│   ├── useEntrance.js
+│   └── useAdminPermissions.js      ← AdminPermissionsContext + usePermissions() — the FIRST createContext in src/
+├── utils/
+│   ├── authStorage.js              ← the three token keys + logout seam; STORE is the one switch
+│   ├── brandingChain.js            ← resolveBranding() — the D4 six-source chain + rm_brand_hint
+│   ├── brandingTheme.mjs           ← ⚠ MIRROR of server/utils/brandingTheme.js — edit both, drift-guarded
+│   ├── themeTokens.mjs             ← deriveThemeTokens() + themeCssVariables() + RENDER_TOKEN_KEYS
+│   ├── safeStorage.js              ← safeLocalStorage()/safeSessionStorage() — throw-proof storage access
+│   └── clientErrorReporter.js      ← safeAsync()
 └── components/
+    ├── PrivacyPolicy.jsx           ← ⚠ legal — names the OPERATING ENTITY; blocked on the LLC amendment
+    ├── TermsOfService.jsx          ← ⚠ same
+    ├── ContractorTerms.jsx         ← ⚠ same
+    ├── EmailPreferences.jsx        ← public unsubscribe/preferences page (?token=)
     ├── shared/
     │   ├── Screen.jsx              ← overflow settings intentional — do not change
     │   ├── AnimCard.jsx
@@ -185,12 +202,20 @@ src/
     │   ├── LoadingIndicator.jsx    ← spinner + label (keyframe rmSpin, not spin)
     │   ├── EmptyState.jsx
     │   ├── ErrorState.jsx
-    │   └── SuccessState.jsx
+    │   ├── SuccessState.jsx
+    │   └── ThemeProvider.jsx       ← ⚠ mounts the 11 --rm-* vars on its OWN wrapper (Ruling 5); exports useBranding()
     ├── auth/
-    │   ├── LoginScreen.jsx
+    │   ├── LoginScreen.jsx         ← the ONE unified door — every role, no ?admin=true
     │   ├── ResetPinScreen.jsx
     │   ├── SignupScreen.jsx
-    │   └── EmailVerifyScreen.jsx
+    │   ├── EmailVerifyScreen.jsx
+    │   ├── ChoiceScreen.jsx        ← D2 multi-match disambiguation (choice token, 2 min, single-use)
+    │   └── FrozenAccountScreen.jsx ← D3 — rendered from the 403 body, with branding, no session
+    ├── rep/
+    │   └── RepPlaceholder.jsx      ← 3c placeholder; reached only by tier='general' AND is_field_rep
+    ├── superAdmin/
+    │   ├── SuperAdminLoginScreen.jsx ← ⚠ GATED OFF by VITE_ENABLE_RM_CONTROL (D-K). Working form, placeholder shell.
+    │   └── SuperAdminShell.jsx     ← ⚠ same gate. Fully RoofMiles-branded when built — no contractor lockup.
     ├── referrer/
     │   ├── ReferrerApp.jsx         ← tab shell + BottomNav
     │   ├── DashboardTab.jsx
@@ -205,6 +230,7 @@ src/
     │   ├── ContractorAboutModal.jsx
     │   ├── MissingReferralModal.jsx
     │   ├── BadgeCelebrationPopup.jsx
+    │   ├── PendingMatchPopup.jsx
     │   └── AnnouncementPopup.jsx
     └── admin/
         ├── AdminApp.jsx
@@ -214,20 +240,22 @@ src/
         ├── AdminReferrers.jsx
         ├── AdminCashOuts.jsx
         ├── AdminActivityLog.jsx
-        ├── AdminAnnouncementSettings.jsx
         ├── AdminPendingReferrals.jsx
         ├── AdminFlaggedReferrals.jsx
+        ├── AdminFlaggedAssignmentsQueue.jsx
         ├── AdminReferralReview.jsx ← umbrella: Pending + Missing + Flagged tabs
         ├── AdminEngagement.jsx
         ├── AdminInboxSidebar.jsx
-        ├── AdminAboutUs.jsx
+        ├── AdminSetPasswordScreen.jsx ← reached by ?admin_invite=; window.location.replace('/') on success
         ├── AdminContactsTab.jsx    ← unified contacts table, grouped filter panel, tier filter pills
         ├── AdminContactDetailDrawer.jsx ← accepts contactId OR jobberClientId
         ├── AdminCampaigns.jsx      ← Campaigns + Audiences + Campaign Contacts tabs
         ├── AdminCampaignDetail.jsx
         ├── AdminSettings.jsx       ← main settings hub
-        ├── AdminSettingsNotifications.jsx
-        ├── AdminSettingsEngagement.jsx ← ExperiencePopup toggle lives here (not Retention page)
+        ├── AdminSettingsNotifications.jsx ← the LIVE announcement-preview surface (its orphaned twin was deleted)
+        ├── AdminSettingsExperience.jsx ← ExperiencePopup toggle lives here (not Retention page)
+        ├── AdminSettingsMyProfile.jsx
+        ├── AdminTeamSettings.jsx   ← Manage Team + the flagged-assignments queue tab
         ├── BankingSettings.jsx
         ├── BrandingPreview.jsx
         ├── BrandingProfileSettings.jsx

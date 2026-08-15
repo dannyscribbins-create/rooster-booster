@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { R } from './constants/theme';
 import AdminPanel from './components/admin/AdminApp';
 import { BACKEND_URL } from './config/contractor';
+import { isRmControlEnabled } from './config/featureFlags';
 import LoginScreen from './components/auth/LoginScreen';
 import ResetPinScreen from './components/auth/ResetPinScreen';
 import SignupScreen from './components/auth/SignupScreen';
@@ -369,8 +370,32 @@ export default function App() {
   if (window.location.pathname === '/terms') return <TermsOfService />;
   if (window.location.pathname === '/contractor-terms') return <ContractorTerms />;
   if (window.location.pathname === '/email-preferences') return <EmailPreferences />;
-  if (window.location.pathname === '/rm-control/login') return <SuperAdminLoginScreen />;
-  if (window.location.pathname === '/rm-control') return <SuperAdminShell />;
+
+  // ── THE SUPER-ADMIN ROUTES ARE GATED OFF BY DEFAULT (D-K) ─────────────────
+  // These two lines used to match unconditionally, so typing `/rm-control/login`
+  // rendered a WORKING login form for anyone — authenticated or not, above the
+  // boot gate and above surfaceFor(). Obscurity was the only control on it.
+  //
+  // WHY THAT IS WORTH A GATE RATHER THAN A COMMENT. The surface behind it is a
+  // placeholder that makes zero API calls, but the door in front of it is real
+  // and the account is SEEDED, so the credential is live. The role it mints
+  // carries a genuine cross-tenant bypass: server/middleware/permissions.js:47-51
+  // returns next() for role='super_admin' on EVERY gated route, cash-out approval
+  // and Stripe transfers included.
+  //
+  // That bypass is latent — all 130 requirePermission routes independently call
+  // verifyAdminSession(), which filters role='admin' — but it is held by
+  // repetition across 130 call sites, not by structure. Nothing asserts the
+  // invariant. Until the surface is actually built (cross-tenant READ only; see
+  // D-K), the cheapest correct control is to not ship the door.
+  //
+  // ⚠ THE SERVER ROUTE IS INTENTIONALLY UNTOUCHED. POST /api/rm-control/login is
+  // rate-limited and enumeration-safe, and removing it would break the surface
+  // for the local development this flag exists to permit.
+  if (isRmControlEnabled()) {
+    if (window.location.pathname === '/rm-control/login') return <SuperAdminLoginScreen />;
+    if (window.location.pathname === '/rm-control') return <SuperAdminShell />;
+  }
   if (adminInviteToken) return <AdminSetPasswordScreen token={adminInviteToken} />;
 
   // ── THE ADMIN BRANCH MUST STAY OUTSIDE THE PROVIDER (Phase 1, Ruling 5) ─────
