@@ -79,6 +79,37 @@ handoff, not after.
       `accent-roofing-dev`) and **8 orphaned `jobber_clients`** → registry §221
 - [ ] **Webhook tenant-derivation flake** — wider than first recorded; can fail 5 tests at once
       under full-suite load → registry Known Issues 12
+- [ ] **React async-leak flake.** Surfaced TWICE in the Phase 1 session, in two DIFFERENT files
+      (`roleRouting.test.jsx`, then `deepLinkSurvival.test.jsx`), as an `Errors  N error(s)`
+      line with the suite still green and exit 0 both times. Stack runs through
+      `AdminDashboard.jsx:131` — a fetch resolving after its test tore the tree down. Isolated
+      re-runs are clean, so it is load-dependent, and that it MOVED FILES is what argues flake
+      over regression. Sibling of the webhook flake above: re-run before investigating.
+- [ ] **🔴 NO `List-Unsubscribe` HEADER ON CAMPAIGN EMAIL — zero hits across `server/`.**
+      Mail-client one-click unsubscribe does not exist, so the footer link built at
+      `admin/campaigns.js:305` is the **only** mechanism offered. ⚠ Independent of the
+      SPA-rewrite bug that broke that link — repairing the link does not supply the header.
+      Blocks nothing today (no campaign has sent since 2026-06-12) but **must exist before the
+      first real campaign send**: the major mailbox providers require it of bulk senders, and
+      the first send is exactly when it stops being theoretical.
+- [ ] **Apex-domain legal links 404 — NOT fixed by the `vercel.json` rewrite.**
+      `admin/campaigns.js:302` hardcodes `https://roofmiles.com/terms` and
+      `https://roofmiles.com/privacy` — the **apex** domain, not `app.`. That host is Railway's
+      landing server, which owns only `/` and `/i/:slug` (`landing.js:1380,1386`), so both
+      paths 404 by a **different mechanism** than the SPA-rewrite bug did. Two broken-legal-link
+      defects with one symptom and two causes; fixing one reads as fixing both.
+- [ ] **Nothing verifies Vercel's routing layer — record this as a defect CLASS, not one bug.**
+      `/privacy`, `/terms`, `/contractor-terms` and `/email-preferences` returned Vercel's 404
+      in production for **11 days** (Vite migration `cbaf307`, 2026-08-04 → rewrite, 2026-08-15)
+      while working perfectly under `npm start` — the Vite dev server ships its own SPA
+      fallback and nothing else does. Lint, both suites and `CI=true npm run build` were green
+      the entire time, and no test could have caught it: **no local command exercises Vercel's
+      router.** Nothing was deleted either — CRA's framework preset supplied the fallback
+      implicitly, and the migration replaced it with an explicit `vercel.json` that did not
+      restate it. **Same shape as the six-day white-screen** (`CDL_3b_HANDOFF.md`): several
+      pipelines disagree and the one nothing exercises is the one that breaks. Needs a
+      post-deploy smoke check of the non-root paths, plus a bundle load to prove the catch-all
+      has not shadowed `/assets/*`.
 
 **CRM / sync**
 - [ ] Scheduler silent on disconnect → registry Known Issues 1
@@ -210,7 +241,9 @@ root cause, and patching them separately produces five unrelated special cases)
 - [ ] **Admin Panel Brand Retirement — SOONER RATHER THAN LATER**, ideally while the Phase 6
       mechanism is still warm. Admin chrome literals, the admin preview components, the two
       `preset_2` admin copies' surrounding files, **and the two editors that both write
-      `google_place_id`** (`AdminAboutUs.jsx:98`, `CompanyDetailsSettings.jsx:280`). → §10
+      `google_place_id`** (`AdminAboutUs.jsx:98`, `CompanyDetailsSettings.jsx:280`).
+      → **`ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md`** (the governing spec; supersedes §10 for this
+      build). **IN PROGRESS** — Phase 1 shipped `cd198cf`; Phase 2 is the delivery seam.
 - [ ] **Legal pages — BLOCKED on the LLC amendment.** `PrivacyPolicy`, `TermsOfService`,
       `ContractorTerms` name one tenant as the **operating entity** — wrong legal party, not
       wrong logo. ⚠ They render outside `ThemeProvider` **deliberately and correctly** because
@@ -224,6 +257,23 @@ root cause, and patching them separately produces five unrelated special cases)
       separate; write the gradient against each surface's own token set rather than unifying
       them. → §10, `RoofMiles_BuildSequence_LandingAmbientBranding.docx`
 - [ ] **Job Revenue Capture** → `RoofMiles_BuildSequence_JobRevenueCapture.docx`
+- [ ] **Campaign Builder — THREE items, ONE trip.** Grouped because they share a file
+      (`admin/campaigns.js`) and a deadline: the next time campaigns are touched, **before the
+      first real send**. Listed together deliberately — this is the `escapeHtml`-×3 shape, and
+      three campaign defects recorded in three places is how a partial sweep reads as done.
+      1. **The status lifecycle never completes.** Campaign 55 sits at `current_batch = 2`,
+         `total_batches = 1` — past its last batch — and is still `active`. **Nothing
+         transitions a campaign on batch exhaustion.** `send-batch`'s guard
+         (`campaigns.js:1992`) tests *status only*, so "Campaign is not in an active state"
+         never fires for a finished campaign and the panel lists completed campaigns as active
+         indefinitely. ⚠ The only exit is a **lazy 90-day expiry** (`:1772-1780`) that fires
+         when someone happens to open the detail page — already flagged in-code as MVP
+         (*"replace with a scheduled job before multi-contractor scale"*). So the status does
+         eventually clear, but **on a timer unrelated to completion**, which is why this reads
+         as "never" from the panel. A completed campaign should leave `active` when its last
+         batch lands, not 90 days later.
+      2. **`List-Unsubscribe` header** — the entry under *Correctness / data integrity* above.
+      3. **Apex-domain legal links** (`campaigns.js:302`) — the entry above it.
 - [ ] **ADMIN→REFERRER FIELD AUDIT.** Scope: for every field an admin can set, confirm it
       actually reaches the referrer surface that consumes it — and vice versa. Phase 6 found
       the review trio had a column, admin UI and a whitelist entry but **no delivery path**
@@ -265,5 +315,6 @@ root cause, and patching them separately produces five unrelated special cases)
 | `CLAUDE_REGISTRY.md` §221 | Known Issues 1–15, including resolved history worth keeping |
 | `CONTRACTOR2_READINESS_AUDIT.md` | F1–F13 tenancy findings |
 | `CDL_3a_BUILD_SPEC.md` §8 | 3a carry-outs, incl. the real-browser theme check |
+| `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` | **ACTIVE.** Decisions D-A…D-O and the six-phase order for the admin panel's co-branded-neutral retirement. Phase 1 shipped `cd198cf` |
 | `CLAUDE.md` | Standing rules and the learnings that must be read **before** writing code |
 | `*.docx` in the repo root | Job Revenue Capture · Landing Page Ambient Branding |
