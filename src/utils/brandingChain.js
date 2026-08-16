@@ -213,12 +213,27 @@ async function brandingForSlug(ctx, slug) {
 // in, which on the login screen is always.
 //
 // IT RETURNS null UNCONDITIONALLY THIS PHASE, AND THAT IS A REAL ANSWER RATHER
-// THAN A STUB. There is no endpoint to ask: GET /api/admin/me returns no branding
-// and no contractor_id, and there is no referrer-session equivalent at all
-// (verified, C/DL-3b Phase 1 Step 1). Phase 5 changes the login response shape and
-// wires this source to it; when it does, R2 falls out of the ordering with no
-// further change here — source 1 is first, so it wins and the generic
-// write-through below rewrites the stored hint.
+// THAN A STUB. There is still no endpoint this source can ask, and there is no
+// referrer-session equivalent at all (verified, C/DL-3b Phase 1 Step 1).
+//
+// ⚠ ONE CLAUSE HERE WENT STALE AND IS CORRECTED (Admin Brand Retirement Phase
+// 2B). It used to read "GET /api/admin/me returns no branding and no
+// contractor_id". The first half is no longer true — /me now carries a branding
+// block, which is how the ADMIN PANEL learns its contractor (spec D-H).
+//
+// THAT DOES NOT MAKE IT A SOURCE FOR THIS CHAIN, and the reason is sharper than
+// the old one rather than weaker. Every source here returns { branding, slug },
+// because the slug is what the generic write-through below stores as the hint.
+// /me deliberately carries NO SLUG AND NO contractor_id (CD-24 R1) — tenancy is
+// proven by the session there, so an identifier in the reply would be a
+// disclosure with no capability behind it. A source built on /me could resolve
+// branding and would still have nothing to write through.
+//
+// Wiring this source is C/DL-3c's (spec D-J): it needs the contractors.slug
+// backfill, and it reopens the deliberate non-enumerability of
+// GET /api/branding/:slug at PRE_LAUNCH_CHECKLIST.md:139-143. When it lands, R2
+// falls out of the ordering with no further change here — source 1 is first, so
+// it wins and the write-through rewrites the stored hint.
 // eslint-disable-next-line no-unused-vars
 export async function resolveFromSession(ctx) {
   return null;

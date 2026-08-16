@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import useAdminPermissions, { AdminPermissionsContext } from '../../hooks/useAdminPermissions';
+import BrandingProvider from '../shared/BrandingProvider';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import { AdminShell } from './AdminComponents';
 import AdminDashboard from './AdminDashboard';
@@ -69,6 +70,32 @@ export default function AdminPanel({ onLogout }) {
   // authenticated team member, so there is no unauthenticated state left for this
   // hook to represent.
   const permState = useAdminPermissions(true);
+
+  // ── THE BRANDING SEAM (Admin Brand Retirement Phase 2B, spec D-H) ──────────
+  // GET /api/admin/me carries the contractor's branding, and useAdminPermissions
+  // is this panel's only caller of it — so the block is already in hand by the
+  // time the tree renders. It is handed to BrandingProvider in SUPPLIED MODE,
+  // which means the D4 chain never runs here.
+  //
+  // ⚠ THE CHAIN MUST NOT RUN ON THIS SURFACE. It resolves identity from the URL,
+  // the hostname and a stored hint — none of them proven — so on an authenticated
+  // panel it would answer "which contractor is this" from the query string while
+  // the session already knows. That is the R2 shape at
+  // PRE_LAUNCH_CHECKLIST.md:139-143, and D-J leaves it to C/DL-3c.
+  //
+  // 'session' NAMES THE DELIVERY PATH, and it is set here rather than sent by the
+  // server because the server does not know which of its consumers is asking; the
+  // client knows exactly how it came by the value. It matches source 1 of the D4
+  // chain, which is what will eventually answer this for both surfaces.
+  //
+  // NULL UNTIL IT ARRIVES, which is most of the first frame — D-I: the panel
+  // paints at once with no contractor lockup and the identity joins the repaint
+  // that /api/admin/me already causes. Never another contractor's, never a
+  // placeholder.
+  const suppliedBranding = useMemo(
+    () => (permState.branding ? { branding: permState.branding, source: 'session' } : null),
+    [permState.branding]
+  );
 
   useAdminFonts();
 
@@ -161,33 +188,51 @@ export default function AdminPanel({ onLogout }) {
     setPage(id);
   }
 
+  // ── THE NESTING IS DELIBERATE ─────────────────────────────────────────────
+  // PERMISSIONS OUTSIDE, BRANDING INSIDE, and it follows the fail-soft rule the
+  // endpoint is built around: permissions are what make the panel work, branding
+  // only decorates it. The decoration nests inside the thing it decorates.
+  //
+  // BOTH SIBLINGS ARE WRAPPED — AdminShell and AdminInboxSidebar. Phase 4 puts
+  // the contractor lockup in the sidebar chrome (D-D) while page content reads
+  // the same identity, so the provider has to sit above both rather than around
+  // the page alone.
+  //
+  // ⚠ IT MOUNTS NO ELEMENT AND EMITS NO --rm-* (Ruling 5). That is why this is
+  // BrandingProvider and not ThemeProvider: LockedSection's permission scrim
+  // paints var(--rm-bg, #012854) on this dark panel, and a mounted --rm-bg would
+  // resolve to the contractor's landing background — #FFFFFF by default — turning
+  // a navy veil over blurred, permission-gated content WHITE. The guarantee is
+  // structural, not positional: that provider has no code path that emits one.
   return (
     <AdminPermissionsContext.Provider value={permState}>
-      <AdminShell page={page} setPage={handleNavClick} onLogout={onLogout} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
-        {pages[page]}
-      </AdminShell>
-      <AdminInboxSidebar
-        isOpen={inboxOpen}
-        onClose={() => setInboxOpen(false)}
-        onUnreadChange={(count) => setInboxUnreadCount(count)}
-        onNotificationsRead={() => setNotificationsUnread(0)}
-        onNavigate={(navPage, options) => {
-          if (navPage === 'missing-referrals' && options?.initialTab) {
-            setReferralReviewTab(options.initialTab);
-          }
-          // Settings is an overlay, not a `page` — deep-linking into it (FA spec §4: Inbox
-          // → Settings → Manage Team → queue tab) opens Settings instead of switching pages.
-          // `token` changes every request so AdminSettings/AdminTeamSettings re-jump even if
-          // already sitting on that exact tab.
-          if (navPage === 'team-queue') {
-            setTeamNavRequest({ token: Date.now(), tab: options?.tab || 'queue' });
-            setShowSettings(true);
-            return;
-          }
-          setShowSettings(false);
-          setPage(navPage);
-        }}
-      />
+      <BrandingProvider supplied={suppliedBranding}>
+        <AdminShell page={page} setPage={handleNavClick} onLogout={onLogout} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
+          {pages[page]}
+        </AdminShell>
+        <AdminInboxSidebar
+          isOpen={inboxOpen}
+          onClose={() => setInboxOpen(false)}
+          onUnreadChange={(count) => setInboxUnreadCount(count)}
+          onNotificationsRead={() => setNotificationsUnread(0)}
+          onNavigate={(navPage, options) => {
+            if (navPage === 'missing-referrals' && options?.initialTab) {
+              setReferralReviewTab(options.initialTab);
+            }
+            // Settings is an overlay, not a `page` — deep-linking into it (FA spec §4: Inbox
+            // → Settings → Manage Team → queue tab) opens Settings instead of switching pages.
+            // `token` changes every request so AdminSettings/AdminTeamSettings re-jump even if
+            // already sitting on that exact tab.
+            if (navPage === 'team-queue') {
+              setTeamNavRequest({ token: Date.now(), tab: options?.tab || 'queue' });
+              setShowSettings(true);
+              return;
+            }
+            setShowSettings(false);
+            setPage(navPage);
+          }}
+        />
+      </BrandingProvider>
     </AdminPermissionsContext.Provider>
   );
 }

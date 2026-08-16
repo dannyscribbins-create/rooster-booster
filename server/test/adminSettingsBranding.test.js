@@ -49,9 +49,19 @@ const { createApp } = require('../app');
 const { startTestServer, stopTestServer } = require('./helpers');
 
 const SETTINGS_PATH = '/api/admin/settings';
+const ME_PATH       = '/api/admin/me';
 
 const TENANT_A_ID = 'tnt-q3vb-internal';   // no contractor_settings row — the zero-row case
 const TENANT_B_ID = 'tnt-w8ny-internal';   // fully branded — the contamination source
+
+// ⚠ THE SLUGS EXIST FOR ONE ASSERTION AND WOULD OTHERWISE BE VACUOUS SCAFFOLDING
+// (Phase 2B). GET /api/admin/me's branding block must carry no slug (CD-24 R1),
+// and `contractors.slug` is NULL on arrival for every row — so a fixture without
+// them would let "no slug is echoed" pass against a payload that could not have
+// contained one. CLAUDE.md vacuity shape #1: a case row proves nothing until the
+// field exists. They are set here so the absence is a real absence.
+const SLUG_A = 'alpha-roofing-fixture';
+const SLUG_B = 'beta-roofing-fixture';
 
 const COMPANY_A = 'Alpha Roofing Co';
 const COMPANY_B = 'Beta Roofing Co';
@@ -105,7 +115,7 @@ function httpRequest(port, method, path, token, bodyObj) {
 
 describe('C/DL-2 Phase 3a — GET/PUT /api/admin/settings branding', () => {
   let pool, server, port;
-  let ownerA, ownerB, readOnlyA;   // team_members.id
+  let ownerA, ownerB, readOnlyA, noPermsA;   // team_members.id
 
   before(async () => {
     pool = await initTestDb();
@@ -113,8 +123,8 @@ describe('C/DL-2 Phase 3a — GET/PUT /api/admin/settings branding', () => {
 
     const hash = await bcrypt.hash('TestBrand123!', 4);   // rounds=4 for test speed
 
-    for (const [id, name] of [[TENANT_A_ID, COMPANY_A], [TENANT_B_ID, COMPANY_B]]) {
-      await pool.query(`INSERT INTO contractors (id, name) VALUES ($1, $2)`, [id, name]);
+    for (const [id, name, slug] of [[TENANT_A_ID, COMPANY_A, SLUG_A], [TENANT_B_ID, COMPANY_B, SLUG_B]]) {
+      await pool.query(`INSERT INTO contractors (id, name, slug) VALUES ($1, $2, $3)`, [id, name, slug]);
     }
 
     const mkMember = async (contractorId, email, tier, permissions) => {
@@ -130,6 +140,12 @@ describe('C/DL-2 Phase 3a — GET/PUT /api/admin/settings branding', () => {
     ownerB = await mkMember(TENANT_B_ID, 'owner@beta.test.invalid',  'owner', {});
     // Read-only: holds `branding` (view) but NOT `branding.manage` (write).
     readOnlyA = await mkMember(TENANT_A_ID, 'viewer@alpha.test.invalid', 'admin', { branding: true });
+    // ⚠ ZERO PERMISSIONS, AND SPECIFICALLY NOT 'branding' (Phase 2B, D-H). This
+    // member is the whole reason /api/admin/me was chosen over
+    // /api/admin/settings: the latter is gated `requirePermission('branding')`,
+    // so a Finance or read-only admin would get a 403 and their contractor's
+    // logo would vanish for exactly the roles least able to explain why.
+    noPermsA = await mkMember(TENANT_A_ID, 'general@alpha.test.invalid', 'general', {});
   });
 
   after(async () => {
@@ -389,6 +405,188 @@ describe('C/DL-2 Phase 3a — GET/PUT /api/admin/settings branding', () => {
     assert.equal(
       await settingsRow(TENANT_A_ID), null,
       'the refused PUT still created a settings row'
+    );
+  });
+
+  // ══ PART 4 — GET /api/admin/me CARRIES BRANDING (Phase 2B, spec D-H) ═══════
+  //
+  // The delivery seam. The admin panel has no way to learn who its contractor is:
+  // GET /api/admin/settings knows, but it is gated `requirePermission('branding')`,
+  // and the D4 branding chain resolves from the URL and hostname rather than from
+  // the proven session — which is the R2 shape the checklist keeps open. /me is
+  // session-only by construction, so it is the one response every tier receives.
+  //
+  // THESE TESTS LIVE IN THIS FILE, NOT A NEW ONE, because the two-tenant fixture
+  // above is what makes them decidable: "tenant A got branding" proves nothing
+  // unless tenant B's branding is simultaneously real and different.
+
+  it('[RED] carries a branding block for the session\'s own tenant', async () => {
+    const token = await session(TENANT_A_ID, ownerA);
+    const res = await httpRequest(port, 'GET', ME_PATH, token);
+
+    // NON-VACUITY: a 401 or 403 body carries no branding either.
+    assert.equal(res.status, 200, `GET /api/admin/me failed: ${res.raw}`);
+    assert.equal(res.body.tier, 'owner', `not the expected member's payload: ${res.raw}`);
+
+    assert.ok(
+      res.body.branding && typeof res.body.branding === 'object',
+      `GET /api/admin/me returned no branding block — the admin panel has no other ` +
+      `session-derived source for contractor identity (D-H). Got: ${res.raw}`
+    );
+    // Tenant A has NO contractor_settings row, so this value can only have come
+    // from the resolver's three-step chain falling back to contractors.name.
+    // Anything else — a platform default, or another tenant's name — is the bug.
+    assert.equal(res.body.branding.companyName, COMPANY_A, `wrong tenant's company name: ${res.raw}`);
+  });
+
+  it('[RED] two tenants receive DIFFERENT branding blocks', async () => {
+    // ── THE ASSERTION THAT CANNOT PASS AGAINST A HARDCODED BLOCK ─────────────
+    // "branding exists" is satisfied by a constant. Two sessions, two tenants,
+    // two distinguishable answers is not.
+    const tokenA = await session(TENANT_A_ID, ownerA);
+    const tokenB = await session(TENANT_B_ID, ownerB);
+
+    const resA = await httpRequest(port, 'GET', ME_PATH, tokenA);
+    const resB = await httpRequest(port, 'GET', ME_PATH, tokenB);
+
+    assert.equal(resA.status, 200, `GET /api/admin/me failed for tenant A: ${resA.raw}`);
+    assert.equal(resB.status, 200, `GET /api/admin/me failed for tenant B: ${resB.raw}`);
+
+    assert.equal(resA.body.branding.companyName, COMPANY_A, `tenant A got the wrong name: ${resA.raw}`);
+    assert.equal(resB.body.branding.companyName, COMPANY_B, `tenant B got the wrong name: ${resB.raw}`);
+
+    // Not only the name. Tenant B is fully branded in the DB and tenant A has no
+    // row at all, so every one of these differs for a different reason: a saved
+    // value against a defaulted one, and a saved value against a null one.
+    assert.equal(resB.body.branding.primaryColor, TENANT_B_BRAND.primary_color, `tenant B lost its saved colour: ${resB.raw}`);
+    assert.equal(resB.body.branding.logoUrl, TENANT_B_BRAND.logo_url, `tenant B lost its saved logo: ${resB.raw}`);
+    assert.equal(resA.body.branding.logoUrl, null, `tenant A was given a logo it never uploaded: ${resA.raw}`);
+    assert.notEqual(
+      resA.body.branding.primaryColor, resB.body.branding.primaryColor,
+      'both tenants received the same primary colour — the block is not tenant-resolved'
+    );
+
+    // And nothing of B's reached A. The full-payload sweep, not one field.
+    for (const value of Object.values(TENANT_B_BRAND)) {
+      assert.equal(
+        resA.raw.includes(value), false,
+        `tenant A's /me payload contains tenant B's ${JSON.stringify(value)}: ${resA.raw}`
+      );
+    }
+  });
+
+  it('[RED] a member with NO permissions — and specifically not \'branding\' — still receives it', async () => {
+    // ── THE TEST THAT PROVES D-H'S REASONING RATHER THAN RESTATING IT ────────
+    // /api/admin/settings was rejected as the delivery path because it is gated
+    // on 'branding'. Without this test that rejection is an assertion in a
+    // document; with it, the two endpoints are compared on the same session.
+    const token = await session(TENANT_A_ID, noPermsA);
+
+    // NON-VACUITY, AND IT RUNS FIRST: prove this member genuinely lacks the
+    // permission. If they held it, "they still got branding" would be trivially
+    // true and would prove nothing about low-permission tiers at all.
+    const gated = await httpRequest(port, 'GET', SETTINGS_PATH, token);
+    assert.equal(
+      gated.status, 403,
+      `fixture error: this member reached the branding-gated endpoint, so they are not ` +
+      `the low-permission case this test exists for. Got ${gated.status}: ${gated.raw}`
+    );
+
+    const res = await httpRequest(port, 'GET', ME_PATH, token);
+    assert.equal(res.status, 200, `GET /api/admin/me refused a zero-permission member: ${res.raw}`);
+    assert.deepEqual(res.body.permissions, {}, `not the zero-permission member's payload: ${res.raw}`);
+    assert.ok(
+      res.body.branding && res.body.branding.companyName === COMPANY_A,
+      `a member without 'branding' received no contractor identity — their panel would show ` +
+      `the platform's, which is the failure D-H was raised to prevent. Got: ${res.raw}`
+    );
+  });
+
+  it('[RED] the branding block carries NO slug and NO contractor_id (CD-24 R1)', async () => {
+    const token = await session(TENANT_A_ID, ownerA);
+    const res = await httpRequest(port, 'GET', ME_PATH, token);
+
+    assert.equal(res.status, 200, `GET /api/admin/me failed: ${res.raw}`);
+    assert.ok(res.body.branding, `no branding block to inspect: ${res.raw}`);
+
+    // ASSERTED ON THE RESPONSE, NOT ON THE RESOLVER'S OUTPUT. loadContractorBranding
+    // re-attaches the slug for its landing-page callers (landingResolve.js:113), so
+    // testing the resolver would prove the opposite of what is required here.
+    for (const key of ['slug', 'contractor_id', 'contractorId', 'id']) {
+      assert.equal(
+        key in res.body.branding, false,
+        `the branding block carries '${key}'. Tenancy is already proven by the session here; ` +
+        `echoing an identifier back adds a disclosure without adding a capability. Got: ${res.raw}`
+      );
+      assert.equal(
+        key in res.body, false,
+        `the /me payload carries a top-level '${key}': ${res.raw}`
+      );
+    }
+
+    // The values, not only the keys — a slug reachable under any other name is the
+    // same disclosure. Both fixture slugs, so a cross-tenant echo fails too.
+    assert.equal(res.raw.includes(SLUG_A), false, `the payload echoes the caller's slug: ${res.raw}`);
+    assert.equal(res.raw.includes(SLUG_B), false, `the payload echoes another tenant's slug: ${res.raw}`);
+    assert.equal(res.raw.includes(TENANT_A_ID), false, `the payload echoes the caller's contractor id: ${res.raw}`);
+  });
+
+  it('[RED] ⚠ FAIL SOFT — branding resolution failing still returns 200 with permissions intact', async () => {
+    // ── PERMISSIONS ARE LOAD-BEARING; BRANDING IS DECORATION ─────────────────
+    // A contractor whose branding cannot be resolved must get an UNBRANDED
+    // WORKING panel, never a dead one. Without the wrapper this proves, one
+    // malformed row would 500 /me — and /me is what supplies tier and
+    // permissions, so PermissionGate would fail closed on every section at once
+    // and the whole panel would render as locked.
+    //
+    // ⚠ THE FAILURE IS FORCED AT THE SCHEMA, deliberately. Deleting the
+    // contractors row makes the resolver return NULL, which needs no catch at
+    // all — that variant would go green with the wrapper removed and would
+    // guard nothing. Renaming a column the resolver's SELECT names produces a
+    // real 42703 from inside the try block, which is the only thing the catch
+    // can be proven against.
+    //
+    // RESTORED IN `finally` so the schema is byte-identical afterwards. The
+    // suite runs --test-concurrency=1, so no other file can observe the window.
+    const token = await session(TENANT_A_ID, ownerA);
+
+    await pool.query('ALTER TABLE contractor_about RENAME COLUMN google_place_id TO google_place_id__2b_broken');
+    let res;
+    try {
+      res = await httpRequest(port, 'GET', ME_PATH, token);
+    } finally {
+      await pool.query('ALTER TABLE contractor_about RENAME COLUMN google_place_id__2b_broken TO google_place_id');
+    }
+
+    assert.equal(
+      res.status, 200,
+      `branding resolution failing took the whole /me response down with it. The panel needs ` +
+      `tier and permissions to function; it does not need a logo. Got ${res.status}: ${res.raw}`
+    );
+    assert.equal(res.body.tier, 'owner', `the permissions payload did not survive: ${res.raw}`);
+    assert.deepEqual(res.body.permissions, {}, `the permissions payload did not survive: ${res.raw}`);
+    assert.equal(res.body.email, 'owner@alpha.test.invalid', `the identity payload did not survive: ${res.raw}`);
+
+    // OMITTED, NOT NULLED, and not a half-built object. The client draws the
+    // lockup from the block's presence (D-I: absent logo is a designed state).
+    assert.equal(
+      'branding' in res.body, false,
+      `a failed resolution left a branding key behind — the client cannot tell "unresolved" ` +
+      `from "resolved to nothing". Got: ${res.raw}`
+    );
+  });
+
+  it('[RED] the fail-soft path is genuinely exercised — the forced failure really fails', async () => {
+    // NON-VACUITY FOR THE TEST ABOVE. If the column rename did not actually break
+    // the resolver's SELECT, that test would assert "200 with no branding" against
+    // a request that succeeded and simply had nothing to return — passing for the
+    // wrong reason, with the catch block never entered.
+    const token = await session(TENANT_A_ID, ownerA);
+
+    const healthy = await httpRequest(port, 'GET', ME_PATH, token);
+    assert.ok(
+      healthy.body.branding,
+      `the control case has no branding either, so the forced-failure test proves nothing: ${healthy.raw}`
     );
   });
 });

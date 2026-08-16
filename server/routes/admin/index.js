@@ -13,6 +13,12 @@ const { getPeriodDateRange } = require('../../utils/dateUtils');
 // Zero-row settings defaults are read from the resolver rather than re-typed
 // (C/DL-3b Phase 6A) — see the review_button_text / review_message lines below.
 const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
+// GET /api/admin/me's branding block (Admin Brand Retirement Phase 2B, D-H).
+// THE SAME LOADER THE REFERRER PAYLOAD USES, imported rather than reimplemented —
+// a second resolution path is a second set of fallbacks that can drift from the
+// first, which is the failure brandingTheme.js's header records happening once
+// already.
+const { loadContractorBranding } = require('../../utils/landingResolve');
 const { SESSION_SLIDE_MS } = require('../../utils/sessionPolicy');
 const { runBackup } = require('../../utils/backup');
 const { runVerify } = require('../../utils/restore-verify');
@@ -117,10 +123,44 @@ router.post('/api/admin/login', adminLoginLimiter, [
 // ── ADMIN: ME ─────────────────────────────────────────────────────────────────
 // Session-only — intentionally NO requirePermission. Reads the caller's own row live
 // (Decision A §5.2: never serve identity data from the session token).
+//
+// ── IT ALSO CARRIES THE CONTRACTOR'S BRANDING (Phase 2B, spec D-H) ───────────
+// WHY HERE AND NOT GET /api/admin/settings: that endpoint is gated
+// `requirePermission('branding')`, so a Finance or read-only admin gets a 403 —
+// and the contractor's logo would vanish for exactly the roles least able to
+// explain why. The absence of a permission gate on THIS route is not incidental
+// to the choice; it is the choice. Adding one would break the panel's identity
+// for every low-permission tier at once.
+//
+// ── CD-24 R1 — NO SLUG AND NO contractor_id TRAVEL WITH IT ──────────────────
+// The block is resolveBrandingTheme's output only: a name, a program name, four
+// colours, a logo URL and public contact details. The reasoning is recorded here
+// rather than only in a handoff, because "probably safe" is not the standard.
+//
+// TENANCY IS ALREADY PROVEN BY THE SESSION HERE, RATHER THAN ESTABLISHED BY THIS
+// RESPONSE — and that is the whole difference from the R2 case at
+// PRE_LAUNCH_CHECKLIST.md:139-143. There, a slug is the thing a caller uses to
+// ASK which contractor to render, so echoing one back turns the endpoint into an
+// enumeration oracle. Here the caller arrived holding a bearer token that already
+// names their contractor server-side; an identifier in the reply would add a
+// disclosure without adding a capability, and would hand every admin component a
+// tenancy value it must never branch on. `contractor_id` stays where it belongs:
+// in the session row, read by the handler, never sent.
+//
+// ── ⚠ BRANDING FAILS SOFT; PERMISSIONS DO NOT ───────────────────────────────
+// The resolution below is wrapped, and the wrapper is load-bearing. This response
+// is what supplies tier and permissions, so a 500 here does not merely cost the
+// panel its logo — PermissionGate fails closed while loading, so every section
+// would render locked at once. A contractor with a malformed contractor_settings
+// row must get an UNBRANDED WORKING panel, never a dead one.
+//
+// THE KEY IS OMITTED ON FAILURE, NOT NULLED, so the client can tell "resolution
+// did not happen" from "resolved to a contractor who has uploaded nothing" —
+// the second is a legitimate designed state (D-I), the first is an incident.
 router.get('/api/admin/me', async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
-  const { teamMemberId } = adminSession;
+  const { teamMemberId, contractorId } = adminSession;
   try {
     const result = await pool.query(
       `SELECT email, full_name, tier, permissions, title_id,
@@ -133,6 +173,25 @@ router.get('/api/admin/me', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     const m = result.rows[0];
+
+    // See the fail-soft note in this route's header. `branding` stays null on any
+    // failure and the key is then left off the payload entirely.
+    let branding = null;
+    try {
+      const resolved = await loadContractorBranding(pool, contractorId);
+      if (resolved) {
+        // SLUG DROPPED, DELIBERATELY — the same line GET /api/branding/:slug
+        // performs at branding.js:124, for the same CD-24 reason. The loader
+        // re-attaches it because its landing-page callers need it
+        // (landingResolve.js:113); destructured away rather than deleted so the
+        // omission is visible at the one line that performs it.
+        const { slug: _slugNotReturned, ...theme } = resolved;
+        branding = theme;
+      }
+    } catch (brandingErr) {
+      await logError({ req, error: brandingErr, source: 'GET /api/admin/me (branding)' });
+    }
+
     res.json({
       email: m.email,
       full_name: m.full_name,
@@ -142,6 +201,7 @@ router.get('/api/admin/me', async (req, res) => {
       is_field_rep: m.is_field_rep,
       is_attributable: m.is_attributable,
       rep_revenue_visibility: m.rep_revenue_visibility,
+      ...(branding ? { branding } : {}),
     });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/me' });

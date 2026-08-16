@@ -95,48 +95,78 @@ export function useAdminBranding() {
 }
 
 /**
- * Resolves contractor branding through the D4 chain and publishes
- * { branding, source }. Renders its children directly — no wrapper element, no
- * CSS custom property, no styling of any kind.
+ * Publishes { branding, source }. Renders its children directly — no wrapper
+ * element, no CSS custom property, no styling of any kind.
+ *
+ * ── TWO MODES, AND THE PROP KEY IS THE SWITCH (Phase 2B) ──────────────────
+ * RESOLVING (the referrer app): `supplied` omitted. The D4 chain runs on mount
+ * and its answer is published.
+ *
+ * SUPPLIED (the admin panel): `supplied` passed. The chain NEVER RUNS and the
+ * provider publishes exactly what it is handed. That is not an optimisation —
+ * the chain resolves identity from the URL, the hostname and a stored hint, none
+ * of them proven, and running it on an authenticated admin surface would answer
+ * "who is this contractor" from the query string when the session already knows.
+ * D-H routes the panel's branding through GET /api/admin/me for that reason.
+ *
+ * ⚠ THE PRESENCE OF THE PROP SWITCHES MODES, NOT ITS VALUE. `supplied={null}`
+ * means "supplied, and it has not arrived yet" — the in-flight state of a fetch,
+ * which resolves to neutral and must NOT silently fall through to the chain. A
+ * caller that means to resolve omits the prop entirely.
  *
  * @param {object} props
  * @param {React.ReactNode} props.children
  * @param {object} [props.context] - resolution inputs for the D4 chain. Defaults
  *        to the live browser; injected by tests so every source is exercised
- *        against known inputs rather than globals.
+ *        against known inputs rather than globals. Ignored in supplied mode.
+ * @param {{branding: object, source: string|null}|null} [props.supplied] - an
+ *        already-resolved answer. See the mode note above.
  */
-export default function BrandingProvider({ children, context }) {
-  // STARTS NEUTRAL AND RENDERS IMMEDIATELY. Resolution is async, and withholding
-  // the tree until it finishes would put a blank frame in front of EVERY visitor
-  // to save a repaint for some of them. Neutral is a correct, complete theme —
-  // source 5 of the chain is the same answer.
-  const [branding, setBranding] = useState(NEUTRAL_BRANDING);
-  const [source, setSource] = useState(null);
+export default function BrandingProvider({ children, context, supplied }) {
+  // The prop KEY, read once, so the two modes cannot be confused by a null value
+  // arriving mid-flight. See the JSDoc above.
+  const isSupplied = supplied !== undefined;
+
+  // NULL MEANS "NOTHING RESOLVED YET", not "resolved to nothing" — the neutral
+  // fallback is applied at read time below rather than seeded into state, so
+  // there is ONE place that decides what an unresolved provider publishes.
+  const [resolved, setResolved] = useState(null);
 
   useEffect(() => {
+    // Supplied mode makes no network call at all — see the JSDoc.
+    if (isSupplied) return;
+
     // Guards against setting state after unmount — the chain makes a network
     // round trip that can outlive a fast navigation.
     let cancelled = false;
 
     (async () => {
       try {
-        const resolved = await resolveBranding(context ?? createBrandingContext());
-        if (!cancelled) {
-          setBranding(resolved.branding);
-          setSource(resolved.source);
-        }
+        const answer = await resolveBranding(context ?? createBrandingContext());
+        if (!cancelled) setResolved({ branding: answer.branding, source: answer.source });
       } catch {
-        // Keep the neutral defaults already in state. The chain is total, so this
-        // only fires if BRANDING_SOURCES itself has been altered.
+        // Keep the neutral defaults. The chain is total, so this only fires if
+        // BRANDING_SOURCES itself has been altered.
       }
     })();
 
     return () => { cancelled = true; };
   // Resolution runs ONCE on mount. Re-running on a changed `context` identity
   // would re-resolve on every parent render, since createBrandingContext() and
-  // the default props build fresh objects each time.
+  // the default props build fresh objects each time. `isSupplied` is fixed for
+  // the lifetime of a given mount — a caller does not switch modes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // RENDERS IMMEDIATELY, NEUTRAL, IN BOTH MODES. Resolution is async either way,
+  // and withholding the tree until it finishes would put a blank frame in front
+  // of EVERY visitor to save a repaint for some of them. Neutral is a correct,
+  // complete theme — source 5 of the chain is the same answer, and D-I rules the
+  // same thing for the panel: paint at once with no contractor lockup and let the
+  // identity join the repaint that already happens.
+  const answer = isSupplied ? supplied : resolved;
+  const branding = answer?.branding ?? NEUTRAL_BRANDING;
+  const source = answer?.source ?? null;
 
   const value = useMemo(() => ({ branding, source }), [branding, source]);
 
