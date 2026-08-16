@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
-import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
-import { resolveBranding, createBrandingContext } from '../../utils/brandingChain';
+import BrandingProvider, { NEUTRAL_BRANDING, useAdminBranding } from './BrandingProvider';
 import { BACKEND_URL } from '../../config/contractor';
 import { getReferrerToken } from '../../utils/authStorage';
 
@@ -16,9 +15,10 @@ import { getReferrerToken } from '../../utils/authStorage';
 // since it shipped; this is its first. The moment this provider mounts, every one
 // of those primitives changes appearance at once.
 //
-// It resolves branding through the D4 chain (src/utils/brandingChain.js), derives
-// the five render tokens for the active mode, and mounts eleven custom properties
-// on ONE element.
+// It takes the branding BrandingProvider resolved through the D4 chain
+// (src/utils/brandingChain.js), derives the five render tokens for the active
+// mode, and mounts eleven custom properties on ONE element. Resolution itself
+// moved out in Phase 2A — see "WHAT MOVED OUT" below.
 //
 // ── ⚠ RULING 5 — IT MOUNTS ON ITS OWN WRAPPER, NOT ON :root ────────────────
 // This is the single most important line in the file, and it is a correctness
@@ -56,13 +56,20 @@ import { getReferrerToken } from '../../utils/authStorage';
 // MOUNTING ONLY THE BRAND VARS IS THE FAILURE MODE 3a §8 CALLS OUT AS BINDING:
 // every 3a primitive would silently keep its LIGHT status fallback in dark mode.
 // Readable, and wrong, and nothing would fail.
+//
+// ── WHAT MOVED OUT (Admin Brand Retirement Phase 2A, spec D-H) ─────────────
+// RESOLUTION now lives in BrandingProvider; this file is PAINTING only. The D4
+// chain call, the neutral starting state and the { branding, source } context
+// all moved there so the admin panel can mount resolution WITHOUT painting —
+// see that file's header for why the split is structural rather than tidy.
+//
+// This file's contract to the referrer app is unchanged by that move: same
+// chain, same values, same eleven properties, same single wrapper element.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Spec D8. Light on the login screen and on first entry, for every role — already
 // the grain of the system, since statusVar() falls back to light values.
 export const DEFAULT_THEME_MODE = 'light';
-
-const NEUTRAL_BRANDING = Object.freeze(resolveBrandingTheme(null));
 
 /**
  * Builds every CSS custom property the provider mounts, for one brand in one mode.
@@ -139,7 +146,12 @@ async function fetchThemeModeFromApi() {
 /**
  * The theme context. THE SECOND createContext IN src/ — the first is
  * useAdminPermissions.js, which is admin-only and therefore lives outside this
- * provider entirely.
+ * provider entirely. (AdminBrandingContext, extracted in Phase 2A, is the third.)
+ *
+ * ⚠ IT HAS A DEFAULT VALUE, AND THAT IS DELIBERATE HERE. useBranding()'s
+ * documented contract is that it is total — a referrer component never handles
+ * null. AdminBrandingContext takes the opposite position for the opposite
+ * reason (D-H); the two are not in conflict, they answer different questions.
  *
  * CARRIES NO TENANCY-BEARING FIELD (CD-24 R1). `branding` is
  * resolveBrandingTheme's output: a name, a program name, four colours, a logo URL
@@ -180,6 +192,7 @@ export default function ThemeProvider({
   children,
   // Resolution inputs for the D4 chain. Defaults to the live browser; injected by
   // tests so every source is exercised against known inputs rather than globals.
+  // PASSED STRAIGHT THROUGH — resolution is BrandingProvider's job now.
   context,
   // Injected by tests, and by 3c when the Profile toggle needs to control it.
   fetchStoredMode = fetchThemeModeFromApi,
@@ -187,34 +200,42 @@ export default function ThemeProvider({
   // state through here; until then it is how a caller forces one mode.
   mode: pinnedMode,
 }) {
-  // STARTS NEUTRAL AND LIGHT, AND RENDERS IMMEDIATELY. Resolution is async, and
-  // withholding the tree until it finishes would put a blank frame in front of
-  // EVERY visitor to save a repaint for some of them. Neutral is a correct,
-  // complete theme — source 5 of the chain is the same answer.
-  const [branding, setBranding] = useState(NEUTRAL_BRANDING);
-  const [source, setSource] = useState(null);
+  // RESOLUTION WRAPS PAINTING, not the other way round. The admin panel mounts
+  // BrandingProvider on its own (Phase 2B) and gets exactly the inner half of
+  // this composition — the half with no variables in it.
+  return (
+    <BrandingProvider context={context}>
+      <ThemeLayer fetchStoredMode={fetchStoredMode} mode={pinnedMode}>
+        {children}
+      </ThemeLayer>
+    </BrandingProvider>
+  );
+}
+
+/**
+ * The painting half. Reads the resolved branding, owns the light/dark mode, and
+ * mounts the eleven custom properties on the one wrapper element (Ruling 5).
+ *
+ * NOT EXPORTED. It is meaningless without a BrandingProvider above it — and it
+ * says so by construction, since useAdminBranding() throws rather than
+ * defaulting. That throw is the same guard the admin panel relies on, exercised
+ * here on every referrer boot instead of only in a test.
+ */
+function ThemeLayer({ children, fetchStoredMode, mode: pinnedMode }) {
+  const { branding, source } = useAdminBranding();
   const [storedMode, setStoredMode] = useState(null);
 
   useEffect(() => {
-    // Guards against setting state after unmount — the two awaits below are
-    // independent network round trips and either can outlive a fast navigation.
+    // Guards against setting state after unmount — the read below is a network
+    // round trip that can outlive a fast navigation.
     let cancelled = false;
 
     (async () => {
       // BRANDING AND MODE ARE RESOLVED INDEPENDENTLY, and neither failure blocks
       // the other: a contractor whose branding endpoint is down should still get
-      // their stored dark mode, and vice versa.
-      try {
-        const resolved = await resolveBranding(context ?? createBrandingContext());
-        if (!cancelled) {
-          setBranding(resolved.branding);
-          setSource(resolved.source);
-        }
-      } catch {
-        // Keep the neutral defaults already in state. The chain is total, so this
-        // only fires if BRANDING_SOURCES itself has been altered.
-      }
-
+      // their stored dark mode, and vice versa. Phase 2A made that structural —
+      // the two now sit in different components rather than in one async IIFE
+      // that happened to swallow both errors separately.
       if (pinnedMode) return;
       try {
         const stored = await fetchStoredMode();
@@ -225,9 +246,7 @@ export default function ThemeProvider({
     })();
 
     return () => { cancelled = true; };
-  // Resolution runs ONCE on mount. Re-running on a changed `context` identity
-  // would re-resolve on every parent render, since createBrandingContext() and
-  // the default props build fresh objects each time.
+  // Runs ONCE on mount, matching the resolution effect it was split from.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
