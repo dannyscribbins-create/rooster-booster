@@ -436,8 +436,9 @@ something a green suite did not catch.*
 
 ### A test's own greenness is not evidence that it tests anything
 
-**Six vacuity instances were found in C/DL-3b, in six different shapes. None was findable by
-reading; every one was found by forcing the failure.**
+**Six vacuity instances were found in C/DL-3b, in six different shapes, and a seventh in the
+Admin Brand Retirement build. None was findable by reading; every one was found by forcing
+the failure.**
 
 1. **A case row proves nothing until the field exists.** Five rows added to the branding drift
    guard passed vacuously — that guard compares two copies, so a field absent from **both** is
@@ -458,6 +459,20 @@ reading; every one was found by forcing the failure.**
    `AnnouncementPopup` threw a `ReferenceError` on every render while its literal sweep passed
    — the sweep was correct, the component simply no longer ran. **Any file a sweep touches
    needs at least one render test, however trivial.**
+
+7. **`toContain` on a bare VALUE cannot see a defect in the CONTEXT around it.** A seventh
+   shape, found after 3b: the admin announcement preview was covered by
+   `expect(preview.textContent).toContain('$500')`, and it went green for months against a
+   preview that actually rendered **`$$500`** — because `"$$500"` contains `"$500"`. Both
+   preset templates wrote a literal `$` in front of `[Amount]` while the resolver's
+   substitution already supplied one. It shipped referrer-facing in `c5c0617` (2026-03-29)
+   and survived four extractions and a consolidation.
+   **⚠ ANCHOR ON THE SURROUNDING PHRASE, NOT THE VALUE** — `'cashout request of $500 for
+   referring'`, never `'$500'`. The trap is that the value is the obvious thing to assert
+   *because it is the thing being substituted*, which puts the assertion's edge exactly where
+   a formatting bug lives. A `toContain` on a bare value is only ever evidence that the value
+   appears **somewhere, in some context**, and the context is usually where the bug is. The
+   same applies to any wrapped value: a currency symbol, a unit, a prefix, a delimiter.
 
 **The conclusion:** non-vacuity assertions belong in tests that look **too simple to need
 them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this

@@ -27,10 +27,23 @@
  * [Referred Name] are admin-facing tokens documented in the custom-message
  * editor; [Company] is NOT — it resolves from the contractor's own branding and
  * an admin cannot type it meaningfully.
+ *
+ * ⚠ [Amount] CARRIES ITS OWN CURRENCY SYMBOL — never write '$[Amount]'.
+ * Both presets did, while the substitution below already supplied one, so every
+ * announcement rendered "$$500" from c5c0617 (2026-03-29) until this was fixed —
+ * about four and a half months, referrer-facing the whole time.
+ *
+ * The literal was removed from the TEMPLATES rather than the '$' from the
+ * formatter, because the editor's helper text documents the token as [Amount]:
+ * an admin following that instruction expects the symbol to come with it, and
+ * stripping it from the formatter would have silently un-signed every custom
+ * message already written against the documented contract. These two strings
+ * were also the only place the broken form was on display, so admins copying
+ * what they saw in the preview were being taught to reproduce it.
  */
 export const PRESET_MESSAGES = {
-  preset_1: "Great news — your $[Amount] payout for referring [Referred Name] has been approved and is on its way! We appreciate you so much.",
-  preset_2: "Your cashout request of $[Amount] for referring [Referred Name] has been approved. Thank you for being part of the [Company] family.",
+  preset_1: "Great news — your [Amount] payout for referring [Referred Name] has been approved and is on its way! We appreciate you so much.",
+  preset_2: "Your cashout request of [Amount] for referring [Referred Name] has been approved. Thank you for being part of the [Company] family.",
 };
 
 /**
@@ -58,6 +71,8 @@ export function resolveMessage(settings, referrerFirstName, amount, referredName
   }
   return template
     .replace(/\[First Name\]/g, referrerFirstName)
+    // THE CURRENCY SYMBOL IS OWNED HERE, and only here. See the warning on
+    // PRESET_MESSAGES: a template that also writes one produces '$$500'.
     .replace(/\[Amount\]/g, `$${parseFloat(amount).toLocaleString()}`)
     .replace(/\[Referred Name\]/g, referredName)
     // ⚠ PASSED IN, NOT CLOSED OVER. This function is MODULE-LEVEL. C/DL-3b Phase
