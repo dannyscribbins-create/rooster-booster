@@ -61,13 +61,20 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
           and a stringified null renders a dead src. Absent is a designed state.
 
           ── THE LIGHT PLATE (D-D, option B) ───────────────────────────────
-          The sidebar is a dark navy gradient, and a contractor whose logo is
-          dark would disappear into it. The plate is applied to EVERY
+          The sidebar below is a dark navy gradient, and a contractor whose logo
+          is dark would disappear into it. The plate is applied to EVERY
           contractor rather than conditioned on the logo's colour — one rule,
           no new data, nothing to get wrong per tenant, and C/DL-3c inherits a
-          shipped precedent instead of designing it cold. It is drawn only when
-          there is a logo to sit on. */}
-      <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+          shipped precedent instead of designing it cold.
+
+          ⚠ IN 5.1 THE PLATE BECAME THE WHOLE HEADER BLOCK, not just a patch
+          behind the logo. AD.bgSidebarHeader is linen, so the header is light
+          and the nav beneath it is navy. The inner white backing is KEPT rather
+          than folded into it: pure white is a safer ground for an arbitrary dark
+          logo than a warm off-white, and it is still drawn only when there is a
+          logo to sit on. The divider inverted with the plate — it was a white
+          alpha for a dark header and would be invisible on linen. */}
+      <div style={{ padding: '24px 20px 20px', background: AD.bgSidebarHeader, borderBottom: `1px solid ${AD.border}`, marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
           {branding.logoUrl && (
             <>
@@ -75,7 +82,7 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
                 <img src={branding.logoUrl} alt={branding.companyName}
                   style={{ height: 28, maxWidth: 96, width: 'auto', objectFit: 'contain', display: 'block' }} />
               </div>
-              <div style={{ width: 1, height: 28, background: 'rgba(255,255,255,0.18)' }} />
+              <div style={{ width: 1, height: 28, background: 'rgba(28,45,77,0.18)' }} />
             </>
           )}
           <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
@@ -142,10 +149,14 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
               background: 'transparent', border: 'none',
               padding: '8px 0', borderRadius: 8, cursor: 'pointer',
               font: 'inherit', fontSize: 12, fontWeight: 500,
+              // ⚠ WHITE ALPHAS, AND THE HOVER BELOW IS '#FFFFFF' RATHER THAN
+              // AD.textPrimary. This button is INSIDE the dark sidebar, and 5.1
+              // inverted textPrimary to navy — the hover would have painted navy
+              // on navy and the control would have vanished on contact.
               color: 'rgba(255,255,255,0.45)',
               transition: 'color 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = AD.textPrimary; }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#FFFFFF'; }}
             onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; }}
           >
             <i className="ph ph-sign-out" style={{ fontSize: 16, flexShrink: 0 }} />
@@ -187,11 +198,17 @@ export function AdminShell({ children, page, setPage, pendingCount, flaggedUnres
                 background: 'transparent',
                 border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'rgba(240,237,232,0.45)',
+                // ⚠ THIS TOP BAR IS NOT ON THE SIDEBAR. It is positioned absolute
+                // inside the CONTENT column (see the wrapper above), so it floats
+                // over PAGE GROUND — linen after 5.1. The cream alpha it carried
+                // was correct over the old dark slate and is invisible on linen,
+                // which is why the token, not a literal, belongs here. The hover
+                // wash inverted with it for the same reason.
+                color: AD.textTertiary,
                 transition: 'color 0.15s, background 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.color = AD.textPrimary; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(240,237,232,0.45)'; e.currentTarget.style.background = 'transparent'; }}
+              onMouseEnter={e => { e.currentTarget.style.color = AD.textPrimary; e.currentTarget.style.background = 'rgba(28,45,77,0.06)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = AD.textTertiary; e.currentTarget.style.background = 'transparent'; }}
             >
               <i className="ph ph-bell" style={{ fontSize: 22 }} />
             </button>
@@ -215,14 +232,26 @@ export function AdminShell({ children, page, setPage, pendingCount, flaggedUnres
             onClick={onSettingsClick}
             title="Settings"
             style={{
-              background: settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent',
+              // ⚠ SAME GROUND AS THE INBOX BUTTON BESIDE IT — page, not sidebar.
+              // The active wash is restated in onMouseLeave below, so the two
+              // MUST move together: fixing only the handler would give this one
+              // button two different active backgrounds depending on whether it
+              // had been hovered.
+              //
+              // ⚠ THE AD.blueLight BRANCHES ARE LEFT ALONE ON PURPOSE (5.2 owns
+              // all 86 of them) AND THIS IS THE SHARPEST CASE IN THE PANEL: as an
+              // alias of `tint`, #D4DDEB measures 1.37:1 on white. The active gear
+              // is not merely understated here, it is effectively invisible until
+              // 5.2 repoints it to `marker`. Recorded rather than fixed, because
+              // splitting one call site out of the 86 is how a triage list rots.
+              background: settingsActive ? 'rgba(28,45,77,0.10)' : 'transparent',
               border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: settingsActive ? AD.blueLight : 'rgba(240,237,232,0.45)',
+              color: settingsActive ? AD.blueLight : AD.textTertiary,
               transition: 'color 0.15s, background 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : AD.textPrimary; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : 'rgba(240,237,232,0.45)'; e.currentTarget.style.background = settingsActive ? 'rgba(255,255,255,0.10)' : 'transparent'; }}
+            onMouseEnter={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : AD.textPrimary; e.currentTarget.style.background = 'rgba(28,45,77,0.06)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : AD.textTertiary; e.currentTarget.style.background = settingsActive ? 'rgba(28,45,77,0.10)' : 'transparent'; }}
           >
             <i className="ph ph-gear-six" style={{ fontSize: 20 }} />
           </button>

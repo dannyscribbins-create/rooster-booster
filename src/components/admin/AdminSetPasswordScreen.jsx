@@ -64,7 +64,7 @@ export default function AdminSetPasswordScreen({ token }) {
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
-      background: `linear-gradient(160deg, ${AD.navy} 0%, #01408a 100%)`,
+      background: `linear-gradient(160deg, ${AD.navy} 0%, #2A4270 100%)`,
       padding: '32px 24px', fontFamily: AD.fontSans,
     }}>
       {/* Logo */}

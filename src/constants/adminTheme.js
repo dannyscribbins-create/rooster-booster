@@ -1,42 +1,149 @@
 // ─── Admin Design Tokens ──────────────────────────────────────────────────────
+//
+// ADMIN BRAND RETIREMENT — PHASE 5.1 — THE PALETTE REBUILD
+//
+// This file used to define the whole admin chrome in a DARK SLATE theme carrying
+// the first tenant's navy, red and light blue. Phase 5.1 moved it to a LIGHT
+// palette built on RoofMiles' own colours. The design rule it encodes (spec §1,
+// verbatim) is: "RoofMiles is the environment. The contractor gets a subtle
+// branded touch that is personal to them."
+//
+// ── PROVENANCE: ONE OUTSIDE VALUE, NOT FOUR ──────────────────────────────────
+// Every colour below derives from one of two brand values, or from the single
+// documented neutral. There is no fourth source, and adding one needs a ruling.
+//
+//   #1C2D4D  RoofMiles secondary — navy. Source of: navy, the sidebar gradient
+//            (whose end stop #15223A is #1C2D4D x 0.75, the same value as
+//            navyDark), bgCardTint (#EDEEF1, navy at 8% over white), tint
+//            (#D4DDEB, navy desaturated), every text alpha, both borders, and
+//            all three shadows.
+//   #F26A1B  RoofMiles primary — orange. Source of: marker.
+//   #F8F5F0  LINEN. The one documented neutral, and the only value here that
+//            derives from neither brand colour. It is the page ground and the
+//            sidebar header plate. A warm ~2%-saturation neutral was chosen so
+//            the ground reads as a surface rather than as a tinted brand field.
+//
+// ⚠ THE PALETTE IS DELIBERATELY TWO-TEMPERATURE. Linen is warm (R>G>B); every
+// navy-derived tint is cool (B>G>R); the orange marker is warm again. That falls
+// out of the two brand values and is intended, not drift. Do not "correct" the
+// tints to warm neutrals — that would put them on a third source.
+//
+// ── THE TEXT HIERARCHY IS COMPRESSED, AND THAT IS THE POINT ──────────────────
+// The dark theme ran 1.00 / 0.55 / 0.30. The light one runs 1.00 / 0.80 / 0.68,
+// and the reason is arithmetic rather than taste: navy at 0.55 over linen
+// measures 3.32:1 and navy at 0.30 measures 1.81:1. Both fail WCAG's 4.5:1 for
+// body text; the second is invisible. 4.5:1 on linen is not reached until alpha
+// is about 0.665, so 0.68 is the floor a tertiary can occupy at all — it clears
+// at 4.80:1 on linen and 4.98:1 on white, and 0.66 was rejected as a 0.4% margin.
+//
+// ⚠ A LIGHT GROUND CANNOT CARRY A 0.30 TERTIARY. If these three levels need to
+// read further apart, THE SEPARATION MUST COME FROM WEIGHT OR SIZE, NOT FROM
+// LOWERING AN ALPHA. Lowering one buys visual hierarchy with legibility, and the
+// three values above are already at the edge of what the ground allows.
+//
+// ── red AND red2 ARE DELIBERATELY THE SAME VALUE. DO NOT MERGE THEM. ─────────
+// Both resolve to #DC2626 and that is not an oversight to tidy up. `red` was the
+// FIRST TENANT'S brand red doing semantic-danger duty; `red2` was the semantic
+// danger red. Retiring the brand red collapsed their values but NOT their
+// meanings, and 5.2's D-C audit needs both names intact to tell a branded red
+// apart from a destructive one at each of the ~40 call sites that paint red
+// directly. Merging these two keys destroys the only remaining signal for that
+// audit. The same applies to redBg and red2Bg.
+//
+// ── blueLight IS A TEMPORARY ALIAS OF tint (5.1 -> 5.2) ──────────────────────
+// blueLight did TWO jobs on the dark panel, which one pale blue could serve at
+// once: MARKERS that say "you are here" or "this is focused", and TINTS that
+// recede behind info boxes. On a light panel those diverge, so 5.1 defines
+// `marker` and `tint` as separate tokens. The 86 existing blueLight call sites
+// are repointed in 5.2, not here.
+//
+// ⚠ UNTIL THEN, MARKERS ARE INTENTIONALLY UNDERSTATED. blueLight aliases to
+// `tint`, so the active nav rail, the focus rings and the selected-state borders
+// render pale rather than orange. THAT IS THE DESIGNED INTERMEDIATE STATE, NOT A
+// MISS. It aliases to tint rather than to marker because pale is merely quiet
+// everywhere, whereas orange would turn every recessed info-box fill into a loud
+// block — wrong in a way that is harder to see past while reviewing the rest.
+//
+// ── TAG_COLORS NEEDED NOTHING ────────────────────────────────────────────────
+// It was ALREADY a light-theme palette — pale pill backgrounds with dark text,
+// unchanged since the single-tenant era and correct on the new ground. It is 15
+// rows of this file and the instinct is to sweep it with everything else. Don't.
+// ─────────────────────────────────────────────────────────────────────────────
 export const AD = {
-  bgPage:     '#12161f',
-  bgSurface:  '#1a1f2e',
-  bgCard:     '#1f2638',
-  bgCardTint: '#242b3d',
-  bgSidebar:  'linear-gradient(160deg, #012854 0%, #041D3E 100%)',
+  // Surfaces. The dark theme ran four ascending levels; a light theme has fewer
+  // usable ones, because white is the ceiling and everything above the ground
+  // competes inside a 15/255 band. Rather than invent two near-identical
+  // off-whites, bgSurface and bgCard COLLAPSE to the same white and the tint
+  // moves BELOW them: ground (linen) -> raised (white) -> recessed-within-raised.
+  // Both names are kept so 5.2 can diverge them if the panel reads flat.
+  bgPage:     '#F8F5F0',
+  bgSurface:  '#FFFFFF',
+  bgCard:     '#FFFFFF',
+  bgCardTint: '#EDEEF1',
+  bgSidebar:  'linear-gradient(160deg, #1C2D4D 0%, #15223A 100%)',
+  // The sidebar header plate (D-D option B). Light on purpose, and applied to
+  // EVERY contractor rather than conditioned on the logo's colour — it has to
+  // work under a dark logo, a pale one, or none at all. One rule, no new data,
+  // nothing to get wrong per tenant.
+  bgSidebarHeader: '#F8F5F0',
+  // ⚠ STILL A WHITE WASH, because 4 of its 5 call sites are nav states on the
+  // DARK sidebar, where that is correct. The fifth is not: AdminInboxSidebar's
+  // three skeleton bars sit on a light drawer after 5.1 and a white wash is
+  // invisible there. Recorded for 5.2's triage — bgActive has a role split of
+  // its own, smaller than blueLight's.
   bgActive:   'rgba(255,255,255,0.08)',
-  navy:       '#012854',
-  navyDark:   '#041D3E',
-  red:        '#CC0000',
-  redDark:    '#8C0000',
-  redBg:      'rgba(204,0,0,0.12)',
-  blueLight:  '#D3E3F0',
-  textPrimary:   '#f0ede8',
-  textSecondary: 'rgba(240,237,232,0.55)',
-  textTertiary:  'rgba(240,237,232,0.3)',
-  textInverse:   '#ffffff',
+
+  navy:       '#1C2D4D',
+  navyDark:   '#15223A',
+  marker:     '#F26A1B',
+  tint:       '#D4DDEB',
+  blueLight:  '#D4DDEB',   // temporary alias of `tint` — see header
+
+  red:        '#DC2626',   // see the red/red2 note in the header before merging
+  redDark:    '#991B1B',
+  redBg:      'rgba(220,38,38,0.12)',
+
+  textPrimary:   '#1C2D4D',
+  textSecondary: 'rgba(28,45,77,0.80)',
+  textTertiary:  'rgba(28,45,77,0.68)',
+
+  // Semantic. The four *Text values were pastels tuned for a dark ground and
+  // measured 1.54:1 to 2.54:1 on linen — unreadable, on nearly every screen.
+  // These replacements clear 4.5:1 on BOTH grounds and on their own *Bg pills.
+  // The *Bg alphas did not need retuning; only the text colours did.
+  //
+  // ⚠ `green` (3.89:1 on linen) and `gray` (4.45:1) clear the 3:1 bar for fills,
+  // borders and icons but NOT the 4.5:1 bar for text. They must not carry copy.
   green:      '#2D8B5F',
   greenBg:    'rgba(45,139,95,0.15)',
-  greenText:  '#7dd3aa',
-  amber:      '#D97706',
+  greenText:  '#166534',
+  amber:      '#B45309',   // was #D97706 — 2.93:1 on linen, the only solid that failed even 3:1
   amberBg:    'rgba(217,119,6,0.15)',
-  amberText:  '#fbbf24',
+  amberText:  '#92400E',
   red2:       '#DC2626',
   red2Bg:     'rgba(220,38,38,0.12)',
-  red2Text:   '#f87171',
+  red2Text:   '#B91C1C',
   blue:       '#2563EB',
   blueBg:     'rgba(37,99,235,0.12)',
-  blueText:   '#93c5fd',
-  border:     'rgba(255,255,255,0.07)',
-  borderStrong: 'rgba(255,255,255,0.12)',
+  blueText:   '#1D4ED8',
+
+  // Both inverted from white alphas. A white hairline is invisible on white:
+  // these composite to #E8EAED on a card and #E2E1E0 on the page, which is the
+  // same visual weight as the conventional #E5E7EB. border has 315 call sites.
+  border:       'rgba(28,45,77,0.10)',
+  borderStrong: 'rgba(28,45,77,0.18)',
+
   gray:        '#6B7280',
   grayBg:      'rgba(107,114,128,0.12)',
   grayMuted:   '#4B5563',
   grayMutedBg: 'rgba(75,85,99,0.12)',
-  shadowSm:   '0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2)',
-  shadowMd:   '0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.2)',
-  shadowLg:   '0 8px 32px rgba(0,0,0,0.5)',
+
+  // Navy-tinted and far lighter than the black-at-0.3-to-0.5 they replace. Black
+  // at that weight is a dark-theme depth cue; on linen it reads as grime.
+  shadowSm:   '0 1px 3px rgba(28,45,77,0.08), 0 1px 2px rgba(28,45,77,0.04)',
+  shadowMd:   '0 4px 12px rgba(28,45,77,0.10), 0 2px 4px rgba(28,45,77,0.06)',
+  shadowLg:   '0 8px 32px rgba(28,45,77,0.16)',
+
   radiusSm:  '6px',
   radiusMd:  '10px',
   radiusLg:  '16px',

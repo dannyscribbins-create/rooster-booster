@@ -195,12 +195,23 @@ describe('LockedSection — theme declaration, with today as the fallback', () =
     expect(getComputedStyle(lockIcon(root)).getPropertyValue('--rm-warning-text')).toBe('#B45309');
   });
 
-  it('leaves the AD dark-admin tokens alone this phase', () => {
-    // SCOPE FENCE, ASSERTED. Only the two BRAND literals are re-pointed in 4B.
-    // Full de-AD-ing is 3b/3c and cannot be done here anyway: AD.borderStrong is
-    // rgba(255,255,255,0.12), a white alpha that is invisible on a light card and
-    // has no --rm-* equivalent. Pinning this stops a later edit from half-doing
-    // the migration and leaving the admin card in a state neither theme wants.
+  it('reads its card chrome from the AD tokens rather than from literals', () => {
+    // SCOPE FENCE, ASSERTED. Only the two BRAND literals were re-pointed in 4B;
+    // the card chrome still comes from AD. Pinning this stops a later edit from
+    // half-doing the migration and leaving the admin card in a state neither
+    // theme wants.
+    //
+    // ⚠ REWORDED IN ADMIN BRAND RETIREMENT 5.1. This test was called "leaves the
+    // AD dark-admin tokens alone this phase" and argued that AD.borderStrong was
+    // "rgba(255,255,255,0.12), a white alpha that is invisible on a light card".
+    // Both statements were true when written and are now false: 5.1 moved the AD
+    // set to a LIGHT palette and borderStrong is rgba(28,45,77,0.18).
+    //
+    // THE ASSERTIONS DID NOT CHANGE AND DID NOT NEED TO. They read the tokens
+    // dynamically on both sides, so they followed the palette on their own — the
+    // stale part was the prose. A comment asserting a false fact outlasts a
+    // wrong value, because the sweep catches the value and the next session
+    // simply believes the comment.
     const { root } = renderThemed(<LockedSection mode="page" label="Manage Team" />);
     const card = root.children[2].firstElementChild;
     expect(css(card.style.background)).toBe(asJsdom('background', AD.bgCard));

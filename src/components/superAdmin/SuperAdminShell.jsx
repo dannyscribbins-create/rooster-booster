@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { getControlToken, logoutControl } from '../../utils/authStorage';
 
-const NAVY = '#012854';
+// RoofMiles secondary. Fully RoofMiles-branded by definition (D-K item 1) — no
+// contractor lockup ever appears here.
+const NAVY = '#1C2D4D';
 
 // ─── Super-Admin Shell (Phase 1 placeholder) ──────────────────────────────────
 // Contractor-picker, impersonation banner, and cross-contractor UI are out of

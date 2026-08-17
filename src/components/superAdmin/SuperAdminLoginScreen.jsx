@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { BACKEND_URL } from '../../config/contractor';
 import { setControlToken } from '../../utils/authStorage';
 
-const NAVY = '#012854';
+// RoofMiles secondary. This surface is FULLY RoofMiles-branded by definition
+// (D-K item 1) — no contractor lockup ever appears here — so it takes the
+// platform navy directly rather than reading a branding chain.
+const NAVY = '#1C2D4D';
 
 // ─── Super-Admin Login Screen ─────────────────────────────────────────────────
 // Unadvertised — reachable only at /rm-control/login by direct URL.
@@ -58,7 +61,7 @@ export default function SuperAdminLoginScreen() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: `linear-gradient(160deg, ${NAVY} 0%, #1e3a6e 100%)`,
+      background: `linear-gradient(160deg, ${NAVY} 0%, #2A4270 100%)`,
       padding: '32px 24px',
       fontFamily: "'Roboto', sans-serif",
     }}>

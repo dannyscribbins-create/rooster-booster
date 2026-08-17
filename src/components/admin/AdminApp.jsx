@@ -24,8 +24,21 @@ function useAdminFonts() {
     const icons = document.createElement('script');
     icons.src = 'https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js';
     document.head.appendChild(icons);
+    // ⚠ TWO-TONE, AND THE SECOND TONE IS NOT DECORATION. No single colour clears
+    // WCAG's 3:1 non-text minimum against all three surfaces this panel has.
+    // Measured: navy #1C2D4D is 12.61:1 on the linen ground and 13.71:1 on a white
+    // card but 1.00:1 inside the navy sidebar — invisible, and every nav button
+    // there is focusable. Orange #F26A1B is 4.47:1 on the sidebar and 3.06:1 on a
+    // card but only 2.82:1 on linen, just under the bar. So the orange ring carries
+    // the sidebar and the navy halo carries the ground, and each covers the other's
+    // weak surface.
+    //
+    // THIS SITE WAS ALREADY AN ACCESSIBILITY DEFECT — it painted #012854 on a dark
+    // slate panel, which was very nearly invisible everywhere. Swapping one
+    // marginal single value for another would have closed the ticket without
+    // fixing the problem, which is why it is two tones and not one.
     const focusStyle = document.createElement("style");
-    focusStyle.textContent = "button:focus-visible,a:focus-visible{outline:2px solid #012854;outline-offset:2px;border-radius:inherit;}";
+    focusStyle.textContent = "button:focus-visible,a:focus-visible{outline:2px solid #F26A1B;outline-offset:2px;box-shadow:0 0 0 4px rgba(28,45,77,0.35);border-radius:inherit;}";
     document.head.appendChild(focusStyle);
   }, []);
 }

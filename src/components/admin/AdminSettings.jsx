@@ -277,7 +277,12 @@ export default function AdminSettings({ teamNavRequest, initialTeamOpenFlagCount
       {/* ── Settings sidebar ── */}
       <div style={{
         width: 220, flexShrink: 0,
-        background: 'linear-gradient(160deg, #0d3a6e 0%, #082d5a 100%)',
+        // CONSUMES THE TOKEN RATHER THAN RESTATING IT. This is a second sidebar
+        // and there was never a reason for it to be a DIFFERENT navy from the
+        // first — it carried its own gradient literal only because it was written
+        // separately. Pointing it at the token deletes a literal instead of
+        // replacing one, and the two sidebars can no longer drift apart.
+        background: AD.bgSidebar,
         borderRight: `1px solid ${AD.border}`,
         boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.05)',
         display: 'flex', flexDirection: 'column',

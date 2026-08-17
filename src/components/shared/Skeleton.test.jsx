@@ -156,12 +156,15 @@ describe('Skeleton — theme declaration', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('Skeleton — the visibility bug this phase exists to fix', () => {
+// THE THRESHOLD. 8/255 per channel is the smallest step that is reliably
+// perceptible as a distinct block on a plain surface; the conventional web
+// skeleton grey (#E5E7EB on white) sits at 20+. It is a floor, not a target.
+//
+// HOISTED TO MODULE SCOPE IN 5.1, because the admin block below now measures
+// against the same floor rather than against an "unchanged" contract.
+const VISIBLE = 8;
 
-  // THE THRESHOLD. 8/255 per channel is the smallest step that is reliably
-  // perceptible as a distinct block on a plain surface; the conventional web
-  // skeleton grey (#E5E7EB on white) sits at 20+. It is a floor, not a target.
-  const VISIBLE = 8;
+describe('Skeleton — the visibility bug this phase exists to fix', () => {
 
   it('the shipped fill is clearly visible on a WHITE card', () => {
     const { root } = renderThemed(<Skeleton />);
@@ -194,29 +197,33 @@ describe('Skeleton — the visibility bug this phase exists to fix', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('Skeleton — the ADMIN panel must not change at all', () => {
+// SUPERSEDED BY ADMIN BRAND RETIREMENT 5.1 — was "the ADMIN panel must not
+// change at all", a C/DL-3a Phase 4B scope fence. 5.1 moved the admin panel to a
+// LIGHT palette, so "unchanged from the dark-panel rendering" is no longer the
+// requirement — it is the opposite of it. The fill is now held to the SAME
+// visibility floor as the light referrer surfaces above, which is the contract
+// that actually matters on a light ground.
+//
+// ⚠ THE OLD ASSERTION WAS NOT WRONG AND IS NOT BEING HIDDEN. It measured 1-3/255
+// against the dark surfaces and passed honestly for two phases. It is retired
+// because its premise was retired, and the arithmetic that replaces it is
+// stricter, not looser: 22-23/255 against a floor of 8.
+describe('Skeleton — visible on the light ADMIN palette too (5.1)', () => {
 
-  // THE OVERRIDING RULE OF PHASE 4B. Seven admin files and ~28 call sites render
-  // Skeleton on the dark panel today and are expressly NOT meant to look
-  // different afterwards. "Imperceptible" is defined here as <= 3/255 on every
-  // channel — roughly a third of the VISIBLE floor above, and below the point at
-  // which a flat block reads as a different colour.
-  const IMPERCEPTIBLE = 3;
-
-  // The navy-header tolerance below is looser than IMPERCEPTIBLE on purpose: a
-  // grey wash and a white wash cannot land on the same value over a saturated
+  // The navy-header tolerance below is looser than the VISIBLE floor on purpose:
+  // a grey wash and a white wash cannot land on the same value over a saturated
   // navy, and the requirement there is "still clearly a skeleton", not "identical".
   const NAVY_TOLERANCE = 8;
 
   it.each([
-    ['AD.bgCard',    AD.bgCard],     // #1f2638 — where most admin skeletons sit
-    ['AD.bgPage',    AD.bgPage],     // #12161f
-    ['AD.bgSurface', AD.bgSurface],  // #1a1f2e
-  ])('renders on %s within a hair of what it renders today', (_name, surface) => {
+    ['AD.bgCard',     AD.bgCard],      // #FFFFFF — where most admin skeletons sit
+    ['AD.bgPage',     AD.bgPage],      // #F8F5F0
+    ['AD.bgCardTint', AD.bgCardTint],  // #EDEEF1
+  ])('is clearly visible on %s', (_name, surface) => {
     const { root } = renderThemed(<Skeleton />);
     const fill = fallbackOf(root.style.background);
-    const delta = maxChannelDelta(composite(fill, surface), composite(OLD_FILL, surface));
-    expect(delta).toBeLessThanOrEqual(IMPERCEPTIBLE);
+    const delta = maxChannelDelta(composite(fill, surface), parseHex(surface));
+    expect(delta).toBeGreaterThanOrEqual(VISIBLE);
   });
 
   it('also preserves the CashOutTab navy loading header, which is dark too', () => {
