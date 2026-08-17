@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // THE ADMIN PANEL'S IDENTITY LINE — "RoofMiles · Acme Roofing"
 //
-// Admin Brand Retirement Phase 4. Two headers carried the literal
-// "Rooster Booster · Accent Roofing" — AdminDashboard's page header and
-// AdminSettings' section header. They were the panel's two most-viewed strings
-// and appeared on no inventory list, which is the finding that produced the
-// walking sweep.
+// Admin Brand Retirement Phase 4. Two headers carried a hardcoded identity line
+// — the retired platform name "Rooster Booster" joined to THE FIRST TENANT'S
+// company name — in AdminDashboard's page header and AdminSettings' section
+// header. They were the panel's two most-viewed strings and appeared on no
+// inventory list, which is the finding that produced the walking sweep.
 //
 // ── THE DESIGN RULE THIS ENCODES (spec §1, verbatim) ───────────────────────
 //   "RoofMiles is the environment. The contractor gets a subtle branded touch

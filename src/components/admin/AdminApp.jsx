@@ -200,10 +200,13 @@ export default function AdminPanel({ onLogout }) {
   //
   // ⚠ IT MOUNTS NO ELEMENT AND EMITS NO --rm-* (Ruling 5). That is why this is
   // BrandingProvider and not ThemeProvider: LockedSection's permission scrim
-  // paints var(--rm-bg, #012854) on this dark panel, and a mounted --rm-bg would
-  // resolve to the contractor's landing background — #FFFFFF by default — turning
-  // a navy veil over blurred, permission-gated content WHITE. The guarantee is
-  // structural, not positional: that provider has no code path that emits one.
+  // paints var(--rm-bg, <its own dark navy fallback>) on this dark panel, and a
+  // mounted --rm-bg would resolve to the contractor's landing background —
+  // #FFFFFF by default — turning a navy veil over blurred, permission-gated
+  // content WHITE. The guarantee is structural, not positional: that provider
+  // has no code path that emits one. The fallback literal itself lives in
+  // shared/LockedSection.jsx and is D-G's — owned by the pre-launch sweep, not
+  // by this session.
   return (
     <AdminPermissionsContext.Provider value={permState}>
       <BrandingProvider supplied={suppliedBranding}>

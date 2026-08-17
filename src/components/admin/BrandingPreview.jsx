@@ -7,7 +7,7 @@ import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 // Fonts are already injected into <head> by BrandingProfileSettings's useEffect.
 //
 // ── RESOLVES THROUGH THE SHARED MIRROR (C/DL-2 Phase 3c) ─────────────────────
-// This component used to carry its own fallbacks: #012854 / #CC0000 / #D3E3F0 —
+// This component used to carry its own three hardcoded colour fallbacks —
 // THE FIRST TENANT'S navy, red and light blue, inherited from the single-tenant
 // era and hardcoded before RoofMiles had a default of its own. The server fell
 // back to RoofMiles' #F26A1B / #1C2D4D / #FFFFFF. A contractor who had saved no

@@ -58,13 +58,14 @@
 // suite goes red naming the diverged value.
 //
 // That guard exists because THIS DRIFT ALREADY HAPPENED ONCE. BrandingPreview.jsx
-// falls back to #012854 / #CC0000 / #D3E3F0 — Accent Roofing's navy, red and
+// carried its own three hardcoded fallbacks — THE FIRST TENANT'S navy, red and
 // light blue, the platform's original single-tenant palette — while the server
-// falls back to RoofMiles' #F26A1B / #1C2D4D / #FFFFFF. A contractor who had
+// fell back to RoofMiles' #F26A1B / #1C2D4D / #FFFFFF. A contractor who had
 // saved no colours saw one brand in the admin preview and a different one on
-// their live surface, and neither was theirs. Nothing failed. Wiring
-// BrandingPreview onto this module and deleting those three constants is
-// Phase 3c.
+// their live surface, and neither was theirs. Nothing failed. C/DL-2 Phase 3c
+// wired BrandingPreview onto this module and deleted those three constants;
+// that file's own header records the correction and BrandingPreview.test.jsx
+// pins it.
 //
 // WHY ESM, AND WHY THE .mjs EXTENSION — REWRITTEN AT THE VITE DEV PIPELINE FIX.
 //

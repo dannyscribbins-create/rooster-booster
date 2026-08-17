@@ -64,6 +64,38 @@ const TEAM_SESSION = {
 
 const adminPanel = () => screen.queryByText(/Missing Referrals/i);
 
+// ⚠ THE STATS PAYLOAD IS SHAPED, NOT `{}`. The ten fields below are the shape
+// carried verbatim from adminBrandRetirement.test.jsx:275-279, and the reasoning
+// comes with them: AdminDashboard calls `stats.totalBalance.toLocaleString()`
+// behind an object-level `stats &&` guard only, so a blanket empty-object mock
+// satisfies the guard, sets stats = {}, and THEN throws inside React's render on
+// a tick that lands after the assertion already resolved. That surfaces as a
+// Vitest UNHANDLED ERROR — "418 passed" alongside a NON-ZERO exit, which fails
+// `npm test`, the pre-push gate — or as nothing at all, depending on whether the
+// late render beats teardown. A race, in other words, which is exactly how it
+// was recorded twice as a flake.
+//
+// EVERY TEST IN THIS FILE MOUNTS THE PANEL, and AdminApp opens on 'dashboard'
+// with no PermissionGate above it, so AdminDashboard renders here even though
+// nothing in this file asserts on it. The deep-link parameter is what is being
+// pinned; the dashboard is just what the panel happens to paint underneath it.
+//
+// THE MOCK WAS LYING; THE COMPONENT WAS CORRECT. The real endpoint returns these
+// fields, so hardening belongs here and not in a field-level guard added to
+// AdminDashboard to satisfy a fixture. That the guard is missing is real and is
+// recorded for Phase 6 — it is just not this file's business to hide.
+const STATS = Object.freeze({
+  activeReferrers: 0, totalReferrers: 0, totalBalance: 0, totalPaidOut: 0,
+  totalReferrals: 0, totalLeads: 0, totalInspections: 0, totalSold: 0,
+  totalNotSold: 0, pendingCashouts: 0,
+});
+
+// Same class, one field: AdminApp.jsx reads `.unresolved_count` off this response
+// with no null guard, so `{}` propagates undefined into a sum and renders NaN.
+// It crashes nothing and is invisible, which is the only reason it was never
+// noticed — also recorded for Phase 6 rather than guarded here.
+const FLAGGED_SUMMARY = Object.freeze({ unresolved_count: 0 });
+
 function installFetch({ session }) {
   global.fetch = vi.fn(async (url) => {
     const u = String(url);
@@ -75,6 +107,12 @@ function installFetch({ session }) {
       return { ok: true, status: 200, json: async () => ({
         success: true, role: 'team', token: 'team-token', tier: 'owner', is_field_rep: false,
       }) };
+    }
+    if (u.includes('/api/admin/stats')) {
+      return { ok: true, status: 200, json: async () => STATS };
+    }
+    if (u.includes('/api/admin/flagged-referrals/summary')) {
+      return { ok: true, status: 200, json: async () => FLAGGED_SUMMARY };
     }
     if (u.includes('/api/admin/cashouts') || u.includes('/api/admin/missing-referrals')) {
       return { ok: true, status: 200, json: async () => [] };
