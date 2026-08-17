@@ -792,7 +792,7 @@ export default function BrandingProfileSettings() {
           <SettingsInput labelIcon="ph-instagram-logo" label="Instagram"      value={formData.social_instagram} onChange={v => handleChange('social_instagram', v)} placeholder="https://instagram.com/yourhandle" />
           <SettingsInput labelIcon="ph-google-logo"    label="Google Business" value={formData.social_google}   onChange={v => handleChange('social_google', v)}   placeholder="https://g.page/yourprofile" />
           <SettingsInput labelIcon="ph-house-line"     label="Nextdoor"       value={formData.social_nextdoor}  onChange={v => handleChange('social_nextdoor', v)}  placeholder="https://nextdoor.com/pages/yourpage" />
-          <SettingsInput labelIcon="ph-globe"          label="Website"        value={formData.social_website}   onChange={v => handleChange('social_website', v)}   placeholder="https://accentroofingservice.com" />
+          <SettingsInput labelIcon="ph-globe"          label="Website"        value={formData.social_website}   onChange={v => handleChange('social_website', v)}   placeholder="https://yourcompany.com" />
         </div>
       </div>
 
@@ -845,11 +845,11 @@ export default function BrandingProfileSettings() {
         <SectionHeading>Email Branding</SectionHeading>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <SettingsInput label="Email Sender Name" value={formData.email_sender_name} onChange={v => handleChange('email_sender_name', v)} placeholder="Accent Roofing Service" />
+            <SettingsInput label="Email Sender Name" value={formData.email_sender_name} onChange={v => handleChange('email_sender_name', v)} placeholder="Your Company Name" />
             <HelperText>The "From" name on all emails sent to referrers</HelperText>
           </div>
           <div>
-            <SettingsInput label="Email Footer Text" value={formData.email_footer_text} onChange={v => handleChange('email_footer_text', v)} placeholder="Accent Roofing Service · Powered by Rooster Booster" multiline rows={2} />
+            <SettingsInput label="Email Footer Text" value={formData.email_footer_text} onChange={v => handleChange('email_footer_text', v)} placeholder="Your Company Name · Powered by RoofMiles" multiline rows={2} />
             <HelperText>Appears at the bottom of verification and notification emails</HelperText>
           </div>
         </div>

@@ -2,34 +2,14 @@ import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
 import { useBranding } from '../shared/ThemeProvider';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
+// ⚠ ONE DEFINITION, SHARED WITH THE ADMIN PREVIEW (Admin Brand Retirement Phase
+// 4). The templates and this resolver used to be copied into each surface, and
+// 6C's [Company] token was wired into this copy only — so the admin preview
+// showed the raw token while the referrer saw the real name. See the header of
+// utils/announcementMessage.js.
+import { resolveMessage } from '../../utils/announcementMessage';
 
 // ─── Announcement Popup ───────────────────────────────────────────────────────
-const PRESET_MESSAGES = {
-  preset_1: "Great news — your $[Amount] payout for referring [Referred Name] has been approved and is on its way! We appreciate you so much.",
-  preset_2: "Your cashout request of $[Amount] for referring [Referred Name] has been approved. Thank you for being part of the [Company] family.",
-};
-
-export function resolveMessage(settings, referrerFirstName, amount, referredName, companyName) {
-  let template = '';
-  if (settings.mode === 'custom' && settings.custom_message) {
-    template = `Hey ${referrerFirstName}, ${settings.custom_message}`;
-  } else {
-    template = PRESET_MESSAGES[settings.mode] || PRESET_MESSAGES.preset_1;
-  }
-  return template
-    .replace(/\[First Name\]/g, referrerFirstName)
-    .replace(/\[Amount\]/g, `$${parseFloat(amount).toLocaleString()}`)
-    .replace(/\[Referred Name\]/g, referredName)
-    // [Company] joins the existing placeholder set (C/DL-3b Phase 6C) rather than
-    // becoming a separate mechanism — the admin previews show the same token.
-    //
-    // ⚠ PASSED IN, NOT CLOSED OVER. This function is MODULE-LEVEL; 6C referenced
-    // `branding` here directly, which is only in scope inside the component, so
-    // every render with a [Company] template threw a ReferenceError. It shipped —
-    // the 6C sweep proved the literal was gone and nothing rendered the component.
-    .replace(/\[Company\]/g, companyName || '');
-}
-
 export default function AnnouncementPopup({ announcement, referrerFirstName, onDismiss, settings }) {
   const branding = useBranding();
   const [cardVisible, setCardVisible] = useState(false);

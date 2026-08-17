@@ -3,6 +3,7 @@ import { AD } from '../../constants/adminTheme';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import AdminSettings from './AdminSettings';
 import { usePermissions } from '../../hooks/useAdminPermissions';
+import { useAdminBranding } from '../shared/BrandingProvider';
 
 function getInitials(fullName, email) {
   if (fullName) {
@@ -26,6 +27,7 @@ export const ADMIN_NAV = [
 
 export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onLogout }) {
   const { full_name, email, tier } = usePermissions();
+  const { branding } = useAdminBranding();
   const initials    = getInitials(full_name, email);
   const displayName = full_name || email || 'Team Member';
   const tierLabel   = tier ? (tier.charAt(0).toUpperCase() + tier.slice(1)) : null;
@@ -36,8 +38,46 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
       background: AD.bgSidebar, display: 'flex', flexDirection: 'column',
       zIndex: 100, fontFamily: AD.fontSans,
     }}>
+      {/* ── THE LOCKUP (D-D): contractor mark · divider · platform mark ───────
+          Spec §1: RoofMiles is the environment, the contractor gets a subtle
+          branded touch that is personal to them. So the platform mark is
+          UNCONDITIONAL and the contractor's joins it when there is one.
+
+          ⚠ THE PATTERN IS AnnouncementPopup.jsx's, NOT A NEW ONE — D-D says do
+          not re-invent the lockup. Reused unchanged: the `branding.logoUrl &&`
+          null-guard, the fragment holding image + rule, the rule's 1px x 28px
+          geometry, and the rule that THE DIVIDER GOES WITH THE LOGO — a
+          separator with nothing on one side is a stray line, so the lockup
+          collapses to the platform mark alone rather than leaving it behind.
+
+          ONE DELIBERATE DEPARTURE: the divider's COLOUR. AnnouncementPopup
+          draws rgba(0,0,0,0.1) because it sits on a white card. This sidebar is
+          a dark navy gradient, where a black rule is invisible — so it is
+          inverted to rgba(255,255,255,0.18). Same rule, same job, legible on
+          the surface it actually sits on.
+
+          NO FALLBACK LOGO, deliberately. An identity-bearing value gets no
+          default: borrowing another contractor's mark is a white-label breach
+          and a stringified null renders a dead src. Absent is a designed state.
+
+          ── THE LIGHT PLATE (D-D, option B) ───────────────────────────────
+          The sidebar is a dark navy gradient, and a contractor whose logo is
+          dark would disappear into it. The plate is applied to EVERY
+          contractor rather than conditioned on the logo's colour — one rule,
+          no new data, nothing to get wrong per tenant, and C/DL-3c inherits a
+          shipped precedent instead of designing it cold. It is drawn only when
+          there is a logo to sit on. */}
       <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${AD.border}`, marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+          {branding.logoUrl && (
+            <>
+              <div style={{ background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '6px 8px', display: 'flex', alignItems: 'center' }}>
+                <img src={branding.logoUrl} alt={branding.companyName}
+                  style={{ height: 28, maxWidth: 96, width: 'auto', objectFit: 'contain', display: 'block' }} />
+              </div>
+              <div style={{ width: 1, height: 28, background: 'rgba(255,255,255,0.18)' }} />
+            </>
+          )}
           <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
         </div>
       </div>

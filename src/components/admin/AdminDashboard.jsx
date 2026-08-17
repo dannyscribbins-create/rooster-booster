@@ -4,10 +4,13 @@ import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, StatCard, PipelineBar } from './AdminComponents';
 import Skeleton from '../shared/Skeleton';
 import { usePermissions } from '../../hooks/useAdminPermissions';
+import { useAdminBranding } from '../shared/BrandingProvider';
+import { platformIdentityLine } from '../../utils/platformIdentity';
 import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
 
 export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats, onSettingsClick, onFlaggedBannerClick }) {
   const { full_name } = usePermissions();
+  const { branding } = useAdminBranding();
   const [stats, setStats]               = useState(null);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
@@ -60,7 +63,7 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
 
   return (
     <>
-      <AdminPageHeader title={greetingTitle} subtitle="Rooster Booster · Accent Roofing" />
+      <AdminPageHeader title={greetingTitle} subtitle={platformIdentityLine(branding)} />
       {flaggedUnresolved > 0 && (
         <div
           onClick={onFlaggedBannerClick}

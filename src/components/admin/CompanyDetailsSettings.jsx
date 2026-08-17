@@ -350,26 +350,26 @@ export default function CompanyDetailsSettings() {
             label="Company Name"
             value={formData.company_name}
             onChange={v => handleChange('company_name', v)}
-            placeholder="Accent Roofing Service"
+            placeholder="Your Company Name"
           />
           <SettingsInput
             label="Phone Number"
             value={formData.company_phone}
             onChange={v => handleChange('company_phone', v)}
-            placeholder="770-277-4869"
+            placeholder="(555) 123-4567"
           />
           <SettingsInput
             label="Email Address"
             value={formData.company_email}
             onChange={v => handleChange('company_email', v)}
-            placeholder="contact@leaksmith.com"
+            placeholder="contact@yourcompany.com"
             type="email"
           />
           <SettingsInput
             label="Website URL"
             value={formData.company_url}
             onChange={v => handleChange('company_url', v)}
-            placeholder="accentroofingservice.com"
+            placeholder="yourcompany.com"
           />
         </div>
       </div>

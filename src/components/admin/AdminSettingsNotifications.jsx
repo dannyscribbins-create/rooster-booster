@@ -2,38 +2,23 @@ import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { Btn } from './AdminComponents';
-import accentRoofingLogo from '../../assets/images/AccentRoofing-Logo.png';
 import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import { R } from '../../constants/theme';
+import { useAdminBranding } from '../shared/BrandingProvider';
+// ⚠ THE TEMPLATES AND THE RESOLVER NOW HAVE ONE HOME (Admin Brand Retirement
+// Phase 4). This file used to carry its own copy whose resolver never
+// substituted [Company] — so this preview, whose entire purpose is to show what
+// the referrer will see, showed the raw token while the referrer saw the real
+// company name. See utils/announcementMessage.js's header for why the
+// duplication is what produced that.
+import { PRESET_MESSAGES, resolveMessage } from '../../utils/announcementMessage';
 import { getAdminToken } from '../../utils/authStorage';
 
-const PRESET_MESSAGES = {
-  preset_1: "Great news — your $[Amount] payout for referring [Referred Name] has been approved and is on its way! We appreciate you so much.",
-  // ⚠ [Company] IS SUBSTITUTED AT RENDER, like [Amount] and [Referred Name]
-  // (C/DL-3b Phase 6C). This string is ONE STRING IN THREE PLACES — the referrer
-  // popup plus these two admin previews — and leaving two hardcoded while one went
-  // dynamic is exactly the duplicated-literal divergence CLAUDE.md's rule targets.
-  //
-  // ⚠ THIS FILE'S ADMIN BRANDING IS NOT IN SCOPE. Only this string changed; the
-  // chrome, the logo import, the layout and every other Accent literal here remain
-  // owned by the Admin Panel Brand Retirement build.
-  preset_2: "Your cashout request of $[Amount] for referring [Referred Name] has been approved. Thank you for being part of the [Company] family.",
-};
-
-function resolveMessage(settings, referrerFirstName, amount, referredName) {
-  let template = '';
-  if (settings.mode === 'custom' && settings.custom_message) {
-    template = `Hey ${referrerFirstName}, ${settings.custom_message}`;
-  } else {
-    template = PRESET_MESSAGES[settings.mode] || PRESET_MESSAGES.preset_1;
-  }
-  return template
-    .replace(/\[First Name\]/g, referrerFirstName)
-    .replace(/\[Amount\]/g, `$${parseFloat(amount).toLocaleString()}`)
-    .replace(/\[Referred Name\]/g, referredName);
-}
-
 function AnnouncementPreviewPopup({ announcement, referrerFirstName, onDismiss, settings }) {
+  // ⚠ READ HERE, IN THE COMPONENT, AND PASSED DOWN AS AN ARGUMENT. resolveMessage
+  // is module-level and cannot see this binding — referencing branding inside it
+  // is exactly what threw a ReferenceError on every render in 6C.
+  const { branding } = useAdminBranding();
   const [cardVisible, setCardVisible] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setCardVisible(true), 50);
@@ -41,13 +26,23 @@ function AnnouncementPreviewPopup({ announcement, referrerFirstName, onDismiss, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!announcement || !settings) return null;
-  const message = resolveMessage(settings, referrerFirstName, announcement.amount, announcement.referredName);
+  const message = resolveMessage(settings, referrerFirstName, announcement.amount, announcement.referredName, branding.companyName);
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(1,40,84,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ background: '#FFFFFF', borderRadius: 24, padding: '36px 28px', width: '100%', maxWidth: 360, boxShadow: '0 12px 48px rgba(1,40,84,0.3)', textAlign: 'center', opacity: cardVisible ? 1 : 0, transform: cardVisible ? 'translateY(0)' : 'translateY(20px)', transition: 'opacity 400ms ease-out, transform 400ms ease-out' }}>
+        {/* ⚠ THIS IS A PREVIEW OF AnnouncementPopup, SO IT USES ITS LOCKUP —
+            null-guard, fragment, and "the divider goes with the logo". No light
+            plate here: this card is white, which is the surface the popup
+            actually renders on. A preview that drew a different lockup from the
+            thing it previews would be lying about what the referrer sees, which
+            is the same defect class as the [Company] token above. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 24 }}>
-          <img src={accentRoofingLogo} alt="Accent Roofing Service" style={{ height: 36, width: 'auto', objectFit: 'contain' }} />
-          <div style={{ width: 1, height: 28, background: 'rgba(0,0,0,0.1)' }} />
+          {branding.logoUrl && (
+            <>
+              <img src={branding.logoUrl} alt={branding.companyName} style={{ height: 36, width: 'auto', objectFit: 'contain' }} />
+              <div style={{ width: 1, height: 28, background: 'rgba(0,0,0,0.1)' }} />
+            </>
+          )}
           <img src={rbLogoIcon} alt="Rooster Booster" style={{ height: 28, width: 'auto', objectFit: 'contain' }} />
         </div>
         <p style={{ margin: '0 0 20px', fontSize: 16, lineHeight: 1.6, color: R.textPrimary, fontFamily: R.fontBody }}>{message}</p>
@@ -165,6 +160,10 @@ function NotifToggle({ triggerKey, checked, onToggle, flash }) {
 }
 
 export default function AdminSettingsNotifications() {
+  // Feeds the Live preview's [Company] substitution. Same reason as
+  // AnnouncementPreviewPopup above: the resolver is module-level and takes the
+  // name as an argument rather than reaching for a binding it cannot see.
+  const { branding } = useAdminBranding();
   const [enabled,       setEnabled]       = useState(true);
   const [mode,          setMode]          = useState('preset_1');
   const [customMessage, setCustomMessage] = useState('');
@@ -391,7 +390,7 @@ export default function AdminSettingsNotifications() {
           </Btn>
         </div>
         <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, lineHeight: 1.6 }}>
-          {resolveMessage(previewSettings, previewName.split(' ')[0], 500, 'Sample Client')}
+          {resolveMessage(previewSettings, previewName.split(' ')[0], 500, 'Sample Client', branding.companyName)}
         </p>
         <p style={{ margin: '8px 0 0', fontSize: 12, color: AD.textTertiary }}>Preview name: {previewName} · Amount: $500</p>
       </div>

@@ -8,8 +8,8 @@ import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 //
 // ── RESOLVES THROUGH THE SHARED MIRROR (C/DL-2 Phase 3c) ─────────────────────
 // This component used to carry its own fallbacks: #012854 / #CC0000 / #D3E3F0 —
-// ACCENT ROOFING'S navy, red and light blue, the platform's original single-tenant
-// palette, hardcoded before RoofMiles had a default of its own. The server fell
+// THE FIRST TENANT'S navy, red and light blue, inherited from the single-tenant
+// era and hardcoded before RoofMiles had a default of its own. The server fell
 // back to RoofMiles' #F26A1B / #1C2D4D / #FFFFFF. A contractor who had saved no
 // colours therefore saw ONE BRAND HERE and A DIFFERENT ONE on their live surface,
 // and neither was theirs. Nothing failed; the preview simply lied about what the
@@ -229,8 +229,8 @@ function LoginPreview({ primary, secondary, accent, fontH, fontB, appName, tagli
       </div>
 
       {/* Footer — the contractor's own name, never a hardcoded one.
-          Was 'ACCENT ROOFING SERVICE · EST. 1989' until C/DL-2 Phase 3c: one
-          tenant's name AND a fabricated founding year, shown to every other
+          Until C/DL-2 Phase 3c this was a fixed caption naming THE FIRST TENANT
+          and a fabricated founding year ('· EST. 1989'), shown to every other
           contractor previewing their own brand. The year is gone rather than
           made configurable — no column holds it and inventing one for a preview
           caption is not worth a migration. */}
