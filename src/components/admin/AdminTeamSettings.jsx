@@ -422,16 +422,42 @@ function ToggleSwitch({ checked, onChange, disabled, ariaLabel }) {
       aria-label={ariaLabel}
       style={{
         width: 36, height: 20, borderRadius: 10, border: 'none', padding: 0,
-        background: checked ? AD.blueText : AD.borderStrong,
+        // ── 5.2d-4: THIS CONTROL GATES PERMISSIONS, INCLUDING cashout_approve ──
+        // THREE STATES, AND THEY MUST BE TELLABLE APART.
+        //
+        // OFF was AD.borderStrong: a #D6D9DF track at 1.41:1 against the card,
+        // carrying a WHITE knob at 1.32:1 against the track. The knob was lighter
+        // than the rail it sat in, on a control already near-invisible — so an
+        // off toggle read as neither on nor off. AD.gray puts the track at 4.83:1
+        // and the knob at 4.83:1 against it.
+        //
+        // ⚠ DISABLED USED TO CHANGE NOTHING BUT THE CURSOR. On the Approve
+        // Cash-Outs row that made "you cannot grant this" pixel-identical to "you
+        // have not granted this" — a safety defect on the money path, not a
+        // cosmetic one, and invisible on touch where there is no hover at all.
+        //
+        // ⚠ AND DISABLED DOES NOT MEAN OFF. It is `readOnly || section.forward ||
+        // softLocked`, so a disabled toggle is routinely CHECKED — a granted
+        // permission someone lacks the tier to edit. The knob therefore keeps its
+        // true position and the state is carried by the FILL INVERTING: an active
+        // toggle is a saturated track with a white knob, an inert one is a pale
+        // track with a grey knob. Position still reads; interactivity does not.
+        background: disabled ? AD.bgCardTint : (checked ? AD.blueText : AD.gray),
+        opacity: disabled ? 0.75 : 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        position: 'relative', flexShrink: 0, transition: 'background 0.15s',
+        position: 'relative', flexShrink: 0, transition: 'background 0.15s, opacity 0.15s',
         outline: 'none',
       }}
     >
       <div style={{
         position: 'absolute', top: 2, left: checked ? 18 : 2,
-        width: 16, height: 16, borderRadius: '50%', background: '#fff',
-        transition: 'left 0.15s', pointerEvents: 'none',
+        width: 16, height: 16, borderRadius: '50%',
+        // ⚠ NOT AD.border FOR THE DISABLED KNOB. It composites to 1.04:1 on the
+        // tint — the knob would vanish and the control would stop showing WHICH
+        // state it is locked in, which is the one thing a disabled-but-checked
+        // permission has to communicate. AD.gray reads at 4.17:1 there.
+        background: disabled ? AD.gray : '#fff',
+        transition: 'left 0.15s, background 0.15s', pointerEvents: 'none',
       }} />
     </button>
   );

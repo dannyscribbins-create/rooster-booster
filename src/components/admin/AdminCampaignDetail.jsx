@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AD } from '../../constants/adminTheme';
+import { AD, TAG_COLORS } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import AdminContactDetailDrawer from './AdminContactDetailDrawer';
 import { getAdminToken } from '../../utils/authStorage';
@@ -169,13 +169,30 @@ function BatchContactRow({ c, idx, total, onClick }) {
         </p>
       </div>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '55%' }}>
-        {c.delivered          && <ContactPill bg="#E6F4EA" color="#1E7E34" label="Delivered" />}
-        {c.opened             && <ContactPill bg="#E3F2FD" color="#0D47A1" label="Opened" />}
-        {c.clicked_cta        && <ContactPill bg="#F3E5F5" color="#6A1B9A" label="Clicked CTA" />}
-        {c.opted_out          && <ContactPill bg="#FFEBEE" color="#C62828" label="Opted Out" />}
-        {c.sms_status === 'sent'   && <ContactPill bg="#E0F7FA" color="#00695C" label="SMS Sent" />}
-        {c.sms_status === 'failed' && <ContactPill bg="#FFF3E0" color="#E65100" label="SMS Failed" />}
-        {c.suppressed         && <ContactPill bg="#F5F5F5" color="#757575" label="Suppressed" />}
+        {/* ── 5.2d-4: THESE CAME OFF A SECOND PALETTE ────────────────────────
+            This file carried its own Material-derived pill palette — eleven
+            bg/text pairs — shadowing TAG_COLORS in adminTheme.js, which has
+            served the same purpose since the single-tenant era.
+
+            ⚠ NINE OF THE ELEVEN WERE ALREADY CONTRAST-CORRECT. Do NOT read this
+            change as "the pills were broken". They were not, and a future reader
+            who assumes they were will re-derive a palette to fix them and put the
+            second one straight back. THE FIX WAS DELETION. Only two pairs failed
+            — SMS Failed at 3.46:1 and Suppressed at 4.23:1 — and both are now
+            semantic.
+
+            ⚠ `Referral Only` BELOW IS THE DUPLICATION IN ITS PUREST FORM: the
+            same label already existed in TAG_COLORS as AMBER while this file
+            painted it BLUE. One label, two palettes, two answers, and nothing to
+            say which was right. That is the cost being paid off here, not a
+            contrast score. */}
+        {c.delivered          && <ContactPill bg={AD.greenBg} color={AD.greenText} label="Delivered" />}
+        {c.opened             && <ContactPill bg={AD.blueBg}  color={AD.blueText}  label="Opened" />}
+        {c.clicked_cta        && <ContactPill bg={TAG_COLORS['Clicked CTA'].bg} color={TAG_COLORS['Clicked CTA'].text} label="Clicked CTA" />}
+        {c.opted_out          && <ContactPill bg={TAG_COLORS['Opted Out'].bg} color={TAG_COLORS['Opted Out'].text} label="Opted Out" />}
+        {c.sms_status === 'sent'   && <ContactPill bg={TAG_COLORS['SMS Sent'].bg} color={TAG_COLORS['SMS Sent'].text} label="SMS Sent" />}
+        {c.sms_status === 'failed' && <ContactPill bg={AD.amberBg} color={AD.amberText} label="SMS Failed" />}
+        {c.suppressed         && <ContactPill bg={TAG_COLORS['Suppressed'].bg} color={TAG_COLORS['Suppressed'].text} label="Suppressed" />}
       </div>
     </div>
   );
@@ -394,7 +411,10 @@ function MetricsGrid({ metrics, onOpenFailedPanel, optOutData, contactTotals }) 
 
         {/* Complaints */}
         <div style={{
-          background: isComplaintWarn ? '#fff0f0' : AD.bgCard,
+          // #fff0f0 measured 1.11:1 against the white card it sits on, so the
+          // complaint-warning state read as no state at all. AD.red2Bg is the
+          // semantic danger wash and composites visibly on white.
+          background: isComplaintWarn ? AD.red2Bg : AD.bgCard,
           border: `1px solid ${isComplaintWarn ? 'rgba(204,0,0,0.25)' : AD.border}`,
           borderRadius: AD.radiusMd, padding: '18px 20px',
         }}>
@@ -486,10 +506,16 @@ function MetricsGrid({ metrics, onOpenFailedPanel, optOutData, contactTotals }) 
                 <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
                   {new Date(c.opted_out_at).toLocaleDateString()}
                 </span>
-                {c.opt_out_campaigns && <span style={pillStyle('#fee2e2', '#991b1b')}>No Campaigns</span>}
-                {c.opt_out_sms       && <span style={pillStyle('#fef3c7', '#92400e')}>No SMS</span>}
-                {c.opt_out_all       && <span style={pillStyle('#021428', '#ffffff')}>All Blocked</span>}
-                {c.referral_only     && <span style={pillStyle('#dbeafe', '#1d4ed8')}>Referral Only</span>}
+                {/* Same consolidation as the ContactPills above — see the note there.
+                    'All Blocked' was pillStyle('#021428', '#ffffff'): an Accent-derived
+                    near-black slab, the same shape 5.2b retired from the Transfer
+                    Blocked card. It is the STRONGEST opt-out, so it keeps a SOLID fill
+                    rather than a pale one, but takes the semantic danger red at 4.83:1
+                    instead of a hardcoded near-black. */}
+                {c.opt_out_campaigns && <span style={pillStyle(TAG_COLORS['Opted Out'].bg, TAG_COLORS['Opted Out'].text)}>No Campaigns</span>}
+                {c.opt_out_sms       && <span style={pillStyle(AD.amberBg, AD.amberText)}>No SMS</span>}
+                {c.opt_out_all       && <span style={pillStyle(AD.red2, '#FFFFFF')}>All Blocked</span>}
+                {c.referral_only     && <span style={pillStyle(TAG_COLORS['Referral Only'].bg, TAG_COLORS['Referral Only'].text)}>Referral Only</span>}
               </div>
             ))}
           </div>

@@ -66,10 +66,17 @@
 // everywhere, whereas orange would turn every recessed info-box fill into a loud
 // block — wrong in a way that is harder to see past while reviewing the rest.
 //
-// ── TAG_COLORS NEEDED NOTHING ────────────────────────────────────────────────
+// ── TAG_COLORS NEEDED ALMOST NOTHING — AND 5.1 SAID "NOTHING", WHICH WAS WRONG
 // It was ALREADY a light-theme palette — pale pill backgrounds with dark text,
-// unchanged since the single-tenant era and correct on the new ground. It is 15
+// unchanged since the single-tenant era and correct on the new ground. It is 17
 // rows of this file and the instinct is to sweep it with everything else. Don't.
+//
+// ⚠ BUT 13 OF 14 ENTRIES IS NOT 14. This header used to read "TAG_COLORS NEEDED
+// NOTHING", and 5.2d-4 measured every pair: 'Suppressed' was #6B7280 on #F3F4F6,
+// 4.39:1, and FAILED the 4.5:1 text bar. It is now AD.grayMuted at 6.87:1. The
+// claim mattered because a header telling a future session that a palette needs
+// no attention is believed — and this one was consulted and trusted twice before
+// anyone measured it. State what was checked, not what was assumed.
 // ─────────────────────────────────────────────────────────────────────────────
 export const AD = {
   // Surfaces. The dark theme ran four ascending levels; a light theme has fewer
@@ -178,9 +185,18 @@ export const TAG_COLORS = {
   'High Engager':        { bg: '#D1FAE5', text: '#065F46', border: '#A7F3D0' },
   'Never Opened':        { bg: '#F9FAFB', text: '#6B7280', border: '#E5E7EB' },
   'Bounced':             { bg: '#FEF3C7', text: '#B45309', border: '#FDE68A' },
-  'Suppressed':          { bg: '#F3F4F6', text: '#6B7280', border: '#E5E7EB' },
+  'Suppressed':          { bg: '#F3F4F6', text: '#4B5563', border: '#E5E7EB' },   // was #6B7280 — 4.39:1, failed. Now 6.87:1.
   'Existing Client':     { bg: '#CCFBF1', text: '#0F766E', border: '#99F6E4' },
   'Paid Customer':       { bg: '#CCFBF1', text: '#0F766E', border: '#99F6E4' },
   'Recently Contacted':  { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+  // ── ADDED IN 5.2d-4, ABSORBING AdminCampaignDetail'S SECOND PALETTE ─────────
+  // Both carry meanings no semantic *Bg/*Text pair expresses — purple for an
+  // engagement action, teal for a delivery channel. Forcing them onto green or
+  // blue would make two different things look identical, which is the opposite
+  // of what consolidating a palette is for. Two entries in ONE palette is still
+  // one palette. Values are the ones AdminCampaignDetail already used; both
+  // already cleared 4.5:1, so this is a MOVE, not a recolour.
+  'Clicked CTA':         { bg: '#F3E5F5', text: '#6A1B9A', border: '#E1BEE7' },   // 7.75:1
+  'SMS Sent':            { bg: '#E0F7FA', text: '#00695C', border: '#B2EBF2' },   // 5.94:1
   default:               { bg: '#F3F4F6', text: '#374151', border: '#E5E7EB' },
 };
