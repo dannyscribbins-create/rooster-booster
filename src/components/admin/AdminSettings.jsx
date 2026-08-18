@@ -277,18 +277,35 @@ export default function AdminSettings({ teamNavRequest, initialTeamOpenFlagCount
       {/* ── Settings sidebar ── */}
       <div style={{
         width: 220, flexShrink: 0,
-        // CONSUMES THE TOKEN RATHER THAN RESTATING IT. This is a second sidebar
-        // and there was never a reason for it to be a DIFFERENT navy from the
-        // first — it carried its own gradient literal only because it was written
-        // separately. Pointing it at the token deletes a literal instead of
-        // replacing one, and the two sidebars can no longer drift apart.
-        background: AD.bgSidebar,
+        // ── 5.2c (A4): DELIBERATELY A DIFFERENT NAVY FROM AD.bgSidebar ──────
+        // This used to consume AD.bgSidebar on the reasoning that a second
+        // sidebar had no business being a different navy from the first. That
+        // was right about the COLOUR and wrong about the GRADIENT: the token was
+        // a 160deg gradient, and a CSS gradient resolves against its OWN box, so
+        // this 220px panel and the 230px one beside it painted different colours
+        // at the same vertical position. The mismatch ran the full height and
+        // read as a glitched seam — the panel looked closed off rather than
+        // adjacent.
+        //
+        // It is now a flat one-step LIFT above the main sidebar (#26385C against
+        // #1C2D4D, 1.18:1) so it reads as a layer stacked over the sidebar
+        // rather than as a failed attempt at matching it. That step is the same
+        // magnitude the old gradient already spanned end-to-end (1.16:1) — the
+        // difference is that it is now constant instead of varying with height.
+        //
+        // ⚠ NO PLATE HERE, AND THAT IS THE POINT. The linen plate in the main
+        // sidebar exists so the MARKS have somewhere to sit. Giving one to a
+        // text header would spend that meaning on a label. CONFIGURATION sits
+        // directly on the navy.
+        background: '#26385C',
         borderRight: `1px solid ${AD.border}`,
         boxShadow: 'inset -1px 0 0 rgba(255,255,255,0.05)',
         display: 'flex', flexDirection: 'column',
         padding: '20px 10px',
       }}>
-        <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '0 8px 10px' }}>Configuration</div>
+        {/* 5.2c (A4): 0.3 measured 2.47:1 on #26385C and failed; 0.55 clears at
+            4.71:1. A section label is copy, so it takes the 4.5:1 bar, not 3:1. */}
+        <div style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', padding: '0 8px 10px' }}>Configuration</div>
         <nav>
           {SETTINGS_NAV.map(item => {
             const active = settingsPage === item.id;

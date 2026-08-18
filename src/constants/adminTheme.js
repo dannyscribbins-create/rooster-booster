@@ -12,9 +12,11 @@
 // Every colour below derives from one of two brand values, or from the single
 // documented neutral. There is no fourth source, and adding one needs a ruling.
 //
-//   #1C2D4D  RoofMiles secondary — navy. Source of: navy, the sidebar gradient
-//            (whose end stop #15223A is #1C2D4D x 0.75, the same value as
-//            navyDark), bgCardTint (#EDEEF1, navy at 8% over white), tint
+//   #1C2D4D  RoofMiles secondary — navy. Source of: navy, bgSidebar itself
+//            (flat since 5.2c — see the warning at the token), navyDark
+//            (#15223A, navy x 0.75, which OUTLIVED the sidebar gradient it was
+//            introduced for and is still consumed by AdminTeamSettings' avatar
+//            circle), bgCardTint (#EDEEF1, navy at 8% over white), tint
 //            (#D4DDEB, navy desaturated), every text alpha, both borders, and
 //            all three shadows.
 //   #F26A1B  RoofMiles primary — orange. Source of: marker.
@@ -80,7 +82,21 @@ export const AD = {
   bgSurface:  '#FFFFFF',
   bgCard:     '#FFFFFF',
   bgCardTint: '#EDEEF1',
-  bgSidebar:  'linear-gradient(160deg, #1C2D4D 0%, #15223A 100%)',
+  // ⚠ FLAT ON PURPOSE. THIS WAS A GRADIENT AND MUST NOT BECOME ONE AGAIN.
+  // It was linear-gradient(160deg, #1C2D4D 0%, #15223A 100%). The retirement in
+  // 5.2c was not a taste call — a CSS gradient resolves against the box of the
+  // element painting it, so two adjacent panels sharing ONE gradient token
+  // render DIFFERENT colours at the same vertical position. The main sidebar
+  // (230px) and the settings sub-nav (220px) did exactly that, and the mismatch
+  // ran their full shared height as a seam that read as a rendering fault.
+  //
+  // "Restore the gradient, it looked richer" is a natural-looking future edit
+  // and this comment is the only thing standing in front of it. A flat colour
+  // cannot produce that mismatch; a gradient will reintroduce it the moment a
+  // second element consumes this token. If depth is wanted, LIFT THE ADJACENT
+  // PANEL A STEP — which is what #26385C in AdminSettings.jsx does — rather than
+  // putting a gradient back here.
+  bgSidebar:  '#1C2D4D',
   // The sidebar header plate (D-D option B). Light on purpose, and applied to
   // EVERY contractor rather than conditioned on the logo's colour — it has to
   // work under a dark logo, a pale one, or none at all. One rule, no new data,

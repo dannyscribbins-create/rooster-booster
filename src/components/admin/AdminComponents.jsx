@@ -74,7 +74,25 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
           logo than a warm off-white, and it is still drawn only when there is a
           logo to sit on. The divider inverted with the plate — it was a white
           alpha for a dark header and would be invisible on linen. */}
-      <div style={{ padding: '24px 20px 20px', background: AD.bgSidebarHeader, borderBottom: `1px solid ${AD.border}`, marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+      {/* ── 5.2c (A4): THE PLATE IS INSET, NOT A BAND ──────────────────────
+          It ran full-width, which turned the top of the sidebar into a light
+          band cutting across the corner — it read as a rendering mistake rather
+          than as a deliberate space for the marks. margin 4 + borderRadius 6
+          make it an object SEATED INSIDE the sidebar instead.
+
+          ⚠ THIS ONLY WORKS BECAUSE THE PARENT CARRIES THE NAVY. The wrapper
+          above is `position: fixed; top: 0; height: 100vh` with the sidebar
+          background on it, so the 4px the margin opens up exposes NAVY on all
+          four sides and the navy still runs unbroken to the top edge behind the
+          plate. If that background is ever moved off the parent, this margin
+          starts exposing the page ground and the plate becomes a floating
+          rectangle on linen — worse than the band it replaced.
+
+          `margin: 4` also replaces the old `marginBottom: 8`, so the gap to
+          MAIN MENU tightens by 4px. Deliberate: a uniform inset is what makes
+          it read as a seated object, and the label below carries 12px of its
+          own top padding. */}
+      <div style={{ padding: '24px 20px 20px', background: AD.bgSidebarHeader, borderBottom: `1px solid ${AD.border}`, margin: 4, borderRadius: 6, display: 'flex', justifyContent: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
           {branding.logoUrl && (
             <>
@@ -88,7 +106,25 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
           <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
         </div>
       </div>
-      <div style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', padding: '12px 16px 8px' }}>Main Menu</div>
+      {/* ── 5.2c: MAIN MENU MATCHES CONFIGURATION ─────────────────────────
+          0.3 measured 2.59:1 on #1C2D4D and failed; 0.55 clears at 5.27:1. A
+          section label is copy, so it takes the 4.5:1 bar rather than 3:1.
+
+          ⚠ THIS CROSSED THE 5.2d FENCE, AND THE RULE IT INHERITS IS THE TEST,
+          NOT THE EXCEPTION. Its own ratio barely moved when the sidebar gradient
+          retired — it already sat at the gradient's 0% stop — so "it is also a
+          failing white-alpha" is NOT what admitted it. That is true of ~70 sites
+          and every one of them stays fenced.
+
+          What admitted it: BOTH SIDEBARS ARE MOUNTED AT ONCE in Settings, so
+          raising CONFIGURATION to 0.55 put two sibling section labels on screen
+          together at 4.71:1 and 2.59:1. Fixing the neighbour made this one worse
+          than touching neither — the same shape as the Lead legend swatch in
+          5.2b, and the same test.
+
+          Ask that question, not "is it the same defect." Vestigial or merely
+          also-broken does not cross; if it did there would be no fence. */}
+      <div style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', padding: '12px 16px 8px' }}>Main Menu</div>
       <nav style={{ padding: '0 10px', flex: 1 }}>
         {ADMIN_NAV.map(item => {
           const active = page === item.id;
