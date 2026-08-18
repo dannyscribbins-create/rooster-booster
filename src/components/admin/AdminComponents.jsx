@@ -448,7 +448,17 @@ export function AdminInput({ value, onChange, placeholder, type = 'text', label,
     <div style={{ marginBottom: 16 }}>
       {label && <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: AD.textSecondary, marginBottom: 8 }}>{label}</label>}
       <input type={type} value={value} onChange={onChange} placeholder={placeholder} onKeyDown={onKeyDown} style={{
-        width: '100%', padding: '8px 12px', background: AD.bgSurface,
+        // ⚠ INPUTS TAKE THE RECESSED LEVEL, NOT THE CARD LEVEL (5.2d-3b).
+        // This was AD.bgSurface (#FFFFFF) sitting inside cards that also paint
+        // #FFFFFF — 1.00:1, with only a 1px AD.border hairline saying a field was
+        // there at all. bgCardTint is the recessed-within-raised level 5.1
+        // defined for exactly this, at 1.16:1 / 18-255 against the card.
+        //
+        // THE ALTERNATIVE WAS REJECTED: diverging AD.bgSurface from AD.bgCard —
+        // which 5.1 left open — reaches the same look by touching 185 consumers
+        // and changing every card and panel, not just the fields. Both tokens
+        // stay #FFFFFF.
+        width: '100%', padding: '8px 12px', background: AD.bgCardTint,
         border: `1px solid ${AD.borderStrong}`, borderRadius: 10,
         fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary,
         outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s',

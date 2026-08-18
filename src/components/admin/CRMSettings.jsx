@@ -1213,7 +1213,7 @@ export default function CRMSettings() {
                       value={cfmSelections[field.label] || ''}
                       onChange={e => setCfmSelections(s => ({ ...s, [field.label]: e.target.value }))}
                       style={{
-                        background: AD.bgCard, border: `1px solid ${AD.border}`,
+                        background: AD.bgCardTint, border: `1px solid ${AD.border}`,
                         borderRadius: AD.radiusMd, color: AD.textPrimary,
                         fontFamily: AD.fontSans, fontSize: 14, padding: '7px 10px',
                         outline: 'none', cursor: 'pointer', width: '100%', maxWidth: 240,
@@ -1548,7 +1548,7 @@ export default function CRMSettings() {
             value={syncInterval}
             onChange={e => handleSyncIntervalChange(e.target.value)}
             style={{
-              background: AD.bgCard, border: `1px solid ${AD.border}`,
+              background: AD.bgCardTint, border: `1px solid ${AD.border}`,
               borderRadius: AD.radiusMd, padding: '9px 36px 9px 12px',
               color: AD.textPrimary, fontSize: 14, fontFamily: AD.fontSans,
               cursor: 'pointer', outline: 'none', appearance: 'none',
@@ -1624,7 +1624,7 @@ export default function CRMSettings() {
             placeholder={connectedAtPlaceholder}
             style={{
               width: '100%', padding: '9px 12px',
-              background: AD.bgCard, border: `1px solid ${AD.border}`,
+              background: AD.bgCardTint, border: `1px solid ${AD.border}`,
               borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
               color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
               transition: 'border-color 0.15s',
@@ -1790,7 +1790,7 @@ export default function CRMSettings() {
                         onChange={e => setImportCustomDate(e.target.value)}
                         style={{
                           padding: '8px 10px',
-                          background: AD.bgCard, border: `1px solid ${AD.border}`,
+                          background: AD.bgCardTint, border: `1px solid ${AD.border}`,
                           borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
                           color: AD.textPrimary, outline: 'none',
                           transition: 'border-color 0.15s',

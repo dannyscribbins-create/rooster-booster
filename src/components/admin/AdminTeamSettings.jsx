@@ -347,7 +347,7 @@ function AddMemberModal({ creatorTier, onClose, onSuccess }) {
                     style={{
                       width: '100%', padding: '9px 12px', boxSizing: 'border-box',
                       borderRadius: AD.radiusMd, border: `1px solid ${AD.border}`,
-                      background: AD.bgCard, color: AD.textPrimary,
+                      background: AD.bgCardTint, color: AD.textPrimary,
                       fontSize: 14, fontFamily: AD.fontSans, outline: 'none',
                     }}
                   />
@@ -689,7 +689,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
   const inputStyle = {
     width: '100%', boxSizing: 'border-box', padding: '8px 11px',
     borderRadius: AD.radiusMd, border: `1px solid ${AD.border}`,
-    background: AD.bgCard, color: AD.textPrimary,
+    background: AD.bgCardTint, color: AD.textPrimary,
     fontSize: 13, fontFamily: AD.fontSans, outline: 'none',
   };
 
@@ -767,14 +767,14 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
               <div>
                 <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, marginBottom: 4 }}>Tier</label>
                 {member.tier === 'owner' ? (
-                  <div style={{ ...inputStyle, background: AD.bgSurface, color: '#fbbf24' }}>Owner</div>
+                  <div style={{ ...inputStyle, background: AD.bgCard, color: '#fbbf24' }}>Owner</div>
                 ) : canChangeTier ? (
                   <select value={localTier} onChange={e => { clearSuccess(); setLocalTier(e.target.value); setPresetSel(''); }} style={{ ...inputStyle, cursor: 'pointer' }}>
                     <option value="admin">Admin</option>
                     <option value="general">General</option>
                   </select>
                 ) : (
-                  <div style={{ ...inputStyle, background: AD.bgSurface, color: AD.textSecondary, textTransform: 'capitalize' }}>{localTier}</div>
+                  <div style={{ ...inputStyle, background: AD.bgCard, color: AD.textSecondary, textTransform: 'capitalize' }}>{localTier}</div>
                 )}
               </div>
               <div>
@@ -1258,7 +1258,7 @@ function ManageTitlesSection({ titles, onRefresh }) {
 
   const inputStyle = {
     padding: '7px 10px', borderRadius: AD.radiusMd, border: `1px solid ${AD.border}`,
-    background: AD.bgCard, color: AD.textPrimary,
+    background: AD.bgCardTint, color: AD.textPrimary,
     fontSize: 13, fontFamily: AD.fontSans, outline: 'none',
   };
 

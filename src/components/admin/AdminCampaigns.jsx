@@ -822,7 +822,7 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name, phone, or email..."
           style={{
-            width: '100%', padding: '10px 14px', background: AD.bgSurface,
+            width: '100%', padding: '10px 14px', background: AD.bgCardTint,
             border: `1px solid ${AD.borderStrong}`, borderRadius: 10,
             fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary,
             outline: 'none', boxSizing: 'border-box',
@@ -1474,7 +1474,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                 onChange={e => setMessageBody(e.target.value.slice(0, 1000))}
                 style={{
                   width: '100%', minHeight: 120, padding: '10px 14px',
-                  background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                  background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
                   borderRadius: 10, fontFamily: AD.fontSans, fontSize: 14,
                   color: AD.textPrimary, resize: 'vertical', boxSizing: 'border-box',
                   outline: 'none',
@@ -1520,7 +1520,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                   placeholder="Write or generate a subject line..."
                   style={{
                     width: '100%', padding: '10px 14px',
-                    background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                    background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
                     borderRadius: 10, fontFamily: AD.fontSans, fontSize: 14,
                     color: AD.textPrimary, boxSizing: 'border-box', outline: 'none',
                   }}
@@ -1594,7 +1594,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
               placeholder="e.g. We wanted to reach out personally..."
               style={{
                 width: '100%', padding: '10px 14px',
-                background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
                 borderRadius: 10, fontFamily: AD.fontSans, fontSize: 14,
                 color: AD.textPrimary, boxSizing: 'border-box', outline: 'none',
               }}
@@ -1750,7 +1750,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                       border: `1px solid ${isSelected ? '#CC0000' : 'transparent'}`,
                     }}
                   >
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, border: `2px solid ${isSelected ? '#CC0000' : AD.borderStrong}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, border: `2px solid ${isSelected ? '#CC0000' : AD.gray}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {isSelected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#CC0000' }} />}
                     </div>
                     <span style={{ fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans }}>{opt.label}</span>
@@ -2404,7 +2404,7 @@ function CsvMappingStep({ previewData, columnMapping, onMappingChange, onConfirm
   ];
 
   const selectStyle = {
-    padding: '8px 12px', background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+    padding: '8px 12px', background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
     borderRadius: 8, fontFamily: AD.fontSans, fontSize: 13, color: AD.textPrimary,
     outline: 'none', cursor: 'pointer', minWidth: 160,
   };
@@ -2550,7 +2550,7 @@ function BuilderDrawer({
   }, []);
 
   const inputStyle = {
-    width: '100%', padding: '10px 14px', background: AD.bgSurface,
+    width: '100%', padding: '10px 14px', background: AD.bgCardTint,
     border: `1px solid ${AD.borderStrong}`, borderRadius: 10,
     fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary,
     outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s',
@@ -3935,7 +3935,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
                 onChange={e => setAudienceName(e.target.value)}
                 maxLength={100}
                 placeholder="e.g. Past Clients — No App"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary, background: AD.bgSurface, outline: 'none', boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary, background: AD.bgCardTint, outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
 
@@ -3950,7 +3950,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
                 onChange={e => setAudienceDesc(e.target.value.slice(0, 300))}
                 rows={2}
                 placeholder="What is this audience for?"
-                style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary, background: AD.bgSurface, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${AD.borderStrong}`, fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary, background: AD.bgCardTint, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
               />
             </div>
 

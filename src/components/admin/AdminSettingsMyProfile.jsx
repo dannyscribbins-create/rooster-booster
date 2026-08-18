@@ -155,7 +155,7 @@ export default function AdminSettingsMyProfile() {
               disabled={saving}
               style={{
                 width: '100%', padding: '9px 12px',
-                background: AD.bgCard, border: `1px solid ${AD.border}`,
+                background: AD.bgCardTint, border: `1px solid ${AD.border}`,
                 borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
                 color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
                 cursor: saving ? 'not-allowed' : 'pointer',

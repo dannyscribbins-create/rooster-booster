@@ -18,7 +18,10 @@ function SettingsInput({ label, value, onChange, placeholder, type = 'text' }) {
         placeholder={placeholder}
         style={{
           width: '100%', padding: '9px 12px',
-          background: AD.bgCard, border: `1px solid ${AD.border}`,
+          // Recessed level, not the card level — see the note at AdminInput in
+          // AdminComponents.jsx. This field and the card behind it were both
+          // #FFFFFF until 5.2d-3b.
+          background: AD.bgCardTint, border: `1px solid ${AD.border}`,
           borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
           color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
           transition: 'border-color 0.15s',
@@ -330,7 +333,7 @@ export default function CompanyDetailsSettings() {
 
   const aboutInputStyle = {
     width: '100%', padding: '9px 12px',
-    background: AD.bgCard, border: `1px solid ${AD.border}`,
+    background: AD.bgCardTint, border: `1px solid ${AD.border}`,
     borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
     color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
     transition: 'border-color 0.15s',
@@ -719,7 +722,7 @@ export default function CompanyDetailsSettings() {
                                       autoFocus
                                       style={{
                                         width: 70, padding: '2px 8px',
-                                        background: AD.bgCard, border: `1px solid ${AD.marker}`,
+                                        background: AD.bgCardTint, border: `1px solid ${AD.marker}`,
                                         borderRadius: 6, fontFamily: AD.fontSans, fontSize: 12,
                                         color: AD.textPrimary, outline: 'none',
                                       }}

@@ -265,7 +265,7 @@ function GroupedFilterPanel({
           style={{
             flex: 1, minWidth: 180,
             padding: '7px 12px',
-            background: AD.bgCard, border: `1px solid ${AD.borderStrong}`,
+            background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
             borderRadius: 8, fontFamily: AD.fontSans, fontSize: 13,
             color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
           }}

@@ -611,7 +611,7 @@ export default function AdminContactDetailDrawer({ contactId, jobberClientId, on
                         disabled={tagAdding}
                         style={{
                           flex: 1, padding: '6px 10px',
-                          background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                          background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
                           borderRadius: 8, fontFamily: AD.fontSans, fontSize: 12,
                           color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
                         }}

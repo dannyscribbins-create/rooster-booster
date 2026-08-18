@@ -43,7 +43,7 @@ const card = {
 
 const inputBase = {
   padding: '8px 12px',
-  background: AD.bgSurface,
+  background: AD.bgCardTint,
   border: `1px solid ${AD.borderStrong}`,
   borderRadius: 10,
   fontFamily: AD.fontSans,

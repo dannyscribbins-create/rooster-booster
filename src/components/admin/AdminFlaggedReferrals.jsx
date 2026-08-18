@@ -166,7 +166,7 @@ export default function AdminFlaggedReferrals() {
                         value={currentLabel}
                         onChange={e => setResolveLabels(prev => ({ ...prev, [row.id]: e.target.value }))}
                         style={{
-                          background: AD.bgSurface,
+                          background: AD.bgCardTint,
                           border: `1px solid ${AD.borderStrong}`,
                           borderRadius: 10,
                           padding: '8px 12px',
@@ -198,7 +198,7 @@ export default function AdminFlaggedReferrals() {
                           onChange={e => setResolveNotes(prev => ({ ...prev, [row.id]: e.target.value }))}
                           placeholder="Add a note..."
                           style={{
-                            background: AD.bgSurface,
+                            background: AD.bgCardTint,
                             border: `1px solid ${AD.borderStrong}`,
                             borderRadius: 10,
                             padding: '8px 12px',

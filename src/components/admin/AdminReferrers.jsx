@@ -536,13 +536,13 @@ export default function AdminReferrers({ setLoggedIn }) {
 
           {/* Filter controls */}
           <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <select value={joinMethod} onChange={e => { setJoinMethod(e.target.value); loadUsers(e.target.value, dateRange); }} style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14, padding: '8px 12px', cursor: 'pointer', outline: 'none' }}>
+            <select value={joinMethod} onChange={e => { setJoinMethod(e.target.value); loadUsers(e.target.value, dateRange); }} style={{ background: AD.bgCardTint, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14, padding: '8px 12px', cursor: 'pointer', outline: 'none' }}>
               <option value="">All Join Methods</option>
               <option value="contractor_link">Contractor Link</option>
               <option value="peer_link">Peer Referral</option>
               <option value="admin">Admin Added</option>
             </select>
-            <select value={dateRange} onChange={e => { setDateRange(e.target.value); loadUsers(joinMethod, e.target.value); }} style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14, padding: '8px 12px', cursor: 'pointer', outline: 'none' }}>
+            <select value={dateRange} onChange={e => { setDateRange(e.target.value); loadUsers(joinMethod, e.target.value); }} style={{ background: AD.bgCardTint, border: `1px solid ${AD.border}`, borderRadius: AD.radiusMd, color: AD.textPrimary, fontFamily: AD.fontSans, fontSize: 14, padding: '8px 12px', cursor: 'pointer', outline: 'none' }}>
               <option value="">All Time</option>
               <option value="7">Last 7 Days</option>
               <option value="30">Last 30 Days</option>

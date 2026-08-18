@@ -382,7 +382,7 @@ export default function AdminPendingReferrals() {
                       onChange={e => setCloseNote(prev => ({ ...prev, [row.id]: e.target.value }))}
                       style={{
                         width: '100%', boxSizing: 'border-box',
-                        background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                        background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
                         borderRadius: 8, padding: '8px 10px',
                         fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans,
                         outline: 'none', marginBottom: 8,

@@ -118,7 +118,7 @@ function FlagCard({ flag, attributableReps, onAssign, onDismiss, actionLoading, 
                   onChange={e => setPickedRepId(e.target.value ? parseInt(e.target.value, 10) : '')}
                   style={{
                     padding: '7px 10px', borderRadius: AD.radiusMd, border: `1px solid ${AD.border}`,
-                    background: AD.bgSurface, color: AD.textPrimary, fontSize: 13, fontFamily: AD.fontSans,
+                    background: AD.bgCardTint, color: AD.textPrimary, fontSize: 13, fontFamily: AD.fontSans,
                   }}
                 >
                   <option value="">— Select a rep —</option>
@@ -148,7 +148,7 @@ function FlagCard({ flag, attributableReps, onAssign, onDismiss, actionLoading, 
                   placeholder="Optional dismiss note…"
                   style={{
                     flex: 1, minWidth: 160, padding: '7px 10px', borderRadius: AD.radiusMd,
-                    border: `1px solid ${AD.border}`, background: AD.bgSurface, color: AD.textPrimary,
+                    border: `1px solid ${AD.border}`, background: AD.bgCardTint, color: AD.textPrimary,
                     fontSize: 13, fontFamily: AD.fontSans, boxSizing: 'border-box',
                   }}
                 />

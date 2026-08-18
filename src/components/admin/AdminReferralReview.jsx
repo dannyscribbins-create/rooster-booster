@@ -175,7 +175,7 @@ function FlaggedTab() {
                     value={currentLabel}
                     onChange={e => setResolveLabels(prev => ({ ...prev, [row.id]: e.target.value }))}
                     style={{
-                      background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                      background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
                       borderRadius: 10, padding: '8px 12px', fontSize: 14,
                       color: currentLabel ? AD.textPrimary : AD.textTertiary,
                       fontFamily: AD.fontSans, cursor: 'pointer', outline: 'none', minWidth: 180,
@@ -200,7 +200,7 @@ function FlaggedTab() {
                       onChange={e => setResolveNotes(prev => ({ ...prev, [row.id]: e.target.value }))}
                       placeholder="Add a note..."
                       style={{
-                        background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`,
+                        background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
                         borderRadius: 10, padding: '8px 12px', fontSize: 14,
                         color: AD.textPrimary, fontFamily: AD.fontSans, outline: 'none',
                         width: '100%', boxSizing: 'border-box',
@@ -411,7 +411,7 @@ function MissingTab() {
                         rows={3}
                         style={{
                           width: '100%', boxSizing: 'border-box',
-                          background: AD.bgCard, border: `1px solid ${AD.borderStrong}`,
+                          background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`,
                           borderRadius: 8, padding: '10px 12px',
                           fontSize: 13, color: AD.textPrimary,
                           fontFamily: AD.fontSans, outline: 'none', resize: 'vertical',

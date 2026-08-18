@@ -441,7 +441,7 @@ export default function BankingSettings() {
             onChange={e => setThreshold(e.target.value)}
             style={{
               padding: '8px 12px',
-              background: AD.bgCard,
+              background: AD.bgCardTint,
               border: `1px solid ${AD.border}`,
               borderRadius: `0 ${AD.radiusMd} ${AD.radiusMd} 0`,
               color: AD.textPrimary, fontSize: 14, fontFamily: AD.fontSans,

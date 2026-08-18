@@ -29,7 +29,7 @@ const BODY_FONTS    = ['Roboto', 'Open Sans', 'Inter', 'Lato', 'Nunito', 'Source
 function SettingsInput({ label, labelIcon, value, onChange, placeholder, type = 'text', multiline = false, rows = 3 }) {
   const sharedStyle = {
     width: '100%', padding: '9px 12px',
-    background: AD.bgCard, border: `1px solid ${AD.border}`,
+    background: AD.bgCardTint, border: `1px solid ${AD.border}`,
     borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
     color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
     transition: 'border-color 0.15s',
@@ -156,7 +156,7 @@ function ColorRow({ label, value, onChange, placeholder, pendingColor, onAssign 
           readOnly={hasPending}
           style={{
             flex: 1, padding: '9px 12px',
-            background: AD.bgCard, border: `1px solid ${hasPending ? '#60a5fa' : AD.border}`,
+            background: AD.bgCardTint, border: `1px solid ${hasPending ? '#60a5fa' : AD.border}`,
             borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
             color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
             transition: 'border-color 0.15s',
@@ -180,7 +180,7 @@ function FontSelect({ label, value, onChange, options }) {
           onChange={e => onChange(e.target.value)}
           style={{
             width: '100%', padding: '9px 36px 9px 12px',
-            background: AD.bgCard, border: `1px solid ${AD.border}`,
+            background: AD.bgCardTint, border: `1px solid ${AD.border}`,
             borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
             color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
             transition: 'border-color 0.15s', appearance: 'none', cursor: 'pointer',
@@ -692,7 +692,7 @@ export default function BrandingProfileSettings() {
                   placeholder="https://yourwebsite.com"
                   style={{
                     flex: 1, padding: '9px 12px',
-                    background: AD.bgCard, border: `1px solid ${AD.border}`,
+                    background: AD.bgCardTint, border: `1px solid ${AD.border}`,
                     borderRadius: AD.radiusMd, fontFamily: AD.fontSans, fontSize: 14,
                     color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
                     transition: 'border-color 0.15s',
