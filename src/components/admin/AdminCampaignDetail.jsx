@@ -107,7 +107,7 @@ function BatchPill({ status }) {
     sent:    { bg: AD.greenBg,  color: AD.greenText,  label: 'Sent' },
     active:  { bg: AD.redBg,    color: AD.red,        label: 'Active' },
     pending: { bg: AD.amberBg,  color: AD.amberText,  label: 'Pending' },
-  }[status] || { bg: 'rgba(255,255,255,0.06)', color: AD.textSecondary, label: status };
+  }[status] || { bg: AD.grayBg, color: AD.textSecondary, label: status };
 
   return (
     <span style={{
@@ -153,7 +153,7 @@ function BatchContactRow({ c, idx, total, onClick }) {
         borderBottom: idx < total - 1 ? `1px solid ${AD.border}` : 'none',
         cursor: 'pointer',
         borderRadius: 4,
-        background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+        background: hovered ? 'rgba(28,45,77,0.06)' : 'transparent',
         transition: 'background 0.1s',
         margin: '0 -4px',
       }}
@@ -740,7 +740,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
                 active:          { bg: AD.greenBg,     color: AD.greenText,  label: 'Active' },
                 pending_batches: { bg: AD.greenBg,     color: AD.greenText,  label: 'Active' },
                 closed:          { bg: AD.grayMutedBg, color: AD.grayMuted,  label: 'Closed' },
-              }[campaign.status] || { bg: 'rgba(255,255,255,0.06)', color: AD.textSecondary, label: campaign.status };
+              }[campaign.status] || { bg: AD.grayBg, color: AD.textSecondary, label: campaign.status };
               return (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center',
@@ -838,7 +838,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
                   disabled={!!isThrottled}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    background: isThrottled ? 'rgba(255,255,255,0.06)' : '#CC0000',
+                    background: isThrottled ? AD.bgCardTint : '#CC0000',
                     color: isThrottled ? AD.textTertiary : '#fff',
                     border: 'none', borderRadius: 10,
                     padding: '12px 24px', cursor: isThrottled ? 'not-allowed' : 'pointer',
@@ -1020,7 +1020,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
               <div
                 key={i}
                 style={{
-                  background: AD.bgPage || 'rgba(255,255,255,0.03)',
+                  background: AD.bgPage,
                   border: `1px solid ${AD.border}`,
                   borderRadius: AD.radiusMd, padding: '12px 16px',
                 }}

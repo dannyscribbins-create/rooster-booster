@@ -8,11 +8,11 @@ import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
 
 const METHOD_CONFIG = {
   stripe_ach: { icon: 'ph-bank',           label: 'Stripe ACH',    bg: AD.blueBg,                    color: AD.blueText,      border: `${AD.blue}30` },
-  check:      { icon: 'ph-envelope-simple', label: 'Check by Mail', bg: 'rgba(255,255,255,0.06)',      color: AD.textSecondary, border: AD.border },
-  venmo:      { icon: 'ph-device-mobile',  label: 'Venmo',         bg: 'rgba(255,255,255,0.06)',      color: AD.textSecondary, border: AD.border },
-  zelle:      { icon: 'ph-lightning',      label: 'Zelle',         bg: 'rgba(255,255,255,0.06)',      color: AD.textSecondary, border: AD.border },
+  check:      { icon: 'ph-envelope-simple', label: 'Check by Mail', bg: AD.grayBg,      color: AD.textSecondary, border: AD.border },
+  venmo:      { icon: 'ph-device-mobile',  label: 'Venmo',         bg: AD.grayBg,      color: AD.textSecondary, border: AD.border },
+  zelle:      { icon: 'ph-lightning',      label: 'Zelle',         bg: AD.grayBg,      color: AD.textSecondary, border: AD.border },
 };
-const UNKNOWN_METHOD = { icon: 'ph-question', label: 'Unknown', bg: 'rgba(255,255,255,0.06)', color: AD.textTertiary, border: AD.border };
+const UNKNOWN_METHOD = { icon: 'ph-question', label: 'Unknown', bg: AD.grayBg, color: AD.textTertiary, border: AD.border };
 
 function MethodBadge({ method }) {
   const cfg = METHOD_CONFIG[method] || UNKNOWN_METHOD;

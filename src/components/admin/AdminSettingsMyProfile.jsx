@@ -120,7 +120,7 @@ export default function AdminSettingsMyProfile() {
         {showNudge && (
           <div style={{
             display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
-            background: 'rgba(255,255,255,0.04)', border: `1px solid ${AD.border}`,
+            background: AD.bgCardTint, border: `1px solid ${AD.border}`,
             borderRadius: AD.radiusMd, padding: '10px 14px', marginBottom: 16,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

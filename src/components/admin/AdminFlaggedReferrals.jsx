@@ -19,12 +19,12 @@ function formatDate(iso) {
 
 const pipelineBadgeStyle = (status) => {
   const map = {
-    lead:       { background: 'rgba(255,255,255,0.08)', color: AD.textSecondary },
+    lead:       { background: AD.grayBg, color: AD.textSecondary },
     inspection: { background: AD.blueBg,               color: AD.blueText      },
     sold:       { background: AD.greenBg,              color: AD.greenText     },
     paid:       { background: 'rgba(45,139,95,0.25)',  color: '#7dd3aa'        },
   };
-  return map[status] || { background: 'rgba(255,255,255,0.06)', color: AD.textSecondary };
+  return map[status] || { background: AD.grayBg, color: AD.textSecondary };
 };
 
 export default function AdminFlaggedReferrals() {

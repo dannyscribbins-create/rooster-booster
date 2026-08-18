@@ -422,7 +422,7 @@ function ToggleSwitch({ checked, onChange, disabled, ariaLabel }) {
       aria-label={ariaLabel}
       style={{
         width: 36, height: 20, borderRadius: 10, border: 'none', padding: 0,
-        background: checked ? AD.blueText : 'rgba(255,255,255,0.12)',
+        background: checked ? AD.blueText : AD.borderStrong,
         cursor: disabled ? 'not-allowed' : 'pointer',
         position: 'relative', flexShrink: 0, transition: 'background 0.15s',
         outline: 'none',

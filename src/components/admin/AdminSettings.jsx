@@ -35,7 +35,7 @@ function ComingSoonCard({ icon, label, description }) {
         background: AD.bgCard, borderRadius: AD.radiusLg, border: `1px solid ${AD.border}`,
         padding: '48px 40px', textAlign: 'center', maxWidth: 420,
       }}>
-        <i className={`ph ${icon}`} style={{ fontSize: 48, color: 'rgba(255,255,255,0.15)' }} />
+        <i className={`ph ${icon}`} style={{ fontSize: 48, color: AD.borderStrong }} />
         <div style={{ fontSize: 18, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans, margin: '16px 0 12px' }}>{label}</div>
         <p style={{ margin: '0 0 14px', fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.5 }}>{description}</p>
         <span style={{

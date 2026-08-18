@@ -95,7 +95,7 @@ function StepIndicator({ currentStep, isCsvFlow }) {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
               <div style={{
                 width: 28, height: 28, borderRadius: '50%',
-                background: isActive ? AD.navy : isPast ? 'rgba(45,139,95,0.2)' : 'rgba(255,255,255,0.05)',
+                background: isActive ? AD.navy : isPast ? 'rgba(45,139,95,0.2)' : AD.bgCardTint,
                 border: `2px solid ${isActive ? AD.blueLight : isPast ? AD.green : AD.border}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 11, fontWeight: 600,
@@ -129,7 +129,7 @@ function Toggle({ on, onChange }) {
       onClick={() => onChange(!on)}
       style={{
         width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
-        background: on ? AD.green : 'rgba(255,255,255,0.12)',
+        background: on ? AD.green : AD.borderStrong,
         position: 'relative', transition: 'background 0.2s', flexShrink: 0,
         padding: 0,
       }}
@@ -221,7 +221,7 @@ function TypeCard({ title, description, icon, onClick, comingSoon }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        flex: 1, background: comingSoon ? 'rgba(255,255,255,0.02)' : hov ? AD.bgCardTint : AD.bgSurface,
+        flex: 1, background: comingSoon ? AD.bgCardTint : hov ? AD.bgCardTint : AD.bgSurface,
         border: `1px solid ${comingSoon ? AD.border : hov ? AD.borderStrong : AD.border}`,
         borderRadius: 14, padding: '24px 20px', cursor: comingSoon ? 'default' : 'pointer',
         textAlign: 'left', transition: 'all 0.15s', fontFamily: AD.fontSans,
@@ -233,7 +233,7 @@ function TypeCard({ title, description, icon, onClick, comingSoon }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <p style={{ margin: 0, fontWeight: 600, fontSize: 15, color: AD.textPrimary }}>{title}</p>
         {comingSoon && (
-          <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 99, background: 'rgba(255,255,255,0.08)', color: AD.textSecondary }}>Coming soon</span>
+          <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 99, background: AD.grayBg, color: AD.textSecondary }}>Coming soon</span>
         )}
       </div>
       <p style={{ margin: 0, fontSize: 13, color: AD.textSecondary, lineHeight: 1.5 }}>{description}</p>
@@ -454,7 +454,7 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAud
             >
               <div style={{
                 width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                background: itemChecked[i] ? 'rgba(45,139,95,0.2)' : i === 3 ? 'rgba(211,227,240,0.12)' : 'rgba(255,255,255,0.06)',
+                background: itemChecked[i] ? 'rgba(45,139,95,0.2)' : i === 3 ? 'rgba(211,227,240,0.12)' : AD.bgCardTint,
                 border: `2px solid ${itemChecked[i] ? AD.green : i === 3 ? AD.blueLight : AD.borderStrong}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
@@ -476,7 +476,7 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAud
           ))}
         </div>
 
-        <div style={{ width: 280, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden', position: 'relative', marginBottom: 12 }}>
+        <div style={{ width: 280, height: 4, background: 'rgba(28,45,77,0.10)', borderRadius: 2, overflow: 'hidden', position: 'relative', marginBottom: 12 }}>
           <div style={{
             position: 'absolute', top: 0, height: 4, width: '40%',
             background: '#CC0000', borderRadius: 2,
@@ -594,7 +594,7 @@ function PillMultiSelect({ label, options, selected, onChange }) {
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
                     padding: '6px 8px 6px 12px',
-                    background: 'rgba(255,255,255,0.06)',
+                    background: AD.bgCardTint,
                     border: 'none', cursor: 'pointer',
                     fontFamily: AD.fontSans, fontSize: 13,
                     color: AD.textPrimary, fontWeight: 500,
@@ -897,7 +897,7 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
                   opacity: isSelected ? 1 : 0.45,
                   cursor: 'default',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(28,45,77,0.06)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
               >
                 {/* Checkbox */}
@@ -1029,7 +1029,7 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
                     display: 'flex', alignItems: 'center', padding: '0 8px',
                     minHeight: 48, borderBottom: `1px solid ${AD.border}`,
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(28,45,77,0.06)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <div style={{ flex: 2, fontWeight: 500, color: AD.textPrimary, fontSize: 14, fontFamily: AD.fontSans, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>

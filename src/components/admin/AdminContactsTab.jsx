@@ -146,7 +146,7 @@ function UnifiedRow({ row, isLast, onClick }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: hovered ? 'rgba(255,255,255,0.04)' : 'transparent',
+        background: hovered ? 'rgba(28,45,77,0.06)' : 'transparent',
         borderBottom: isLast ? 'none' : `1px solid ${AD.border}`,
         transition: 'background 0.1s',
         cursor: 'pointer',

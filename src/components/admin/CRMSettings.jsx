@@ -1024,7 +1024,7 @@ export default function CRMSettings() {
               display: 'grid', gridTemplateColumns: '180px 1fr',
               padding: '14px 16px', alignItems: 'start',
               borderBottom: i < pipelineStages.length - 1 ? `1px solid ${AD.border}` : 'none',
-              background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+              background: i % 2 === 0 ? 'transparent' : 'rgba(28,45,77,0.04)',
             }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: AD.textPrimary, paddingRight: 12, lineHeight: 1.4 }}>
                 {stage.name}
@@ -1037,7 +1037,7 @@ export default function CRMSettings() {
                   {'Triggered by: '}
                   <span style={{
                     display: 'inline-block', padding: '1px 7px', borderRadius: 4,
-                    background: 'rgba(255,255,255,0.05)', border: `1px solid ${AD.border}`,
+                    background: AD.bgCardTint, border: `1px solid ${AD.border}`,
                     fontFamily: "'Roboto Mono', monospace", fontSize: 11, color: AD.textTertiary,
                   }}>
                     {stage.trigger}
@@ -1065,7 +1065,7 @@ export default function CRMSettings() {
               display: 'grid', gridTemplateColumns: '180px 1fr',
               padding: '14px 16px', alignItems: 'start',
               borderBottom: i < cardStatuses.length - 1 ? `1px solid ${AD.border}` : 'none',
-              background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+              background: i % 2 === 0 ? 'transparent' : 'rgba(28,45,77,0.04)',
             }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: AD.textPrimary, paddingRight: 12, lineHeight: 1.4 }}>
                 {item.name}
@@ -1201,7 +1201,7 @@ export default function CRMSettings() {
                     display: 'grid', gridTemplateColumns: '1fr 1fr',
                     padding: '10px 16px', alignItems: 'center',
                     borderBottom: i < cfmFields.length - 1 ? `1px solid ${AD.border}` : 'none',
-                    background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                    background: i % 2 === 0 ? 'transparent' : 'rgba(28,45,77,0.04)',
                   }}>
                     <div>
                       <span style={{ fontSize: 14, color: AD.textPrimary }}>{field.label}</span>
@@ -1438,7 +1438,7 @@ export default function CRMSettings() {
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '12px 16px',
                       borderBottom: (isExpanded || !isLast) ? `1px solid ${AD.border}` : 'none',
-                      background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                      background: i % 2 === 0 ? 'transparent' : 'rgba(28,45,77,0.04)',
                       cursor: isEnabled ? 'pointer' : 'default',
                       userSelect: 'none',
                     }}
@@ -1485,7 +1485,7 @@ export default function CRMSettings() {
                     <div style={{
                       padding: '10px 16px 14px 38px',
                       borderBottom: !isLast ? `1px solid ${AD.border}` : 'none',
-                      background: 'rgba(255,255,255,0.02)',
+                      background: AD.bgCardTint,
                     }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
                         {(group.values || []).map(value => {

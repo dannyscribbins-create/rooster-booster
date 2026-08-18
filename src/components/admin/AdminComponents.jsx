@@ -193,7 +193,7 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: AD.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0 }}>{initials}</div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{displayName}</div>
-            {tierLabel && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>{tierLabel}</div>}
+            {tierLabel && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>{tierLabel}</div>}
           </div>
         </div>
 
@@ -225,11 +225,11 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
               // AD.textPrimary. This button is INSIDE the dark sidebar, and 5.1
               // inverted textPrimary to navy — the hover would have painted navy
               // on navy and the control would have vanished on contact.
-              color: 'rgba(255,255,255,0.45)',
+              color: 'rgba(255,255,255,0.55)',
               transition: 'color 0.15s',
             }}
             onMouseEnter={e => { e.currentTarget.style.color = '#FFFFFF'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.45)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; }}
           >
             <i className="ph ph-sign-out" style={{ fontSize: 16, flexShrink: 0 }} />
             <span>Sign out</span>
@@ -413,7 +413,7 @@ export function Badge({ type, children }) {
     warning: { background: AD.amberBg,  color: AD.amberText },
     danger:  { background: AD.red2Bg,   color: AD.red2Text  },
     info:    { background: AD.blueBg,   color: AD.blueText  },
-    neutral: { background: 'rgba(255,255,255,0.06)', color: AD.textSecondary },
+    neutral: { background: AD.grayBg, color: AD.textSecondary },
   };
   const s = styles[type] || styles.neutral;
   return (
