@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { AD } from '../../constants/adminTheme';
-import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import AdminSettings from './AdminSettings';
 import { usePermissions } from '../../hooks/useAdminPermissions';
 import { useAdminBranding } from '../shared/BrandingProvider';
@@ -38,42 +37,68 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
       background: AD.bgSidebar, display: 'flex', flexDirection: 'column',
       zIndex: 100, fontFamily: AD.fontSans,
     }}>
-      {/* ── THE LOCKUP (D-D): contractor mark · divider · platform mark ───────
-          Spec §1: RoofMiles is the environment, the contractor gets a subtle
-          branded touch that is personal to them. So the platform mark is
-          UNCONDITIONAL and the contractor's joins it when there is one.
+      {/* ── THE PLATE (D-D, REVISED BY 5.2c-2): THE CONTRACTOR'S MARK ALONE ───
+          ⚠ THIS SUPERSEDES PART OF D-D, DELIBERATELY. D-D specified a LOCKUP —
+          contractor mark · divider · platform mark, with the platform mark
+          UNCONDITIONAL. That is gone. This plate holds the contractor's mark and
+          nothing else, centered. No divider. No second mark.
 
-          ⚠ THE PATTERN IS AnnouncementPopup.jsx's, NOT A NEW ONE — D-D says do
-          not re-invent the lockup. Reused unchanged: the `branding.logoUrl &&`
-          null-guard, the fragment holding image + rule, the rule's 1px x 28px
-          geometry, and the rule that THE DIVIDER GOES WITH THE LOGO — a
-          separator with nothing on one side is a stray line, so the lockup
-          collapses to the platform mark alone rather than leaving it behind.
+          WHY, AND IT IS NOT TASTE: the platform mark was a FIXED 120px square
+          (the asset is 1024x1024, drawn at width 120). With the divider and two
+          12px gaps it reserved 145px of a 182px content box, leaving 37px — of
+          which 16px went to the old inner backing's padding. So a contractor
+          logo had to render under ~21px wide or the row wrapped and stranded the
+          divider. The tenant it was built against happens to have a SQUARE logo,
+          which fit at 28px with 1px to spare; at D-D's own advertised maxWidth of
+          96 the lockup needed 257px in that 182px box. It was never
+          contractor-agnostic — most real contractor logos are horizontal
+          wordmarks, and contractor #2 would have wrapped no matter what.
+          Accent-ready has to MEAN contractor-#2-ready, so the lockup went.
 
-          ONE DELIBERATE DEPARTURE: the divider's COLOUR. AnnouncementPopup
-          draws rgba(0,0,0,0.1) because it sits on a white card. This sidebar is
-          a dark navy gradient, where a black rule is invisible — so it is
-          inverted to rgba(255,255,255,0.18). Same rule, same job, legible on
-          the surface it actually sits on.
+          SPEC §1 IS UNCHANGED — the panel is still co-branded neutral. What moved
+          is WHERE RoofMiles lives: the `RoofMiles · <Contractor>` identity line
+          in the page header, rendered on every screen via platformIdentity.js.
+          Two marks competing inside a 230px column was the weaker co-brand.
 
-          NO FALLBACK LOGO, deliberately. An identity-bearing value gets no
-          default: borrowing another contractor's mark is a white-label breach
-          and a stringified null renders a dead src. Absent is a designed state.
+          ⚠ DO NOT REINTRODUCE A PLATFORM MARK HERE. This space is the
+          contractor's. Adding one back re-creates the fixed-width block that
+          made the header fit exactly one logo shape.
+
+          ── SIZING IS CONTRACTOR-AGNOSTIC BY CONSTRUCTION ──────────────────
+          BOTH axes are capped, so no aspect ratio can overflow:
+            230 sidebar - 8 (margin 4 each side) - 40 (padding 20 each side)
+              = 182px content box -> maxWidth 170 leaves 6px of air each side.
+            maxHeight 56 stops a SQUARE logo from dominating the column (it was
+              120x120 before) while leaving a wordmark room to be legible: a
+              400x120 mark hits the width cap first and draws 170x51.
+          A single centered child cannot wrap, so there is no flex-wrap here and
+          no inner wrapper to hold gaps that no longer exist.
+
+          NO FALLBACK LOGO, deliberately — unchanged from D-D. An identity-bearing
+          value gets no default: borrowing another contractor's mark is a
+          white-label breach and a stringified null renders a dead src.
+
+          ── THE EMPTY CASE IS THE COMPANY NAME, NOT AN EMPTY PLATE ─────────
+          With the platform mark gone the plate would otherwise render blank, so
+          the NAME stands in for the mark. Text is not identity-bearing the way a
+          logo is — it states who the contractor is rather than borrowing how they
+          look — and resolveBrandingTheme defaults companyName to 'RoofMiles' when
+          there is no contractor at all, so the neutral and in-flight states read
+          as the RoofMiles panel rather than as a broken one. Navy on linen,
+          12.61:1.
 
           ── THE LIGHT PLATE (D-D, option B) ───────────────────────────────
-          The sidebar below is a dark navy gradient, and a contractor whose logo
-          is dark would disappear into it. The plate is applied to EVERY
-          contractor rather than conditioned on the logo's colour — one rule,
-          no new data, nothing to get wrong per tenant, and C/DL-3c inherits a
-          shipped precedent instead of designing it cold.
+          The nav below is navy and a contractor whose logo is dark would
+          disappear into it. The plate is applied to EVERY contractor rather than
+          conditioned on the logo's colour — one rule, no new data, nothing to get
+          wrong per tenant.
 
-          ⚠ IN 5.1 THE PLATE BECAME THE WHOLE HEADER BLOCK, not just a patch
-          behind the logo. AD.bgSidebarHeader is linen, so the header is light
-          and the nav beneath it is navy. The inner white backing is KEPT rather
-          than folded into it: pure white is a safer ground for an arbitrary dark
-          logo than a warm off-white, and it is still drawn only when there is a
-          logo to sit on. The divider inverted with the plate — it was a white
-          alpha for a dark header and would be invisible on linen. */}
+          ⚠ THE INNER WHITE BACKING IS GONE, folded into the plate. It existed to
+          give a dark logo pure white rather than warm off-white, but at maxWidth
+          170 its own 16px of padding would push it to 186px — wider than the
+          182px box it sits in. Linen is 2% off white and carries a dark logo
+          just as well, and one light plate reads as a seated object where two
+          nested ones read as stacked bands. */}
       {/* ── 5.2c (A4): THE PLATE IS INSET, NOT A BAND ──────────────────────
           It ran full-width, which turned the top of the sidebar into a light
           band cutting across the corner — it read as a rendering mistake rather
@@ -92,19 +117,12 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
           MAIN MENU tightens by 4px. Deliberate: a uniform inset is what makes
           it read as a seated object, and the label below carries 12px of its
           own top padding. */}
-      <div style={{ padding: '24px 20px 20px', background: AD.bgSidebarHeader, borderBottom: `1px solid ${AD.border}`, margin: 4, borderRadius: 6, display: 'flex', justifyContent: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-          {branding.logoUrl && (
-            <>
-              <div style={{ background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '6px 8px', display: 'flex', alignItems: 'center' }}>
-                <img src={branding.logoUrl} alt={branding.companyName}
-                  style={{ height: 28, maxWidth: 96, width: 'auto', objectFit: 'contain', display: 'block' }} />
-              </div>
-              <div style={{ width: 1, height: 28, background: 'rgba(28,45,77,0.18)' }} />
-            </>
-          )}
-          <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 120, height: 'auto', display: 'block' }} />
-        </div>
+      <div style={{ padding: '24px 20px 20px', background: AD.bgSidebarHeader, borderBottom: `1px solid ${AD.border}`, margin: 4, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {branding.logoUrl
+          ? <img src={branding.logoUrl} alt={branding.companyName}
+              style={{ maxWidth: 170, maxHeight: 56, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }} />
+          : <span style={{ fontFamily: AD.fontDisplay, fontSize: 18, lineHeight: 1.25, color: AD.textPrimary, textAlign: 'center' }}>{branding.companyName}</span>
+        }
       </div>
       {/* ── 5.2c: MAIN MENU MATCHES CONFIGURATION ─────────────────────────
           0.3 measured 2.59:1 on #1C2D4D and failed; 0.55 clears at 5.27:1. A

@@ -2,7 +2,16 @@
 // ADMIN BRAND RETIREMENT — PHASE 4 — THE PANEL RENDERS ITS OWN CONTRACTOR
 //
 // Governing spec: ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md §1 (the design rules),
-// D-D (the sidebar lockup), D-I (no wrong frame).
+// D-D (the sidebar plate), D-I (no wrong frame).
+//
+// ⚠ D-D IS SUPERSEDED IN PART BY 5.2c-2, AND THIS FILE TESTS THE REVISION.
+// D-D specified a LOCKUP — contractor mark · divider · platform mark, with the
+// platform mark UNCONDITIONAL. That is retired. The plate holds the CONTRACTOR'S
+// mark alone, and where there is no logo it draws the company NAME as text.
+// So: no divider assertions anywhere below, and the non-vacuity guard on every
+// no-logo case is a getByText on the name rather than a getByAltText on the
+// platform mark. Spec §1 is UNCHANGED — the panel is still co-branded neutral;
+// RoofMiles' presence moved to the identity line in the page header.
 //
 // ⚠ THE SWEEP IS NOT THIS FILE'S JOB. adminBranding.test.jsx proves no Accent
 // literal survives in the source. Proving that twice would be worth nothing.
@@ -24,7 +33,7 @@
 //   3. CROSS-TENANT LEAK — caught by sweeping the fixture's CONTAMINANTS, every
 //      value only tenant B holds, against output rendered under tenant A.
 //   4. THE WRONG FRAME — caught by rendering with branding still in flight and
-//      requiring the chrome to paint with NO contractor lockup (D-I).
+//      requiring the chrome to paint claiming NO contractor (D-I).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { render, screen, waitFor } from '@testing-library/react';
@@ -43,25 +52,17 @@ const sidebar = () => (
     flaggedUnresolved={0} pendingReferralCount={0} onLogout={() => {}} />
 );
 
-/**
- * Finds the lockup's divider rule in rendered output.
+/* ── dividers() WAS HERE, AND IT IS GONE ON PURPOSE (5.2c-2) ─────────────────
+ * It selected the lockup's 1px x 28px rule by its drawn geometry, and every
+ * absence assertion using it was PAIRED with a presence assertion so a selector
+ * that silently stopped matching would fail loudly rather than pass forever.
  *
- * ⚠ SELECTED BY ITS DRAWN GEOMETRY, because no production component in this repo
- * carries a data-testid and this phase is not the place to start. The risk that
- * creates is a selector that silently stops matching — after which "no divider"
- * would pass forever against a divider that is right there on screen.
- *
- * THAT RISK IS CLOSED BY PAIRING, NOT BY THE SELECTOR: every absence assertion
- * below has a presence assertion beside it using this same helper, so a broken
- * selector fails the presence half immediately and loudly.
- *
- * @param {HTMLElement} container - render()'s container.
- * @returns {HTMLElement[]} every element drawn as a 1px vertical rule.
- */
-function dividers(container) {
-  return Array.from(container.querySelectorAll('div'))
-    .filter(d => d.style.width === '1px' && d.style.height === '28px');
-}
+ * 5.2c-2 retired the lockup, so there is no divider to find in any state. The
+ * tempting edit was to keep the four call sites and flip the presence one to
+ * `toBe(0)` — DON'T. That leaves four assertions that pass against a component
+ * rendering nothing at all, which is a vacuity instance in the one file written
+ * to catch them. The pair was deleted rather than half-kept, and the contract it
+ * guarded is now pinned by the both-branch plate test below.  */
 
 /** Every image src currently in the document — the leak surface for a logo. */
 const imgSrcs = () => Array.from(document.querySelectorAll('img')).map(i => i.getAttribute('src'));
@@ -84,8 +85,8 @@ function expectNoContamination(where) {
   }
 }
 
-// ═══ 2a / 2b / 2d / 2e — THE SIDEBAR LOCKUP (D-D) ═══════════════════════════
-describe('Phase 4 — the sidebar lockup carries THIS contractor (D-D)', () => {
+// ═══ 2a / 2b / 2d / 2e — THE SIDEBAR PLATE (D-D, revised by 5.2c-2) ═════════
+describe('Phase 4 — the sidebar plate carries THIS contractor (D-D)', () => {
 
   it('[RED] renders tenant A\'s logo — and the SAME component renders tenant B\'s instead', () => {
     // ⚠ THE SWAP IS THE TEST. Asserting "a logo renders" passes against a
@@ -104,37 +105,49 @@ describe('Phase 4 — the sidebar lockup carries THIS contractor (D-D)', () => {
     b.unmount();
   });
 
-  it('[RED] the divider is DRAWN when there is a contractor logo beside it', () => {
-    // The presence half of the pair. Without this, the absence assertion in the
-    // next test could pass against a selector that matches nothing at all.
-    const { container } = render(underTenant(TENANT_A, sidebar()));
-    expect(dividers(container).length,
-      'no divider found beside the contractor logo — if the lockup renders one, ' +
-      'the dividers() selector has drifted and every absence test below is vacuous.'
-    ).toBe(1);
+  it('the plate draws the MARK and NOT the name when a logo exists (5.2c-2)', () => {
+    // THE TRUE BRANCH of the plate's ternary. Its false branch — the company name
+    // as text — is asserted in the three no-logo tests below, and those use
+    // getByText as their NON-VACUITY guard. So this test is what stops that guard
+    // from being satisfied by a name that renders unconditionally: if the name
+    // were a caption drawn beside the mark rather than a fallback drawn instead
+    // of it, all three of those would still pass and the ternary would be dead.
+    //
+    // ⚠ BOTH HALVES ARE LOAD-BEARING. Asserting only the <img> would not notice
+    // the name leaking in alongside it; asserting only the absent name would pass
+    // against a plate that rendered nothing.
+    render(underTenant(TENANT_A, sidebar()));
+
+    expect(screen.getByAltText(TENANT_A.companyName).getAttribute('src'))
+      .toBe(TENANT_A.logoUrl);
+    expect(screen.queryByText(TENANT_A.companyName),
+      'the company name rendered ALONGSIDE the mark — it is the fallback for a ' +
+      'missing logo, not a caption, and the three no-logo guards below are ' +
+      'vacuous if it draws unconditionally.'
+    ).toBeNull();
   });
 
-  it('[RED] ⚠ NO LOGO → NO <img> AND NO DIVIDER. Not a fallback, not a dead src', () => {
+  it('[RED] ⚠ NO LOGO → NO <img>. The NAME stands in, not a fallback mark or a dead src', () => {
     // THE PRIMARY CASE, not the edge case. logoUrl is deliberately allowed to be
     // null; identity-bearing values get no defaults, and the consumer decides
     // whether to draw the element. A fallback here would either borrow another
     // contractor's mark or render src="null" against the app's own origin —
     // which is precisely what shipped in 3b.
-    const { container } = render(underTenant(TENANT_A_NO_LOGO, sidebar()));
+    render(underTenant(TENANT_A_NO_LOGO, sidebar()));
 
     expect(screen.queryByAltText(TENANT_A.companyName)).toBeNull();
     expect(imgSrcs().some(s => s === 'null' || s === '' || s === null),
       'an <img> was drawn with an empty or stringified-null src').toBe(false);
 
-    // THE DIVIDER GOES WITH IT — a separator with nothing on one side is a stray
-    // line. AnnouncementPopup states this rule; the lockup inherits it.
-    expect(dividers(container).length,
-      'the divider survived without a logo beside it — a rule floating in space.'
-    ).toBe(0);
-
-    // NON-VACUITY: the platform mark must still be there, or "no contractor
-    // logo" would be passing because the whole lockup failed to render.
-    expect(screen.getByAltText(/rooster booster|roofmiles/i)).toBeTruthy();
+    // NON-VACUITY, AND THE 5.2c-2 CONTRACT ITSELF. This guard used to be the
+    // platform mark ("the lockup rendered SOMETHING"); 5.2c-2 removed it, and
+    // the plate would otherwise be blank, so the NAME stands in for the mark.
+    //
+    // ⚠ THE PAIR ABOVE IS WHAT MAKES THIS A TEXT ASSERTION AND NOT AN IMAGE ONE.
+    // queryByAltText matches alt attributes only, so these two together prove the
+    // fallback is TEXT rather than a second <img> — which is exactly the dead
+    // src="null" shape that reached production in 3b.
+    expect(screen.getByText(TENANT_A_NO_LOGO.companyName)).toBeTruthy();
   });
 
   it('[RED] under tenant A, NOTHING belonging to tenant B appears', () => {
@@ -142,7 +155,7 @@ describe('Phase 4 — the sidebar lockup carries THIS contractor (D-D)', () => {
     expectNoContamination('sidebar under tenant A');
   });
 
-  it('[RED] D-I — branding IN FLIGHT paints the chrome with NO contractor lockup', () => {
+  it('[RED] D-I — branding IN FLIGHT paints the chrome, claiming NO contractor', () => {
     // `supplied={null}` is the in-flight state: supplied mode, answer not yet
     // arrived. BrandingProvider is used directly rather than through the
     // fixture's underTenant() because the fixture takes a resolved brand and
@@ -151,27 +164,37 @@ describe('Phase 4 — the sidebar lockup carries THIS contractor (D-D)', () => {
     // D-I: the panel paints AT ONCE with placeholder identity and the contractor
     // joins the repaint /api/admin/me already causes. Never someone else's logo,
     // and never a spinner in front of every admin to save a repaint for some.
-    const { container } = render(
-      <BrandingProvider supplied={null}>{sidebar()}</BrandingProvider>
-    );
+    render(<BrandingProvider supplied={null}>{sidebar()}</BrandingProvider>);
 
     // The chrome is there — this is the "no wrong frame", not "no frame".
     expect(screen.getByText('Dashboard')).toBeTruthy();
-    expect(screen.getByAltText(/rooster booster|roofmiles/i)).toBeTruthy();
+
+    // In flight, BrandingProvider serves NEUTRAL_BRANDING, whose companyName
+    // defaults to 'RoofMiles' — so the plate names the platform, not a tenant.
+    //
+    // ⚠ THE LITERAL IS DELIBERATE, NOT LAZINESS. PLATFORM_NAME is defined at
+    // platformIdentity.js:32 as resolveBrandingTheme(null).companyName — the SAME
+    // call the component resolves through. Asserting against it would compare a
+    // constant to itself and pin nothing. Spelling it out means a change to that
+    // default surfaces HERE, as a decision, instead of passing silently.
+    expect(screen.getByText('RoofMiles')).toBeTruthy();
 
     // …and no contractor is claimed yet.
-    expect(dividers(container).length).toBe(0);
     expect(screen.queryByAltText(TENANT_A.companyName)).toBeNull();
     expect(screen.queryByAltText(TENANT_B.companyName)).toBeNull();
     expectNoContamination('sidebar with branding in flight');
   });
 
-  it('[RED] a neutral brand names no contractor — absent lockup is a DESIGNED state', () => {
+  it('[RED] a neutral brand names no contractor — the plate says RoofMiles, a DESIGNED state', () => {
     // NEUTRAL is a complete, valid theme with no contractor in it (logoUrl null).
-    // It must look like "the RoofMiles panel", not like a broken one.
-    const { container } = render(underTenant(NEUTRAL, sidebar()));
-    expect(dividers(container).length).toBe(0);
-    expect(screen.getByAltText(/rooster booster|roofmiles/i)).toBeTruthy();
+    // It must look like "the RoofMiles panel", not like a broken one — and since
+    // 5.2c-2 it says so in words: no logo, so the plate draws companyName, which
+    // resolveBrandingTheme(null) sets to 'RoofMiles'. See the note on the literal
+    // in the in-flight test above.
+    render(underTenant(NEUTRAL, sidebar()));
+    expect(screen.getByText('RoofMiles')).toBeTruthy();
+    expect(screen.queryByAltText(TENANT_A.companyName)).toBeNull();
+    expect(screen.queryByAltText(TENANT_B.companyName)).toBeNull();
   });
 });
 
