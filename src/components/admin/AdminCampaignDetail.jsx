@@ -159,7 +159,9 @@ function BatchContactRow({ c, idx, total, onClick }) {
       }}
     >
       <div>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: AD.blueLight, fontFamily: "'Montserrat', sans-serif" }}>
+        {/* TEXT bucket — the primary label of this block, so textPrimary. Was
+            AD.blueLight (#D4DDEB, 1.37:1 on this white card). */}
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: AD.textPrimary, fontFamily: "'Montserrat', sans-serif" }}>
           {c.name || '—'}
         </p>
         <p style={{ margin: '2px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
@@ -281,7 +283,9 @@ function BatchCard({ b, batchStatus, campaignId, headers }) {
               display: 'flex', alignItems: 'center', gap: 4,
               marginTop: 12, paddingTop: 10, cursor: 'pointer', userSelect: 'none',
               borderTop: `1px solid ${AD.border}`,
-              color: AD.blueLight, fontSize: 12, fontFamily: AD.fontSans,
+              // TEXT bucket, SUPPORTING rather than primary — textSecondary, so it
+              // stays below the 13px label above it in the hierarchy.
+              color: AD.textSecondary, fontSize: 12, fontFamily: AD.fontSans,
             }}
           >
             View Batch Contact List

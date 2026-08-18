@@ -1350,7 +1350,11 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
     const parts = text.split(/(\[.*?\])/g);
     return parts.map((part, i) => {
       if (/^\[.*\]$/.test(part)) {
-        return <span key={i} style={{ color: AD.blueLight, fontWeight: 600 }}>{part}</span>;
+        // A MERGE TOKEN IS TEXT, so it takes a TEXT colour. It was AD.blueLight, which
+        // 5.1 aliased to `tint` #D4DDEB — 1.37:1 on this white preview card. The weight
+        // already signals "this is a substitution"; colour does not need to as well.
+        // Deliberately NOT AD.blueText: blue reads as interactive here, and it is not.
+        return <span key={i} style={{ color: AD.textPrimary, fontWeight: 600 }}>{part}</span>;
       }
       return part;
     });
@@ -1448,7 +1452,12 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                   }}
                 >
                   <i className={`ph ${p.icon}`} style={{ fontSize: 18, color: isSelected ? AD.blueLight : AD.textTertiary }} />
-                  <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 400, color: isSelected ? AD.textPrimary : AD.textSecondary, fontFamily: AD.fontSans }}>
+                  {/* ⚠ '#FFFFFF' ON THE SELECTED BRANCH, NEVER AD.textPrimary — the card
+                      above is filled AD.navy when selected, and 5.1 inverted textPrimary
+                      to that same navy, so this label rendered at 1.00:1 and disappeared.
+                      This one is a CHILD of the navy element rather than part of its own
+                      style object, which is why no same-object audit could see it. */}
+                  <span style={{ fontSize: 14, fontWeight: isSelected ? 600 : 400, color: isSelected ? '#FFFFFF' : AD.textSecondary, fontFamily: AD.fontSans }}>
                     {p.label}
                   </span>
                 </div>
@@ -2007,7 +2016,8 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, onSaveExit, headers 
     if (!text) return null;
     return text.split(/(\[.*?\])/g).map((part, i) =>
       /^\[.*\]$/.test(part)
-        ? <span key={i} style={{ color: AD.blueLight, fontWeight: 600 }}>{part}</span>
+        // The second merge-token renderer. Same reasoning as the first — see above.
+        ? <span key={i} style={{ color: AD.textPrimary, fontWeight: 600 }}>{part}</span>
         : part
     );
   }
@@ -2656,7 +2666,11 @@ function BuilderDrawer({
                       border: filterMode === opt.id ? `1px solid ${AD.borderStrong}` : '1px solid transparent',
                       borderRadius: 8, padding: '7px 16px', cursor: 'pointer',
                       fontFamily: AD.fontSans, fontSize: 13, fontWeight: filterMode === opt.id ? 600 : 400,
-                      color: filterMode === opt.id ? AD.textPrimary : AD.textSecondary,
+                      // ⚠ '#FFFFFF' ON THE SELECTED BRANCH, NEVER AD.textPrimary. The
+                      // selected pill is filled AD.navy, and 5.1 inverted textPrimary
+                      // from cream to that same navy — so this rendered #1C2D4D on
+                      // #1C2D4D at 1.00:1 and the selected label vanished entirely.
+                      color: filterMode === opt.id ? '#FFFFFF' : AD.textSecondary,
                       transition: 'all 0.15s',
                     }}
                   >

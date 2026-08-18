@@ -156,7 +156,9 @@ function UnifiedRow({ row, isLast, onClick }) {
         <SourceBadge badge={row.source_badge} />
       </td>
       <td style={{ ...UNIFIED_COL.name, padding: '11px 12px 11px 0' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: AD.blueLight, fontFamily: "'Montserrat', sans-serif" }}>
+        {/* TEXT, not a marker or a tint — see the three-bucket note in adminTheme.js.
+            Was AD.blueLight (#D4DDEB, 1.37:1 on this white card). */}
+        <span style={{ fontSize: 13, fontWeight: 700, color: AD.textPrimary, fontFamily: "'Montserrat', sans-serif" }}>
           {row.name || '—'}
         </span>
       </td>

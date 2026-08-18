@@ -174,6 +174,22 @@ export function AdminShell({ children, page, setPage, pendingCount, flaggedUnres
     : null;
 
   return (
+    // ⚠ THIS ROOT SETS color: AD.textPrimary, AND SINCE 5.1 THAT IS NAVY (#1C2D4D).
+    // Every descendant inherits it unless it sets its own. On the linen page and on
+    // white cards that is correct and is why most of the panel needs no colour at all.
+    //
+    // THE TRAP: a DARK-FILLED element that omits `color` inherits navy onto navy and
+    // its text disappears — 1.00:1, invisible rather than merely low-contrast. It is
+    // not hypothetical. 5.2a fixed three sites that hit it by naming AD.textPrimary
+    // explicitly on a selected-navy branch, and one of them was a CHILD of the navy
+    // element rather than part of its own style object, so no same-object audit could
+    // see it.
+    //
+    // THE PATTERN: any element with a dark or saturated fill states an explicit
+    // '#FFFFFF' or a white-alpha. NEVER AD.textPrimary / textSecondary / textTertiary —
+    // those three are for light grounds only. Today AdminContactDetailDrawer's navy
+    // header (the one dark fill with no `color` of its own) is safe only because every
+    // child sets its own; that is a property of those children, not of this root.
     <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
       <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved} pendingReferralCount={pendingReferralCount} onLogout={onLogout} />
       <div style={{ marginLeft: 230, flex: 1, position: 'relative', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)' }}>

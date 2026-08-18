@@ -1719,7 +1719,12 @@ export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChang
                             </span>
                           </div>
                           <div>
-                            <div style={{ fontSize: 14, fontWeight: 500, color: m.full_name ? AD.textPrimary : AD.textSecondary, lineHeight: 1.2, fontStyle: m.full_name ? 'normal' : 'italic' }}>
+                            {/* ⚠ textPrimary ON BOTH BRANCHES. This is the row's primary
+                                identifying value either way — a member known only by email
+                                is not LESS identified, so rendering that case fainter
+                                inverted the hierarchy of its own row. The italic still
+                                distinguishes the fallback; contrast should not. */}
+                            <div style={{ fontSize: 14, fontWeight: 500, color: AD.textPrimary, lineHeight: 1.2, fontStyle: m.full_name ? 'normal' : 'italic' }}>
                               {m.full_name || m.email}
                             </div>
                             {m.full_name && <div style={{ fontSize: 11, color: AD.textTertiary, marginTop: 1 }}>{m.email}</div>}

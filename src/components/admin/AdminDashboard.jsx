@@ -103,7 +103,10 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
       ) : crmNotConnected ? (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
-            <StatCard label="Active Referrers"   value="—" sub="no CRM connected" icon="ph-users"        accent={AD.blueLight}  animDelay={0}   />
+            {/* accent is SEMANTIC here, never a marker or a tint — its three siblings
+                below use AD.amberText and AD.greenText. AD.blueLight was a mis-token
+                from the start; as `tint` it measured 1.37:1 and vanished on the card. */}
+            <StatCard label="Active Referrers"   value="—" sub="no CRM connected" icon="ph-users"        accent={AD.blueText}   animDelay={0}   />
             <StatCard label="Total Balance Owed" value="—" sub="no CRM connected" icon="ph-scales"       accent={AD.amberText}  animDelay={80}  />
             <StatCard label="Total Paid Out"     value="—" sub="approved payouts"  icon="ph-check-circle" accent={AD.greenText}  animDelay={160} />
           </div>
@@ -129,7 +132,8 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
       ) : stats && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
-            <StatCard label="Active Referrers"   value={stats.activeReferrers}  sub={`of ${stats.totalReferrers} enrolled`} icon="ph-users" accent={AD.blueLight}  animDelay={0}   />
+            {/* Semantic, matching the crm-not-connected variant above — see its comment. */}
+            <StatCard label="Active Referrers"   value={stats.activeReferrers}  sub={`of ${stats.totalReferrers} enrolled`} icon="ph-users" accent={AD.blueText}   animDelay={0}   />
             <StatCard label="Total Balance Owed" value={`$${stats.totalBalance.toLocaleString()}`}  sub="across all referrers"  icon="ph-scales" accent={AD.amberText} animDelay={80}  />
             <StatCard label="Total Paid Out"     value={`$${stats.totalPaidOut.toLocaleString()}`}  sub="approved payouts"      icon="ph-check-circle" accent={AD.greenText} animDelay={160} />
           </div>

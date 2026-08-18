@@ -417,7 +417,11 @@ export default function AdminContactDetailDrawer({ contactId, jobberClientId, on
             const displayEmail = contact?.email || jcData?.email || '—';
             const badgeCfg = {
               both:   { bg: '#1a4d6e', color: '#7CC8F8', label: 'Both'   },
-              app:    { bg: AD.blueBg, color: AD.blueText, label: 'App'  },
+              // ⚠ DARK-GROUND VALUES, NOT THE AD TOKENS. This badge renders inside the
+              // navy drawer header above, so it needs the same treatment as `both`.
+              // It previously read AD.blueBg / AD.blueText — both tuned by 5.1 for a
+              // LIGHT card — which put #1D4ED8 on a near-navy fill at 1.85:1.
+              app:    { bg: 'rgba(37,99,235,0.25)', color: '#93C5FD', label: 'App'  },
               jobber: { bg: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', label: 'Jobber' },
             }[sourceBadge];
             return (
@@ -763,7 +767,9 @@ export default function AdminContactDetailDrawer({ contactId, jobberClientId, on
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                           <p style={{
                             margin: 0, fontSize: 13, fontWeight: 700,
-                            color: AD.blueLight,
+                            // TEXT bucket — supporting copy, so textSecondary.
+                            // Was AD.blueLight (#D4DDEB, 1.37:1 on white).
+                            color: AD.textSecondary,
                             fontFamily: "'Montserrat', sans-serif",
                             lineHeight: 1.3,
                             flex: 1,

@@ -733,9 +733,11 @@ export default function BrandingProfileSettings() {
             </>
           )}
 
-          {/* Assignment instruction */}
+          {/* Assignment instruction.
+              TEXT bucket — 11px helper copy, the least prominent level, so textTertiary.
+              Was AD.blueLight (#D4DDEB, 1.37:1 on white). */}
           {selectedSwatchIdx !== null && (
-            <p style={{ margin: '10px 0 0', fontSize: 11, color: AD.blueLight, fontFamily: AD.fontSans }}>
+            <p style={{ margin: '10px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
               Now click Primary, Secondary, or Accent to apply
             </p>
           )}

@@ -263,7 +263,10 @@ function SuggestionBoxCard({ msg, onMarkRead }) {
             style={{
               background: 'none', border: 'none', padding: 0,
               fontFamily: AD.fontSans, fontSize: 13,
-              color: AD.blueLight, cursor: 'pointer', marginLeft: 4,
+              // TEXT bucket, and the ONE site in it that takes AD.blueText: this is an
+              // inline action, so blue reading as interactive is correct here. The merge
+              // tokens deliberately do NOT get this treatment — they are not clickable.
+              color: AD.blueText, cursor: 'pointer', marginLeft: 4,
             }}
           >
             {expanded ? '...show less' : '...show more'}
