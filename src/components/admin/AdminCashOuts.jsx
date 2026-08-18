@@ -250,10 +250,32 @@ export default function AdminCashOuts({ setLoggedIn }) {
                   </div>
                 ))}
               </div>
+              {/* ── 5.2b (A6): TRANSFER BLOCKED — A PURE DARK-THEME LEFTOVER ────
+                  This card kept a #1a0a00 near-black fill with a #ff8c00 border
+                  and heading and #cc7700 body: a warning drawn for the old dark
+                  panel, now sitting on a white card.
+
+                  ⚠ THOSE TEXT VALUES WERE NOT WRONG WHEN THEY WERE WRITTEN — on
+                  the #1a0a00 fill they measured 8.28:1 and 5.71:1 and both
+                  cleared 4.5:1. The defect is that the FILL is the leftover: it
+                  turned the one notice that says "this payout cannot move" into
+                  a black slab in the middle of a light page, and the moment that
+                  fill goes the text lands on white at 2.33:1 and 3.38:1, where
+                  both fail. Fill and text had to move together, which is why the
+                  fix is a semantic PAIR rather than two independent swaps.
+
+                  It is rebuilt on the EXISTING amber semantic pair — no new
+                  values — and follows the panel's established warning-box idiom
+                  at ReferralProgramSettings.jsx:274 rather than inventing a
+                  border treatment of its own.
+
+                  ⚠ DELIBERATELY NOT #F26A1B. That is the primary CTA colour, and
+                  painting a warning in the same hue makes "warning" and "do
+                  this" indistinguishable — on the money surface, of all places. */}
               {c.bank_connection_blocked_reason && (
                 <div style={{
-                  backgroundColor: '#1a0a00',
-                  border: '1px solid #ff8c00',
+                  background: AD.amberBg,
+                  border: `1px solid rgba(217,119,6,0.3)`,
                   borderRadius: 8,
                   padding: '10px 12px',
                   margin: '10px 0',
@@ -262,13 +284,13 @@ export default function AdminCashOuts({ setLoggedIn }) {
                   gap: 8
                 }}>
                   <i className="ph-fill ph-warning"
-                     style={{ fontSize: 16, color: '#ff8c00', flexShrink: 0, marginTop: 1 }} />
+                     style={{ fontSize: 16, color: AD.amberText, flexShrink: 0, marginTop: 1 }} />
                   <div>
                     <div style={{
                       fontFamily: 'Montserrat, sans-serif',
                       fontWeight: 700,
                       fontSize: 12,
-                      color: '#ff8c00',
+                      color: AD.amberText,
                       marginBottom: 3
                     }}>
                       Transfer Blocked
@@ -276,7 +298,7 @@ export default function AdminCashOuts({ setLoggedIn }) {
                     <div style={{
                       fontFamily: 'Roboto, sans-serif',
                       fontSize: 12,
-                      color: '#cc7700',
+                      color: AD.amberText,
                       lineHeight: 1.4
                     }}>
                       {c.bank_connection_blocked_reason}

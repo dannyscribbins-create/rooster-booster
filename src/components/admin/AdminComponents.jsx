@@ -249,25 +249,35 @@ export function AdminShell({ children, page, setPage, pendingCount, flaggedUnres
             title="Settings"
             style={{
               // ⚠ SAME GROUND AS THE INBOX BUTTON BESIDE IT — page, not sidebar.
-              // The active wash is restated in onMouseLeave below, so the two
-              // MUST move together: fixing only the handler would give this one
-              // button two different active backgrounds depending on whether it
-              // had been hovered.
               //
-              // ⚠ THE AD.blueLight BRANCHES ARE LEFT ALONE ON PURPOSE (5.2 owns
-              // all 86 of them) AND THIS IS THE SHARPEST CASE IN THE PANEL: as an
-              // alias of `tint`, #D4DDEB measures 1.37:1 on white. The active gear
-              // is not merely understated here, it is effectively invisible until
-              // 5.2 repoints it to `marker`. Recorded rather than fixed, because
-              // splitting one call site out of the 86 is how a triage list rots.
-              background: settingsActive ? 'rgba(28,45,77,0.10)' : 'transparent',
+              // ── 5.2b (A7): THE ACTIVE GEAR WAS EFFECTIVELY INVISIBLE ─────────
+              // It painted AD.blueLight on a pale wash over linen. As an alias of
+              // `tint`, #D4DDEB measures 1.26:1 against the linen ground and
+              // 1.05:1 against the composited wash it actually sat on (#E2E1E0) —
+              // so the wash and the icon inside it both read as nothing, and the
+              // one control that says "you are in Settings" said it to no one.
+              // 5.1 recorded this and left it for the blueLight sweep; 5.2b takes
+              // it out of that queue because the answer is not a repointed tint.
+              //
+              // A SOLID NAVY FILL WITH A WHITE GLYPH (13.71:1) is what every other
+              // active control in the panel already does, so this is the panel's
+              // existing idiom rather than a special case for one button.
+              //
+              // ⚠ THE ACTIVE STATE IS WRITTEN IN THREE PLACES — here, and again in
+              // both handlers below. All three MUST agree or the gear renders a
+              // different active background depending on its hover history. Note
+              // that onMouseEnter's background used to be UNCONDITIONAL: harmless
+              // when active was a 0.10 wash and hover a 0.06 one, but it would now
+              // paint that pale wash straight over the navy fill and strand the
+              // white glyph at roughly 1.1:1. It is branched for that reason.
+              background: settingsActive ? AD.navy : 'transparent',
               border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: settingsActive ? AD.blueLight : AD.textTertiary,
+              color: settingsActive ? '#FFFFFF' : AD.textTertiary,
               transition: 'color 0.15s, background 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : AD.textPrimary; e.currentTarget.style.background = 'rgba(28,45,77,0.06)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = settingsActive ? AD.blueLight : AD.textTertiary; e.currentTarget.style.background = settingsActive ? 'rgba(28,45,77,0.10)' : 'transparent'; }}
+            onMouseEnter={e => { e.currentTarget.style.color = settingsActive ? '#FFFFFF' : AD.textPrimary; e.currentTarget.style.background = settingsActive ? AD.navy : 'rgba(28,45,77,0.06)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = settingsActive ? '#FFFFFF' : AD.textTertiary; e.currentTarget.style.background = settingsActive ? AD.navy : 'transparent'; }}
           >
             <i className="ph ph-gear-six" style={{ fontSize: 20 }} />
           </button>
@@ -393,9 +403,19 @@ export function PipelineBar({ segments, total }) {
     gradientStops.push(`${s.color} ${(cursor + pct).toFixed(1)}%`);
     cursor += pct;
   });
-  const gradient = active.length > 0 ? `linear-gradient(to right, ${gradientStops.join(', ')})` : 'rgba(255,255,255,0.1)';
+  // ── 5.2b (A5): THE TRACK AND ITS EMPTY STATE WERE BOTH WHITE ON WHITE ───────
+  // Both were white alphas from the dark panel. On AD.bgCard (#FFFFFF) a white
+  // alpha composites to #FFFFFF at any opacity — a 0/255 delta, so the channel
+  // did not exist and the filled segments appeared to float on nothing.
+  //
+  // rgba(28,45,77,0.10) is the same navy alpha AD.border carries, compositing to
+  // #E8EAED on a card: a 23/255 delta, which is the right visual weight for a
+  // channel. It is written as a literal rather than as AD.border because the two
+  // are the same VALUE serving different ROLES — a track is not a hairline, and
+  // 5.2d may well move one without the other.
+  const gradient = active.length > 0 ? `linear-gradient(to right, ${gradientStops.join(', ')})` : 'rgba(28,45,77,0.10)';
   return (
-    <div style={{ height: 8, borderRadius: 99, overflow: 'hidden', background: 'rgba(255,255,255,0.06)', marginBottom: 16, position: 'relative' }}>
+    <div style={{ height: 8, borderRadius: 99, overflow: 'hidden', background: 'rgba(28,45,77,0.10)', marginBottom: 16, position: 'relative' }}>
       <div style={{
         position: 'absolute', top: 0, left: 0, height: '100%',
         width: '100%', background: gradient, borderRadius: 99,

@@ -117,7 +117,7 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
             <StatCard label="Sold"            value="—" icon="ph-trophy"           accent={AD.greenText}    animDelay={420} />
           </div>
           <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '20px 24px', marginBottom: 24, boxShadow: AD.shadowSm }}>
-            <PipelineBar segments={[{ val: 0, color: 'rgba(255,255,255,0.25)' }]} total={0} />
+            <PipelineBar segments={[{ val: 0, color: AD.grayMuted }]} total={0} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <i className="ph ph-plugs-connected" style={{ fontSize: 15, color: AD.textTertiary }} />
               <span style={{ fontSize: 13, color: AD.textTertiary }}>
@@ -151,17 +151,37 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
               </div>
             </div>
             <PipelineBar segments={[
-              { val: stats.totalLeads,       color: 'rgba(255,255,255,0.25)' },
-              { val: stats.totalInspections, color: AD.blue  },
-              { val: stats.totalSold,        color: AD.green },
-              { val: stats.totalNotSold,     color: AD.red2  },
+              { val: stats.totalLeads,       color: AD.grayMuted },
+              { val: stats.totalInspections, color: AD.blue      },
+              { val: stats.totalSold,        color: AD.green     },
+              { val: stats.totalNotSold,     color: AD.red2      },
             ]} total={pipelineTotal} />
+            {/* ── 5.2b (A5, extended): THE LEAD LEGEND KEY ──────────────────────
+                This dot was rgba(255,255,255,0.4) — 1.00:1 on the white card, the
+                same white-on-white defect as the segment above it.
+
+                ⚠ IT CROSSED THE 5.2d FENCE DELIBERATELY, AND THE FENCE STILL HOLDS
+                FOR EVERYTHING ELSE. The argument is not "it is the same defect" —
+                that is true of ~70 sites. It is that this dot is the legend KEY for
+                the exact segment 5.2b fixes, so leaving it produced a state strictly
+                WORSE than before: a visibly gray bar segment beside a legend row
+                with a blank where its swatch belongs, next to three siblings that
+                have theirs. A half-fixed legend is more conspicuous than an evenly
+                broken one. That test — does fixing the neighbour make this one worse
+                than not touching either? — is what admits a site early, not mere
+                similarity.
+
+                The three siblings were already solid semantic tokens and needed
+                nothing. Note they use the *Text variants while the segments above
+                use the base ones: the darker weight reads better at 8px. Lead has
+                no grayMutedText, and grayMuted is already in that darker class
+                (#4B5563, darker than AD.gray), so it serves both roles here. */}
             <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
               {[
-                { label: 'Lead',       val: stats.totalLeads,       color: 'rgba(255,255,255,0.4)' },
-                { label: 'Inspection', val: stats.totalInspections, color: AD.blueText              },
-                { label: 'Sold',       val: stats.totalSold,        color: AD.greenText             },
-                { label: 'Not Sold',   val: stats.totalNotSold,     color: AD.red2Text              },
+                { label: 'Lead',       val: stats.totalLeads,       color: AD.grayMuted },
+                { label: 'Inspection', val: stats.totalInspections, color: AD.blueText  },
+                { label: 'Sold',       val: stats.totalSold,        color: AD.greenText },
+                { label: 'Not Sold',   val: stats.totalNotSold,     color: AD.red2Text  },
               ].map(s => (
                 <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
