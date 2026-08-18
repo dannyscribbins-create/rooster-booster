@@ -57,7 +57,7 @@ function MetricCard({ label, value, sub, caveat, failedChip }) {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
             marginTop: 8, cursor: 'pointer', userSelect: 'none',
-            color: chipHover ? '#f59e0b' : '#d97706',
+            color: AD.amberText,
             fontSize: 12, fontFamily: AD.fontSans, fontWeight: 500,
             transform: chipHover ? 'translateY(-2px)' : 'translateY(0)',
             transition: 'transform 0.15s, color 0.15s',
@@ -415,17 +415,17 @@ function MetricsGrid({ metrics, onOpenFailedPanel, optOutData, contactTotals }) 
           // complaint-warning state read as no state at all. AD.red2Bg is the
           // semantic danger wash and composites visibly on white.
           background: isComplaintWarn ? AD.red2Bg : AD.bgCard,
-          border: `1px solid ${isComplaintWarn ? 'rgba(204,0,0,0.25)' : AD.border}`,
+          border: `1px solid ${isComplaintWarn ? 'rgba(220,38,38,0.3)' : AD.border}`,
           borderRadius: AD.radiusMd, padding: '18px 20px',
         }}>
-          <p style={{ margin: '0 0 6px', fontSize: 11, color: isComplaintWarn ? '#CC0000' : AD.textTertiary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <p style={{ margin: '0 0 6px', fontSize: 11, color: isComplaintWarn ? AD.red2Text : AD.textTertiary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 5 }}>
             {isComplaintWarn && <i className="ph ph-warning-circle" style={{ fontSize: 13 }} />}
             Complaints
           </p>
-          <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: isComplaintWarn ? '#CC0000' : AD.textPrimary, fontFamily: AD.fontSans }}>
+          <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: isComplaintWarn ? AD.red2Text : AD.textPrimary, fontFamily: AD.fontSans }}>
             {(contactTotals?.total_complained ?? 0).toLocaleString()}
           </p>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: isComplaintWarn ? '#CC0000' : AD.textSecondary, fontFamily: AD.fontSans }}>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: isComplaintWarn ? AD.red2Text : AD.textSecondary, fontFamily: AD.fontSans }}>
             {(complaintRate * 100).toFixed(2)}%
           </p>
           <p style={{ margin: '4px 0 0', fontSize: 10, color: AD.textTertiary, fontFamily: AD.fontSans }}>
@@ -811,7 +811,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
                 cursor: 'pointer', fontFamily: AD.fontSans, fontSize: 14,
                 color: isActive2 ? AD.textPrimary : AD.textSecondary,
                 fontWeight: isActive2 ? 600 : 400,
-                borderBottom: `2px solid ${isActive2 ? '#CC0000' : 'transparent'}`,
+                borderBottom: `2px solid ${isActive2 ? AD.marker : 'transparent'}`,
                 marginBottom: -1, transition: 'all 0.15s',
               }}
             >
@@ -864,7 +864,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
                   disabled={!!isThrottled}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    background: isThrottled ? AD.bgCardTint : '#CC0000',
+                    background: isThrottled ? AD.bgCardTint : AD.red2,
                     color: isThrottled ? AD.textTertiary : '#fff',
                     border: 'none', borderRadius: 10,
                     padding: '12px 24px', cursor: isThrottled ? 'not-allowed' : 'pointer',
@@ -927,9 +927,9 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
               onClick={() => setMetricsBatch('all')}
               style={{
                 padding: '6px 16px', borderRadius: AD.radiusPill,
-                background: metricsBatch === 'all' ? '#CC0000' : AD.bgCard,
+                background: metricsBatch === 'all' ? AD.marker : AD.bgCard,
                 color: metricsBatch === 'all' ? '#fff' : AD.textSecondary,
-                border: `1px solid ${metricsBatch === 'all' ? '#CC0000' : AD.border}`,
+                border: `1px solid ${metricsBatch === 'all' ? AD.marker : AD.border}`,
                 fontFamily: AD.fontSans, fontSize: 13, fontWeight: metricsBatch === 'all' ? 600 : 400,
                 cursor: 'pointer',
               }}
@@ -942,9 +942,9 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
                 onClick={() => setMetricsBatch(b.batch_number)}
                 style={{
                   padding: '6px 16px', borderRadius: AD.radiusPill,
-                  background: metricsBatch === b.batch_number ? '#CC0000' : AD.bgCard,
+                  background: metricsBatch === b.batch_number ? AD.marker : AD.bgCard,
                   color: metricsBatch === b.batch_number ? '#fff' : AD.textSecondary,
-                  border: `1px solid ${metricsBatch === b.batch_number ? '#CC0000' : AD.border}`,
+                  border: `1px solid ${metricsBatch === b.batch_number ? AD.marker : AD.border}`,
                   fontFamily: AD.fontSans, fontSize: 13, fontWeight: metricsBatch === b.batch_number ? 600 : 400,
                   cursor: 'pointer',
                 }}
@@ -992,7 +992,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
               disabled={sending}
               style={{
                 padding: '10px 24px', borderRadius: 8, border: 'none',
-                background: sending ? 'rgba(204,0,0,0.5)' : '#CC0000',
+                background: sending ? 'rgba(220,38,38,0.5)' : AD.red2,
                 color: '#fff', fontFamily: AD.fontSans, fontSize: 14, fontWeight: 600,
                 cursor: sending ? 'not-allowed' : 'pointer',
               }}
@@ -1108,7 +1108,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
                     disabled={retrying}
                     style={{
                       flex: 1, padding: '10px 0', borderRadius: 8, border: 'none',
-                      background: retrying ? 'rgba(204,0,0,0.5)' : '#CC0000',
+                      background: retrying ? 'rgba(220,38,38,0.5)' : AD.red2,
                       color: '#fff', fontFamily: AD.fontSans, fontSize: 14, fontWeight: 600,
                       cursor: retrying ? 'not-allowed' : 'pointer',
                     }}
@@ -1138,7 +1138,7 @@ export default function AdminCampaignDetail({ campaignId, onBack }) {
                   disabled={failedContacts.length === 0}
                   style={{
                     flex: 1, padding: '10px 0', borderRadius: 8, border: 'none',
-                    background: failedContacts.length === 0 ? 'rgba(204,0,0,0.3)' : '#CC0000',
+                    background: failedContacts.length === 0 ? 'rgba(220,38,38,0.3)' : AD.red2,
                     color: '#fff', fontFamily: AD.fontSans, fontSize: 14, fontWeight: 600,
                     cursor: failedContacts.length === 0 ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,

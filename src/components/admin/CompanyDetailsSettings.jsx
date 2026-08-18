@@ -497,7 +497,7 @@ export default function CompanyDetailsSettings() {
                 style={{
                   padding: '9px 24px', borderRadius: AD.radiusMd, border: 'none',
                   cursor: notifSaving ? 'not-allowed' : 'pointer',
-                  background: '#CC0000', color: '#fff',
+                  background: AD.red2, color: '#fff',
                   fontFamily: AD.fontSans, fontSize: 14, fontWeight: 500,
                   opacity: notifSaving ? 0.45 : 1,
                   transition: 'opacity 0.15s',
@@ -791,7 +791,7 @@ export default function CompanyDetailsSettings() {
                 style={{
                   padding: '9px 24px', borderRadius: AD.radiusMd, border: 'none',
                   cursor: savingAbout ? 'not-allowed' : 'pointer',
-                  background: '#CC0000', color: '#fff',
+                  background: AD.red2, color: '#fff',
                   fontFamily: AD.fontSans, fontSize: 14, fontWeight: 500,
                   opacity: savingAbout ? 0.45 : 1,
                   transition: 'opacity 0.15s',
@@ -821,7 +821,7 @@ export default function CompanyDetailsSettings() {
           style={{
             padding: '9px 24px', borderRadius: AD.radiusMd, border: 'none',
             cursor: saveDisabled ? 'not-allowed' : 'pointer',
-            background: '#CC0000', color: '#fff',
+            background: AD.red2, color: '#fff',
             fontFamily: AD.fontSans, fontSize: 14, fontWeight: 500,
             opacity: saveDisabled ? 0.45 : 1,
             transition: 'opacity 0.15s',

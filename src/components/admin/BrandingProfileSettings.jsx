@@ -321,7 +321,7 @@ export default function BrandingProfileSettings() {
   // Generate QR code when invite URL is available
   useEffect(() => {
     if (!inviteUrl) return;
-    QRCode.toDataURL(inviteUrl, { width: 1024, margin: 2, color: { dark: '#012854', light: '#ffffff' } })
+    QRCode.toDataURL(inviteUrl, { width: 1024, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
       .then(setQrDataUrl)
       .catch(() => {});
   }, [inviteUrl]);
@@ -921,7 +921,7 @@ export default function BrandingProfileSettings() {
           style={{
             padding: '9px 24px', borderRadius: AD.radiusMd, border: 'none',
             cursor: saveDisabled ? 'not-allowed' : 'pointer',
-            background: '#CC0000', color: '#fff',
+            background: AD.red2, color: '#fff',
             fontFamily: AD.fontSans, fontSize: 14, fontWeight: 500,
             opacity: saveDisabled ? 0.45 : 1, transition: 'opacity 0.15s',
           }}

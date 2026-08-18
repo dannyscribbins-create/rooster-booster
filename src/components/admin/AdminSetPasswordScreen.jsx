@@ -158,7 +158,7 @@ export default function AdminSetPasswordScreen({ token }) {
                 color: status === 'loading' ? AD.textSecondary : '#fff',
                 fontSize: 15, fontWeight: 700, fontFamily: AD.fontSans,
                 cursor: status === 'loading' ? 'not-allowed' : 'pointer',
-                boxShadow: status === 'loading' ? 'none' : '0 4px 14px rgba(204,0,0,0.35)',
+                boxShadow: status === 'loading' ? 'none' : '0 4px 14px rgba(220,38,38,0.35)',
                 transition: 'all 0.18s',
               }}
             >

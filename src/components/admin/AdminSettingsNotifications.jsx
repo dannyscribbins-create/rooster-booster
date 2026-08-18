@@ -28,8 +28,8 @@ function AnnouncementPreviewPopup({ announcement, referrerFirstName, onDismiss, 
   if (!announcement || !settings) return null;
   const message = resolveMessage(settings, referrerFirstName, announcement.amount, announcement.referredName, branding.companyName);
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(1,40,84,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: '#FFFFFF', borderRadius: 24, padding: '36px 28px', width: '100%', maxWidth: 360, boxShadow: '0 12px 48px rgba(1,40,84,0.3)', textAlign: 'center', opacity: cardVisible ? 1 : 0, transform: cardVisible ? 'translateY(0)' : 'translateY(20px)', transition: 'opacity 400ms ease-out, transform 400ms ease-out' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(28,45,77,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: '#FFFFFF', borderRadius: 24, padding: '36px 28px', width: '100%', maxWidth: 360, boxShadow: '0 12px 48px rgba(28,45,77,0.3)', textAlign: 'center', opacity: cardVisible ? 1 : 0, transform: cardVisible ? 'translateY(0)' : 'translateY(20px)', transition: 'opacity 400ms ease-out, transform 400ms ease-out' }}>
         {/* ⚠ THIS IS A PREVIEW OF AnnouncementPopup, SO IT USES ITS LOCKUP —
             null-guard, fragment, and "the divider goes with the logo". No light
             plate here: this card is white, which is the surface the popup
@@ -50,7 +50,7 @@ function AnnouncementPreviewPopup({ announcement, referrerFirstName, onDismiss, 
           <span style={{ fontSize: 48, fontWeight: 900, color: R.navy, fontFamily: R.fontMono, letterSpacing: '-0.02em' }}>${parseFloat(announcement.amount).toLocaleString()}</span>
           <p style={{ margin: '4px 0 0', fontSize: 14, color: R.textSecondary }}>for referring {announcement.referredName}</p>
         </div>
-        <button onClick={onDismiss} style={{ width: '100%', marginBottom: 12, background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`, border: 'none', borderRadius: 12, padding: '14px 24px', color: '#fff', fontSize: 15, fontWeight: 700, fontFamily: R.fontSans, cursor: 'pointer', boxShadow: '0 4px 14px rgba(204,0,0,0.35)' }}>
+        <button onClick={onDismiss} style={{ width: '100%', marginBottom: 12, background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`, border: 'none', borderRadius: 12, padding: '14px 24px', color: '#fff', fontSize: 15, fontWeight: 700, fontFamily: R.fontSans, cursor: 'pointer', boxShadow: '0 4px 14px rgba(220,38,38,0.35)' }}>
           <i className="ph ph-users" style={{ fontSize: 16, marginRight: 8 }} />
           Refer Another Friend
         </button>

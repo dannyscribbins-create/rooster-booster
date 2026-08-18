@@ -104,7 +104,7 @@ const PRESETS = [
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function TierBadge({ tier }) {
   const cfg = {
-    owner:   { bg: 'rgba(251,191,36,0.15)', color: '#fbbf24' },
+    owner:   { bg: 'rgba(251,191,36,0.15)', color: AD.amberText },
     admin:   { bg: AD.blueBg,               color: AD.blueText },
     general: { bg: AD.grayBg,               color: AD.textSecondary },
   };
@@ -793,7 +793,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
               <div>
                 <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, marginBottom: 4 }}>Tier</label>
                 {member.tier === 'owner' ? (
-                  <div style={{ ...inputStyle, background: AD.bgCard, color: '#fbbf24' }}>Owner</div>
+                  <div style={{ ...inputStyle, background: AD.bgCard, color: AD.amberText }}>Owner</div>
                 ) : canChangeTier ? (
                   <select value={localTier} onChange={e => { clearSuccess(); setLocalTier(e.target.value); setPresetSel(''); }} style={{ ...inputStyle, cursor: 'pointer' }}>
                     <option value="admin">Admin</option>
@@ -1102,7 +1102,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
           ) : (
             /* Owner target — no individual flags apply */
             <div style={{ ...sectionCardStyle, textAlign: 'center' }}>
-              <i className="ph ph-crown" style={{ fontSize: 24, color: '#fbbf24', display: 'block', marginBottom: 8 }} />
+              <i className="ph ph-crown" style={{ fontSize: 24, color: AD.amberText, display: 'block', marginBottom: 8 }} />
               <div style={{ fontSize: 13, color: AD.textSecondary, lineHeight: 1.5 }}>
                 Owners bypass all permission checks. No individual flags apply.
               </div>

@@ -101,7 +101,7 @@ function SendStatusPill({ status }) {
   const cfg = {
     sent:       { bg: AD.greenBg,   color: AD.greenText,  label: 'Sent' },
     failed:     { bg: AD.red2Bg,    color: AD.red2Text,   label: 'Failed' },
-    suppressed: { bg: 'rgba(217,119,6,0.15)', color: '#fbbf24', label: 'Suppressed' },
+    suppressed: { bg: 'rgba(217,119,6,0.15)', color: AD.amberText, label: 'Suppressed' },
   }[status] || { bg: AD.grayBg, color: AD.gray, label: status || '—' };
   return <DrawerPill bg={cfg.bg} color={cfg.color} label={cfg.label} />;
 }

@@ -263,7 +263,7 @@ function DashboardPreview({ primary, secondary, accent, fontH, fontB, reviewBtn 
     }}>
       {/* Hero */}
       <div style={{
-        background: `linear-gradient(145deg, ${primary} 0%, #041D3E 100%)`,
+        background: `linear-gradient(145deg, ${primary} 0%, ${secondary} 100%)`,
         padding: '32px 14px 14px', flexShrink: 0,
         position: 'relative', overflow: 'hidden',
       }}>
@@ -271,7 +271,7 @@ function DashboardPreview({ primary, secondary, accent, fontH, fontB, reviewBtn 
         <div style={{
           position: 'absolute', top: -16, right: -16,
           width: 72, height: 72, borderRadius: '50%',
-          background: 'rgba(211,227,240,0.12)',
+          background: 'rgba(255,255,255,0.12)',
         }} />
 
         {/* Greeting */}
@@ -294,7 +294,7 @@ function DashboardPreview({ primary, secondary, accent, fontH, fontB, reviewBtn 
         <div style={{
           background: '#fff', borderRadius: 12,
           padding: '11px 12px 10px',
-          boxShadow: '0 8px 32px rgba(1,40,84,0.13)',
+          boxShadow: AD.shadowLg,
         }}>
           <p style={{
             margin: '0 0 2px', fontSize: 7,

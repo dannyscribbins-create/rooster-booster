@@ -317,7 +317,7 @@ function CampaignCard({ campaign, onOpen, onDelete }) {
           padding: 4, borderRadius: 6,
           opacity: hov ? 1 : 0, transition: 'opacity 0.15s',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: trashHov ? '#CC0000' : AD.textSecondary,
+          color: trashHov ? AD.red2 : AD.textSecondary,
         }}
       >
         <i className="ph ph-trash" style={{ fontSize: 16 }} />
@@ -454,7 +454,7 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAud
             >
               <div style={{
                 width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                background: itemChecked[i] ? 'rgba(45,139,95,0.2)' : i === 3 ? 'rgba(211,227,240,0.12)' : AD.bgCardTint,
+                background: itemChecked[i] ? 'rgba(45,139,95,0.2)' : i === 3 ? AD.bgCardTint : AD.bgCardTint,
                 border: `2px solid ${itemChecked[i] ? AD.green : i === 3 ? AD.marker : AD.borderStrong}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
@@ -479,7 +479,7 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAud
         <div style={{ width: 280, height: 4, background: 'rgba(28,45,77,0.10)', borderRadius: 2, overflow: 'hidden', position: 'relative', marginBottom: 12 }}>
           <div style={{
             position: 'absolute', top: 0, height: 4, width: '40%',
-            background: '#CC0000', borderRadius: 2,
+            background: AD.marker, borderRadius: 2,
             animation: 'progressSweep 1.8s ease-in-out infinite',
           }} />
         </div>
@@ -554,7 +554,7 @@ function PillMultiSelect({ label, options, selected, onChange }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
             width: 8, height: 8, borderRadius: '50%',
-            background: selected.length > 0 ? '#CC0000' : AD.border,
+            background: selected.length > 0 ? AD.marker : AD.border,
             transition: 'background 0.2s', flexShrink: 0,
           }} />
           <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>{label}</span>
@@ -564,7 +564,7 @@ function PillMultiSelect({ label, options, selected, onChange }) {
           <button
             onClick={toggleAll}
             style={{
-              fontSize: 12, color: '#CC0000', background: 'none', border: 'none',
+              fontSize: 12, color: AD.red2Text, background: 'none', border: 'none',
               cursor: 'pointer', padding: 0, fontFamily: AD.fontSans,
             }}
           >
@@ -585,7 +585,7 @@ function PillMultiSelect({ label, options, selected, onChange }) {
                 style={{
                   display: 'flex', alignItems: 'stretch', borderRadius: 999,
                   overflow: 'hidden',
-                  border: `1px solid ${mode === 'exclude' ? '#CC0000' : '#1a7a4a'}`,
+                  border: `1px solid ${mode === 'exclude' ? AD.red2 : AD.green}`,
                   flexShrink: 0,
                 }}
               >
@@ -609,7 +609,7 @@ function PillMultiSelect({ label, options, selected, onChange }) {
                   style={{
                     display: 'flex', alignItems: 'center', gap: 4,
                     padding: '6px 10px', border: 'none', cursor: 'pointer',
-                    background: mode === 'exclude' ? '#CC0000' : '#1a7a4a',
+                    background: mode === 'exclude' ? AD.red2 : AD.green,
                     borderLeft: `1px solid ${mode === 'exclude' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.2)'}`,
                   }}
                 >
@@ -805,7 +805,7 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
             onClick={onNext}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              background: '#CC0000', color: '#fff', border: 'none', borderRadius: 8,
+              background: AD.navy, color: '#fff', border: 'none', borderRadius: 8,
               padding: '8px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 500,
               fontFamily: AD.fontSans,
             }}
@@ -837,7 +837,7 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
         </span>
         <button
           onClick={allSelected ? deselectAll : selectAll}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#CC0000', fontFamily: AD.fontSans, padding: 0 }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: AD.blueText, fontFamily: AD.fontSans, padding: 0 }}
         >
           {allSelected ? 'Deselect All' : 'Select All'}
         </button>
@@ -906,8 +906,8 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
                     onClick={() => toggleContact(c.id)}
                     style={{
                       width: 18, height: 18, borderRadius: 4, cursor: 'pointer',
-                      border: `1.5px solid ${isSelected ? '#CC0000' : AD.borderStrong}`,
-                      background: isSelected ? '#CC0000' : 'transparent',
+                      border: `1.5px solid ${isSelected ? AD.marker : AD.borderStrong}`,
+                      background: isSelected ? AD.marker : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0,
                     }}
@@ -1071,7 +1071,7 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
             onClick={saveSelection}
             disabled={saving}
             style={{
-              background: '#CC0000', color: '#fff', border: 'none', borderRadius: 8,
+              background: AD.navy, color: '#fff', border: 'none', borderRadius: 8,
               padding: '10px 20px', cursor: saving ? 'default' : 'pointer',
               fontSize: 14, fontWeight: 500, fontFamily: AD.fontSans,
               opacity: saving ? 0.6 : 1,
@@ -1563,7 +1563,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                           onClick={() => setSubjectLine(option)}
                           style={{
                             marginBottom: 6, padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
-                            background: isSelected ? 'rgba(211,227,240,0.08)' : AD.bgSurface,
+                            background: isSelected ? AD.bgCardTint : AD.bgSurface,
                             border: `1px solid ${isSelected ? AD.marker : AD.border}`,
                             borderLeft: `3px solid ${isSelected ? AD.marker : 'transparent'}`,
                             transition: 'all 0.15s',
@@ -1651,7 +1651,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                       style={{
                         flex: 1, padding: '7px 4px', borderRadius: 7,
                         border: `1px solid ${isActive ? AD.marker : AD.borderStrong}`,
-                        background: isActive ? 'rgba(211,227,240,0.12)' : 'transparent',
+                        background: isActive ? AD.bgCardTint : 'transparent',
                         color: isActive ? AD.blueText : AD.textSecondary,
                         fontFamily: AD.fontSans, fontSize: 12, fontWeight: isActive ? 600 : 400,
                         cursor: 'pointer', transition: 'all 0.12s',
@@ -1693,7 +1693,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
               </p>
 
               {aiError && (
-                <p style={{ margin: '8px 0 0', fontSize: 12, color: '#CC0000', fontFamily: AD.fontSans }}>
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: AD.red2Text, fontFamily: AD.fontSans }}>
                   {aiError}
                 </p>
               )}
@@ -1746,12 +1746,12 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '8px 12px', borderRadius: 8, cursor: 'pointer', marginBottom: 4,
-                      background: isSelected ? 'rgba(204,0,0,0.08)' : 'transparent',
-                      border: `1px solid ${isSelected ? '#CC0000' : 'transparent'}`,
+                      background: isSelected ? AD.bgCardTint : 'transparent',
+                      border: `1px solid ${isSelected ? AD.marker : 'transparent'}`,
                     }}
                   >
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, border: `2px solid ${isSelected ? '#CC0000' : AD.gray}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {isSelected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#CC0000' }} />}
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, border: `2px solid ${isSelected ? AD.marker : AD.gray}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {isSelected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: AD.marker }} />}
                     </div>
                     <span style={{ fontSize: 13, color: AD.textPrimary, fontFamily: AD.fontSans }}>{opt.label}</span>
                     {opt.value && (
@@ -1840,7 +1840,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
             }}
           />
           {imageError && (
-            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#CC0000', fontFamily: AD.fontSans }}>{imageError}</p>
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: AD.red2Text, fontFamily: AD.fontSans }}>{imageError}</p>
           )}
         </div>
 
@@ -1903,7 +1903,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
             </div>
             {ctaEnabled && ctaUrl && (
               <div style={{ marginTop: 16 }}>
-                <div style={{ display: 'inline-block', background: '#CC0000', color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
+                <div style={{ display: 'inline-block', background: AD.navy, color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
                   {ctaButtonLabel}
                 </div>
                 <p style={{ margin: '6px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontMono }}>
@@ -2078,7 +2078,7 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, onSaveExit, headers 
           <i
             className="ph ph-paper-plane-tilt"
             style={{
-              fontSize: 72, color: '#CC0000', display: 'block',
+              fontSize: 72, color: AD.red2, display: 'block',
               marginBottom: 24,
               animation: 'launchFloat 2s ease-in-out infinite',
             }}
@@ -2199,7 +2199,7 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, onSaveExit, headers 
               </div>
               {summary.campaign.cta_enabled && summary.campaign.cta_url && (
                 <div style={{ marginTop: 14 }}>
-                  <div style={{ display: 'inline-block', background: '#CC0000', color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
+                  <div style={{ display: 'inline-block', background: AD.navy, color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
                     {deriveCTALabel(summary.campaign.cta_url)}
                   </div>
                   <span style={{ fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontMono, marginTop: 6, display: 'block' }}>
@@ -2282,7 +2282,7 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, onSaveExit, headers 
                   style={{
                     position: 'relative', zIndex: 1,
                     width: '100%', height: 60,
-                    background: '#CC0000',
+                    background: AD.marker,
                     border: 'none', borderRadius: 14,
                     fontFamily: AD.fontSans, fontSize: 17, fontWeight: 700,
                     color: '#fff',
@@ -2337,9 +2337,9 @@ function CsvUploadStep({ csvFile, onFileSelect, onUpload, uploading, error, onBa
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
         style={{
-          border: `2px dashed ${isDragging ? '#CC0000' : AD.borderStrong}`,
+          border: `2px dashed ${isDragging ? AD.marker : AD.borderStrong}`,
           borderRadius: 14, padding: '44px 32px', textAlign: 'center',
-          cursor: 'pointer', background: isDragging ? 'rgba(204,0,0,0.04)' : AD.bgSurface,
+          cursor: 'pointer', background: isDragging ? AD.bgCardTint : AD.bgSurface,
           transition: 'border-color 0.15s, background 0.15s', marginBottom: 16,
         }}
       >
@@ -2350,7 +2350,7 @@ function CsvUploadStep({ csvFile, onFileSelect, onUpload, uploading, error, onBa
           style={{ display: 'none' }}
           onChange={e => { if (e.target.files[0]) onFileSelect(e.target.files[0]); }}
         />
-        <i className="ph ph-upload-simple" style={{ fontSize: 40, color: isDragging ? '#CC0000' : AD.textTertiary, display: 'block', marginBottom: 14 }} />
+        <i className="ph ph-upload-simple" style={{ fontSize: 40, color: isDragging ? AD.marker : AD.textTertiary, display: 'block', marginBottom: 14 }} />
         <p style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>
           Drag a CSV here, or click to browse
         </p>
@@ -2832,19 +2832,19 @@ function BuilderDrawer({
                               // ring and dot cannot take the bucket-B value — and any
                               // value chosen now is chosen against a surface 5.2d-5
                               // replaces. Deciding twice is worse than deciding late.
-                              background: isSelected ? 'rgba(1,40,84,0.5)' : AD.bgCard,
-                              border: `1px solid ${isSelected ? AD.blueLight : AD.border}`,
+                              background: AD.bgCard,
+                              border: `1px solid ${isSelected ? AD.marker : AD.border}`,
                               borderRadius: 12, padding: '14px 18px', cursor: 'pointer',
                               textAlign: 'left', width: '100%', transition: 'border-color 0.15s, background 0.15s',
                             }}
                           >
                             <div style={{
                               width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-                              border: `2px solid ${isSelected ? AD.blueLight : AD.borderStrong}`,
-                              background: isSelected ? AD.blueLight : 'transparent',
+                              border: `2px solid ${isSelected ? AD.marker : AD.borderStrong}`,
+                              background: isSelected ? AD.marker : 'transparent',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                             }}>
-                              {isSelected && <i className="ph ph-check" style={{ fontSize: 11, color: AD.navy }} />}
+                              {isSelected && <i className="ph ph-check" style={{ fontSize: 11, color: '#FFFFFF' }} />}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ margin: '0 0 2px', fontFamily: AD.fontSans, fontSize: 14, fontWeight: 600, color: AD.textPrimary }}>{aud.name}</p>
@@ -3062,7 +3062,7 @@ function AudienceCard({ audience, onEdit, onDeactivate, onReactivate, onDelete }
           padding: 4, borderRadius: 6,
           opacity: hov ? 1 : 0, transition: 'opacity 0.15s',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: trashHov ? '#CC0000' : AD.textSecondary,
+          color: trashHov ? AD.red2 : AD.textSecondary,
         }}
       >
         <i className="ph ph-trash" style={{ fontSize: 16 }} />
