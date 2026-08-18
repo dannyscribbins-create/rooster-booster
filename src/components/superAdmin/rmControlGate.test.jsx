@@ -112,6 +112,9 @@ describe('Phase 1 / D-K — isFlagEnabled fails closed', () => {
   // could drift — a correct parser wired to the wrong env key would satisfy every
   // other test in this file's parse block.
   it('isRmControlEnabled reads VITE_ENABLE_RM_CONTROL specifically', () => {
+    // ⚠ THE ABSENT STATE IS STUBBED, NOT ASSUMED — see the note above the
+    // closed-gate block below for the false-red this prevents.
+    vi.stubEnv(FLAG, undefined);
     expect(isRmControlEnabled()).toBe(false);
     vi.stubEnv(FLAG, 'true');
     expect(isRmControlEnabled()).toBe(true);
@@ -123,7 +126,25 @@ describe('Phase 1 / D-K — isFlagEnabled fails closed', () => {
 describe('Phase 1 / D-K — /rm-control is gated OFF by default', () => {
 
   // The default-off case is the one that matters most: an absent variable is what
-  // production has today and what every developer machine has.
+  // production has today.
+  //
+  // ⚠ THE ABSENT STATE IS NOW STUBBED EXPLICITLY — `vi.stubEnv(FLAG, undefined)` —
+  // RATHER THAN INHERITED FROM THE AMBIENT ENVIRONMENT. That is the whole of this
+  // hardening and it changes no assertion; only HOW the absent state is established.
+  //
+  // WHAT IT PREVENTS. These cases used to assert the absent behaviour while doing
+  // nothing to establish absence, so their real premise was "no developer's .env
+  // sets VITE_ENABLE_RM_CONTROL." Vitest loads .env through Vite, so the moment
+  // that line exists locally — and it is the DOCUMENTED way to reach /rm-control
+  // for a browser check — `import.meta.env` carried 'true' and three tests went
+  // red on a change that touched none of this. A correct change, a red gate.
+  //
+  // WHY THAT MATTERS MORE THAN THE THREE TESTS. An unstated environmental
+  // assumption in a test is a false-red generator, and a gate that cries wolf
+  // stops being a gate — the next red gets waved through as "probably the env
+  // again." Every POSITIVE case in this file already stubbed explicitly; only the
+  // absent case leaned on ambient state, and that inconsistency was the defect.
+  //
   // ⚠ ASSERTION ORDER IS DELIBERATE IN ALL THREE CLOSED-GATE CASES.
   //
   // The gated surfaces render SYNCHRONOUSLY from App's pathname branch — it is an
@@ -137,6 +158,7 @@ describe('Phase 1 / D-K — /rm-control is gated OFF by default', () => {
   // half: without it a crashed render, an ErrorBoundary, or an empty tree would
   // satisfy every absence check above while proving nothing.
   it('[RED] with the flag ABSENT, /rm-control/login does not render the super-admin form', async () => {
+    vi.stubEnv(FLAG, undefined);
     goTo('/rm-control/login');
     render(<App />);
 
@@ -147,6 +169,7 @@ describe('Phase 1 / D-K — /rm-control is gated OFF by default', () => {
   });
 
   it('[RED] with the flag ABSENT, /rm-control does not render the super-admin shell', async () => {
+    vi.stubEnv(FLAG, undefined);
     localStorage.setItem(CONTROL_TOKEN_KEY, 'probe-token');
     goTo('/rm-control');
     render(<App />);
