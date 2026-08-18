@@ -51,7 +51,13 @@ import { AdminPermissionsContext } from '../../hooks/useAdminPermissions';
 // that these keep rendering, so a test comparing a constant to itself pins nothing.
 const TODAY_SCRIM_COLOUR = '#012854';   // was baked into rgba(1,40,84,0.75)
 const TODAY_SCRIM_ALPHA = '0.75';
-const TODAY_LOCK_AMBER = '#fbbf24';     // === AD.amberText, written as a literal
+// ⚠ NOT AD.amberText. This comment used to claim it was, and that stopped being
+// true in 5.1 when AD.amberText became #92400E — the two decoupled then and are
+// no longer related. #fbbf24 is the literal fallback baked into LockedSection's
+// own `var(--rm-warning-text, #fbbf24)`, which is what line 188 pins. Changing
+// AD.amberText does NOT break that assertion; the stale cross-reference is
+// exactly what would make a future session think it did.
+const TODAY_LOCK_AMBER = '#fbbf24';
 
 const css = (value) => String(value).replace(/\s+/g, '');
 
@@ -60,10 +66,15 @@ const css = (value) => String(value).replace(/\s+/g, '');
 //
 // ⚠ WHY THIS IS NEEDED HERE AND NOT IN THE var() ASSERTIONS ABOVE. jsdom leaves a
 // var() declaration completely unparsed — '#012854' inside one reads back
-// verbatim. A BARE hex is parsed and re-serialised: AD.bgCard '#1f2638' reads
-// back as 'rgb(31, 38, 56)'. So the AD-token assertions have to normalise and the
-// var() ones must not, and comparing an AD token against its raw hex would fail
-// while the component was perfectly correct.
+// verbatim. A BARE hex is parsed and re-serialised: AD.bgCard '#FFFFFF' reads
+// back as 'rgb(255, 255, 255)'. So the AD-token assertions have to normalise and
+// the var() ones must not, and comparing an AD token against its raw hex would
+// fail while the component was perfectly correct.
+//
+// (The worked example said '#1f2638' until 5.2d-1 — AD.bgCard's DARK-THEME value,
+// left behind when 5.1 collapsed bgCard to #FFFFFF. The mechanism it describes is
+// unchanged and the helper is untouched; only the example was stale, which is the
+// worst kind here because the whole point of the comment is what jsdom returns.)
 function asJsdom(property, value) {
   const probe = document.createElement('div');
   probe.style[property] = value;

@@ -117,7 +117,25 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
           MAIN MENU tightens by 4px. Deliberate: a uniform inset is what makes
           it read as a seated object, and the label below carries 12px of its
           own top padding. */}
-      <div style={{ padding: '24px 20px 20px', background: AD.bgSidebarHeader, borderBottom: `1px solid ${AD.border}`, margin: 4, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* ── 5.2d-1: THE TIDIES 5.2c AND 5.2c-2 LEFT BEHIND ────────────────
+          borderBottom REMOVED. It was `1px solid AD.border` — a navy alpha over
+          linen, a ~2% delta and imperceptible — and it dated from when this was
+          a full-width band and needed a line to separate it from the nav. Since
+          5.2c inset the plate, its own edge against the navy does that at
+          12.61:1. It was left in place through 5.2c deliberately: vestigial is
+          not the same as newly wrong, and only that distinction keeps the fence
+          meaning anything. This is the sub-phase that owns the tail, so it goes.
+
+          PADDING 24/20/20 -> 16/20/16. The old vertical values were tuned around
+          the 120px platform mark 5.2c-2 retired; the mark now caps at 56px, so
+          the plate stood taller than its contents needed.
+
+          ⚠ VERTICAL ONLY — 20px HORIZONTAL IS LOAD-BEARING. The 182px content
+          box is derived as 230 - 8 (margin) - 40 (padding), and maxWidth: 170
+          comes from that. Changing the horizontal padding silently invalidates
+          the sizing arithmetic stated in the comment above AND the logo cap that
+          depends on it. Both are unchanged here. */}
+      <div style={{ padding: '16px 20px 16px', background: AD.bgSidebarHeader, margin: 4, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {branding.logoUrl
           ? <img src={branding.logoUrl} alt={branding.companyName}
               style={{ maxWidth: 170, maxHeight: 56, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }} />
