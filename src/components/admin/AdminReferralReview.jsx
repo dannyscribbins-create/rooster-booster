@@ -205,7 +205,7 @@ function FlaggedTab() {
                         color: AD.textPrimary, fontFamily: AD.fontSans, outline: 'none',
                         width: '100%', boxSizing: 'border-box',
                       }}
-                      onFocus={e => { e.target.style.borderColor = AD.blueLight; }}
+                      onFocus={e => { e.target.style.borderColor = AD.marker; }}
                       onBlur={e => { e.target.style.borderColor = AD.borderStrong; }}
                     />
                   </div>
@@ -417,7 +417,7 @@ function MissingTab() {
                           fontFamily: AD.fontSans, outline: 'none', resize: 'vertical',
                           marginBottom: 12,
                         }}
-                        onFocus={e => { e.target.style.borderColor = AD.blueLight; }}
+                        onFocus={e => { e.target.style.borderColor = AD.marker; }}
                         onBlur={e => { e.target.style.borderColor = AD.borderStrong; }}
                       />
                       {resolveError[row.id] && (

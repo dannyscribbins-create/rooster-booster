@@ -361,9 +361,9 @@ export default function AdminSettingsNotifications() {
         <p style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600, color: AD.textPrimary }}>Message style</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {modeOptions.map(opt => (
-            <button key={opt.value} onClick={() => setMode(opt.value)} style={{ background: mode === opt.value ? AD.bgCardTint : 'transparent', border: `1.5px solid ${mode === opt.value ? AD.blueLight : AD.border}`, borderRadius: 12, padding: '14px 16px', textAlign: 'left', cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s', fontFamily: AD.fontSans }}>
+            <button key={opt.value} onClick={() => setMode(opt.value)} style={{ background: mode === opt.value ? AD.bgCardTint : 'transparent', border: `1.5px solid ${mode === opt.value ? AD.navy : AD.border}`, borderRadius: 12, padding: '14px 16px', textAlign: 'left', cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s', fontFamily: AD.fontSans }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: opt.value !== 'custom' ? 6 : 0 }}>
-                <div style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, border: `2px solid ${mode === opt.value ? AD.blueLight : AD.borderStrong}`, background: mode === opt.value ? AD.blueLight : 'transparent' }} />
+                <div style={{ width: 16, height: 16, borderRadius: '50%', flexShrink: 0, border: `2px solid ${mode === opt.value ? AD.navy : AD.borderStrong}`, background: mode === opt.value ? AD.navy : 'transparent' }} />
                 <span style={{ fontSize: 13, fontWeight: 600, color: AD.textPrimary }}>{opt.label}</span>
               </div>
               {opt.preview && <p style={{ margin: '0 0 0 24px', fontSize: 12, color: AD.textSecondary, lineHeight: 1.5 }}>{opt.preview}</p>}
@@ -375,7 +375,7 @@ export default function AdminSettingsNotifications() {
             <p style={{ margin: '0 0 8px', fontSize: 12, color: AD.textSecondary }}>
               <span style={{ fontWeight: 600, color: AD.textPrimary }}>Hey [First Name],</span>&nbsp;<span style={{ color: AD.textTertiary }}>(locked opener)</span>
             </p>
-            <textarea value={customMessage} onChange={e => setCustomMessage(e.target.value)} placeholder="your payout has been approved and is heading your way!" rows={4} style={{ width: '100%', padding: '10px 12px', background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`, borderRadius: 10, fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary, outline: 'none', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5 }} onFocus={e => e.target.style.borderColor = AD.blueLight} onBlur={e => e.target.style.borderColor = AD.borderStrong} />
+            <textarea value={customMessage} onChange={e => setCustomMessage(e.target.value)} placeholder="your payout has been approved and is heading your way!" rows={4} style={{ width: '100%', padding: '10px 12px', background: AD.bgSurface, border: `1px solid ${AD.borderStrong}`, borderRadius: 10, fontFamily: AD.fontSans, fontSize: 14, color: AD.textPrimary, outline: 'none', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5 }} onFocus={e => e.target.style.borderColor = AD.marker} onBlur={e => e.target.style.borderColor = AD.borderStrong} />
             <p style={{ margin: '4px 0 0', fontSize: 11, color: AD.textTertiary }}>Tokens: [First Name], [Amount], [Referred Name]</p>
           </div>
         )}

@@ -52,7 +52,7 @@ function NotificationCard({ notif, onNavigate, onClose }) {
         position: 'relative',
         background: isUnread ? AD.bgCard : AD.bgCardTint,
         border: `1px solid ${AD.border}`,
-        borderLeft: `4px solid ${isUnread ? AD.blueLight : AD.border}`,
+        borderLeft: `4px solid ${isUnread ? AD.marker : AD.border}`,
         borderRadius: 12,
         padding: '14px 16px',
         marginBottom: 8,
@@ -64,7 +64,7 @@ function NotificationCard({ notif, onNavigate, onClose }) {
         <div style={{
           position: 'absolute', top: 14, right: 14,
           width: 8, height: 8, borderRadius: '50%',
-          background: AD.blueLight,
+          background: AD.marker,
         }} />
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingRight: isUnread ? 16 : 0, marginBottom: 4 }}>

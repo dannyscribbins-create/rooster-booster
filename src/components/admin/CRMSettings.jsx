@@ -30,7 +30,7 @@ function SettingsInput({ label, value, onChange, placeholder, type = 'text', dis
           transition: 'border-color 0.15s',
           cursor: disabled ? 'not-allowed' : 'text',
         }}
-        onFocus={e => { if (!disabled) e.target.style.borderColor = AD.blueLight; }}
+        onFocus={e => { if (!disabled) e.target.style.borderColor = AD.marker; }}
         onBlur={e => { e.target.style.borderColor = AD.border; }}
       />
     </div>
@@ -803,7 +803,7 @@ export default function CRMSettings() {
       <div key={crmType} style={{
         flex: 1, minWidth: 160,
         background: AD.bgCardTint, borderRadius: AD.radiusMd,
-        border: `1px solid ${expanded ? AD.blueLight : AD.border}`,
+        border: `1px solid ${expanded ? AD.marker : AD.border}`,
         padding: '20px', display: 'flex', flexDirection: 'column', gap: 10,
         transition: 'border-color 0.2s',
       }}>
@@ -1629,7 +1629,7 @@ export default function CRMSettings() {
               color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
               transition: 'border-color 0.15s',
             }}
-            onFocus={e => { e.target.style.borderColor = AD.blueLight; }}
+            onFocus={e => { e.target.style.borderColor = AD.marker; }}
             onBlur={e => { e.target.style.borderColor = AD.border; }}
           />
           {!referralStartDate && connectedAt && (
@@ -1750,15 +1750,15 @@ export default function CRMSettings() {
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: 12,
                   padding: '14px 16px', borderRadius: AD.radiusMd,
-                  border: `1px solid ${importFilterMode === opt.value ? AD.blueLight : AD.border}`,
+                  border: `1px solid ${importFilterMode === opt.value ? AD.marker : AD.border}`,
                   background: importFilterMode === opt.value ? AD.blueBg : 'transparent',
                   cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
                 }}
               >
                 <div style={{
                   width: 16, height: 16, borderRadius: '50%', flexShrink: 0, marginTop: 2,
-                  border: `2px solid ${importFilterMode === opt.value ? AD.blueLight : AD.border}`,
-                  background: importFilterMode === opt.value ? AD.blueLight : 'transparent',
+                  border: `2px solid ${importFilterMode === opt.value ? AD.marker : AD.border}`,
+                  background: importFilterMode === opt.value ? AD.marker : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   transition: 'all 0.15s',
                 }}>
@@ -1795,7 +1795,7 @@ export default function CRMSettings() {
                           color: AD.textPrimary, outline: 'none',
                           transition: 'border-color 0.15s',
                         }}
-                        onFocus={e => { e.target.style.borderColor = AD.blueLight; }}
+                        onFocus={e => { e.target.style.borderColor = AD.marker; }}
                         onBlur={e => { e.target.style.borderColor = AD.border; }}
                       />
                     </div>

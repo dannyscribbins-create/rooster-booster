@@ -23,7 +23,7 @@ function SettingsInput({ label, value, onChange, placeholder, type = 'text' }) {
           color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
           transition: 'border-color 0.15s',
         }}
-        onFocus={e => e.target.style.borderColor = AD.blueLight}
+        onFocus={e => e.target.style.borderColor = AD.marker}
         onBlur={e => e.target.style.borderColor = AD.border}
       />
     </div>
@@ -558,7 +558,7 @@ export default function CompanyDetailsSettings() {
                 placeholder="Tell referrers about your company, your story, and what makes you different."
                 rows={4}
                 style={{ ...aboutInputStyle, resize: 'vertical', lineHeight: 1.5 }}
-                onFocus={e => e.target.style.borderColor = AD.blueLight}
+                onFocus={e => e.target.style.borderColor = AD.marker}
                 onBlur={e => e.target.style.borderColor = AD.border}
               />
             </div>
@@ -605,7 +605,7 @@ export default function CompanyDetailsSettings() {
                 onChange={e => setCertSearch(e.target.value)}
                 placeholder="Search awards…"
                 style={{ ...aboutInputStyle, marginBottom: 16 }}
-                onFocus={e => e.target.style.borderColor = AD.blueLight}
+                onFocus={e => e.target.style.borderColor = AD.marker}
                 onBlur={e => e.target.style.borderColor = AD.border}
               />
 
@@ -648,12 +648,18 @@ export default function CompanyDetailsSettings() {
                             onClick={() => toggleCert(award.id)}
                             style={{
                               width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: 2,
-                              border: `1.5px solid ${certState.enabled ? AD.blueLight : AD.borderStrong}`,
+                              border: `1.5px solid ${certState.enabled ? AD.marker : AD.borderStrong}`,
                               background: certState.enabled ? AD.navy : 'transparent',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               cursor: 'pointer', transition: 'background 0.12s, border-color 0.12s',
                             }}
                           >
+                            {/* ⚠ AD.blueLight SURVIVES HERE ON PURPOSE (5.2d-3, bucket F).
+                                The box above fills AD.navy when enabled, so this check
+                                glyph is light-on-dark at 10.01:1 — blueLight's original
+                                job. Phase 0 mis-bucketed it as TEXT; reading the parent
+                                is what caught it. The BORDER moved to AD.marker because
+                                that edge is judged against the white card outside. */}
                             {certState.enabled && (
                               <i className="ph ph-check" style={{ fontSize: 10, color: AD.blueLight }} />
                             )}
@@ -713,7 +719,7 @@ export default function CompanyDetailsSettings() {
                                       autoFocus
                                       style={{
                                         width: 70, padding: '2px 8px',
-                                        background: AD.bgCard, border: `1px solid ${AD.blueLight}`,
+                                        background: AD.bgCard, border: `1px solid ${AD.marker}`,
                                         borderRadius: 6, fontFamily: AD.fontSans, fontSize: 12,
                                         color: AD.textPrimary, outline: 'none',
                                       }}
@@ -722,6 +728,11 @@ export default function CompanyDetailsSettings() {
                                       onClick={() => confirmAddYear(award.id)}
                                       style={{
                                         padding: '2px 8px', borderRadius: 6, border: 'none',
+                                        // ⚠ AD.blueLight SURVIVES HERE ON PURPOSE (5.2d-3, bucket F).
+                                        // The fill on this same line is AD.navy, so this is the
+                                        // button's LABEL on a dark fill — 10.01:1, blueLight's
+                                        // original job. AD.marker would give 4.47:1 orange-on-navy
+                                        // and AD.blueText 2.05:1, effectively invisible.
                                         background: AD.navy, color: AD.blueLight,
                                         fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer',
                                       }}

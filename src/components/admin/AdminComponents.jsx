@@ -175,7 +175,7 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
               fontFamily: AD.fontSans, transition: 'background 0.15s, color 0.15s',
               position: 'relative',
             }}>
-              {active && <div style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: AD.blueLight, borderRadius: 99 }} />}
+              {active && <div style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: AD.marker, borderRadius: 99 }} />}
               <i className={`ph ${item.icon}`} style={{ fontSize: 16, opacity: 0.85, flexShrink: 0 }} />
               <span>{item.label}</span>
               {item.id === 'payouts' && pendingCount > 0 && (
@@ -453,7 +453,7 @@ export function AdminInput({ value, onChange, placeholder, type = 'text', label,
         fontFamily: AD.fontSans, fontSize: 15, color: AD.textPrimary,
         outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s',
       }}
-        onFocus={e => e.target.style.borderColor = AD.blueLight}
+        onFocus={e => e.target.style.borderColor = AD.marker}
         onBlur={e => e.target.style.borderColor = AD.borderStrong}
       />
     </div>

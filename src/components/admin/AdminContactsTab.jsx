@@ -299,7 +299,7 @@ function GroupedFilterPanel({
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '7px 13px', borderRadius: 8,
             background: panelOpen ? AD.navy : 'transparent',
-            color: panelOpen ? '#fff' : (panelCount > 0 ? AD.blueLight : AD.textSecondary),
+            color: panelOpen ? '#fff' : (panelCount > 0 ? AD.blueText : AD.textSecondary),
             border: `1px solid ${panelOpen ? AD.navy : (panelCount > 0 ? AD.borderStrong : AD.border)}`,
             fontSize: 12, fontFamily: AD.fontSans, cursor: 'pointer',
             fontWeight: 500, transition: 'all 0.12s', whiteSpace: 'nowrap',

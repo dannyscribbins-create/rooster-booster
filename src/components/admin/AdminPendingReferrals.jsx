@@ -154,7 +154,7 @@ export default function AdminPendingReferrals() {
             type="checkbox"
             checked={includeClosed}
             onChange={e => setIncludeClosed(e.target.checked)}
-            style={{ accentColor: AD.blueLight }}
+            style={{ accentColor: AD.marker }}
           />
           Show closed records
         </label>

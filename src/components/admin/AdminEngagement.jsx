@@ -100,7 +100,7 @@ function MonthSelect({ value, onChange, label, helperText }) {
         value={value}
         onChange={e => onChange(parseInt(e.target.value))}
         style={{ ...inputBase, width: 200, cursor: 'pointer' }}
-        onFocus={e => e.target.style.borderColor = AD.blueLight}
+        onFocus={e => e.target.style.borderColor = AD.marker}
         onBlur={e => e.target.style.borderColor = AD.borderStrong}
       >
         {MONTH_NAMES.map((name, i) => (
@@ -130,7 +130,7 @@ function PrizeRows({ prizes, setPrizes }) {
           onChange={e => update(idx, 'amount', e.target.value)}
           placeholder="0"
           style={{ ...inputBase, width: '100%', paddingLeft: 22 }}
-          onFocus={e => e.target.style.borderColor = AD.blueLight}
+          onFocus={e => e.target.style.borderColor = AD.marker}
           onBlur={e => e.target.style.borderColor = AD.borderStrong}
         />
       </div>
@@ -140,7 +140,7 @@ function PrizeRows({ prizes, setPrizes }) {
         onChange={e => update(idx, 'description', e.target.value)}
         placeholder="e.g. Visa gift card"
         style={{ ...inputBase, flex: 1 }}
-        onFocus={e => e.target.style.borderColor = AD.blueLight}
+        onFocus={e => e.target.style.borderColor = AD.marker}
         onBlur={e => e.target.style.borderColor = AD.borderStrong}
       />
     </div>

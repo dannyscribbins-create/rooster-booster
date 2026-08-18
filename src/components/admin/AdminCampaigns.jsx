@@ -96,10 +96,10 @@ function StepIndicator({ currentStep, isCsvFlow }) {
               <div style={{
                 width: 28, height: 28, borderRadius: '50%',
                 background: isActive ? AD.navy : isPast ? 'rgba(45,139,95,0.2)' : AD.bgCardTint,
-                border: `2px solid ${isActive ? AD.blueLight : isPast ? AD.green : AD.border}`,
+                border: `2px solid ${isActive ? AD.marker : isPast ? AD.green : AD.border}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 11, fontWeight: 600,
-                color: isActive ? AD.blueLight : isPast ? AD.greenText : AD.textTertiary,
+                color: isActive ? AD.blueText : isPast ? AD.greenText : AD.textTertiary,
                 transition: 'all 0.3s',
               }}>
                 {isPast
@@ -109,7 +109,7 @@ function StepIndicator({ currentStep, isCsvFlow }) {
               </div>
               <span style={{
                 fontSize: 10, fontFamily: AD.fontSans,
-                color: isLocked ? AD.textTertiary : isActive ? AD.blueLight : AD.textSecondary,
+                color: isLocked ? AD.textTertiary : isActive ? AD.blueText : AD.textSecondary,
                 whiteSpace: 'nowrap', letterSpacing: '0.02em',
               }}>
                 {label}
@@ -164,7 +164,7 @@ function FilterCard({ title, expanded, onToggle, children, right, note, noExpand
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 8, height: 8, borderRadius: '50%',
-            background: expanded ? AD.blueLight : AD.borderStrong,
+            background: expanded ? AD.marker : AD.borderStrong,
             transition: 'background 0.2s',
           }} />
           {title}
@@ -229,7 +229,7 @@ function TypeCard({ title, description, icon, onClick, comingSoon }) {
         transform: (!comingSoon && hov) ? 'translateY(-2px)' : 'none',
       }}
     >
-      <i className={`ph ${icon}`} style={{ fontSize: 28, color: comingSoon ? AD.textTertiary : AD.blueLight, display: 'block', marginBottom: 12 }} />
+      <i className={`ph ${icon}`} style={{ fontSize: 28, color: comingSoon ? AD.textTertiary : AD.blueText, display: 'block', marginBottom: 12 }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <p style={{ margin: 0, fontWeight: 600, fontSize: 15, color: AD.textPrimary }}>{title}</p>
         {comingSoon && (
@@ -413,7 +413,7 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAud
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 14 }}>
         <style>{`@keyframes curatingPulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }`}</style>
-        <i className="ph ph-spinner" style={{ fontSize: 36, color: AD.blueLight, animation: 'curatingPulse 1.5s ease-in-out infinite' }} />
+        <i className="ph ph-spinner" style={{ fontSize: 36, color: AD.blueText, animation: 'curatingPulse 1.5s ease-in-out infinite' }} />
         <p style={{ margin: 0, fontSize: 16, color: AD.textPrimary, fontFamily: AD.fontSans, fontWeight: 500 }}>Verifying audience members…</p>
       </div>
     );
@@ -455,19 +455,19 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAud
               <div style={{
                 width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
                 background: itemChecked[i] ? 'rgba(45,139,95,0.2)' : i === 3 ? 'rgba(211,227,240,0.12)' : AD.bgCardTint,
-                border: `2px solid ${itemChecked[i] ? AD.green : i === 3 ? AD.blueLight : AD.borderStrong}`,
+                border: `2px solid ${itemChecked[i] ? AD.green : i === 3 ? AD.marker : AD.borderStrong}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 {itemChecked[i]
                   ? <i className="ph ph-check" style={{ fontSize: 13, color: AD.greenText }} />
                   : i === 3
-                    ? <i className="ph ph-spinner" style={{ fontSize: 13, color: AD.blueLight, animation: 'curatingPulse 1.5s ease-in-out infinite' }} />
+                    ? <i className="ph ph-spinner" style={{ fontSize: 13, color: AD.blueText, animation: 'curatingPulse 1.5s ease-in-out infinite' }} />
                     : null
                 }
               </div>
               <span style={{
                 fontFamily: AD.fontSans, fontSize: 15,
-                color: itemChecked[i] ? AD.greenText : i === 3 ? AD.blueLight : AD.textPrimary,
+                color: itemChecked[i] ? AD.greenText : i === 3 ? AD.blueText : AD.textPrimary,
                 fontWeight: i === 3 ? 500 : 400,
               }}>
                 {label}
@@ -1445,13 +1445,13 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                   }}
                   style={{
                     background: isSelected ? AD.navy : AD.bgCard,
-                    border: `1px solid ${isSelected ? AD.blueLight : AD.border}`,
+                    border: `1px solid ${isSelected ? AD.marker : AD.border}`,
                     borderRadius: 10, padding: '12px 16px', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', gap: 12,
                     transition: 'all 0.15s',
                   }}
                 >
-                  <i className={`ph ${p.icon}`} style={{ fontSize: 18, color: isSelected ? AD.blueLight : AD.textTertiary }} />
+                  <i className={`ph ${p.icon}`} style={{ fontSize: 18, color: isSelected ? AD.blueText : AD.textTertiary }} />
                   {/* ⚠ '#FFFFFF' ON THE SELECTED BRANCH, NEVER AD.textPrimary — the card
                       above is filled AD.navy when selected, and 5.1 inverted textPrimary
                       to that same navy, so this label rendered at 1.00:1 and disappeared.
@@ -1533,10 +1533,10 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                   style={{
                     display: 'flex', alignItems: 'center', gap: 8, marginTop: 10,
                     background: subjectLineLoading ? AD.bgSurface : AD.navy,
-                    border: `1px solid ${subjectLineLoading ? AD.border : AD.blueLight}`,
+                    border: `1px solid ${subjectLineLoading ? AD.border : AD.marker}`,
                     borderRadius: 8, padding: '9px 16px', cursor: subjectLineLoading ? 'not-allowed' : 'pointer',
                     fontFamily: AD.fontSans, fontSize: 13, fontWeight: 500,
-                    color: subjectLineLoading ? AD.textTertiary : AD.blueLight,
+                    color: subjectLineLoading ? AD.textTertiary : AD.blueText,
                     opacity: subjectLineLoading ? 0.7 : 1,
                     transition: 'all 0.15s',
                   }}
@@ -1544,7 +1544,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                   {subjectLineLoading && (
                     <span style={{
                       width: 12, height: 12, borderRadius: '50%', flexShrink: 0,
-                      border: `2px solid ${AD.blueLight}`, borderTopColor: 'transparent',
+                      border: `2px solid ${AD.marker}`, borderTopColor: 'transparent',
                       display: 'inline-block', animation: 'spin 0.7s linear infinite',
                     }} />
                   )}
@@ -1564,8 +1564,8 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                           style={{
                             marginBottom: 6, padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
                             background: isSelected ? 'rgba(211,227,240,0.08)' : AD.bgSurface,
-                            border: `1px solid ${isSelected ? AD.blueLight : AD.border}`,
-                            borderLeft: `3px solid ${isSelected ? AD.blueLight : 'transparent'}`,
+                            border: `1px solid ${isSelected ? AD.marker : AD.border}`,
+                            borderLeft: `3px solid ${isSelected ? AD.marker : 'transparent'}`,
                             transition: 'all 0.15s',
                           }}
                         >
@@ -1650,9 +1650,9 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                       onClick={() => setSelectedTone(id)}
                       style={{
                         flex: 1, padding: '7px 4px', borderRadius: 7,
-                        border: `1px solid ${isActive ? AD.blueLight : AD.borderStrong}`,
+                        border: `1px solid ${isActive ? AD.marker : AD.borderStrong}`,
                         background: isActive ? 'rgba(211,227,240,0.12)' : 'transparent',
-                        color: isActive ? AD.blueLight : AD.textSecondary,
+                        color: isActive ? AD.blueText : AD.textSecondary,
                         fontFamily: AD.fontSans, fontSize: 12, fontWeight: isActive ? 600 : 400,
                         cursor: 'pointer', transition: 'all 0.12s',
                       }}
@@ -1669,10 +1669,10 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   background: (aiGenerating || aiLimitReached) ? AD.bgSurface : AD.navy,
-                  border: `1px solid ${(aiGenerating || aiLimitReached) ? AD.border : AD.blueLight}`,
+                  border: `1px solid ${(aiGenerating || aiLimitReached) ? AD.border : AD.marker}`,
                   borderRadius: 8, padding: '9px 16px', cursor: (aiGenerating || aiLimitReached) ? 'not-allowed' : 'pointer',
                   fontFamily: AD.fontSans, fontSize: 13, fontWeight: 500,
-                  color: (aiGenerating || aiLimitReached) ? AD.textTertiary : AD.blueLight,
+                  color: (aiGenerating || aiLimitReached) ? AD.textTertiary : AD.blueText,
                   opacity: (aiGenerating || aiLimitReached) ? 0.7 : 1,
                   transition: 'all 0.15s',
                 }}
@@ -1680,7 +1680,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                 {aiGenerating && (
                   <span style={{
                     width: 12, height: 12, borderRadius: '50%', flexShrink: 0,
-                    border: `2px solid ${AD.blueLight}`, borderTopColor: 'transparent',
+                    border: `2px solid ${AD.marker}`, borderTopColor: 'transparent',
                     display: 'inline-block', animation: 'spin 0.7s linear infinite',
                   }} />
                 )}
@@ -1864,8 +1864,8 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
                     onClick={() => setPreviewMode(m.id)}
                     style={{
                       background: isActive ? AD.navy : AD.bgSurface,
-                      border: `1px solid ${isActive ? AD.blueLight : AD.border}`,
-                      color: isActive ? AD.blueLight : AD.textSecondary,
+                      border: `1px solid ${isActive ? AD.marker : AD.border}`,
+                      color: isActive ? AD.blueText : AD.textSecondary,
                       borderRadius: i === 0 ? '8px 0 0 8px' : '0 8px 8px 0',
                       fontSize: 12, padding: '6px 14px', cursor: 'pointer',
                       fontFamily: AD.fontSans,
@@ -2623,7 +2623,7 @@ function BuilderDrawer({
                   onChange={e => setCampaignName(e.target.value.slice(0, 60))}
                   placeholder="Campaign name — e.g. Spring 2026 Outreach"
                   style={{ ...inputStyle, fontSize: 16 }}
-                  onFocus={e => e.target.style.borderColor = AD.blueLight}
+                  onFocus={e => e.target.style.borderColor = AD.marker}
                   onBlur={e => e.target.style.borderColor = AD.borderStrong}
                   onKeyDown={e => { if (e.key === 'Enter') onCreateCampaign(); }}
                   autoFocus
@@ -2706,14 +2706,14 @@ function BuilderDrawer({
                         <div style={{ flex: 1 }}>
                           <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>From</label>
                           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...inputStyle, colorScheme: 'dark' }}
-                            onFocus={e => e.target.style.borderColor = AD.blueLight}
+                            onFocus={e => e.target.style.borderColor = AD.marker}
                             onBlur={e => e.target.style.borderColor = AD.borderStrong}
                           />
                         </div>
                         <div style={{ flex: 1 }}>
                           <label style={{ display: 'block', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, marginBottom: 6 }}>To</label>
                           <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ ...inputStyle, colorScheme: 'dark' }}
-                            onFocus={e => e.target.style.borderColor = AD.blueLight}
+                            onFocus={e => e.target.style.borderColor = AD.marker}
                             onBlur={e => e.target.style.borderColor = AD.borderStrong}
                           />
                         </div>
@@ -2742,7 +2742,7 @@ function BuilderDrawer({
                           onChange={e => setMinJobValue(e.target.value)}
                           placeholder="e.g. 1000"
                           style={{ ...inputStyle, borderRadius: '0 10px 10px 0', flex: 1 }}
-                          onFocus={e => e.target.style.borderColor = AD.blueLight}
+                          onFocus={e => e.target.style.borderColor = AD.marker}
                           onBlur={e => e.target.style.borderColor = AD.borderStrong}
                         />
                       </div>
@@ -2825,6 +2825,13 @@ function BuilderDrawer({
                             onClick={() => onAudienceSelect(aud.id)}
                             style={{
                               display: 'flex', alignItems: 'center', gap: 16,
+                              // ⚠ THREE AD.blueLight VALUES BELOW ARE DEFERRED TO 5.2d-5,
+                              // NOT MISSED (5.2d-3). The selected fill here is Accent's
+                              // navy at 50% over white = #8094AA, a mid-tone belonging to
+                              // no palette. AD.marker on it measures 1.02:1, so the radio
+                              // ring and dot cannot take the bucket-B value — and any
+                              // value chosen now is chosen against a surface 5.2d-5
+                              // replaces. Deciding twice is worse than deciding late.
                               background: isSelected ? 'rgba(1,40,84,0.5)' : AD.bgCard,
                               border: `1px solid ${isSelected ? AD.blueLight : AD.border}`,
                               borderRadius: 12, padding: '14px 18px', cursor: 'pointer',

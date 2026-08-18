@@ -46,6 +46,12 @@ function StepIndicator({ current, total }) {
               background: done ? AD.blueText : active ? AD.navy : AD.bgCardTint,
               border: `2px solid ${done ? AD.blueText : active ? AD.blueText : AD.border}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
+              // ⚠ AD.blueLight SURVIVES HERE ON PURPOSE (5.2d-3, bucket F). When
+              // `active`, the circle's fill is AD.navy (line above) and this is the
+              // NUMERAL ON IT — 10.01:1. This is blueLight doing its ORIGINAL job,
+              // light text on a dark fill, not the mis-token 5.2d-3 repointed at 65
+              // other sites. A blanket sweep to AD.marker paints 4.47:1 orange on
+              // navy; a sweep to AD.blueText paints 2.05:1 and it vanishes.
               fontSize: 11, fontWeight: 700, color: done ? AD.bgCard : active ? AD.blueLight : AD.textTertiary,
               fontFamily: AD.fontSans, flexShrink: 0,
             }}>

@@ -49,7 +49,7 @@ function SettingsInput({ label, labelIcon, value, onChange, placeholder, type = 
           placeholder={placeholder}
           rows={rows}
           style={{ ...sharedStyle, resize: 'vertical', lineHeight: 1.5 }}
-          onFocus={e => e.target.style.borderColor = AD.blueLight}
+          onFocus={e => e.target.style.borderColor = AD.marker}
           onBlur={e => e.target.style.borderColor = AD.border}
         />
       ) : (
@@ -59,7 +59,7 @@ function SettingsInput({ label, labelIcon, value, onChange, placeholder, type = 
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           style={sharedStyle}
-          onFocus={e => e.target.style.borderColor = AD.blueLight}
+          onFocus={e => e.target.style.borderColor = AD.marker}
           onBlur={e => e.target.style.borderColor = AD.border}
         />
       )}
@@ -162,7 +162,7 @@ function ColorRow({ label, value, onChange, placeholder, pendingColor, onAssign 
             transition: 'border-color 0.15s',
             ...(hasPending ? { animation: 'rbColorPulse 1.2s ease-in-out infinite' } : {}),
           }}
-          onFocus={e => { if (!hasPending) e.target.style.borderColor = AD.blueLight; }}
+          onFocus={e => { if (!hasPending) e.target.style.borderColor = AD.marker; }}
           onBlur={e => { if (!hasPending) e.target.style.borderColor = AD.border; }}
         />
       </div>
@@ -185,7 +185,7 @@ function FontSelect({ label, value, onChange, options }) {
             color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
             transition: 'border-color 0.15s', appearance: 'none', cursor: 'pointer',
           }}
-          onFocus={e => e.target.style.borderColor = AD.blueLight}
+          onFocus={e => e.target.style.borderColor = AD.marker}
           onBlur={e => e.target.style.borderColor = AD.border}
         >
           {options.map(opt => (
@@ -617,7 +617,7 @@ export default function BrandingProfileSettings() {
                   fontWeight: detectionTab === tab ? 600 : 400,
                   color: detectionTab === tab ? AD.textPrimary : AD.textTertiary,
                   cursor: 'pointer',
-                  borderBottom: detectionTab === tab ? `2px solid ${AD.blueLight}` : '2px solid transparent',
+                  borderBottom: detectionTab === tab ? `2px solid ${AD.marker}` : '2px solid transparent',
                   marginBottom: -1,
                   transition: 'color 0.15s',
                 }}
@@ -637,7 +637,7 @@ export default function BrandingProfileSettings() {
                 onDrop={handleFileDrop}
                 onClick={() => fileInputRef.current?.click()}
                 style={{
-                  border: `2px dashed ${dragOver ? AD.blueLight : AD.border}`,
+                  border: `2px dashed ${dragOver ? AD.marker : AD.border}`,
                   borderRadius: AD.radiusMd, padding: '20px 16px',
                   textAlign: 'center', cursor: 'pointer',
                   background: dragOver ? 'rgba(96,165,250,0.06)' : 'transparent',
@@ -697,7 +697,7 @@ export default function BrandingProfileSettings() {
                     color: AD.textPrimary, outline: 'none', boxSizing: 'border-box',
                     transition: 'border-color 0.15s',
                   }}
-                  onFocus={e => e.target.style.borderColor = AD.blueLight}
+                  onFocus={e => e.target.style.borderColor = AD.marker}
                   onBlur={e => e.target.style.borderColor = AD.border}
                 />
                 <button

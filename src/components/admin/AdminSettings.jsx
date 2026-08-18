@@ -145,7 +145,7 @@ function SystemSettings() {
         padding: '28px 28px 24px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <i className="ph ph-hard-drives" style={{ fontSize: 20, color: AD.blueLight }} />
+          <i className="ph ph-hard-drives" style={{ fontSize: 20, color: AD.blueText }} />
           <span style={{ fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>Database Backup</span>
         </div>
         <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.6 }}>
@@ -180,8 +180,8 @@ function SystemSettings() {
               display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '9px 20px', borderRadius: AD.radiusMd,
               background: busy ? AD.bgCardTint : 'transparent',
-              border: `1px solid ${busy ? AD.border : AD.blueLight}`,
-              color: busy ? AD.textSecondary : AD.blueLight,
+              border: `1px solid ${busy ? AD.border : AD.marker}`,
+              color: busy ? AD.textSecondary : AD.blueText,
               fontSize: 14, fontWeight: 500, fontFamily: AD.fontSans,
               cursor: busy ? 'not-allowed' : 'pointer',
               transition: 'background 0.15s, color 0.15s, border-color 0.15s',
@@ -326,7 +326,7 @@ export default function AdminSettings({ teamNavRequest, initialTeamOpenFlagCount
                 onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'rgba(255,255,255,0.8)'; } }}
                 onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.55)'; } }}
               >
-                {active && <div style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: AD.blueLight, borderRadius: 99 }} />}
+                {active && <div style={{ position: 'absolute', left: -2, top: '50%', transform: 'translateY(-50%)', width: 3, height: 20, background: AD.marker, borderRadius: 99 }} />}
                 <i className={`ph ${item.icon}`} style={{ fontSize: 16, opacity: 0.85, flexShrink: 0 }} />
                 <span>{item.label}</span>
                 {item.id === 'team' && teamOpenFlagCount > 0 && (

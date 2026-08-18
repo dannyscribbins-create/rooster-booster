@@ -961,7 +961,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
                       onClick={() => toggleGroup(group.key)}
                       style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                     >
-                      <i className={`ph ${group.icon}`} style={{ fontSize: 14, color: AD.blueLight, flexShrink: 0 }} />
+                      <i className={`ph ${group.icon}`} style={{ fontSize: 14, color: AD.blueText, flexShrink: 0 }} />
                       <span style={{ fontSize: 13, fontWeight: 500, color: AD.textPrimary, flex: 1 }}>{group.label}</span>
                       {group.key === 'forward' && (
                         <span style={{ fontSize: 10, color: AD.textTertiary, background: AD.bgSurface, padding: '1px 7px', borderRadius: AD.radiusPill, marginRight: 4 }}>Coming soon</span>

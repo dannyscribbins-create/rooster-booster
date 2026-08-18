@@ -124,7 +124,7 @@ export default function AdminSettingsMyProfile() {
             borderRadius: AD.radiusMd, padding: '10px 14px', marginBottom: 16,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <i className="ph ph-info" style={{ fontSize: 15, color: AD.blueLight, flexShrink: 0 }} />
+              <i className="ph ph-info" style={{ fontSize: 15, color: AD.blueText, flexShrink: 0 }} />
               <span style={{ fontSize: 13, color: AD.textSecondary, fontFamily: AD.fontSans }}>
                 Your title isn't set — choose one from the list below.
               </span>

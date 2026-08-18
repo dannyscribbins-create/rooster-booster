@@ -209,7 +209,7 @@ export default function AdminFlaggedReferrals() {
                             width: '100%',
                             boxSizing: 'border-box',
                           }}
-                          onFocus={e => { e.target.style.borderColor = AD.blueLight; }}
+                          onFocus={e => { e.target.style.borderColor = AD.marker; }}
                           onBlur={e => { e.target.style.borderColor = AD.borderStrong; }}
                         />
                       </div>
