@@ -26,9 +26,27 @@ function SkeletonCard() {
       marginBottom: 8,
       animation: 'pulse 1.4s ease-in-out infinite',
     }}>
-      <div style={{ height: 12, width: '60%', background: AD.bgActive, borderRadius: 6, marginBottom: 10 }} />
-      <div style={{ height: 10, width: '80%', background: AD.bgActive, borderRadius: 6, marginBottom: 6 }} />
-      <div style={{ height: 10, width: '45%', background: AD.bgActive, borderRadius: 6 }} />
+      {/* ── 5.5: bgActive's ROLE SPLIT, WHICH 5.1 PREDICTED BY NAME ──────────
+          These three bars painted AD.bgActive — rgba(255,255,255,0.08). Four of
+          that token's five call sites are nav states on the DARK sidebar, where a
+          white wash is correct. This is the fifth, and it sits on AD.bgCardTint
+          since 5.1: the wash composites to #EEEFF2, a 1/255 delta at 1.01:1. The
+          inbox drawer's loading skeleton was invisible.
+
+          ⚠ 5.2d-2 SWEPT WHITE-ALPHA LITERALS AND THIS IS A TOKEN, which is why a
+          sub-phase that fixed 36 sites of exactly this defect walked past it. The
+          same blind spot the inversion class has: a value is only as findable as
+          the form it is written in.
+
+          rgba(28,45,77,0.10) composites to #D8DBE1 on the tint — a 21/255 delta
+          at 1.20:1, against the 1/255 it replaces. A skeleton has to read as a
+          placeholder without reading as content, so it is deliberately lighter
+          than AD.borderStrong would be here (#C7CBD3, 38/255 — that reads as
+          filled text rather than an absence).
+          The TOKEN is untouched: its other four sites remain correct. */}
+      <div style={{ height: 12, width: '60%', background: 'rgba(28,45,77,0.10)', borderRadius: 6, marginBottom: 10 }} />
+      <div style={{ height: 10, width: '80%', background: 'rgba(28,45,77,0.10)', borderRadius: 6, marginBottom: 6 }} />
+      <div style={{ height: 10, width: '45%', background: 'rgba(28,45,77,0.10)', borderRadius: 6 }} />
     </div>
   );
 }

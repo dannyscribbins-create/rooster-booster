@@ -427,9 +427,25 @@ export function Badge({ type, children }) {
 export function Btn({ onClick, children, variant = 'primary', size = 'md', style: extraStyle = {}, disabled = false }) {
   const base = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: AD.fontSans, fontWeight: 500, transition: 'background 0.15s, opacity 0.15s, transform 0.15s', borderRadius: 10, whiteSpace: 'nowrap', lineHeight: 1, opacity: disabled ? 0.5 : 1 };
   const sizes = { sm: { padding: '6px 12px', fontSize: 12 }, md: { padding: '8px 16px', fontSize: 15 }, lg: { padding: '13px 28px', fontSize: 15 } };
+  // ── 5.5: THE `accent` VARIANT IS GONE, NOT ALIASED (spec §Phase 5) ────────
+  // It painted AD.red — the SEMANTIC danger red — under a name that means
+  // "contractor accent". A variant whose name and value disagree is how the
+  // disagreement spreads: 22 callers had adopted it, and only two of them were
+  // destructive. The other twenty were Save, Add, Create, Build, Try Again,
+  // Next, Upload and Save & Exit — primary CTAs wearing danger red.
+  //
+  // ⚠ REMOVED RATHER THAN POINTED AT primary. An alias keeps the name accepted,
+  // and a name for a retired concept that the component still answers to is how
+  // it comes back. `variant="accent"` is now an unknown key: `variants[variant]`
+  // yields undefined and the button renders unstyled, which is loud.
+  //
+  // ⚠ AND ORANGE WAS NOT AVAILABLE HERE EVEN FOR THE PRIMARIES. Btn's sizes are
+  // 12px (sm) and 15px (md/lg) at fontWeight 500 — none reaches WCAG's large-text
+  // threshold of 18.66px bold or 24px regular, so AD.marker under a white label
+  // is 3.06:1 at every size and fails 4.5:1. AD.navy is 13.71:1. That is the same
+  // constraint 5.4 hit twice, decided the same way a third time.
   const variants = {
     primary: { background: AD.navy,  color: '#fff' },
-    accent:  { background: AD.red,   color: '#fff' },
     outline: { background: 'transparent', color: AD.textPrimary, border: `1px solid ${AD.borderStrong}` },
     ghost:   { background: 'transparent', color: AD.textSecondary },
     success: { background: AD.greenBg, color: AD.greenText, border: `1px solid ${AD.green}30` },

@@ -278,7 +278,7 @@ function CampaignCard({ campaign, onOpen, onDelete }) {
         </p>
         <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
           <Btn variant="outline" onClick={() => { setConfirmDelete(false); setDeleteError(''); }}>Cancel</Btn>
-          <Btn variant="accent" onClick={handleDelete} style={{ opacity: deleting ? 0.6 : 1 }}>
+          <Btn variant="danger" onClick={handleDelete} style={{ opacity: deleting ? 0.6 : 1 }}>
             {deleting ? 'Deleting...' : 'Delete'}
           </Btn>
         </div>
@@ -333,7 +333,7 @@ function EmptyState({ onBuild }) {
       <i className="ph ph-megaphone-simple" style={{ fontSize: 56, color: AD.textTertiary, display: 'block', marginBottom: 20 }} />
       <h2 style={{ margin: '0 0 10px', fontSize: 22, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>No campaigns yet</h2>
       <p style={{ margin: '0 0 28px', color: AD.textSecondary, fontSize: 15, fontFamily: AD.fontSans }}>Build your first outreach campaign to invite past clients into the app.</p>
-      <Btn variant="accent" onClick={onBuild}>
+      <Btn variant="primary" onClick={onBuild}>
         <i className="ph ph-megaphone-simple" /> Build a Campaign
       </Btn>
     </div>
@@ -394,7 +394,7 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAud
           <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>{pullError}</p>
           <div style={{ display: 'flex', gap: 12 }}>
             <Btn variant="outline" onClick={onGoBack}>Go Back</Btn>
-            <Btn variant="accent" onClick={onRetryPull}>Try Again</Btn>
+            <Btn variant="primary" onClick={onRetryPull}>Try Again</Btn>
           </div>
         </div>
       );
@@ -427,7 +427,7 @@ function CuratingScreen({ pullError, onRetryPull, onGoBack, contactsSoFar, isAud
         <p style={{ margin: 0, fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>{pullError}</p>
         <div style={{ display: 'flex', gap: 12 }}>
           <Btn variant="outline" onClick={onGoBack}>Go Back</Btn>
-          <Btn variant="accent" onClick={onRetryPull}>Try Again</Btn>
+          <Btn variant="primary" onClick={onRetryPull}>Try Again</Btn>
         </div>
       </div>
     );
@@ -1412,7 +1412,7 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
             Save &amp; Exit
           </button>
           <Btn
-            variant="accent"
+            variant="primary"
             onClick={handleNext}
             style={{ opacity: (saving || loadingContext) ? 0.6 : 1 }}
             disabled={saving || loadingContext}
@@ -2415,7 +2415,7 @@ function CsvUploadStep({ csvFile, onFileSelect, onUpload, uploading, error, onBa
       <div style={{ display: 'flex', gap: 12 }}>
         <Btn variant="outline" onClick={onBack}>Back</Btn>
         <Btn
-          variant="accent" size="lg"
+          variant="primary" size="lg"
           onClick={() => { if (csvFile) onUpload(csvFile); }}
           style={{ opacity: (!csvFile || uploading) ? 0.6 : 1, cursor: (!csvFile || uploading) ? 'not-allowed' : 'pointer' }}
         >
@@ -2535,7 +2535,7 @@ function CsvMappingStep({ previewData, columnMapping, onMappingChange, onConfirm
       <div style={{ display: 'flex', gap: 12 }}>
         <Btn variant="outline" onClick={onBack}>Back</Btn>
         <Btn
-          variant="accent" size="lg"
+          variant="primary" size="lg"
           onClick={onConfirm}
           style={{ opacity: (confirming || valid_rows === 0) ? 0.6 : 1, cursor: (confirming || valid_rows === 0) ? 'not-allowed' : 'pointer' }}
         >
@@ -2667,7 +2667,7 @@ function BuilderDrawer({
               </div>
               <p style={{ margin: '0 0 24px', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, textAlign: 'right' }}>{campaignName.length}/60</p>
               {nameError && <p style={{ margin: '-12px 0 16px', fontSize: 13, color: AD.red2Text, fontFamily: AD.fontSans }}>{nameError}</p>}
-              <Btn variant="accent" size="lg" onClick={onCreateCampaign} style={{ opacity: creatingCampaign ? 0.6 : 1 }}>
+              <Btn variant="primary" size="lg" onClick={onCreateCampaign} style={{ opacity: creatingCampaign ? 0.6 : 1 }}>
                 {creatingCampaign ? 'Creating...' : 'Create Campaign'}
               </Btn>
             </div>
@@ -2819,7 +2819,7 @@ function BuilderDrawer({
                   </p>
 
                   <Btn
-                    variant="accent" size="lg"
+                    variant="primary" size="lg"
                     onClick={onPullFromJobber}
                     style={{ opacity: savingFilters ? 0.6 : 1 }}
                   >
@@ -2903,7 +2903,7 @@ function BuilderDrawer({
                   {selectedBuilderAudienceId && (
                     <div style={{ marginTop: 24 }}>
                       <Btn
-                        variant="accent" size="lg"
+                        variant="primary" size="lg"
                         onClick={() => onUseAudience(selectedBuilderAudienceId)}
                         style={{ opacity: audienceLoadSaving ? 0.6 : 1 }}
                       >
@@ -3027,7 +3027,7 @@ function AudienceCard({ audience, onEdit, onDeactivate, onReactivate, onDelete }
         </p>
         <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
           <Btn variant="outline" onClick={() => { setConfirmDelete(false); setDeleteError(''); }}>Cancel</Btn>
-          <Btn variant="accent" onClick={handleDelete} style={{ opacity: deleting ? 0.6 : 1 }}>
+          <Btn variant="danger" onClick={handleDelete} style={{ opacity: deleting ? 0.6 : 1 }}>
             {deleting ? 'Deleting...' : 'Delete'}
           </Btn>
         </div>
@@ -3868,11 +3868,11 @@ export default function AdminCampaigns({ setLoggedIn }) {
           title="Campaigns"
           action={
             campaignsTab === 'campaigns' ? (
-              <Btn variant="accent" onClick={() => setShowTypeModal(true)}>
+              <Btn variant="primary" onClick={() => setShowTypeModal(true)}>
                 <i className="ph ph-megaphone-simple" /> Build a Campaign
               </Btn>
             ) : campaignsTab === 'audiences' ? (
-              <Btn variant="accent" onClick={openCreateAudience}>
+              <Btn variant="primary" onClick={openCreateAudience}>
                 <i className="ph ph-plus" /> New Audience
               </Btn>
             ) : null
@@ -3932,7 +3932,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
                 <i className="ph ph-funnel" style={{ fontSize: 48, color: AD.textTertiary, display: 'block', marginBottom: 16 }} />
                 <p style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>No saved audiences yet.</p>
                 <p style={{ margin: '0 0 24px', fontSize: 14, color: AD.textSecondary, fontFamily: AD.fontSans }}>Create one to reuse tag filters across campaigns.</p>
-                <Btn variant="accent" onClick={openCreateAudience}>
+                <Btn variant="primary" onClick={openCreateAudience}>
                   <i className="ph ph-plus" /> Create Audience
                 </Btn>
               </div>
@@ -4164,7 +4164,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
 
             <div style={{ display: 'flex', gap: 10 }}>
               <Btn
-                variant="accent"
+                variant="primary"
                 onClick={saveAudience}
                 disabled={!audienceName.trim() || audienceSaving}
               >
@@ -4307,7 +4307,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
           <p style={{ margin: '0 0 28px', color: AD.textSecondary, fontSize: 15, fontFamily: AD.fontSans }}>Your progress will be saved. You can continue this campaign anytime from the Campaigns page.</p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
             <Btn variant="outline" onClick={() => setShowExitConfirm(false)}>Cancel</Btn>
-            <Btn variant="accent" onClick={closeDrawer}>Save &amp; Exit</Btn>
+            <Btn variant="primary" onClick={closeDrawer}>Save &amp; Exit</Btn>
           </div>
         </CenteredModal>
       )}

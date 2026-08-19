@@ -109,11 +109,19 @@ export const AD = {
   // work under a dark logo, a pale one, or none at all. One rule, no new data,
   // nothing to get wrong per tenant.
   bgSidebarHeader: '#F8F5F0',
-  // ⚠ STILL A WHITE WASH, because 4 of its 5 call sites are nav states on the
-  // DARK sidebar, where that is correct. The fifth is not: AdminInboxSidebar's
-  // three skeleton bars sit on a light drawer after 5.1 and a white wash is
-  // invisible there. Recorded for 5.2's triage — bgActive has a role split of
-  // its own, smaller than blueLight's.
+  // ⚠ A WHITE WASH, AND NOW CORRECTLY SO AT EVERY SITE. Both remaining consumers
+  // are nav states on the DARK sidebar (AdminComponents' main nav, AdminSettings'
+  // sub-nav), where a white wash is right.
+  //
+  // 5.1 recorded a role split here and 5.5 resolved it: AdminInboxSidebar's three
+  // skeleton bars were the odd site, sitting on a LIGHT drawer after 5.1 where the
+  // wash composited to a 1/255 delta and the loading state was invisible. They now
+  // carry a navy alpha of their own rather than this token.
+  //
+  // ⚠ NOTE HOW LONG THAT TOOK, because the shape recurs. 5.2d-2 fixed 36 sites of
+  // exactly that defect and walked past this one, because it swept white-alpha
+  // LITERALS and this was a TOKEN. A value is only as findable as the form it is
+  // written in — the same blind spot as the rgba-vs-hex needle gap.
   bgActive:   'rgba(255,255,255,0.08)',
 
   navy:       '#1C2D4D',

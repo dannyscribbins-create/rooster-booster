@@ -150,8 +150,25 @@ The 3b sweep (`contractorBranding.test.jsx:270-340`) uses a hand-maintained `FIL
 - `src/components/admin/`
 - `src/constants/` — **without this the sweep structurally cannot see `adminTheme.js`**, the file holding Accent's entire palette
 - `src/components/superAdmin/` — two hardcoded `NAVY` constants
+- `src/utils/` — **AMENDED IN 5.5. See the provenance note below; this was NOT in D-N as originally written.**
 
 **Needles:** the 3b list (normalised: digits / url / plain), plus — **after Phase 5 lands** — `#012854`, `#CC0000`, `#041D3E` as hex needles. Without the hex needles, `adminTheme.js` passes the sweep even when walked, because no colour code contains the word "Accent". Both axes are required; either alone leaves the file invisible.
+
+---
+
+#### D-N amendments (5.2d-5b, recorded in 5.5)
+
+Three things shipped that this ruling did not say. All three are correct; none was written down until now.
+
+**1. A FOURTH WALK ROOT — `src/utils/`.** It holds `brandingTheme.mjs`, `platformIdentity.js` and `themeTokens.mjs`, so it is squarely in scope on the merits, and it was verified clean against both needle kinds *before* being added.
+
+> ⚠ **THE LESSON IS THE PROVENANCE, NOT THE ROOT.** It was added in 5.2d-5b because that sub-phase's Phase 0 brief asserted *"D-N adds `src/utils/` as a fourth root."* **D-N said no such thing** — it is titled *"the sweep walks directories, and it walks three of them"* — and neither the brief's author nor its executor checked the ruling's actual text. It surfaced in 5.5 only because that pass printed D-N verbatim instead of trusting the summary both had been carrying.
+>
+> This is CLAUDE.md's own rule biting: **a spec fragment is not a spec — always check all sub-bullets.** A future reader must be able to tell a deliberate extension from a misremembered requirement, and for four commits this one was indistinguishable from the second while being the first.
+
+**2. A FOURTH NEEDLE — `#D3E3F0`.** D-N named three values; §1 lists Accent's palette as `#012854` / `#CC0000` / `#D3E3F0`, and `#041D3E` is a derived dark navy. All four belong and all four are live.
+
+**3. BOTH ENCODINGS, NOT HEX ALONE.** 5.2d-5's Phase 0 found that hex-only needles would have matched **40 of 58** surviving sites and reported CLEAN while 18 remained, because `rgba(204,0,0,0.5)` contains no `#CC0000`. This is the phone-number formatting gap already in CLAUDE.md applied to colour. The matcher **parses** `rgb()`/`rgba()` and canonicalises to lowercase `#rrggbb`, so one needle catches both forms, any case and any internal whitespace — while `zIndex: 204` cannot trip it. A sweep that certifies a dirty repo clean is worse than no sweep.
 
 ### D-O — The inventory is superseded, not updated.
 
@@ -237,12 +254,16 @@ Fix, per D-I and the design rules:
 
 - `adminTheme.js` `AD` navy/red/light-blue → RoofMiles palette.
 - The ~44 hardcoded hexes audited **individually** per D-C — primary CTA → contractor accent; destructive → fixed danger red; structural → RoofMiles token.
-- `Btn`: `accent` variant folds into `primary`; contractor accent applied there.
+- `Btn`: `accent` variant folds into `primary`; contractor accent applied there. — **DONE IN 5.5.** The variant is *removed*, not aliased: it painted `AD.red` under a name meaning "contractor accent", and 20 of its 22 callers were primary CTAs wearing danger red. The two genuinely destructive ones took `danger`. Contractor accent is **not** applied there — `Btn`'s largest size is 15px/500, below WCAG's large-text threshold, so `AD.marker` under a white label is 3.06:1 and fails. `AD.navy` at 13.71:1 is what the variant already was.
 - Canonical-default fix: `BrandingPreview.jsx`'s Accent fallback → RoofMiles (D-M).
 - `SuperAdminLoginScreen.jsx:5` and `SuperAdminShell.jsx:4` — retire both `NAVY = '#012854'` constants (D-K item 1).
 - Add the three hex needles to the sweep (D-N).
 
-**Verification:** real-browser check, light and dark, before commit. **Verify on super admin first** — it is pure RoofMiles by definition and nobody depends on it, so the palette gets proven there before it touches the panel contractors live in. (Set `VITE_ENABLE_RM_CONTROL` locally to reach it.)
+**Verification:** real-browser check before commit — **one theme, AMENDED IN 5.5.**
+
+> ⚠ **"LIGHT AND DARK" WAS NEVER SATISFIABLE HERE.** The admin panel has no dark variant: `App.jsx` returns the admin branch **before `ThemeProvider` mounts** (Ruling 5, load-bearing and unchanged), so mode does not exist on that surface. The wording asked for a check that cannot be run, which is the kind of gate that gets quietly skipped rather than questioned.
+>
+> **The check WAS run** — by Danny, in a real browser, on every sub-phase from 5.0 through 5.4, and it is what found the invisible pipeline track, the glitched sidebar seam, the wrapped logo lockup, the indeterminate permission toggles and the red button on the set-password screen. Every one of those was invisible to the suite by construction: jsdom performs no layout and resolves no `var()`. **Verify on super admin first** — it is pure RoofMiles by definition and nobody depends on it, so the palette gets proven there before it touches the panel contractors live in. (Set `VITE_ENABLE_RM_CONTROL` locally to reach it.)
 
 **STOP:** visual review, then deploy.
 

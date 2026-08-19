@@ -397,7 +397,7 @@ export default function AdminSettingsNotifications() {
 
       {/* Save */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 48 }}>
-        <Btn onClick={handleSave} variant="accent" size="lg">
+        <Btn onClick={handleSave} variant="primary" size="lg">
           {saving ? <><i className="ph ph-circle-notch" style={{ animation: 'spin 0.8s linear infinite' }} /> Saving…</> : <><i className="ph ph-floppy-disk" /> Save Settings</>}
         </Btn>
         {saveStatus === 'saved' && <span style={{ fontSize: 13, color: AD.greenText }}><i className="ph ph-check" /> Saved</span>}

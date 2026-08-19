@@ -140,7 +140,7 @@ export default function AdminSettingsExperience() {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 48 }}>
-        <Btn onClick={handleSave} variant="accent" size="lg" disabled={loading}>
+        <Btn onClick={handleSave} variant="primary" size="lg" disabled={loading}>
           {saving
             ? <><i className="ph ph-circle-notch" style={{ animation: 'spin 0.8s linear infinite' }} /> Saving…</>
             : <><i className="ph ph-floppy-disk" /> Save Booking Settings</>
@@ -170,7 +170,7 @@ export default function AdminSettingsExperience() {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 48 }}>
-        <Btn onClick={handleSaveExperience} variant="accent" size="lg" disabled={efLoading || !engagementPayload}>
+        <Btn onClick={handleSaveExperience} variant="primary" size="lg" disabled={efLoading || !engagementPayload}>
           {efSaving
             ? <><i className="ph ph-circle-notch" style={{ animation: 'spin 0.8s linear infinite' }} /> Saving…</>
             : <><i className="ph ph-floppy-disk" /> Save Experience Settings</>

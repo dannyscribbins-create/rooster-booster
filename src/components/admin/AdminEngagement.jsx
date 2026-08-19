@@ -496,7 +496,7 @@ export default function AdminEngagement({ setLoggedIn }) {
 
       {/* Save */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 36 }}>
-        <Btn onClick={handleSave} variant="accent" size="lg" style={{ opacity: saving ? 0.7 : 1 }}>
+        <Btn onClick={handleSave} variant="primary" size="lg" style={{ opacity: saving ? 0.7 : 1 }}>
           {saving ? 'Saving…' : 'Save Settings'}
         </Btn>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

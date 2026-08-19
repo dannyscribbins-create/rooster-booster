@@ -425,7 +425,7 @@ export default function AdminReferrers({ setLoggedIn }) {
         title="Referrers"
         subtitle="Your referral network — app users and contacts"
         action={
-          <Btn onClick={() => setShowAdd(!showAdd)} variant="accent" size="md">
+          <Btn onClick={() => setShowAdd(!showAdd)} variant="primary" size="md">
             <i className={`ph ph-${showAdd ? 'x' : 'plus'}`} /> {showAdd ? 'Cancel' : 'Add Referrer'}
           </Btn>
         }
@@ -440,7 +440,7 @@ export default function AdminReferrers({ setLoggedIn }) {
             <AdminInput value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="email@example.com" label="Email address" />
             <AdminInput value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Phone number (optional)" label="Phone number (optional)" />
             <AdminInput value={newPin}   onChange={e => setNewPin(e.target.value)}   placeholder="1234" label="PIN (4–6 digits)" />
-            <div style={{ paddingBottom: 16 }}><Btn onClick={handleAdd} variant="accent">Add</Btn></div>
+            <div style={{ paddingBottom: 16 }}><Btn onClick={handleAdd} variant="primary">Add</Btn></div>
           </div>
           {formError   && <p style={{ color: AD.red2Text,  fontSize: 12, margin: '4px 0 0' }}>{formError}</p>}
           {formSuccess  && <p style={{ color: AD.greenText, fontSize: 12, margin: '4px 0 0' }}>{formSuccess}</p>}
