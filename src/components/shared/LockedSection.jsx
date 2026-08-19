@@ -1,5 +1,5 @@
 import { AD } from '../../constants/adminTheme';
-import { STATUS_DARK } from '../../constants/statusTheme';
+import { statusVar } from '../../constants/statusTheme';
 
 // ─── LockedSection — §7.4 locked-but-visible primitive ───────────────────────
 // The single reusable lock treatment for denied permissions.
@@ -8,17 +8,17 @@ import { STATUS_DARK } from '../../constants/statusTheme';
 // ⚠ LIVES IN shared/, NOT admin/ (moved C/DL-3a Phase 4B). It was under admin/
 // because only the admin panel had permissions; the rep app needs it in 3b/3c, so
 // it moved before it acquired a second cross-folder importer. It still imports AD
-// — full de-AD-ing is 3b/3c work. ⚠ THE REASON GIVEN HERE HAS EXPIRED, THE
-// CONCLUSION HAS NOT. It read "since AD.borderStrong is a white alpha with no
-// --rm-* equivalent"; 5.1 moved the AD set to a light palette and borderStrong
-// is rgba(28,45,77,0.18), a NAVY alpha, so the white-alpha half is gone. The
-// other half still holds and is what carries it: RENDER_TOKEN_KEYS is
-// primary / secondary / bg / surface / text, so there is still no --rm-* border
-// token to point it at. LockedSection.test.jsx's "reads its card chrome from the
-// AD tokens" case repaired this same claim in 5.1 and this file was not touched
-// with it — see the icon block below, which is the same two-records shape.
-// Only the two HARDCODED BRAND LITERALS were re-pointed in 4B; see the scrim
-// and icon notes below.
+// — full de-AD-ing is 3b/3c work, and cannot finish here regardless: there is no
+// --rm-* border token for AD.borderStrong to become, since RENDER_TOKEN_KEYS is
+// primary / secondary / bg / surface / text. That is the ONLY remaining reason;
+// LockedSection.test.jsx's "reads its card chrome from the AD tokens" case
+// carries the same statement.
+//
+// THE STATUS TOKEN IS NO LONGER AN EXCEPTION. This component used to declare the
+// DARK status value where every other primitive declares the light one, and ABR
+// 6B step 5 ended that — the lock icon goes through statusVar() like the rest of
+// the shelf. See the icon note below. The scrim's #012854 fallback is still a
+// hardcoded brand literal and is still D-G's, owned by the pre-launch sweep.
 //
 // mode="page"    — renders children blurred + non-interactive, with a centered lock
 //                  card overlaid. User can see the shape of the content but cannot
@@ -129,59 +129,45 @@ export default function LockedSection({ mode, label, tooltip, children }) {
           maxWidth: 300,
           textAlign: 'center',
         }}>
-          {/* ⚠ THE DIRECTION OF THIS BLOCK HAS INVERTED. READ IT THROUGH BEFORE
-              ACTING ON IT — the conclusion it originally reached is now the
-              wrong one, and the value it warns against is the right one.
+          {/* ⚠ statusVar(), LIKE EVERY OTHER PRIMITIVE ON THE SHELF. This is the
+              whole point of the declaration, and it is worth a note only because
+              this component used to be the exception.
 
-              IT USED TO READ: the fallback is the **DARK** status value,
-              deliberately, and this is the one place on the shelf where that is
-              true. Phase 4A's rule is "the fallback is the LIGHT value" because
-              an unmounted page is a light page — true for four rep primitives,
-              FALSE for this one, whose only live render path was the dark admin
-              panel. Going through statusVar('warningText') would hand back the
-              light #B45309 and repaint a live admin screen with a tone that
-              fails contrast on it.
+              It declared the DARK status value on the reasoning that its one live
+              render path was a dark admin panel, so a dark unmounted home wanted
+              a dark fallback. ABR Phase 5 repainted the panel and 5.1 collapsed
+              AD.bgCard — this icon's own card — to #FFFFFF, which left the icon
+              at 1.67:1, under the 3:1 GRAPHIC floor. statusVar() hands back
+              #B45309 at 4.87:1.
 
-              ABR PHASE 5 REVERSED THE PREMISE, AND THE CONCLUSION WENT WITH IT.
-              The panel is the RoofMiles palette now, and 5.1 collapsed
-              AD.bgCard — THIS ICON'S OWN SURFACE, six lines below — to #FFFFFF.
-              So on the screen that actually renders this today:
+              ⚠ THE FIX WAS NOT SWAPPING ONE LITERAL FOR ANOTHER. Hardcoding
+              var(--rm-warning-text, #B45309) would have produced the same pixels
+              and kept this the only primitive hand-writing a status declaration.
+              Routing through statusVar() DELETES THE SPECIAL CASE and the right
+              value falls out — and keeps falling out if the light table ever
+              moves, which a literal would not.
 
-                  #fbbf24 on #FFFFFF   1.67:1   under the 3:1 GRAPHIC floor
-                  #B45309 on #FFFFFF   4.87:1   passes
+              ⚠ statusTheme.js IS DELIBERATELY UNTOUCHED. The dark table's
+              warningText is still #fbbf24 and still correct: ThemeProvider
+              mounts it for REFERRER dark mode at 10.4:1 on a near-black surface.
+              Only this component's fallback CHOICE was ever wrong, so editing
+              the token would have fixed the panel by breaking the app.
 
-              The tone this block named as the unshippable regression is the
-              correct one. The tone it defends is the defect. That is INVERTED,
-              not merely stale, and the distinction matters: a reader who takes
-              away only "out of date" re-derives the original answer.
+              (The dark table is named in PROSE here, not by its identifier —
+              LockedSection.test.jsx's "the dark status token stays out of this
+              component's source" case is a bare string match over this file and
+              deliberately does not exempt comments, for the same reason the
+              brand-literal sweep does not: a name in prose is how a retired
+              symbol gets pasted back into code.)
 
-              ⚠ THE DECLARATION BELOW IS LEFT WRONG ON PURPOSE. Fixing it is
-              executable, it moves a colour on a shipped surface, and
-              LockedSection.test.jsx's "LockedSection deliberately declares the
-              DARK fallback" case pins the wrong value — so the assertion and the
-              component have to move together. That is ABR 6B STEP 5. It is
-              tracked there and is not a stray edit to make from here.
+              ⚠ NOT OBSERVED IN A BROWSER. The ratios are arithmetic over the
+              declared values; the panel screen this renders on needs a non-Owner
+              admin session and has not been reached. The test file's contrast
+              case makes the same claim and states the same limit.
 
-              ⚠ AND STEP 5 MUST NOT MOVE THE TOKEN. STATUS_DARK.warningText is
-              also read by ThemeProvider, which mounts it as --rm-warning-text
-              for REFERRER dark mode against a near-black surface, where #fbbf24
-              is correct at 10.4:1. Only THIS COMPONENT'S FALLBACK is wrong.
-              Editing statusTheme.js would fix the admin panel by breaking the
-              referrer app.
-
-              Full rationale in src/constants/statusTheme.js under THE
-              LOCKEDSECTION INVERSION — which carries this same inverted premise
-              and is corrected in the same pass as this block.
-
-              #fbbf24 is what shipped here as a literal and is now NAMED rather
-              than hardcoded, which is the part of 4B that stands. It is NO
-              LONGER AD.amberText: 5.1 moved that token to #92400E and the two
-              decoupled. ⚠ LockedSection.test.jsx repaired that exact claim when
-              it happened and THIS FILE WAS NOT TOUCHED WITH IT — a component and
-              its own test contradicting each other for two phases. Two records
-              that never met, named here because that shape is now the recurring
-              one in this arc and naming it is how it gets looked for. */}
-          <i className="ph ph-lock-simple" style={{ fontSize: 30, color: `var(--rm-warning-text, ${STATUS_DARK.warningText})` }} />
+              History — the inversion, and the four records that instructed
+              against this fix — is in ABR 6B steps 4 and 5, not repeated here. */}
+          <i className="ph ph-lock-simple" style={{ fontSize: 30, color: statusVar('warningText') }} />
           {label && (
             <span style={{
               color: AD.textPrimary,

@@ -272,14 +272,15 @@ export default function AdminPanel({ onLogout }) {
   // owned by the pre-launch sweep, not by this session. ⚠ D-G DEFERRED IT ON THE
   // PREMISE THAT ITS NAVY WAS THE PANEL'S OWN COLOUR, WHICH IT IS NOT ANY MORE;
   // that deferral is to be re-decided rather than inherited. The lock ICON on
-  // that same component is a separate and sharper problem — 1.67:1 on today's
-  // card — and is ABR 6B step 5.
+  // that same component was a separate and sharper problem — 1.67:1 on this
+  // card — and ABR 6B step 5 fixed it by routing the icon through statusVar().
+  // The scrim is the only piece of it still outstanding.
   //
   // ⚠ THE HEX IS DELIBERATELY NOT SPELLED IN THIS FILE. src/components/admin is
   // a walk root of adminBranding.test.jsx and Accent's navy is one of its colour
   // needles, which are matched in COMMENTS as well as in code — correctly, since
   // a hex sitting in prose is how a retired literal gets pasted back into a
-  // style. Naming it here failed that sweep on the first run of this very step.
+  // style. Naming it here failed that sweep on the first run of step 4.
   // Say "its navy" and let shared/LockedSection.jsx, which the walk does not
   // reach, be the one place the value is written.
   return (

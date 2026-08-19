@@ -22,12 +22,13 @@
 // property. That is why the fallbacks below are asserted as literals — on the
 // only surface that renders this component, the fallback is what paints.
 //
-// The binding requirement was that the admin panel look EXACTLY as it did, while
-// the two hardcoded brand literals became theme-readable for a future rep
-// surface. ⚠ THAT HALF HAS ALSO EXPIRED: ABR Phase 5 repainted the panel, so
-// "as it does today" no longer means "as it did in 4B". One of the two literals
-// is now actively wrong there — see the DARK-fallback case at the foot of this
-// file, and 6B step 5.
+// 4B's binding requirement was that the admin panel look EXACTLY as it did then,
+// while the two hardcoded brand literals became theme-readable for a future rep
+// surface. ABR Phase 5 repainted the panel, which retired the first half and
+// turned one of those literals into a defect: the lock icon sat at 1.67:1 on the
+// repainted card until 6B step 5 routed it through statusVar(). The scrim's
+// #012854 is the other one and is still D-G's, still deferred to the pre-launch
+// brand-literal sweep.
 //
 // ⚠ jsdom DOES NOT RESOLVE var(). Same two-half proof as Phase 4A:
 //   (a) DECLARATION — the element declares exactly var(--rm-X, <today's value>).
@@ -54,6 +55,8 @@
 // and would fade the lock card too. Hence three children, not two.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { AD } from '../../constants/adminTheme';
 import { STATUS_LIGHT, STATUS_DARK, STATUS_VARS, statusVar } from '../../constants/statusTheme';
@@ -61,18 +64,16 @@ import LockedSection from './LockedSection';
 import PermissionGate from '../admin/PermissionGate';
 import { AdminPermissionsContext } from '../../hooks/useAdminPermissions';
 
-// The two values this phase re-points. Kept as literals: the whole contract is
-// that these keep rendering, so a test comparing a constant to itself pins nothing.
+// The scrim's two values, kept as literals: the contract is that these keep
+// rendering, so a test comparing a constant to itself pins nothing.
 const TODAY_SCRIM_COLOUR = '#012854';   // was baked into rgba(1,40,84,0.75)
 const TODAY_SCRIM_ALPHA = '0.75';
-// ⚠ NOT AD.amberText. This comment used to claim it was, and that stopped being
-// true in 5.1 when AD.amberText became #92400E — the two decoupled then and are
-// no longer related. #fbbf24 is the literal fallback baked into LockedSection's
-// own `var(--rm-warning-text, #fbbf24)`, which is what this file's "(a) colours
-// the lock icon from --rm-warning-text" case pins. Changing
-// AD.amberText does NOT break that assertion; the stale cross-reference is
-// exactly what would make a future session think it did.
-const TODAY_LOCK_AMBER = '#fbbf24';
+//
+// There is no matching literal for the lock icon any more. It had one —
+// TODAY_LOCK_AMBER, '#fbbf24' — because the component hardcoded the DARK status
+// value as its fallback. ABR 6B step 5 routed the icon through statusVar(), so
+// the assertions build their expectation from the helper and the light table
+// instead, and a local copy of the value would only be one more thing to drift.
 
 const css = (value) => String(value).replace(/\s+/g, '');
 
@@ -106,6 +107,43 @@ function renderThemed(ui, vars = {}) {
 }
 
 const lockIcon = (root) => root.querySelector('.ph-lock-simple');
+
+// ── THE CONTRAST HELPERS — WHAT THEY PROVE AND WHAT THEY DO NOT ──────────────
+// WCAG 2.x relative luminance and contrast ratio, over two #RRGGBB values.
+// Deliberately arithmetic and not rendering: jsdom resolves no var() and
+// computes no contrast, so nothing in this suite can observe a painted pixel.
+//
+// ⚠ WHAT THE CONTRAST CASE PROVES: that the PAIR OF VALUES the component
+// declares clears the floor. ⚠ WHAT IT DOES NOT PROVE: that the fallback is
+// what actually paints. That is Ruling 5 — guaranteed structurally by the admin
+// tree rendering outside ThemeProvider, and asserted in ThemeProvider.test.jsx
+// ('mounts NOTHING on document.documentElement') and BrandingProvider.test.jsx
+// ('emits no --rm-* custom property on ANY element in its tree'). Two claims,
+// two places. Said here because a contrast assertion sitting next to a
+// declaration assertion quietly implies it covers both, and it does not.
+const srgbToLinear = (channel) => {
+  const s = channel / 255;
+  return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+};
+
+const relativeLuminance = (hex) => {
+  const h = hex.replace('#', '');
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
+};
+
+const contrastRatio = (a, b) => {
+  const [lighter, darker] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
+// Pulls the FALLBACK out of a 'var(--name, fallback)' declaration. The fallback
+// is what paints on the admin tree, so it — not the token table — is the value
+// whose contrast matters.
+const fallbackOf = (declaration) => {
+  const match = /var\(\s*--[\w-]+\s*,\s*([^)]+)\)/.exec(String(declaration));
+  return match ? match[1].trim() : null;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('LockedSection — page mode structure', () => {
@@ -209,9 +247,25 @@ describe('LockedSection — theme declaration, with today as the fallback', () =
     expect(getComputedStyle(root.children[1]).getPropertyValue('--rm-bg')).toBe('#0B111E');
   });
 
-  it('(a) colours the lock icon from --rm-warning-text, falling back to today\'s amber', () => {
+  it('(a) colours the lock icon from --rm-warning-text, falling back to the LIGHT value', () => {
+    // ⚠ THIS IS A VALUE ASSERTION, NOT A MECHANISM ONE, and the distinction is
+    // load-bearing for the case at the foot of this file. It compares the
+    // component's declaration against statusVar()'s output, and a hand-written
+    // 'var(--rm-warning-text, #B45309)' would satisfy it identically — the DOM
+    // string is the same either way. Nothing here can see whether the helper was
+    // called. See "the dark status token stays out of this component's source".
     const { root } = renderThemed(<LockedSection mode="page" label="Manage Team" />);
-    expect(css(lockIcon(root).style.color)).toBe(css(`var(--rm-warning-text, ${TODAY_LOCK_AMBER})`));
+    expect(css(lockIcon(root).style.color)).toBe(css(statusVar('warningText')));
+  });
+
+  it('the lock glyph clears the 3:1 graphic floor against the card it sits on', () => {
+    const { root } = renderThemed(<LockedSection mode="page" label="Manage Team" />);
+    const declared = fallbackOf(lockIcon(root).style.color);
+    expect(declared, 'the icon must declare var(--name, fallback)').toBeTruthy();
+    expect(
+      contrastRatio(declared, AD.bgCard),
+      `${declared} on AD.bgCard ${AD.bgCard}`
+    ).toBeGreaterThanOrEqual(3);
   });
 
   it('(b) the icon sits inside the cascade scope that would resolve it', () => {
@@ -270,44 +324,64 @@ describe('statusTheme — the warning role added for the lock affordance', () =>
   });
 
   it('statusVar() keeps its LIGHT-fallback contract for the new role too', () => {
-    // The helper is unchanged and still hands back the light value, because every
-    // OTHER consumer of it is a rep-side primitive whose unmounted home is a light
-    // screen. LockedSection is the exception and does not use it — see below.
+    // The helper is unchanged and still hands back the light value, because a
+    // primitive with no variables mounted is on a light surface. LockedSection
+    // was the one exception to that and is not any more — ABR 6B step 5 routed
+    // its lock icon through this helper like every other consumer.
     expect(statusVar('warningText')).toBe(`var(--rm-warning-text, ${STATUS_LIGHT.warningText})`);
   });
 
-  it('LockedSection deliberately declares the DARK fallback, not statusVar()\'s light one', () => {
-    // ⚠ THIS CASE PINS A VALUE THAT IS WRONG ON THE SURFACE IT SHIPS ON, AND IT
-    // IS LEFT PINNED DELIBERATELY UNTIL 6B STEP 5. Do not "fix" either side.
+  it('the dark status token stays out of this component\'s source', () => {
+    // ⚠ WHAT THIS SEES, AND WHAT NOTHING IN THIS FILE SEES.
     //
-    // IT WAS WRITTEN TO STOP THE INVERSION BEING CORRECTED AWAY. Phase 4A's rule
-    // is "the fallback is the LIGHT value", because an unmounted page is a light
-    // page. LockedSection's unmounted home was the DARK admin panel — the only
-    // primitive on the shelf for which that was true — so shipping the light
-    // amber #B45309 would have been a visible regression on the one screen that
-    // renders this component. The two therefore had to NOT be equal.
+    // IT PROVES: STATUS_DARK is absent from LockedSection.jsx's source text.
+    // IT DOES NOT PROVE: that the component routes through statusVar(). NO TEST
+    // CAN. statusVar('warningText') and a hand-written
+    // 'var(--rm-warning-text, #B45309)' emit an identical DOM string, so "(a)
+    // colours the lock icon" is a VALUE assertion, not a mechanism one. This
+    // case is the only thing in the file that sees the mechanism at all, and
+    // only negatively — by the absence of the token the old mechanism needed.
     //
-    // ⚠ ABR PHASE 5 REVERSED THE PREMISE, SO THE CONCLUSION IS NOW BACKWARDS.
-    // The panel is the RoofMiles palette, and 5.1 collapsed AD.bgCard — the card
-    // this icon is drawn on — to #FFFFFF. #fbbf24 on #FFFFFF is 1.67:1, under
-    // the 3:1 graphic floor. #B45309 on #FFFFFF is 4.87:1. The value this
-    // comment called the regression is the correct one; the value asserted below
-    // is the defect. INVERTED, not stale — a reader who reads only "out of date"
-    // concludes the assertion is still fine.
+    // ⚠ WHICH IS WHY IT IS NOT REDUNDANT WITH (a), and a reader who assumes (a)
+    // covers routing will delete this as duplication. That deletion is the exact
+    // regression it exists to catch: this component declared the DARK status
+    // value until ABR 6B step 5, four separate records instructed the next
+    // session to keep it that way, and (a) passes just as happily if STATUS_DARK
+    // comes back and is used for something else in the file.
     //
-    // WHY IT IS STILL HERE. Step 4 is comment-only, and the assertion and the
-    // component must move in one commit or the suite goes red between them. Step
-    // 5 rewrites this case and LockedSection.jsx's icon declaration together.
+    // SOURCE TEXT, NOT AN IMPORT CHECK, on purpose: under Vite a missing named
+    // import yields undefined rather than throwing, so an import-based check for
+    // a removed symbol cannot fail. CLAUDE.md records that as vacuity shape #4.
     //
-    // ⚠ STEP 5 MUST NOT MOVE STATUS_DARK.warningText. The "adds warning to all
-    // three tables" case above pins it, and ThemeProvider mounts it as
-    // --rm-warning-text for REFERRER dark mode, where #fbbf24 is correct at
-    // 10.4:1 on #121B31. The wrong thing is this component's FALLBACK CHOICE,
-    // not the token. Changing the token fixes the panel by breaking the app.
-    const { root } = renderThemed(<LockedSection mode="page" label="Manage Team" />);
-    expect(css(lockIcon(root).style.color)).toBe(css(`var(--rm-warning-text, ${STATUS_DARK.warningText})`));
-    expect(css(lockIcon(root).style.color)).not.toBe(css(statusVar('warningText')));
+    // ⚠ IT DOES NOT EXEMPT COMMENTS, and that is deliberate rather than crude.
+    // It fired on this very step against a comment in LockedSection.jsx that
+    // named the token while explaining why the token was not used; the comment
+    // was reworded to say it in prose. Same reasoning as the brand-literal
+    // sweep matching hexes in comments — a name in prose is how a retired symbol
+    // gets pasted back into code — and it keeps the invariant a plain one:
+    // the identifier does not appear in that file, anywhere, for any reason.
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/shared/LockedSection.jsx'), 'utf8'
+    );
+    expect(source).not.toContain('STATUS_DARK');
+    expect(source, 'the light-value helper is what replaced it').toContain('statusVar');
   });
+
+  // ── WHAT WAS DELETED HERE, SO IT IS NOT RESTORED ───────────────────────────
+  // This block also carried
+  //     expect(css(lockIcon(root).style.color)).not.toBe(css(statusVar('warningText')))
+  // whose only job was fencing the old inversion — "do not replace the dark
+  // fallback with statusVar()'s light one". Step 5 does precisely that, so the
+  // assertion's REASON is gone, not merely its value. Rewritten to guard the
+  // other direction it would be strictly redundant: "(a)" already excludes every
+  // value that is not statusVar()'s output, #fbbf24 included.
+  //
+  // What replaced it is stronger than what it was. The chain is three links,
+  // each pinned by a different case: the component declares statusVar()'s output
+  // ("(a) colours the lock icon"), statusVar() returns the light table value
+  // ("statusVar() keeps its LIGHT-fallback contract"), and that value is
+  // #B45309 ("adds warning to all three tables"). Break any one link and a
+  // named case tells you which.
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
