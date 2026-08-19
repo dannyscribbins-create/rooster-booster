@@ -157,7 +157,46 @@ export default function AdminPanel({ onLogout }) {
       if (cashoutsRes.status === 'fulfilled' && Array.isArray(cashoutsRes.value)) {
         setPendingCount(cashoutsRes.value.filter(c => c.status === 'pending').length);
       }
-      if (flaggedRes.status === 'fulfilled') {
+      // ── ⚠ Number.isFinite — NOT Array.isArray, AND NOT != null ─────────────
+      // NOT Array.isArray, because this handler is the odd one out by SHAPE
+      // rather than by oversight. The other four values are arrays; this one is
+      // an OBJECT carrying a numeric field, so the guard matches the value's own
+      // shape, not the siblings' form. Do not "correct" it into line with them.
+      //
+      // NOT != null, because this value is SUMMED TWICE and then compared —
+      // with missingOpenCount where it is handed to AdminShell below, then with
+      // pendingReferralCount in AdminSidebar, which is also the only place the
+      // pill's > 0 render test lives — so the guard's whole job is keeping that
+      // arithmetic sound, and a null check does not do that job. A string clears
+      // != null, and "7" + 2 is "72", which renders a confidently-wrong badge in
+      // a red pill. COUNT(*) returns a string; the parseInt at
+      // admin/index.js:1566 is the only thing standing in the way today.
+      //
+      // WHAT WENT WRONG WITHOUT IT: an unguarded read on a fulfilled error body
+      // set this to undefined, the two additions above turned it into NaN, and
+      // NaN > 0 is false — so the pill was never created. Absent, not
+      // "undefined": indistinguishable from a genuine all-clear, and it took the
+      // OTHER TWO counters down with it.
+      //
+      // THE status CHECK IS SUBSUMED, NOT LOST. The four siblings still open
+      // with status === 'fulfilled' because Array.isArray would throw nothing
+      // but read nothing either on a rejected settlement; here the optional
+      // chain covers it outright — a rejected result carries no .value, so the
+      // read yields undefined and Number.isFinite rejects it. Same outcome, one
+      // condition. The ?. is load-bearing for a second reason: it is also what
+      // stops a literal-null body throwing inside the uncaught IIFE that opens
+      // this function's body — which, unlike the two effects above it, has no
+      // safeAsync wrapper, so such a throw reaches no log and no console.
+      //
+      // ACCEPTED COST, RULED IN: an unresolvable count now contributes ZERO, so
+      // the pill UNDERSTATES rather than vanishing. It still cannot say
+      // "unknown", and giving it one needs a design decision about PARTIAL
+      // unknowns (what does it read when flagged is unknown but missing and
+      // pending are 2 and 3?) which belongs in shared nav code, not here.
+      // Queued in 6A. AdminApp.test.jsx's "an unknown flagged count contributes
+      // ZERO" case is the record of this remainder and is the test to rewrite
+      // when that lands.
+      if (Number.isFinite(flaggedRes.value?.unresolved_count)) {
         setFlaggedUnresolved(flaggedRes.value.unresolved_count);
       }
       if (pendingRes.status === 'fulfilled' && Array.isArray(pendingRes.value.pending)) {
