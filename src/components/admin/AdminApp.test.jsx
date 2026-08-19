@@ -1,5 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ABR PHASE 6B — STEP 3 — THE flaggedRes SHAPE GUARD
+// ⚠ PRE-FIX NARRATIVE: the present tense below is the state this suite was written against.
 //
 // AdminApp.jsx:160-162 reads `.unresolved_count` off a resolved value with no
 // shape guard, while its four siblings in the same Promise.allSettled block all

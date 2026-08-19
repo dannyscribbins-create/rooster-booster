@@ -1,5 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN BRAND RETIREMENT — PHASE 6B STEP 1 — ADMINDASHBOARD FIELD-LEVEL GUARD
+// ⚠ PRE-FIX NARRATIVE: the present tense below is the state this suite was written against.
 //
 // ⚠ THIS FILE IS NOT ABOUT BRANDING. adminBrandRetirement.test.jsx owns "does
 // the panel render THIS contractor"; adminBranding.test.jsx owns "no Accent
@@ -29,7 +30,7 @@
 // The throw does NOT happen during render(). It happens on the state update
 // after /api/admin/stats resolves. React surfaces that as an UNHANDLED ERROR,
 // which Vitest reports as a passing test in a non-zero run — the exact trap
-// recorded at adminBrandRetirement.test.jsx:292-297, where a blanket `{}` mock
+// recorded in src/__fixtures__/adminStats.js, where a blanket `{}` mock
 // let an assertion pass and THEN threw inside React.
 //
 // So a naive `expect(screen.getByText(...))` RED here would go GREEN while the

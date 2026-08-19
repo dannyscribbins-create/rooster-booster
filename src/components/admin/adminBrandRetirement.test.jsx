@@ -43,6 +43,7 @@ import AdminSettingsNotifications from './AdminSettingsNotifications';
 import AdminDashboard from './AdminDashboard';
 import AdminSettings from './AdminSettings';
 import { platformIdentityLine, PLATFORM_NAME } from '../../utils/platformIdentity';
+import { ADMIN_STATS_ZEROS } from '../../__fixtures__/adminStats';
 import {
   TENANT_A, TENANT_B, TENANT_A_NO_LOGO, NEUTRAL, CONTAMINANTS, underTenant,
 } from './__fixtures__/twoTenantBranding';
@@ -289,23 +290,17 @@ describe('Phase 4 — preset_2 renders the contractor, not the token', () => {
 // is precisely the AnnouncementPopup ReferenceError shape.
 describe('Phase 4 — the identity line names the platform AND the contractor', () => {
 
-  // ⚠ THE STATS PAYLOAD IS SHAPED, NOT `{}`. AdminDashboard calls
-  // `stats.totalBalance.toLocaleString()` with no guard, so a blanket empty-object
-  // mock let the header assertion pass and THEN threw inside React's render —
-  // surfacing as a Vitest UNHANDLED ERROR, which reports "418 passed" while
-  // exiting NON-ZERO and failing `npm test`, the pre-push gate. A test that
-  // leaves the component mid-crash is not testing the component that ships.
-  const STATS = Object.freeze({
-    activeReferrers: 0, totalReferrers: 0, totalBalance: 0, totalPaidOut: 0,
-    totalReferrals: 0, totalLeads: 0, totalInspections: 0, totalSold: 0,
-    totalNotSold: 0, pendingCashouts: 0,
-  });
+  // ⚠ THE STATS PAYLOAD IS SHAPED, NOT `{}`. src/__fixtures__/adminStats.js carries
+  // the reasoning: an empty-object mock clears AdminDashboard's object-level guard
+  // and THEN throws inside React, reporting "418 passed" on a NON-ZERO exit. The
+  // field-level guard this block once recorded as missing shipped in ABR 6B step 1
+  // (AdminDashboard.test.jsx).
 
   function installFetch() {
     global.fetch = vi.fn(async (url) => {
       const u = String(url);
       if (u.includes('/api/admin/stats')) {
-        return { ok: true, status: 200, json: async () => STATS };
+        return { ok: true, status: 200, json: async () => ADMIN_STATS_ZEROS };
       }
       return { ok: true, status: 200, json: async () => ({}) };
     });
