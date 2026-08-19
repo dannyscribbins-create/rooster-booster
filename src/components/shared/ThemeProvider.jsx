@@ -25,15 +25,34 @@ import { getReferrerToken } from '../../utils/authStorage';
 // requirement rather than a style preference.
 //
 // A :root mount is GLOBAL BY DEFINITION and cannot be scoped afterwards.
-// LockedSection (src/components/shared/LockedSection.jsx:77) lives on the DARK
-// admin panel and paints its permission scrim with var(--rm-bg, #012854). Mount
-// --rm-bg globally in light mode and --rm-bg resolves to the contractor's
-// landing_bg_color — #FFFFFF by default — turning a navy veil over blurred,
-// permission-gated content into a WHITE one. Its lock icon does the same:
+// LockedSection (src/components/shared/LockedSection.jsx) paints its permission
+// scrim with var(--rm-bg, #012854). Mount --rm-bg globally in light mode and it
+// resolves to the contractor's landing_bg_color — #FFFFFF by default — turning
+// a navy veil over blurred, permission-gated content into a WHITE one. That is
+// still the argument, and it still holds: a scrim that fails open is the one
+// failure mode LockedSection exists to prevent.
+//
+// ⚠ THE SECOND ARGUMENT THIS BLOCK USED TO MAKE HAS INVERTED, AND RULING 5 NOW
+// RESTS ON THE SCRIM ALONE. It read: "Its lock icon does the same:
 // var(--rm-warning-text, #fbbf24) would flip to the light #B45309, a tone that
-// fails contrast on that surface. src/constants/statusTheme.js:93-118 documents
-// that inversion as deliberate, and its whole premise is that NOTHING mounts the
-// variables on the admin panel.
+// fails contrast on that surface." ABR Phase 5 moved the admin panel to the
+// RoofMiles palette and 5.1 collapsed AD.bgCard, the icon's own card, to
+// #FFFFFF — so #fbbf24 is 1.67:1 there, under the 3:1 graphic floor, and
+// #B45309 is 4.87:1. The flip this block warned about would be an IMPROVEMENT
+// today. Stated plainly because the honest version of Ruling 5 is one
+// load-bearing reason and one that reversed, not two.
+//
+// ⚠ THAT IS NOT A CASE FOR MOUNTING ON :root. The scrim leg alone is sufficient,
+// and it would be the wrong fix regardless: the icon is wrong because
+// LockedSection picked the dark fallback, not because the variable is absent.
+// Mounting globally would paper over one defect with a contractor-dependent
+// value and reintroduce the white-scrim failure to do it. The fix is ABR 6B
+// step 5, in LockedSection.
+//
+// src/constants/statusTheme.js documents that inversion under THE LOCKEDSECTION
+// INVERSION — which has itself inverted and is corrected in the same pass as
+// this block. Its whole premise was that NOTHING mounts the variables on the
+// admin panel, and THAT part is still true and still enforced here.
 //
 // So: AdminPanel and the /rm-control super-admin shell render OUTSIDE this
 // provider and never see a --rm-* value. They keep their AD tokens and their

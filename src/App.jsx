@@ -355,9 +355,20 @@ export default function App() {
 
   // ── ROUTES THAT RENDER OUTSIDE THE THEME PROVIDER (C/DL-3b Phase 1, Ruling 5) ─
   // AdminPanel, the /rm-control super-admin shell and the admin set-password
-  // screen are ADMIN surfaces: they use the AD tokens and a dark palette, and
-  // LockedSection's permission scrim on that panel deliberately falls back to its
-  // #012854 / #fbbf24 literals (see src/constants/statusTheme.js:93-118).
+  // screen are ADMIN surfaces: they use the AD tokens, and LockedSection's
+  // permission scrim on that panel deliberately falls back to its #012854 /
+  // #fbbf24 literals (see src/constants/statusTheme.js under THE LOCKEDSECTION
+  // INVERSION — cited by NAME because the line reference this comment used to
+  // carry drifted, which is the class of rot ABR 6B step 4 was cleaning up).
+  //
+  // ⚠ "AND A DARK PALETTE" WAS TRUE AND IS NOT. ABR Phase 5 moved the panel to
+  // the RoofMiles palette — linen, white, #1C2D4D. THE ROUTING DECISION BELOW IS
+  // UNAFFECTED: it turns on what a mounted --rm-* would RESOLVE TO on these
+  // routes, not on what they look like. But the deferral of those two literals
+  // was reasoned FROM the dark palette, and one of them — the lock icon at
+  // 1.67:1 on today's card — is now a live defect rather than a preserved
+  // colour. That is ABR 6B step 5. Do not read this line as saying the
+  // fallbacks are still correct; it says the routing is.
   //
   // Mounting --rm-* over them would repaint that scrim white in light mode. They
   // are therefore returned BEFORE the provider is entered, not wrapped by it.
@@ -401,11 +412,19 @@ export default function App() {
   // ── THE ADMIN BRANCH MUST STAY OUTSIDE THE PROVIDER (Phase 1, Ruling 5) ─────
   // It moved from "before anything is known" to "after the identity is known",
   // which is the whole point of Phase 5 — but its POSITION relative to
-  // ThemeProvider is unchanged and load-bearing. The panel uses AD tokens on a
-  // dark palette, and LockedSection's permission scrim falls back to #012854 /
-  // #fbbf24 on the assumption that NOTHING mounts --rm-* over it. Wrap the panel
-  // and that navy veil over blurred, permission-gated content turns white in
-  // light mode.
+  // ThemeProvider is unchanged and load-bearing. The panel uses AD tokens, and
+  // LockedSection's permission scrim falls back to #012854 / #fbbf24 on the
+  // assumption that NOTHING mounts --rm-* over it. Wrap the panel and that navy
+  // veil over blurred, permission-gated content turns white in light mode.
+  //
+  // ⚠ "ON A DARK PALETTE" IS RETIRED — ABR Phase 5 moved the panel to linen,
+  // white and #1C2D4D. What survives is the assumption, which is the only part
+  // this branch depends on: the fallbacks are what paint here because nothing
+  // mounts the variables over them. What does NOT survive is the implication
+  // that those fallbacks are therefore right. #fbbf24 is 1.67:1 on today's lock
+  // card, under the 3:1 graphic floor; the scrim's navy is Accent's, not the
+  // panel's. Both are recorded in shared/LockedSection.jsx; the icon is ABR 6B
+  // step 5 and the scrim is D-G, to be re-decided rather than inherited.
   //
   // The boot gate has to sit above this, because until rehydration finishes there
   // is no identity to route on — and rendering the panel first and retracting it

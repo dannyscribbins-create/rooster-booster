@@ -10,10 +10,24 @@
 //
 // WHAT THIS SUITE PINS. LockedSection is LIVE — mode="element" on the admin team
 // screen's finance-wall and rep-promotion controls, mode="page" on the whole
-// Manage Team screen for an admin without the `team` flag. Nothing mounts --rm-*
-// anywhere in production, so the binding requirement is that the admin panel look
-// EXACTLY as it does today, while the two hardcoded brand literals become
-// theme-readable for a future rep surface.
+// Manage Team screen for an admin without the `team` flag.
+//
+// ⚠ "NOTHING MOUNTS --rm-* ANYWHERE IN PRODUCTION" WAS TRUE IN 4B AND IS FALSE
+// SINCE C/DL-3b PHASE 1. ThemeProvider is the product's first production mount,
+// and every primitive on the shelf resolves its variables now. THE NARROW
+// VERSION IS THE ONE STILL TRUE, AND IT IS THE ONE THESE ASSERTIONS DEPEND ON:
+// nothing mounts --rm-* ON THE ADMIN TREE. AdminPanel renders outside
+// ThemeProvider by Ruling 5, and ABR Phase 2 re-proved it structurally by giving
+// the panel BrandingProvider, which has no code path that emits a custom
+// property. That is why the fallbacks below are asserted as literals — on the
+// only surface that renders this component, the fallback is what paints.
+//
+// The binding requirement was that the admin panel look EXACTLY as it did, while
+// the two hardcoded brand literals became theme-readable for a future rep
+// surface. ⚠ THAT HALF HAS ALSO EXPIRED: ABR Phase 5 repainted the panel, so
+// "as it does today" no longer means "as it did in 4B". One of the two literals
+// is now actively wrong there — see the DARK-fallback case at the foot of this
+// file, and 6B step 5.
 //
 // ⚠ jsdom DOES NOT RESOLVE var(). Same two-half proof as Phase 4A:
 //   (a) DECLARATION — the element declares exactly var(--rm-X, <today's value>).
@@ -54,7 +68,8 @@ const TODAY_SCRIM_ALPHA = '0.75';
 // ⚠ NOT AD.amberText. This comment used to claim it was, and that stopped being
 // true in 5.1 when AD.amberText became #92400E — the two decoupled then and are
 // no longer related. #fbbf24 is the literal fallback baked into LockedSection's
-// own `var(--rm-warning-text, #fbbf24)`, which is what line 188 pins. Changing
+// own `var(--rm-warning-text, #fbbf24)`, which is what this file's "(a) colours
+// the lock icon from --rm-warning-text" case pins. Changing
 // AD.amberText does NOT break that assertion; the stale cross-reference is
 // exactly what would make a future session think it did.
 const TODAY_LOCK_AMBER = '#fbbf24';
@@ -262,12 +277,33 @@ describe('statusTheme — the warning role added for the lock affordance', () =>
   });
 
   it('LockedSection deliberately declares the DARK fallback, not statusVar()\'s light one', () => {
-    // ⚠ THE INVERSION, ASSERTED SO IT IS NOT "CORRECTED" LATER. Phase 4A's rule is
-    // "the fallback is the LIGHT value", because an unmounted page is a light page.
-    // LockedSection's unmounted home is the DARK admin panel — it is the only
-    // primitive on the shelf for which that is true. Shipping the light amber
-    // (#B45309) here would be a visible regression on the one screen that renders
-    // this component today. The two must therefore NOT be equal.
+    // ⚠ THIS CASE PINS A VALUE THAT IS WRONG ON THE SURFACE IT SHIPS ON, AND IT
+    // IS LEFT PINNED DELIBERATELY UNTIL 6B STEP 5. Do not "fix" either side.
+    //
+    // IT WAS WRITTEN TO STOP THE INVERSION BEING CORRECTED AWAY. Phase 4A's rule
+    // is "the fallback is the LIGHT value", because an unmounted page is a light
+    // page. LockedSection's unmounted home was the DARK admin panel — the only
+    // primitive on the shelf for which that was true — so shipping the light
+    // amber #B45309 would have been a visible regression on the one screen that
+    // renders this component. The two therefore had to NOT be equal.
+    //
+    // ⚠ ABR PHASE 5 REVERSED THE PREMISE, SO THE CONCLUSION IS NOW BACKWARDS.
+    // The panel is the RoofMiles palette, and 5.1 collapsed AD.bgCard — the card
+    // this icon is drawn on — to #FFFFFF. #fbbf24 on #FFFFFF is 1.67:1, under
+    // the 3:1 graphic floor. #B45309 on #FFFFFF is 4.87:1. The value this
+    // comment called the regression is the correct one; the value asserted below
+    // is the defect. INVERTED, not stale — a reader who reads only "out of date"
+    // concludes the assertion is still fine.
+    //
+    // WHY IT IS STILL HERE. Step 4 is comment-only, and the assertion and the
+    // component must move in one commit or the suite goes red between them. Step
+    // 5 rewrites this case and LockedSection.jsx's icon declaration together.
+    //
+    // ⚠ STEP 5 MUST NOT MOVE STATUS_DARK.warningText. The "adds warning to all
+    // three tables" case above pins it, and ThemeProvider mounts it as
+    // --rm-warning-text for REFERRER dark mode, where #fbbf24 is correct at
+    // 10.4:1 on #121B31. The wrong thing is this component's FALLBACK CHOICE,
+    // not the token. Changing the token fixes the panel by breaking the app.
     const { root } = renderThemed(<LockedSection mode="page" label="Manage Team" />);
     expect(css(lockIcon(root).style.color)).toBe(css(`var(--rm-warning-text, ${STATUS_DARK.warningText})`));
     expect(css(lockIcon(root).style.color)).not.toBe(css(statusVar('warningText')));

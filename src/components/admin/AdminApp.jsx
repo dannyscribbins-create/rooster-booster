@@ -256,13 +256,32 @@ export default function AdminPanel({ onLogout }) {
   //
   // ⚠ IT MOUNTS NO ELEMENT AND EMITS NO --rm-* (Ruling 5). That is why this is
   // BrandingProvider and not ThemeProvider: LockedSection's permission scrim
-  // paints var(--rm-bg, <its own dark navy fallback>) on this dark panel, and a
-  // mounted --rm-bg would resolve to the contractor's landing background —
-  // #FFFFFF by default — turning a navy veil over blurred, permission-gated
-  // content WHITE. The guarantee is structural, not positional: that provider
-  // has no code path that emits one. The fallback literal itself lives in
-  // shared/LockedSection.jsx and is D-G's — owned by the pre-launch sweep, not
-  // by this session.
+  // paints var(--rm-bg, <its own navy fallback>) here, and a mounted --rm-bg
+  // would resolve to the contractor's landing background — #FFFFFF by default —
+  // turning a veil over blurred, permission-gated content WHITE. The guarantee
+  // is structural, not positional: that provider has no code path that emits
+  // one.
+  //
+  // ⚠ "THIS DARK PANEL" IS GONE. This block said the scrim paints "on this dark
+  // panel"; ABR Phase 5 moved the panel to the RoofMiles palette — linen, white,
+  // #1C2D4D. The Ruling 5 argument above is unaffected, because it turns on what
+  // a mounted --rm-bg would RESOLVE TO and not on what the panel looks like. Two
+  // things that were true together are not one fact.
+  //
+  // The fallback literal itself lives in shared/LockedSection.jsx and is D-G's —
+  // owned by the pre-launch sweep, not by this session. ⚠ D-G DEFERRED IT ON THE
+  // PREMISE THAT ITS NAVY WAS THE PANEL'S OWN COLOUR, WHICH IT IS NOT ANY MORE;
+  // that deferral is to be re-decided rather than inherited. The lock ICON on
+  // that same component is a separate and sharper problem — 1.67:1 on today's
+  // card — and is ABR 6B step 5.
+  //
+  // ⚠ THE HEX IS DELIBERATELY NOT SPELLED IN THIS FILE. src/components/admin is
+  // a walk root of adminBranding.test.jsx and Accent's navy is one of its colour
+  // needles, which are matched in COMMENTS as well as in code — correctly, since
+  // a hex sitting in prose is how a retired literal gets pasted back into a
+  // style. Naming it here failed that sweep on the first run of this very step.
+  // Say "its navy" and let shared/LockedSection.jsx, which the walk does not
+  // reach, be the one place the value is written.
   return (
     <AdminPermissionsContext.Provider value={permState}>
       <BrandingProvider supplied={suppliedBranding}>

@@ -64,7 +64,13 @@ export const STATUS_DARK = Object.freeze({
   success:     '#16A34A',   // fill/accent   — 5.19:1 on #121B31 (same hex reads well in both)
   successText: '#7DD3AA',   // text          — 9.59:1 on #121B31
   warning:     '#D97706',   // fill/accent   — same hex both modes, as success is
-  warningText: '#fbbf24',   // text/icon     — 10.4:1 on #121B31; === AD.amberText
+  warningText: '#fbbf24',   // text/icon     — 10.4:1 on #121B31
+  //   ⚠ NO LONGER === AD.amberText. 5.1 moved that token to #92400E and the two
+  //   decoupled; the identity is not a fact about this value any more.
+  //   ⚠ AND #121B31 IS THE REFERRER DARK SURFACE, NOT THE ADMIN PANEL. This
+  //   value is correct where ThemeProvider mounts it and WRONG where
+  //   LockedSection falls back to it — see the INVERSION note below, which has
+  //   itself inverted. DO NOT EDIT THIS HEX TO FIX THAT.
 });
 
 // ONE VALUE FOR BOTH MODES, and the translucency is the whole reason. A solid
@@ -90,31 +96,51 @@ export const STATUS_VARS = Object.freeze({
   warningText: '--rm-warning-text',
 });
 
-// ─── THE LOCKEDSECTION INVERSION — DELIBERATE, DO NOT "CORRECT" ──────────────
+// ─── THE LOCKEDSECTION INVERSION — ITS PREMISE HAS SINCE INVERTED TOO ────────
 //
-// The contract stated at the top of this file is that the LIGHT value ships as
-// the hardcoded var() fallback, because an unmounted page is a light page. That
-// reasoning is sound for every rep-side primitive on the shelf, and statusVar()
-// below still encodes it for all of them.
+// ⚠ THIS NOTE ARGUED FOR SOMETHING THAT IS NOW WRONG. It is kept, rather than
+// deleted, because three other files point at it by name and because the RULE it
+// states is still the right rule — it is the FACT underneath that moved.
 //
-// LockedSection (src/components/shared/LockedSection.jsx) is the one component
-// for which the premise is FALSE. Its only live render path today is the ADMIN
-// panel — a dark surface — where an admin without the `team` flag opens Manage
-// Team. So its unmounted home is dark, and it declares its lock icon as
+// WHAT IT SAID. The contract at the top of this file is that the LIGHT value
+// ships as the hardcoded var() fallback, because an unmounted page is a light
+// page. LockedSection (src/components/shared/LockedSection.jsx) was the one
+// component for which that premise was FALSE: its only live render path was the
+// ADMIN panel, a dark surface, so its unmounted home was dark and it declares
 //
 //     var(--rm-warning-text, #fbbf24)        i.e. the STATUS_DARK value
 //
 // rather than going through statusVar(), which would hand back the light #B45309
-// and repaint a live admin screen with a tone that fails contrast on it.
+// and repaint a live admin screen with a tone that failed contrast on it.
 //
-// THIS IS NOT statusVar() BEING WRONG, and the fix is not to add a mode argument
-// to it. The rule underneath both cases is the same one: THE FALLBACK IS THE
-// VALUE THAT IS CORRECT WHERE THE COMPONENT ACTUALLY RENDERS WITH NO VARIABLES
-// MOUNTED. For four rep primitives that is the light value; for this one admin
-// primitive it is the dark one. If LockedSection is ever re-homed onto a light
-// rep surface as its primary residence, that fallback flips with it — and
-// src/components/shared/LockedSection.test.jsx fails the moment it does,
-// naming this note.
+// ⚠ WHAT CHANGED. ABR Phase 5 moved the admin panel to the RoofMiles palette,
+// and 5.1 collapsed AD.bgCard — the lock card that icon sits on — to #FFFFFF.
+// The panel is not a dark surface any more. So:
+//
+//     #fbbf24 on #FFFFFF    1.67:1     under the 3:1 GRAPHIC floor
+//     #B45309 on #FFFFFF    4.87:1     passes
+//
+// THE RULE UNDERNEATH IS UNCHANGED AND NOW POINTS THE OTHER WAY. It always was:
+// THE FALLBACK IS THE VALUE THAT IS CORRECT WHERE THE COMPONENT ACTUALLY RENDERS
+// WITH NO VARIABLES MOUNTED. For four rep primitives that is the light value.
+// For this one it was the dark value; applying the SAME rule to today's panel
+// gives the LIGHT value. The rule did not fail — it was applied once and never
+// re-applied when the surface moved. That is the failure mode this note is now
+// mostly here to record.
+//
+// ⚠ NOT statusVar() BEING WRONG, AND STILL NOT A CASE FOR A MODE ARGUMENT.
+//
+// ⚠ AND NOT A REASON TO EDIT STATUS_DARK.warningText ABOVE. That value is
+// consumed twice: by ThemeProvider, which mounts it for REFERRER dark mode where
+// #fbbf24 is correct at 10.4:1, and by LockedSection's fallback, where it is
+// not. Only the second is wrong. Changing the hex fixes the admin panel by
+// breaking the referrer app, and LockedSection.test.jsx's "adds warning to all
+// three tables" case pins it against exactly that.
+//
+// THE FIX IS ABR 6B STEP 5 — LockedSection's fallback and the assertion in
+// LockedSection.test.jsx that pins it, moved together. Not done here: 6B step 4
+// is comment-only. Until then the icon ships at 1.67:1 on the panel and this
+// note is the record of why that is known and not yet acted on.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
