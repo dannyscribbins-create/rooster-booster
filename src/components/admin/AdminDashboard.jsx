@@ -8,6 +8,33 @@ import { useAdminBranding } from '../shared/BrandingProvider';
 import { platformIdentityLine } from '../../utils/platformIdentity';
 import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
 
+// ─── money(): format a currency stat, or say the value is unavailable ────────
+// Guards the two money StatCards below. `stats.X.toLocaleString()` on a field
+// the payload did not carry throws a TypeError DURING RENDER, and a render
+// error takes the WHOLE PANEL rather than blanking the one card.
+//
+// ⚠ THE OBJECT-LEVEL `stats &&` GUARD BELOW CANNOT PREVENT THIS, and that is
+// the point: `{}` is truthy, so it passes and the throw happens anyway.
+// A FIELD-LEVEL GUARD IS CORRECT REGARDLESS OF HOW MANY FIELDS ARE MISSING and
+// degrades one card at a time. An object-level "is this empty enough" check
+// would have to invent a threshold — one missing field, or five? — with no rule
+// behind it. Field-level guards have a rule; emptiness thresholds don't.
+//
+// ⚠ AN EM DASH, NOT $0. A missing value is a "what", not a "who", so a default
+// is legitimate under the identity-bearing-values rule. But $0 asserts a
+// SPECIFIC FALSEHOOD ABOUT MONEY: an admin reading "$0 Total Balance Owed" has
+// been told something untrue and may act on it, where "—" tells them the value
+// is unavailable. Absent is a designed state, not a placeholder.
+//
+// Number.isFinite is the predicate rather than a bare undefined check because
+// it has the same rule the dash does — "is this a finite number I can honestly
+// format as money" — and so also covers null, NaN and Infinity, each of which
+// would otherwise throw or render "$NaN" on the money surface.
+const STAT_ABSENT = '—';
+function money(val) {
+  return Number.isFinite(val) ? `$${val.toLocaleString()}` : STAT_ABSENT;
+}
+
 export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats, onSettingsClick, onFlaggedBannerClick }) {
   const { full_name } = usePermissions();
   const { branding } = useAdminBranding();
@@ -134,8 +161,8 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
             {/* Semantic, matching the crm-not-connected variant above — see its comment. */}
             <StatCard label="Active Referrers"   value={stats.activeReferrers}  sub={`of ${stats.totalReferrers} enrolled`} icon="ph-users" accent={AD.blueText}   animDelay={0}   />
-            <StatCard label="Total Balance Owed" value={`$${stats.totalBalance.toLocaleString()}`}  sub="across all referrers"  icon="ph-scales" accent={AD.amberText} animDelay={80}  />
-            <StatCard label="Total Paid Out"     value={`$${stats.totalPaidOut.toLocaleString()}`}  sub="approved payouts"      icon="ph-check-circle" accent={AD.greenText} animDelay={160} />
+            <StatCard label="Total Balance Owed" value={money(stats.totalBalance)}  sub="across all referrers"  icon="ph-scales" accent={AD.amberText} animDelay={80}  />
+            <StatCard label="Total Paid Out"     value={money(stats.totalPaidOut)}  sub="approved payouts"      icon="ph-check-circle" accent={AD.greenText} animDelay={160} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
             <StatCard label="Total Referrals" value={stats.totalReferrals}   icon="ph-clipboard-text" animDelay={240} />
