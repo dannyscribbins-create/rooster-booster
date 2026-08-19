@@ -33,8 +33,12 @@ function useAdminFonts() {
     // the sidebar and the navy halo carries the ground, and each covers the other's
     // weak surface.
     //
-    // THIS SITE WAS ALREADY AN ACCESSIBILITY DEFECT — it painted #012854 on a dark
-    // slate panel, which was very nearly invisible everywhere. Swapping one
+    // THIS SITE WAS ALREADY AN ACCESSIBILITY DEFECT — it painted the FIRST
+    // TENANT'S NAVY on a dark slate panel, which was very nearly invisible
+    // everywhere. (Described by role rather than by literal: the colour needles
+    // added in 5.2d-5b are line-based and have no comment awareness by design, and
+    // the Phase 4 ruling is REWORD, NEVER EXCLUDE — an excluded line is one nobody
+    // ever looks at again.) Swapping one
     // marginal single value for another would have closed the ticket without
     // fixing the problem, which is why it is two tones and not one.
     const focusStyle = document.createElement("style");

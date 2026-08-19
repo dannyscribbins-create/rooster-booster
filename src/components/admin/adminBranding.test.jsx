@@ -23,13 +23,32 @@
 // entire palette. Walking only src/components/admin/ would make the single most
 // brand-defining file in the panel structurally invisible.
 //
-// ⚠ AND THE PALETTE IS STILL INVISIBLE TO THE NEEDLES THIS PHASE, ON PURPOSE.
-// No colour code contains the word "Accent", so adminTheme.js passes this sweep
-// today even though it is walked. D-N places #012854 / #CC0000 / #041D3E as
-// needles AFTER Phase 5, when the palette actually changes — adding them now
-// would commit a permanently-red test, which §5 forbids. Both axes are required
-// and only one of them exists yet. Do not read a green adminTheme.js row as
-// evidence about its colours.
+// ⚠ THE COLOUR NEEDLES NOW EXIST (5.2d-5b). This paragraph used to say they were
+// deferred; they landed once 5.2d-5a cleared the population to zero. adminTheme.js
+// is swept on both axes.
+//
+// ══ WHAT A GREEN SWEEP DOES NOT PROVE ═══════════════════════════════════════
+// Read this before quoting a clean run as evidence. Both gaps are structural and
+// neither is fixable by a source scanner.
+//
+//   (a) ACCENT CAN RENDER WITHOUT ANY ACCENT LITERAL BEING PRESENT.
+//       AdminSettingsNotifications.jsx imports `R` from src/constants/theme.js and
+//       renders R.navy (#012854) and R.red (#CC0000) — correctly, because that
+//       block PREVIEWS the referrer-facing announcement popup. theme.js is exempt
+//       from the colour needles (C/DL-3c owns it), so those values are invisible
+//       here permanently. A GREEN SWEEP DOES NOT MEAN "NO ACCENT RENDERS IN THE
+//       PANEL." It means no Accent literal is WRITTEN in the walked roots.
+//
+//   (b) TEMPLATE-INTERPOLATED VALUES ARE A THIRD ENCODING NOTHING HERE CAN SEE.
+//       `${AD.blue}30`, `${cfg.color}22`, `${secondary}bb` append an alpha suffix
+//       to a token and resolve to a hex only at runtime. Ten such sites exist
+//       today and none carries an Accent value, because no AD.* token has held one
+//       since 5.1. But a future `${R.navy}30` in an admin file would be invisible
+//       to this sweep forever. The blind spot is permanent; only its emptiness is
+//       current, and only as of 5.2d-5b.
+//
+// Both were found by tracing what RENDERS rather than what is written — which is
+// the check a source sweep structurally cannot perform on itself.
 //
 // ── WHAT THIS SWEEP DOES NOT REACH, BY CONSTRUCTION ────────────────────────
 // Everything below is outside the three walk roots. None of it is "excluded" —
@@ -77,6 +96,10 @@ const ROOTS = [
   'src/components/admin',
   'src/constants',
   'src/components/superAdmin',
+  // FOURTH ROOT, added with the colour needles (D-N). 5.0 rewrote the two
+  // comments here that would otherwise have tripped them; verified clean against
+  // BOTH needle kinds before this root was added, not after.
+  'src/utils',
 ];
 
 // ── THE WALKER ───────────────────────────────────────────────────────────────
@@ -131,14 +154,86 @@ const SWEPT = ROOTS.flatMap(root => walk(path.resolve(REPO, root), []))
 //           code that no guard-proof could ever turn red. A future needle whose
 //           renderings are NOT substring-safe must arrive with its own kind and
 //           its own guard-proof.
+// ── THE COLOUR MATCHER (5.2d-5b) ─────────────────────────────────────────────
+// ⚠ IT PARSES, IT DOES NOT SUBSTRING-MATCH, AND THAT IS THE WHOLE DESIGN.
+// A needle written as /204,0,0/ would fire on `zIndex: 204` and `width: 204`,
+// and a needle that fires on innocent code gets suppressed — after which it
+// protects nothing. So every colour on a line is parsed out and canonicalised to
+// lowercase #rrggbb, and comparison happens between canonical values.
+//
+// This is the phone-number lesson applied to colour. 5.2d's Phase 0 found that
+// D-N's planned hex-only needles would have matched 40 of 58 Accent survivors and
+// reported CLEAN while 18 remained, because rgba(204,0,0,0.5) contains no
+// '#CC0000'. A sweep that certifies a dirty repo is worse than no sweep: it turns
+// an open problem into a closed one.
+//
+// ALPHA IS DROPPED DELIBERATELY. Accent's red at 4% opacity is still Accent's red.
+//
+// ⚠ 3-DIGIT HEX (#C00) IS NOT MATCHED, AND THAT IS A DECISION, NOT AN OVERSIGHT.
+// None exists in any walked root — checked, not assumed — and widening the
+// matcher to a form nobody writes buys false-positive surface for nothing. A
+// future #C00 arrives with its own guard-proof, like any other needle shape.
+const COLOUR_IN_LINE = /#([0-9a-f]{6})(?:[0-9a-f]{2})?\b|\brgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,[^)]*)?\)/gi;
+
+/**
+ * Every colour written on one line, canonicalised.
+ *
+ * @param {string} line - one line of source.
+ * @returns {Array<{canonical: string, raw: string}>} `canonical` is lowercase
+ *          #rrggbb; `raw` is the text as the author wrote it, so the failure
+ *          message can say WHICH FORM matched.
+ */
+function coloursIn(line) {
+  const out = [];
+  for (const m of line.matchAll(COLOUR_IN_LINE)) {
+    const canonical = m[1]
+      ? `#${m[1].toLowerCase()}`
+      : `#${[m[2], m[3], m[4]].map(n => Number(n).toString(16).padStart(2, '0')).join('')}`;
+    out.push({ canonical, raw: m[0] });
+  }
+  return out;
+}
+
+// ── THE NEEDLE-SCOPED EXCLUSION (R4) ─────────────────────────────────────────
+// ⚠ SCOPED TO ONE NEEDLE KIND, NOT A BLANKET EXEMPTION. src/constants/theme.js is
+// the REFERRER palette and holds all four Accent values on six lines. C/DL-3c owns
+// it; retiring them here would put this session in front of that one.
+//
+// It is exempt from the COLOUR needles ONLY. Every identity needle — the name, the
+// domains, the phone number — still applies to it in full, and the guard-proof
+// below exercises both halves: that the file stays green holding four Accent
+// hexes, AND that it still FIRES on an identity literal. An exclusion never
+// watched exclude, and never watched still fire on the other kind, is a guess.
+//
+// This is a different case from the comment ruling. Phase 4 ruled REWORD, NEVER
+// EXCLUDE for comments naming a literal — those are prose this session owns. These
+// are LIVE VALUES in a file it does not.
+const COLOUR_NEEDLE_EXEMPT = new Set(['src/constants/theme.js']);
+
 const normalise = {
   digits: text => text.replace(/\D/g, ''),
   plain:  text => text.toLowerCase(),
 };
 
 // Each needle declares HOW it must be compared, not just what it is.
-// ⚠ NO HEX NEEDLES THIS PHASE — see the header. They land in Phase 5.
+//
+// ⚠ THE COLOUR NEEDLES LANDED IN 5.2d-5b, AFTER 5.2d-5a CLEARED THE POPULATION,
+// never before — §5 forbids committing a permanently-red sweep. They are in a
+// SEPARATE COMMIT from the fix on purpose: needles written alongside their own fix
+// are written against a tree already known to be clean, so a green sweep would be
+// decoration. Landing them separately means this sweep runs against a tree the
+// previous commit CLAIMS is clean and independently confirms it — and reverting
+// that commit alone correctly turns this red.
+//
+// ⚠ FOUR VALUES, NOT THREE. D-N named #012854 / #CC0000 / #041D3E. Spec §1 lists
+// Accent's palette as #012854 / #CC0000 / #D3E3F0, so #D3E3F0 was missing from
+// D-N's list and #041D3E (a derived dark navy) was in it. Both belong. Recorded as
+// a SPEC AMENDMENT rather than left for a later session to rediscover as a gap.
 const ACCENT = [
+  { kind: 'colour', value: '#012854' },   // Accent navy
+  { kind: 'colour', value: '#CC0000' },   // Accent red
+  { kind: 'colour', value: '#D3E3F0' },   // Accent light blue — absent from D-N, see above
+  { kind: 'colour', value: '#041D3E' },   // Accent navy-dark, the gradient endpoint
   { kind: 'plain',  value: 'Accent Roofing' },
   { kind: 'plain',  value: 'AccentRoofing' },
   { kind: 'plain',  value: 'accentRoofingLogo' },
@@ -161,14 +256,35 @@ const DIGIT_RUN = /[\d][\d\s().+-]{6,}[\d]/g;
  * file is dirty" would send the next phase back to grep for the same thing.
  *
  * @param {string} source - the file's full text.
+ * @param {string} [relPath] - the file's repo-relative path. Required for the
+ *        COLOUR needles, which are exempted per-file per-kind; omitted in the
+ *        self-tests below that exercise the other kinds against synthetic lines.
  * @returns {Array<{line: number, needle: string, text: string}>} one entry per
  *          hit; `text` is the matched line trimmed, so a hit whose formatting
  *          differs from the needle is visible in the failure message.
  */
-function findHits(source) {
+function findHits(source, relPath = '') {
   const hits = [];
+  const colourExempt = COLOUR_NEEDLE_EXEMPT.has(relPath);
   source.split(/\r?\n/).forEach((line, i) => {
     for (const { kind, value } of ACCENT) {
+      if (kind === 'colour') {
+        if (colourExempt) continue;
+        const target = value.toLowerCase();
+        const found = coloursIn(line).find(c => c.canonical === target);
+        if (found) {
+          // ⚠ THE NEEDLE NAMES THE FORM THAT MATCHED, not just the value. Someone
+          // hitting this in six months with no context needs to see that
+          // rgba(204,0,0,0.5) IS #CC0000 — otherwise the obvious reading is that
+          // the sweep is broken, and the obvious fix is to disable it.
+          hits.push({
+            line: i + 1,
+            needle: found.raw.toLowerCase() === target ? value : `${value} (as ${found.raw})`,
+            text: line.trim().slice(0, 160),
+          });
+        }
+        continue;
+      }
       if (kind === 'digits') {
         // Compare digit-runs, so dashed, bare, parenthesised, dotted and
         // country-prefixed renderings are all the same needle.
@@ -252,6 +368,44 @@ describe('Phase 3 — the walk is real before anything it reports can matter', (
     expect(findHits('const clean = 1;')).toEqual([]);
     // Line numbers are real, not always 1.
     expect(findHits("a\nb\nconst x = 'accent roofing';")[0].line).toBe(3);
+
+    // ── THE COLOUR NEEDLE, EVERY PROPERTY IT CLAIMS ──────────────────────────
+    const canon = src => findHits(src).map(h => h.needle);
+    // Both forms, one needle.
+    expect(canon("color: '#CC0000'")).toContain('#CC0000');
+    expect(canon("background: 'rgba(204,0,0,0.5)'")[0]).toBe('#CC0000 (as rgba(204,0,0,0.5))');
+    // Case, and whitespace inside the function.
+    expect(canon("color: '#cc0000'")).toContain('#CC0000');
+    expect(canon("background: 'rgba(204, 0, 0, .5)'")[0]).toBe('#CC0000 (as rgba(204, 0, 0, .5))');
+    // Alpha is dropped: 4% Accent red is still Accent red.
+    expect(canon("border: '1px solid rgba(204,0,0,0.04)'")).toHaveLength(1);
+    // All four values, not the three D-N named.
+    expect(canon("a:'#012854' b:'#D3E3F0' c:'#041D3E'")).toEqual(['#012854', '#D3E3F0', '#041D3E']);
+    // ⚠ FALSE POSITIVES. A substring matcher on '204,0,0' would fire on both of
+    // these, and a needle that fires on innocent code gets suppressed.
+    expect(findHits('style={{ zIndex: 204, width: 204 }}')).toEqual([]);
+    expect(findHits("const n = 20400; const m = '1,40,84';")).toEqual([]);
+    // 3-digit hex is deliberately NOT matched — see the matcher's comment.
+    expect(findHits("color: '#c00'")).toEqual([]);
+  });
+
+  it('the theme.js exclusion is NEEDLE-SCOPED, proven in both directions', () => {
+    // ⚠ THE HALF EVERYONE ASSUMES. An exclusion never watched exclude is a guess,
+    // and one never watched STILL FIRE on the other needle kind is worse — it
+    // would silently be a blanket exemption while reading as a scoped one.
+    const EXEMPT = 'src/constants/theme.js';
+    const OTHER = 'src/components/admin/AdminApp.jsx';
+
+    // (a) Colour needles do not fire there…
+    expect(findHits("navy: '#012854', red: '#CC0000'", EXEMPT)).toEqual([]);
+    // …and DO fire in any file that is not exempt.
+    expect(findHits("navy: '#012854'", OTHER).map(h => h.needle)).toContain('#012854');
+
+    // (b) …but every IDENTITY needle still applies to the exempt file.
+    expect(findHits("const who = 'Accent Roofing';", EXEMPT).map(h => h.needle))
+      .toContain('Accent Roofing');
+    expect(findHits('href="tel:770.277.4869"', EXEMPT).map(h => h.needle))
+      .toContain('770-277-4869');
   });
 });
 
@@ -269,7 +423,7 @@ describe('Phase 3 — the walk is real before anything it reports can matter', (
 describe('Phase 3 — no Accent identity literal survives in the admin surfaces', () => {
   for (const file of SWEPT) {
     it(`[RED] ${file}`, () => {
-      const hits = findHits(fs.readFileSync(path.resolve(REPO, file), 'utf8'));
+      const hits = findHits(fs.readFileSync(path.resolve(REPO, file), 'utf8'), file);
 
       expect(hits.map(h => `${file}:${h.line} [${h.needle}] ${h.text}`),
         `${file} still carries Accent Roofing's identity. Contractor identity ` +
