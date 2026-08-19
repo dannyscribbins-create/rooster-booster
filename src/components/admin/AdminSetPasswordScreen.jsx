@@ -67,16 +67,46 @@ export default function AdminSetPasswordScreen({ token }) {
       background: `linear-gradient(160deg, ${AD.navy} 0%, #2A4270 100%)`,
       padding: '32px 24px', fontFamily: AD.fontSans,
     }}>
-      {/* ── 5.3: THE CURRENT PLATFORM MARK, NOT THE RETIRED ONE ──────────
-          Admin-facing and co-branded per spec §1, so the mark STAYS here — this
-          is the first screen an invited team member ever sees, and they are
-          logging in to RoofMiles. Only the asset changed.
+      {/* ── 5.3: THE PLATFORM MARK, BECAUSE THE CONTRACTOR IS NOT RESOLVABLE ──
+          ⚠ THE REASON IS A CONSTRAINT, NOT A DESIGN RULING. An earlier version of
+          this comment said the mark stays because the screen is "admin-facing and
+          co-branded per §1". §1 is CONSISTENT with the outcome but does not
+          explain it, and stating it as the cause would leave a future session
+          thinking this was a taste call that could simply be reversed.
 
-          ⚠ THE ASPECT RATIO CHANGED WITH IT. The retired rooster was 1024x1024,
-          so width:180 rendered a 180x180 square. roofmiles_logo_png is 400x120,
-          so the same width:180 now renders 180x54 — 126px shorter. The block is
-          centred with its own marginBottom, so the card below simply moves up;
-          nothing is positioned against the old height. */}
+          THE TENANT IS KNOWABLE — SERVER-SIDE ONLY. An invite is generated per
+          contractor, and team_member_invite_tokens.team_member_id joins to
+          team_members.contractor_id, so the backend can always say whose invite
+          this is. But the ONLY route touching an invite token is
+          POST /api/admin/team/accept-invite, which CONSUMES it. There is no GET,
+          so at render time this screen holds an opaque string and nothing else.
+          It also mounts ABOVE ThemeProvider (App.jsx, Ruling 5), so there is no
+          branding context to read even if one existed.
+
+          ⚠ AND ADDING THAT GET IS NOT FREE. The accept route returns a single
+          GENERIC_INVALID for every failure mode — expired, used, nonexistent —
+          which is enumeration-safe by design. An unauthenticated
+          GET /api/admin/team/invite/:token/branding would answer "is this token
+          valid?" by whether branding comes back, on a surface anyone can probe
+          with guessed tokens. That trades a real oracle on the invite path for a
+          logo on a single-use screen.
+
+          ── THE REVISIT CONDITION ─────────────────────────────────────────
+          If a SAFE token->branding path ever exists — an authenticated one, or one
+          returning branding only alongside a SUCCESSFUL accept — then the
+          contractor's mark becomes the better answer here: the invitee works for
+          that contractor, and the two sibling auth screens already carry it.
+          ⚠ REUSE THE SHIPPED PATTERN, DO NOT DESIGN A SECOND ONE. SignupScreen and
+          EmailVerifyScreen both do `branding?.logoUrl || roofMilesLogo` inside the
+          card — contractor's mark when one resolves, platform mark when none does.
+          That is the whole mechanism.
+
+          ── THE ASPECT RATIO CHANGED WITH THE ASSET ───────────────────────
+          The retired rooster was 1024x1024, so width:180 rendered a 180x180
+          square. roofmiles_logo_png is 400x120, so the same width:180 now renders
+          180x54 — 126px shorter. The wrapper centres on both axes with
+          justifyContent: 'center' and nothing is positioned against the old
+          height, so the column simply re-centres. */}
       <div style={{ marginBottom: 24, textAlign: 'center' }}>
         <img src={roofMilesLogo} alt="RoofMiles" style={{ width: 180, height: 'auto', display: 'block', margin: '0 auto' }} />
       </div>
