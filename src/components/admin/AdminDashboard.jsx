@@ -81,7 +81,41 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
   }, []);
 
   const pipelineTotal = stats ? stats.totalLeads + stats.totalInspections + stats.totalSold + stats.totalNotSold : 0;
-  const pct = (val) => pipelineTotal > 0 ? Math.round((val / pipelineTotal) * 100) : 0;
+  // ⚠ GUARDS BOTH ITS ARGUMENT AND THE pipelineTotal IT CLOSES OVER — and the
+  // `val` guard is UNREACHABLE TODAY. Stated as a fact so the next reader does
+  // not have to re-derive the analysis: the sole call site (the pipeline legend
+  // below) passes only the four fields pipelineTotal SUMS, so any absent val
+  // makes pipelineTotal non-finite too and that guard always fires first.
+  //
+  // It is kept because pipelineTotal's own definition is out of scope here. The
+  // pre-launch item that fixes the "NaN total referrals" heading below will
+  // likely make pipelineTotal finite at source, and THE val GUARD THEN BECOMES
+  // THE ONLY ONE. So: not paranoia, and not dead code to strip — pct() does not
+  // get to assume its sole caller stays sole.
+  //
+  // ⚠ UNKNOWN IS NOT 0%. `NaN > 0` is false, so before this every segment
+  // reported a confident, precise zero over data we did not have. A genuinely
+  // EMPTY pipeline is still 0% — that is a true statement about known data and
+  // it survives below. Renders (—%) rather than a bare dash so the slot still
+  // reads as a percentage that is unknown, parallel with the (50%) beside it.
+  const pct = (val) => {
+    if (!Number.isFinite(val) || !Number.isFinite(pipelineTotal)) return STAT_ABSENT;
+    return pipelineTotal > 0 ? Math.round((val / pipelineTotal) * 100) : 0;
+  };
+
+  // The pending cash-out count has THREE states, not two, and BOTH the Review
+  // Payouts card's text and its colour branch on it. Derived ONCE here and read
+  // twice below — two independent copies of the same three-way check is how they
+  // drift apart, and a card whose words say "unknown" while its colour still
+  // says "all clear" is the half-fix that looks complete.
+  //
+  // ⚠ ABSENT IS NOT ZERO. `undefined > 0` is false, so the absent case was
+  // silently handled by the branch written for zero: an admin whose payload
+  // lost this field was told affirmatively that there was nothing to review, on
+  // the money surface.
+  const pendingState = Number.isFinite(stats?.pendingCashouts)
+    ? (stats.pendingCashouts > 0 ? 'some' : 'none')
+    : 'unknown';
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -100,6 +134,23 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
           {onFlaggedBannerClick && <span style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>Review <i className="ph ph-arrow-right" /></span>}
         </div>
       )}
+      {/* ⚠ THIS BANNER STAYS SILENT WHEN THE COUNT IS UNKNOWN, DELIBERATELY.
+          `undefined > 0` is false, so a payload missing pendingCashouts draws
+          nothing here — and that is the RULED behaviour, not an oversight. A
+          banner is an ALERT: it means "there is definitely something". We do not
+          know that, and an alert with no action attached trains admins to ignore
+          the slot where the real ones appear.
+
+          ⚠ IT IS LOAD-BEARING ON THE REVIEW PAYOUTS CARD BELOW, which renders
+          "— pending review" in amber for exactly this state. That card is what
+          puts the unknown on the screen; this silence is honest ONLY because it
+          does. Nothing else here says it.
+
+          ⚠ SO: ANYONE REMOVING, WEAKENING OR RELOCATING THAT CARD'S ABSENT
+          BRANCH MUST COME BACK TO THIS LINE. Take the unknown off the screen and
+          this silence stops being a designed state and becomes a money-surface
+          defect again — an admin reading no banner concludes there is nothing
+          pending. That is the exact shape this pass was opened to kill. */}
       {stats?.pendingCashouts > 0 && (
         <div onClick={() => setPage('payouts')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: AD.amberBg, border: `1px solid ${AD.amber}40`, borderRadius: 12, padding: '16px 24px', marginBottom: 24, cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -222,7 +273,14 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {[
               { label: 'Manage Referrers', sub: `${stats.totalReferrers} accounts enrolled`, icon: 'ph-users', page: 'referrers', color: AD.blueText },
-              { label: 'Review Payouts', sub: stats.pendingCashouts > 0 ? `${stats.pendingCashouts} pending review` : 'All caught up', icon: 'ph-money', page: 'payouts', color: stats.pendingCashouts > 0 ? AD.amberText : AD.textSecondary },
+              { label: 'Review Payouts',
+                sub: pendingState === 'some' ? `${stats.pendingCashouts} pending review`
+                   : pendingState === 'none' ? 'All caught up'
+                   : `${STAT_ABSENT} pending review`,
+                icon: 'ph-money', page: 'payouts',
+                // Only the KNOWN all-clear earns the calm colour. Unknown wears
+                // amber: "look at this", without claiming a number.
+                color: pendingState === 'none' ? AD.textSecondary : AD.amberText },
               { label: 'Activity Log',     sub: 'Logins, payouts & admin actions', icon: 'ph-clock-clockwise', page: 'activity', color: AD.greenText },
             ].map(c => (
               <button key={c.page} onClick={() => setPage(c.page)} style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '20px 22px', textAlign: 'left', cursor: 'pointer', boxShadow: AD.shadowSm, fontFamily: AD.fontSans, transition: 'transform 0.15s, box-shadow 0.15s' }}

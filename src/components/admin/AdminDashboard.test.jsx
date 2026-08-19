@@ -45,6 +45,7 @@ import { Component } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import BrandingProvider from '../shared/BrandingProvider';
 import AdminDashboard from './AdminDashboard';
+import { AD } from '../../constants/adminTheme';
 
 // The nine fields GET /api/admin/stats builds on its fresh path
 // (server/routes/admin/metrics.js:78-83), plus totalReferrers.
@@ -191,5 +192,148 @@ describe('AdminDashboard — a missing stats field must blank a card, not the pa
     // Anchored to the card, so a value landing on the wrong one still fails.
     expect(balance.textContent).toContain('across all referrers');
     expect(paid.textContent).toContain('approved payouts');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 2 — THE SILENT FALSEHOODS
+//
+// Step 1 fixed a CRASH. These are the opposite failure: the panel renders
+// perfectly and says something untrue.
+//
+// ⚠ THE RULE THAT SCOPES THIS BLOCK. Visible wrongness announces itself;
+// silent wrongness does not. "NaN total referrals" and "undefined accounts
+// enrolled" are wrong AND LOOK wrong — an admin reads them as broken and does
+// not act on them, so they are queued as cosmetic. "All caught up" is wrong and
+// LOOKS RIGHT. Only that second kind causes a decision, and only that kind is
+// tested here.
+//
+// Both sites below fail the same way: `undefined > 0` is false, so ABSENT is
+// silently handled by the branch written for ZERO. That is why every test in
+// this block asserts THREE states. Two would not distinguish them.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Round-trips a colour through jsdom's own parser, so comparisons run on what
+// jsdom stores rather than on the source text.
+//
+// ⚠ NEEDED BECAUSE A BARE HEX IS RE-SERIALISED. AD.amberText is '#92400E' in
+// source and reads back as 'rgb(146, 64, 14)' off the element; AD.textSecondary
+// is already an rgba() and round-trips near-verbatim. Comparing a token to its
+// raw source string would fail while the component was perfectly correct — the
+// same trap recorded in LockedSection.test.jsx.
+function cssColour(value) {
+  const el = document.createElement('div');
+  el.style.color = value;
+  return el.style.color;
+}
+
+// The quick-action card's sub-line <p>, which carries BOTH the text and the
+// colour (AdminDashboard.jsx:233-234: label <p> then sub <p>).
+function quickActionSub(label) {
+  const hits = screen.getAllByText(label).filter(el => el.tagName === 'P');
+  // Non-vacuity: an empty result would make every assertion below vacuous.
+  expect(hits).toHaveLength(1);
+  return hits[0].nextElementSibling;
+}
+
+// The pipeline legend row for `label` (AdminDashboard.jsx:213-218). Its three
+// spans are, in order: label, value, "(N%)".
+//
+// ⚠ textTransform IS WHAT SEPARATES THESE FROM THE StatCards. "Sold" is both a
+// legend entry and a StatCard label; StatCard's label span is uppercase
+// (AdminComponents.jsx:19) and the legend's is not (AdminDashboard.jsx:215).
+function legendPct(label) {
+  const hits = screen.getAllByText(label)
+    .filter(el => el.tagName === 'SPAN' && el.style.textTransform !== 'uppercase');
+  expect(hits).toHaveLength(1);
+  const spans = hits[0].parentElement.querySelectorAll('span');
+  expect(spans).toHaveLength(3);
+  return spans[2].textContent;
+}
+
+describe('(a) Review Payouts must distinguish absent from zero', () => {
+
+  // Non-vacuity for every colour assertion below. If these two tokens ever
+  // resolved to the same computed value, "amber not grey" would prove nothing
+  // and all three state tests would agree with each other while testing air.
+  it('the two state colours are actually distinguishable', () => {
+    expect(cssColour(AD.amberText)).not.toBe(cssColour(AD.textSecondary));
+  });
+
+  it('POPULATED — a real count, in amber', async () => {
+    await renderWith({ ...STATS_FULL, pendingCashouts: 3 });
+    const sub = quickActionSub('Review Payouts');
+    expect(sub.textContent).toBe('3 pending review');
+    expect(sub.style.color).toBe(cssColour(AD.amberText));
+  });
+
+  // ⚠ THIS TEST IS WHAT STOPS THE FIX OVER-REACHING. A guard that treated every
+  // falsy count as unknown would swallow the legitimate all-clear and turn the
+  // ABSENT test below green while breaking the real product behaviour.
+  it('ZERO — the all-clear survives, in the calm colour', async () => {
+    await renderWith({ ...STATS_FULL, pendingCashouts: 0 });
+    const sub = quickActionSub('Review Payouts');
+    expect(sub.textContent).toBe('All caught up');
+    expect(sub.style.color).toBe(cssColour(AD.textSecondary));
+  });
+
+  // ⚠ ASSERTS WHAT IT DOES SAY, NOT WHAT IT DOESN'T. A test proving only "does
+  // not say All caught up" passes against "0 pending review" — which is the
+  // OTHER falsehood, and the one a naive fix produces.
+  it('[RED] ABSENT — says the count is unknown, and is NOT styled as reassurance', async () => {
+    await renderWith({ ...STATS_FULL, pendingCashouts: undefined });
+    const sub = quickActionSub('Review Payouts');
+    expect(sub.textContent).toBe('— pending review');
+    // The colour is the more-read channel. Fixing the words alone ships a card
+    // whose strongest visual signal still says "relax".
+    expect(sub.style.color).toBe(cssColour(AD.amberText));
+    expect(sub.style.color).not.toBe(cssColour(AD.textSecondary));
+  });
+});
+
+describe('(c) the pipeline legend must not report a confident 0%', () => {
+
+  it('POPULATED — real percentages', async () => {
+    await renderWith(STATS_FULL);
+    // 108 + 74 + 91 + 38 = 311. 108/311 = 34.7% → 35.
+    expect(legendPct('Lead')).toBe('(35%)');
+    expect(legendPct('Sold')).toBe('(29%)');
+  });
+
+  // ⚠ THE OVER-REACH FENCE, as above. An empty pipeline genuinely IS 0% — that
+  // is a true statement about known data, and it must survive.
+  it('ZERO — a genuinely empty pipeline still reports 0%', async () => {
+    await renderWith({
+      ...STATS_FULL,
+      totalLeads: 0, totalInspections: 0, totalSold: 0, totalNotSold: 0,
+    });
+    expect(legendPct('Lead')).toBe('(0%)');
+    expect(legendPct('Sold')).toBe('(0%)');
+  });
+
+  // pipelineTotal is NaN here, and `NaN > 0` is false, so today every segment
+  // reports a confident, precise zero where the truth is unknown.
+  it('[RED] ABSENT — a fieldless payload reports unknown, not 0%', async () => {
+    await renderWith({});
+    expect(legendPct('Lead')).toBe('(—%)');
+    expect(legendPct('Sold')).toBe('(—%)');
+  });
+
+  // ⚠ THIS DOES NOT ISOLATE pct()'s `val` GUARD, AND AN EARLIER DRAFT OF THIS
+  // COMMENT CLAIMED IT DID. It cannot: pipelineTotal (AdminDashboard.jsx:83) is
+  // the SUM of these same four fields, so any absent val makes pipelineTotal
+  // non-finite too and the pipelineTotal guard fires first. There is no payload
+  // reachable through this call path that exercises the val guard alone.
+  //
+  // What it DOES pin is the realistic schema-drift shape — ONE field renamed or
+  // dropped, not all of them — and the requirement that the legend degrade
+  // WHOLESALE to unknown rather than to a mix of real-looking and fabricated
+  // percentages. A partially-trustworthy row is worse than an untrustworthy one,
+  // because it invites the reader to trust the half that still looks right.
+  it('[RED] ONE FIELD ABSENT — the whole legend reports unknown, not a mix', async () => {
+    await renderWith({ ...STATS_FULL, totalNotSold: undefined });
+    expect(legendPct('Not Sold')).toBe('(—%)');
+    expect(legendPct('Lead')).toBe('(—%)');
+    expect(legendPct('Sold')).toBe('(—%)');
   });
 });
