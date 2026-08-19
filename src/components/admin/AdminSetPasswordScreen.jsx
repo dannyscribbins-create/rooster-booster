@@ -190,14 +190,29 @@ export default function AdminSetPasswordScreen({ token }) {
                 width: '100%', marginTop: 20,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 padding: '14px',
+                // ── 5.4: A PRIMARY CTA WAS WEARING THE DANGER COLOUR ─────────
+                // This painted AD.red -> AD.redDark. That is NOT the first tenant's
+                // brand red — 5.1 retired that — so no literal survived here and no
+                // census in this arc flagged it. The defect is D-C: "Set My
+                // Password" is a primary CTA, not a destructive action, and red
+                // on a submit button makes red mean two things in one product.
+                //
+                // ⚠ ORANGE WAS RULED OUT ON CONTRAST, NOT PREFERENCE. AD.marker
+                // under this button's white 15px/700 label measures 3.06:1 and
+                // fails 4.5:1 — 15px does not reach WCAG's large-text threshold
+                // (18.66px bold). Orange with a dark label reads as a warning chip
+                // rather than a submit button, and enlarging the type to justify a
+                // colour is backwards. AD.navy is 13.71:1 and is what
+                // Btn variant="primary" already paints, so this is the panel's
+                // existing answer rather than a compromise invented here.
                 background: status === 'loading'
                   ? AD.bgCardTint
-                  : `linear-gradient(135deg, ${AD.red} 0%, ${AD.redDark} 100%)`,
+                  : `linear-gradient(135deg, ${AD.navy} 0%, ${AD.navyDark} 100%)`,
                 border: 'none', borderRadius: AD.radiusMd,
                 color: status === 'loading' ? AD.textSecondary : '#fff',
                 fontSize: 15, fontWeight: 700, fontFamily: AD.fontSans,
                 cursor: status === 'loading' ? 'not-allowed' : 'pointer',
-                boxShadow: status === 'loading' ? 'none' : '0 4px 14px rgba(220,38,38,0.35)',
+                boxShadow: status === 'loading' ? 'none' : '0 4px 14px rgba(28,45,77,0.35)',
                 transition: 'all 0.18s',
               }}
             >

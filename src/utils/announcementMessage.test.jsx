@@ -30,7 +30,7 @@
 // shared — a fix applied at a call site would leave two of them broken.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import ThemeProvider from '../components/shared/ThemeProvider';
 import BrandingProvider from '../components/shared/BrandingProvider';
 import AnnouncementPopup from '../components/referrer/AnnouncementPopup';
@@ -123,6 +123,30 @@ describe('the admin previews render one dollar sign', () => {
   const underTenant = ui => (
     <BrandingProvider supplied={{ branding: TENANT_A, source: 'session' }}>{ui}</BrandingProvider>
   );
+
+  it('the popup preview carries the CONTRACTOR mark and no platform mark (5.4)', async () => {
+    // ⚠ 5.3 COULD NOT STAND THIS UP AND REMOVED IT RATHER THAN WEAKEN IT. The cause
+    // was the harness, not the component: AnnouncementPreviewPopup renders only
+    // when `showPreview` is true, which the PREVIEW BUTTON sets. Rendering the
+    // settings page and asserting on the lockup was asserting against a modal that
+    // had never mounted. The inline live-preview asserted in the sibling test below
+    // is a different element and carries no logo at all.
+    //
+    // ⚠ A PAIR, NOT AN ABSENCE ASSERTION. Proving the platform mark is gone also
+    // passes when the whole lockup is gone — which is how 5.2c-2's three
+    // "non-vacuity" guards went green against a collapsed ternary, and very nearly
+    // how this one would have gone green against an unmounted modal.
+    installFetch('preset_2');
+    render(underTenant(<AdminSettingsNotifications />));
+
+    const previewBtn = await waitFor(() => screen.getByRole('button', { name: /preview/i }));
+    await act(async () => { fireEvent.click(previewBtn); });
+
+    const logo = await waitFor(() => screen.getByAltText(TENANT_A.companyName));
+    expect(logo.getAttribute('src')).toBe(TENANT_A.logoUrl);
+    expect(screen.queryByAltText(/rooster booster|roofmiles/i)).toBeNull();
+    expect(document.body.innerHTML).not.toMatch(/rb[%20_ ]?logo/i);
+  });
 
   it('[RED] the LIVE PREVIEW reads "cashout request of $500 for referring Sample Client"', async () => {
     installFetch('preset_2');

@@ -269,8 +269,24 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsu
 
   const bodyHtml = `<p style="font-family:${esc(cs.font_body) || 'Arial, sans-serif'};font-size:16px;line-height:1.8;color:#1a1a1a;white-space:pre-wrap;margin:0;">${bodyEscaped}</p>`;
 
+  // ⚠ THIS CTA AND ITS TWO PREVIEWS MUST CARRY THE SAME VALUE (5.4).
+  // The previews are AdminCampaigns.jsx's two "what the recipient sees" blocks.
+  // Both sides carried the first tenant's brand red until 5.2d-5a moved the PREVIEWS to
+  // AD.navy without touching this template, so the preview started lying about
+  // what goes out. 5.4 restored the agreement by moving this one to match.
+  //
+  // ⚠ #F26A1B WAS THE INTENDED VALUE AND IT FAILS HERE. This label is white at
+  // 15px/600, and the platform accent under white measures 3.06:1 — 15px does not
+  // reach WCAG's large-text threshold. A navy label on orange is 4.47:1, still
+  // under the 4.5 bar. #1C2D4D under white is 13.71:1.
+  //
+  // INTERIM. The named email build moves this to CONTRACTOR-DERIVED colour: this
+  // file already derives logo_url, company_name, fonts and social links from
+  // contractor_settings, and the CTA is the one element that does not — so a
+  // contractor's referrers currently get the platform's colour on the one button
+  // in the message. When that lands, the previews follow it.
   const ctaHtml = campaignData.cta_enabled && campaignData.cta_url
-    ? `<div style="text-align:center;margin-top:32px;"><a href="${ctaHref}" style="display:inline-block;background:#CC0000;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">${deriveCTALabel(campaignData.cta_url)}</a></div>`
+    ? `<div style="text-align:center;margin-top:32px;"><a href="${ctaHref}" style="display:inline-block;background:#1C2D4D;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">${deriveCTALabel(campaignData.cta_url)}</a></div>`
     : '';
 
   const dividerHtml = `<hr style="border:none;border-top:1px solid #eeeeee;margin:40px 0 24px;" />`;

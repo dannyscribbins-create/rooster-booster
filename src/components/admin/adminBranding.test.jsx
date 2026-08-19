@@ -47,8 +47,39 @@
 //       to this sweep forever. The blind spot is permanent; only its emptiness is
 //       current, and only as of 5.2d-5b.
 //
-// Both were found by tracing what RENDERS rather than what is written — which is
-// the check a source sweep structurally cannot perform on itself.
+//   (c) ⚠ THE SCOPE IS FOUR DIRECTORIES, NOT THE PRODUCT — AND THIS IS THE
+//       LARGEST OF THE THREE. A green run means no Accent literal is written in
+//       src/components/admin, src/constants, src/components/superAdmin and
+//       src/utils. It says NOTHING about anywhere else, and as of 5.4 there is a
+//       great deal of everywhere else:
+//
+//         ~70 live Accent values elsewhere under src/ —
+//              41  src/components/referrer/
+//              20  the three legal pages + EmailPreferences.jsx
+//               6  src/components/shared/
+//               2  src/components/auth/
+//               1  src/App.jsx
+//         ~77 more in server/, which NO sweep in this arc walks at all.
+//
+//       Roughly 147 live sites remain outside this guard. 5.2d-5a's census — the
+//       one that reported "the population is zero" — was scoped to
+//       src/components/admin and src/components/superAdmin ONLY. That claim was
+//       true of what it measured, and the boundary went unquestioned until a
+//       browser check found a red button on a screen in neither directory.
+//
+//       OWNERSHIP, so the number is not read as neglect: components/referrer and
+//       the R.* palette in constants/theme.js are C/DL-3c's — theme.js is
+//       deliberately exempt from the colour needles above for exactly that
+//       reason. The legal pages are D-F-blocked on the LLC amendment. The server
+//       email templates are their own named build, where the colour is the
+//       smaller half of the problem: every one is hardcoded rather than
+//       contractor-derived, so retiring #012854 to a RoofMiles value would make
+//       them correctly branded for the WRONG PARTY.
+//
+// (a) and (b) were found by tracing what RENDERS rather than what is written —
+// the check a source sweep structurally cannot perform on itself. (c) was found
+// by asking what the sweep's own WALK does not reach, which is the other half of
+// the same question and the easier one to forget.
 //
 // ── WHAT THIS SWEEP DOES NOT REACH, BY CONSTRUCTION ────────────────────────
 // Everything below is outside the three walk roots. None of it is "excluded" —

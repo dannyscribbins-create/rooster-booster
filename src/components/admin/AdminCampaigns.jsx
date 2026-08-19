@@ -1903,7 +1903,25 @@ function MessagingStep({ campaignId, onNext, onBack, onSaveExit, headers }) {
             </div>
             {ctaEnabled && ctaUrl && (
               <div style={{ marginTop: 16 }}>
-                <div style={{ display: 'inline-block', background: AD.navy, color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
+{/* ⚠ THIS MUST MATCH THE SENT EMAIL'S CTA (5.4). The template is
+                    server/routes/admin/campaigns.js's ctaHtml. A preview that paints a
+                    different colour from what goes out is lying about what the
+                    recipient sees — the same defect class as BrandingPreview's
+                    gradient and the [Company] token Phase 4 fixed.
+
+                    ⚠ THIS ARC BROKE THAT AGREEMENT AND 5.4 RESTORED IT. Both
+                    carried the first tenant's brand red until 5.2d-5a moved the
+                    previews to AD.navy under
+                    "filled buttons with white labels" without touching the
+                    template. Change one of these three sites and you re-create the
+                    lie in the opposite direction.
+
+                    INTERIM VALUE. The named email build moves these templates to
+                    CONTRACTOR-DERIVED colour — campaigns.js already derives the
+                    logo, company name, fonts and social links, and the CTA is the
+                    one element that does not. When it does, the previews follow.
+                    What matters today is that they AGREE. */}
+                  <div style={{ display: 'inline-block', background: AD.navy, color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
                   {ctaButtonLabel}
                 </div>
                 <p style={{ margin: '6px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontMono }}>
@@ -2199,6 +2217,24 @@ function ReviewStep({ campaignId, onBack, onLaunchComplete, onSaveExit, headers 
               </div>
               {summary.campaign.cta_enabled && summary.campaign.cta_url && (
                 <div style={{ marginTop: 14 }}>
+  {/* ⚠ THIS MUST MATCH THE SENT EMAIL'S CTA (5.4). The template is
+                    server/routes/admin/campaigns.js's ctaHtml. A preview that paints a
+                    different colour from what goes out is lying about what the
+                    recipient sees — the same defect class as BrandingPreview's
+                    gradient and the [Company] token Phase 4 fixed.
+
+                    ⚠ THIS ARC BROKE THAT AGREEMENT AND 5.4 RESTORED IT. Both
+                    carried the first tenant's brand red until 5.2d-5a moved the
+                    previews to AD.navy under
+                    "filled buttons with white labels" without touching the
+                    template. Change one of these three sites and you re-create the
+                    lie in the opposite direction.
+
+                    INTERIM VALUE. The named email build moves these templates to
+                    CONTRACTOR-DERIVED colour — campaigns.js already derives the
+                    logo, company name, fonts and social links, and the CTA is the
+                    one element that does not. When it does, the previews follow.
+                    What matters today is that they AGREE. */}
                   <div style={{ display: 'inline-block', background: AD.navy, color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: AD.fontSans }}>
                     {deriveCTALabel(summary.campaign.cta_url)}
                   </div>
