@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
-import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
+import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
 
 export default function AdminSetPasswordScreen({ token }) {
   const [password, setPassword]         = useState('');
@@ -67,9 +67,18 @@ export default function AdminSetPasswordScreen({ token }) {
       background: `linear-gradient(160deg, ${AD.navy} 0%, #2A4270 100%)`,
       padding: '32px 24px', fontFamily: AD.fontSans,
     }}>
-      {/* Logo */}
+      {/* ── 5.3: THE CURRENT PLATFORM MARK, NOT THE RETIRED ONE ──────────
+          Admin-facing and co-branded per spec §1, so the mark STAYS here — this
+          is the first screen an invited team member ever sees, and they are
+          logging in to RoofMiles. Only the asset changed.
+
+          ⚠ THE ASPECT RATIO CHANGED WITH IT. The retired rooster was 1024x1024,
+          so width:180 rendered a 180x180 square. roofmiles_logo_png is 400x120,
+          so the same width:180 now renders 180x54 — 126px shorter. The block is
+          centred with its own marginBottom, so the card below simply moves up;
+          nothing is positioned against the old height. */}
       <div style={{ marginBottom: 24, textAlign: 'center' }}>
-        <img src={rbLogoIcon} alt="Rooster Booster" style={{ width: 180, height: 'auto', display: 'block', margin: '0 auto' }} />
+        <img src={roofMilesLogo} alt="RoofMiles" style={{ width: 180, height: 'auto', display: 'block', margin: '0 auto' }} />
       </div>
 
       <div style={{

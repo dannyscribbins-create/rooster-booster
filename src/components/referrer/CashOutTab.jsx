@@ -3,7 +3,6 @@ import { R } from '../../constants/theme';
 import { useBranding } from '../shared/ThemeProvider';
 import { BACKEND_URL } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
-import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import Skeleton from '../shared/Skeleton';
@@ -162,15 +161,24 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                   same 6C edit for the same reason: the hardcoded logo it replaced
                   could never be null. The divider goes with it, or a separator is
                   left with nothing on one side. */}
+              {/* ⚠ NO PLATFORM-MARK FALLBACK HERE, AND NO COMPANY-NAME ONE EITHER (5.3).
+                  The sidebar plate DOES fall back to branding.companyName when there is no
+                  logo; this does not, and the difference is deliberate. Two reasons:
+
+                  1. R9 — RoofMiles belongs in email footers, not on screen popups. A
+                     referrer-facing surface carries the CONTRACTOR. And
+                     resolveBrandingTheme(null) defaults companyName to 'RoofMiles', so a
+                     name fallback would print the platform's name in text exactly where
+                     R9 forbids its mark. The rule would have defeated itself.
+                  2. The sidebar needs a fallback because the plate is the ONLY place the
+                     contractor is named on that surface. Here the name is already in the
+                     copy beside this lockup, so an absent logo costs nothing.
+
+                  No logo -> this collapses to nothing, which is the designed state. */}
               {branding.logoUrl && (
-                <>
-                  <img src={branding.logoUrl} alt={branding.companyName}
-                    style={{ height: 36, width: "auto", objectFit: "contain" }} />
-                  <div style={{ width: 1, height: 28, background: R.border }} />
-                </>
+                <img src={branding.logoUrl} alt={branding.companyName}
+                  style={{ height: 36, width: "auto", objectFit: "contain" }} />
               )}
-              <img src={rbLogoIcon} alt="Rooster Booster"
-                style={{ height: 28, width: "auto", objectFit: "contain" }} />
             </div>
 
             <p style={{ color: R.textSecondary, fontSize: 15, lineHeight: 1.6, margin: "0 0 24px" }}>

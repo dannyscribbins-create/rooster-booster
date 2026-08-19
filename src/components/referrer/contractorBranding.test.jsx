@@ -426,6 +426,59 @@ describe('C/DL-3b correction — absent branding values render nothing, never a 
     expect(screen.queryByRole('button', { name: /leave a review/i })).toBeNull();
   });
 
+  // ── 5.3: THE PLATFORM MARK MUST NOT COME BACK ────────────────────────────
+  // R9: RoofMiles belongs in email footers, not on screen popups. Both surfaces
+  // below are referrer-facing, so they carry the CONTRACTOR and nothing else.
+  //
+  // ⚠ EACH IS A PAIR, AND THE PAIRING IS THE WHOLE POINT. An assertion that only
+  // proves the platform mark is ABSENT also passes when EVERYTHING is absent —
+  // which is exactly how 5.2c-2's three "non-vacuity" guards all went green
+  // against a component whose ternary had collapsed. So each test proves the
+  // platform mark is gone AND the contractor's mark still renders, and neither
+  // half is meaningful alone.
+  const PLATFORM_MARK = /rooster booster|roofmiles/i;
+
+  it('[RED] AnnouncementPopup carries the CONTRACTOR mark and no platform mark', async () => {
+    renderForBrand(BRAND_A, (
+      <AnnouncementPopup
+        announcement={{ id: 1, amount: '50.00', referred_name: 'Sam Homeowner' }}
+        referrerFirstName="Dana" onDismiss={() => {}}
+        settings={{ enabled: true, mode: 'preset_2', custom_message: null }}
+      />
+    ));
+    await waitFor(() =>
+      expect(document.querySelector(`img[src="${BRAND_A.logoUrl}"]`)).toBeTruthy());
+
+    // PRESENCE — without this the absence assertion below is vacuous.
+    expect(screen.getByAltText(BRAND_A.companyName).getAttribute('src')).toBe(BRAND_A.logoUrl);
+    // ABSENCE — the retired mark, by alt text and by asset filename.
+    expect(screen.queryByAltText(PLATFORM_MARK)).toBeNull();
+    expect(document.body.innerHTML).not.toMatch(/rb[%20_ ]?logo/i);
+  });
+
+  it('[RED] no REMOVE-site source still imports or renders the platform asset', () => {
+    // ⚠ A SOURCE GUARD, AND LABELLED AS ONE — it is deliberately NOT dressed up as
+    // a render test. CashOutTab's lockup lives behind `step === 3`, reachable only
+    // by completing a submit, so a render assertion there would be almost entirely
+    // flow scaffolding: method selection, an amount, a mocked POST. That is the
+    // broad-and-decorative shape this file already argues against — it would cover
+    // no more branding than this line while implying it covered the component.
+    //
+    // The two sites whose lockup renders on mount DO get render pairs (above, and
+    // in adminBrandRetirement.test.jsx for the preview). This covers the third,
+    // and re-covers the other two from a second angle: source and render fail for
+    // different reasons, so neither substitutes for the other.
+    for (const f of [
+      'src/components/referrer/CashOutTab.jsx',
+      'src/components/referrer/AnnouncementPopup.jsx',
+      'src/components/admin/AdminSettingsNotifications.jsx',
+    ]) {
+      const src = fs.readFileSync(path.resolve(process.cwd(), f), 'utf8');
+      expect(src, `${f} still references the retired platform asset`).not.toMatch(/rb logo/i);
+      expect(src, `${f} still references rbLogoIcon`).not.toContain('rbLogoIcon');
+    }
+  });
+
   it('[RED] no logo → neither AnnouncementPopup nor CashOutTab renders a broken image', async () => {
     // Both were introduced in 6C: the hardcoded logo they replaced could never be
     // null, so neither acquired a guard while every other logoUrl consumer has one.

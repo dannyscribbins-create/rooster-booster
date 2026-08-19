@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { Btn } from './AdminComponents';
-import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 import { R } from '../../constants/theme';
 import { useAdminBranding } from '../shared/BrandingProvider';
 // ⚠ THE TEMPLATES AND THE RESOLVER NOW HAVE ONE HOME (Admin Brand Retirement
@@ -37,13 +36,14 @@ function AnnouncementPreviewPopup({ announcement, referrerFirstName, onDismiss, 
             thing it previews would be lying about what the referrer sees, which
             is the same defect class as the [Company] token above. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 24 }}>
+          {/* ⚠ THIS MIRRORS AnnouncementPopup AND MUST NEVER LEAD IT (5.3).
+              The platform mark and its divider came out of the popup, so they come
+              out here identically. The reasoning for having no fallback lives at
+              the popup; a preview that drew a different lockup from the thing it
+              previews would be lying about what the referrer sees. */}
           {branding.logoUrl && (
-            <>
-              <img src={branding.logoUrl} alt={branding.companyName} style={{ height: 36, width: 'auto', objectFit: 'contain' }} />
-              <div style={{ width: 1, height: 28, background: 'rgba(0,0,0,0.1)' }} />
-            </>
+            <img src={branding.logoUrl} alt={branding.companyName} style={{ height: 36, width: 'auto', objectFit: 'contain' }} />
           )}
-          <img src={rbLogoIcon} alt="Rooster Booster" style={{ height: 28, width: 'auto', objectFit: 'contain' }} />
         </div>
         <p style={{ margin: '0 0 20px', fontSize: 16, lineHeight: 1.6, color: R.textPrimary, fontFamily: R.fontBody }}>{message}</p>
         <div style={{ marginBottom: 20 }}>

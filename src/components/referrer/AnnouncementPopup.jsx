@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
 import { useBranding } from '../shared/ThemeProvider';
-import rbLogoIcon from '../../assets/images/rb logo 1024px transparent background.png';
 // ⚠ ONE DEFINITION, SHARED WITH THE ADMIN PREVIEW (Admin Brand Retirement Phase
 // 4). The templates and this resolver used to be copied into each surface, and
 // 6C's [Company] token was wired into this copy only — so the admin preview
@@ -53,15 +52,24 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
 
               THE DIVIDER GOES WITH IT: a separator with nothing on one side is a
               stray line, so the lockup collapses to the platform mark alone. */}
+          {/* ⚠ NO PLATFORM-MARK FALLBACK HERE, AND NO COMPANY-NAME ONE EITHER (5.3).
+                  The sidebar plate DOES fall back to branding.companyName when there is no
+                  logo; this does not, and the difference is deliberate. Two reasons:
+
+                  1. R9 — RoofMiles belongs in email footers, not on screen popups. A
+                     referrer-facing surface carries the CONTRACTOR. And
+                     resolveBrandingTheme(null) defaults companyName to 'RoofMiles', so a
+                     name fallback would print the platform's name in text exactly where
+                     R9 forbids its mark. The rule would have defeated itself.
+                  2. The sidebar needs a fallback because the plate is the ONLY place the
+                     contractor is named on that surface. Here the name is already in the
+                     copy beside this lockup, so an absent logo costs nothing.
+
+                  No logo -> this collapses to nothing, which is the designed state. */}
           {branding.logoUrl && (
-            <>
-              <img src={branding.logoUrl} alt={branding.companyName}
-                style={{ height: 36, width: "auto", objectFit: "contain" }} />
-              <div style={{ width: 1, height: 28, background: "rgba(0,0,0,0.1)" }} />
-            </>
+            <img src={branding.logoUrl} alt={branding.companyName}
+              style={{ height: 36, width: "auto", objectFit: "contain" }} />
           )}
-          <img src={rbLogoIcon} alt="Rooster Booster"
-            style={{ height: 28, width: "auto", objectFit: "contain" }} />
         </div>
 
         {/* Message */}

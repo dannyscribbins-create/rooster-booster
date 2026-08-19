@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { R } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
-import rbLogoSquareWordmark from '../../assets/images/rb logo w wordmark 2000px transparent background.png';
 // The PLATFORM default mark, used only when the contractor has uploaded none.
 // Replaces a direct import of AccentRoofing-Logo.png — one tenant's logo shown to
 // every homeowner of every other tenant (C/DL-2 Phase 3c).
@@ -161,21 +160,21 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
       padding: '32px 24px',
       fontFamily: R.fontBody,
     }}>
-      {/* Top brand mark */}
-      <div style={{
-        opacity: cardVisible ? 1 : 0,
-        transform: cardVisible ? 'translateY(0)' : 'translateY(-12px)',
-        transition: 'opacity 0.5s ease, transform 0.5s ease',
-        textAlign: 'center',
-        marginBottom: 8,
-      }}>
-        <img
-          src={rbLogoSquareWordmark}
-          alt="Rooster Booster"
-          style={{ width: 200, height: 'auto', margin: '0 auto', display: 'block', marginBottom: 8 }}
-        />
-      </div>
+      {/* ── 5.3: THE RETIRED TOP MARK IS GONE ────────────────────────────
+          This carried the retired Rooster Booster wordmark ABOVE the card, while
+          the card below already renders `logoSrc` — the CONTRACTOR's logo, falling
+          back to the current RoofMiles mark. The platform was represented twice on
+          one referrer-facing screen, and the outer one was a brand that no longer
+          exists.
 
+          REMOVED rather than swapped. A referrer reaches this screen through a
+          contractor's invite, so the card shows THEIR mark, which is what R9 asks
+          for. Swapping would have stacked the RoofMiles wordmark directly above
+          the RoofMiles mark whenever no contractor resolved. The platform keeps
+          its place inside the card, as the fallback it already was.
+
+          The whole wrapper goes, not just the <img> — leaving an empty animated
+          div would keep its marginBottom and its opacity transition. */}
       {/* Signup card */}
       <div style={{
         width: '100%',
