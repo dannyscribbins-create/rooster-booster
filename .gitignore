@@ -27,7 +27,8 @@ yarn-debug.log*
 yarn-error.log*
 
 # Claude Code local files
-.claude/
+.claude/*
+!.claude/rules/
 server.log
 
 # Git worktrees

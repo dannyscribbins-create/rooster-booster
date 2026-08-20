@@ -4,6 +4,61 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >
 > **`PRE_LAUNCH_CHECKLIST.md` (repo root) is the CANONICAL index of all open and deferred work** — pre-launch items, C/DL-3b-2, C/DL-3c, Decision E, contractor-ID reconciliation, and the named builds. Read it when picking up work or closing a session. Detail stays in the documents it points at; **add what you defer before writing the handoff, not after.**
 
+## Where New Content Goes
+
+Four destinations. Route by ONE question:
+
+> **Could this be violated without anyone looking it up?**
+
+If yes it is a RULE and it must be resident — a rule nobody loads is not a rule. If it is
+only discoverable by going and reading it, it is REFERENCE and does not belong in context.
+
+| Destination | Holds |
+|---|---|
+| `CLAUDE.md` (this file) | Rules governing decisions made **before** any file is open |
+| `.claude/rules/*.md` | Rules that only bite once you are editing a matching file |
+| `docs/ARCHITECTURE.md` | Reference — read at most once a session, usually derivable from the codebase |
+| `CLAUDE_REGISTRY.md` | The feature registry (see above) |
+
+⚠ **SCOPE BY WHO NEEDS IT, NOT BY WHAT IT MENTIONS.** The `?admin=true` block reads as
+frontend because it names an admin URL, but its audience is the server-side email templates
+that still build those links. Scoped to `src/**` it would have been guaranteed absent for the
+one session that needs it. Ask who gets hurt by not having it, not what it talks about.
+
+**The budget is finite and every addition spends it.** This file loads IN FULL at the start
+of every session. 40,000 chars is Claude Code's performance-warning threshold; it sits at
+~31,300 as of restructure Phase 2. Adding a rule is correct. Adding reference data borrows
+against every future session.
+
+**Headings are load-bearing.** `CDL_3a_BUILD_SPEC.md`, `CDL_3b_BUILD_SPEC.md` and
+`ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` cite headings here BY NAME, and code comments cite
+sections. Renaming one breaks them silently and all at once. When a block moves, its heading
+stays in both places.
+
+**Relocations are verbatim.** Never correct staleness in the same commit as a move. A diff
+containing both cannot be reviewed, and a relocation's whole value is that it can be checked
+mechanically. Phase 1 shipped one knowingly-wrong line rather than break this
+(`docs/ARCHITECTURE.md:217`); Phase 2 shipped a second (`server/test/escapeHtmlExport.test.js:6`).
+
+### Scoped rule files — ⚠ and they may not be loaded right now
+
+| File | Governs | Loads when |
+|---|---|---|
+| `.claude/rules/backend.md` | server conventions: util/adapter signatures, the cron-job procedure, pipeline-cache, webhook, payout, cron-lock and rate-limit behaviors, the Contact Matching Standard | Claude reads `server/**/*.js` |
+| `.claude/rules/frontend.md` | src conventions: import conventions and `useBranding()`, the ESLint disable rule, styling tokens and brand values | Claude reads `src/**/*.{js,jsx}` |
+
+⚠ **These are NOT loaded at session start and are NOT re-injected after a compaction.** They
+load when Claude first reads a matching file. **If this session needs backend or frontend
+conventions and has not opened a matching file, read the file directly — never read the
+absence of a rule as the absence of a rule.**
+
+This block exists because *unannounced* absence is this codebase's recurring failure mode:
+the hand-maintained FILES list, the hex-only sweep needles, the value-only `toContain`, the
+unconsumed fixture. Each read as covered and was not. Known absence is recoverable; silent
+absence is not.
+
+---
+
 ## Commands
 ```bash
 # Development
@@ -54,23 +109,12 @@ MVP shortcuts must be flagged with a code comment explaining: (a) the limitation
 
 **Key backend rules:**
 
-- `getCRMAdapter(contractorId)` in crm/index.js is the multi-contractor hook — never import a CRM adapter directly in a route file.
-- `retryWithBackoff` correct signature: `retryWithBackoff(() => fn({...}), { shouldRetry: resendShouldRetry })` — second arg is options object, NOT the function directly.
-- `logError` correct signature: `logError({ req, error: err, source: 'METHOD /path' })`.
-- `escapeHtml` lives in server/utils/pendingReferral.js — import from there, never redefine locally.
-- `retryHelpers` (resendShouldRetry, twilioShouldRetry, jobberShouldRetry, anthropicShouldRetry) live in server/utils/retryHelpers.js — import from there, never redefine locally.
-- New cron jobs → create server/cron/jobs/[name].js, add seed row to cron_job_locks in initDB(), export named start function, call in server/cron/index.js. All jobs must use withLock().
+> Moved to `.claude/rules/backend.md` in restructure Phase 2 — see **Key backend rules** there.
 
 **Key backend behaviors:**
 
-- Pipeline cache — pipeline endpoint reads from `pipeline_cache` (populated by background sync), not Jobber directly. Stale fallback returns `{ stale: true }`. No cache returns 503.
 - Pipeline stages: lead → inspection → sold → paid. DB value `'paid'` maps to frontend key `'complete'` ("Complete ✓").
-- `paid_at` on pipeline_cache — written once when pipeline_status first transitions to `'paid'`, never overwritten. Source of truth for cadence timing.
-- Webhook security — `/webhooks/*` uses `express.raw()` before `express.json()`. Never remove this — HMAC verification requires the raw buffer.
-- Payout safety — cashout approval wrapped in BEGIN/COMMIT/ROLLBACK. Stripe ACH slot is inside the transaction before COMMIT.
-- Cron locks — 7 seed rows in cron_job_locks: pipeline_sync, session_cleanup, admin_cache_expiry, engagement_cadence, dynamic_audiences, post_job_sequence, jobber_incremental_sync.
-- Error monitoring — all errors through `logError()` into error_log. Resend alert on first occurrence and every 10th recurrence. Severity auto-classified by route path. Never delete error_log rows — use `resolved=true`.
-- Rate limiting — referrerLoginLimiter 10/15min, forgotPinLimiter 3/15min, resetPinLimiter 10/15min, signupLimiter 5/60min, verifyEmailLimiter 10/15min, cashoutLimiter 3/60min, bookingLimiter 3/60min, clientErrorLimiter 20/60min, pipelineLimiter 10/5min, adminLoginLimiter 5/15min.
+> Moved to `.claude/rules/backend.md` in restructure Phase 2 — see **Key backend behaviors** there.
 
 **Database tables:** the full list, and the note on tables missing from it, moved to
 `docs/ARCHITECTURE.md` in restructure Phase 1.
@@ -79,7 +123,7 @@ MVP shortcuts must be flagged with a code comment explaining: (a) the limitation
 
 ### Frontend — Component Structure
 
-`src/App.jsx` is a routing shell (~250 lines — has grown beyond original 135-line target; extraction of pipeline state into a custom hook is a future cleanup item). Do not add component code into App.jsx.
+> Moved to `.claude/rules/frontend.md` in restructure Phase 2 — see **Frontend — Component Structure** there.
 
 **Three top-level surfaces, chosen by IDENTITY — never by URL** (C/DL-3b Phase 5):
 - **Referrer app** — 5-tab bottom nav: Home, Refer, Rankings, Cash Out, Profile
@@ -92,39 +136,19 @@ MVP shortcuts must be flagged with a code comment explaining: (a) the limitation
 > Moved to `docs/ARCHITECTURE.md` in restructure Phase 1 — see **Folder structure** there.
 
 #### Import conventions
-- Referrer: `import { R } from '../../constants/theme'`
-- Admin: `import { AD } from '../../constants/adminTheme'`
-- Config: `import { BACKEND_URL } from '../../config/contractor'`
-- ⚠ **Contractor identity comes from `useBranding()`** (`src/components/shared/ThemeProvider.jsx`), never from a config module. `CONTRACTOR_CONFIG` was **deleted in C/DL-3b Phase 6** — it held one tenant's name, logo, phone, email, website and review link and shipped them to every contractor. `src/config/contractor.js` is platform-level only and nothing contractor-specific may be added back.
+> Moved to `.claude/rules/frontend.md` in restructure Phase 2 — see **Import conventions** there.
 
 #### ESLint note
-Every `useEffect` with intentionally omitted dependencies must have `// eslint-disable-next-line react-hooks/exhaustive-deps` on the line immediately above the dependency array.
-
-Under Vite, ESLint is **not** part of the build — `react-hooks/exhaustive-deps` is no longer a Vercel build error the way it was under CRA's `CI=true`. It is enforced instead by `npm run lint`, which `npm test` runs first, so a violation blocks the pre-push gate rather than the deploy. `eslint.config.mjs` sets `reportUnusedDisableDirectives: 'off'`: `eslint-plugin-react-hooks` v7 understands stable setState setters and refs that the CRA-era v4 flagged, so ~50 existing disable comments now look "unused". They are kept deliberately — they document intent and re-arm if a future plugin version changes its analysis. Do not strip them with `--fix`.
+> Moved to `.claude/rules/frontend.md` in restructure Phase 2 — see **ESLint note** there.
 
 #### Styling
-All styling inline. Never add CSS files. Design tokens: `src/constants/theme.js` (R) and `src/constants/adminTheme.js` (AD).
-- Colors: Navy `#012854`, Red `#CC0000`, Light Blue `#D3E3F0`
-- Fonts: Montserrat (display), Roboto (body), Roboto Mono (numbers)
-- Icons: Phosphor Icons v2.1.1 only
-- Mobile-first: 430px max-width with safe-area insets
+> Moved to `.claude/rules/frontend.md` in restructure Phase 2 — see **Styling** there.
 
 ---
 
 ## Contact Matching Standard
 
-Used for: app user linking, unified contacts merge, signup, referral conversion linking, campaign deduplication.
-
-Rule: Contact field (email or phone) is the PRIMARY match key. Name similarity (pg_trgm >= 0.4) is the CONFIRMATION signal.
-
-- HIGH — auto-link: email match + name similarity >= 0.4
-- HIGH — auto-link: phone match + name similarity >= 0.4
-- MEDIUM — do not auto-link: contact match alone, name unavailable
-- LOW — never link: name similarity only, no contact match
-
-Phone normalization: `REGEXP_REPLACE(phone, '[^0-9]', '', 'g')`. COALESCE to `''` for NULLs.
-Name normalization: `LOWER(TRIM(first || ' ' || last))`, COALESCE nulls to `''`.
-pg_trgm: `CREATE EXTENSION IF NOT EXISTS pg_trgm` (wired in contacts.js at module load).
+> Moved to `.claude/rules/backend.md` in restructure Phase 2 — see **Contact Matching Standard** there.
 
 ---
 
