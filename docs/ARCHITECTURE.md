@@ -214,7 +214,7 @@ src/
 - `npm outdated` — flag production deps more than one major version behind
 - Grep for `console.log` across server/ — remove any not marked intentional
 - Grep for `TODO` and `FIXME` — action or document in handoff
-- Check for files in server/ or src/ not in CLAUDE.md folder structure
+- Check for files in server/ or src/ not in this file's folder structure (above) — the structure moved here from CLAUDE.md in restructure Phase 1
 - Confirm server.js has not grown significantly (target: ~40 lines — app construction lives in server/app.js, not here)
 - Confirm src/App.jsx has not accumulated component logic
 

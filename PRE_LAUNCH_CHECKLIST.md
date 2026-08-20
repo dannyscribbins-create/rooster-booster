@@ -29,6 +29,23 @@ unrecorded through four subsequent commits. No test, no gate, and no review noti
 someone remembered." When you finish a session, add what you deferred **before** you write the
 handoff, not after.
 
+- [ ] **🔴 SIX OF THIS DOCUMENT'S OWED ENTRIES EXIST ONLY IN AN UNTRACKED BINARY.**
+      `RoofMiles_Handoff_ABR_Phases1-4.docx` is the sole record of the four super-admin /
+      `verify*Session` / `ADMIN_PASSWORD` / `LockedSection` entries written into this file by
+      ABR 6A, of the email-template entry, and of the `initTestDb` finding under *Developer
+      setup* — which was explicitly flagged *"needing a checklist line in Phase 6"* and then
+      was not written for nine commits. It is **untracked, on one machine**, alongside four
+      other untracked `.docx` files this document cites as canonical under *Named builds*
+      (`RoofMiles_BuildSequence_JobRevenueCapture.docx`,
+      `RoofMiles_BuildSequence_LandingAmbientBranding.docx`,
+      `RoofMiles_Handoff_ABR_Phase5.docx`, `RoofMiles_Handoff_CDL_3b.docx`).
+      **The canonical index of all deferred work depends on files git has never seen.**
+      ⚠ This is not the same failure as a stale list. A stale list is recoverable by
+      re-deriving. **A lost machine is not.**
+      **Proposed fix, not executed:** convert each to committed markdown under `docs/handoffs/`
+      and repoint the *Where detail lives* row. Deliberately left for a decision rather than
+      done inside a close-out commit — converting five documents is its own diff.
+
 ---
 
 ## 🔴 PRE-LAUNCH — must be done before real contractor traffic
@@ -47,8 +64,35 @@ handoff, not after.
 - [ ] **Retire `ADMIN_PASSWORD`** — superseded by per-member team credentials. Still required
       at boot (`server.js` crashes without it, intentionally) so retiring it is a code change,
       not just an env deletion. → `CLAUDE.md`, `SECURITY_HARDENING_SPEC.md`
+      **⚠ ESTABLISH FIRST WHAT THE LEGACY `POST /api/admin/login` ACTUALLY MINTS** — what tier
+      and what permission set. **If it grants owner-equivalent access it is a second privileged
+      door alongside `/rm-control`, and the two must close in the same pass.** Retiring one and
+      leaving the other is a half-fix that reads as complete. → D-L
 - [ ] **Swap Stripe `pk_test_` for the live publishable key** (`VITE_STRIPE_PUBLISHABLE_KEY`)
       and confirm `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` are live values.
+- [ ] **🔴 SUPER ADMIN — the bypass is wider than the intent, and the account is seeded.**
+      `permissions.js:48-50` returns `next()` for `role='super_admin'` on **every** gated
+      route, `:49` being the return — including `cashout_approve` and the Stripe ACH transfer
+      endpoint. That is a full cross-tenant **write** bypass. The stated product intent is
+      cross-tenant **READ** — a birds-eye layer over contractor account performance for Danny
+      and future RoofMiles staff, intended to live **outside the app and outside web access**.
+      **The build must start from read-only aggregation, not inherit a blanket bypass.**
+      One account is seeded (`admin1@roofmiles.com`, 2026-06-21); the seed env vars have since
+      been removed from Railway, so the row persists and **cannot be re-seeded over** — a
+      password reset would need a direct DB edit. Client routes are gated by
+      `VITE_ENABLE_RM_CONTROL` (default off, ABR Phase 1); **the server route stays live.**
+      When built: **fully RoofMiles-branded, no contractor lockup** — ABR Phase 5 already
+      retired both `NAVY = '#012854'` constants.
+      → `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` D-K
+- [ ] **The `requirePermission` ⇒ `verify*Session` invariant is held by REPETITION, not
+      structure.** All 130 `requirePermission`-gated routes independently call
+      `verifyAdminSession()`, which filters `role='admin'` — so a super-admin token clears the
+      middleware above and then 401s in the handler. That is the only reason the bypass is
+      latent rather than live. **Nothing asserts the invariant.**
+      `server/test/adminRouteCoverage.test.js` (177 lines) proves the **converse** and would
+      not catch a violation. ⚠ The day someone adds a `requirePermission` route that omits the
+      session call, the bypass goes live with a green suite. **~40 lines. Pre-launch security
+      list.** → D-K
 
 **Correctness / data integrity**
 - [ ] **Swallowed catch blocks — audit, with a named example.** A missing `require` left a
@@ -64,9 +108,63 @@ handoff, not after.
       explicitly meant to be swept *together*, a partial sweep leaves two correct examples and
       one wrong one — which is exactly how the pattern spread in the first place. Anyone
       working from either list alone would have "finished" it and left the violation live.
-- [ ] **Hardcoded brand-colour literal sweep.** `CashOutTab.jsx:100` gradient; the intentional
-      `LockedSection` `#012854` fallback; the five notification-email `?admin=true` links
-      (inert parameter, swept here because the same template literals carry `#012854`). → §10
+- [ ] **🔴 `BrandingProfileSettings.jsx:192` — EVERY OPTION IN THAT DROPDOWN IS COMPUTED TO BE
+      INVISIBLE.** The `<option>` hardcodes `background: '#1f2638'` and inherits the select's
+      `color: AD.textPrimary`, which ABR Phase 5 moved to `#1C2D4D` (`adminTheme.js:137`).
+      **Dark navy on dark navy: ≈1.1:1.** Live on the Branding Profile settings page since
+      Phase 5.1 collapsed `AD.bgCard` to `#FFFFFF` (`adminTheme.js:90`), which is what
+      `#1f2638` used to be.
+      ⚠ **NOT OBSERVED IN A BROWSER.** This is arithmetic over two declared values —
+      `#1f2638` at `:192` and `#1C2D4D` at `adminTheme.js:137` — exactly as the lock icon's
+      1.67:1 was arithmetic for two sessions before anyone looked (see Discharged, below). The
+      computation is sound and the finding is not in doubt; what is unverified is **what a
+      browser actually paints**, including whether the option inherits that `color` at all on
+      every engine. **Look before scoping the fix.**
+      **⚠ THE REUSABLE PART IS WHY EVERY MECHANISM MISSED IT, AND ALL THREE MISSED IT
+      CORRECTLY:**
+      - The walking sweep's needles are `#012854` / `#CC0000` / `#D3E3F0` / `#041D3E` —
+        **Accent's palette. `#1f2638` was never Accent's. It was the panel's own retired
+        surface**, so the sweep could not see it without being wrong about its own scope.
+      - Phase 5's individual audit of the ~44 hardcoded hexes was scoped by **D-C** to the
+        Accent palette, for the same reason.
+      - jsdom performs no layout and resolves no colour, so no React test can compute a
+        contrast it was not handed as arithmetic.
+      **Nothing was negligent. The needle set had a hole shaped exactly like this.** → the
+      entry below
+- [ ] **THE SWEEP NEEDS A FIFTH NEEDLE CLASS: HEXES THE PANEL USED TO BE.** D-N's needle set
+      answers *"does a retired tenant's colour survive?"* It cannot answer *"does one of our
+      own superseded values survive?"* — and a chrome recolour manufactures exactly that
+      population, because every literal written against the old surface keeps its old value
+      while the token moves out from under it.
+      **Known member: `#1f2638`** (pre-Phase-5 `AD.bgCard`). Live at
+      `BrandingProfileSettings.jsx:192`; falsified prose at `Skeleton.jsx:7,31`.
+      ⚠ **Assume the class is larger.** It has never been enumerated, and the correct way to
+      build it is from git history — every value `adminTheme.js` has ever held — not from
+      memory, which is the FILES-list defect in a new costume. Both needle axes are still
+      required (D-N amendment 3: hex **and** `rgb()`/`rgba()`).
+- [ ] **Hardcoded brand-colour literal sweep. ⚠ SIZE IT FROM 77, NOT FROM 5.**
+      `#012854` / `#CC0000` / `#D3E3F0` / `#041D3E` appear at **77 sites across 11 files in
+      `server/`** alone: `referrer.js` (30), `crm/pipelineSync.js` (12),
+      `utils/pendingReferral.js` (7), `admin/team.js` (6), `webhooks/jobber.js` (5),
+      `resendWebhook.js` (4), `admin/cashouts.js` (4), `account.js` (4), `admin/index.js` (2),
+      `cron/jobs/postJobSequence.js` (2), `utils/brandingTheme.js` (1). Plus
+      `CashOutTab.jsx:100`'s gradient and the referrer-side `rgba(204,0,0,…)` sites.
+      **The "five notification-email templates" this entry used to name are the `?admin=true`
+      SUBSET, not the population** — a count of one axis read for years as a count of the work.
+      **⚠ AND THE `?admin=true` PRODUCERS ARE EIGHT, NOT FIVE.** Five carry it in email
+      (`pipelineSync.js:268`, `referrer.js:552,2774`, `resendWebhook.js:228,310`). Three are
+      **redirects**, excluded by this entry's own framing rather than by anyone's decision:
+      **`oauth.js:138`** (`?admin=true&section=crm`) and **`stripe.js:73,74`** (Connect refresh
+      and return URLs). The parameter is inert since C/DL-3b Phase 5 — all eight land on the
+      unified door — but a sweep that removes five and leaves three has not removed it.
+      ⚠ **The `section=crm` entry below already records that it has never had a reader, and
+      does not notice the `?admin=true` sitting in the same string.** Two records of one line,
+      neither seeing the other — the `escapeHtml`-×3 shape, live on this page right now.
+      **⚠ `LockedSection`'s `#012854` IS MISSED BY THE ABR SWEEP BY CONSTRUCTION, NOT BY
+      EXCLUSION.** It lives in `src/components/shared/`, and D-N walks `admin/`, `constants/`,
+      `superAdmin/` and `utils/`. **`shared/` is not a walk root, so no needle can reach it.**
+      Its fallback is deliberate (D-G, re-affirmed — see Discharged below); this sweep owns
+      retiring it. **Neither sweep may assume the other did it.** → §10, D-G, D-N
 - [ ] **`console.error` without the `// diagnostic log — intentional` marker.** → §10
 - [ ] **Drift-guard case-table gap**, and the vacuity finding that sharpened it. These are the
       only drift guards in the codebase and they protect a white-labeling correctness
@@ -240,8 +338,10 @@ root cause, and patching them separately produces five unrelated special cases)
 
 - [ ] **Admin Panel Brand Retirement — SOONER RATHER THAN LATER**, ideally while the Phase 6
       mechanism is still warm. Admin chrome literals, the admin preview components, the two
-      `preset_2` admin copies' surrounding files, **and the two editors that both write
-      `google_place_id`** (`AdminAboutUs.jsx:98`, `CompanyDetailsSettings.jsx:280`).
+      `preset_2` admin copies' surrounding files, **and the `google_place_id` editor**
+      (`CompanyDetailsSettings.jsx:280`) — ⚠ **there was never a live divergence.**
+      `AdminAboutUs.jsx` had zero importers and was deleted in ABR Phase 1 (D-E); the "two
+      editors" were one editor and one orphan. **One file, not a split to close.**
       → **`ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md`** (the governing spec; supersedes §10 for this
       build). **IN PROGRESS** — Phase 1 shipped `cd198cf`; Phase 2 is the delivery seam.
 - [ ] **Legal pages — BLOCKED on the LLC amendment.** `PrivacyPolicy`, `TermsOfService`,
@@ -280,6 +380,85 @@ root cause, and patching them separately produces five unrelated special cases)
       (§8.0 category (d)), and `google_place_id` was populated while the field the card read
       was empty (category (e)). **Both were invisible to a check built from schema + admin
       panel.** *(Danny asked for this; never scoped. Not previously recorded.)*
+- [ ] **ADMIN STATS INTEGRITY — SIX ITEMS, ONE DESIGN CALL.** Grouped because the call is
+      **how does the admin panel express "unknown"**, and answering it separately six times
+      produces six inconsistent answers.
+      **⚠ STEP ONE IS A BROWSER, NOT AN EDITOR.** Open Branding Profile settings and look at
+      the dropdown named in the `#1f2638` entry above. It is **the cheapest verification in
+      this entire queue** and it either confirms the severity or reveals something neither
+      record predicted. Do it before writing a line — the two `#1f2638` entries above are
+      arithmetic, and the Discharged section below records what happens when a computed ratio
+      goes unobserved. ⚠ **The arithmetic was never the weak half. Nobody looking was.**
+      1. **`pipelineTotal` is the NaN source.** `AdminDashboard.jsx:83` —
+         `stats ? sum-of-four : 0`. A present-but-incomplete `stats` yields `NaN`, rendered as
+         *"NaN total referrals"* at `:228`. **Fix this at source first**; `:90`'s comment
+         already predicts that doing so makes `pct()`'s `val` guard the only live one.
+      2. **17 unguarded `stats.X` reads**, not the 7 first recorded —
+         `:214-222`, `:232-235`, `:259-262`, `:275-277`.
+      3. **The badge cannot say "unknown."** `AdminApp.jsx:194-199` scopes it in-code and names
+         the remaining question: what does the pill read when flagged is unknown but pending
+         and missing are 2 and 3? **Belongs in shared nav code** (`AdminComponents.jsx`), not
+         in `primeBadgeCounts`. `AdminApp.test.jsx`'s *"an unknown flagged count contributes
+         ZERO"* case is the record of the remainder and is the test to rewrite.
+      4. **`admin/index.js:1567-1570` — the server half.** ⚠ The catch itself is **compliant**
+         (`logError()` + `'Internal server error'`). The defect is the **contract**: a 500 is a
+         *fulfilled* settlement carrying a body with no `unresolved_count`, which is exactly
+         the "contributes zero" case above. **Not an independent item.**
+      5. **`primeBadgeCounts`' IIFE has no `safeAsync`.** `AdminApp.jsx:148`, unlike its two
+         siblings at `:120,:130`; `:187-189` documents it. **A throw there reaches no log and
+         no console.**
+      6. **The lock-as-warning semantic.** `LockedSection.jsx:170` paints a permission lock
+         with `statusVar('warningText')`. *"You lack permission"* is informational, not a
+         warning — the coupling means a future change to warning semantics moves the lock.
+         **Same design call as (3).**
+      **Also here:** the Probe B residual from `c7783d9` — `deepLinkSurvival` and `roleRouting`
+      **never read a field** of the stats payload (zero getter hits, isolated, exit 0). Their
+      protection against the async-leak flake is **timing, not the fixture**; they would pass
+      identically against `{}`. The two honest options — await the dashboard, or drop the mock
+      — are a behaviour change. **And `statusVar()`'s JSDoc** (`statusTheme.js:140`) declares
+      four roles against `STATUS_VARS`' six, omitting `'warning'|'warningText'` — **the roles
+      its own live caller passes.**
+- [ ] **`crm/index.js` — THE DISPATCHER DOES NOT DISPATCH (multi-tenant).** `:29-30` hardcodes
+      `require('./jobber')` and `jobber.refreshTokenIfNeeded()` inside
+      `if (connection_method === 'oauth')` — **branching on connection method while ignoring
+      `crm_type`, which is destructured at `:22` and sitting right there.** A ServiceTitan
+      contractor connected by OAuth gets Jobber's token refresh. Latent only because
+      `servicetitan.js` and `acculynx.js` are placeholders — **so it goes live on the day the
+      second adapter does**, which is also the day nobody is looking at this function.
+      Needs its own rulings. → `CLAUDE.md` *Architecture Boundaries*
+- [ ] **`crm/index.js:31-34` — A LIVE `Never Break These Rules` VIOLATION.** A raw
+      `SELECT access_token FROM tokens WHERE contractor_id = $1`, bypassing
+      `getContractorAccessToken(contractorId)` — which `CLAUDE.md` calls **"the only sanctioned
+      way to read a contractor's access token."** The predicate is correctly scoped, so this is
+      not a tenancy leak today; it is the **consolidation** that stops being true silently the
+      next time the sanctioned reader gains a step. Small, but it is a security-boundary edit
+      and gets a real review. **Run after the dispatch fix** — both are in the same 15 lines
+      and touching them in one pass is how a deliberate change and an incidental one become
+      indistinguishable.
+- [ ] **`docs/ARCHITECTURE.md` FOLDER-STRUCTURE RECONCILIATION — 24 FILES, 3 DIRECTORIES.**
+      Missing from `server/` (21): `middleware/permissions.js`, `permissions/registry.js`,
+      `routes/admin/team.js`, `routes/branding.js`, `routes/landing.js`, `routes/session.js`,
+      `routes/superAdmin.js`, three migrations, and ten utils **including
+      `utils/sessionPolicy.js` — which `CLAUDE.md`'s non-negotiable session rule cites BY NAME
+      as the one place the numbers live.** Missing from `src/` (3):
+      `components/shared/BrandingProvider.jsx` (**this build's own D-H delivery seam**),
+      `utils/platformIdentity.js`, `utils/announcementMessage.js`. Missing directories:
+      `server/scripts/`, `src/__fixtures__/`, `src/components/admin/__fixtures__/`. The admin
+      routes block omits `team.js` while the doc claims *"all 9 mounts."*
+      ⚠ **`docs/ARCHITECTURE.md:217`'S CHECK WOULD HAVE CAUGHT ALL 24, AND HAS DEMONSTRABLY
+      NEVER RUN.** Until ABR 6A it read *"Check for files in server/ or src/ not in
+      **CLAUDE.md** folder structure"* — pointing at a file that no longer held the structure,
+      from inside the file that did. **The mis-pointing is why the non-execution went
+      unnoticed:** anyone who ran it looked in `CLAUDE.md`, found no structure, and had no way
+      to tell "not applicable" from "not done." **This is the hand-maintained-FILES-list
+      defect, in the document that describes the codebase.** Fix by generating the structure,
+      or it recurs by next session.
+- [ ] **`CLAUDE_REGISTRY.md` SPLIT — 69,170 chars, with a runtime-visible citation.**
+      Grew ~1.2k since last measured. `server/db.js:1662` cites *"CLAUDE_REGISTRY.md Known
+      Issue 13"* **inside a production `console.error`** — a doc reference whose audience is
+      whoever is reading Railway logs at the time, which makes both the section number and the
+      document name load-bearing at runtime. **Any split must keep Known Issue 13 findable
+      under that name, or repoint `db.js:1662` in the same commit.**
 
 ---
 
@@ -290,6 +469,22 @@ root cause, and patching them separately produces five unrelated special cases)
 - [ ] Local Postgres at `localhost:5432`, database `roofmiles_test`, credentials in `.env.test`
       (gitignored). The local environment **cannot** reach Railway Postgres — login-dependent
       features are tested on the live deployment. → `CLAUDE.md`
+- [ ] **🔴 `initTestDb` STEPS D/E HAVE NO CONCURRENCY GUARD, AND THE FAILURE IS
+      UNRECOVERABLE.** `server/test/setup.js:57-60` runs `DROP SCHEMA IF EXISTS public
+      CASCADE`, which takes `pg_trgm` with it; `:66-70` then runs
+      `CREATE EXTENSION IF NOT EXISTS pg_trgm`. **Two runners racing through D/E leave the
+      `pg_extension` catalog row alive but bound to a dropped schema — after which
+      `CREATE EXTENSION IF NOT EXISTS` sees the row and no-ops forever.** Recovery required
+      dropping the whole scratch database.
+      ⚠ **THIS IS THE STRICTLY WORSE VARIANT OF WHAT `CLAUDE.md:251` AND
+      `CLAUDE_REGISTRY.md:322-323` ALREADY RECORD.** Those describe the schema-dropped case,
+      which the added `IF EXISTS` made self-healing. **This one does not self-heal**, and the
+      `IF EXISTS` that fixed the other is what makes this one silent.
+      **Symptom:** `pg_trgm setup skipped: no schema has been selected to create in`, then
+      every `pg_trgm`-dependent suite failing against a database that looks fine.
+      **Fix:** a lock across D/E, or create the extension in a schema the wipe does not drop.
+      *(Flagged as owing a checklist line in ABR Phases 1-4 and never written — recorded in
+      `RoofMiles_Handoff_ABR_Phases1-4.docx` §"New, needing a checklist line in Phase 6".)*
 
 ---
 
@@ -304,6 +499,40 @@ root cause, and patching them separately produces five unrelated special cases)
       cards are in range, and wider ones read as unfinished rather than premium. The desktop
       emptiness is a **background** problem. Recorded so nobody "fixes" it by stretching the
       card.
+
+---
+
+## Discharged — recorded so they are not re-raised
+
+*Closed items with a live paper trail elsewhere. Here so a future session can tell "done" from
+"forgotten" — which this document's preamble says it otherwise cannot.*
+
+- [x] **The lock icon's browser check — PERFORMED.** `d06bebc` shipped
+      `color: statusVar('warningText')` with *"⚠ NOT OBSERVED IN A BROWSER — the ratios are
+      arithmetic over the declared values."* **It has now been observed**: Danny viewed
+      `LockedSection` in `mode="page"` from a non-Owner session; the glyph is legible.
+      `d06bebc`'s caveat is discharged. **The value's own correctness was never in doubt** —
+      `#B45309` at 4.87:1 — only whether anyone had looked.
+- [x] **`LockedSection`'s permission scrim — D-G's deferral RE-AFFIRMED, not inherited.** The
+      original deferral rested on *"the admin panel is dark,"* which ABR Phase 5 falsified.
+      `App.jsx:362-372` and `:420-427` now carry the **correct** reasoning: the fallback paints
+      because **nothing mounts `--rm-*` on the admin tree** (Ruling 5, structural), which is
+      *"unaffected by how the panel is painted."* ⚠ **The deferral stands on a live premise
+      now. The retirement itself is still owed** — see the brand-literal sweep above.
+- [x] **The unconsumed stats fixture — CLOSED by `c7783d9`.** `src/__fixtures__/adminStats.js`
+      exports `ADMIN_STATS_ZEROS` and `FLAGGED_SUMMARY_ZERO`, consumed at 5 sites across 3
+      files, proven shared by Probe A and proven separately-consumed by Probe B. **The Probe B
+      residual is NOT closed** and is routed to Admin Stats Integrity above.
+- [x] **`docs/ARCHITECTURE.md`'s non-monotonic headings — RULED, no change.** `h3 → h4 → h2 →
+      h3` is **deliberate and load-bearing**, stated at that file's own `:13-16`: each block
+      keeps its original `CLAUDE.md` heading **level** so that a citation naming the heading
+      resolves unchanged in either file. **Renormalising would break the citations the
+      restructure exists to protect.** Recorded so nobody "tidies" it.
+- [x] **The Periodic Code Health Checklist — LAST RUN: NEVER VERIFIABLY.** No record of an
+      execution exists in any commit, handoff or document. Established by the 24-file
+      reconciliation finding above: `docs/ARCHITECTURE.md:217`'s check cannot have run and
+      passed. **Record the date here each time it runs**, so the next omission announces itself
+      instead of being discovered by its consequences four sessions later.
 
 ---
 

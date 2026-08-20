@@ -3,7 +3,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // C/DL-2 — PHASE 3d-1 RED SUITE — escapeHtml MUST BE IMPORTABLE
 //
-// CLAUDE.md states the rule twice, in two different sections:
+// The rule is stated twice, in two FILES — CLAUDE.md's "Never Break These Rules
+// -> Code Quality", and .claude/rules/backend.md (moved there in restructure
+// Phase 2). It read "two different sections" until ABR 6A corrected it:
 //
 //   "escapeHtml lives in server/utils/pendingReferral.js — import from there,
 //    never redefine locally."
