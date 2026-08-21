@@ -31,5 +31,12 @@ yarn-error.log*
 !.claude/rules/
 server.log
 
+# Local-only working documents
+desktop.ini
+
+# Python bytecode
+__pycache__/
+*.pyc
+
 # Git worktrees
 .worktrees/
