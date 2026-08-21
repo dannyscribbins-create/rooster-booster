@@ -269,7 +269,7 @@ through `useBranding()`, never from a file on a drive.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — as of the Vite migration that is **734 server tests and 35 React tests across 6 files**. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count that jumps far above 6 means the include glob has been widened and is picking up the server suite — see the warning above.)
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **947 server tests and 459 React tests across 31 files** (measured 2026-08-21, HEAD `d0fb3aa` — see `docs/GROUND_TRUTH_2026-08-21.md`). A drop below these numbers means tests were deleted; stop and report. ⚠ Check the EXIT CODE, not the pass count — a suite can report passing while exiting 1. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count that jumps far above 31 means the include glob has been widened and is picking up the server suite — see the warning above.)
 - Characterization rule: a failing or surprising test result means STOP and report — never adjust production code to satisfy a test, and never silently adjust a test to satisfy the code. Deliberate behavior changes update the relevant test openly and are documented in the session handoff.
 - Migration idempotency proofs must include a reproduction seeded with production's actual pre-existing row shapes, not only fresh-schema runs — a test DB rebuilt from scratch every run can never exercise "a real pre-existing row already in some legacy state," which is exactly what breaks in production and never breaks locally. See `CLAUDE_REGISTRY.md` (ST session, Architecture Notes) for the incident that established this.
 
@@ -483,6 +483,43 @@ needs it?"* and *"can this be constructed from something already stored?"* — a
 about the fields that look **empty**, not the ones that look finished.
 → `CDL_3b_BUILD_SPEC.md` §8.0 categories (d) and (e).
 
+### A mechanism that reports health it cannot observe is worse than no mechanism
+
+Test Design's vacuity shapes cover tests. This is broader: ANY mechanism that reports a state
+it has no way of actually observing. It reads as a passing check, so nobody looks again.
+
+Four confirmed instances:
+- `docs/ARCHITECTURE.md`'s own folder-structure check was mis-pointed at a file that no longer
+  held the structure. It would have caught 24 missing files. Anyone who ran it found nothing
+  and could not distinguish "not applicable" from "not done."
+- Two test suites mocked a shaped stats payload no assertion ever read. They pass identically
+  against `{}`.
+- CLAUDE.md's own test-count tripwire was set ~213 below the true floor, so it could never fire.
+- Four "standing untracked files" were named across four consecutive handoffs; two were tracked
+  the whole time.
+
+**THE RULE: when you add a check, a guard, a sweep, or a tripwire, state what it would look
+like when it FAILS, and prove it fails that way before trusting that it passes. A check whose
+failure mode has never been observed is a claim, not a check.**
+
+**The closure half.** Every one of the four instances above is a mechanism that could record a
+state ARRIVING and could not record it LEAVING. That asymmetry has its own name and its own fix.
+
+R14 requires deferrals to reach `PRE_LAUNCH_CHECKLIST.md` before a handoff is written. It works.
+But nothing requires an entry to be CLOSED when the work lands — so the Admin Brand Retirement
+entry read *"IN PROGRESS — Phase 1 shipped"* for roughly thirty commits after Phase 6B closed
+the arc, **in the document R14 exists to protect, during the arc that authored R14.**
+
+Same shape one layer down: `error_log.resolved` exists as a column and has never been set on any
+row, so the log cannot distinguish "fixed" from "stopped happening" and dates do all the work.
+
+**THE RULE: a tracking mechanism needs both halves. When you add an entry, a row, or a flag, say
+what will REMOVE it and who does that. A list that can only grow stops being a list of open work
+and becomes a list of things that were once true.**
+
+Practically: closing an arc means closing its checklist entry in the same session, before the
+handoff. **Deferring is R14; completing is this.**
+
 ---
 
 ## Session Safety Protocol — Run Before Any Code Changes
@@ -499,7 +536,15 @@ about the fields that look **empty**, not the ones that look finished.
 3. Confirm all useEffect hooks with intentionally omitted deps still have eslint-disable comments
 4. Confirm no .then() chains introduced, no console.log added to production paths
 5. Run `npm audit` before pushing (per Dependency Management Standards) — resolve or explicitly acknowledge any HIGH/CRITICAL findings before proceeding
-6. Run: `git add -A && git commit -m "[descriptive message]" && git push`
+6. Stage by EXACT PATH ONLY — never `git add -A`, never `git add .`.
+   List each file you intend to commit and stage them individually:
+       git add path/to/file-one path/to/file-two
+   Then run `git status --porcelain` and confirm the staged set is exactly what you listed
+   before committing. Local-only files are protected by `.gitignore` patterns, not by anyone
+   remembering a list — but the verification step is what makes that true, so run it every time.
+   ⚠ Do NOT pass a pathspec to `git commit`. `git commit -- <path>` commits working-tree
+   content for that path, bypassing the index, which can silently re-add a file you just
+   removed with `git rm --cached`. Stage, verify, then commit bare.
 7. Never commit a broken or partial state
 
 ---

@@ -45,12 +45,82 @@ handoff, not after.
       **Proposed fix, not executed:** convert each to committed markdown under `docs/handoffs/`
       and repoint the *Where detail lives* row. Deliberately left for a decision rather than
       done inside a close-out commit — converting five documents is its own diff.
+      **⚠ PROMOTED TO A REAL ITEM under *Named builds* on 2026-08-21** — a proposal recorded
+      inside a warning is not something anyone picks up. This warning stays; the action lives
+      there.
+      **⚠ AND IT IS WORSE THAN FIVE HANDOFFS. On 2026-08-21 two GOVERNING SPECS were found to
+      be missing from the repository entirely** — `MEMBER_RANK_ECONOMY_SPEC.md` and
+      `UI_OVERHAUL_SPEC.md` existed only in Claude project knowledge and on one machine. Not
+      tracked, not in the working tree, **invisible to every session that did not already know
+      to ask for them.** Both governed launch-relevant work; `UI_OVERHAUL_SPEC.md:290` even
+      carried the exact-path staging rule that `CLAUDE.md` was contradicting. Committed in this
+      session.
+      **This is the five-`.docx` failure one degree worse: a handoff that is untracked is at
+      least known to exist. A spec that is absent looks like a spec that was never written.**
+      ⚠ **"Is it in the repo?" belongs in the check** — alongside "is it in the checklist?"
+      An index cannot route to a document git has never seen.
+
+---
+
+## LAUNCH DEFINITION — ruled 2026-08-21 (Danny)
+
+Launch is not "Accent is running." Launch is: **a contractor RoofMiles has never met can sign
+up from the marketing site, provision their account, complete an onboarding wizard, connect
+Jobber, configure Stripe, set their reward structure, sync their team, and run their program —
+WITHOUT anyone at RoofMiles touching anything.**
+
+**Rationale:** hand-configuring Accent tests a bespoke deployment, not the product. Contractor
+#2 would then be the first person down an untested path. This is the standing rule
+*"Accent-ready must equal contractor-#2-ready by design"* taken literally.
+
+⚠ **CONSEQUENCE — contractor-#2 readiness is now the LAUNCH gate, not a post-launch gate.**
+Everything previously deferred to "before contractor #2" is launch-gating: F8 · the 166-site
+literal sweep · the Security G isolation test (never built) · OAuth state signing ·
+`team_members.email` uniqueness · `payout_announcements` tenancy · `crm/index.js` dispatch and
+token consolidation · `runFullSync` pacing (it runs on exactly first-time contractor
+onboarding) · `contractors.slug` backfill · `db.js:1532` non-determinism.
+
+**THREE THINGS WITH NO CODE become launch-gating:**
+- **Contractor onboarding wizard** (S6 design, never built)
+- **Contractor account provisioning** + a working signup path from the marketing site
+- **Contractor-facing help. THREE LAYERS, decided 2026-08-21:**
+  1. **Onboarding wizard** — in-panel, first-run. **LAUNCH-GATING.**
+  2. **Contextual inline help** on the three or four genuinely confusing settings cards (Jobber
+     OAuth, Stripe Connect, reward-schedule config). Small; folds into the wizard session.
+     **NOT a widget or a third-party platform.**
+  3. **General FAQ — EXTERNAL**, hosted, linked from Profile / Account settings. External
+     because editing in-panel content would require a deploy, and because two copies of the
+     same instructions is the `escapeHtml`-×3 shape again.
+     ⚠ **SCOPE FENCE: ~10–15 articles on a static page. Do NOT build or buy a knowledge-base
+     platform. Revisit at contractor #5.**
+
+**SEPARABLE — NOT launch-gating:** the Contractor Billing Engine's actual charge path. Accent's
+plan can read "pilot, no charge" while Stripe Billing lands behind it. **Tier-gating
+ENFORCEMENT is launch-gating; charging is not.** This removes the only externally-blocked item
+from the launch gate.
+
+**RETIRED:** `RoofMiles_ReSequenced_Execution_Plan_v1.docx` is retired **AS A QUEUE**. Its
+B1/B2 split was App-Store-submission vs Accent-rollout; that line no longer exists. It is
+**KEPT AS A REGISTER** of the item-level Build/Defer markup. Its two unticked decision boxes
+(Group G, B2→B1 promotions) are **moot** — neither bucket exists.
 
 ---
 
 ## 🔴 PRE-LAUNCH — must be done before real contractor traffic
 
 **Security / auth**
+- [ ] **OAuth `state` is validated for EXISTENCE, not AUTHENTICITY.**
+      `/auth/jobber` and `/callback` cannot use auth headers (browser redirect). TF made the
+      callback **fail closed** when `state` names a contractor row that does not exist — but it
+      cannot distinguish a legitimate request from a hand-crafted one. An attacker completing
+      their OWN Jobber OAuth could overwrite another contractor's connection.
+      **Connection-hijack / pipeline-poisoning, not credential theft.** Latent while there is
+      one contractor; **live the day there are two.**
+      **FIX:** sign and validate `state` (HMAC, or a server-stored nonce minted at an
+      authenticated initiation step). Also audit everything downstream of the callback's
+      `contractorId`.
+      ⚠ **Recorded in ONE handoff (Session 88 §Part 5) and in no spec.**
+      `SECURITY_HARDENING_SPEC.md` does not contain it.
 - [ ] **Step-up re-authentication on sensitive actions.** THE control that justifies D7's
       30-day session. Cash-out approval / mark-paid · bank and payout details · password
       changes · team deactivation · permission and role changes · Stripe Connect. Without it a
@@ -58,8 +128,20 @@ handoff, not after.
 - [ ] **R4 — `verifyAdminSession()` does not check `team_members.active`.** Latent today
       (deactivation deletes sessions first), reachable via `PATCH /api/admin/me/title`.
       → §10
-- [ ] **`err.message` leaked in ~40 500-responses.** `account.js` (15 sites), `referrer.js:1158`,
-      `admin/cashouts.js:37,156`, `admin/referrers.js:60,103,113`. → §10
+- [ ] **`err.message` reaching the client — 45 sites, not ~40.** Generated 2026-08-21, HEAD
+      `304813f`: `referrer.js` (19), `account.js` (15), `admin/referrers.js` (5),
+      `admin/index.js` (3), `admin/cashouts.js` (2), `stripe.js` (1). All in `server/routes/`;
+      none elsewhere in `server/`. SH-3 sized this at "43+" and was closer than this entry was.
+      ⚠ **FIVE ARE NOT THE PLAIN `{ error: err.message }` FORM** — `admin/referrers.js:154,190`
+      concatenate (`'Jobber match failed: ' + err.message`), and `admin/index.js:1294,1329` and
+      `stripe.js:184` return it under a `message:` key beside a `success: false` or an error
+      code. **A regex written only against the plain form leaves those five** and reads as
+      finished.
+      ⚠ **`referrer.js:1158`, cited by this entry until 2026-08-21, is STALE** — that line is
+      now inside `compareCandidate`, which routes through `logError()` and returns `null`. It
+      leaks nothing. `referrer.js` has 19 leak sites and 1158 is not one of them. **This is the
+      never-cross-file-by-line-number rule, firing on the checklist itself.**
+      ⚠ **DO NOT HAND-EDIT THIS COUNT. Run `npm run sizing`.** → §10
 - [ ] **Delete the RBAC test accounts** created during Decision A testing.
 - [ ] **Retire `ADMIN_PASSWORD`** — superseded by per-member team credentials. Still required
       at boot (`server.js` crashes without it, intentionally) so retiring it is a code change,
@@ -95,19 +177,88 @@ handoff, not after.
       list.** → D-K
 
 **Correctness / data integrity**
+- [ ] **🔴 NO PENDING REFERRAL HAS EVER CONVERTED END TO END.**
+      All 13 `pending_referrals` rows carry `matched_user_id = NULL` (verified in production,
+      2026-08-21). Everything downstream — payouts, leaderboards, badges, cash-outs, rep
+      metrics, the Referral Conversion Engine — sits on a join that has never fired.
+
+      **TWO confirmed root causes, both in one file:**
+      1. The matcher filters an **in-memory array that is empty on every webhook call**
+         (`pendingReferral.js:372`, `allClients.filter(...)` — see ground truth §B1) rather
+         than querying the persisted `jobber_clients` table. The file documents this as an MVP
+         shortcut at `:304-308`; the argument at `:365` defends not filtering *remotely*
+         (Jobber's `ClientFilterAttributes` has no name filter — true), and nobody has ever
+         argued against querying *locally*.
+      2. Jobber client names are stored **untrimmed at all three write sites**
+         (`webhooks/jobber.js:330`, `cron/jobs/jobberIncrementalSync.js:162`,
+         `jobs/fullJobberImport.js:542`). The matcher's own `.trim()` only strips the ends of
+         the joined string — an interior double space still fails. Normalise at ingestion plus
+         a backfill.
+
+      ⚠ **A THIRD cause was previously recorded (a funnel-status join reading `referred_by`
+      instead of `client_name`) and is FALSIFIED** — there is no such join on
+      `pending_referrals` at all. The nearest query, `admin/referrers.js:42-46`, computes
+      lifecycle status for `users` rows and is **correct as written**. **Do not go looking for
+      it.**
+
+      The `matched_user_id` writer exists and is reachable (`pendingReferral.js:570-574`, called
+      from `referrer.js:720`); its precondition is starved. **Name normalisation can run early
+      and independently.** → `docs/GROUND_TRUTH_2026-08-21.md`, Group B
+- [ ] **🔴 `jobber_client_id` NOT NULL violations — ~550 occurrences, LIVE (last 2026-08-21).**
+      Registry KI-2b closed this in error; the failure is **upstream** of
+      `upsertAndTagClient`'s write sites, on the sparse-payload fallback where the client id
+      never arrives. The Session 94 re-read was correct and scoped to the write sites, which is
+      exactly why it could not see this.
+      ⚠ **Each failure is a Jobber client missing from `jobber_clients`** — the table the
+      matching-engine rebuild is meant to query. **Fix WITH the matching-engine ingestion work**,
+      and size the backfill for clients never written, not only clients written badly.
+      → GROUND_TRUTH addendum
+- [ ] **`error_log.resolved` has never been set on any row.** The column exists and is unused,
+      so the log cannot distinguish "fixed" from "stopped happening" — dates are doing all the
+      work. **Either use it or drop it.**
+- [ ] **The `backend` error source is ungroupable** — 48 distinct errors, 1,009 occurrences, no
+      route attribution. `logError({ source: 'METHOD /path' })` is the convention and most
+      callers omit it, so **72% of error volume lands in an ungroupable bin.** Sweep the call
+      sites.
+- [ ] **`inconsistent types deduced for parameter $5`** — 8 occurrences, route `unknown`, last
+      seen 2026-05-26. A real SQL bug, quiet three months. Low priority; **needs a route before
+      it can be found** — blocked on the `source` sweep above.
 - [ ] **Swallowed catch blocks — audit, with a named example.** A missing `require` left a
       value undefined inside the invoice-paid webhook's invite branch; the handler threw and
       **swallowed it**, so a homeowner never received their invite and nothing reported it.
       Sweep `catch {}` on paths that SEND or WRITE. → §10
 - [ ] **Non-transactional paired writes** — deactivate (`team.js:554-555`), promote,
       permission-save. Fix together. → §10
-- [ ] **Locally redefined `escapeHtml`, swept as ONE item — THREE sites, not two.**
-      `admin/cashouts.js:16-19`, `referrer.js:49`, **and `webhooks/jobber.js:3-6`**.
+- [ ] **🔴 Locally redefined `escapeHtml` — SEVEN definitions, not three. LAUNCH-GATING
+      SECURITY, not a consolidation.** Measured 2026-08-21 (ground truth §C5). One canonical
+      plus **six local redefinitions**:
+      - `server/utils/pendingReferral.js:37` — **CANONICAL** (escapes `& < > " '`)
+      - `server/routes/account.js:24` — escapes `'`, coerces via `String()`
+      - `server/routes/referrer.js:57` — escapes `'`, coerces via `String()`
+      - `server/crm/pipelineSync.js:48` — **does NOT escape `'`**
+      - `server/routes/admin/cashouts.js:15` — **does NOT escape `'`**
+      - `server/routes/resendWebhook.js:14` — **does NOT escape `'`**
+      - `server/routes/webhooks/jobber.js:3` — **does NOT escape `'`**
+
+      Exactly **one** file imports the canonical one: `server/routes/landing.js:73`.
+      ⚠ **FOUR of the six local copies do not escape `'`. With Jobber client names flowing into
+      server-generated HTML email, that is an attribute-context injection path, not a tidiness
+      problem. This is `SECURITY_HARDENING_SPEC.md` SH-4/SH-5 and it is LAUNCH-GATING.**
+      ⚠ **SH-5 independently sized this at "7+ forms" while this entry said three. Two records
+      of one item, neither seeing the other — the shape this document exists to prevent, found
+      on this page.** The three previously named — `admin/cashouts.js`, `referrer.js`,
+      `webhooks/jobber.js` — missed `pipelineSync.js`, `resendWebhook.js` and `account.js`, and
+      **two of those three misses are weak variants.**
+      ⚠ **These counts are GENERATED, not maintained — see the sizing note under the
+      brand-literal sweep below.**
       ⚠ **This item is the argument for this whole document.** §10 named the first two;
       registry Known Issues 4 named the third; **the two records never met.** For an item
-      explicitly meant to be swept *together*, a partial sweep leaves two correct examples and
-      one wrong one — which is exactly how the pattern spread in the first place. Anyone
-      working from either list alone would have "finished" it and left the violation live.
+      explicitly meant to be swept *together*, a partial sweep leaves correct examples beside
+      wrong ones — which is exactly how the pattern spread in the first place. Anyone working
+      from either list alone would have "finished" it and left the violation live.
+      ⚠ **Under the corrected count the arithmetic is worse than this paragraph originally
+      claimed: sweeping only the three named above leaves FOUR definitions live, two of them
+      the weak variant.**
 - [ ] **🔴 `BrandingProfileSettings.jsx:192` — EVERY OPTION IN THAT DROPDOWN IS COMPUTED TO BE
       INVISIBLE.** The `<option>` hardcodes `background: '#1f2638'` and inherits the select's
       `color: AD.textPrimary`, which ABR Phase 5 moved to `#1C2D4D` (`adminTheme.js:137`).
@@ -142,13 +293,26 @@ handoff, not after.
       build it is from git history — every value `adminTheme.js` has ever held — not from
       memory, which is the FILES-list defect in a new costume. Both needle axes are still
       required (D-N amendment 3: hex **and** `rgb()`/`rgba()`).
-- [ ] **Hardcoded brand-colour literal sweep. ⚠ SIZE IT FROM 77, NOT FROM 5.**
-      `#012854` / `#CC0000` / `#D3E3F0` / `#041D3E` appear at **77 sites across 11 files in
-      `server/`** alone: `referrer.js` (30), `crm/pipelineSync.js` (12),
-      `utils/pendingReferral.js` (7), `admin/team.js` (6), `webhooks/jobber.js` (5),
-      `resendWebhook.js` (4), `admin/cashouts.js` (4), `account.js` (4), `admin/index.js` (2),
-      `cron/jobs/postJobSequence.js` (2), `utils/brandingTheme.js` (1). Plus
-      `CashOutTab.jsx:100`'s gradient and the referrer-side `rgba(204,0,0,…)` sites.
+- [ ] **Hardcoded brand-colour literal sweep. ⚠ SIZE IT FROM 170, NOT FROM 77 — AND NOT FROM 5.**
+      **170 production sites total** — `server/` **80** (all hex; zero `rgb()`/`rgba()` decimal
+      forms, that axis is `src/`-only) plus `src/` **90** (55 hex + 35 rgb). Test files
+      excluded and reported separately by the script below.
+      **⚠ `src/` HAD NEVER BEEN COUNTED BY EITHER RECORD.** This entry named only
+      `CashOutTab.jsx:100`'s gradient and "the referrer-side `rgba(204,0,0,…)` sites" — **two
+      examples standing in for ninety.** The `server/` figure was honest about its own scope
+      and was then carried forward as the size of the whole job; the sweep it sized is
+      **2.2× larger**.
+      ⚠ **WHY THE FIGURES MOVED, AND WHAT IT MEANS FOR EVERY OTHER COUNT.**
+      Ground truth §C7 recorded 77/166 **by hand** on 2026-08-21; the generator returned
+      **80/170 the same day**. **Neither is an error** — `grep -c` counts **LINES**, and a line
+      carrying two literals counts once. §C7 is correct as a line-count and **superseded as a
+      site-count**.
+      ⚠ **The consequence is wider than these two figures: every hand-derived count in this
+      project's records was produced the same way, so each is a LOWER BOUND, not a total.
+      Treat any un-generated number as "at least N."** The generator did not just correct a
+      figure; **it retired the technique.**
+      ⚠ **DO NOT HAND-EDIT THESE NUMBERS. Run `npm run sizing` and paste the dated output** —
+      full per-file breakdown lives there, not here. **Last run: 2026-08-21, HEAD `304813f`.**
       **The "five notification-email templates" this entry used to name are the `?admin=true`
       SUBSET, not the population** — a count of one axis read for years as a count of the work.
       **⚠ AND THE `?admin=true` PRODUCERS ARE EIGHT, NOT FIVE.** Five carry it in email
@@ -173,8 +337,15 @@ handoff, not after.
 - [ ] **`adminCacheExpiry` cron has deleted 0 rows since inception** → registry Known Issues 9
 - [ ] **F8 — cross-tenant `users` matching** in the invoice-paid webhook and `pipelineSync`
       → registry, `CONTRACTOR2_READINESS_AUDIT.md`
-- [ ] **Data-state: `contractor_settings` split-brain** (rows under both `accent-roofing` and
-      `accent-roofing-dev`) and **8 orphaned `jobber_clients`** → registry §221
+- [x] **Data-state: `contractor_settings` split-brain — RESOLVED at the data level, 2026-08-21.**
+      A production query that day returned **exactly ONE row, `accent-roofing-dev`** (Danny).
+      The second row under the phantom `accent-roofing` is gone. Recorded as closed rather than
+      deleted so it is not re-raised from the registry copy. → registry §221
+      ⚠ **This does NOT clear `account.js:436`**, which still queries the phantom id by literal
+      and therefore still returns zero rows — see *Contractor-ID reconciliation*. The data is
+      clean; the hardcoded literal is not.
+      The **8 orphaned `jobber_clients`** rows stand as previously decided — leave as history,
+      no migration (low value, adds collision risk for no functional benefit).
 - [ ] **Webhook tenant-derivation flake** — wider than first recorded; can fail 5 tests at once
       under full-suite load → registry Known Issues 12
 - [ ] **React async-leak flake.** Surfaced TWICE in the Phase 1 session, in two DIFFERENT files
@@ -210,7 +381,9 @@ handoff, not after.
       has not shadowed `/assets/*`.
 
 **CRM / sync**
-- [ ] Scheduler silent on disconnect → registry Known Issues 1
+- [ ] Scheduler silent on disconnect + no staleness alert → registry Known Issues **16**
+      (⚠ split out of KI 1 on 2026-08-21; **KI 1 is now closed and covers only "is the cron
+      registered" — this item's four remaining concerns live at 16**)
 - [ ] Sync Now button mis-wired → registry Known Issues 2
 - [ ] `fetchFullClient` swallows GraphQL errors → registry Known Issues 3
 - [ ] Incremental sync throttle cost calibration → registry Known Issues 5
@@ -326,24 +499,40 @@ root cause, and patching them separately produces five unrelated special cases)
       its owner is this session.)* → §10
 - [ ] `section=crm` has never had a reader — the Jobber connect return lands on the dashboard.
       **Minor UX item**, pre-existing, not a Phase 5 regression. → §10
-- [ ] **Jobber OAuth return post-Phase-4 is UNVERIFIED — and ⚠ DO NOT TEST IT TO FIND OUT.**
-      The standing order against clicking Connect holds until this session (the `tokens.id=1`
-      clobber risk, unrelated). Verification comes free the first time this session exercises
-      the path. → §10
+- [ ] **Jobber OAuth return post-Phase-4 is UNVERIFIED.** Exercise the path deliberately and
+      watch what comes back; verification comes free the first time a session connects.
+      ⚠ **THE `tokens.id=1` CLOBBER RISK IS RESOLVED — do not carry it forward as a reason.**
+      This entry read *"DO NOT TEST IT TO FIND OUT"* and grounded that order in the clobber
+      risk until 2026-08-21. **The CRM Token Fix (TF) session killed it and explicitly lifted
+      the D5 gate**: `refreshTokenIfNeeded(contractorId, {force})` is contractor-scoped,
+      `tokens_contractor_id_unique` exists (`db.js:314-323`), the OAuth upsert keys
+      `ON CONFLICT (contractor_id)` (`oauth.js:58-62`), and `tokens.id` was made inert with a
+      sequence default (`db.js:329-334`, decision TF-D1.1). Ground truth 2026-08-21 confirmed
+      **zero surviving `id=1` token accesses in production code** — all 13 grep hits are
+      RED-narrative comments in `tokenTenancy.test.js`. **Connecting cannot clobber another
+      contractor's row.** → §10, ground truth §C3
 - [ ] `contractors.slug` backfill — NULL for every contractor except the first. → §10
 
 ---
 
 ## Named builds
 
-- [ ] **Admin Panel Brand Retirement — SOONER RATHER THAN LATER**, ideally while the Phase 6
-      mechanism is still warm. Admin chrome literals, the admin preview components, the two
-      `preset_2` admin copies' surrounding files, **and the `google_place_id` editor**
-      (`CompanyDetailsSettings.jsx:280`) — ⚠ **there was never a live divergence.**
-      `AdminAboutUs.jsx` had zero importers and was deleted in ABR Phase 1 (D-E); the "two
-      editors" were one editor and one orphan. **One file, not a split to close.**
+- [x] **Admin Panel Brand Retirement — COMPLETE.** Admin chrome literals, the admin preview
+      components, the two `preset_2` admin copies' surrounding files, **and the
+      `google_place_id` editor** (`CompanyDetailsSettings.jsx:280`) — ⚠ **there was never a
+      live divergence.** `AdminAboutUs.jsx` had zero importers and was deleted in ABR Phase 1
+      (D-E); the "two editors" were one editor and one orphan. **One file, not a split to
+      close.**
       → **`ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md`** (the governing spec; supersedes §10 for this
-      build). **IN PROGRESS** — Phase 1 shipped `cd198cf`; Phase 2 is the delivery seam.
+      build). **The arc OPENED at `cd198cf` (Phase 1) and CLOSED at `d0fb3aa`** — roughly
+      thirty commits later, through Phases 2, 2A/2B, 3+4, 5.0–5.5, 6B and 6A.
+      ⚠ **This line read "IN PROGRESS — Phase 1 shipped `cd198cf`; Phase 2 is the delivery
+      seam" until 2026-08-21, and a second copy in *Where detail lives* said "ACTIVE" —
+      both surviving ~thirty commits past the fact.** R14 (*"deferrals land in the checklist
+      BEFORE the handoff is written"*) was **authored during this very arc**, and this entry
+      went uncorrected by that arc's own close-out. A rule that failed on its author's own
+      session is worth knowing about: R14 governs what gets ADDED on defer, and nothing
+      governs what gets CLOSED on completion. **Both halves are needed.**
 - [ ] **Legal pages — BLOCKED on the LLC amendment.** `PrivacyPolicy`, `TermsOfService`,
       `ContractorTerms` name one tenant as the **operating entity** — wrong legal party, not
       wrong logo. ⚠ They render outside `ThemeProvider` **deliberately and correctly** because
@@ -459,6 +648,35 @@ root cause, and patching them separately produces five unrelated special cases)
       whoever is reading Railway logs at the time, which makes both the section number and the
       document name load-bearing at runtime. **Any split must keep Known Issue 13 findable
       under that name, or repoint `db.js:1662` in the same commit.**
+- [ ] **CONVERT THE FIVE ROOT `.docx` FILES TO COMMITTED MARKDOWN under `docs/handoffs/`**, and
+      repoint the *Where detail lives* row. Promoted here from the preamble on 2026-08-21: a
+      proposal recorded inside a warning is not an item anyone picks up, and this one had sat
+      unexecuted since the preamble was written. The warning stays where it is; this is the
+      action half.
+      ⚠ **As of `304813f` those five files are the ENTIRE untracked working tree**, so this
+      conversion closes the working-tree question completely — after it, `git status` is clean
+      and every governing document is in git.
+- [ ] **CLAUDE.md is over its own stated budget: 43,940 chars against the 40,000
+      performance-warning threshold the file names for itself** (measured 2026-08-21, after
+      session A's four edits). It was **812 over BEFORE this session** — the threshold has
+      been breached for some time and nothing reported it. ⚠ Same shape as Test Design's
+      false-health rule: a stated budget with no mechanism to observe a breach. The fix is a
+      reference-vs-rule sweep — move reference material to `docs/ARCHITECTURE.md`, keep only
+      what must be resident. **Its own session; do not trim rules ad hoc to hit a number.**
+      ⚠ **Session A itself added 3,128 chars (40,812 → 43,940) across three mandated edits.**
+      The overage **predates** this session — it was 812 over before — but this session is the
+      largest single contributor. **The sweep should open knowing that**, so the fix is scoped
+      as reference-vs-rule triage rather than as undoing recent work.
+- [ ] **Retire the four spec-level copies of the exact-path staging rule.**
+      `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md:291`, `CDL_3a_BUILD_SPEC.md:273`,
+      `CDL_3b_BUILD_SPEC.md:422` and `UI_OVERHAUL_SPEC.md:290` each carry it; **THREE carry a
+      wrong protected-file list** (3a names four, two of which were tracked the whole time; 3b
+      names a different five). As of session A the rule is resident in `CLAUDE.md`, so all four
+      are redundant and three are wrong.
+      ⚠ **The finding worth keeping: the rule was written correctly in four specs that load on
+      demand, and was ABSENT from the one file that loads at the start of every session — which
+      said the opposite.** Not four stale copies; a rule stored everywhere except where it would
+      take effect.
 
 ---
 
@@ -541,9 +759,13 @@ root cause, and patching them separately produces five unrelated special cases)
 | Document | Holds |
 |---|---|
 | `CDL_3b_BUILD_SPEC.md` §10 | The reasoning behind most C/DL-3b deferrals — rulings, mechanisms, why-not-the-obvious-fix |
-| `CLAUDE_REGISTRY.md` §221 | Known Issues 1–15, including resolved history worth keeping |
+| `CLAUDE_REGISTRY.md` §221 | Known Issues 1–16, including resolved history worth keeping |
 | `CONTRACTOR2_READINESS_AUDIT.md` | F1–F13 tenancy findings |
 | `CDL_3a_BUILD_SPEC.md` §8 | 3a carry-outs, incl. the real-browser theme check |
-| `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` | **ACTIVE.** Decisions D-A…D-O and the six-phase order for the admin panel's co-branded-neutral retirement. Phase 1 shipped `cd198cf` |
+| `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` | **COMPLETE (`d0fb3aa`, 2026-08-21).** Decisions D-A…D-O and the six-phase order for the admin panel's co-branded-neutral retirement. Kept as the decision record, not as a queue |
 | `CLAUDE.md` | Standing rules and the learnings that must be read **before** writing code |
+| `SECURITY_HARDENING_SPEC.md` | SH-1..SH-18 and the ten-session launch-gating build plan. ⚠ Only SH-3 and SH-5 currently appear in this checklist; the other eight sessions are **NOT** indexed here |
+| `RoofMiles_Master_Findings_Session94_5_v2.docx` | §6 — the register of ~90 designed-but-unbuilt features. Feature work is **NOT** indexed in this checklist; it lives there |
+| `MEMBER_RANK_ECONOMY_SPEC.md` | Rank, points, and store economy. Phasing R1–R4, open decisions §13 |
+| `UI_OVERHAUL_SPEC.md` | Referrer-app UX arc, the design-psychology foundation, and the binding ethical guardrails. Open decisions §12 |
 | `*.docx` in the repo root | Job Revenue Capture · Landing Page Ambient Branding |

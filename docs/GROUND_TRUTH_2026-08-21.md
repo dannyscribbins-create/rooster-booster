@@ -792,3 +792,92 @@ Everything a check could not reach, and why. **Nothing below is inferred anywher
 state only). **21 MATCH, 9 MISMATCH, 0 COULD NOT RUN** — the 9 counting A3a and A3b, whose text
 matched and whose substance did not. Group D (6 statements) was deferred to Danny by design, not
 by failure.*
+
+---
+
+## ADDENDUM — 2026-08-21, Group D results
+
+All six Group D queries were run in production after this document was written (D5 and D6
+required corrected column names; see below). The DANNY'S SQL block above is preserved as
+written.
+
+| Query | Result | Verdict |
+|---|---|---|
+| D1 pending_referrals | 13 total, 0 matched | MATCH — confirms the headline |
+| D2 contractors | 1 row, `accent-roofing-dev`, active | MATCH |
+| D3 sync_state | `accent-roofing-dev`, 2026-08-21 16:30 | ⚠ MISMATCH — the pipeline is HEALTHY. "Full-sync aborts every cycle" in `RoofMiles_BuildSequence_JobRevenueCapture.docx` is FALSE as of this date. |
+| D4 contractor_settings | 1 row, `accent-roofing-dev` | ⚠ MISMATCH — split-brain CLOSED at the data level. |
+| D5 trailing spaces | NOT RUN — `jobber_clients` has no `name` column (`first_name` / `last_name`). Sizes the fix; does not change it. | deferred |
+| D6 error_log | RUN — see below | ⚠ one live finding |
+
+### D6 — what is actually failing in production
+
+⚠ The original D6 was wrong twice: no `last_seen` column (it is `last_seen_at`), and `count(*)`
+counts DISTINCT ERRORS, not occurrences — `error_log` dedupes and carries its own `count`
+column. Corrected query used `sum(count)`.
+
+| Source | Occurrences | Last seen | Verdict |
+|---|---|---|---|
+| `backend` | 1,009 | **2026-08-21 13:28** | ⚠ LIVE — see below |
+| invoice-paid 401 | 244 | 2026-07-17 | CLOSED by TF's retry mitigation |
+| `cron:admin_cache_expiry` | 85 | 2026-05-25 | stopped, cause unknown |
+| `cron:jobber_incremental_sync` | 52 | 2026-08-16 | quiet |
+| Jobber GraphQL no-clients-data | 31 | 2026-08-14 | throttle, registry KI-5 |
+| No OAuth token (stats) | 8 | 2026-06-23 | CLOSED by S90 Fix A. ⚠ Names `accent-roofing-dev` — the CORRECT id, NOT the phantom. Not a second `account.js:436`. |
+| `inconsistent types deduced for parameter $5` | 8 | 2026-05-26 | real bug, route `unknown`, quiet 3 months, low priority |
+
+### 🔴 THE ONE LIVE FINDING — registry KI-2b was closed in error
+
+The `backend` bucket is not 48 unrelated failures. It is dominated by ONE bug:
+
+```
+null value in column "jobber_client_id"   /jobber/client-update  344
+null value in column "jobber_client_id"   /jobber/client-create  144
+null value in column "jobber_client_id"   /jobber/client-update   64  ← last seen 2026-08-21 13:28
+client-update webhook: missing client id in payload             107
+client-create webhook: missing client id in payload              54
+```
+
+**~550+ occurrences. Still firing today.**
+
+⚠ Registry Known Issue 2b marks this "STALE/RESOLVED (Session 94)" on the strength of a careful
+re-read: *"Re-read `upsertAndTagClient()` in full on 2026-07-06 — it consistently uses
+`fullClient.id` at every write site. No patch needed."* **The read was correct and the
+conclusion was wrong.** The companion rows show why: the failure is UPSTREAM of the write sites,
+on the sparse-payload fallback path where the client id never arrives at all. A read scoped to
+the write sites could not see it.
+
+The Tenant Rebuild S1–S3 handoff caught a fresh instance three days later (`error_log` id 1339,
+2026-07-09) and flagged it as evidence for 2b — **and the registry entry was never reopened.**
+Two records, one item, neither seeing the other.
+
+### ⚠ CORRECTION TO §C7 — the hand counts are line-counts, and they are LOWER BOUNDS
+
+§C7 above records the brand-literal sweep at **77 (`server/`) / 166 (total)**. Those figures were
+produced with `grep -c`, which counts matching **LINES**; a line carrying two literals counts
+once. `scripts/sizing.js` — written the same day and counting **occurrences** — returns
+**80 / 170**.
+
+**Neither is an error. §C7 is correct as a line-count and superseded as a site-count**, and its
+per-file table remains the accurate line-level breakdown.
+
+⚠ **The consequence is wider than these two figures.** Every hand-derived count in this
+document, and in this project's records generally, was produced the same way. **Each is a LOWER
+BOUND, not a total.** Treat any un-generated number as *"at least N."* Run `npm run sizing` for
+the three counts it covers; for the rest, the technique itself is the limitation.
+
+### SEQUENCING IMPACT
+
+1. D3 and D4 remove two of the three stated reasons for prioritising contractor-ID
+   reconciliation. `account.js:436` remains live-broken; "the pipeline is degraded" does not.
+2. ⚠ Every one of those ~550 failures is a Jobber client that never landed in `jobber_clients` —
+   the table the matching-engine rebuild is meant to query. The ingestion path feeding the fix
+   has been dropping rows the whole time. **The null-guard fix belongs IN the Tier 1 ingestion
+   session**, alongside name normalisation, and the backfill must account for clients never
+   written, not only clients written badly.
+3. `error_log.resolved` has NEVER been set on any row — `still_open == distinct_errors`
+   everywhere. The column exists and is unused, so the table cannot distinguish "fixed" from
+   "stopped happening." Dates are doing all the work.
+4. The `backend` source label carries 48 distinct errors with no attribution.
+   `logError({ source: 'METHOD /path' })` is the convention; most callers omit it, so 72% of
+   error volume lands in an ungroupable bin.

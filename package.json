@@ -52,6 +52,7 @@
     "test": "npm run lint && npm run test:server && npm run test:react",
     "test:server": "node --test --test-concurrency=1 server/test/*.test.js",
     "test:react": "vitest run",
-    "test:react:watch": "vitest"
+    "test:react:watch": "vitest",
+    "sizing": "node scripts/sizing.js"
   }
 }
