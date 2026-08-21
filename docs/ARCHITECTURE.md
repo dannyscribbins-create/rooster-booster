@@ -235,3 +235,63 @@ src/
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — Stripe ACH (not yet live)
 - `B2_ENDPOINT`, `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME` — Backblaze B2 backups
 - `APP_VERSION` — set to `1.0.0` in Railway production
+
+---
+
+## Known MVP shortcuts
+
+Moved from `CLAUDE.md`'s **Architectural Principles** in ABR 6A commit 2. The rule stayed
+resident — *MVP shortcuts must be flagged with a code comment explaining (a) the limitation,
+(b) the scalable version, (c) when to build it* — which is precisely what makes this list
+reference: the flag lives in the code, so this is a lookup. **Moved verbatim; nothing
+corrected on the way in** (the `contractor_id` line already read RESOLVED).
+
+> **Known MVP shortcuts:**
+> - `paid_count` on users table — updated only when referrer loads pipeline. At scale, replace with background cron. Flagged in code: `// MVP: update this to cron-based sync at scale`
+> - `contractor_id` resolution — RESOLVED — tenant-resolution rebuild S1-S3; referrer=session-derived, webhooks=accountId-derived.
+
+---
+
+## Deployment
+
+Moved from `CLAUDE.md`'s **Deployment** section in ABR 6A commit 2. Three rules stayed
+resident there: *every commit to main auto-deploys*, *local cannot reach Railway PostgreSQL*,
+and the `add_payout_columns.js` **do-not-run-again** prohibition. The Jobber API version
+header also stays resident under *Never Break → Jobber API*, where it is a rule; the copy
+below is the second one. **Moved verbatim; nothing corrected on the way in.**
+
+> Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-deploy to Railway. Vercel may need manual redeploy — dashboard → latest deployment → three dots → Redeploy.
+>
+> **Jobber API version header: `2026-02-17`** — monitor for deprecation notices.
+>
+> `DB_QUERIES.md` in project root — reference cheat-sheet of Railway query interface SQL snippets. Accurate and inert.
+>
+> `server/migrations/` — three one-time migration scripts, all applied. Two imported in db.js (idempotent). One standalone (add_payout_columns.js — superseded by initDB(), do not run again).
+
+---
+
+## The Vite migration — build and lint configuration
+
+Moved from `CLAUDE.md`'s **Commands** section in ABR 6A commit 2. Reference: it explains why
+the toolchain is configured as it is, which is lookup-able by definition. The two rules it
+carried — `import.meta.env.VITE_*` never `process.env.REACT_APP_*`, and never add an ESLint
+preset — stayed resident. **Moved verbatim; nothing corrected on the way in.**
+
+> The frontend builds with **Vite** (`vite.config.mjs`), not create-react-app — react-scripts was removed in the Vite migration. Vercel is configured by `vercel.json` (`framework: vite`, `outputDirectory: dist`). Frontend env vars are `import.meta.env.VITE_*`, never `process.env.REACT_APP_*`.
+>
+> `npm run lint` is narrow by design: `eslint.config.mjs` enables ONLY `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps`, with no recommended preset. It reproduces exactly what CRA enforced and nothing more — adding a preset would surface hundreds of never-enforced pre-existing violations. `.npmrc` sets `legacy-peer-deps=true` to handle dependency conflicts.
+
+---
+
+## The Vitest include glob
+
+Moved from `CLAUDE.md`'s **Testing** section in ABR 6A commit 2. The rule — *the two runners
+must never overlap; never widen the glob, never point another runner at `server/test/`* —
+stayed resident. What moved is the mechanism and the incident. **Moved verbatim; nothing
+corrected on the way in.**
+
+> ⚠ `vite.config.mjs` sets `test.include: ['src/**/*.test.{js,jsx}']`. This is NOT cosmetic. Vitest's default glob scans the whole repo and would sweep up `server/test/*.test.js` — and `--test-concurrency=1` is a property of the **node:test invocation**, not of the test files, so another runner importing them bypasses it entirely and executes `initTestDb()`'s `DROP SCHEMA public CASCADE` in parallel workers. That destroyed the local test DB once already. The two runners must never overlap; the include glob is what enforces it structurally rather than by convention.
+
+⚠ **A WORSE VARIANT OF THIS EXISTS AND IS OPEN**, recorded under *Developer setup* in
+`PRE_LAUNCH_CHECKLIST.md`: `initTestDb`'s STEPS D/E have no concurrency guard, and unlike the
+case above — which `IF EXISTS` made self-healing — that one does not self-heal.

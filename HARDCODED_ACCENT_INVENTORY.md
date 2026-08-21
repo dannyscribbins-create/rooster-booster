@@ -1,7 +1,13 @@
 # Hardcoded Accent Identity — Inventory
 
 **Compiled:** C/DL-2, after Phase 3c
-**Status:** open — none of the below are fixed
+**Status:** SUPERSEDED FOR GROUPS A, B AND D — ⚠ **C AND E ARE LIVE.** Groups A, B and D are
+closed (C/DL-3b, and ABR Phases 1–5); the walking sweep `src/components/admin/adminBranding.test.jsx`
+replaces this file as the admin work list, per ABR **D-O**. **Group C (legal pages) is open and
+blocked on the LLC amendment; Group E (server-side `accent-roofing` defaults) is open under
+Contractor-ID reconciliation** — both tracked in `PRE_LAUNCH_CHECKLIST.md`.
+⚠ **A bare SUPERSEDED header over a file with live groups is how a live list gets read as
+dead** — this document's own recurring failure, running in the opposite direction.
 **Why this exists:** "Accent-ready must equal contractor-#2-ready by design." Every item here
 breaks that rule. A referrer or admin belonging to contractor #2 would see Accent Roofing's
 branding on the surface named.

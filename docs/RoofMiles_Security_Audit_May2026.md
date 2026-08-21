@@ -925,7 +925,7 @@ These are gaps identified from reviewing your codebase that were not on your ori
 
 - Cleanup of legacy .then() chains flagged in App.js and AdminApp.jsx — convert to async/await for consistency.
 
-- CLAUDE.md character limit management — currently at 37,986 chars. Monitor and trim before it hits the 38K performance warning again.
+- CLAUDE.md character limit management — 31,350 chars before ABR 6A (2026-08-20); the performance-warning threshold is **40,000**, not 38K. Scoped rules in `.claude/rules/` spend none of that budget. Route new content by the protocol in CLAUDE.md's *Where New Content Goes*, never by size — and when the budget binds, reclaim reference rather than compressing a rule to fit.
 
 - Database backup restore test — must be done on a schedule (quarterly), not just once. Add it to a recurring calendar reminder.
 

@@ -2,7 +2,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > **When working on any feature listed in the Feature Registry or Pending Features, read `CLAUDE_REGISTRY.md` before writing any code.**
 >
-> **`PRE_LAUNCH_CHECKLIST.md` (repo root) is the CANONICAL index of all open and deferred work** — pre-launch items, C/DL-3b-2, C/DL-3c, Decision E, contractor-ID reconciliation, and the named builds. Read it when picking up work or closing a session. Detail stays in the documents it points at; **add what you defer before writing the handoff, not after.**
+> **`PRE_LAUNCH_CHECKLIST.md` (repo root) is the CANONICAL index of all open and deferred work** — pre-launch items, C/DL-3b-2, C/DL-3c, Decision E, contractor-ID reconciliation, and the named builds. Read it when picking up work or closing a session. Detail stays in the documents it points at.
+>
+> ⚠ **DOC UPDATES ARE A PRECONDITION FOR THE HANDOFF, NOT A SECTION OF IT.** Before you write one line of a handoff, `PRE_LAUNCH_CHECKLIST.md` must already carry what this session deferred. **A handoff is not a place deferrals live** — it is untracked, it is read once, and the next session opens the checklist instead. **This has failed measurably, twice, and the second time while the warning was open.** `account.js:436` was ruled into the record as a live defect and simply was not written, for four commits. Then ABR Phases 1-4 deferred six items, wrote them into its handoff, and left the checklist untouched **for nine commits** — including one flagged in that very document as *"needing a checklist line in Phase 6."* Both were recovered by luck, from a file git has never seen. **The order is: checklist, then handoff. If the checklist edit is not committed, the session is not finished.**
 
 ## Where New Content Goes
 
@@ -30,6 +32,11 @@ of every session. 40,000 chars is Claude Code's performance-warning threshold; i
 ~31,300 as of restructure Phase 2. Adding a rule is correct. Adding reference data borrows
 against every future session.
 
+⚠ **When reclaiming, measure the REFERENCE SENTENCES that will move — not the character
+extent between headings.** A block is rarely all reference: the rule inside it stays resident
+and a pointer replaces what left, and in ABR 6A that overhead consumed **68% of two blocks
+measured as pure reference**. Estimate net, then verify by measuring after.
+
 **Headings are load-bearing.** `CDL_3a_BUILD_SPEC.md`, `CDL_3b_BUILD_SPEC.md` and
 `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` cite headings here BY NAME, and code comments cite
 sections. Renaming one breaks them silently and all at once. When a block moves, its heading
@@ -39,6 +46,10 @@ stays in both places.
 containing both cannot be reviewed, and a relocation's whole value is that it can be checked
 mechanically. Phase 1 shipped one knowingly-wrong line rather than break this
 (`docs/ARCHITECTURE.md:217`); Phase 2 shipped a second (`server/test/escapeHtmlExport.test.js:6`).
+**Both were corrected in ABR 6A commit 1**, once the relocations were complete and a
+correction could be reviewed on its own. ⚠ **The two examples stay.** They are the evidence
+the rule was ever obeyed, and a fence whose subject is gone is still the record that someone
+chose to build it.
 
 ### Scoped rule files — ⚠ and they may not be loaded right now
 
@@ -77,9 +88,9 @@ npm run lint       # ESLint over src/ — react-hooks rules only
 npm test           # lint + server suite + React suite (the single pre-push gate)
 ```
 
-The frontend builds with **Vite** (`vite.config.mjs`), not create-react-app — react-scripts was removed in the Vite migration. Vercel is configured by `vercel.json` (`framework: vite`, `outputDirectory: dist`). Frontend env vars are `import.meta.env.VITE_*`, never `process.env.REACT_APP_*`.
+The frontend builds with **Vite**, not create-react-app. **Frontend env vars are `import.meta.env.VITE_*`, never `process.env.REACT_APP_*`.** `npm run lint` is narrow by design — react-hooks rules only; **never add a recommended preset.**
 
-`npm run lint` is narrow by design: `eslint.config.mjs` enables ONLY `react-hooks/rules-of-hooks` and `react-hooks/exhaustive-deps`, with no recommended preset. It reproduces exactly what CRA enforced and nothing more — adding a preset would surface hundreds of never-enforced pre-existing violations. `.npmrc` sets `legacy-peer-deps=true` to handle dependency conflicts.
+> The build/lint history and the reasons — Vercel's `vercel.json` config, why the preset is excluded, `.npmrc`'s `legacy-peer-deps` — moved to `docs/ARCHITECTURE.md` in ABR 6A commit 2. See **The Vite migration — build and lint configuration** there.
 
 ---
 
@@ -91,9 +102,7 @@ Every decision must pass two filters:
 
 MVP shortcuts must be flagged with a code comment explaining: (a) the limitation, (b) the scalable version, (c) when to build it.
 
-**Known MVP shortcuts:**
-- `paid_count` on users table — updated only when referrer loads pipeline. At scale, replace with background cron. Flagged in code: `// MVP: update this to cron-based sync at scale`
-- `contractor_id` resolution — RESOLVED — tenant-resolution rebuild S1-S3; referrer=session-derived, webhooks=accountId-derived.
+> The **Known MVP shortcuts** inventory moved to `docs/ARCHITECTURE.md` in ABR 6A commit 2 — see **Known MVP shortcuts** there. The rule above is what makes that list reference: the flag lives in the code, so the inventory is a lookup, not a thing you could violate.
 
 ---
 
@@ -175,6 +184,8 @@ Report violations and ask whether to fix before or after the assigned task. Neve
 
 This applies to every template literal carrying markup or styles — `server/routes/landing.js`, and the HTML email bodies in `referrer.js`, `admin/campaigns.js` and the cron jobs. Backticks are natural to write in a comment (quoting a CSS property, an operator, a variable name), which is exactly why this is worth a line here. Use plain words or single quotes instead.
 
+**The predicate matches its own VALUE's shape, not its siblings' form.** `Number.isFinite`, not `Array.isArray`, and not `!= null`. In ABR 6B one of five settled responses was an object carrying a number while the other four were arrays; guarding it like its siblings reads nothing, and `!= null` admits a string — `"7" + 2` is `"72"`, a confidently-wrong badge in a red pill. **Write the guard the value needs, and say in a comment why it differs from the ones beside it** — otherwise someone will "correct" it into line with them.
+
 ## Dependency Management Standards
 
 - Run `npm audit` before every push to Railway. HIGH/CRITICAL findings must be resolved or explicitly acknowledged.
@@ -220,21 +231,26 @@ For UI/UX work, read:
 - `.claude/skills/ux-designer/`
 - `.claude/skills/ui-ux-pro-max/`
 
-Brand files at `G:\My Drive\Accent Roofing Service\app builder\accent roofing brand kit`.
+⚠ **THE PLATFORM BRAND IS ROOFMILES.** `#F26A1B` primary, `#1C2D4D` secondary, `#FDF0E7`
+background, `#FFFFFF` surface — `src/utils/brandingTheme.mjs`. This line used to read *"Brand
+files at `G:\My Drive\Accent Roofing Service\app builder\accent roofing brand kit`"*, which
+pointed every UI/UX session at **one tenant's** brand kit as the platform's source of truth.
+That was the single-tenant era's assumption surviving inside the section named *Brand
+Standards* — **the defect D-B was raised about, and the reason the colours it went looking for
+were never here.** Accent Roofing is a **contractor**; contractor identity resolves at runtime
+through `useBranding()`, never from a file on a drive.
 
 ---
 
 ## Deployment
 
-Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-deploy to Railway. Vercel may need manual redeploy — dashboard → latest deployment → three dots → Redeploy.
+**Every commit to main auto-deploys to Railway.** Pushing IS deploying.
 
 **Local environment cannot connect to Railway PostgreSQL.** Always test login-dependent features on live deployment.
 
-**Jobber API version header: `2026-02-17`** — monitor for deprecation notices.
+**`server/migrations/add_payout_columns.js` — superseded by initDB(). DO NOT RUN AGAIN.**
 
-`DB_QUERIES.md` in project root — reference cheat-sheet of Railway query interface SQL snippets. Accurate and inert.
-
-`server/migrations/` — three one-time migration scripts, all applied. Two imported in db.js (idempotent). One standalone (add_payout_columns.js — superseded by initDB(), do not run again).
+> Vercel's manual-redeploy procedure, the Jobber API version header, `DB_QUERIES.md` and the migration inventory moved to `docs/ARCHITECTURE.md` in ABR 6A commit 2 — see **Deployment** there. (The version header stays resident where it is a rule: *Never Break → Jobber API*.)
 
 ### Environment Variables (Railway)
 > Moved to `docs/ARCHITECTURE.md` in restructure Phase 1 — see **Environment Variables (Railway)** there.
@@ -248,7 +264,7 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
   - `npm run test:server` — `node:test` over `server/test/*.test.js` with `--test-concurrency=1` (the concurrency flag is load-bearing: Node 24 runs test files in parallel by default and the suites share one database).
   - `npm run test:react` — **Vitest** + jsdom over `src/**/*.test.{js,jsx}` via `vitest run` (the `run` subcommand is what makes it exit instead of entering watch mode; `npm run test:react:watch` is the interactive one).
   - The three are chained with `&&`, lint → server → react, so a red React test blocks a push exactly like a red server test. Consequence to know: if an earlier step fails, the later ones do not run that invocation.
-  - ⚠ `vite.config.mjs` sets `test.include: ['src/**/*.test.{js,jsx}']`. This is NOT cosmetic. Vitest's default glob scans the whole repo and would sweep up `server/test/*.test.js` — and `--test-concurrency=1` is a property of the **node:test invocation**, not of the test files, so another runner importing them bypasses it entirely and executes `initTestDb()`'s `DROP SCHEMA public CASCADE` in parallel workers. That destroyed the local test DB once already. The two runners must never overlap; the include glob is what enforces it structurally rather than by convention.
+  - ⚠ **THE TWO RUNNERS MUST NEVER OVERLAP.** `vite.config.mjs`'s `test.include` glob is what enforces it structurally rather than by convention — **never widen it, and never point another runner at `server/test/`.** (Why, and the incident: `docs/ARCHITECTURE.md` → **The Vitest include glob**. Moved there in ABR 6A commit 2 — reference, not rule.)
   - ⚠ These were separate commands until C/DL-2 Phase 3c, and component tests were therefore green only when someone remembered to run them. That is precisely how `BrandingPreview.jsx` drifted to Accent Roofing's palette while the server used RoofMiles' — no test was wrong, none of them ran.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
@@ -259,6 +275,44 @@ Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-depl
 
 ---
 
+## Editing mechanics — the two that produce no error
+
+### Multi-range edits go in strictly DESCENDING order, and you ASSERT it
+
+When one commit inserts at several points in a file, **apply the lowest-numbered edit LAST.**
+An insertion shifts every line below it, so ascending order invalidates the anchors you
+derived before you started — silently, because the edit still applies somewhere.
+
+⚠ **ASSERTING IS THE RULE, NOT THE ORDERING.** Intending descending order and achieving it are
+different things, and nothing in the tooling tells you which happened. **Write the start lines
+down and check they decrease.** ABR 6A commit 1: `310 → 292 → 282 → 243 → 67 → 51 → 47 → 28`,
+verified rather than intended.
+
+⚠ **TWO EDITS AT ONE ANCHOR IS THE CASE THIS EXISTS TO PREVENT — MERGE THEM.** When an
+insertion and a replacement share a line, they are not two edits in an order; they are one
+edit you have not written yet.
+
+*(Exact-string matching hides the ordering error rather than removing it: each edit still
+finds its anchor, so the failure surfaces as a correct-looking file with content in the wrong
+place. Order and assert anyway.)*
+
+### A fact written into N files costs N corrections, and you will find N-1
+
+The lock icon's contrast figures — `1.67:1`, `4.87:1`, `#B45309` — are in **seven** files.
+Every one had to move together, and the count was recorded as five. **Before duplicating a
+fact into a comment, ask whether a NAME would do.** Same-file, cite by role; cross-file, cite
+by name. **Never cross-file by line number** — ABR 6B step 4 corrected four citations that had
+gone stale, one of which the correcting commit itself falsified.
+
+⚠ **AND THE INVERSE, WHICH IS THE DANGEROUS DIRECTION. When deduplicating, dedupe TOWARD the
+resident copy, never away from it.** The `.claude/rules/*.md` files elaborate non-negotiables
+that stay resident here. Deleting the resident line because a fuller version exists in a
+scoped file **silently unscopes a non-negotiable** — it now loads only for sessions that
+happen to open a matching file. The scoped copies say this too, and that is exactly why it
+must also be said here: **a rule protecting resident rules cannot itself be scoped.**
+
+---
+
 ## Test Design — learnings that cost production bugs to acquire
 
 *Read before writing a test, not after it goes green. Every rule below was learned by shipping
@@ -266,9 +320,9 @@ something a green suite did not catch.*
 
 ### A test's own greenness is not evidence that it tests anything
 
-**Six vacuity instances were found in C/DL-3b, in six different shapes, and a seventh in the
-Admin Brand Retirement build. None was findable by reading; every one was found by forcing
-the failure.**
+**Six vacuity instances were found in C/DL-3b, in six different shapes, a seventh in the
+Admin Brand Retirement build and an eighth in its 6B pass. None was findable by reading;
+every one was found by forcing the failure.**
 
 1. **A case row proves nothing until the field exists.** Five rows added to the branding drift
    guard passed vacuously — that guard compares two copies, so a field absent from **both** is
@@ -304,9 +358,71 @@ the failure.**
    appears **somewhere, in some context**, and the context is usually where the bug is. The
    same applies to any wrapped value: a currency symbol, a unit, a prefix, a delimiter.
 
+8. **A FIXTURE NOTHING CONSUMES IS COVERAGE THAT IS NOT THERE.** An eighth shape, found in
+   ABR 6B: three suites shared a shaped stats payload, and after extracting it to one module
+   a green run proved nothing about sharing — **a file still holding a private copy stays
+   green.** ⚠ **Probe A is the proof: throw at the fixture's module top and count which suites
+   die.** Three failed; 28 were untouched. ⚠ **And Probe B — a throwing getter per export —
+   found the real defect: two of the three suites never read a single field.** They mount the
+   dashboard, but the fetch never reaches a render before the assertion resolves. Their
+   protection was **timing, not the fixture**, and they would pass identically against `{}`.
+   **Ask "what dies if this is removed", not "is it green with this present."**
+
 **The conclusion:** non-vacuity assertions belong in tests that look **too simple to need
 them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this
 keeps happening.
+
+### A RED narrative is a record, not a claim about today
+
+A comment written to explain why a test was RED describes **the state it was written
+against**. Its referent is unambiguous, the fix sits in the same file with the passing
+assertions as proof, and it causes nobody to act wrongly. **Leave it. Mark it if you must.**
+
+**Correct a stale record when it claims something about a CURRENT surface — and especially
+when it INSTRUCTS AGAINST the fix.** ABR 6B step 4 found eleven records asserting the admin
+panel is dark after Phase 5 had repainted it. **Three had not gone stale, they had INVERTED**:
+they told the next session not to make the change that was correct. Four separate records
+defended a lock icon shipping at 1.67:1.
+
+⚠ **The distinction is not age, it is what a reader would DO.** "Out of date" invites a reader
+to discount the sentence and keep the conclusion, which is the wrong one. Say **inverted**,
+and say what is true now.
+
+### A negative assertion is a fence, and a fence can end up guarding the defect
+
+`expect(x).not.toBe(y)` pins the ABSENCE of a value. When the correct value turns out to be
+`y`, the assertion does not go stale — **its PURPOSE reverses.** It is still true, still
+green, and now the thing standing between the codebase and the fix.
+
+ABR 6B: `LockedSection.test.jsx` asserted the lock icon was NOT `statusVar('warningText')`.
+That was the fence around a 1.67:1 defect, and it had to be **deleted with its reason
+recorded**, not updated with a new value. **Prefer asserting what a site DOES say.** When a
+negative assertion is genuinely the only way to see a mechanism, say so in the comment —
+otherwise the next reader deletes it as redundant, which is the regression it exists to catch.
+
+### A rule applied once to a surface does not stay applied when the surface moves
+
+⚠ **THE RULE DID NOT FAIL. IT WAS NEVER RE-APPLIED.** `LockedSection`'s lock glyph declared
+the DARK status value as its `var()` fallback, and that was **correct** — the admin panel was
+dark, nothing mounts `--rm-*` on the admin tree, so the fallback is what paints. ABR Phase 5
+repainted the panel white. **Nobody re-ran the choice**, and the icon shipped at 1.67:1 —
+under the 3:1 graphic floor — for five sub-phases, defended by four separate comments.
+
+**When you change a surface, enumerate what was DECIDED against it and re-derive each one.**
+A repaint is not a cosmetic change; it is a change of premise, and every conclusion drawn from
+that premise is now unverified. The decisions look untouched in the diff, which is exactly the
+problem: **nothing about a still-correct-looking line announces that its reason is gone.**
+
+⚠ **THIS IS NOT THE RED-NARRATIVE RULE ABOVE, AND THE LOCK ICON IS WHY THEY KEEP BEING
+MERGED.** They share an example and not a subject. **The RED-narrative rule governs RECORDS —
+is this comment stale?** **This one governs DECISIONS — is this choice still correct?** A
+codebase can have perfectly current comments describing a choice nobody re-checked. Keep them
+separate.
+
+⚠ **AND FIX BY ROUTING, NOT BY REPLACING THE VALUE.** The repair was
+`color: statusVar('warningText')`, not a corrected hex. A hardcoded right answer produces
+identical pixels, keeps the special case, and goes wrong again the next time the table moves.
+**Deleting the special case makes the right value fall out — and keep falling out.**
 
 ### Sweeps have two independent gaps
 
@@ -317,6 +433,23 @@ keeps happening.
 - **The hand-maintained FILES list — NOT FIXED.** Every sweep iterates a list someone typed.
   New files are invisible until remembered, and **nothing announces the omission**. A clean
   sweep is evidence about the listed files only. Prefer walking a directory tree.
+
+### A guard that fires on the prose beside it is working. Reword the prose.
+
+ABR 6B step 4's own commit tripped the brand sweep: a `#012854` needle inside a **comment**
+explaining why the value was retired. **The comment was rewritten; the sweep was not
+exempted** — and step 5 made the same call for a symbol name.
+
+⚠ **A symbol or literal in prose is how a retired thing gets pasted back into code.** Never
+add a comments-are-exempt carve-out to a sweep. It is the cheapest-looking fix and it removes
+the sweep's reach into exactly the text a future reader will copy from.
+
+### Sweep by value and you will miss the claim
+
+A sweep answers *"does this STRING survive?"* It cannot answer *"does this file still assert
+something false?"* — the eleven inverted records that survived ABR Phase 5 contained no
+retired literal at all. **Where a claim matters, the guard reads the source TEXT and asserts
+on the sentence**, not on a value inside it.
 
 ### Retirements need a producer sweep, not only a consumer assertion
 

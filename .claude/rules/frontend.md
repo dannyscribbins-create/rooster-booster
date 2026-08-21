@@ -36,7 +36,22 @@ Under Vite, ESLint is **not** part of the build — `react-hooks/exhaustive-deps
 
 ## Styling
 All styling inline. Never add CSS files. Design tokens: `src/constants/theme.js` (R) and `src/constants/adminTheme.js` (AD).
-- Colors: Navy `#012854`, Red `#CC0000`, Light Blue `#D3E3F0`
+- Colors: **RoofMiles** primary `#F26A1B`, secondary `#1C2D4D`, background `#FDF0E7`, surface
+  `#FFFFFF` (`src/utils/brandingTheme.mjs`). ⚠ Navy `#012854` / Red `#CC0000` / Light Blue
+  `#D3E3F0` were **Accent Roofing's** and were retired from the admin chrome in ABR Phase 5 —
+  **they are sweep needles now, not values to reach for.** Contractor colour resolves at
+  runtime via `useBranding()`; the only place it appears in chrome is the primary CTA fill.
 - Fonts: Montserrat (display), Roboto (body), Roboto Mono (numbers)
 - Icons: Phosphor Icons v2.1.1 only
 - Mobile-first: 430px max-width with safe-area insets
+
+## Post-render throws need an error boundary, not a try/catch
+
+A component that renders successfully and throws **later** — in an effect, a settled promise,
+an event handler — is invisible to `ErrorBoundary.jsx`, which catches render-phase throws
+only. Wrap deferred async work in `safeAsync()` (`src/utils/clientErrorReporter.js`) so the
+throw reaches a log.
+
+⚠ **An unwrapped `(async () => {...})()` inside a component reaches NO log and NO console.**
+`AdminApp.jsx:148` is the live example — its two siblings at `:120` and `:130` show the
+shape it should have.
