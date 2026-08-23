@@ -19,76 +19,122 @@ either half of a citation still lands.
 
 ### Backend — Folder Structure
 
+⚠ **GENERATED — DO NOT HAND-EDIT.**
+Run `npm run architecture` to regenerate, or `npm run architecture -- --check` to report drift.
+This block was hand-maintained until 2026-08-23 and had drifted by **30 files and 11
+directories** — of which 5 directories are now listed and 6 are suppressed by design (see
+`scripts/architecture.js`) — including `server/utils/sessionPolicy.js`, which `CLAUDE.md`'s
+session non-negotiable cites by name.
+
 <!-- BEGIN GENERATED STRUCTURE: backend -->
 ```
 server.js                          ← lean entry point (41 lines) — calls createApp(), does not build the app
 server/
-├── app.js                         ← createApp() factory — all middleware + all 9 app.use() mounts, in server.js's old order
+├── app.js                         ← createApp() factory — all middleware + every app.use() mount, in server.js's old order
 ├── db.js                          ← PostgreSQL pool + initDB() — creates/migrates all tables on startup
 ├── referralRules.js               ← evaluateReferral() — referral evaluation engine, imported by invoice-paid webhook
+├── constants/
+│   └── boostSchedule.js
 ├── crm/
+│   ├── acculynx.js                ← placeholder
 │   ├── index.js                   ← getCRMAdapter(contractorId) — multi-contractor dispatcher
 │   ├── jobber.js                  ← getContractorAccessToken(contractorId), refreshTokenIfNeeded(contractorId, {force}), fetchPipelineForReferrer() — contractor-scoped token access (TF session)
 │   ├── pipelineSync.js            ← runFullSync(), runIncrementalSync(), runScheduledSync()
-│   ├── servicetitan.js            ← placeholder
-│   └── acculynx.js                ← placeholder
+│   └── servicetitan.js            ← placeholder
 ├── cron/
 │   ├── index.js                   ← startCronJobs() — registers all 7 cron jobs on startup
 │   ├── withLock.js                ← withLock(jobName, timeoutMinutes, fn) — atomic job lock
 │   └── jobs/
-│       ├── pipelineSync.js        ← every 30 min
-│       ├── sessionCleanup.js      ← daily 2am UTC
 │       ├── adminCacheExpiry.js    ← every 20 min
-│       ├── engagementCadence.js   ← daily 6am UTC — M1/M3/M6/M12 post-job emails
 │       ├── dynamicAudiences.js    ← daily 6:10am UTC — audience re-evaluation
+│       ├── engagementCadence.js   ← daily 6am UTC — M1/M3/M6/M12 post-job emails
+│       ├── jobberIncrementalSync.js ← daily 2am UTC — Jobber incremental client sync
+│       ├── pipelineSync.js        ← every 30 min
 │       ├── postJobSequence.js     ← daily 7am UTC — T+24h experience flow
-│       └── jobberIncrementalSync.js ← daily 2am UTC — Jobber incremental client sync
-├── jobs/
-│   ├── fullJobberImport.js        ← full Jobber client import engine (one-time per contractor)
-│   └── contactMatchingPass.js     ← runContactMatchingPass() — contact-to-jobber_client matching engine
-├── middleware/
-│   ├── auth.js                    ← verifyAdminSession(), verifyReferrerSession()
-│   └── errorLogger.js             ← logError(), expressErrorHandler()
-├── migrations/
-│   ├── add_referrer_bank_columns.js      ← applied, imported in db.js
-│   ├── add_notification_email_columns.js ← applied, imported in db.js
-│   └── add_payout_columns.js             ← applied (one-time standalone script, superseded by initDB())
-├── utils/
-│   ├── retryWithBackoff.js        ← exponential backoff retry for all external API calls
-│   ├── retryHelpers.js            ← resendShouldRetry, twilioShouldRetry, jobberShouldRetry, anthropicShouldRetry
-│   ├── dateUtils.js               ← getPeriodDateRange() — shared date range calculator
-│   ├── tags.js                    ← applyTag(), removeTag(), backfillTagsForContacts()
-│   ├── pendingReferral.js         ← checkAndCreatePendingReferral(), escapeHtml(), getPrimaryEmail/Phone()
-│   ├── emailSuppression.js        ← isEmailSuppressed(contractorId, recipientEmail, triggerKey)
-│   ├── notificationEmail.js       ← sendAdminNotification(), resolveNotificationRecipient()
-│   ├── backup.js                  ← daily backup to Backblaze B2
-│   ├── restore-verify.js          ← backup verification utility
-│   ├── encryption.js              ← AES-256-GCM encryption utilities
-│   ├── stripeTransfer.js          ← Stripe transfer utilities
-│   ├── adminHelpers.js            ← deriveOptOutType() and admin utility functions
-│   └── deriveJobberTags.js        ← derives contact_tags from Jobber CRM data — currently hardcoded to Accent Roofing field labels; must be wired to contractor_field_mappings before contractor #2
+│       └── sessionCleanup.js      ← daily 2am UTC
 ├── docs/
 │   └── email-triggers.md          ← reference doc for email trigger mappings
-└── routes/
-    ├── oauth.js                   ← GET /auth/jobber, GET /callback
-    ├── referrer.js                ← all /api/* referrer endpoints + rate limiters
-    ├── account.js                 ← all /api/account/* account management endpoints
-    ├── unsubscribe.js             ← public unsubscribe route
-    ├── resendWebhook.js           ← Resend webhook handler (bounces, clicks)
-    ├── stripe.js                  ← placeholder — Stripe ACH payout routes
-    ├── webhooks/
-    │   ├── jobber.js              ← Jobber webhook handlers (CLIENT_CREATE, CLIENT_UPDATE, INVOICE_UPDATE, JOB_UPDATE, disconnect)
-    │   └── stripe.js              ← Stripe webhook handler placeholder
-    └── admin/
-        ├── index.js               ← admin route aggregator + notification routes + import routes
-        ├── cashouts.js            ← cash out approval/denial endpoints
-        ├── contacts.js            ← contacts, unified contacts, jobber-clients endpoints
-        ├── campaigns.js           ← campaigns, audiences, engagement cadence endpoints
-        ├── notifications.js       ← notification preferences endpoints
-        ├── referrers.js           ← referrer management endpoints
-        └── metrics.js             ← admin metrics/stats endpoints
+├── jobs/
+│   ├── contactMatchingPass.js     ← runContactMatchingPass() — contact-to-jobber_client matching engine
+│   └── fullJobberImport.js        ← full Jobber client import engine (one-time per contractor)
+├── middleware/
+│   ├── auth.js                    ← verifyAdminSession(), verifyReferrerSession()
+│   ├── errorLogger.js             ← logError(), expressErrorHandler()
+│   └── permissions.js
+├── migrations/
+│   ├── add_decision_b_schema.js
+│   ├── add_flagged_assignments_status.js
+│   ├── add_notification_email_columns.js ← applied, imported in db.js
+│   ├── add_payout_columns.js      ← applied (one-time standalone script, superseded by initDB())
+│   ├── add_referrer_bank_columns.js ← applied, imported in db.js
+│   └── widen_sticky_source_check.js
+├── permissions/
+│   └── registry.js
+├── routes/
+│   ├── account.js                 ← all /api/account/* account management endpoints
+│   ├── branding.js
+│   ├── landing.js
+│   ├── oauth.js                   ← GET /auth/jobber, GET /callback
+│   ├── referrer.js                ← all /api/* referrer endpoints + rate limiters
+│   ├── resendWebhook.js           ← Resend webhook handler (bounces, clicks)
+│   ├── session.js
+│   ├── stripe.js                  ← placeholder — Stripe ACH payout routes
+│   ├── superAdmin.js
+│   ├── unsubscribe.js             ← public unsubscribe route
+│   ├── admin/
+│   │   ├── campaigns.js           ← campaigns, audiences, engagement cadence endpoints
+│   │   ├── cashouts.js            ← cash out approval/denial endpoints
+│   │   ├── contacts.js            ← contacts, unified contacts, jobber-clients endpoints
+│   │   ├── index.js               ← admin route aggregator + notification routes + import routes
+│   │   ├── metrics.js             ← admin metrics/stats endpoints
+│   │   ├── notifications.js       ← notification preferences endpoints
+│   │   ├── referrers.js           ← referrer management endpoints
+│   │   └── team.js
+│   └── webhooks/
+│       ├── jobber.js              ← Jobber webhook handlers (CLIENT_CREATE, CLIENT_UPDATE, INVOICE_UPDATE, JOB_UPDATE, disconnect)
+│       └── stripe.js              ← Stripe webhook handler placeholder
+├── scripts/
+│   └── seedTestTeamMember.js
+└── utils/
+    ├── adminHelpers.js            ← deriveOptOutType() and admin utility functions
+    ├── attributionEngine.js
+    ├── b2Media.js
+    ├── backup.js                  ← daily backup to Backblaze B2
+    ├── brandingTheme.js
+    ├── contractorSlug.js
+    ├── dateUtils.js               ← getPeriodDateRange() — shared date range calculator
+    ├── deriveJobberTags.js        ← derives contact_tags from Jobber CRM data — currently hardcoded to Accent Roofing field labels; must be wired to contractor_field_mappings before contractor #2
+    ├── dummyHash.js
+    ├── emailSuppression.js        ← isEmailSuppressed(contractorId, recipientEmail, triggerKey)
+    ├── encryption.js              ← AES-256-GCM encryption utilities
+    ├── frozenAccount.js
+    ├── inviteTokens.js
+    ├── landingResolve.js
+    ├── notificationEmail.js       ← sendAdminNotification(), resolveNotificationRecipient()
+    ├── pendingReferral.js         ← checkAndCreatePendingReferral(), escapeHtml(), getPrimaryEmail/Phone()
+    ├── restore-verify.js          ← backup verification utility
+    ├── retryHelpers.js            ← resendShouldRetry, twilioShouldRetry, jobberShouldRetry, anthropicShouldRetry
+    ├── retryWithBackoff.js        ← exponential backoff retry for all external API calls
+    ├── sessionPolicy.js
+    ├── stripeTransfer.js          ← Stripe transfer utilities
+    ├── tagGroupVisibility.js
+    ├── tags.js                    ← applyTag(), removeTag(), backfillTagsForContacts()
+    ├── themeTokens.js
+    └── userPreferences.js
 ```
+<!-- generated 2026-08-23 · HEAD c3161f0 · 78 files, 15 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: backend -->
+
+> **Scope of the two blocks above and below.** Code files only: `.js`, `.jsx`, `.mjs`,
+> `.css`, `.md`. **Excluded** — 117 test files (`*.test.*` and everything under
+> `server/test/`) and 10 asset/binary files (`.png`, `.woff2`, `.txt`). ⚠ `src/index.css`
+> is **not** an asset; it is listed. **Directories holding zero listed files are
+> suppressed**, because an empty-looking directory cannot be told apart from a genuinely
+> empty one: `server/public/`, `server/public/fonts/`, `server/test/`,
+> `server/test/helpers/`, `src/assets/`, `src/assets/images/`. ⚠ `server/test/` can never
+> reappear by adding a file — its exclusion is path-based, not extension-based.
+> The authority for all of this is `scripts/architecture.js`, which prints every
+> exclusion and every suppressed directory by name on each run.
 
 ---
 
@@ -99,116 +145,143 @@ Note: `client_rep_assignments`, `team_members`, and `titles` are also live table
 ---
 
 #### Folder structure
+⚠ **GENERATED — DO NOT HAND-EDIT.**
+Run `npm run architecture` to regenerate, or `npm run architecture -- --check` to report drift.
+This block was hand-maintained until 2026-08-23 and had drifted by **30 files and 11
+directories** — of which 5 directories are now listed and 6 are suppressed by design (see
+`scripts/architecture.js`) — including `server/utils/sessionPolicy.js`, which `CLAUDE.md`'s
+session non-negotiable cites by name.
+
 <!-- BEGIN GENERATED STRUCTURE: frontend -->
 ```
 src/
 ├── App.jsx
+├── index.css
 ├── index.jsx                       ← Vite entry point, referenced by /index.html
 ├── reportWebVitals.js
 ├── setupTests.js                   ← Vitest setup (jest-dom matchers), named by vite.config.mjs
+├── __fixtures__/
+│   └── adminStats.js
+├── components/
+│   ├── ContractorTerms.jsx         ← ⚠ same
+│   ├── EmailPreferences.jsx        ← public unsubscribe/preferences page (?token=)
+│   ├── PrivacyPolicy.jsx           ← ⚠ legal — names the OPERATING ENTITY; blocked on the LLC amendment
+│   ├── TermsOfService.jsx          ← ⚠ same
+│   ├── admin/
+│   │   ├── AdminActivityLog.jsx
+│   │   ├── AdminApp.jsx
+│   │   ├── AdminCampaignDetail.jsx
+│   │   ├── AdminCampaigns.jsx      ← Campaigns + Audiences + Campaign Contacts tabs
+│   │   ├── AdminCashOuts.jsx
+│   │   ├── AdminComponents.jsx     ← AdminSidebar, AdminShell, StatCard, Badge, Btn, ADMIN_NAV
+│   │   ├── AdminContactDetailDrawer.jsx ← accepts contactId OR jobberClientId
+│   │   ├── AdminContactsTab.jsx    ← unified contacts table, grouped filter panel, tier filter pills
+│   │   ├── AdminDashboard.jsx
+│   │   ├── AdminEngagement.jsx
+│   │   ├── AdminFlaggedAssignmentsQueue.jsx
+│   │   ├── AdminFlaggedReferrals.jsx
+│   │   ├── AdminInboxSidebar.jsx
+│   │   ├── AdminPendingReferrals.jsx
+│   │   ├── AdminReferralReview.jsx ← umbrella: Pending + Missing + Flagged tabs
+│   │   ├── AdminReferrers.jsx
+│   │   ├── AdminSetPasswordScreen.jsx ← reached by ?admin_invite=; window.location.replace('/') on success
+│   │   ├── AdminSettings.jsx       ← main settings hub
+│   │   ├── AdminSettingsExperience.jsx ← ExperiencePopup toggle lives here (not Retention page)
+│   │   ├── AdminSettingsMyProfile.jsx
+│   │   ├── AdminSettingsNotifications.jsx ← the LIVE announcement-preview surface (its orphaned twin was deleted)
+│   │   ├── AdminTeamSettings.jsx   ← Manage Team + the flagged-assignments queue tab
+│   │   ├── BankingSettings.jsx
+│   │   ├── BrandingPreview.jsx
+│   │   ├── BrandingProfileSettings.jsx
+│   │   ├── CRMSettings.jsx         ← CRM connection, import trigger, import state machine
+│   │   ├── CompanyDetailsSettings.jsx
+│   │   ├── PermissionGate.jsx      ← fail-closed-while-loading RBAC gate; renders shared/LockedSection when denied
+│   │   ├── ReferralProgramSettings.jsx
+│   │   ├── ScheduleBuilderDrawer.jsx
+│   │   ├── TagCloudFilter.jsx      ← TagPill + TagCloudFilter shared components
+│   │   └── __fixtures__/
+│   │       └── twoTenantBranding.jsx
+│   ├── auth/
+│   │   ├── ChoiceScreen.jsx        ← D2 multi-match disambiguation (choice token, 2 min, single-use)
+│   │   ├── EmailVerifyScreen.jsx
+│   │   ├── FrozenAccountScreen.jsx ← D3 — rendered from the 403 body, with branding, no session
+│   │   ├── LoginScreen.jsx         ← the ONE unified door — every role, no ?admin=true
+│   │   ├── ResetPinScreen.jsx
+│   │   └── SignupScreen.jsx
+│   ├── referrer/
+│   │   ├── AnnouncementPopup.jsx
+│   │   ├── BadgeCelebrationPopup.jsx
+│   │   ├── BookingFormModal.jsx
+│   │   ├── CashOutTab.jsx
+│   │   ├── ContractorAboutModal.jsx
+│   │   ├── DashboardTab.jsx
+│   │   ├── ExperiencePopup.jsx     ← T+24h post-job flow (good path 5 screens, bad path 3 screens)
+│   │   ├── ManageAccount.jsx
+│   │   ├── MissingReferralModal.jsx
+│   │   ├── PendingMatchPopup.jsx
+│   │   ├── ProfileTab.jsx
+│   │   ├── RankingsTab.jsx
+│   │   ├── ReferAFriendTab.jsx
+│   │   ├── ReferrerApp.jsx         ← tab shell + BottomNav
+│   │   └── RewardScheduleCard.jsx  ← reads from referral_schedules via API — does NOT use BOOST_TABLE
+│   ├── rep/
+│   │   └── RepPlaceholder.jsx      ← 3c placeholder; reached only by tier='general' AND is_field_rep
+│   ├── shared/
+│   │   ├── AnimCard.jsx
+│   │   ├── AvatarCircle.jsx
+│   │   ├── BrandingProvider.jsx
+│   │   ├── ContactModal.jsx
+│   │   ├── EmptyState.jsx
+│   │   ├── ErrorBoundary.jsx       ← class component — intentional exception
+│   │   ├── ErrorState.jsx
+│   │   ├── LoadingIndicator.jsx    ← spinner + label (keyframe rmSpin, not spin)
+│   │   ├── LockedSection.jsx       ← locked-but-visible primitive (page/element modes); moved from admin/ in C/DL-3a Phase 4B — still imports AD, full de-AD-ing is 3b/3c
+│   │   ├── Screen.jsx              ← overflow settings intentional — do not change
+│   │   ├── Skeleton.jsx            ← loading skeleton — one translucent neutral fill, works on light + dark
+│   │   ├── StateCard.jsx           ← shared card shell for the UI-state primitives
+│   │   ├── StatusBadge.jsx
+│   │   ├── SuccessState.jsx
+│   │   └── ThemeProvider.jsx       ← ⚠ mounts the 11 --rm-* vars on its OWN wrapper (Ruling 5); exports useBranding()
+│   └── superAdmin/
+│       ├── SuperAdminLoginScreen.jsx ← ⚠ GATED OFF by VITE_ENABLE_RM_CONTROL (D-K). Working form, placeholder shell.
+│       └── SuperAdminShell.jsx     ← ⚠ same gate. Fully RoofMiles-branded when built — no contractor lockup.
 ├── config/
 │   ├── contractor.js               ← BACKEND_URL + STRIPE_PUBLISHABLE_KEY (platform only)
 │   └── featureFlags.js             ← isFlagEnabled() + isRmControlEnabled() — allow-list parse, fails closed
 ├── constants/
-│   ├── theme.js                    ← R design tokens + STATUS_CONFIG
 │   ├── adminTheme.js               ← AD admin design tokens + TAG_COLORS
-│   ├── statusTheme.js              ← STATUS_VARS + STATUS_LIGHT/STATUS_DARK (the six status tokens)
-│   ├── boostSchedule.js            ← BOOST_TABLE + getNextPayout() (predictive UI only)
 │   ├── badges.js                   ← BADGES array
+│   ├── boostSchedule.js            ← BOOST_TABLE + getNextPayout() (predictive UI only)
 │   ├── registrySections.mjs
-│   └── shouts.js                   ← WARMUP_ENTRIES (must stay in sync with WARMUP_ENTRIES_SERVER)
+│   ├── shouts.js                   ← WARMUP_ENTRIES (must stay in sync with WARMUP_ENTRIES_SERVER)
+│   ├── statusTheme.js              ← STATUS_VARS + STATUS_LIGHT/STATUS_DARK (the six status tokens)
+│   └── theme.js                    ← R design tokens + STATUS_CONFIG
 ├── hooks/
-│   ├── useEntrance.js
-│   └── useAdminPermissions.js      ← AdminPermissionsContext + usePermissions() — the FIRST createContext in src/
-├── utils/
-│   ├── authStorage.js              ← the three token keys + logout seam; STORE is the one switch
-│   ├── brandingChain.js            ← resolveBranding() — the D4 six-source chain + rm_brand_hint
-│   ├── brandingTheme.mjs           ← ⚠ MIRROR of server/utils/brandingTheme.js — edit both, drift-guarded
-│   ├── themeTokens.mjs             ← deriveThemeTokens() + themeCssVariables() + RENDER_TOKEN_KEYS
-│   ├── safeStorage.js              ← safeLocalStorage()/safeSessionStorage() — throw-proof storage access
-│   └── clientErrorReporter.js      ← safeAsync()
-└── components/
-    ├── PrivacyPolicy.jsx           ← ⚠ legal — names the OPERATING ENTITY; blocked on the LLC amendment
-    ├── TermsOfService.jsx          ← ⚠ same
-    ├── ContractorTerms.jsx         ← ⚠ same
-    ├── EmailPreferences.jsx        ← public unsubscribe/preferences page (?token=)
-    ├── shared/
-    │   ├── Screen.jsx              ← overflow settings intentional — do not change
-    │   ├── AnimCard.jsx
-    │   ├── StatusBadge.jsx
-    │   ├── AvatarCircle.jsx
-    │   ├── ContactModal.jsx
-    │   ├── ErrorBoundary.jsx       ← class component — intentional exception
-    │   ├── Skeleton.jsx            ← loading skeleton — one translucent neutral fill, works on light + dark
-    │   ├── LockedSection.jsx       ← locked-but-visible primitive (page/element modes); moved from admin/ in C/DL-3a Phase 4B — still imports AD, full de-AD-ing is 3b/3c
-    │   ├── StateCard.jsx           ← shared card shell for the UI-state primitives
-    │   ├── LoadingIndicator.jsx    ← spinner + label (keyframe rmSpin, not spin)
-    │   ├── EmptyState.jsx
-    │   ├── ErrorState.jsx
-    │   ├── SuccessState.jsx
-    │   └── ThemeProvider.jsx       ← ⚠ mounts the 11 --rm-* vars on its OWN wrapper (Ruling 5); exports useBranding()
-    ├── auth/
-    │   ├── LoginScreen.jsx         ← the ONE unified door — every role, no ?admin=true
-    │   ├── ResetPinScreen.jsx
-    │   ├── SignupScreen.jsx
-    │   ├── EmailVerifyScreen.jsx
-    │   ├── ChoiceScreen.jsx        ← D2 multi-match disambiguation (choice token, 2 min, single-use)
-    │   └── FrozenAccountScreen.jsx ← D3 — rendered from the 403 body, with branding, no session
-    ├── rep/
-    │   └── RepPlaceholder.jsx      ← 3c placeholder; reached only by tier='general' AND is_field_rep
-    ├── superAdmin/
-    │   ├── SuperAdminLoginScreen.jsx ← ⚠ GATED OFF by VITE_ENABLE_RM_CONTROL (D-K). Working form, placeholder shell.
-    │   └── SuperAdminShell.jsx     ← ⚠ same gate. Fully RoofMiles-branded when built — no contractor lockup.
-    ├── referrer/
-    │   ├── ReferrerApp.jsx         ← tab shell + BottomNav
-    │   ├── DashboardTab.jsx
-    │   ├── ReferAFriendTab.jsx
-    │   ├── RankingsTab.jsx
-    │   ├── CashOutTab.jsx
-    │   ├── ProfileTab.jsx
-    │   ├── ManageAccount.jsx
-    │   ├── RewardScheduleCard.jsx  ← reads from referral_schedules via API — does NOT use BOOST_TABLE
-    │   ├── ExperiencePopup.jsx     ← T+24h post-job flow (good path 5 screens, bad path 3 screens)
-    │   ├── BookingFormModal.jsx
-    │   ├── ContractorAboutModal.jsx
-    │   ├── MissingReferralModal.jsx
-    │   ├── BadgeCelebrationPopup.jsx
-    │   ├── PendingMatchPopup.jsx
-    │   └── AnnouncementPopup.jsx
-    └── admin/
-        ├── AdminApp.jsx
-        ├── PermissionGate.jsx      ← fail-closed-while-loading RBAC gate; renders shared/LockedSection when denied
-        ├── AdminComponents.jsx     ← AdminSidebar, AdminShell, StatCard, Badge, Btn, ADMIN_NAV
-        ├── AdminDashboard.jsx
-        ├── AdminReferrers.jsx
-        ├── AdminCashOuts.jsx
-        ├── AdminActivityLog.jsx
-        ├── AdminPendingReferrals.jsx
-        ├── AdminFlaggedReferrals.jsx
-        ├── AdminFlaggedAssignmentsQueue.jsx
-        ├── AdminReferralReview.jsx ← umbrella: Pending + Missing + Flagged tabs
-        ├── AdminEngagement.jsx
-        ├── AdminInboxSidebar.jsx
-        ├── AdminSetPasswordScreen.jsx ← reached by ?admin_invite=; window.location.replace('/') on success
-        ├── AdminContactsTab.jsx    ← unified contacts table, grouped filter panel, tier filter pills
-        ├── AdminContactDetailDrawer.jsx ← accepts contactId OR jobberClientId
-        ├── AdminCampaigns.jsx      ← Campaigns + Audiences + Campaign Contacts tabs
-        ├── AdminCampaignDetail.jsx
-        ├── AdminSettings.jsx       ← main settings hub
-        ├── AdminSettingsNotifications.jsx ← the LIVE announcement-preview surface (its orphaned twin was deleted)
-        ├── AdminSettingsExperience.jsx ← ExperiencePopup toggle lives here (not Retention page)
-        ├── AdminSettingsMyProfile.jsx
-        ├── AdminTeamSettings.jsx   ← Manage Team + the flagged-assignments queue tab
-        ├── BankingSettings.jsx
-        ├── BrandingPreview.jsx
-        ├── BrandingProfileSettings.jsx
-        ├── CompanyDetailsSettings.jsx
-        ├── CRMSettings.jsx         ← CRM connection, import trigger, import state machine
-        ├── ReferralProgramSettings.jsx
-        ├── ScheduleBuilderDrawer.jsx
-        └── TagCloudFilter.jsx      ← TagPill + TagCloudFilter shared components
+│   ├── useAdminPermissions.js      ← AdminPermissionsContext + usePermissions() — the FIRST createContext in src/
+│   └── useEntrance.js
+└── utils/
+    ├── announcementMessage.js
+    ├── authStorage.js              ← the three token keys + logout seam; STORE is the one switch
+    ├── brandingChain.js            ← resolveBranding() — the D4 six-source chain + rm_brand_hint
+    ├── brandingTheme.mjs           ← ⚠ MIRROR of server/utils/brandingTheme.js — edit both, drift-guarded
+    ├── clientErrorReporter.js      ← safeAsync()
+    ├── platformIdentity.js
+    ├── safeStorage.js              ← safeLocalStorage()/safeSessionStorage() — throw-proof storage access
+    └── themeTokens.mjs             ← deriveThemeTokens() + themeCssVariables() + RENDER_TOKEN_KEYS
 ```
+<!-- generated 2026-08-23 · HEAD c3161f0 · 100 files, 14 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: frontend -->
+
+> **Scope of the two blocks above and below.** Code files only: `.js`, `.jsx`, `.mjs`,
+> `.css`, `.md`. **Excluded** — 117 test files (`*.test.*` and everything under
+> `server/test/`) and 10 asset/binary files (`.png`, `.woff2`, `.txt`). ⚠ `src/index.css`
+> is **not** an asset; it is listed. **Directories holding zero listed files are
+> suppressed**, because an empty-looking directory cannot be told apart from a genuinely
+> empty one: `server/public/`, `server/public/fonts/`, `server/test/`,
+> `server/test/helpers/`, `src/assets/`, `src/assets/images/`. ⚠ `server/test/` can never
+> reappear by adding a file — its exclusion is path-based, not extension-based.
+> The authority for all of this is `scripts/architecture.js`, which prints every
+> exclusion and every suppressed directory by name on each run.
 
 ---
 
