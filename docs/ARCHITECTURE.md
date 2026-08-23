@@ -19,6 +19,7 @@ either half of a citation still lands.
 
 ### Backend — Folder Structure
 
+<!-- BEGIN GENERATED STRUCTURE: backend -->
 ```
 server.js                          ← lean entry point (41 lines) — calls createApp(), does not build the app
 server/
@@ -87,6 +88,7 @@ server/
         ├── referrers.js           ← referrer management endpoints
         └── metrics.js             ← admin metrics/stats endpoints
 ```
+<!-- END GENERATED STRUCTURE: backend -->
 
 ---
 
@@ -97,6 +99,7 @@ Note: `client_rep_assignments`, `team_members`, and `titles` are also live table
 ---
 
 #### Folder structure
+<!-- BEGIN GENERATED STRUCTURE: frontend -->
 ```
 src/
 ├── App.jsx
@@ -205,6 +208,7 @@ src/
         ├── ScheduleBuilderDrawer.jsx
         └── TagCloudFilter.jsx      ← TagPill + TagCloudFilter shared components
 ```
+<!-- END GENERATED STRUCTURE: frontend -->
 
 ---
 
