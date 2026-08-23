@@ -522,6 +522,39 @@ handoff. **Deferring is R14; completing is this.**
 
 ---
 
+### Guards agreeing is not evidence when they share an input
+
+**Five independent guards reported PASS on a parse that had silently reclassified all 104
+annotations as orphans — because all five read the same broken parse.** Arrow audit saw the
+arrows and called them recognised. Conservation saw `in == out`. The baseline saw the
+expected count. Each was correct about what it measured, and all of them were measuring a
+corpse. **When guards agree, confirm they have INDEPENDENT INPUTS before treating agreement
+as verification.** Agreement among guards fed by one parse is one guard wearing five hats.
+
+**The mechanism, because it produces no error and is invisible in review.** JavaScript's `.`
+does not match `\r`, so a `$`-anchored regex silently no-ops on a CRLF line — the match
+simply fails and the code carries on with unstripped text. With `core.autocrlf=true` (the
+Windows default) **a tracked LF file becomes CRLF in the working tree the moment anyone runs
+`git checkout`**, so this is not an exotic input. **Any tool reading a tracked file must
+split on `/\r?\n/`, and must never normalise endings as a side effect** — rewriting someone
+else's line endings turns a two-line diff into a whole-file one.
+
+⚠ **The guard that caught it was the one with a different input**: a path-sanity check
+asserting that a parsed path cannot contain an annotation delimiter, a tree connector, or a
+CR. It read the parse OUTPUT against an independent invariant rather than re-reading the
+parse. That is what independence means here.
+
+### A needle that is a substring of a longer real name passes against the wrong line
+
+Checking the canary annotation on `Screen.jsx` with the needle `Screen.jsx` matched
+**`AdminSetPasswordScreen.jsx`** — a real file, a real annotation, and entirely the wrong
+one. The check reported success against a line nobody was asking about. **Anchor a
+verification on the full line, or on a token that cannot be a substring of a sibling**
+(here, the tree connector: `/(├|└)── Screen\.jsx/`). This is the `toContain`-on-a-bare-value
+trap in a different costume — the assertion's edge lands exactly where the ambiguity lives.
+
+---
+
 ## Session Safety Protocol — Run Before Any Code Changes
 
 1. Read this entire CLAUDE.md file
@@ -546,6 +579,17 @@ handoff. **Deferring is R14; completing is this.**
    content for that path, bypassing the index, which can silently re-add a file you just
    removed with `git rm --cached`. Stage, verify, then commit bare.
 7. Never commit a broken or partial state
+
+⚠ **NEVER ADD OR EDIT REPOSITORY FILES THROUGH THE GITHUB WEB UI.** Write to the local
+working tree and commit through the normal path.
+
+The web UI writes to the remote without touching the local tree, so it bypasses everything
+the local path enforces — commit trailers, hooks, ignore rules, and diff review. **Two
+defects in the Wave 0.1 arc trace to a single web-UI commit.** `EXECUTION_SEQUENCE.md`
+existed on the remote and not locally, collided with the untracked local copy, was deleted
+in `580f404`, and the plan of record for the following ~50 sessions went untracked until
+`99ab323`. And `fead367`/`580f404` are **the only two commits in the repository's history
+missing the standard trailers** — which is how you can spot the others, if there are others.
 
 ---
 

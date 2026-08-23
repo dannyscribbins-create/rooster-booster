@@ -104,6 +104,45 @@ B1/B2 split was App-Store-submission vs Accent-rollout; that line no longer exis
 **KEPT AS A REGISTER** of the item-level Build/Defer markup. Its two unticked decision boxes
 (Group G, B2→B1 promotions) are **moot** — neither bucket exists.
 
+### D13 — "referrer app fully loaded" means WIDE. Ruled 2026-08-23 (Danny).
+
+⚠ **Decision IDs D1–D12 are taken by the C/DL-3b series and D-A…D-O by the Admin Brand
+Retirement arc. `D13` was confirmed free by grep before use** — `EXECUTION_SEQUENCE.md` Wave
+1.1 cites *"D7's missing safety control"*, so the next free number is not the next number
+after the last one you happen to see.
+
+**WIDE.** *"Referrer app fully loaded"* means substantially everything currently scoped, not
+the app as it works today. **Wave 3 is pre-launch and inserts between Wave 2 and Wave 4.**
+
+**Two carve-outs remain post-launch fast-follows:** Engagement Intelligence L1–4 (the client
+engagement score system), and Flow Builder. Everything else in Wave 3 is launch-gating.
+
+**Cost:** ~35–45 sessions becomes **~50–60**, net of the carve-outs. ⚠ **This ruling sets
+SCOPE, NOT SCHEDULE.** Pace is re-assessed once the documentation-repair sessions are complete
+and feature work resumes.
+
+**Five consequences, recorded so they are not rediscovered during the build:**
+1. **RANK R1 scope changes.** Under the narrow reading R1 was derivation plus read surfaces.
+   Under wide it is the foundation for R2–R4 (points economy, store, redemption), so its
+   schema and derivation contract must be designed against the **full economy at Wave 1.2**
+   rather than retrofitted. A design-time cost at 1.2, not a build-time one.
+2. **UX Phase 0 moves earlier** — it now gates the whole UI Overhaul arc, which is pre-launch,
+   so it belongs near 1.4 rather than in Wave 3. **Partly discharged already**: §11.1's three
+   shared primitives exist. **Re-scope, do not rebuild.**
+3. **`MEMBER_RANK_ECONOMY_SPEC.md` §13's 18 open decisions become LAUNCH-BLOCKING** and need
+   scheduling deliberately, rather than being discovered during R2.
+4. **RANK §2 hard-prohibits points for reviews** (Google policy — it can penalize the
+   contractor's own listing). Under wide, RANK R2–R4 and the Referral Conversion Engine both
+   land pre-launch and are now **adjacent rather than separated by a launch**. Whoever builds
+   the RCE's review-to-referral sequence must have read RANK §2 first.
+5. **Unaffected by the carve-outs:** List-Unsubscribe is required before the first real
+   campaign send, and the apex legal-links 404 is a live defect. Both are launch-gating
+   regardless.
+
+⚠ **`EXECUTION_SEQUENCE.md` still says *"This document assumes the narrow reading."* That
+sentence is now FALSE.** The amendment lands in its own session with its own diff; **this
+entry is the canonical record until then.**
+
 ---
 
 ## 🔴 PRE-LAUNCH — must be done before real contractor traffic
@@ -624,24 +663,22 @@ root cause, and patching them separately produces five unrelated special cases)
       and gets a real review. **Run after the dispatch fix** — both are in the same 15 lines
       and touching them in one pass is how a deliberate change and an incidental one become
       indistinguishable.
-- [ ] **`docs/ARCHITECTURE.md` FOLDER-STRUCTURE RECONCILIATION — 24 FILES, 3 DIRECTORIES.**
-      Missing from `server/` (21): `middleware/permissions.js`, `permissions/registry.js`,
-      `routes/admin/team.js`, `routes/branding.js`, `routes/landing.js`, `routes/session.js`,
-      `routes/superAdmin.js`, three migrations, and ten utils **including
-      `utils/sessionPolicy.js` — which `CLAUDE.md`'s non-negotiable session rule cites BY NAME
-      as the one place the numbers live.** Missing from `src/` (3):
-      `components/shared/BrandingProvider.jsx` (**this build's own D-H delivery seam**),
-      `utils/platformIdentity.js`, `utils/announcementMessage.js`. Missing directories:
-      `server/scripts/`, `src/__fixtures__/`, `src/components/admin/__fixtures__/`. The admin
-      routes block omits `team.js` while the doc claims *"all 9 mounts."*
-      ⚠ **`docs/ARCHITECTURE.md:217`'S CHECK WOULD HAVE CAUGHT ALL 24, AND HAS DEMONSTRABLY
-      NEVER RUN.** Until ABR 6A it read *"Check for files in server/ or src/ not in
-      **CLAUDE.md** folder structure"* — pointing at a file that no longer held the structure,
-      from inside the file that did. **The mis-pointing is why the non-execution went
-      unnoticed:** anyone who ran it looked in `CLAUDE.md`, found no structure, and had no way
-      to tell "not applicable" from "not done." **This is the hand-maintained-FILES-list
-      defect, in the document that describes the codebase.** Fix by generating the structure,
-      or it recurs by next session.
+- [x] **`docs/ARCHITECTURE.md` FOLDER-STRUCTURE RECONCILIATION — COMPLETE (`3e67547`,
+      2026-08-23).** Recovered **30 files and 11 directories**, of which 5 directories are now
+      listed and 6 are suppressed by design. Among them `utils/sessionPolicy.js`, which
+      `CLAUDE.md`'s non-negotiable session rule cites BY NAME as the one place the numbers
+      live: **the rules pointed at a file the map did not list.**
+      ⚠ **THE HAND-MAINTAINED MISSING-FILE AND MISSING-DIRECTORY LISTS THAT STOOD HERE WERE
+      DELETED, NOT CORRECTED.** They said 24 files and 3 directories; the truth was 29 and 11,
+      and the directory list omitted `server/permissions/` while the file list named
+      `permissions/registry.js`. **A corrected hand list is a third copy that can only decay.**
+      **→ `npm run architecture -- --check` is now the answer to "what is missing".** It walks
+      the tree, never a list, and prints every exclusion and every suppressed directory by
+      name.
+      ⚠ **The `docs/ARCHITECTURE.md:217` check is NOT claimed to have been mis-pointed today.**
+      `ff81b48` (ABR 6A commit 1) repointed it from *"CLAUDE.md's folder structure"* to *"this
+      file's"* and it has been correct since. What it has never been is **RUN**. This replaced
+      a correct-but-manual instruction with an automated one.
 - [ ] **`CLAUDE_REGISTRY.md` SPLIT — 69,170 chars, with a runtime-visible citation.**
       Grew ~1.2k since last measured. `server/db.js:1662` cites *"CLAUDE_REGISTRY.md Known
       Issue 13"* **inside a production `console.error`** — a doc reference whose audience is
@@ -656,17 +693,23 @@ root cause, and patching them separately produces five unrelated special cases)
       ⚠ **As of `304813f` those five files are the ENTIRE untracked working tree**, so this
       conversion closes the working-tree question completely — after it, `git status` is clean
       and every governing document is in git.
-- [ ] **CLAUDE.md is over its own stated budget: 43,940 chars against the 40,000
-      performance-warning threshold the file names for itself** (measured 2026-08-21, after
-      session A's four edits). It was **812 over BEFORE this session** — the threshold has
+- [ ] **CLAUDE.md is over its own stated budget: 46,882 chars against the 40,000
+      performance-warning threshold the file names for itself** (measured 2026-08-23, after
+      Wave 0.1). It was **812 over before session A** — the threshold has
       been breached for some time and nothing reported it. ⚠ Same shape as Test Design's
       false-health rule: a stated budget with no mechanism to observe a breach. The fix is a
       reference-vs-rule sweep — move reference material to `docs/ARCHITECTURE.md`, keep only
       what must be resident. **Its own session; do not trim rules ad hoc to hit a number.**
       ⚠ **Session A itself added 3,128 chars (40,812 → 43,940) across three mandated edits.**
-      The overage **predates** this session — it was 812 over before — but this session is the
+      The overage **predates** that session — it was 812 over before — but it was the
       largest single contributor. **The sweep should open knowing that**, so the fix is scoped
       as reference-vs-rule triage rather than as undoing recent work.
+      ⚠ **UPDATED 2026-08-23: Wave 0.1 added a further 2,942 chars — now 46,882, i.e. 6,882
+      over.** Two Test Design entries and the GitHub-web-UI prohibition. Recorded here in the
+      same commit that caused it, because a budget figure nobody updates is the same
+      false-health shape the entry itself describes. **Two consecutive sessions have now each
+      been the "largest single contributor" to an overage neither was allowed to fix.** The
+      sweep is overdue and should be scheduled before the next arc, not after it.
 - [ ] **Retire the four spec-level copies of the exact-path staging rule.**
       `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md:291`, `CDL_3a_BUILD_SPEC.md:273`,
       `CDL_3b_BUILD_SPEC.md:422` and `UI_OVERHAUL_SPEC.md:290` each carry it; **THREE carry a
@@ -677,6 +720,92 @@ root cause, and patching them separately produces five unrelated special cases)
       demand, and was ABSENT from the one file that loads at the start of every session — which
       said the opposite.** Not four stale copies; a rule stored everywhere except where it would
       take effect.
+
+---
+
+- [ ] **⚠ REPO-WIDE EOL NORMALISATION via `.gitattributes`.** The working tree is already
+      **MIXED**: `docs/ARCHITECTURE.md` is CRLF while `EXECUTION_SEQUENCE.md` is LF — same
+      repo, same `core.autocrlf=true`. Wave 0.1 found the CRLF trap in a document reader, but
+      it sits under **every tool and test that reads repo source as text**.
+      `* text=auto eol=lf`, with binary exclusions for `.png`/`.woff2`, retires the class.
+      ⚠ **NOT A DRIVE-BY.** It rewrites working-tree line endings across the whole repo on the
+      next checkout. Own session, Backblaze confirmed first, full `npm test` after. **Do not
+      fold into a feature commit.**
+
+---
+
+## Wave 0.1 — verification findings (2026-08-23)
+
+*Recorded because each one changed how a check should be built, not because it was hard.*
+
+- **⚠ `npm run` output is not safe to characterize against.** npm version notices leak into
+      captured stdout and produced a five-line phantom diff on the first characterization of
+      `sizing.js`. Characterize through `node` directly.
+- **Allowlist over denylist for file classification**, with an UNCLASSIFIED bin printed
+      loudly. A denylist silently absorbs the next new extension.
+- **`git status` "clean" is not a byte-level claim.** Hash **raw AND LF-normalised**, and
+      anchor against `git show HEAD:`. Take the baseline copy **after** a checkout so both
+      sides share an EOL convention — otherwise the raw hashes differ for a reason that has
+      nothing to do with content.
+- **EOL discipline extends to the TOOLING AROUND a generator, not just the generator.** A
+      python insertion wrote LF into a CRLF file; the generator then normalised its own
+      region, producing a second write that looked like a defect and was not.
+- **P6/P7 second-run refusal is INTENTIONAL.** After a rename the first run writes the
+      annotation into quarantine; the second run refuses on the baseline until a human
+      re-attaches or deletes it deliberately. **Do not "fix" it.**
+- **Suppression is derived from the listed-files set, never a second predicate.** Test
+      exclusion is **PATH**-based, asset exclusion is **EXTENSION**-based — a probe file
+      cannot un-suppress `server/test/`, and one dropped into `src/assets/` does bring that
+      directory back.
+- **Hand-tuned column alignment WILL be normalised on the next write.** Intended, and
+      recorded in the script header so it is not "restored" and silently reverted.
+- **⚠ Un-generated counts are LOWER BOUNDS.** Confirmed four more times this session:
+      annotations 88→**104**, missing files 24→**29**, missing directories 3→**11**, and
+      assets 11→**10** once `src/index.css` moved to the listed set.
+- **⚠ LATENT SITE, not a defect — `server/test/linkGeneratorSweep.test.js:82`** splits
+      disk-read content on a bare `'\n'`. Harmless today: the predicate is
+      `line.includes(needle)`, a substring test a trailing `\r` cannot affect, and the
+      reported `i + 1` stays correct. **It breaks the day anyone changes that to a
+      `$`-anchored regex, or asserts on line equality or length.** Cleared and NOT counted as
+      latent: `landingFonts.test.js:264` (in-process HTTP body, plus `.trim()`) and
+      `themeTokens.test.js:75` (values from imported modules).
+- **The `brandingTheme.js` / `.mjs` MIRROR drift guard is STRUCTURALLY IMMUNE to CRLF.**
+      `server/test/brandingTheme.test.js:587` does `await import()` and compares imported
+      values key by key, never reading either file as text. ⚠ Recorded because **"immune by
+      construction" is durable and "currently passes" is not** — if a future session rewrites
+      it to compare file TEXT, the guard protecting an *"edit both, drift-guarded"* pair
+      becomes a guard that reports health it cannot observe.
+- **⚠ `docs/ARCHITECTURE.md`'s mount count was wrong under either reading** — 13 route mounts
+      plus 5 middleware, recorded as 9. **The number was REMOVED, not corrected**, because an
+      un-generated count is a lower bound that decays. Mount enumeration is a v2 candidate
+      for the generator.
+- **⚠ Session A's handoff §1 records `580f404` as *"EXECUTION_SEQUENCE.md (added via web UI,
+      retained)"*. It was a DELETION** — confirmed by `--name-status`, 184 deletions. The
+      remote copy was removed because it collided with the untracked local copy at repo root.
+      **The plan of record for the next ~50 sessions was never tracked until `99ab323`.**
+      A handoff recorded the inverse of what a commit did, in the document that governs
+      sequencing.
+      ⚠ **`EXECUTION_SEQUENCE.md:42` still carries the superseded "24 files, 3 directories"
+      figures.** Left deliberately — that file is amended in its own session, with its own
+      diff.
+- **⚠ AN APPROVAL IS NOT AN OBSERVATION.** During Wave 0.1 an approval message asserted
+      *"Commit 3 approved and committed"* when only the approval had occurred. Working from
+      that, **`3e67547` (Commit 2) was written into two tracked records as the SHA that
+      tracked `EXECUTION_SEQUENCE.md`.** Caught by `git status` still showing the file
+      staged while the next commit was being prepared.
+      **THE RULE: before writing a SHA into a tracked file, verify it against the claim it
+      carries** — `git log --format='%H %s' -1 <sha>` and `git show --name-status <sha>`.
+      **Never cite a SHA on the strength of a message that says it exists.** ⚠ This is the
+      session's own defect class, authored inside the commit that records that class.
+- **⚠ `EXECUTION_SEQUENCE.md:42` carries the superseded "24 files, 3 directories" figures**
+      (true values **29** and **11**). Deliberately not edited in Wave 0.1 — that file is
+      amended in its own session with its own diff. **Fold this correction into the D13
+      wide-scope amendment so the file is touched once.**
+- **Decision IDs are NOT sequential.** `D1`–`D12` are taken (C/DL-3b holds a block; the Admin
+      Brand Retirement arc holds `D-A`…`D-O`). **The next free number is not the number after
+      the last one you happen to see** — `EXECUTION_SEQUENCE.md` Wave 1.1 cites *"D7's
+      missing safety control"*, which is easy to read as the high-water mark and is not.
+      **Grep before assigning.** Recorded because `D13` was assigned on that basis.
 
 ---
 
@@ -769,3 +898,5 @@ root cause, and patching them separately produces five unrelated special cases)
 | `MEMBER_RANK_ECONOMY_SPEC.md` | Rank, points, and store economy. Phasing R1–R4, open decisions §13 |
 | `UI_OVERHAUL_SPEC.md` | Referrer-app UX arc, the design-psychology foundation, and the binding ethical guardrails. Open decisions §12 |
 | `*.docx` in the repo root | Job Revenue Capture · Landing Page Ambient Branding |
+| `npm run architecture -- --check` | **The folder structure of `server/` and `src/`. GENERATED — there is no hand-maintained list any more.** Prints every excluded file and every suppressed directory by name. `scripts/architecture.js` |
+| `npm run sizing` | escapeHtml definitions, brand literals, `err.message` leaks. Generated counts; paste the dated output |
