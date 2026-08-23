@@ -823,6 +823,33 @@ root cause, and patching them separately produces five unrelated special cases)
       the last one you happen to see** — `EXECUTION_SEQUENCE.md` Wave 1.1 cites *"D7's
       missing safety control"*, which is easy to read as the high-water mark and is not.
       **Grep before assigning.** Recorded because `D13` was assigned on that basis.
+- **⚠ FOUR SELF-INFLICTED INSTANCES OF THIS ARC'S OWN DEFECT CLASS OCCURRED DURING THE ARC,
+      AND MECHANISMS CAUGHT ALL FOUR — ATTENTION CAUGHT NONE.**
+      1. A Commit-2 SHA written into two tracked records as the commit that tracked the plan
+         of record. Caught by `git status` showing the file still staged.
+      2. LF lines written by tooling into a CRLF file, producing mixed endings the generator
+         then normalised — a second write that looked like a defect and was not. Caught by a
+         byte comparison.
+      3. A cross-file line-number citation written **into the entry whose subject is that such
+         citations go stale**, pointing at a line the next commit moves. Caught by the
+         verification grep.
+      4. A sentence truncated mid-edit — a `.docx` replacement dropped the second half of its
+         own line. Caught by the removed-line audit, **not** by reading the diff, which had
+         already been read.
+      **This is the argument for the apparatus.** Every one of the four was authored by
+      someone who had just finished writing the rule against it. Care is not the control;
+      the checks are.
+      ⚠ **All four were caught by mechanisms. None was caught by attention. That is the
+      argument for the apparatus, stated better than any of the rules state it.**
+- **⚠ A CLAIM INSERTED INTO A DATED DOCUMENT AFTER ITS STATED DATE READS AS PROVENANCE FROM
+      THAT DATE.** The 40,000 figure was written **2026-08-21 (`d0fb3aa`)** into
+      `docs/RoofMiles_Security_Audit_May2026.md` — titled *"May 2026"*, committed 2026-07-07 —
+      as **the file's only post-May content**, by the same arc already citing the number.
+      A reader cannot tell which line is August, so the document's date lent an unsourced
+      figure the authority of an audit finding.
+      **THE RULE: dated-snapshot immunity applies only where the WHOLE document shares its
+      date. Where later content has been inserted, correct in place** — the protection that
+      makes `docs/GROUND_TRUTH_2026-08-21.md` safe to leave alone does not transfer.
 
 ---
 

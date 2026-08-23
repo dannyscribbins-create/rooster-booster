@@ -25,9 +25,30 @@ Three consequences drive everything below:
 - **Narrow reading** — the referrer app as it works today, plus the pipeline fixes that make referrals actually convert. Wave 3 (UI Overhaul, points economy, store, gamification, Celebration) is **post-launch**.
 - **Wide reading** — feature-complete, including Member Rank Economy R2–R4, the UI Overhaul arc, endowed progress / goal gradient, and the Celebration System. Wave 3 moves **before** launch.
 
-**This document assumes the narrow reading**, because the referrer app is live and functional today and the thing actually broken about it is the conversion pipeline, not the surface. Under the wide reading, insert Wave 3 between Waves 2 and 4 and add roughly twenty sessions.
+**⚠ RULED 2026-08-23 (Danny) — D13: WIDE.** This paragraph read *"This document assumes the
+narrow reading"* until that date, and **that sentence is now false.** The two readings above
+are kept because they are the record of why the question mattered and what was weighed; only
+the assumption is replaced.
 
-If you want the wide reading, say so before Wave 1 starts — RANK R1's scope changes, and UX Phase 0 moves much earlier.
+*"Referrer app fully loaded"* means **substantially everything currently scoped**, not the app
+as it works today. **Wave 3 is pre-launch and inserts between Wave 2 and Wave 4.** Two
+carve-outs remain post-launch fast-follows: **Engagement Intelligence L1–4** (the client
+engagement score system) and **Flow Builder**. Everything else in Wave 3 is launch-gating.
+
+**Cost: ~35–45 sessions becomes ~50–60**, net of the carve-outs. ⚠ **This sets SCOPE, not
+SCHEDULE** — pace is re-assessed once the documentation-repair sessions finish and feature
+work resumes.
+
+**What the ruling changes, in order of when it bites:** RANK R1 must be designed against the
+full economy at **1.2** rather than retrofitted · **UX Phase 0** moves from Wave 3 to near
+**1.4**, gating the whole UI Overhaul arc · `MEMBER_RANK_ECONOMY_SPEC.md` **§13's 18 open
+decisions become launch-blocking** · **RANK §2's review-points prohibition** (Google policy)
+is now adjacent to the Referral Conversion Engine rather than separated from it by a launch.
+Unaffected by the carve-outs: List-Unsubscribe before the first real campaign send, and the
+apex legal-links 404, are launch-gating regardless.
+
+**Canonical record:** `PRE_LAUNCH_CHECKLIST.md` → *D13*. ⚠ Decision IDs are not sequential —
+D1–D12 and D-A…D-O are taken; grep before assigning a new one.
 
 ---
 
@@ -39,7 +60,7 @@ Nothing downstream means anything until this works. Thirteen pending referrals, 
 
 | # | Session | Contents |
 |---|---|---|
-| 0.1 | **`ARCHITECTURE.md` reconciliation** | 24 files, 3 directories missing — including `utils/sessionPolicy.js`, cited by name in CLAUDE.md's session non-negotiable. **Fix by generating the structure**, not by hand-listing, or it recurs by next session. Half a session, and every session after it reads a true map. |
+| 0.1 | **`ARCHITECTURE.md` reconciliation — DONE (`3e67547`).** The hand-maintained structure had drifted; **the figures once quoted here (24 files, 3 directories) were themselves lower bounds** and are deliberately not restated. `npm run architecture -- --check` is now the answer, and it walks the tree rather than a list. Among the recovered files was `utils/sessionPolicy.js`, cited by name in CLAUDE.md's session non-negotiable. |
 | 0.2 | **Jobber ingestion repair** | KI-2b's null guard (~550 live failures, upstream of `upsertAndTagClient`'s write sites, on the sparse-payload fallback) · name normalisation at all three write sites · backfill. ⚠ The backfill must account for clients **never written**, not only names written badly. |
 | 0.3 | **F8** | `contractor_id` filter on the two user-matching queries. Small, and it unblocks 0.4. |
 | 0.4 | **Matcher rebuild** | Point the matcher at the persisted `jobber_clients` table instead of the empty in-memory array (`pendingReferral.js`). ⚠ Two root causes, not three — the funnel-status join was falsified by ground truth. Do not go looking for it. |
@@ -88,7 +109,31 @@ This is the launch gate under D1. Almost none of it exists.
 
 ---
 
-### WAVE 3 — Referrer app depth *(post-launch under the narrow reading)*
+### WAVE 3 — Referrer app depth *(PRE-LAUNCH under D13, less two carve-outs)*
+
+⚠ **This header read *"post-launch under the narrow reading"* until 2026-08-23. D13 ruled
+WIDE.** Wave 3 is **launch-gating** and **inserts between Wave 2 and Wave 4** in execution
+order. ⚠ **The wave NUMBERS are deliberately unchanged** — other specs cross-reference "Wave
+4" and "Wave 5" by number, so renumbering is a repo-wide sweep and is not authorised here.
+**Read the insertion point from this sentence, not from the ordering of the headings.**
+
+**The two exceptions remain post-launch fast-follows:** **Engagement Intelligence L1–4** (the
+client engagement score system) and **Flow Builder**. Everything else in this wave is
+launch-gating.
+
+**Consequences of the insertion, recorded so they are not rediscovered mid-build:**
+- **UX Phase 0 moves earlier.** It now gates this entire arc, which is pre-launch, so it
+  belongs close to **1.4** rather than here. Partly discharged already (§11.1's three shared
+  primitives exist) — **re-scope, do not rebuild.**
+- **RANK R1's schema and derivation contract must be designed against the FULL economy at
+  Wave 1.2**, not retrofitted, because R1 is now the foundation for R2–R4 landing pre-launch.
+  A design-time cost at 1.2, not a build-time one.
+- **`MEMBER_RANK_ECONOMY_SPEC.md` §13's 18 open decisions are now LAUNCH-BLOCKING** and need
+  deliberate scheduling rather than discovery during R2.
+- ⚠ **RANK §2 hard-prohibits points for reviews** (Google policy — it can penalize the
+  contractor's own listing). R2–R4 and the Referral Conversion Engine are now **adjacent**
+  rather than separated by a launch. **Whoever builds the RCE's review-to-referral sequence
+  must read RANK §2 first.**
 
 | | |
 |---|---|
@@ -162,8 +207,13 @@ From `CLAUDE.md` as of 48a93ed, plus what this reconciliation established:
 
 Not blocking. Recorded on `PRE_LAUNCH_CHECKLIST.md` under Named builds.
 
-- **`CLAUDE.md` budget sweep** — 43,940 against its own stated 40,000. Session A added 3,128 of the overage; it was 812 over before. Reference-vs-rule triage, not undoing recent work.
-- **The five `.docx` conversion** — they are the entire untracked working tree, and six checklist entries depend on one of them. Converting them closes the working-tree question completely.
+- **`CLAUDE.md` budget sweep — RETIRED 2026-08-23, not owed.** Investigated and cancelled:
+  there was no threshold to be over. Claude Code's *"CLAUDE.md is too long"* warning scales
+  with the model's context window and is counted in **tokens**, while every figure ever
+  compared against it here was a **byte** count labelled *"chars"*; its consequence is a
+  console warning, not truncation. The 40,000 traced to one unsourced line copied into four
+  documents. → `PRE_LAUNCH_CHECKLIST.md` → *CLAUDE.md's 40,000-char budget*.
+- **The `.docx` conversion — SIX files, not five.** They are the entire untracked working tree, and six checklist entries depend on one of them. Converting them closes the working-tree question completely.
 - **Four redundant spec copies of the staging rule** — three carry wrong file lists. Now redundant since CLAUDE.md carries it.
 - **`CLAUDE_REGISTRY.md` split** — 69,170 chars, and `db.js:1662` names "Known Issue 13" inside a production `console.error`, so the section number is load-bearing at runtime.
 - **`error_log.resolved` has never been set on any row**, and the `backend` source carries 48 distinct errors with no route attribution — 72% of error volume in an ungroupable bin.
@@ -172,7 +222,11 @@ Not blocking. Recorded on `PRE_LAUNCH_CHECKLIST.md` under Named builds.
 
 ## 6. Open questions
 
-1. **⚠ "Referrer app fully loaded" — narrow or wide?** §1. Worth ~20 sessions.
+1. **✅ CLOSED — "Referrer app fully loaded" is WIDE.** Ruled 2026-08-23 (Danny) as **D13**;
+   see §1. Wave 3 is pre-launch and inserts between Waves 2 and 4, less two carve-outs:
+   Engagement Intelligence L1–4 and Flow Builder. **The entry is kept, not deleted** — closing
+   a question means recording its resolution. Canonical record: `PRE_LAUNCH_CHECKLIST.md` →
+   *D13*.
 2. **Contracted-sold vs collected-paid** for Job Revenue Capture (1.5).
 3. **R8** — rep-side milestone checkpoint and client-portal banner. Open since June.
 4. **R9** — GraphiQL confirmation on Jobber's assigned team members. "Likely resolved, verify," never confirmed.
