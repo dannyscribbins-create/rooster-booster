@@ -693,23 +693,40 @@ root cause, and patching them separately produces five unrelated special cases)
       ⚠ **As of `304813f` those five files are the ENTIRE untracked working tree**, so this
       conversion closes the working-tree question completely — after it, `git status` is clean
       and every governing document is in git.
-- [ ] **CLAUDE.md is over its own stated budget: 46,882 chars against the 40,000
-      performance-warning threshold the file names for itself** (measured 2026-08-23, after
-      Wave 0.1). It was **812 over before session A** — the threshold has
-      been breached for some time and nothing reported it. ⚠ Same shape as Test Design's
-      false-health rule: a stated budget with no mechanism to observe a breach. The fix is a
-      reference-vs-rule sweep — move reference material to `docs/ARCHITECTURE.md`, keep only
-      what must be resident. **Its own session; do not trim rules ad hoc to hit a number.**
-      ⚠ **Session A itself added 3,128 chars (40,812 → 43,940) across three mandated edits.**
-      The overage **predates** that session — it was 812 over before — but it was the
-      largest single contributor. **The sweep should open knowing that**, so the fix is scoped
-      as reference-vs-rule triage rather than as undoing recent work.
-      ⚠ **UPDATED 2026-08-23: Wave 0.1 added a further 2,942 chars — now 46,882, i.e. 6,882
-      over.** Two Test Design entries and the GitHub-web-UI prohibition. Recorded here in the
-      same commit that caused it, because a budget figure nobody updates is the same
-      false-health shape the entry itself describes. **Two consecutive sessions have now each
-      been the "largest single contributor" to an overage neither was allowed to fix.** The
-      sweep is overdue and should be scheduled before the next arc, not after it.
+- [x] **CLAUDE.md's 40,000-char budget — INVESTIGATED AND RETIRED 2026-08-23. There was no
+      threshold to be over.** Closed, not deferred.
+      **What was actually established.** Claude Code's *"CLAUDE.md is too long"* warning
+      **scales with the model's context window** (changelog 2.1.169) — it is not a constant.
+      It is counted in **TOKENS** (2.1.50, *"CLAUDE.md token counting"*). Its consequence is
+      **a console warning**: nothing in the changelog describes truncation or dropped
+      instructions, and nobody in this repo has ever recorded the warning firing — not at
+      40,812, not at 43,940, not at 46,882.
+      ⚠ **AND THE UNIT WAS NEVER THE ONE WRITTEN DOWN.** Every figure of record is a **BYTE**
+      count labelled *"chars"* — `48a93ed` measures 43,940 bytes / 43,536 chars, and 43,940 is
+      the number four documents used. The threshold sentence said *chars*. The real quantity
+      is *tokens*. **Three different units across one comparison, none of them checked.**
+      ⚠ **THE PROVENANCE CHAIN, WHICH IS WHY IT SURVIVED.** `CLAUDE.md` → *Where New Content
+      Goes*, `docs/GROUND_TRUTH_2026-08-21.md` → *A2a*, `EXECUTION_SEQUENCE.md` → *§0 carried
+      forward*, and this entry all
+      trace to **one sentence**: `docs/RoofMiles_Security_Audit_May2026.md:928`, itself a
+      correction of one unsourced number to another. **Four documents agreeing is not four
+      confirmations — it is one source copied four times.** That is the
+      guards-sharing-inputs rule at document level, and it is the reason a number nobody had
+      ever verified governed four documents and nearly cost a set of resident rules.
+      ⚠ **The seeding sentence was written 2026-08-21 by `d0fb3aa`, into a document titled
+      *"May 2026"*** — the only post-May line in it. A fresh claim wearing an old document's
+      date, which is what made it read as audit provenance. Corrected in place 2026-08-23.
+      **The sweep it demanded was cancelled.** Scoping found the reclaim could not reach
+      40,000 without cutting rules: the vacuity-shapes list (4,028 bytes, the largest single
+      target) is cited **by number** from seven test files and one spec, so cutting or
+      renumbering it breaks nine citations silently — the `db.js:1662` → *"Known Issue 13"*
+      shape. It cannot be scoped to `.claude/rules/` either: it is cited from **both**
+      `server/test/` and `src/`, so scoping means two copies.
+      **The file is still large and still growing, and that is worth knowing** — 46,882 bytes
+      at 2026-08-23, up from 40,812 on 2026-08-21. Route new content by *Where New Content
+      Goes*, and prefer reclaiming reference over compressing a rule.
+      ⚠ **TO RE-OPEN THIS, ESTABLISH THREE THINGS FIRST: the threshold, the unit, and the
+      consequence.** Without all three there is no budget to sweep against, only a number.
 - [ ] **Retire the four spec-level copies of the exact-path staging rule.**
       `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md:291`, `CDL_3a_BUILD_SPEC.md:273`,
       `CDL_3b_BUILD_SPEC.md:422` and `UI_OVERHAUL_SPEC.md:290` each carry it; **THREE carry a
@@ -823,8 +840,8 @@ root cause, and patching them separately produces five unrelated special cases)
       `pg_extension` catalog row alive but bound to a dropped schema — after which
       `CREATE EXTENSION IF NOT EXISTS` sees the row and no-ops forever.** Recovery required
       dropping the whole scratch database.
-      ⚠ **THIS IS THE STRICTLY WORSE VARIANT OF WHAT `CLAUDE.md:251` AND
-      `CLAUDE_REGISTRY.md:322-323` ALREADY RECORD.** Those describe the schema-dropped case,
+      ⚠ **THIS IS THE STRICTLY WORSE VARIANT OF WHAT `CLAUDE.md` → *Testing* AND
+      `CLAUDE_REGISTRY.md` → *Known Issue 15, test-runner isolation* ALREADY RECORD.** Those
       which the added `IF EXISTS` made self-healing. **This one does not self-heal**, and the
       `IF EXISTS` that fixed the other is what makes this one silent.
       **Symptom:** `pg_trgm setup skipped: no schema has been selected to create in`, then

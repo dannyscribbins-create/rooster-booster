@@ -27,10 +27,22 @@ frontend because it names an admin URL, but its audience is the server-side emai
 that still build those links. Scoped to `src/**` it would have been guaranteed absent for the
 one session that needs it. Ask who gets hurt by not having it, not what it talks about.
 
-**The budget is finite and every addition spends it.** This file loads IN FULL at the start
-of every session. 40,000 chars is Claude Code's performance-warning threshold; it sits at
-~31,300 as of restructure Phase 2. Adding a rule is correct. Adding reference data borrows
-against every future session.
+**This file loads IN FULL at the start of every session, so every addition is paid for by
+every future session.** Adding a rule is correct. Adding reference data borrows against all
+of them.
+
+⚠ **THERE IS NO FIXED SIZE LIMIT, AND THIS SENTENCE USED TO CLAIM ONE.** It read *"40,000
+chars is Claude Code's performance-warning threshold"* until 2026-08-23. That number was
+never sourced: it traces to a single unsourced line in a May audit which was itself
+"correcting" one unsourced figure to another, and it was then copied into three more
+documents that read as independent confirmation. Claude Code's *"CLAUDE.md is too long"*
+warning **scales with the model's context window** (2.1.169), is counted in **TOKENS** — not
+chars, and not the bytes every figure here was actually measured in — and its consequence is
+**a console warning**. Not truncation. Not dropped instructions.
+⚠ **Do not write a replacement number here, including a token estimate.** Substituting one
+unverified figure for another is exactly the move that produced the last one. If size ever
+needs to bind a decision, establish the threshold, the unit and the consequence first —
+`PRE_LAUNCH_CHECKLIST.md` records what that would take.
 
 ⚠ **When reclaiming, measure the REFERENCE SENTENCES that will move — not the character
 extent between headings.** A block is rarely all reference: the rule inside it stays resident
@@ -543,6 +555,16 @@ else's line endings turns a two-line diff into a whole-file one.
 asserting that a parsed path cannot contain an annotation delimiter, a tree connector, or a
 CR. It read the parse OUTPUT against an independent invariant rather than re-reading the
 parse. That is what independence means here.
+
+### A number in a governing document needs a source
+
+**A number with no source is a claim, not a measurement.** Three instances surfaced in one
+day: the test-count tripwire set below its own floor, `docs/ARCHITECTURE.md`'s structure
+check pointed at a file that no longer held the structure, and a size threshold that was
+never a constant and was counted in a different unit than every figure compared against it.
+**All three looked like working mechanisms.**
+
+---
 
 ### A needle that is a substring of a longer real name passes against the wrong line
 
