@@ -54,28 +54,16 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
+// walk() and SKIP_DIRS were extracted to scripts/lib/fsWalk.js in Wave 0.1 so
+// that this script and scripts/architecture.js cannot drift about what the repo
+// contains. Behaviour is unchanged — proven by diffing this script's full
+// output across the extraction. The helper is read-only; it does not affect the
+// "IT PRINTS" contract above.
+const { walk: walkExts } = require('./lib/fsWalk');
+
 const ROOT = path.resolve(__dirname, '..');
 
-// Directories never worth walking. node_modules and dist dominate the tree and
-// contain nothing this script is counting.
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.worktrees']);
-
-// ─── walk(): every file under dir matching exts, recursively ─────────────────
-// Input: absolute dir, array of extensions ('.js', '.jsx').
-// Output: array of repo-relative POSIX paths. Returns [] if dir is absent.
-function walk(dir, exts) {
-  const out = [];
-  if (!fs.existsSync(dir)) return out;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-      out.push(...walk(path.join(dir, entry.name), exts));
-    } else if (exts.includes(path.extname(entry.name))) {
-      out.push(path.relative(ROOT, path.join(dir, entry.name)).split(path.sep).join('/'));
-    }
-  }
-  return out;
-}
+const walk = (dir, exts) => walkExts(dir, exts, ROOT);
 
 const isTestFile = (p) => p.includes('.test.') || p.startsWith('server/test/');
 const readLines = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8').split(/\r?\n/);

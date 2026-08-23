@@ -53,6 +53,7 @@
     "test:server": "node --test --test-concurrency=1 server/test/*.test.js",
     "test:react": "vitest run",
     "test:react:watch": "vitest",
-    "sizing": "node scripts/sizing.js"
+    "sizing": "node scripts/sizing.js",
+    "architecture": "node scripts/architecture.js"
   }
 }
