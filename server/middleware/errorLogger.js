@@ -130,7 +130,20 @@ async function sendErrorAlert(errorRow) {
 }
 
 // ── SECTION D — logError() ────────────────────────────────────────────────────
-async function logError({ req, error, contractorId, source = 'backend' }) {
+// alert: set false ONLY for high-cardinality records — ones where a distinct
+// error_message per occurrence is the point, so every row would otherwise read as a
+// first occurrence and trigger its own email. The Wave 0.2 webhook skip records are
+// the case this exists for: one row per skipped Jobber client is the requirement, and
+// at fifty contractors that is an unbounded inbox.
+//
+// ⚠ THE DEFAULT IS ALERT-ON AND MUST STAY THAT WAY. All 380 existing call sites omit
+// the key and keep alerting unchanged. An opt-out that silently becomes the default is
+// how a money-adjacent path goes quiet for four months — which is the failure this wave
+// exists to repair, so do not reproduce it here. Test T10b pins the omitted-key
+// direction specifically; T10c pins explicit true.
+//
+// Suppressing the email never suppresses the ROW. error_log is still the record.
+async function logError({ req, error, contractorId, source = 'backend', alert = true }) {
   try {
     const route         = req?.path || 'unknown';
     const method        = req?.method || 'UNKNOWN';
@@ -156,7 +169,10 @@ async function logError({ req, error, contractorId, source = 'backend' }) {
     const errorRow = result.rows[0];
 
     try {
-      await sendErrorAlert(errorRow);
+      // Strict === false, not a truthiness test. A plain 'if (!alert)' would suppress every
+      // caller that omits the key — all 380 of them — and the suite would still be
+      // green because nothing asserts on mail being SENT except T10b/T10c.
+      if (alert !== false) await sendErrorAlert(errorRow);
     } catch (emailErr) {
       console.error('[errorLogger] Email alert failed:', emailErr.message);
     }

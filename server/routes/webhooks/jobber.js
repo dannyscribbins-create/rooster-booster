@@ -526,24 +526,37 @@ router.post('/jobber/client-create', async (req, res) => {
       const clientId = payload?.data?.webHookEvent?.itemId;
       if (!clientId) throw new Error('client-create webhook: missing client id in payload');
 
-      const fullClient = token
-        ? await _fetchFullClient(clientId, token).catch(err => {
-            console.warn(`[jobber-webhook] fetchFullClient failed, using raw payload: ${err.message}`);
-            return client;
-          })
-        : client;
+      // ── SKIP-AND-LOG (Wave 0.2 item 2) ──────────────────────────────────────
+      // Identical reasoning to the client-update handler above — see the full note
+      // there. In short: there is no fallback object, because a Jobber CLIENT_CREATE
+      // envelope carries no client to fall back to. The id goes in error_message so
+      // the dedup key can see it (one row per skipped client), the underlying cause
+      // travels with it, and alert:false keeps the cardinality out of the inbox.
+      let fullClient;
+      try {
+        if (!token) throw new Error('no Jobber access token for this contractor');
+        fullClient = await _fetchFullClient(clientId, token);
+      } catch (fetchErr) {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(`[client-create] skipped client ${clientId} — could not fetch from Jobber: ${fetchErr.message}`),
+          source: 'POST /webhooks/jobber/client-create — fetchFullClient',
+          alert: false,
+        });
+        return;
+      }
 
       await syncSingleClient(contractorId, fullClient, referralStartDate, [], token);
       console.log(`[jobber-webhook] client-create sync complete for client: ${clientId}`);
 
-      // Upsert into jobber_clients and derive tags
-      if (token) {
-        const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
-          console.warn(`[jobber-webhook] client-create fetchClientRelatedData failed: ${err.message}`);
-          return null;
-        });
-        await upsertAndTagClient(contractorId, fullClient, relatedData);
-      }
+      // Upsert into jobber_clients and derive tags. The former 'if (token)' guard
+      // here is gone: a falsy token now returns above, so it was unreachable.
+      const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
+        console.warn(`[jobber-webhook] client-create fetchClientRelatedData failed: ${err.message}`);
+        return null;
+      });
+      await upsertAndTagClient(contractorId, fullClient, relatedData);
 
       // Contact matching pass — isolated, never aborts webhook
       try {
@@ -568,11 +581,15 @@ router.post('/jobber/client-update', async (req, res) => {
   // Respond 200 immediately
   res.status(200).json({ received: true });
 
-  // Async sync — never blocks the webhook response
-  // MVP: webhook payload may not include full nested quotes/jobs/invoices data.
-  // If payload is incomplete, classifyPipelineStatus returns 'lead' as default.
-  // The 30-minute incremental sync will correct the status. This is acceptable for MVP.
-  const client = payload?.data?.client || payload;
+  // Async sync — never blocks the webhook response.
+  // ⚠ The MVP note that stood here — "webhook payload may not include full nested
+  // quotes/jobs/invoices data ... classifyPipelineStatus returns 'lead' as default"
+  // — was INVERTED, not merely stale, and it is why the sparse-payload fallback
+  // looked reasonable for four months. A Jobber CLIENT_UPDATE envelope does not
+  // carry a partial client; it carries NO client (data.webHookEvent.{topic, appId,
+  // accountId, itemId, occurredAt} only). The client is always fetched by id below,
+  // and if that fetch fails there is nothing to degrade to — the event is skipped
+  // and recorded instead.
 
   (async () => {
     // Hoisted above resolution (reordered minimally from its prior position inside the
@@ -615,24 +632,51 @@ router.post('/jobber/client-update', async (req, res) => {
       // Fetch full client data including quotes/jobs/invoices for accurate status classification
       if (!clientId) throw new Error('client-update webhook: missing client id in payload');
 
-      const fullClient = token
-        ? await _fetchFullClient(clientId, token).catch(err => {
-            console.warn(`[jobber-webhook] fetchFullClient failed, using raw payload: ${err.message}`);
-            return client;
-          })
-        : client;
+      // ── SKIP-AND-LOG (Wave 0.2 item 2) ──────────────────────────────────────
+      // There is no fallback object, deliberately. This used to read
+      //     const client = payload?.data?.client || payload
+      // and hand the raw webhook ENVELOPE to the writer whenever the fetch failed.
+      // Jobber CLIENT_UPDATE payloads carry no data.client key at all, so that
+      // object never had an .id, and upsertAndTagClient's INSERT raised a NOT NULL
+      // violation every single time — roughly 550 dropped clients between
+      // 2026-04-17 and 2026-08-21, none recoverable from local data because nothing
+      // persisted the payload.
+      //
+      // The client id goes in error_message, NOT in the stack. logError dedupes on
+      // (contractor_id, route, method, error_message) and overwrites stack_trace on
+      // every recurrence, so an id living only in the stack collapses N skipped
+      // clients into one unreadable row — which is precisely why the failing
+      // population was unmeasurable in production. One row PER skipped client is
+      // the requirement, and alert:false is what keeps that cardinality out of the
+      // inbox: the database holds the list, the alert stays throttled.
+      //
+      // The underlying error travels with the record. A skip logged without its
+      // cause reproduces the same defect with a friendlier message.
+      let fullClient;
+      try {
+        if (!token) throw new Error('no Jobber access token for this contractor');
+        fullClient = await _fetchFullClient(clientId, token);
+      } catch (fetchErr) {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(`[client-update] skipped client ${clientId} — could not fetch from Jobber: ${fetchErr.message}`),
+          source: 'POST /webhooks/jobber/client-update — fetchFullClient',
+          alert: false,
+        });
+        return;
+      }
 
       await syncSingleClient(contractorId, fullClient, referralStartDate, [], token);
       console.log(`[jobber-webhook] client-update sync complete for client: ${clientId}`);
 
-      // Upsert into jobber_clients and derive tags
-      if (token) {
-        const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
-          console.warn(`[jobber-webhook] client-update fetchClientRelatedData failed: ${err.message}`);
-          return null;
-        });
-        await upsertAndTagClient(contractorId, fullClient, relatedData);
-      }
+      // Upsert into jobber_clients and derive tags. The former 'if (token)' guard
+      // here is gone: a falsy token now returns above, so it was unreachable.
+      const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
+        console.warn(`[jobber-webhook] client-update fetchClientRelatedData failed: ${err.message}`);
+        return null;
+      });
+      await upsertAndTagClient(contractorId, fullClient, relatedData);
 
       // Contact matching pass — isolated, never aborts webhook
       try {
