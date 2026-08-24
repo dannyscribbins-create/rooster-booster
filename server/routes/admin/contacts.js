@@ -886,9 +886,20 @@ router.get('/api/admin/jobber-clients', requirePermission('contacts'), async (re
   const limitParam  = nextParam;
   const offsetParam = nextParam + 1;
 
+  // is_archived filtering removed 2026-08-24 (ruled 2026-08-23). This
+  // predicate excluded only 17 of 18,615 rows — is_archived was
+  // written false on every webhook path (upsertAndTagClient passed a
+  // hardcoded literal), so only clients touched by a manual
+  // fullJobberImport ever carried true. Wave 0.2 item 4 makes the
+  // column truthful on all paths, which would have expanded this
+  // filter from 17 rows to the full archived population, gradually,
+  // here and ONLY here — as a side effect of an ingestion fix, while
+  // campaigns, audiences and the matcher continue not to filter at
+  // all. Archived-client handling is deferred to the Client Lifecycle
+  // Protocol session, which rules across all surfaces at once. Do not
+  // re-add this in isolation.
   const baseConditions = `
     jc.contractor_id = $1
-    AND jc.is_archived = false
     ${extraWhere}
     ${tagWhere}`;
 

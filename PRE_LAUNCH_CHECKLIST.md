@@ -428,28 +428,60 @@ health it cannot observe*. Every outbound surface ignores the column entirely:
 - [ ] **⚠ RULED 2026-08-23 (Danny): `admin/contacts.js:891`'s `is_archived` predicate is
       REMOVED, not allowed to activate.** The status quo — uniform non-filtering — is preserved
       **deliberately**.
-      **Why remove rather than keep:** the predicate has been vacuously true since it was
-      written and has never excluded a row, so removing it changes nothing observable. Wave 0.2
-      item 4 makes the column truthful, which would otherwise **activate this filter here and
-      ONLY here**, gradually, as a silent side effect of an ingestion fix — while campaigns,
-      audiences and the matcher continue not to filter. **Partial, unannounced, incoherent
-      activation is a worse state than uniform non-filtering.**
+      ⚠ **CORRECTED 2026-08-24 — THE ORIGINAL REASON WAS FALSE.** This entry first recorded the
+      predicate as *"vacuously true, never excluded a row."* **It is not vacuous:**
+      `already_true = 17` of 18,615 rows (measured in production 2026-08-23). The claim was
+      inferred from `upsertAndTagClient`'s hardcoded literal without accounting for
+      `fullJobberImport.js`, which Phase 0 recorded as selecting `isArchived` **correctly** — a
+      manual full import wrote those 17. **The ruling stands and its reasoning is STRONGER, not
+      weaker**, but the false premise is corrected here because *a record that states a false
+      reason for a correct decision gets the decision reversed by whoever checks the reason.*
+      **Why remove rather than keep:** removing it makes **17 clients appear in admin Contacts
+      that do not today** — a small, immediate, *attributable* change. Leaving it means Wave 0.2
+      item 4 makes the column truthful and **expands this filter from 17 rows to the full
+      archived population**, gradually, **here and ONLY here**, as a silent side effect of an
+      ingestion fix — while campaigns, audiences and the matcher continue not to filter at all.
+      **Take the small visible change.** Partial, unannounced, incoherent activation is a worse
+      state than uniform non-filtering.
       ⚠ **SHIPS IN ITEM 4's SESSION AS ITS OWN DIFF**, named in the commit message as a
       deliberate ruling. It is a behaviour-preserving Contacts-query change, not an ingestion
       change — **do not fold it into the GraphQL selection-set change.**
       ⚠ **THE REMOVAL MUST NOT READ AS A DROPPED FILTER.** Leave this comment at the site
       verbatim, or the next reader restores it:
       ```js
-      // is_archived filtering intentionally removed 2026-08-23. This
-      // predicate was vacuously true — is_archived was written false on
-      // every webhook path (upsertAndTagClient passed a hardcoded literal),
-      // so it never excluded a row. Wave 0.2 item 4 makes the column
-      // truthful, which would have activated this filter here and ONLY
-      // here, gradually, as a side effect of an ingestion fix. Archived-
-      // client handling is deferred to the Client Lifecycle Protocol
-      // session, which rules across all surfaces at once. Do not re-add
-      // this in isolation.
+      // is_archived filtering removed 2026-08-24 (ruled 2026-08-23). This
+      // predicate excluded only 17 of 18,615 rows — is_archived was
+      // written false on every webhook path (upsertAndTagClient passed a
+      // hardcoded literal), so only clients touched by a manual
+      // fullJobberImport ever carried true. Wave 0.2 item 4 makes the
+      // column truthful on all paths, which would have expanded this
+      // filter from 17 rows to the full archived population, gradually,
+      // here and ONLY here — as a side effect of an ingestion fix, while
+      // campaigns, audiences and the matcher continue not to filter at
+      // all. Archived-client handling is deferred to the Client Lifecycle
+      // Protocol session, which rules across all surfaces at once. Do not
+      // re-add this in isolation.
       ```
+      ⚠ **This block is the CORRECTED text and matches what shipped at the site.** The earlier
+      draft asserting the predicate was *vacuously true* is superseded — do not restore it.
+- [ ] **⚠ THE `:891` REMOVAL IS NOT COVERED BY ANY TEST.** Nothing in the suite asserts whether
+      the Contacts list endpoint returns archived clients. **The 962→962 result proves no
+      collateral damage, NOT that the removal works** — those are different claims and only the
+      first was measured.
+      **Deliberately untested:** a test pinning *"archived clients ARE returned"* would harden a
+      policy the **Client Lifecycle Protocol** session may reverse, and the comment at the site
+      already says *do not re-add this in isolation*.
+      The observable outcome is **17 clients appearing in admin Contacts**, verifiable **only in
+      production**. ⚠ **The Lifecycle session owns adding a test once the policy is ruled** —
+      until then this is a known, accepted coverage gap rather than an oversight.
+- [ ] **Post-deploy check for the `:891` removal**, once traffic has passed:
+      `SELECT count(*) FILTER (WHERE is_archived) AS archived_now, count(*) AS total
+      FROM jobber_clients WHERE contractor_id = 'accent-roofing-dev';`
+      **Still 17 = item 4 has not landed**, which is the expected reading before item 4 ships.
+      ⚠ **After item 4 this number GROWS as clients are re-synced, and that growth IS the
+      archived population that would have silently vanished from admin Contacts had the
+      predicate stayed.** That is the measurement which makes the ruling's reasoning checkable
+      after the fact rather than merely argued.
       **The lifecycle session owns the real decision and must answer it across all surfaces
       together:**
       - **which surfaces exclude archived clients** — admin Contacts, dynamic audiences,
