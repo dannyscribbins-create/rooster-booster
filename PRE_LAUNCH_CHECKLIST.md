@@ -328,6 +328,55 @@ entry is the canonical record until then.**
 - [ ] **`fullJobberImport.js` carries a local `getFreshToken`** duplicating `crm/jobber.js`'s
       `getFreshContractorAccessToken`. **Not deduped in Wave 0.2 by instruction.** Dedupe toward
       the shared helper when that file is next opened — and dedupe **toward** it, never away.
+- [x] **Wave 0.2 items 1-3 — VERIFIED END TO END IN PRODUCTION 2026-08-23** via a Jobber test
+      client (`ZZTest Wave02`), created then edited then archived. Both `CLIENT_*` handlers were
+      exercised against live Jobber: `jobber_clients` went 18,614 → 18,615 with a fully
+      populated row; a subsequent edit advanced `last_synced_at` and left `created_at` alone;
+      **`email` and `phone` SURVIVED the partial update** — item 1's `COALESCE` confirmed
+      against a real Jobber payload, on the path that was destroying data the same day. No NOT
+      NULL violation on any event. Token acquisition through `getFreshContractorAccessToken`
+      worked against live Jobber. The upsert updated in place with no duplicate row, which
+      confirms the composite key in **production behaviour**, not only in the catalog.
+- [ ] **⚠ ITEM 2's SKIP-AND-LOG INSTRUMENT IS UNEXERCISED IN PRODUCTION — DO NOT RECORD IT AS
+      VERIFIED.** Three live webhook events (create, update, archive) all **succeeded**, so no
+      Jobber fetch has ever failed on the new code and the logging path has never run against
+      live traffic. A green verification of the happy path says nothing about it.
+      ⚠ The cheap positive check is `source = 'jobberIncrementalSync — token'` after 02:00 UTC,
+      where the cron now records a skip it used to print to console. **Until something is
+      observed there, this instrument is in exactly the state `CLAUDE.md` warns about: a
+      mechanism whose failure mode has never been observed is a claim, not a check.**
+- [ ] **⚠ RE-RUN THE RATE CHECK — one test does not establish a rate.** The old failure ran at
+      ~1.3/day, so a single successful verification cannot distinguish "fixed" from "did not
+      happen to fire." After a day or two of normal Accent traffic:
+      `SELECT contractor_id, route, count, first_seen_at, last_seen_at FROM error_log WHERE
+      error_message ILIKE '%null value in column "jobber_client_id"%' ORDER BY last_seen_at DESC;`
+      **`last_seen_at` frozen at 2026-08-21 = the fix holds. Any advance past the deploy is a
+      path the diagnosis missed — STOP and report before items 4-6.**
+- [ ] **⚠ ITEM 4's `isArchived` RIDER IS THREE CHANGES, NOT ONE — AND THE OBVIOUS TWO ARE INERT
+      WITHOUT THE THIRD.** Phase 0 scoped this as "select `isArchived` in the cron query."
+      Confirmed 2026-08-23, in production and in source:
+      **(a)** `_fetchFullClient`'s selection set omits `isArchived` (it also omits `isCompany`
+      and `isLead`), and `fetchClientRelatedData` selects `isCompany isLead` but **not**
+      `isArchived` — so no webhook path has the value at all;
+      **(b)** the cron's `clients` query omits it, though its write site already *reads*
+      `client.isArchived`, so the cron needs only the query fixed;
+      **(c)** ⚠ **`upsertAndTagClient` binds a HARDCODED LITERAL `false` as its 9th parameter.**
+      It never reads the field from anywhere. **Fixing (a) alone changes nothing** — the write
+      site would still write `false`. This is the "changed a GraphQL string and assumed" trap in
+      its exact form.
+      ⚠ **The webhook site matters more than the cron.** Webhooks are the live path; the cron
+      only touches recently-modified clients. Fixing only the cron would leave archived clients
+      reading as active and **would look fixed**.
+      **Live proof:** archiving `ZZTest Wave021` fired a CLIENT_UPDATE, the handler ran, the
+      fetch SUCCEEDED, the row was written, and `is_archived` stayed `false`. **A successful
+      write with a wrong value — not a failure, and no skip row to notice it by.**
+- [ ] **Consequence while the `isArchived` gap stands:** an archived Jobber client remains
+      `is_archived = false` in `jobber_clients`, so it stays eligible for dynamic campaign
+      audiences (`cron/jobs/dynamicAudiences.js`) and for the contact matcher
+      (`jobs/contactMatchingPass.js`) — **a real data-quality gap on the table Wave 0.4 reads.**
+      Not urgent at Accent's scale; **must be closed before contractor #2.**
+      ⚠ **Item 4 needs a RED-FIRST test that a CLIENT_UPDATE carrying `isArchived: true` writes
+      `is_archived = true`.** Without it this is a GraphQL string change and an assumption.
 - [ ] **`error_log.resolved` has never been set on any row.** The column exists and is unused,
       so the log cannot distinguish "fixed" from "stopped happening" — dates are doing all the
       work. **Either use it or drop it.**
