@@ -424,6 +424,46 @@ health it cannot observe*. Every outbound surface ignores the column entirely:
 5. ⚠ **COMPLIANCE.** If a contractor deletes a client because that person asked to be
    forgotten, and RoofMiles retains the row and keeps sending to them, **that is a real
    exposure.** Not live at Accent; **becomes live at contractor #2.**
+
+- [ ] **⚠ RULED 2026-08-23 (Danny): `admin/contacts.js:891`'s `is_archived` predicate is
+      REMOVED, not allowed to activate.** The status quo — uniform non-filtering — is preserved
+      **deliberately**.
+      **Why remove rather than keep:** the predicate has been vacuously true since it was
+      written and has never excluded a row, so removing it changes nothing observable. Wave 0.2
+      item 4 makes the column truthful, which would otherwise **activate this filter here and
+      ONLY here**, gradually, as a silent side effect of an ingestion fix — while campaigns,
+      audiences and the matcher continue not to filter. **Partial, unannounced, incoherent
+      activation is a worse state than uniform non-filtering.**
+      ⚠ **SHIPS IN ITEM 4's SESSION AS ITS OWN DIFF**, named in the commit message as a
+      deliberate ruling. It is a behaviour-preserving Contacts-query change, not an ingestion
+      change — **do not fold it into the GraphQL selection-set change.**
+      ⚠ **THE REMOVAL MUST NOT READ AS A DROPPED FILTER.** Leave this comment at the site
+      verbatim, or the next reader restores it:
+      ```js
+      // is_archived filtering intentionally removed 2026-08-23. This
+      // predicate was vacuously true — is_archived was written false on
+      // every webhook path (upsertAndTagClient passed a hardcoded literal),
+      // so it never excluded a row. Wave 0.2 item 4 makes the column
+      // truthful, which would have activated this filter here and ONLY
+      // here, gradually, as a side effect of an ingestion fix. Archived-
+      // client handling is deferred to the Client Lifecycle Protocol
+      // session, which rules across all surfaces at once. Do not re-add
+      // this in isolation.
+      ```
+      **The lifecycle session owns the real decision and must answer it across all surfaces
+      together:**
+      - **which surfaces exclude archived clients** — admin Contacts, dynamic audiences,
+        campaign sends, engagement cadence, the contact matcher, admin counts. **Each is a
+        separate call**; a client excluded from outbound may still belong in historical
+        reporting.
+      - **what the UI shows** — hidden entirely, an "include archived" toggle, or shown with a
+        visual marker.
+      - **what happens to an archived REFERRER** — history, conversions and payouts must
+        survive; **they cannot lose earnings because their Jobber record was archived.**
+      - **`CLIENT_DELETE`, which has no handler at all.**
+      ⚠ **After that session rules, the predicate is re-added (or not) as a deliberate
+      implementation of a stated policy — NEVER restored on the grounds that it "used to be
+      there."**
 - [ ] **`error_log.resolved` has never been set on any row.** The column exists and is unused,
       so the log cannot distinguish "fixed" from "stopped happening" — dates are doing all the
       work. **Either use it or drop it.**
