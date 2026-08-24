@@ -302,6 +302,32 @@ entry is the canonical record until then.**
       2026-08-23 and marked as a correction at the site.
       **Adjacent-comment accuracy is part of a fix, not a nicety** — see the RED-narrative and
       inverted-record rules in `CLAUDE.md` → *Test Design*.
+- [ ] **⚠ A PARTIAL REVERT IS NOT A GUARD-PROOF.** During Wave 0.2 item 3, reverting only the
+      token-acquisition *line* while leaving the new `try/catch` in place produced
+      plausible-looking failures that were **not the recorded RED**: site 4 died on
+      `harness: unexpected axios.post call`, and site 5's T6 **did not go red at all** because
+      the `expires_at` early-return had not been restored. Both would have been banked as
+      passing guard-proofs by anyone checking only that the test failed.
+      ⚠ **A guard-proof must revert the WHOLE BLOCK the fix introduced.** This is exactly why
+      the rule is *"returns to the EXACT recorded shape"* and not *"confirms it fails"* — and
+      it is the same family as the vacuity shapes in `CLAUDE.md` → *Test Design*.
+- [ ] **⚠ WAVE 0.2 ITEM 3 CLOSED HALF OF THE CRON 401s, NOT ALL OF THEM.**
+      `jobberIncrementalSync` no longer gives up on an expired token — that closes the
+      **give-up-on-expiry** half. It still acquires **one** token and holds it across the
+      per-client loop, so a concurrent `pipelineSync` refresh can rotate it mid-run: the
+      **read-after-rotate** half, which is the one that actually produced the 52. **Item 4 owns
+      teaching the loop to re-acquire.** A "still open" marker sits at the site.
+      ⚠ **Do not read the 52 (`cron:jobber_incremental_sync`, last 2026-08-16) as closed until
+      item 4 lands.**
+- [ ] **`nanoid@3.3.18` — 1 HIGH** (GHSA-2v37-7h3g-55p8, CVSS 5.9). Transitive **devDependency**
+      via `vite → postcss → nanoid`; frontend build toolchain only, **never reaches the Railway
+      runtime**. Pre-existing — Wave 0.2 added no packages. `fixAvailable` requires bumping
+      `postcss`/`vite`, which is a dependency change rather than a webhook-repair change.
+      **Explicitly acknowledged 2026-08-23; folds into the Dependabot/dependency sweep already
+      on this list.**
+- [ ] **`fullJobberImport.js` carries a local `getFreshToken`** duplicating `crm/jobber.js`'s
+      `getFreshContractorAccessToken`. **Not deduped in Wave 0.2 by instruction.** Dedupe toward
+      the shared helper when that file is next opened — and dedupe **toward** it, never away.
 - [ ] **`error_log.resolved` has never been set on any row.** The column exists and is unused,
       so the log cannot distinguish "fixed" from "stopped happening" — dates are doing all the
       work. **Either use it or drop it.**
