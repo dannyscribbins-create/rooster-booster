@@ -86,6 +86,37 @@ async function getContractorAccessToken(contractorId) {
   return accessToken;
 }
 
+// ── THE SANCTIONED TOKEN PATH (Wave 0.2 item 3) ───────────────────────────────
+// The only way to obtain a USABLE Jobber access token: refresh if the stored one is
+// near expiry, then read. Callers must never do these two steps themselves.
+//
+// ⚠ WHY THIS EXISTS RATHER THAN "just call getContractorAccessToken". That function
+// is the READ half only. Nine call sites open-coded refresh-then-read, and five
+// skipped the refresh entirely and read the tokens table raw. The two webhook
+// handlers among those five dropped roughly 550 Jobber clients between 2026-04-17
+// and 2026-08-21, and the nightly cron produced 52 logged 401s (last 2026-08-16).
+//
+// ⚠ AND WHY ACQUIRING LATE MATTERS. refreshTokenIfNeeded's single-flight guard
+// (inFlightRefreshes, above) protects ROTATION, not READS. Jobber rotates the refresh
+// token on use, so a caller holding a token it read earlier can still be rotated out
+// from under by a concurrent refresh it never participated in — that is precisely the
+// nightly cron's failure, which reads one token at 02:00 and holds it across a
+// per-client loop while the 30-minute pipelineSync rotates underneath it. Call this
+// immediately before use; never cache the result across an operation.
+//
+// The failure-scaling axis is INSTANCES, not contractors: the guard is per-process and
+// per-contractor, so fifty contractors on one process is fifty sound guards. If
+// RoofMiles ever runs more than one Railway replica, add
+// pg_advisory_xact_lock(hashtext(contractor_id)) so the guard is visible across them.
+//
+// ⚠ THROWS when no token exists — it does not return null. Every caller must decide
+// its own skip semantics in a catch, and must LOG the skip: five sites previously
+// returned or continued silently, which is how a starved path stays invisible.
+async function getFreshContractorAccessToken(contractorId) {
+  await refreshTokenIfNeeded(contractorId);
+  return getContractorAccessToken(contractorId);
+}
+
 // ── SHARED: FETCH PIPELINE FOR A REFERRER ────────────────────────────────────
 // Reads from pipeline_cache (populated by the background sync worker) instead of
 // calling Jobber directly. Returns the same shape as the previous Jobber-direct
@@ -410,4 +441,4 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
   return { requests: sorted, assessments };
 }
 
-module.exports = { refreshTokenIfNeeded, getContractorAccessToken, fetchPipelineForReferrer, discoverJobberFields, fetchAttributionData };
+module.exports = { refreshTokenIfNeeded, getContractorAccessToken, getFreshContractorAccessToken, fetchPipelineForReferrer, discoverJobberFields, fetchAttributionData };

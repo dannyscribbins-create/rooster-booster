@@ -8,6 +8,7 @@ const { jobberShouldRetry } = require('../../utils/retryHelpers');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 const { evaluateAudience } = require('./dynamicAudiences');
+const { getFreshContractorAccessToken } = require('../../crm/jobber');
 
 async function runIncrementalSync() {
   const { rows: contractorRows } = await pool.query(
@@ -20,20 +21,35 @@ async function runIncrementalSync() {
 }
 
 async function runForContractor(contractorId) {
-  const tokenResult = await pool.query(
-    'SELECT access_token, refresh_token, expires_at FROM tokens WHERE contractor_id = $1',
-    [contractorId]
-  );
-  const tokenRow = tokenResult.rows[0];
-  if (!tokenRow?.access_token) {
-    console.log('[jobberIncrementalSync] No access token — skipping');
+  // ── SANCTIONED TOKEN PATH (Wave 0.2 item 3) ─────────────────────────────────
+  // ⚠ THIS IS WHERE THE RESIDUAL 401s CAME FROM. Confirmed 2026-08-23: 52 occurrences
+  // under source cron:jobber_incremental_sync, last seen 2026-08-16. This function
+  // used to raw-SELECT the token, compare expires_at to now, and RETURN if expired —
+  // giving up rather than refreshing, and disabling the backstop under exactly the
+  // condition that makes the backstop necessary.
+  //
+  // BEHAVIOUR CHANGE, and it is the point of the fix: an expired token is now
+  // refreshed and the sync proceeds, where before it silently did nothing. The
+  // no-token skip is preserved, and is now recorded rather than a console line.
+  //
+  // ⚠ STILL OPEN, and it is Wave 0.2 item 4's job: this acquires ONE token and holds
+  // it across the per-client loop below. refreshTokenIfNeeded's single-flight guard
+  // protects rotation, not reads, so a concurrent pipelineSync refresh can still
+  // rotate this token out from under a long run. Item 4 is where the loop learns to
+  // re-acquire. Do not read this comment as "already handled".
+  let token;
+  try {
+    token = await getFreshContractorAccessToken(contractorId);
+  } catch (tokenErr) {
+    await logError({
+      req: null,
+      contractorId,
+      error: new Error(`jobberIncrementalSync: no usable Jobber token for contractor ${contractorId} — sync skipped: ${tokenErr.message}`),
+      source: 'jobberIncrementalSync — token',
+    });
+    console.warn(`[jobberIncrementalSync] no usable Jobber token for ${contractorId} — skipping`);
     return;
   }
-  if (new Date(tokenRow.expires_at) < new Date()) {
-    console.warn(`[jobberIncrementalSync] Jobber token expired for ${contractorId} — reconnect Jobber OAuth`);
-    return;
-  }
-  const token = tokenRow.access_token;
 
   // Pull clients updated within the last 25 hours (covers 30-min overlap)
   console.log('[jobberIncrementalSync] Fetching recently updated clients...');

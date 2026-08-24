@@ -5,6 +5,10 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('./retryWithBackoff');
 const { resendShouldRetry, twilioShouldRetry, jobberShouldRetry } = require('./retryHelpers');
+// Safe at module scope: crm/jobber.js requires only db, retryWithBackoff, retryHelpers,
+// errorLogger and constants/boostSchedule — nothing that reaches back here, so there is
+// no cycle. (pipelineSync.js uses lazy requires for THIS file for the opposite reason.)
+const { getFreshContractorAccessToken } = require('../crm/jobber');
 // THE CANONICAL escapeHtml. CLAUDE.md names this file as its home: "import from
 // there, never redefine locally."
 //
@@ -255,12 +259,28 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
 // Targeted single-client Jobber query to get phones and emails for a known client ID.
 // Called only after a single name match — one API call, not a bulk fetch.
 async function fetchReferrerContact(jobberId, contractorId) {
-  const tokenResult = await pool.query(
-    'SELECT access_token FROM tokens WHERE contractor_id = $1',
-    [contractorId]
-  );
-  const token = tokenResult.rows[0]?.access_token;
-  if (!token) return { phone: null, email: null };
+  // ── SANCTIONED TOKEN PATH (Wave 0.2 item 3) ─────────────────────────────────
+  // ⚠ THIS IS THE WAVE 0.4 SITE, AND IT FAILED SILENTLY. The two nulls returned
+  // below are written straight onto pending_referrals.referred_by_email and
+  // .referred_by_phone by the caller — the exact column pair matchPendingReferral()
+  // keys on. A token problem here therefore produces a referral that can NEVER be
+  // matched, and until now left no record anywhere of why.
+  //
+  // BEHAVIOUR CHANGE: the raw SELECT is gone and the token is refreshed before use.
+  // The SKIP is preserved exactly — { phone: null, email: null }, so the caller's
+  // needs_admin_verification path is unaffected — but it is now recorded.
+  let token;
+  try {
+    token = await getFreshContractorAccessToken(contractorId);
+  } catch (tokenErr) {
+    await logError({
+      req: null,
+      contractorId,
+      error: new Error(`fetchReferrerContact: no usable Jobber token for contractor ${contractorId} — referrer ${jobberId} left without contact info: ${tokenErr.message}`),
+      source: 'pendingReferral — fetchReferrerContact token',
+    });
+    return { phone: null, email: null };
+  }
 
   try {
     const response = await retryWithBackoff(

@@ -26,7 +26,7 @@ const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { applyTag } = require('../../utils/tags');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
-const { refreshTokenIfNeeded } = require('../../crm/jobber');
+const { refreshTokenIfNeeded, getFreshContractorAccessToken } = require('../../crm/jobber');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -248,6 +248,7 @@ let _fetchFullClient              = fetchFullClient;
 let _fetchClientRelatedData       = fetchClientRelatedData;
 let _fetchClientJobsForJobUpdate  = fetchClientJobsForJobUpdate;
 let _refreshTokenIfNeeded         = refreshTokenIfNeeded;
+let _getFreshContractorAccessToken = getFreshContractorAccessToken;
 let _sendEmail                    = (...args) => resend.emails.send(...args);
 
 // test seam — inert in production, never called outside server/test/
@@ -258,6 +259,7 @@ function _setTestOverrides({
   sendEmail: d,
   fetchClientJobsForJobUpdate: e,
   refreshTokenIfNeeded: f,
+  getFreshContractorAccessToken: g,
 } = {}) {
   if (a !== undefined) _fetchInvoiceWithJobs        = a;
   if (b !== undefined) _fetchFullClient              = b;
@@ -265,6 +267,7 @@ function _setTestOverrides({
   if (d !== undefined) _sendEmail                    = d;
   if (e !== undefined) _fetchClientJobsForJobUpdate  = e;
   if (f !== undefined) _refreshTokenIfNeeded         = f;
+  if (g !== undefined) _getFreshContractorAccessToken = g;
 }
 
 // test seam — inert in production, never called outside server/test/
@@ -274,6 +277,7 @@ function _resetTestOverrides() {
   _fetchClientRelatedData      = fetchClientRelatedData;
   _fetchClientJobsForJobUpdate = fetchClientJobsForJobUpdate;
   _refreshTokenIfNeeded        = refreshTokenIfNeeded;
+  _getFreshContractorAccessToken = getFreshContractorAccessToken;
   _sendEmail                   = (...args) => resend.emails.send(...args);
 }
 
@@ -515,16 +519,16 @@ router.post('/jobber/client-create', async (req, res) => {
         ? new Date(settingsResult.rows[0].referral_start_date)
         : null;
 
-      // Fetch fresh token for the Jobber API call
-      const tokenResult = await pool.query(
-        'SELECT access_token FROM tokens WHERE contractor_id = $1',
-        [contractorId]
-      );
-      const token = tokenResult.rows[0]?.access_token;
-
       // Fetch full client data including quotes/jobs/invoices for accurate status classification
       const clientId = payload?.data?.webHookEvent?.itemId;
       if (!clientId) throw new Error('client-create webhook: missing client id in payload');
+
+      // ── SANCTIONED TOKEN PATH (Wave 0.2 item 3) ─────────────────────────────
+      // Same change as the client-update handler below — see the note there. The raw
+      // SELECT is gone and acquisition moved into the skip-and-log try, so a token
+      // failure and a fetch failure produce one recorded skip rather than two
+      // different silences.
+      let token;
 
       // ── SKIP-AND-LOG (Wave 0.2 item 2) ──────────────────────────────────────
       // Identical reasoning to the client-update handler above — see the full note
@@ -534,7 +538,7 @@ router.post('/jobber/client-create', async (req, res) => {
       // travels with it, and alert:false keeps the cardinality out of the inbox.
       let fullClient;
       try {
-        if (!token) throw new Error('no Jobber access token for this contractor');
+        token = await _getFreshContractorAccessToken(contractorId);
         fullClient = await _fetchFullClient(clientId, token);
       } catch (fetchErr) {
         await logError({
@@ -622,15 +626,16 @@ router.post('/jobber/client-update', async (req, res) => {
         ? new Date(settingsResult.rows[0].referral_start_date)
         : null;
 
-      // Fetch fresh token for the Jobber API call
-      const tokenResult = await pool.query(
-        'SELECT access_token FROM tokens WHERE contractor_id = $1',
-        [contractorId]
-      );
-      const token = tokenResult.rows[0]?.access_token;
-
       // Fetch full client data including quotes/jobs/invoices for accurate status classification
       if (!clientId) throw new Error('client-update webhook: missing client id in payload');
+
+      // ── SANCTIONED TOKEN PATH (Wave 0.2 item 3) ─────────────────────────────
+      // BEHAVIOUR CHANGE: the raw SELECT that stood here is gone, and acquisition has
+      // moved DOWN into the skip-and-log try below so a token failure and a fetch
+      // failure produce the same recorded skip rather than two different silences.
+      // Acquiring immediately before use is the point: refreshTokenIfNeeded's
+      // single-flight guard protects rotation, not reads.
+      let token;
 
       // ── SKIP-AND-LOG (Wave 0.2 item 2) ──────────────────────────────────────
       // There is no fallback object, deliberately. This used to read
@@ -654,7 +659,7 @@ router.post('/jobber/client-update', async (req, res) => {
       // cause reproduces the same defect with a friendlier message.
       let fullClient;
       try {
-        if (!token) throw new Error('no Jobber access token for this contractor');
+        token = await _getFreshContractorAccessToken(contractorId);
         fullClient = await _fetchFullClient(clientId, token);
       } catch (fetchErr) {
         await logError({
@@ -1260,14 +1265,24 @@ router.post('/jobber/job-update', async (req, res) => {
         return;
       }
 
-      // Fetch token
-      const tokenResult = await pool.query(
-        'SELECT access_token FROM tokens WHERE contractor_id = $1',
-        [contractorId]
-      );
-      const token = tokenResult.rows[0]?.access_token;
-      if (!token) {
-        console.warn('[job-update] no access token found — skipping');
+      // ── SANCTIONED TOKEN PATH (Wave 0.2 item 3) ─────────────────────────────
+      // BEHAVIOUR CHANGE: this used to raw-SELECT the token and, on absence, warn to
+      // the console and return — a silent skip with no durable record. It now
+      // refreshes first (read-after-rotate is a real window; see crm/jobber.js) and
+      // records the skip. The skip ITSELF is unchanged: job-update still returns
+      // without acting, so nothing downstream sees new behaviour.
+      let token;
+      try {
+        token = await _getFreshContractorAccessToken(contractorId);
+      } catch (tokenErr) {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(`[job-update] skipped job ${jobId} — no usable Jobber token: ${tokenErr.message}`),
+          source: 'POST /webhooks/jobber/job-update — token',
+          alert: false,
+        });
+        console.warn('[job-update] no usable Jobber access token — skipping');
         return;
       }
 
