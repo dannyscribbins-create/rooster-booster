@@ -145,7 +145,31 @@ async function sendErrorAlert(errorRow) {
 // Suppressing the email never suppresses the ROW. error_log is still the record.
 async function logError({ req, error, contractorId, source = 'backend', alert = true }) {
   try {
-    const route         = req?.path || 'unknown';
+    // ⚠ baseUrl + path. NOT req.path, and NOT req.originalUrl (Wave 0.2 item 5).
+    //
+    // req.path is ROUTER-RELATIVE: inside a router mounted at '/webhooks', Express
+    // rewrites req.url, so req.path reads '/jobber/client-update' with no prefix.
+    // classifySeverity below tests route.includes('/webhook') — which therefore never
+    // matched, and every Jobber webhook failure was filed INFO. That is how a
+    // money-adjacent ingestion path failed ~550 times over four months at the same
+    // severity as a cosmetic warning.
+    //
+    // Fixed by ROUTING rather than by widening the needle list: adding '/jobber' to
+    // classifySeverity would be a hardcoded right answer that goes wrong again the
+    // next time a router moves. Recording the true path makes the existing needles
+    // correct, here and for every other mounted router.
+    //
+    // ⚠ req.originalUrl was the obvious candidate and is WRONG: it carries the QUERY
+    // STRING, and `route` is part of error_log_dedup_idx. Every distinct parameter set
+    // would open its own dedup lineage, each a first occurrence with its own alert —
+    // unbounded fragmentation, strictly worse than the defect being fixed.
+    // baseUrl + path is the same full path with no query.
+    //
+    // ⚠ THIS CHANGED THE DEDUP KEY. 13 pre-existing rows across three /jobber/* routes
+    // (974 occurrences) are frozen at their pre-2026-08-24 counts; new errors on those
+    // paths start fresh rows at count 1. The two lineages never merge — see
+    // PRE_LAUNCH_CHECKLIST.md, "DEDUP LINEAGE SPLIT".
+    const route         = (req ? `${req.baseUrl || ''}${req.path || ''}` : '') || 'unknown';
     const method        = req?.method || 'UNKNOWN';
     const error_message = (error?.message || String(error)).slice(0, 500);
     const stack_trace   = (error?.stack || null)?.slice(0, 5000) ?? null;

@@ -496,6 +496,17 @@ health it cannot observe*. Every outbound surface ignores the column entirely:
       re-acquisition were removed; the gap was closed rather than left. **Its RED comes from the
       guard-proof, not from authoring order.** Every other test in Wave 0.2 was RED-first — this
       is the one exception, recorded as such rather than blended in.
+- [ ] **`/jobber/invoice-paid` — LOOK LATER, after the wave closes.** 7 distinct `error_log`
+      rows, 254 occurrences, first seen 2026-04-23: **the most fragmented of the three webhook
+      routes with history, and the only one on the money path.** One family is known and closed —
+      the 401s that ran 2026-06-23 → 2026-07-06 and stopped when TF landed, accounting for 244
+      of the 254. **Seven rows is more than one family, so the remaining 6 (~10 occurrences over
+      four months) are unexamined.** All 10 of that route's `logError` call sites are alert-ON;
+      none is high-frequency, which is why item 5 was safe to apply.
+      ⚠ Not urgent, not Wave 0.2's scope. **Ask after the wave closes: what are the other rows,
+      and is any still live?** Item 5 makes this route CRITICAL, so anything still firing will
+      surface on its own — which is the fix working, **and the reason to know what to expect
+      before it pages.**
 - [ ] **⚠ THREE INVERTED IN-FILE RECORDS CORRECTED DURING WAVE 0.2 ITEM 4** — each would have
       instructed a future reader wrongly, and **none would have failed any check**:
       · `jobberIncrementalSync.js:54` — *"⚠ STILL OPEN… Do not read this comment as already
@@ -511,6 +522,54 @@ health it cannot observe*. Every outbound surface ignores the column entirely:
       is part of the fix** — not tidying afterwards. See `CLAUDE.md` → *Test Design*, the
       RED-narrative and inverted-record rules, which this extends from tests to production
       comments.
+- [ ] **⚠ DEDUP LINEAGE SPLIT, 2026-08-24.** `errorLogger.js`'s `route` derivation changed from
+      `req.path` to `req.baseUrl + req.path`. `route` is part of `error_log_dedup_idx`, so
+      **13 existing rows** across `/jobber/client-update` (3), `/jobber/invoice-paid` (7) and
+      `/jobber/client-create` (3) — **974 occurrences total** — are **FROZEN** at their
+      pre-deploy counts. Post-deploy errors on those paths start **new rows at count 1** under
+      the full mounted path (`/webhooks/jobber/...`). **The two lineages never merge.**
+      ⚠ **A COUNTER RESETTING TO 1 IS INDISTINGUISHABLE FROM A FIXED BUG.** Anyone comparing
+      occurrences across 2026-08-24 on these routes must know the key changed. **This note is
+      the only thing that distinguishes them.**
+      (`/jobber/disconnect`, `/jobber/job-update` and `/api/webhooks/resend` have never logged
+      an error — no history to fragment. They reclassify on first occurrence, which is the
+      design working.)
+- [ ] **⚠ THE ITEM 5 RULING WAS SPECIFIED WRONG AND CORRECTED BEFORE IT SHIPPED.** Option (b)
+      was originally written as **`req.originalUrl`**. That form carries the **query string**
+      into a column that is part of the dedup key, so every distinct parameter set would open
+      its own lineage — each a first occurrence with its own alert. Unbounded fragmentation,
+      strictly worse than the defect being fixed. **Corrected to `req.baseUrl + req.path`**:
+      same one-line change, same full mounted path, no query string. Recorded because the
+      correction is the reusable part — *check whether a value entering a dedup key is bounded*.
+- [ ] **The severity change is MONOTONIC — this is a proof, not a survey.** Prepending a mount
+      prefix can only **add** substrings, so a needle matching the short form still matches the
+      long one, and `classifySeverity`'s CRITICAL test runs before WARNING. **Classification can
+      therefore only stay the same or rise; nothing can become less severe.** ⚠ This holds for
+      needles added later too, which is why it is worth keeping as a proof rather than as the
+      2026-08-24 result table (6 routes reclassified, 11 unchanged).
+      ⚠ **`/api/account` does NOT reclassify**, though it looks as though it should:
+      `/totp/reset` is already WARNING via the `/reset` needle, and `/resend` does not contain
+      `/reset`.
+- [ ] **⚠ `alert: false` IS LOAD-BEARING AND IS INDEPENDENT OF SEVERITY. DO NOT COUPLE THEM.**
+      `logError` computes `severity` unconditionally and gates the email separately on
+      `if (alert !== false)`. This is **the property that makes six webhook routes becoming
+      CRITICAL safe**: item 2's per-client skip records are the only high-cardinality writers on
+      those routes, and they pass `alert: false`, so they store as CRITICAL and send nothing.
+      ⚠ **Anyone who later "simplifies" alerting to key off severity re-creates an unbounded
+      inbox on the exact path this wave instrumented.**
+- [ ] **⚠ T7's RECORDED RED SHAPE CHANGED, DELIBERATELY.** Phase 1B recorded
+      `actual: 'INFO'` on the severity assertion. Wave 0.2 item 5 replaced **both** of T7's
+      assertions as ruled, so the defect now surfaces **one line earlier**, at the mechanism
+      pin — *"the recorded route is the full mounted path"* rather than *"severity is INFO"*.
+      Same defect, **named at the cause instead of the symptom.**
+      ⚠ **Any future guard-proof of item 5 must expect the NEW shape. The Phase 1B record is
+      superseded for T7 only** — every other test's recorded RED still stands as written.
+- [ ] **⚠ `/api/webhooks/resend` — 9 alert-ON `logError` sources, ZERO error history, and the
+      highest-frequency inbound route** (Resend email open/click tracking). Item 5 makes it
+      CRITICAL. **Nothing to fragment, but a first failure now pages immediately with no
+      baseline to compare against.** ⚠ If it ever starts firing, **the volume is unknown
+      territory — read the `source` column before assuming the classification is wrong.** The
+      classification is almost certainly right; the frequency is what nobody has seen.
 - [ ] **Per-page Jobber query cost is wired but UNMEASURED.** `actualQueryCost` and
       `currentlyAvailable / maximumAvailable` are logged per page in `jobberIncrementalSync`,
       but **stubs carry no `extensions.cost`, so tests can never exercise it.**

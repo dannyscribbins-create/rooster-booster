@@ -399,7 +399,7 @@ describe('Wave 0.2 — Jobber ingestion repair (RED first)', () => {
   // classifySeverity's `route.includes('/webhook')` test (errorLogger.js:10)
   // never matches.
   // ─────────────────────────────────────────────────────────────────────────
-  it('T7 — a client-update ingestion failure must classify above INFO (RED: req.path is router-relative — /jobber/client-update — so classifySeverity /webhook needle never matches and every one of these lands as INFO)', { skip: 'Wave 0.2 item 5 — classifySeverity. UN-SKIP when item 5 lands.' }, async () => {
+  it('T7 — a client-update ingestion failure must classify above INFO (RED: req.path is router-relative — /jobber/client-update — so classifySeverity /webhook needle never matches and every one of these lands as INFO)', async () => {
     await seedTenant();
     _setTestOverrides({
       fetchFullClient: async () => { const e = new Error('Request failed with status code 401'); e.status = 401; throw e; },
@@ -412,15 +412,29 @@ describe('Wave 0.2 — Jobber ingestion repair (RED first)', () => {
     const { rows: errs } = await errorRows();
     assert.ok(errs.length > 0, 'the failure must reach error_log at all');
 
-    // MECHANISM PIN — true today, and must stay true after the fix. It is the
-    // reason the severity is wrong, and it distinguishes this defect from a
-    // hypothetical one where the route is recorded differently.
-    assert.equal(errs[0].route, '/jobber/client-update',
-      'mechanism: the recorded route is router-relative and carries no /webhooks prefix');
+    // ⚠ UPDATED OPENLY (Wave 0.2 item 5), not quietly loosened. This line previously
+    // read:
+    //     assert.equal(errs[0].route, '/jobber/client-update',
+    //       'mechanism: the recorded route is router-relative and carries no /webhooks prefix');
+    // and it pinned the DEFECT. req.path is router-relative, so the recorded route
+    // carried no prefix and classifySeverity's '/webhook' needle could never match.
+    // Item 5 changed the derivation to req.baseUrl + req.path, so the route is now the
+    // full mounted path and the needle matches naturally.
+    //
+    // INVERTED WITH ITS REASON RATHER THAN DELETED: the route value is still the
+    // MECHANISM behind the severity. If the derivation ever reverts — to req.path, or
+    // to req.originalUrl, which would drag the query string into the dedup key — this
+    // line names why the severity assertion below broke, instead of leaving someone to
+    // rediscover it.
+    assert.equal(errs[0].route, '/webhooks/jobber/client-update',
+      'mechanism: the recorded route is the full mounted path, which is what lets the /webhook needle match');
 
-    // RED ASSERTION.
-    assert.notEqual(errs[0].severity, 'INFO',
-      'an ingestion failure on a money- and auth-adjacent path must not be classified INFO');
+    // Asserts what the severity IS, not what it is not. The former notEqual('INFO')
+    // would stay green against WARNING, which is not the intended outcome for a
+    // money- and auth-adjacent ingestion path — see CLAUDE.md on negative assertions
+    // ending up as the fence around the defect.
+    assert.equal(errs[0].severity, 'CRITICAL',
+      'a money- and auth-adjacent ingestion failure must classify CRITICAL');
   });
 
   // ─────────────────────────────────────────────────────────────────────────
