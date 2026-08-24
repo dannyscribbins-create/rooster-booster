@@ -282,6 +282,26 @@ entry is the canonical record until then.**
       un-skip → implement → green: a test that goes green on un-skip *before* any
       implementation was never testing what it claims.
       **A skip that outlives its reason is a deleted test with extra steps.**
+- [ ] **⚠ TEST-ENVIRONMENT LIVE-FIRE HAZARD — `RESEND_API_KEY` leaks into the test process.**
+      `server/test/setup.js` loads `.env` alongside `.env.test`, so the **real** Resend key is
+      present even though `.env.test` never sets it. **Any test exercising a path that calls
+      Resend sends REAL email to `admin1@roofmiles.com` on every run — and looks like a passing
+      test while doing it.** Four suites already carry warnings about this
+      (`attributionWiring`, `inviteTokenSignup`, `landingMarketingMode`, `signupEmailWhiteLabel`,
+      `signupTenantStamp`). The established mitigation is a `require.cache` stub for the `resend`
+      module installed **BEFORE** `./setup` is required, so it beats `errorLogger.js`'s
+      require-time `new Resend(...)` — an env swap after require cannot work, because every
+      Resend instance is built at require time.
+      ⚠ **The root fix — `setup.js` not loading `.env` at all — is a NAMED BUILD, not a
+      drive-by.** Several suites currently depend on the present behaviour. **Do not change it
+      inside a feature session.**
+- [ ] **The MVP comment above both `CLIENT_*` handlers was INVERTED, not merely stale.**
+      It claimed the webhook payload *"may not include full nested quotes/jobs/invoices data"*
+      when in fact it includes **no client object at all**. **A wrong comment defending a wrong
+      branch is why the sparse fallback read as reasonable for four months.** Corrected
+      2026-08-23 and marked as a correction at the site.
+      **Adjacent-comment accuracy is part of a fix, not a nicety** — see the RED-narrative and
+      inverted-record rules in `CLAUDE.md` → *Test Design*.
 - [ ] **`error_log.resolved` has never been set on any row.** The column exists and is unused,
       so the log cannot distinguish "fixed" from "stopped happening" — dates are doing all the
       work. **Either use it or drop it.**
