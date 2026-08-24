@@ -377,6 +377,53 @@ entry is the canonical record until then.**
       Not urgent at Accent's scale; **must be closed before contractor #2.**
       ⚠ **Item 4 needs a RED-FIRST test that a CLIENT_UPDATE carrying `isArchived: true` writes
       `is_archived = true`.** Without it this is a GraphQL string change and an assumption.
+
+### ⚠ NAMED BUILD — CLIENT LIFECYCLE PROTOCOL (ARCHIVE AND DELETE)
+
+**No ruling exists. Raised 2026-08-23**, after the archive test showed `is_archived` writing
+`false` unconditionally. **Its own scoping session — policy decision plus a build across
+campaigns, audiences, cadence, matcher and possibly the payout ledger. BEFORE contractor #2.**
+Wave 0.2 item 4's `isArchived` fix is the **prerequisite** — you cannot act on a state you do
+not record — **but it is not the protocol.**
+
+**Current state, as OBSERVED rather than designed:**
+- A `CLIENT_UPDATE` carrying an archive writes `is_archived = false`, because
+  `_fetchFullClient` does not select `isArchived` **and** `upsertAndTagClient` binds a hardcoded
+  `false`. Item 4 fixes the read.
+- **`CLIENT_DELETE` — NO HANDLER EXISTS.** Confirmed by sweep 2026-08-23: the five registered
+  routes are `disconnect`, `client-create`, `client-update`, `invoice-paid`, `job-update`, and
+  there is no `client-delete` route or any delete handling anywhere in `server/`. Registry
+  KI-2a records that only CLIENT_CREATE / CLIENT_UPDATE / JOB_UPDATE / INVOICE_UPDATE are
+  subscribed in the Jobber Developer Center — ⚠ **that is a dated claim (2026-07-06) and the
+  console must be re-checked**, but either way a delivered event would 404 today.
+  **So a client deleted in Jobber leaves its row indefinitely, with stale data and no marker.**
+
+⚠ **AND THE FILTER THAT LOOKS LIKE PROTECTION ISN'T.** `admin/contacts.js:891` carries
+`AND jc.is_archived = false` — the **only** read of that column in the codebase. Because the
+column is written `false` on every webhook path, **that predicate is vacuously true for every
+row and excludes nothing.** It reads as archived-client exclusion and has never excluded a
+single client. Same shape as the four instances in `CLAUDE.md` → *a mechanism that reports
+health it cannot observe*. Every outbound surface ignores the column entirely:
+`dynamicAudiences.js` (5 `jobber_clients` refs, 0 `is_archived`), `contactMatchingPass.js`
+(4 / 0), `admin/campaigns.js` (2 / 0).
+
+**Decisions owed, NONE of them made:**
+1. **ARCHIVED — keep and mark, or remove?** Presumed **keep**: history (past referrals,
+   conversions, payouts) must survive, and a referrer whose Jobber record is archived must not
+   lose earnings.
+2. **Which surfaces exclude an archived client?** Candidates: dynamic campaign audiences,
+   campaign sends, engagement cadence, the contact matcher, admin Contacts counts. **Each is a
+   separate call** — a client excluded from outbound may still belong in historical reporting.
+3. **DELETED — delete, tombstone, or keep?** Presumed **tombstone**. ⚠ A deleted client who was
+   a converted referral with a paid bonus **cannot lose its row without breaking the audit
+   trail on money that changed hands.**
+4. ⚠ **MONEY-PATH ADJACENCY.** `referral_conversions` carries `UNIQUE(user_id,
+   jobber_client_id)` (`db.js:155`) — the one-bonus-per-client guarantee, keyed on the same id.
+   **Anything that removes or permits reuse of a `jobber_client_id` touches the identity space
+   that constraint protects.** This is not a data-hygiene question alone.
+5. ⚠ **COMPLIANCE.** If a contractor deletes a client because that person asked to be
+   forgotten, and RoofMiles retains the row and keeps sending to them, **that is a real
+   exposure.** Not live at Accent; **becomes live at contractor #2.**
 - [ ] **`error_log.resolved` has never been set on any row.** The column exists and is unused,
       so the log cannot distinguish "fixed" from "stopped happening" — dates are doing all the
       work. **Either use it or drop it.**
