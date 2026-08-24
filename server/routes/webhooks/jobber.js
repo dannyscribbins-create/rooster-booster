@@ -326,16 +326,46 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
     || fullClient.phones?.[0]?.number
     || null;
 
+  // ── BLANK PROTECTION (Wave 0.2 item 1) ──────────────────────────────────────
+  // COALESCE, not EXCLUDED, on the four identity-bearing columns. This upsert has
+  // callers that pass a PARTIAL shell rather than a full client: job-update builds
+  // { id, firstName: null, lastName: null, emails: [], phones: [] } and invoice-paid
+  // copies only what its invoice fetch happened to return. Under the previous
+  // unconditional DO UPDATE, one JOB_UPDATE webhook overwrote a good row's name,
+  // email and phone with NULL — and those four columns are exactly what the contact
+  // matcher reads. Confirmed by test T1, which was proven RED against that behaviour.
+  //
+  // The three booleans below deliberately do NOT get COALESCE. false is a meaningful
+  // value there, the parameters are coerced with === true so they are never null, and
+  // coalescing them would make "no longer a lead" unrepresentable. Write the guard the
+  // value needs: do not correct them into line with the four above.
+  //
+  // MVP SHORTCUT:
+  //   (a) LIMITATION — a value genuinely CLEARED in Jobber never propagates here.
+  //       Deleting a client's phone number in Jobber leaves the old one in this table
+  //       indefinitely. COALESCE cannot tell "absent from this payload" from
+  //       "explicitly emptied", because both arrive as null.
+  //   (b) SCALABLE VERSION — writers declare which columns they actually observed (an
+  //       explicit observed-field set, or per-column present-in-payload flags) and the
+  //       upsert overwrites only those. That distinguishes the two cases properly and
+  //       lets a real clear through while still rejecting a shell's nulls.
+  //   (c) WHEN — when a contractor first reports contact data that they cleared in
+  //       Jobber and that is still showing here, or when the Wave 0.4 matcher begins
+  //       auto-linking on these columns, whichever comes first.
+  //
+  // Scoped to THIS writer only. jobberIncrementalSync.js:162 and fullJobberImport.js:542
+  // always carry full Jobber payloads — they are precisely where a legitimate clear
+  // arrives, and coalescing there would freeze cleared fields permanently.
   await pool.query(
     `INSERT INTO jobber_clients
        (jobber_client_id, contractor_id, first_name, last_name, email, phone,
         is_company, is_lead, is_archived, last_synced_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
      ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET
-       first_name = EXCLUDED.first_name,
-       last_name = EXCLUDED.last_name,
-       email = EXCLUDED.email,
-       phone = EXCLUDED.phone,
+       first_name = COALESCE(EXCLUDED.first_name, jobber_clients.first_name),
+       last_name = COALESCE(EXCLUDED.last_name, jobber_clients.last_name),
+       email = COALESCE(EXCLUDED.email, jobber_clients.email),
+       phone = COALESCE(EXCLUDED.phone, jobber_clients.phone),
        is_company = EXCLUDED.is_company,
        is_lead = EXCLUDED.is_lead,
        is_archived = EXCLUDED.is_archived,
