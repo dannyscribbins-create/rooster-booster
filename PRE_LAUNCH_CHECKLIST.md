@@ -252,6 +252,36 @@ entry is the canonical record until then.**
       matching-engine rebuild is meant to query. **Fix WITH the matching-engine ingestion work**,
       and size the backfill for clients never written, not only clients written badly.
       → GROUND_TRUTH addendum
+- [ ] **⚠ Wave 1.4 sizing — the ghost bucket carries FIVE LIVE AMBIGUITIES, not just orphans.**
+      `jobber_clients` holds 8 rows under `accent-roofing`, and **5 of them share their
+      `jobber_client_id` with a row under `accent-roofing-dev`** (confirmed 2026-08-23). The
+      composite unique key `(jobber_client_id, contractor_id)` makes that legal, so **any
+      lookup on `jobber_client_id` WITHOUT a `contractor_id` predicate has five live cases
+      today where it returns an arbitrary row.** Registry KI-2b's sibling entry recommended
+      leaving the 8 as orphaned history on the grounds that no read path queried them — that
+      assessment predates the discovery of the unscoped fallback and **is superseded**.
+      ⚠ **This makes the `jobber.js:557` repair CORRECTIVE, not preventive.** Wave 0.2 item 6
+      fixes that one call site; **1.4 owns sweeping the column for other unscoped readers.**
+- [ ] **The residual Jobber 401s were the nightly CRON, not the webhook handlers.**
+      52 occurrences, `source = cron:jobber_incremental_sync`, last seen 2026-08-16 — the sync
+      reads one token at 02:00 and holds it across a per-client loop while the 30-minute
+      `pipelineSync` rotates it underneath (read-after-rotate; `refreshTokenIfNeeded`'s
+      single-flight guard protects rotation, not reads). Wave 0.2 item 4's token fix closes them.
+      ⚠ **DO NOT ATTEMPT TO RECONCILE THIS COUNT AGAINST THE ~550.** The webhook 401s never
+      reach `error_log` at all — `jobber.js:500-503` and `:589-592` `console.warn` and never
+      call `logError`, so only the *consequence* is recorded, one line later, as the NOT NULL
+      violation. The two counts measure different populations and cannot agree. Anyone who
+      tries to make them agree will conclude the diagnosis is wrong.
+- [ ] **⚠ THREE TESTS ARE SKIPPED pending Wave 0.2 items 4-6:** **T5** (pagination,
+      `jobberSyncRepair.test.js`), **T7** (classifySeverity) and **T9** (cross-tenant fallback,
+      both in `jobberIngestionRepair.test.js`). **All three were proven RED before skipping** —
+      the RED shapes are recorded in the Phase 1B report and in each test's own title.
+      ⚠ **The items-4-6 session MUST un-skip them as its FIRST act, confirm each returns to its
+      recorded RED, and only then implement.** The guard-proof order is
+      **un-skip → confirm the EXACT recorded RED → implement → green**, never
+      un-skip → implement → green: a test that goes green on un-skip *before* any
+      implementation was never testing what it claims.
+      **A skip that outlives its reason is a deleted test with extra steps.**
 - [ ] **`error_log.resolved` has never been set on any row.** The column exists and is unused,
       so the log cannot distinguish "fixed" from "stopped happening" — dates are doing all the
       work. **Either use it or drop it.**
