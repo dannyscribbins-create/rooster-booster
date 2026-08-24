@@ -474,6 +474,49 @@ health it cannot observe*. Every outbound surface ignores the column entirely:
       The observable outcome is **17 clients appearing in admin Contacts**, verifiable **only in
       production**. ⚠ **The Lifecycle session owns adding a test once the policy is ruled** —
       until then this is a known, accepted coverage gap rather than an oversight.
+- [ ] **⚠ A SOURCE-TEXT TEST'S ANCHORS ARE LOAD-BEARING, AND A REFACTOR CAN INVALIDATE THEM
+      WITHOUT TOUCHING THE TEST.** T11c anchored its slice on **prose** in the cron file. Wave
+      0.2 item 4a moved the query into `RECENT_CLIENTS_QUERY` and reworded that prose; the end
+      anchor stopped matching, `sliceBetween` fell through to **slice-to-EOF**, and the
+      assertion matched `client.isArchived === true` at the **WRITE SITE** instead of the query.
+      **The test passed against a query with the field deleted — and had already survived one
+      guard-proof attempt in that state.**
+      ⚠ **Anchor on code constants, never on prose, and assert the slice does not overrun** (a
+      negative assertion that the slice excludes the neighbouring construct). Same family as the
+      substring-needle trap already recorded in `CLAUDE.md`.
+- [ ] **⚠ A GUARD-PROOF THAT PRODUCES NO OUTPUT IS NOT A PASSING GUARD-PROOF — IT IS AN
+      UNEXECUTED ONE.** Wave 0.2 item 4b: the revert silently no-opped (CRLF — see the
+      `.gitattributes` entry), the test stayed green, and the run printed nothing, which reads
+      exactly like "nothing to report." **Treat empty output as failure until proven otherwise:**
+      have the disablement print what it changed, and confirm the change landed before trusting
+      the test result. Sits alongside the item-3 rule that a **partial** revert proves nothing —
+      together they are the two ways a guard-proof can lie.
+- [ ] **T12 (cron in-loop token re-acquisition) was authored AFTER its fix**, declared at the
+      test. Implementing item 4b made clear that nothing in the suite could go red if the
+      re-acquisition were removed; the gap was closed rather than left. **Its RED comes from the
+      guard-proof, not from authoring order.** Every other test in Wave 0.2 was RED-first — this
+      is the one exception, recorded as such rather than blended in.
+- [ ] **⚠ THREE INVERTED IN-FILE RECORDS CORRECTED DURING WAVE 0.2 ITEM 4** — each would have
+      instructed a future reader wrongly, and **none would have failed any check**:
+      · `jobberIncrementalSync.js:54` — *"⚠ STILL OPEN… Do not read this comment as already
+        handled"*, on the very defect item 4b closed. **Would have sent the next session to
+        re-fix a closed defect.**
+      · `jobberSyncRepair.test.js` header — described the require-cache harness that item 4e
+        retired.
+      · `jobberIngestionRepair.test.js` header — *"Every test in this file is expected to
+        FAIL."* Now false for five tests that must stay **green**.
+      ⚠ **A COMMENT THAT SURVIVES THE CHANGE IT DESCRIBES BECOMES AN INSTRUCTION TO UNDO IT.**
+      Fourth and fifth instances this wave, after item 2's inverted MVP comment and Session A's
+      `git add -A`. **When a fix closes something a comment marks as open, correcting the comment
+      is part of the fix** — not tidying afterwards. See `CLAUDE.md` → *Test Design*, the
+      RED-narrative and inverted-record rules, which this extends from tests to production
+      comments.
+- [ ] **Per-page Jobber query cost is wired but UNMEASURED.** `actualQueryCost` and
+      `currentlyAvailable / maximumAvailable` are logged per page in `jobberIncrementalSync`,
+      but **stubs carry no `extensions.cost`, so tests can never exercise it.**
+      ⚠ **Measure after the first real cron run.** The 10,000 ceiling and 500/s restore rate come
+      from a single GraphiQL observation (2026-08-23: a cost-7 query left 9,993) and remain an
+      **extrapolation** until a real 50-node page is observed.
 - [ ] **Post-deploy check for the `:891` removal**, once traffic has passed:
       `SELECT count(*) FILTER (WHERE is_archived) AS archived_now, count(*) AS total
       FROM jobber_clients WHERE contractor_id = 'accent-roofing-dev';`
@@ -992,6 +1035,14 @@ root cause, and patching them separately produces five unrelated special cases)
       ⚠ **NOT A DRIVE-BY.** It rewrites working-tree line endings across the whole repo on the
       next checkout. Own session, Backblaze confirmed first, full `npm test` after. **Do not
       fold into a feature commit.**
+      ⚠ **FOURTH INSTANCE, AND THE CASE IS NOW STRONGER (Wave 0.2 item 4, 2026-08-24): THE TRAP
+      HAS BITTEN THE GUARD-PROOF PROCEDURE ITSELF.** The first three instances were tools and
+      production code. This one defeated a **verification step**: a `perl` revert using `\n\n`
+      could not match `\r\n\r\n` in a 424-CRLF-pair file, so the disablement silently no-opped,
+      the test stayed green, and the run produced **no output at all**. Every earlier instance
+      corrupted a result; this one **suppressed the check that would have caught it** — a
+      strictly worse failure mode, because a broken guard-proof invalidates everything it was
+      used to certify.
 
 ---
 

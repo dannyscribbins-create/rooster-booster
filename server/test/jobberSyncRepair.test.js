@@ -7,19 +7,16 @@
 // _setTestOverrides seam: the nightly cron (cron/jobs/jobberIncrementalSync.js)
 // and fetchReferrerContact (utils/pendingReferral.js).
 //
-// ⚠ HOW THESE DRIVE UNEXPORTED CODE WITHOUT TOUCHING PRODUCTION FILES.
-// jobberIncrementalSync exports only startJobberIncrementalSyncJob(); runIncrementalSync
-// and runForContractor are private. Rather than add a seam (which is a production
-// change, and Phase 1 modifies no production code), these tests:
-//   1. patch node-cron's `schedule` to CAPTURE the registered callback, then invoke it;
-//   2. patch `axios.post` on the shared require-cache instance.
-// Both are property lookups performed at CALL time, so patching the shared module
-// object reaches the sync module even though it captured its reference at load time.
-// Everything is restored in after(). --test-concurrency=1 makes this safe.
+// ⚠ THIS HEADER DESCRIBED THE OLD HARNESS AND HAS BEEN CORRECTED (item 4e).
+// It used to read: "jobberIncrementalSync exports only startJobberIncrementalSyncJob();
+// rather than add a seam — a production change, and Phase 1 modifies no production
+// code — these tests patch node-cron's schedule to capture the registered callback,
+// and patch axios.post on the shared require-cache instance." That was accurate for
+// Phase 1 and is now false in every particular.
 //
-// ⚠ Phase 2 should still add a proper _setTestOverrides seam to the sync module.
-// The patching above is sound but it is the kind of cleverness that rots; the seam
-// is what makes T5/T6 legible to the next session.
+// The module exports runIncrementalSync / runForContractor and a _setTestOverrides
+// http seam, so these tests call the real code directly and await it. The cron
+// callback is also awaitable now (item 4d), which is what let the polling go.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { initTestDb } = require('./setup');
@@ -27,39 +24,53 @@ const { describe, it, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-
+// Still required: the seam covers this module's calls, but refreshTokenIfNeeded in
+// crm/jobber.js holds its own axios reference and must be fenced too. See setBoth.
 const axios = require('axios');
-const cron = require('node-cron');
+
+// Wave 0.2 item 4e: the module now exports its runners and an http seam, so these
+// tests call the real code directly. They previously reached it by patching
+// node-cron's schedule and axios.post on the shared require cache — sound, and
+// documented, but dependent on how the module happens to load.
+const syncJob = require('../cron/jobs/jobberIncrementalSync');
+const { runIncrementalSync, _setTestOverrides, _resetTestOverrides } = syncJob;
 
 const TENANT = 'sync-tenant-a';
 
 describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token path (RED first)', () => {
   let pool;
-  let realAxiosPost, realCronSchedule;
-  let capturedCronTask = null;
+  let realAxiosPost;
   let requests = [];
+
+  // ⚠ TWO INTERCEPTION LAYERS, AND BOTH ARE LOAD-BEARING.
+  //
+  // The seam (item 4e) covers THIS module's Jobber calls and is what the tests
+  // assert against. It does NOT cover refreshTokenIfNeeded, which lives in
+  // crm/jobber.js and holds its own axios reference — and T6 deliberately drives an
+  // EXPIRED token, so it triggers a real OAuth token exchange against
+  // api.getjobber.com. Rotating Accent's live refresh token from a test run would
+  // invalidate the production credential.
+  //
+  // So global axios.post stays patched as a fence: anything not covered by the seam
+  // is caught rather than escaping to the network. Same class of hazard as the
+  // RESEND_API_KEY leak documented in errorLoggerAlertFlag.test.js — .env is loaded
+  // alongside .env.test, so live credentials are present in this process.
+  const setBoth = fn => { axios.post = fn; _setTestOverrides({ axiosPost: fn }); };
 
   before(async () => {
     pool = await initTestDb();
-
     realAxiosPost = axios.post;
-    realCronSchedule = cron.schedule;
-
-    // Capture the callback the cron job registers instead of scheduling it.
-    cron.schedule = (_expr, fn) => { capturedCronTask = fn; return { stop() {} }; };
-    require('../cron/jobs/jobberIncrementalSync').startJobberIncrementalSyncJob();
-    assert.ok(typeof capturedCronTask === 'function', 'harness: the cron callback must have been captured');
   });
 
   after(async () => {
     axios.post = realAxiosPost;
-    cron.schedule = realCronSchedule;
+    _resetTestOverrides();
     await pool.end();
   });
 
   beforeEach(async () => {
     requests = [];
-    axios.post = async (...args) => { requests.push(args); throw new Error('harness: unexpected axios.post call'); };
+    setBoth(async (...args) => { requests.push(args); throw new Error('harness: unexpected axios.post call'); });
     await pool.query('DELETE FROM contact_tags');
     await pool.query('DELETE FROM jobber_clients');
     await pool.query('DELETE FROM pending_referrals');
@@ -112,24 +123,17 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
 
   const isClientsQuery = body => /GetRecentClients|clients\s*\(/.test(body?.query || '');
 
-  // ⚠ THE CRON CALLBACK IS NOT AWAITABLE. jobberIncrementalSync.js:283-285 registers
-  //     () => { withLock('jobber_incremental_sync', 20, async () => { ... }); }
-  // — a braced body that returns undefined rather than the withLock promise. So
-  // `await capturedCronTask()` awaits nothing and the sync runs detached. Every
-  // assertion below therefore has to poll for the work, exactly like the
-  // fire-and-forget webhook handlers in jobberIngestionRepair.test.js.
+  // ⚠ THE POLLING IS GONE, AND RETIRING IT IS ITEM 4d/4e's POINT.
+  // This helper used to invoke a cron callback captured off node-cron and then POLL,
+  // because the job registered a braced body — () => { withLock(...); } — which
+  // returns undefined, so awaiting it awaited nothing and the sync ran detached.
+  // Item 4d removed the braces and item 4e exported the runner, so the job is
+  // genuinely awaitable now and the assertions read committed state directly.
   //
-  // The timeout is swallowed on purpose: this BOUNDS the wait, and the assertions
-  // are what decide the outcome. Letting it throw would replace a precise failure
-  // ("0 clients queries were made") with a generic timeout.
-  async function runSyncAndSettle(predicate, timeout = 8000) {
-    await capturedCronTask();
-    const deadline = Date.now() + timeout;
-    while (Date.now() < deadline) {
-      if (await predicate()) return;
-      await new Promise(r => setTimeout(r, 40));
-    }
-  }
+  // This is not tidying. A polling test cannot distinguish "not finished yet" from
+  // "never going to happen" — it reports the same timeout for both, and the second
+  // is the failure worth knowing about.
+  const runSync = () => runIncrementalSync();
 
   // ─────────────────────────────────────────────────────────────────────────
   // T5 — PAGINATION.
@@ -141,13 +145,13 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
   // the log — per CLAUDE.md's rule that a mechanism reporting health it cannot
   // observe is worse than no mechanism.
   // ─────────────────────────────────────────────────────────────────────────
-  it('T5 — the nightly sync must follow hasNextPage and process every page (RED: the query declares $after but the request body binds no variables, and pageInfo is selected and never read, so exactly the first 50 land and the run reports success)', { skip: 'Wave 0.2 item 4 — pagination. UN-SKIP when item 4 lands.' }, async () => {
+  it('T5 — the nightly sync must follow hasNextPage and process every page (RED: the query declares $after but the request body binds no variables, and pageInfo is selected and never read, so exactly the first 50 land and the run reports success)', async () => {
     await seedTenant();
 
     const page1 = Array.from({ length: 50 }, (_, i) => clientNode(i));
     const page2 = Array.from({ length: 10 }, (_, i) => clientNode(50 + i));
 
-    axios.post = async (url, body, opts) => {
+    setBoth(async (url, body, opts) => {
       requests.push({ url, body, opts });
       if (isClientsQuery(body)) {
         const cursor = cursorOf(body);
@@ -157,16 +161,9 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
       }
       // Per-client related-data query.
       return { data: { data: { client: { jobs: { nodes: [] }, quotes: { nodes: [] }, requests: { nodes: [] } } } } };
-    };
-
-    // Settle on the fixed behaviour (60 rows). On current code this polls out and
-    // the assertions report what actually landed.
-    await runSyncAndSettle(async () => {
-      const { rows } = await pool.query(
-        'SELECT count(*)::int AS n FROM jobber_clients WHERE contractor_id = $1', [TENANT]
-      );
-      return rows[0].n >= 60;
     });
+
+    await runSync();
 
     const clientsRequests = requests.filter(r => isClientsQuery(r.body));
     const secondPage = clientsRequests.filter(r => cursorOf(r.body) === 'CURSOR-PAGE-2');
@@ -191,7 +188,7 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
   it('T6 — an expired token must be refreshed and the sync must proceed (RED: jobberIncrementalSync.js:32-35 compares expires_at to now and returns, so not one Jobber request is ever made)', async () => {
     await seedTenant({ expired: true });
 
-    axios.post = async (url, body, opts) => {
+    setBoth(async (url, body, opts) => {
       requests.push({ url, body, opts });
       if (/oauth\/token/.test(url)) {
         return { data: { access_token: 'refreshed-access', refresh_token: 'refreshed-refresh', expires_in: 3600 } };
@@ -200,14 +197,9 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
         return { data: { data: { clients: { nodes: [clientNode(1)], pageInfo: { hasNextPage: false, endCursor: null } } } } };
       }
       return { data: { data: { client: { jobs: { nodes: [] }, quotes: { nodes: [] }, requests: { nodes: [] } } } } };
-    };
-
-    await runSyncAndSettle(async () => {
-      const { rows } = await pool.query(
-        'SELECT count(*)::int AS n FROM jobber_clients WHERE contractor_id = $1', [TENANT]
-      );
-      return rows[0].n >= 1;
     });
+
+    await runSync();
 
     const graphqlCalls = requests.filter(r => isClientsQuery(r.body));
     assert.ok(graphqlCalls.length > 0,
@@ -217,6 +209,62 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
       'SELECT count(*)::int AS n FROM jobber_clients WHERE contractor_id = $1', [TENANT]
     );
     assert.equal(rows[0].n, 1, 'the sync must have upserted the client it fetched after refreshing');
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // T12 — TOKEN RE-ACQUISITION INSIDE THE PER-CLIENT LOOP (item 4b).
+  //
+  // ⚠ WRITTEN AFTER ITS FIX, NOT BEFORE — AND SAID SO PLAINLY. Every other test in
+  // this wave was proven RED first. This one was not: item 4b was implemented, and
+  // only then did it become clear that nothing in the suite could go red if the
+  // re-acquisition were removed. A fix with no test that can fail is the
+  // "mechanism whose failure mode has never been observed" shape from CLAUDE.md, so
+  // the gap is closed here rather than left. Its RED is demonstrated by the T8
+  // guard-proof instead of by authoring order.
+  //
+  // THE DEFECT IT PINS: the run used to acquire one token and hold it across every
+  // iteration. Jobber rotates the refresh token on use, so a concurrent pipelineSync
+  // refresh invalidated the held access token and every remaining client 401'd —
+  // 52 occurrences under source 'jobberIncrementalSync — client <id>', last seen
+  // 2026-08-16. The single-flight guard cannot help: it protects rotation, not reads.
+  //
+  // The stub rotates the stored token between client 1 and client 2, exactly as a
+  // sibling refresher would, and the assertion is that client 2's request carries
+  // the NEW credential.
+  // ─────────────────────────────────────────────────────────────────────────
+  it('T12 — the per-client loop must re-acquire the token, so a mid-run rotation does not poison every remaining client (RED without item 4b: one token is read before the loop and reused, so client 2 presents the credential that was invalidated after client 1)', async () => {
+    await seedTenant();
+
+    const bearers = [];
+    let rotated = false;
+
+    setBoth(async (url, body, opts) => {
+      requests.push({ url, body, opts });
+      if (isClientsQuery(body)) {
+        return { data: { data: { clients: {
+          nodes: [clientNode(1), clientNode(2)],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        } } } };
+      }
+      // Per-client related-data query — record which credential it presented.
+      bearers.push(String(opts?.headers?.Authorization || ''));
+      if (!rotated) {
+        rotated = true;
+        // A sibling refresher (pipelineSync) rotates the row mid-run.
+        await pool.query(
+          `UPDATE tokens SET access_token = 'rotated-access-token' WHERE contractor_id = $1`,
+          [TENANT]
+        );
+      }
+      return { data: { data: { client: { jobs: { nodes: [] }, quotes: { nodes: [] }, requests: { nodes: [] } } } } };
+    });
+
+    await runSync();
+
+    assert.equal(bearers.length, 2, 'both clients must have been fetched');
+    assert.match(bearers[0], /sync-access-token/, 'client 1 uses the pre-rotation token');
+    assert.match(bearers[1], /rotated-access-token/,
+      `client 2 must re-acquire and use the rotated token — it presented ${bearers[1]}`);
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -285,6 +333,67 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
   // changes to call sites outside this session's approved scope (invoice-paid's
   // two reads at :700/:730 already refresh first and are deliberately untouched).
   // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // T11b / T11c — THE GRAPHQL SELECTION SETS MUST REQUEST isArchived.
+  //
+  // ⚠ WHY THESE READ SOURCE TEXT RATHER THAN BEHAVIOUR, AND IT IS NOT LAZINESS.
+  // The cron's write site ALREADY reads client.isArchived correctly
+  // (jobberIncrementalSync.js). Its defect is that the GraphQL query never REQUESTS
+  // the field, so the node arrives without it and `=== true` is permanently false.
+  // A behavioural test cannot see that: it stubs axios, and the stub supplies
+  // whatever the test hands it — so a stubbed node carrying isArchived: true makes
+  // the cron write true TODAY, against unfixed code. That test would be green,
+  // meaningless, and would read as coverage.
+  //
+  // The webhook is the asymmetric case: _fetchFullClient also omits the field, AND
+  // upsertAndTagClient binds a hardcoded false. The hardcoded literal IS
+  // behaviourally visible, which is what T11a pins. The omission is not, which is
+  // what T11b pins. Two defects on one path, and only one of them is observable at
+  // runtime — so both instruments are needed and neither is redundant.
+  //
+  // ⚠ Neither of these proves the field EXISTS in the live Jobber schema. Asserting
+  // that a query string contains a word says nothing about whether Jobber accepts it.
+  // Schema validity was checked in GraphiQL (2026-08-23) and needs post-deploy
+  // confirmation — a rejected field fails the query wholesale and the cron's error
+  // handler returns, silently disabling the nightly sync.
+  // ─────────────────────────────────────────────────────────────────────────
+  const SELECTS_IS_ARCHIVED = /\bisArchived\b/;
+
+  it('T11b — _fetchFullClient must request isArchived (RED: its selection set is "id firstName lastName createdAt" plus customFields/phones/emails/quotes/jobs — isArchived, isCompany and isLead are all absent)', () => {
+    const body = sliceBetween(
+      read('routes/webhooks/jobber.js'),
+      /async function fetchFullClient\(/,
+      /\n\/\/ ── INVOICE \+ JOBS FETCH/
+    );
+    assert.ok(body.length > 200, 'harness: the fetchFullClient slice is too short to be the real body');
+    assert.ok(/client\(id: \$id\)/.test(body), 'harness: the slice must contain the GraphQL query');
+    assert.equal(SELECTS_IS_ARCHIVED.test(body), true,
+      'fetchFullClient must select isArchived, or the webhook path can never know a client was archived');
+  });
+
+  it('T11c — the cron clients query must request isArchived (RED: the selection set is "id firstName lastName isCompany isLead createdAt" plus emails/phones/tags/customFields — isArchived is absent, so client.isArchived === true at the write site is permanently false)', () => {
+    // ⚠ ANCHORED ON THE QUERY CONSTANT, NOT ON PROSE. This slice originally ran from
+    // /query GetRecentClients/ to a comment beginning "// Jobber may not support
+    // updatedAt filter". Item 4a reworded that comment ("...support THE updatedAt
+    // filter"), the end anchor stopped matching, sliceBetween fell back to
+    // slice-to-EOF, and the assertion then found `client.isArchived === true` at the
+    // WRITE SITE further down the file. The test passed against a query with the
+    // field removed — vacuous, and it survived a guard-proof attempt before being
+    // caught. Anchor on code that cannot be reworded, and prove the slice's extent.
+    const body = sliceBetween(
+      read('cron/jobs/jobberIncrementalSync.js'),
+      /const RECENT_CLIENTS_QUERY = /,
+      /\n  const recentClients = \[\]/
+    );
+    assert.ok(body.length > 200, 'harness: the GetRecentClients slice is too short to be the real query');
+    assert.ok(/pageInfo/.test(body), 'harness: the slice must reach the end of the connection selection');
+    // NON-VACUITY: the slice must stop before the write site, or a hit here proves nothing.
+    assert.equal(/client\.isArchived === true/.test(body), false,
+      'harness: the slice has overrun into the write site — any isArchived match below would be spurious');
+    assert.equal(SELECTS_IS_ARCHIVED.test(body), true,
+      'the cron clients query must select isArchived — its write site already reads the field, so the query is the only thing missing');
+  });
+
   const RAW_TOKEN_READ = /SELECT\s+access_token[\s\S]{0,80}?FROM\s+tokens/i;
 
   function sliceBetween(source, startPattern, endPattern) {

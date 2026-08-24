@@ -67,7 +67,7 @@ async function fetchFullClient(clientId, token) {
       {
         query: `query GetClient($id: EncodedId!) {
           client(id: $id) {
-            id firstName lastName createdAt
+            id firstName lastName createdAt isArchived
             customFields { ... on CustomFieldText { label valueText } }
             phones { number description }
             emails { address description }
@@ -383,7 +383,19 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
       phone,
       (relatedData?.isCompany ?? fullClient.isCompany) === true,
       (relatedData?.isLead ?? fullClient.isLead) === true,
-      false,
+      // ⚠ This was a hardcoded `false` until Wave 0.2 item 4c, so EVERY webhook path
+      // wrote is_archived = false regardless of the client's real state in Jobber —
+      // a successful write with a wrong value, which leaves no error and no skip row
+      // to notice it by. Confirmed live 2026-08-23: archiving a client fired a
+      // CLIENT_UPDATE, the handler ran, the fetch succeeded, and the row still said
+      // false. Fixing fetchFullClient's selection set alone would NOT have helped,
+      // because this parameter consulted no source at all.
+      //
+      // Reads fullClient only, unlike the two lines above. fetchClientRelatedData
+      // selects isCompany and isLead but NOT isArchived, so a `relatedData?.isArchived ??`
+      // prefix here would be a permanently-undefined branch — dead code dressed as
+      // symmetry. Write the guard the value needs; do not align this with its siblings.
+      fullClient.isArchived === true,
     ]
   );
 

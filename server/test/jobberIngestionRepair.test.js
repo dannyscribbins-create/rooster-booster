@@ -3,10 +3,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // WAVE 0.2 — JOBBER INGESTION REPAIR. RED-FIRST TESTS.
 //
-// Every test in this file is expected to FAIL against the code as it stands.
-// Each `it` title carries its RED note: the exact failure predicted BEFORE the
-// first run. A test that fails for a different reason is a failed test, not a
-// RED test — see the Phase 1 report for the run-by-run reconciliation.
+// ⚠ THIS HEADER IS A RECORD, AND IT HAS BEEN CORRECTED. It read: "Every test in
+// this file is expected to FAIL against the code as it stands." That was true when
+// written in Phase 1B and is now false — items 1-4 have shipped, so T1, T2, T3, T4
+// and T11a are GREEN and must stay green. T7 and T9 remain skipped pending items 5
+// and 6; each carries the item that un-skips it.
+//
+// What has NOT changed, and is the point of the file: every `it` title still carries
+// the exact failure predicted BEFORE its first run. Those RED notes are the record
+// the T8 guard-proofs check against — a fix is only accepted when disabling it
+// returns the test to the shape named in its own title. A test that fails in a
+// different shape is a failed test, not a RED one.
 //
 // WHAT THIS FILE PINS (Phase 0 / 1A findings):
 //   jobber.js:468,545  const client = payload?.data?.client || payload
@@ -329,6 +336,56 @@ describe('Wave 0.2 — Jobber ingestion repair (RED first)', () => {
     for (const call of refreshCalls) {
       assert.equal(call.cid, TENANT_A, 'the refresh must be scoped to the resolved contractor');
     }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // T11a — ARCHIVE STATE REACHES THE ROW (Wave 0.2 item 4c).
+  //
+  // upsertAndTagClient binds a HARDCODED `false` as its 9th parameter — it reads
+  // isArchived from nothing at all. That is why fixing the GraphQL selection sets
+  // alone is inert: the write site consults no source. This test drives the real
+  // client-update handler with a client Jobber reports as archived.
+  //
+  // ⚠ WHAT THIS TEST CANNOT PROVE. It stubs _fetchFullClient, so it proves the VALUE
+  // is read and written correctly. It CANNOT prove `isArchived` is a selectable field
+  // on Client in the live Jobber schema — a stub answers whatever it is told to. Those
+  // are two different claims and this test makes only the first. Field validity was
+  // checked separately in GraphiQL (2026-08-23: valid in both query shapes, spelled
+  // isArchived) and must be re-confirmed post-deploy, because that check ran against
+  // API version 2025-04-xx while production pins 2026-02-17.
+  // ⚠ Do NOT read a green T11a as schema confirmation.
+  // ─────────────────────────────────────────────────────────────────────────
+  it('T11a — a CLIENT_UPDATE for an archived client must write is_archived = true (RED: upsertAndTagClient binds a hardcoded false as $9 and reads the field from no source, so every webhook path writes false regardless of Jobber state)', async () => {
+    await seedTenant();
+
+    _setTestOverrides({
+      fetchFullClient: async (id) => ({
+        id, firstName: 'Archived', lastName: 'Client',
+        isArchived: true,
+        customFields: [], emails: [], phones: [],
+      }),
+      fetchClientRelatedData: async () => relatedDataStub(),
+    });
+
+    const resp = await post('/webhooks/jobber/client-update', envelope({
+      topic: 'CLIENT_UPDATE', itemId: 'jc-t11a',
+    }));
+    assert.equal(resp.status, 200, 'client-update must ack 200');
+
+    await settle(async () => {
+      const { rows } = await pool.query(
+        `SELECT 1 FROM contact_tags WHERE jobber_client_id = 'jc-t11a' AND tag = 'tier_1'`
+      );
+      return rows.length > 0;
+    });
+
+    const { rows } = await pool.query(
+      `SELECT is_archived FROM jobber_clients WHERE jobber_client_id = 'jc-t11a' AND contractor_id = $1`,
+      [TENANT_A]
+    );
+    assert.equal(rows.length, 1, 'the row must exist');
+    assert.equal(rows[0].is_archived, true,
+      'an archived Jobber client must land as is_archived = true, not false');
   });
 
   // ─────────────────────────────────────────────────────────────────────────
