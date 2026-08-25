@@ -607,6 +607,29 @@ check — which is why this is a named build rather than a checklist line.
       · **Priority: LOW.** Cron path, not money. The four behavioural tests cover the shapes that
         matter. **Revisit if `postJobSequence.js` is opened for any other reason — do not
         schedule it on its own.**
+- [ ] **⚠ REVERTING A PREDICATE WITHOUT ITS BOUND PARAMETER IS NOT A REVERT — it is a syntax
+      error wearing one.** Three instances across Waves 0.2 and 0.3. The resulting Postgres
+      **bind-count error does not match a grep written for the assertion message**, so the
+      guard-proof produces **EMPTY OUTPUT** and reads as *"nothing to report."*
+      ⚠ **All three were caught, and caught ONLY because empty output is treated as failure by
+      rule.** The rule's value is not that it prevents the mistake — it is that it makes the
+      mistake **visible**. **A guard-proof must revert the whole block, and silence is never a
+      pass.**
+- [ ] **⚠ PREFER UNREPRESENTABLE TO DETECTED.** `matchPendingReferral` **derives** the contractor
+      from `userId` rather than accepting one. The ruling asked for assert-or-fail-closed on a
+      caller/row mismatch; **the implementation removed the possibility instead.** There is no
+      argument to prefer, so there is no wrong argument to pass.
+      **A detected mismatch still requires someone to read the assertion; an unrepresentable one
+      cannot occur.** ⚠ **Apply this shape wherever a parameter duplicates a fact the database
+      already owns authoritatively** — `users.contractor_id` is `NOT NULL` with an FK, so the
+      user's row cannot disagree with itself.
+- [ ] **⚠ F8 CANNOT BE VERIFIED IN PRODUCTION, AND THAT IS NOT AN OVERSIGHT.** All twelve sites
+      are **unreachable at one contractor** — there is no second tenant whose data could leak, so
+      **nothing observable changes on deploy.** ⚠ **The tests ARE the verification.**
+      **Do not wait for a production signal that cannot arrive, and do not record F8 as "verified
+      in production"** the way Wave 0.2 items 1-3 were (a real Jobber client, created, edited and
+      archived). The first genuine verification opportunity is **contractor #2's provisioning**,
+      which is also the moment the defects would have become live.
 - [ ] **⚠ A SKIPPED TEST NEEDS A REMOVAL CONDITION.** Wave 0.2's three skips each named the item
       that would un-skip them, and all three were removed in the same session. **A skip meaning
       "this is broken and I do not know why" has no such condition** and reads as *deferred

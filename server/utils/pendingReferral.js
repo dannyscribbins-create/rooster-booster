@@ -565,14 +565,47 @@ async function sendPendingRewardEmail(pendingReferrerEmail, pendingReferrerName,
 // Called after email verification to link a new user to any pending referral record.
 // Matches on email (case-insensitive) or phone. Returns matched record or null.
 async function matchPendingReferral(userId, email, phone) {
+  // ── TENANT SCOPE IS DERIVED, NEVER SUPPLIED (Wave 0.3 F8) ────────────────────
+  // ⚠ THIS IS THE ONE F8 SITE THAT WAS NOT A ONE-LINE FILTER. Both queries below
+  // matched pending_referrals on identity alone, and NEITHER END of the call had a
+  // tenant: the signature took none, and the only caller (referrer.js:718) selected
+  // just email and phone from the user row. A newly verified signup under one
+  // contractor could therefore claim a pending referral belonging to another —
+  // proven, not theorised: the F8-3/F8-4 tests observed matched_user_id being set
+  // cross-tenant.
+  //
+  // ⚠ DERIVED FROM userId, NOT ACCEPTED AS A PARAMETER, and that is deliberate.
+  // users.contractor_id is NOT NULL with an FK to contractors (db.js:1201-1240), so
+  // the user's own row is authoritative and cannot disagree with itself. A
+  // caller-supplied contractorId CAN disagree with the user's real tenant — and a
+  // mismatch there is the same class of defect F8 exists to fix, arriving through
+  // the parameter list instead of through a missing WHERE clause. There is no
+  // argument to prefer, so there is no wrong argument to pass.
+  //
+  // FAILS CLOSED. A user id that resolves to no row matches nothing rather than
+  // falling back to an unscoped search — the unscoped search is the bug.
+  const ownerResult = await pool.query(
+    'SELECT contractor_id FROM users WHERE id = $1',
+    [userId]
+  );
+  const contractorId = ownerResult.rows[0]?.contractor_id || null;
+  if (!contractorId) {
+    await logError({
+      req: null,
+      error: new Error(`matchPendingReferral: no contractor for user ${userId} — refusing to match a pending referral without a tenant`),
+      source: 'pendingReferral — matchPendingReferral tenant',
+    });
+    return null;
+  }
+
   let match = null;
 
   if (email) {
     const result = await pool.query(
       `SELECT id FROM pending_referrals
-       WHERE status = 'pending' AND LOWER(referred_by_email) = LOWER($1)
+       WHERE contractor_id = $2 AND status = 'pending' AND LOWER(referred_by_email) = LOWER($1)
        LIMIT 1`,
-      [email]
+      [email, contractorId]
     );
     if (result.rows.length > 0) match = result.rows[0];
   }
@@ -582,10 +615,10 @@ async function matchPendingReferral(userId, email, phone) {
     // Jobber-stored numbers (e.g. "+1 (555) 999-5555") and signup-entered numbers.
     const result = await pool.query(
       `SELECT id FROM pending_referrals
-       WHERE status = 'pending'
+       WHERE contractor_id = $2 AND status = 'pending'
          AND REGEXP_REPLACE(referred_by_phone, '[^0-9]', '', 'g') = REGEXP_REPLACE($1, '[^0-9]', '', 'g')
        LIMIT 1`,
-      [phone]
+      [phone, contractorId]
     );
     if (result.rows.length > 0) match = result.rows[0];
   }
