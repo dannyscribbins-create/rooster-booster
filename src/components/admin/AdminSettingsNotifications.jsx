@@ -174,7 +174,30 @@ function NotifToggle({ triggerKey, checked, onToggle, flash, defaultOn = true, l
   );
 }
 
-export default function AdminSettingsNotifications() {
+// ── DEEPLINK LANDING (Wave 0.4 item 4) ────────────────────────────────────────
+// navRequest is the same shape AdminTeamSettings already uses for the Inbox →
+// Manage Team jump: { token } where the token changes on every request, so a
+// second jump to a card the admin is already looking at still re-fires. A
+// boolean could not do that — it would be true the first time and true the
+// second, and nothing would happen.
+export default function AdminSettingsNotifications({ navRequest }) {
+  // Momentary highlight so arrival is visible. The banner that sent the admin
+  // here names one setting on a page of twenty; landing without a cue leaves
+  // them scanning for it, which is the whole reason the deeplink exists.
+  const [highlightGate, setHighlightGate] = useState(false);
+  useEffect(() => {
+    if (!navRequest) return;
+    const el = document.getElementById('notif-referral-match-outreach');
+    // scrollIntoView is absent in jsdom; guarded so the highlight still runs
+    // under test rather than throwing past it.
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    setHighlightGate(true);
+    const t = setTimeout(() => setHighlightGate(false), 2000);
+    return () => clearTimeout(t);
+  }, [navRequest?.token]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Feeds the Live preview's [Company] substitution. Same reason as
   // AnnouncementPreviewPopup above: the resolver is module-level and takes the
   // name as an argument rather than reaching for a binding it cannot see.
@@ -467,7 +490,18 @@ export default function AdminSettingsNotifications() {
           the credit-attribution email to the referred client, by email and SMS.
           The sub-copy says so because a contractor turning this off means off. */}
       <p style={{ margin: '28px 0 12px', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans }}>Referral Matching</p>
-      <div id="notif-referral-match-outreach" style={{ ...sectionCard, marginBottom: 20 }}>
+      <div
+        id="notif-referral-match-outreach"
+        style={{
+          ...sectionCard,
+          marginBottom: 20,
+          // Momentary arrival cue. Uses the existing marker token rather than a
+          // new colour, and returns to the normal card border after 2s.
+          borderColor: highlightGate ? AD.marker : AD.border,
+          boxShadow: highlightGate ? `0 0 0 3px ${AD.amberBg}` : AD.shadowSm,
+          transition: 'border-color 0.3s, box-shadow 0.3s',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>Referral match outreach</p>

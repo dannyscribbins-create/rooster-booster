@@ -447,7 +447,7 @@ function MissingTab() {
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function AdminReferralReview({ initialTab = 'pending' }) {
+export default function AdminReferralReview({ initialTab = 'pending', onOpenOutreachSetting }) {
   const [activeTab, setActiveTab] = useState(initialTab);
 
   useEffect(() => {
@@ -494,7 +494,7 @@ export default function AdminReferralReview({ initialTab = 'pending' }) {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'pending' && <AdminPendingReferrals />}
+      {activeTab === 'pending' && <AdminPendingReferrals onOpenOutreachSetting={onOpenOutreachSetting} />}
       {activeTab === 'missing' && <MissingTab />}
       {activeTab === 'flagged' && <FlaggedTab />}
     </>

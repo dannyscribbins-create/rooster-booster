@@ -41,7 +41,16 @@ function StatusBadge({ status, needsVerification }) {
   );
 }
 
-export default function AdminPendingReferrals() {
+// The gate card's anchor id in AdminSettingsNotifications. Named here because
+// the banner below links to it; if it ever changes, both ends move together.
+const OUTREACH_SETTING_ANCHOR = 'notif-referral-match-outreach';
+
+// ⚠ onOpenOutreachSetting IS OPTIONAL BY DESIGN. The deeplink control renders
+// whether or not a navigator is supplied — the button is part of the held
+// state's meaning, not part of the app's routing. Rendered standalone (in a
+// test, or if the mount point ever changes) it is inert rather than absent,
+// which keeps "is the control there" separable from "does routing work".
+export default function AdminPendingReferrals({ onOpenOutreachSetting }) {
   const [records, setRecords]             = useState([]);
   const [loading, setLoading]             = useState(true);
   const [includeClosed, setIncludeClosed] = useState(false);
@@ -175,6 +184,23 @@ export default function AdminPendingReferrals() {
             const isClosingThis     = closing === row.id;
             const candidates        = row.jobber_name_matches || [];
 
+            // ── HELD: MATCHED, BUT THE OUTREACH GATE WAS CLOSED (Wave 0.4 item 3) ──
+            // ⚠ DERIVED FROM THE FACTS, NOT DUPLICATED BESIDE THEM. No column
+            // records "held": contact details present means the matcher resolved
+            // a referrer AND there was somewhere to send; invite_channel 'none'
+            // with a null invite_sent_at means nothing went out. Together that is
+            // the state, and it cannot disagree with itself the way a separate
+            // flag could.
+            //
+            // ⚠ WITHOUT THIS THE CARD IS ACTIVELY MISLEADING. A held row and a
+            // successfully-invited row differ only in a metadata column, so while
+            // the gate is closed every success reads exactly like a failure.
+            const isHeld = isPending
+              && !needsVerification
+              && !!(row.referred_by_email || row.referred_by_phone)
+              && row.invite_channel === 'none'
+              && !row.invite_sent_at;
+
             // Preview only — the standard invite template is sent, not this text
             const defaultMsg = `Hi ${row.referred_by_name || 'there'}, just checking in — your referral reward is still waiting. Create your account here: https://roofmiles.com`;
 
@@ -285,6 +311,38 @@ export default function AdminPendingReferrals() {
                         })}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* ── Held: invite withheld by the outreach gate ── */}
+                {isHeld && (
+                  <div style={{ background: AD.bgCardTint, border: `1px solid ${AD.borderStrong}`, borderRadius: 10, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    {/* ⚠ THIS COPY DOES NOT ASSUME THE GATE IS OFF FOR PRE-LAUNCH
+                        REASONS. A contractor who keeps outreach off permanently and
+                        on purpose sees this same banner, and it must read as a
+                        standing state rather than as a setup step they forgot. */}
+                    <span style={{ fontSize: 13, color: AD.textSecondary }}>
+                      Invite pending your approval. To automate, toggle ON the match trigger outreach.
+                    </span>
+                    {/* ⚠ THE data-deeplink LIVES ON THE WRAPPER, NOT THE BUTTON,
+                        BECAUSE Btn DROPS UNKNOWN PROPS SILENTLY. It destructures a
+                        fixed list ({ onClick, children, variant, size, style,
+                        disabled }) and spreads nothing, so an attribute passed to it
+                        never reaches the DOM and never errors — it would simply not
+                        be there. Teaching Btn to forward the rest is the better fix
+                        and is NOT bundled here: it is a shared control with a
+                        hundred-odd callers and no business being changed by a
+                        referral-matching wave. */}
+                    <span data-deeplink={OUTREACH_SETTING_ANCHOR}>
+                      <Btn
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onOpenOutreachSetting && onOpenOutreachSetting()}
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        Outreach setting
+                      </Btn>
+                    </span>
                   </div>
                 )}
 

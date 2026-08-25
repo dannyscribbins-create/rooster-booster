@@ -75,6 +75,10 @@ export default function AdminPanel({ onLogout }) {
   const [missingOpenCount, setMissingOpenCount]   = useState(0);
   const [referralReviewTab, setReferralReviewTab] = useState('pending');
   const [showSettings, setShowSettings]           = useState(false);
+  // Wave 0.4 item 4 — the held-referral banner's jump to the outreach gate card.
+  // Same { token } shape as teamNavRequest: the token changes on every request so
+  // a repeat jump re-fires even when Settings is already open on that page.
+  const [notifNavRequest, setNotifNavRequest]     = useState(null);
   const [dashboardRefreshKey, setDashboardRefreshKey] = useState(0);
   const [dashboardCachedAt, setDashboardCachedAt]     = useState(null);
   const [inboxOpen, setInboxOpen]                 = useState(false);
@@ -234,7 +238,13 @@ export default function AdminPanel({ onLogout }) {
     referrers:        <AdminReferrers       setLoggedIn={handleSessionExpired} />,
     payouts:          <AdminCashOuts        setLoggedIn={handleSessionExpired} />,
     retention:        <AdminEngagement      setLoggedIn={handleSessionExpired} />,
-    'missing-referrals': <AdminReferralReview initialTab={referralReviewTab} />,
+    'missing-referrals': <AdminReferralReview
+                            initialTab={referralReviewTab}
+                            onOpenOutreachSetting={() => {
+                              setNotifNavRequest({ token: Date.now() });
+                              setShowSettings(true);
+                            }}
+                          />,
     activity:         <AdminActivity        setLoggedIn={handleSessionExpired} />,
   };
 
@@ -286,7 +296,7 @@ export default function AdminPanel({ onLogout }) {
   return (
     <AdminPermissionsContext.Provider value={permState}>
       <BrandingProvider supplied={suppliedBranding}>
-        <AdminShell page={page} setPage={handleNavClick} onLogout={onLogout} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
+        <AdminShell page={page} setPage={handleNavClick} onLogout={onLogout} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsNotifNavRequest={notifNavRequest} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
           {pages[page]}
         </AdminShell>
         <AdminInboxSidebar

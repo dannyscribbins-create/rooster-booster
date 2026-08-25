@@ -65,12 +65,14 @@ function mockFetch({ prefs = {} } = {}) {
   });
 }
 
-const mount = () =>
+const renderWith = (props = {}) =>
   render(
     <BrandingProvider supplied={null}>
-      <AdminSettingsNotifications />
+      <AdminSettingsNotifications {...props} />
     </BrandingProvider>
   );
+
+const mount = () => renderWith();
 
 describe('Wave 0.4 item 2 — the referral match outreach send gate (RED first)', () => {
   beforeEach(() => { mockFetch(); });
@@ -131,5 +133,29 @@ describe('Wave 0.4 item 2 — the referral match outreach send gate (RED first)'
     await screen.findByText('Email Notifications');
     const anchor = container.querySelector(`#${GATE_ANCHOR}`);
     expect(anchor, `expected an element with id="${GATE_ANCHOR}" for the Pending Referrals banner to link to`).toBeTruthy();
+  });
+
+  // ── ITEM 4's ARRIVAL CUE ───────────────────────────────────────────────────
+  // ⚠ N8/N9 ARE A PAIR AND NEITHER MEANS ANYTHING ALONE. N8 alone passes against
+  // a card that is permanently highlighted; N9 alone passes against one that
+  // never highlights. Together they pin that the cue is CONDITIONAL on arrival.
+  //
+  // jsdom applies inline styles and reads them back, so the border is genuinely
+  // observable here — unlike a class-based cue, which would need a stylesheet
+  // jsdom never loads. scrollIntoView does not exist in jsdom and the component
+  // guards on typeof, so this exercises the real effect rather than a stub.
+  it('N8 — arriving via the deeplink highlights the gate card (RED: no navRequest handling exists, so a deeplinked admin lands on a page of twenty cards with no cue which one they came for)', async () => {
+    const { container } = renderWith({ navRequest: { token: 1 } });
+    await screen.findByText(GATE_LABEL);
+    const card = container.querySelector(`#${GATE_ANCHOR}`);
+    expect(card.style.borderColor, 'the card must be visibly marked on arrival').toBeTruthy();
+    expect(card.style.boxShadow).toContain('0 0 0 3px');
+  });
+
+  it('N9 — with no deeplink, the gate card is NOT highlighted (the partner that stops N8 from being satisfied by a permanently highlighted card)', async () => {
+    const { container } = renderWith({});
+    await screen.findByText(GATE_LABEL);
+    const card = container.querySelector(`#${GATE_ANCHOR}`);
+    expect(card.style.boxShadow).not.toContain('0 0 0 3px');
   });
 });

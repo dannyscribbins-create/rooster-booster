@@ -241,7 +241,7 @@ function SystemSettings() {
   );
 }
 
-export default function AdminSettings({ teamNavRequest, initialTeamOpenFlagCount = 0 }) {
+export default function AdminSettings({ teamNavRequest, notifNavRequest, initialTeamOpenFlagCount = 0 }) {
   const { branding } = useAdminBranding();
   const [settingsPage, setSettingsPage] = useState('company');
   // Seeded from AdminApp's login-time fetch so the sidebar badge is accurate even before
@@ -257,11 +257,18 @@ export default function AdminSettings({ teamNavRequest, initialTeamOpenFlagCount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamNavRequest?.token]);
 
+  // Same shape, same reason (Wave 0.4 item 4): the held-referral banner in
+  // Pending Referrals jumps here to the referral match outreach card.
+  useEffect(() => {
+    if (notifNavRequest) setSettingsPage('notifications');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notifNavRequest?.token]);
+
   const SETTINGS_PAGES = {
     'my-profile':  <AdminSettingsMyProfile />,
     company:       <CompanyDetailsSettings />,
     branding:      <BrandingProfileSettings />,
-    notifications: <AdminSettingsNotifications />,
+    notifications: <AdminSettingsNotifications navRequest={notifNavRequest} />,
     experience:    <AdminSettingsExperience />,
     referral:      <ReferralProgramSettings />,
     banking:       <BankingSettings />,

@@ -271,6 +271,14 @@ entry is the canonical record until then.**
   earliest legal push for Wave 0.4 was after **item 4**, not item 2 — items 3 and 4 carry React
   REDs. **The safety constraint and the test gate are independent, and the LATER of the two
   governs. Compute the boundary from both.**
+- ⚠ **READING AN EXIT CODE THROUGH A PIPE GIVES YOU THE WRONG PROCESS.**
+  `npm test | grep ... ; EXIT=$?` captures **grep's** status, not npm's — so a fully RED suite
+  reports `exit 0` whenever grep matched anything at all.
+  ⚠ **CLAUDE.md already says check the exit code rather than the pass count. The rule was
+  FOLLOWED and still produced a false green**, because it does not say the exit code must be
+  read from an UNPIPED invocation. **Same shape as the CRLF revert that silently no-opped: a
+  verification step defeated by its own mechanics rather than by its subject.**
+  **Run the gate unpiped, or use `PIPESTATUS`.**
 - ⚠ **pg_trgm ABSORBS WHITESPACE AND CASE ENTIRELY.** Every variant of `tommy mills` scores
   **1.0000** — interior double space, NBSP, tab, leading/trailing space, mixed case. Measured
   2026-08-25. **Normalising before a trigram compare buys DETERMINISM** (stable ranking, real
@@ -297,6 +305,13 @@ entry is the canonical record until then.**
   does.** The durable form is a **POSITIVE CONTROL beside every negative assertion**
   (`assertMatcherIsLive` in `server/test/wave04Matcher.test.js`), asserting the system is live
   before asserting what it did not do.
+- ⚠ **AND A NEGATIVE ASSERTION NEEDS A PARTNER OR IT IS FREE.** N8 ("arriving via the deeplink
+  highlights the card") passes on its own against a card that is **permanently** highlighted;
+  N9 ("with no deeplink it is not highlighted") passes on its own against one that **never**
+  highlights. Only the pair pins that the cue is **conditional on arrival**. ⚠ **This is the
+  same structure as `assertMatcherIsLive`, and it is the general form: the durable fix for
+  vacuity is a PARTNER, not vigilance.** Vigilance failed three waves running; a partner fails
+  loudly the moment the property stops being conditional.
 - **Harness bugs caught by preconditions, not shipped as false REDs:** `contractors` keys on
   `id`, not `contractor_id`, and a blanket `DELETE FROM contractors` hits initDB's seeded row
   and raises 23503 in every `beforeEach` — a harness failure indistinguishable from a RED; and
@@ -353,6 +368,12 @@ entry is the canonical record until then.**
   that was never true has no drift to notice and no date that looks wrong. It is found only by
   testing the claim, which nothing in this project routinely does.** When a governing sentence
   asserts that something WILL WORK, the only check is to make it work and see.
+- **FLAGGED, NOT BUNDLED — `Btn` silently drops unknown props.** It destructures a fixed list
+  (`{ onClick, children, variant, size, style, disabled }`) and spreads nothing, so an
+  attribute passed to it **never reaches the DOM and never errors** — it is simply not there.
+  Wave 0.4 put `data-deeplink` on a wrapping `<span>` instead. ⚠ **Teaching `Btn` to forward
+  the rest is the better fix and belongs nowhere near a referral-matching wave** — a shared
+  control with ~100 callers. **Candidate for a UI session.**
 
 - [ ] **🔴 `jobber_client_id` NOT NULL violations — ~550 occurrences, LIVE (last 2026-08-21).**
       Registry KI-2b closed this in error; the failure is **upstream** of

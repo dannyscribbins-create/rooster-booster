@@ -240,7 +240,7 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
   );
 }
 
-export function AdminShell({ children, page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onLogout, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard, onInboxOpen, inboxUnreadCount = 0, settingsTeamNavRequest, settingsTeamOpenFlagCount = 0 }) {
+export function AdminShell({ children, page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onLogout, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard, onInboxOpen, inboxUnreadCount = 0, settingsTeamNavRequest, settingsNotifNavRequest, settingsTeamOpenFlagCount = 0 }) {
   const cachedAgoText = dashboardCachedAt
     ? `Cached ${Math.round((Date.now() - new Date(dashboardCachedAt).getTime()) / 60000)}m ago`
     : null;
@@ -357,7 +357,7 @@ export function AdminShell({ children, page, setPage, pendingCount, flaggedUnres
 
         {/* ── Page content ── */}
         {settingsActive
-          ? <AdminSettings teamNavRequest={settingsTeamNavRequest} initialTeamOpenFlagCount={settingsTeamOpenFlagCount} />
+          ? <AdminSettings teamNavRequest={settingsTeamNavRequest} notifNavRequest={settingsNotifNavRequest} initialTeamOpenFlagCount={settingsTeamOpenFlagCount} />
           : <main style={{ padding: '36px 80px 36px 40px' }}>{children}</main>
         }
 
