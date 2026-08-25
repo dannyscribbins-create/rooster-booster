@@ -327,10 +327,15 @@ async function fetchReferrerContact(jobberId, contractorId) {
 // (which has allClients populated) will re-attempt the name match for those records
 // via the isRetry path below.
 async function checkAndCreatePendingReferral(contractorId, client, referredByName, allClients = []) {
-  // Check if referrer already has an account
+  // Check if referrer already has an account WITH THIS CONTRACTOR (Wave 0.3 F8).
+  // ⚠ THIS ONE FAILS BY NOT ACTING, which is why it is the hardest of the twelve to
+  // notice. Unscoped, the question was answered from every tenant at once: a name
+  // held under another contractor tripped the early return below and this
+  // contractor's pending referral was silently never created. No row, no error,
+  // nothing to find afterwards — the referral simply did not exist.
   const userResult = await pool.query(
-    'SELECT id FROM users WHERE LOWER(full_name) = LOWER($1) AND deleted_at IS NULL LIMIT 1',
-    [referredByName]
+    'SELECT id FROM users WHERE contractor_id = $2 AND LOWER(full_name) = LOWER($1) AND deleted_at IS NULL LIMIT 1',
+    [referredByName, contractorId]
   );
   if (userResult.rows.length > 0) return;
 

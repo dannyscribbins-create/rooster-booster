@@ -1067,7 +1067,8 @@ router.post('/api/admin/campaigns/:id/load-audience', requirePermission('campaig
            COALESCE(c.email, jc.email),
            EXISTS (
              SELECT 1 FROM users u
-             WHERE u.deleted_at IS NULL
+             WHERE u.contractor_id = $2
+               AND u.deleted_at IS NULL
                AND LOWER(u.email) = LOWER(COALESCE(c.email, jc.email))
            )
          FROM dynamic_audience_members dam

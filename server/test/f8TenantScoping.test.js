@@ -27,6 +27,23 @@
 //     it; a real property, not this wave's work.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ⚠ LIVE-SEND FENCE FOR THIS WHOLE FILE, INSTALLED BEFORE ./setup.
+// .env.test does not set RESEND_API_KEY, but setup.js loads .env alongside it, so the
+// REAL key is present in this process (see errorLoggerAlertFlag.test.js). Several
+// paths these tests drive — pendingReferral's invite and credit-attribution mails,
+// and any cron pass pulled in later — call resend.emails.send DIRECTLY, with no
+// _setTestOverrides seam, and build their Resend instance at require() time, so a
+// later env mutation cannot reach them.
+//
+// Kept deliberately after the postJobSequence chain test was deleted: today's tests
+// happen not to reach a send, but that is a property of the current fixtures rather
+// than of the file, and the cost of being wrong is real mail to a real inbox.
+const _resendPath = require.resolve('resend');
+require.cache[_resendPath] = {
+  id: _resendPath, filename: _resendPath, loaded: true,
+  exports: { Resend: class { constructor() { this.emails = { send: async () => ({ data: { id: 'f8-stub' }, error: null }) }; } } },
+};
+
 const { initTestDb } = require('./setup');
 const { describe, it, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');

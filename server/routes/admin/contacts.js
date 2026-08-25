@@ -439,10 +439,13 @@ router.get('/api/admin/contacts/:contactId', requirePermission('contacts'), asyn
     // 2. Check pipeline_cache by client name (referred clients)
     if (!contact.jobber_client_id) {
       try {
+        // Scoped to the calling admin's contractor (Wave 0.3 F8). Unscoped, this
+        // borrowed a jobber_client_id from a user belonging to a different tenant
+        // and stamped it onto this contractor's contact — wrong linkage, silently.
         const userRes = await pool.query(
           `SELECT jobber_client_id FROM users
-           WHERE LOWER(email) = LOWER($1) AND jobber_client_id IS NOT NULL LIMIT 1`,
-          [contact.email]
+           WHERE contractor_id = $2 AND LOWER(email) = LOWER($1) AND jobber_client_id IS NOT NULL LIMIT 1`,
+          [contact.email, contractorId]
         );
         if (userRes.rows.length > 0) {
           contact.jobber_client_id = userRes.rows[0].jobber_client_id;

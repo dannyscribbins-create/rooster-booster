@@ -590,6 +590,28 @@ check — which is why this is a named build rather than a checklist line.
       `SELECT`). The first version **could not detect its own overrun**; this one **cannot
       overrun silently.**
       **Any source-text test must assert the BOUNDS of what it read, not only the content.**
+- [ ] **⚠ `postJobSequence.js:82` and `:100` ARE COVERED BY SOURCE-TEXT ONLY.** The
+      `contractor_id` filter is proven **PRESENT** and independently guard-proofed at that
+      level. It is **NOT proven to block a cross-tenant row.** This is ruling 3's limit applying
+      to two real sites rather than as a general caveat.
+      · A behavioural test (F8-13) was attempted and **DELETED, not skipped** — it passed on
+        fixed code but **did not go RED on revert**, reporting `0 Scenario A, 0 Scenario B`
+        against a `pipeline_cache` row satisfying its documented 20–28h predicate. **The control
+        failed in the same run**, which locates the fault in the harness rather than the
+        assertion.
+      · **RULED OUT during three attempts, so a future session need not re-check:** the
+        `experience_flow_enabled` gate (real, fixed, control added), the `pipeline_cache` schema,
+        the seed columns, and the window arithmetic. **None explains it.**
+      · **NEXT STEP IF REVISITED:** dump the due-row query's actual result **from inside the
+        running pass** rather than inferring from the outcome. That was the untried diagnostic.
+      · **Priority: LOW.** Cron path, not money. The four behavioural tests cover the shapes that
+        matter. **Revisit if `postJobSequence.js` is opened for any other reason — do not
+        schedule it on its own.**
+- [ ] **⚠ A SKIPPED TEST NEEDS A REMOVAL CONDITION.** Wave 0.2's three skips each named the item
+      that would un-skip them, and all three were removed in the same session. **A skip meaning
+      "this is broken and I do not know why" has no such condition** and reads as *deferred
+      coverage* rather than as a gap — the more misleading of the two.
+      **Delete it and record the diagnosis instead**, which is what F8-13 did.
 - [ ] **⚠ A TEST'S ANCHOR MUST NOT LIVE INSIDE THE REGION THE FIX MODIFIES.** F8's source-text
       needles embedded each `WHERE` clause. Adding `contractor_id` **ahead of** the name
       predicate — the natural placement — made the needle stop matching, so the test failed with

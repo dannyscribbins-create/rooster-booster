@@ -310,10 +310,15 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
 
     if (shouldFireAny) {
       try {
-        // Look up referrer's app account
+        // Look up referrer's app account, scoped to this contractor (Wave 0.3 F8).
+        // ⚠ Unscoped, this asked "does this referrer have an account?" of EVERY
+        // tenant — so a name held under another contractor produced a match here and
+        // the notification emails below were addressed to that other tenant's user.
         const referrerAccountResult = await pool.query(
-          `SELECT id, email, full_name FROM users WHERE LOWER(full_name)=LOWER($1) AND deleted_at IS NULL LIMIT 1`,
-          [referredBy]
+          `SELECT id, email, full_name FROM users
+            WHERE contractor_id = $2 AND LOWER(full_name)=LOWER($1) AND deleted_at IS NULL
+            LIMIT 1`,
+          [referredBy, contractorId]
         );
         const referrerAccount = referrerAccountResult.rows[0] || null;
 

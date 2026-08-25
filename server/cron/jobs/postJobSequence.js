@@ -79,10 +79,14 @@ async function _runPostJobSequencePass() {
           // Match to an app user — priority: jobber_client_id → email → LOWER(name)
           let matchedUser = null;
 
+          // ⚠ THIS CHAIN'S MIDDLE STEP WAS ALREADY SCOPED AND THE OUTER TWO WERE NOT,
+          // which is exactly what made it read as tenant-safe (Wave 0.3 F8). Anyone
+          // checking the email step below concluded the whole fallback was filtered.
+          // All three now carry contractor_id.
           const byClientId = await pool.query(
             `SELECT id, full_name, email, referral_code FROM users
-             WHERE jobber_client_id = $1 LIMIT 1`,
-            [row.jobber_client_id]
+             WHERE contractor_id = $2 AND jobber_client_id = $1 LIMIT 1`,
+            [row.jobber_client_id, contractorId]
           );
           matchedUser = byClientId.rows[0] || null;
 
@@ -98,8 +102,8 @@ async function _runPostJobSequencePass() {
           if (!matchedUser && clientName) {
             const byName = await pool.query(
               `SELECT id, full_name, email, referral_code FROM users
-               WHERE LOWER(full_name) = LOWER($1) LIMIT 1`,
-              [clientName]
+               WHERE contractor_id = $2 AND LOWER(full_name) = LOWER($1) LIMIT 1`,
+              [clientName, contractorId]
             );
             matchedUser = byName.rows[0] || null;
           }

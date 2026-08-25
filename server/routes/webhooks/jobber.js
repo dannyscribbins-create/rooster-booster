@@ -924,22 +924,28 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       if (experienceFlowEnabled) {
         // STEP 5 — Match against app users (name → email → phone)
         let matchedUser = null;
+        // ⚠ ALL THREE STEPS ARE SCOPED (Wave 0.3 F8). A fallback chain has to be
+        // filtered at EVERY step: scoping only the first leaves the leak intact for
+        // any client the first step misses, which is precisely when the fallbacks
+        // run. Unscoped, a paid invoice for one contractor could create an
+        // experience prompt — or send a branded invite email — for a user belonging
+        // to a different contractor entirely.
         const nameResult = await pool.query(
-          'SELECT id FROM users WHERE LOWER(full_name) = LOWER($1) LIMIT 1',
-          [clientName]
+          'SELECT id FROM users WHERE contractor_id = $2 AND LOWER(full_name) = LOWER($1) LIMIT 1',
+          [clientName, contractorId]
         );
         matchedUser = nameResult.rows[0] || null;
         if (!matchedUser && clientEmail) {
           const emailResult = await pool.query(
-            'SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
-            [clientEmail]
+            'SELECT id FROM users WHERE contractor_id = $2 AND LOWER(email) = LOWER($1) LIMIT 1',
+            [clientEmail, contractorId]
           );
           matchedUser = emailResult.rows[0] || null;
         }
         if (!matchedUser && clientPhone) {
           const phoneResult = await pool.query(
-            "SELECT id FROM users WHERE REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = REGEXP_REPLACE($1, '[^0-9]', '', 'g') LIMIT 1",
-            [clientPhone]
+            "SELECT id FROM users WHERE contractor_id = $2 AND REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = REGEXP_REPLACE($1, '[^0-9]', '', 'g') LIMIT 1",
+            [clientPhone, contractorId]
           );
           matchedUser = phoneResult.rows[0] || null;
         }
