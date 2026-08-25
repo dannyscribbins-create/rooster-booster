@@ -507,11 +507,22 @@ router.post('/jobber/client-create', async (req, res) => {
   // Respond 200 immediately — Jobber requires a fast response
   res.status(200).json({ received: true });
 
-  // Async sync — never blocks the webhook response
-  // MVP: webhook payload may not include full nested quotes/jobs/invoices data.
-  // If payload is incomplete, classifyPipelineStatus returns 'lead' as default.
-  // The 30-minute incremental sync will correct the status. This is acceptable for MVP.
-  const client = payload?.data?.client || payload;
+  // Async sync — never blocks the webhook response.
+  // ⚠ The MVP note that stood here — "webhook payload may not include full nested
+  // quotes/jobs/invoices data ... classifyPipelineStatus returns 'lead' as default"
+  // — was INVERTED, not merely stale, and it is why the sparse-payload fallback
+  // looked reasonable for four months. A Jobber CLIENT_CREATE envelope does not
+  // carry a partial client; it carries NO client (data.webHookEvent.{topic, appId,
+  // accountId, itemId, occurredAt} only). The client is always fetched by id below,
+  // and if that fetch fails there is nothing to degrade to — the event is skipped
+  // and recorded instead.
+  //
+  // ⚠ The line 'const client = payload?.data?.client || payload' stood here too, and
+  // survived item 2 as DEAD CODE: item 2 removed every READ of it in this handler
+  // but not the declaration, so the exact expression behind ~550 dropped clients sat
+  // here unreferenced, under the inverted comment above. Nothing consumed it, so
+  // behaviour was correct — but it is the line a future reader would restore for
+  // symmetry with a handler that no longer has it either. Removed 2026-08-24.
 
   (async () => {
     let contractorId;
@@ -619,10 +630,35 @@ router.post('/jobber/client-update', async (req, res) => {
       contractorId = await resolveWebhookContractorId(payload, async () => {
         if (!clientId) return null;
         const { rows } = await pool.query(
-          'SELECT contractor_id FROM jobber_clients WHERE jobber_client_id = $1',
+          'SELECT DISTINCT contractor_id FROM jobber_clients WHERE jobber_client_id = $1',
           [clientId]
         );
-        return rows[0]?.contractor_id || null;
+        // ── AMBIGUOUS IDs ARE REFUSED, NOT GUESSED (Wave 0.2 item 6) ────────────
+        // THE DESIGN QUESTION, ANSWERED: with no accountId there IS no correct
+        // contractor to derive. This fallback exists only for clients synced before
+        // the jobber_account_id backfill, and a Jobber client id is not a tenancy
+        // key — jobber_clients is uniquely keyed on the COMPOSITE
+        // (jobber_client_id, contractor_id), so the same id may legitimately exist
+        // under several contractors.
+        //
+        // Exactly ONE owner is unambiguous and safe to use. TWO OR MORE means the id
+        // carries no tenancy signal at all, and there is nothing in the payload to
+        // break the tie.
+        //
+        // This is CORRECTIVE, not preventive: confirmed in production 2026-08-23,
+        // FIVE jobber_client_id values exist under both 'accent-roofing' and
+        // 'accent-roofing-dev' right now. The previous query had no contractor
+        // predicate, no ORDER BY and no LIMIT, and took rows[0] — so those five
+        // resolved by heap order.
+        //
+        // ⚠ THE ASYMMETRY IS THE WHOLE ARGUMENT. Refusing quarantines a recoverable
+        // event: the row is logged with its topic and item id, the 30-minute
+        // pipelineSync reconciles pipeline_cache, and the nightly sync reconciles
+        // jobber_clients — both contractor-scoped, so they self-correct. Guessing
+        // writes one tenant's client into another tenant's data. That is a
+        // white-label breach, no backstop repairs it, and nothing about the
+        // resulting row announces that it is wrong.
+        return rows.length === 1 ? rows[0].contractor_id : null;
       });
     } catch (err) {
       await logWebhookResolutionFailure(req, 'client-update', clientId, payload, err);

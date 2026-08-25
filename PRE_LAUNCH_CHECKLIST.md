@@ -507,6 +507,26 @@ health it cannot observe*. Every outbound surface ignores the column entirely:
       and is any still live?** Item 5 makes this route CRITICAL, so anything still firing will
       surface on its own — which is the fix working, **and the reason to know what to expect
       before it pages.**
+- [ ] **⚠ A STATUS COMMENT IS A CLAIM WITH A SHELF LIFE.**
+      `jobberIngestionRepair.test.js`'s header was corrected **twice in one session** —
+      *"every test is expected to FAIL"*, then *"T7 and T9 remain skipped"* — each true when
+      written and false by the time the next item landed.
+      **SIX inverted in-file records were corrected across Wave 0.2**, enumerated rather than
+      estimated:
+      1. that test header, correction #1 (item 4)
+      2. that test header, correction #2 (item 6)
+      3. `jobberIncrementalSync.js` — the *"⚠ STILL OPEN"* marker on the defect item 4b closed
+      4. `jobberSyncRepair.test.js` header — described the require-cache harness item 4e retired
+      5. `webhooks/jobber.js` — client-**update**'s inverted MVP comment (item 2)
+      6. `webhooks/jobber.js` — client-**create**'s inverted MVP comment, **found at session
+         close**, alongside a dead `const client = payload?.data?.client || payload` that item 2
+         left behind: every READ was removed, the declaration was not.
+      ⚠ **NONE would have failed any check**, and #6 sat unreferenced under the very comment
+      that made the original defect look reasonable — the line a future reader restores "for
+      symmetry."
+      **A comment that survives the change it describes becomes an instruction to undo it. When
+      a fix closes something a comment marks as open or pending, correcting the comment is part
+      of the fix — not follow-up.**
 - [ ] **⚠ THREE INVERTED IN-FILE RECORDS CORRECTED DURING WAVE 0.2 ITEM 4** — each would have
       instructed a future reader wrongly, and **none would have failed any check**:
       · `jobberIncrementalSync.js:54` — *"⚠ STILL OPEN… Do not read this comment as already

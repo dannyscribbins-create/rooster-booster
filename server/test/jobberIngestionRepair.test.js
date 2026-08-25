@@ -3,11 +3,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // WAVE 0.2 — JOBBER INGESTION REPAIR. RED-FIRST TESTS.
 //
-// ⚠ THIS HEADER IS A RECORD, AND IT HAS BEEN CORRECTED. It read: "Every test in
-// this file is expected to FAIL against the code as it stands." That was true when
-// written in Phase 1B and is now false — items 1-4 have shipped, so T1, T2, T3, T4
-// and T11a are GREEN and must stay green. T7 and T9 remain skipped pending items 5
-// and 6; each carries the item that un-skips it.
+// ⚠ THIS HEADER IS A RECORD, AND IT HAS BEEN CORRECTED TWICE. It first read "Every
+// test in this file is expected to FAIL against the code as it stands" — true when
+// written in Phase 1B, false once items 1-4 shipped. It then said T7 and T9 remained
+// skipped. Items 5 and 6 have now landed, so THAT is false too.
+//
+// CURRENT STATE: every test in this file is GREEN and must stay green. There are no
+// skips left in the suite. Wave 0.2 items 1-6 are complete.
 //
 // What has NOT changed, and is the point of the file: every `it` title still carries
 // the exact failure predicted BEFORE its first run. Those RED notes are the record
@@ -456,7 +458,7 @@ describe('Wave 0.2 — Jobber ingestion repair (RED first)', () => {
   // never be silently resolved to an arbitrary tenant. Refusing and quarantining
   // satisfies it; so would any unambiguous rule. Guessing does not.
   // ─────────────────────────────────────────────────────────────────────────
-  it('T9 — an ambiguous fallback lookup must refuse rather than pick an arbitrary tenant (RED: the query has no contractor predicate, no ORDER BY and no LIMIT, so rows[0] resolves by heap order and the webhook proceeds under whichever tenant Postgres happened to return)', { skip: 'Wave 0.2 item 6 — cross-tenant fallback. UN-SKIP when item 6 lands.' }, async () => {
+  it('T9 — an ambiguous fallback lookup must refuse rather than pick an arbitrary tenant (RED: the query has no contractor predicate, no ORDER BY and no LIMIT, so rows[0] resolves by heap order and the webhook proceeds under whichever tenant Postgres happened to return)', async () => {
     // Two tenants, neither matching the incoming accountId, so the accountId path
     // fails and the fallback is forced to run.
     await seedTenant(TENANT_A, 'JACCT_SOMETHING_ELSE');
