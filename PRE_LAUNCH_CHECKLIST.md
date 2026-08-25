@@ -507,6 +507,77 @@ health it cannot observe*. Every outbound surface ignores the column entirely:
       and is any still live?** Item 5 makes this route CRITICAL, so anything still firing will
       surface on its own — which is the fix working, **and the reason to know what to expect
       before it pages.**
+- [ ] **⚠ RULED 2026-08-24 (Danny): ONE REFERRER, ONE CONTRACTOR.** A referrer app user is
+      associated with **exactly one** contractor's RoofMiles portal. Multi-contractor referrers
+      are a real future need — a homeowner who uses a roofer and later a plumber is the obvious
+      case — but they are **out of scope until RoofMiles scales past Accent** to multiple
+      contractors and multiple industries.
+      Not dangerous today: there is one live contractor. **Recorded as a DECISION rather than
+      left as an assumption, because the two are indistinguishable in code and priced very
+      differently later.**
+      ⚠ **THE RULE THAT KEEPS THE EXIT CHEAP: enforce one-per-referrer at the BOUNDARY, never
+      assume it in the INTERIOR.**
+      · Every query that matches or reads a user is scoped by `contractor_id` regardless — which
+        is what F8 does. **Scoping is correct under both models**, so it is not work that gets
+        thrown away.
+      · **Do NOT write code whose correctness depends on a user having exactly one contractor.**
+        No single-row assumptions; no lookups that resolve a user to a contractor by identity
+        alone.
+      · **Relaxing a UNIQUE constraint is cheap. Unwinding a one-to-many assumption** spread
+        across the matcher, the referral ledger, points balances, cashout eligibility and login
+        **is not.**
+      **TRIGGER TO REVISIT — whichever comes first:** a second contractor whose service area
+      overlaps Accent's · the first cross-industry contractor · any real report of a referrer
+      wanting to refer for two contractors.
+      **QUESTIONS DEFERRED WITH IT**, so the future session does not rediscover them: does one
+      login carry multiple portal memberships or is each a separate account · do points and rank
+      pool across contractors or stay separate ledgers · which contractor's branding renders ·
+      how cashout works when balances sit under two contractors with different reward structures
+      and different Stripe accounts.
+### ⚠ NAMED BUILD — ONE-REFERRER-ONE-CONTRACTOR IS RULED BUT UNENFORCED
+
+**Ruled 2026-08-24. No boundary implements it**, and it reads as true to anyone who does not
+check — which is why this is a named build rather than a checklist line.
+**OWNER: decide enforcement before contractor #2 provisions.**
+
+- [ ] Wave 0.3 Phase 0 found schema and code **agreeing with each other and both permitting the
+      opposite of the ruling**:
+      · `users_email_key` (global UNIQUE) was **deliberately dropped** and replaced with
+        `UNIQUE (contractor_id, email)` — the same address under two contractors is legal
+        (`db.js:1250-1262`).
+      · `idx_users_lower_email` is **deliberately NOT unique**, with a comment stating that one
+        address holding accounts with two contractors "is a supported state per the tenant
+        rebuild" (`db.js:1278-1283`).
+      · Signup's duplicate check is **per-contractor** — `WHERE contractor_id = $1 AND
+        LOWER(email) = LOWER($2)` (`referrer.js:357`). **A second contractor's signup with an
+        existing email succeeds.** There is no cross-contractor guard.
+      · **Decision D1/D2 is LIVE CODE built for the forbidden case**: verify-then-disambiguate
+        searches an email across all contractors, and when more than one candidate's hash opens,
+        it mints a login *choice token* (`login_choice_tokens`, `db.js:1516+`).
+      ⚠ **So the mismatch is decision-vs-implementation, not schema-vs-code.** Nothing is
+      currently wrong — one contractor means the state is unreachable — but **the ruling is
+      aspirational until a boundary enforces it**, and the obvious boundary is signup, not the
+      interior.
+      ⚠ **ENFORCEMENT BELONGS AT SIGNUP**, per the boundary-not-interior rule. It is a **new
+      behaviour at a live boundary and is NOT F8.**
+      ⚠ **THE RULING IS NOT LICENCE TO DELETE D1/D2.** Login's cross-tenant search is the
+      boundary that would **implement** multi-contractor if the trigger fires. Removing it
+      converts a cheap future exit into an expensive one — the exact unwind the boundary rule
+      exists to prevent. **Leave it alone.**
+
+- [ ] **Wave 0.3 finding 0-4 — SETTLED, not open.** *Can one person be a referrer for two
+      contractors?* The **schema and the code implement the same answer** and the DDL says so
+      outright (`db.js:1278-1283`: one address holding accounts with two contractors "is a
+      supported state per the tenant rebuild"). There is **no schema/code mismatch** — the only
+      gap is the unenforced ruling above. Therefore **`contractor_id` is the correct AND
+      sufficient filter for all twelve F8 sites**; no second identity axis is needed.
+- [ ] **Five join-by-id sites are tenant-safe through their SCOPED side, and were deliberately
+      left alone by F8** — `crm/jobber.js:179`, `utils/tags.js:57`, `crm/pipelineSync.js:577`,
+      `admin/index.js:1969` and `:1973`. Each joins `users` on `u.id = <scoped_table>.user_id`,
+      so the user is pinned by a row that already carries a contractor predicate.
+      ⚠ **They DEPEND on `user_id` being same-tenant rather than ASSERTING it.** A real
+      property, worth knowing, not worth changing here — but if cross-tenant `user_id` values
+      ever appear, these read wrong and nothing in them would say so.
 - [ ] **⚠ A STATUS COMMENT IS A CLAIM WITH A SHELF LIFE.**
       `jobberIngestionRepair.test.js`'s header was corrected **twice in one session** —
       *"every test is expected to FAIL"*, then *"T7 and T9 remain skipped"* — each true when
