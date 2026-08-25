@@ -63,6 +63,8 @@ require.cache[_twilioPath] = {
 const { initTestDb } = require('./setup');
 const { describe, it, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const axios = require('axios');
 
 const TENANT = 'w04-tenant';
@@ -174,11 +176,16 @@ describe('Wave 0.4 — matcher rebuild, send gate and invite idempotency (RED fi
     };
   }
 
-  const runMatcher = async (name, client = referredClient(), tenant = TENANT) => {
+  const runMatcher = async (name, client = referredClient(), tenant = TENANT, allClients = []) => {
     const { checkAndCreatePendingReferral } = require('../utils/pendingReferral');
-    // EMPTY allClients, always. See the header.
-    await checkAndCreatePendingReferral(tenant, client, name, []);
+    // EMPTY allClients by default. See the header. G6 overrides it deliberately.
+    await checkAndCreatePendingReferral(tenant, client, name, allClients);
   };
+
+  // The shape the 30-minute cron actually passes: a non-empty chunk window.
+  // Its CONTENTS are irrelevant post-0.4 — the matcher reads jobber_clients —
+  // but its LENGTH still feeds the isRetry predicate.
+  const CRON_SHAPED_ALLCLIENTS = [{ id: 'chunk-filler', firstName: 'Chunk', lastName: 'Filler' }];
 
   const rowFor = async (jobberClientId = 'w04-referred') => {
     const { rows } = await pool.query(
@@ -525,6 +532,53 @@ describe('Wave 0.4 — matcher rebuild, send gate and invite idempotency (RED fi
       `a backlog row must stay held after the gate opens — ${sentEmails.length} email(s) escaped: ${JSON.stringify(sentEmails.map(e => e.to))}`);
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // ⚠ G6 — FORWARD-ONLY ON THE PATH THAT ACTUALLY RE-SYNCS THE BACKLOG.
+  //
+  // ⚠ G4 PASSES allClients=[] AND THAT IS THE WEBHOOK SHAPE, NOT THE CRON SHAPE.
+  // Found by neutralisation: removing "rec.needs_admin_verification" from the
+  // isRetry predicate leaves "allClients.length > 0" as the only remaining guard
+  // on a held row. G4 hands in an empty array, so that condition is false, the
+  // early return still fires, and G4 STAYS GREEN through a change that releases
+  // the backlog in production — where the cron passes a populated chunk window
+  // on every run.
+  //
+  // So G4 measures forward-only against the one caller shape that cannot exhibit
+  // the failure. This drives the other one.
+  //
+  // ⚠ AND BE PRECISE ABOUT WHAT "allClients.length > 0" IS DOING, BECAUSE THE
+  // OBVIOUS READING IS WRONG. It is NOT a co-enforcer of forward-only. In normal
+  // operation a held row fails on `rec.needs_admin_verification` alone — that
+  // conjunct is the SOLE enforcement, and the rest of the predicate is never
+  // reached for such a row. What `allClients.length > 0` actually does is act as
+  // an accidental BACKSTOP that only engages once needs_admin_verification is
+  // gone, and it engages ONLY for callers passing an empty array — which is
+  // every test in this file except this one, and none of the cron.
+  //
+  // So its real effect is not protection. It is MASKING: it kept G4 green
+  // through a change that releases the backlog in production. A backstop that
+  // only holds in the test shape is worse than no backstop, because it converts
+  // a caught regression into a passing suite.
+  // ─────────────────────────────────────────────────────────────────────────
+  it('G6 — a held row is NOT released by a cron-shaped re-sync either (G4 covers the webhook shape with allClients=[]; this covers the path that actually re-syncs the backlog)', async () => {
+    await seedTenant();
+    await seedJobberClient('jc-held6', 'Hank', 'Holdfast', { email: 'hank.holdfast@fixture.test.invalid' });
+
+    // Pass 1 — gate closed, cron shape. Matched and held.
+    await runMatcher('Hank Holdfast', referredClient(), TENANT, CRON_SHAPED_ALLCLIENTS);
+    const held = await rowFor();
+    assert.equal(held.referred_by_email, 'hank.holdfast@fixture.test.invalid', 'precondition: matched while held');
+    assert.equal(sentEmails.length, 0, 'precondition: nothing sent while the gate was closed');
+
+    // Pass 2 — gate opened, re-synced by the cron exactly as it would be.
+    await setGate(true);
+    sentEmails.length = 0;
+    await runMatcher('Hank Holdfast', referredClient(), TENANT, CRON_SHAPED_ALLCLIENTS);
+
+    assert.equal(sentEmails.length, 0,
+      `a held row must stay held on a cron re-sync — ${sentEmails.length} email(s) escaped: ${JSON.stringify(sentEmails.map(e => e.to))}`);
+  });
+
   it('G5 — the gate is CHANNEL-AGNOSTIC: with SMS live and the gate at its default, no SMS goes out either (RED: the SMS send is guarded only by TWILIO_10DLC_ACTIVE, so the day 10DLC clears the same surprise arrives through the other door)', async () => {
     await seedTenant();
     enableSmsChannel();
@@ -577,5 +631,127 @@ describe('Wave 0.4 — matcher rebuild, send gate and invite idempotency (RED fi
 
     assert.equal(sentEmails.filter(e => /dana\.once/.test(e.to)).length, 0,
       `an already-invited referrer must not be re-invited on a re-sync — ${sentEmails.length} duplicate(s) sent`);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ⚠ I3 — THE IDEMPOTENCY GUARD ITSELF, REACHED WITHOUT MODIFYING SOURCE.
+  //
+  // ⚠ I1 DOES NOT TEST THE GUARD. I1 passes with the guard reverted, because the
+  // existing-row early return stops the second pass long before the send site.
+  // That was measured, not assumed: reverting item 5's production change left the
+  // whole suite green. A guard no test can fail is a claim.
+  //
+  // The guard protects a state that is not reachable today — which is precisely
+  // what makes it a guard rather than a fix. So this constructs it: a row that
+  // still LOOKS retryable to isRetry (needs_admin_verification true,
+  // invite_channel 'none', status pending) but has already had an invite sent
+  // (invite_sent_at set). isRetry therefore fires, the matcher runs, and the only
+  // thing standing between an already-invited referrer and a duplicate is the
+  // guard at the send site.
+  //
+  // ⚠ THIS IS THE STATE THE MANUAL-SEND WORKFLOW WILL CREATE. It is synthetic
+  // today and will be ordinary the moment anything can send outside the matcher.
+  // ─────────────────────────────────────────────────────────────────────────
+  it('I3 — a row that already carries invite_sent_at is not invited again, even when isRetry fires (RED without the send-site guard: I1 cannot see this because the early return spares it, so the guard would ship untested)', async () => {
+    await seedTenant();
+    await setGate(true);
+    await seedJobberClient('jc-again', 'Amos', 'Again', { email: 'amos.again@fixture.test.invalid' });
+
+    // The row as isRetry still sees it — retryable — but already invited once.
+    await pool.query(
+      `INSERT INTO pending_referrals
+         (contractor_id, jobber_client_id, client_name, referred_by_name,
+          invite_channel, invite_sent_at, status, needs_admin_verification)
+       VALUES ($1, 'w04-referred', 'Referred Person', 'Amos Again',
+               'none', NOW(), 'pending', true)`,
+      [TENANT]
+    );
+
+    await runMatcher('Amos Again', referredClient(), TENANT, CRON_SHAPED_ALLCLIENTS);
+
+    // Precondition: isRetry must actually have fired, or this proves nothing —
+    // a row that took the early return would also send zero emails.
+    const row = await rowFor();
+    assert.equal(row.referred_by_email, 'amos.again@fixture.test.invalid',
+      'precondition: the retry path must have run and re-matched the referrer');
+
+    assert.equal(sentEmails.length, 0,
+      `an already-invited row must not be invited again once isRetry is reachable — ${sentEmails.length} sent: ${JSON.stringify(sentEmails.map(e => e.to))}`);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ⚠ I2 — THE TRIPWIRE. FORWARD-ONLY IS NOT ENFORCED AT THE SEND SITE.
+  //
+  // THE COUPLING, STATED PLAINLY: forward-only is enforced by isRetry's
+  // `needs_admin_verification` condition, NOT by anything at the send site.
+  // If you make isRetry reachable on matched rows, THE BACKLOG RELEASES.
+  //
+  // ⚠ PROVEN BY NEUTRALISATION, not reasoned. Replacing the existing-row early
+  // return with `isRetry = true` turned I1 AND G4 red together — one predicate,
+  // two safety properties, written for neither of them. Its actual purpose is
+  // avoiding duplicate row processing.
+  //
+  // ⚠ AND THE IDEMPOTENCY GUARD DOES NOT COVER THIS. `invite_sent_at IS NULL`
+  // answers "has this been sent". A held row has invite_sent_at = NULL, so that
+  // guard returns the PERMISSIVE answer — it does not fail to stop a backlog
+  // release, it AUTHORISES one. Idempotency asks "has this been sent";
+  // forward-only asks "was this withheld". A held row answers them oppositely.
+  //
+  // ── WHY THIS IS A SOURCE-TEXT PIN AND NOT A BEHAVIOURAL TEST ──────────────
+  // The failure mode is a FUTURE change to isRetry's reachability. G4 passes
+  // today and will keep passing after the idempotency guard, because nothing it
+  // exercises touches that predicate. A behavioural tripwire would have to ship
+  // RED — correct, and it would block the green-suite push gate, so the pin is
+  // the form that can actually ship.
+  //
+  // ⚠ ANCHORED ON THE PREDICATE ITSELF, WHICH IS THE STRUCTURE THE DANGEROUS
+  // CHANGE WOULD TOUCH — not on prose beside it, and not on a line number. The
+  // slice is bounded by the two statements that delimit the block, and both
+  // bounds are asserted found before anything is read from between them: a
+  // missing anchor must fail loudly, never yield an empty string that trivially
+  // "contains" nothing and passes.
+  //
+  // WHEN THIS GOES RED: someone changed isRetry's condition. That is not
+  // necessarily wrong — but it releases every held referral in the backlog on
+  // the next sync, so it must be a decision, not a side effect. The item that
+  // closes this coupling is the Missing Referrals manual-send workflow, whose
+  // Phase 0 must establish how a WITHHELD row is distinguished from a
+  // NEVER-ATTEMPTED one before it writes any send path. Today both are
+  // invite_channel='none' + invite_sent_at=NULL, and only
+  // needs_admin_verification=false separates them.
+  // ─────────────────────────────────────────────────────────────────────────
+  it('I2 tripwire — isRetry still gates on needs_admin_verification, which is the ONLY thing holding forward-only (RED means the backlog can now auto-release on the next sync — read this test before changing it)', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'utils', 'pendingReferral.js'),
+      'utf8'
+    );
+
+    const startAnchor = 'let isRetry = false;';
+    const endAnchor   = 'if (!isRetry) {';
+    const start = src.indexOf(startAnchor);
+    const end   = src.indexOf(endAnchor, start);
+
+    // Non-vacuity: both bounds must exist and enclose a real block. Without
+    // these, a rename turns indexOf into -1 and the slice into nonsense that
+    // could pass or fail for reasons having nothing to do with the predicate.
+    assert.ok(start !== -1, `anchor "${startAnchor}" not found — the isRetry block was renamed or removed; re-establish this tripwire before assuming it still guards anything`);
+    assert.ok(end > start, `anchor "${endAnchor}" not found after the isRetry declaration — the block structure changed`);
+
+    const isRetryBlock = src.slice(start, end);
+    assert.ok(isRetryBlock.length > 40 && isRetryBlock.length < 2000,
+      `the extracted isRetry block is implausible at ${isRetryBlock.length} chars — the anchors are no longer delimiting what they were written to delimit`);
+
+    assert.ok(
+      isRetryBlock.includes('rec.needs_admin_verification'),
+      'FORWARD-ONLY HAS LOST ITS ONLY ENFORCEMENT.\n' +
+      'isRetry no longer gates on rec.needs_admin_verification, which means a row that was ' +
+      'MATCHED AND HELD by a closed outreach gate can re-enter the send path on the next ' +
+      'sync — releasing the entire held backlog to real referrers.\n' +
+      'Nothing at the send site prevents this: the idempotency guard there checks ' +
+      'invite_sent_at, which is NULL on a held row, so it permits the send.\n' +
+      'If this change is deliberate, forward-only needs an explicit guard FIRST. ' +
+      'See the Missing Referrals manual-send workflow.\n' +
+      `Block as found:\n${isRetryBlock}`
+    );
   });
 });

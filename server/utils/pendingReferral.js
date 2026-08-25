@@ -581,18 +581,34 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
       );
 
       const pendingResult = await pool.query(
-        `SELECT id, referred_by_name, referred_by_email, referred_by_phone
+        `SELECT id, referred_by_name, referred_by_email, referred_by_phone, invite_sent_at
          FROM pending_referrals WHERE contractor_id=$1 AND jobber_client_id=$2`,
         [contractorId, client.id]
       );
       const pendingRecord = pendingResult.rows[0];
 
-      // ⚠ THE GATE, AND IT SITS ABOVE BOTH CHANNELS RATHER THAN INSIDE EITHER.
+      // ── IDEMPOTENCY GUARD — AND IT ANSWERS EXACTLY ONE QUESTION ──────────────
+      // ⚠ THIS ANSWERS "HAS THIS ALREADY BEEN SENT". IT DOES NOT ANSWER "WAS THIS
+      // DELIBERATELY WITHHELD", AND ON A HELD ROW IT RETURNS THE PERMISSIVE ANSWER.
+      // A row held by a closed gate has invite_sent_at = NULL, so this guard lets
+      // it through. It is NOT forward-only protection and must never be mistaken
+      // for it — see the block below the send for what actually holds that line.
+      //
+      // Why it exists at all: nothing at this send site prevented a second invite.
+      // The property was real but incidental — provided by the existing-row early
+      // return above, whose actual purpose is avoiding duplicate row processing.
+      // Q7 measured retries firing at roughly 1:1 with creations, so the moment
+      // matching started succeeding this was one reachability change away from
+      // mailing already-invited referrers again.
+      const alreadyInvited = !!pendingRecord.invite_sent_at;
+
+      // ⚠ THE GATE SITS ABOVE BOTH CHANNELS RATHER THAN INSIDE EITHER.
       // Twilio is dark today (sendPendingInviteSMS returns early unless
       // TWILIO_10DLC_ACTIVE), so gating only the email would look complete and
       // would deliver the same surprise through the other door on the day 10DLC
-      // clears. One switch, both channels.
-      if (await isMatchOutreachEnabled(contractorId)) {
+      // clears. One switch, both channels — and the idempotency guard above it,
+      // so an already-invited row is not even asked about the gate.
+      if (!alreadyInvited && await isMatchOutreachEnabled(contractorId)) {
         if (referrerEmail) {
           await sendPendingInviteEmail(pendingRecord, contractorId);
           inviteChannel = referrerPhone ? 'email_and_sms' : 'email';

@@ -312,6 +312,57 @@ entry is the canonical record until then.**
   same structure as `assertMatcherIsLive`, and it is the general form: the durable fix for
   vacuity is a PARTNER, not vigilance.** Vigilance failed three waves running; a partner fails
   loudly the moment the property stops being conditional.
+
+### ⚠ WAVE 0.4's HIGHEST-RISK HANDOFF — READ BEFORE THE MISSING REFERRALS WORKFLOW
+
+- ⚠ **TWO SAFETY PROPERTIES, ONE INCIDENTAL CONDITION, AND THEY FAIL IN OPPOSITE DIRECTIONS.**
+  Idempotency (never invite twice) and forward-only (never auto-release a held row) were BOTH
+  provided by `isRetry`'s predicate in `checkAndCreatePendingReferral` — a condition written to
+  avoid duplicate ROW PROCESSING, a different concern that happens to imply both. **Proven by
+  neutralisation, not reasoned: one change turned I1 and G4 RED together.**
+  ⚠ **The obvious idempotency guard, `invite_sent_at IS NULL`, is WRONG for forward-only and
+  dangerously so.** A held row has `invite_sent_at = NULL`, so that guard **PERMITS** the send.
+  It does not fail to stop a backlog release — **it authorises one, under a comment saying it
+  is an idempotency guard.** Idempotency asks *"has this been sent"*; forward-only asks *"was
+  this withheld"*. **A held row answers them oppositely.** Wave 0.4 shipped the idempotency
+  guard (covered by I3) and left forward-only on `needs_admin_verification`, pinned by the I2
+  tripwire.
+- ⚠ **THE MISSING REFERRALS MANUAL-SEND WORKFLOW IS THE CHANGE THAT BREAKS THIS.** It is
+  precisely what makes `isRetry` reachable on matched rows. **Its Phase 0 MUST establish how a
+  WITHHELD row is distinguished from a NEVER-ATTEMPTED one before it writes any send path.**
+  Today both are `invite_channel='none'` + `invite_sent_at=NULL`, and only
+  `needs_admin_verification=false` separates them — **the same predicate doing double duty a
+  third time.**
+- ⚠ **A BACKSTOP THAT HOLDS ONLY IN THE TEST SHAPE MASKS THE REMOVAL OF THE REAL GUARD.**
+  Removing `needs_admin_verification` from the predicate left `allClients.length > 0` as the
+  only remaining barrier — and **G4 passes `allClients=[]`**, so G4 stayed GREEN through a
+  change that **releases the backlog in production**, where the cron passes a populated chunk
+  on every run. G6 now drives the cron shape.
+  ⚠ **THIS IS NOT VACUITY, AND CONFLATING THE TWO LOSES THE LESSON.** A vacuous test asserts
+  something that cannot fail. **G4 asserted something TRUE and something that CAN fail — it
+  was simply measuring against the one caller shape in which the property cannot fail.**
+  Every vacuity fix in this document (positive controls, partners) would have left G4 exactly
+  as it was.
+  ⚠ **THE GENERAL RULE: when a predicate has multiple conjuncts, a test that exercises only
+  one caller shape can be satisfied by a conjunct that is IRRELEVANT IN PRODUCTION.
+  Enumerate the caller shapes and drive the one that reaches the real guard.** Here the shapes
+  are webhook (`[]`) and cron (populated chunk); only the second can exhibit the failure.
+- ⚠ **AND THE VESTIGIAL CONJUNCT'S ACTUAL EFFECT WAS MASKING, NOT DEFENCE.** `allClients.length
+  > 0` co-enforced nothing: in normal operation a held row fails on `needs_admin_verification`
+  and **nothing further is evaluated**. It engaged **only once the real guard was gone, and
+  only for empty-array callers.** ⚠ **A backstop that activates exactly when the primary guard
+  is removed, and only under unrepresentative conditions, makes the removal look safe.** That
+  is worse than no backstop, because a bare removal would have gone red immediately.
+- ⚠ **THE GENERAL SHAPE, AND IT IS REUSABLE: when a single predicate is the sole enforcement of
+  more than one property, those properties are coupled to a condition written for neither of
+  them. NEUTRALISE THE PREDICATE AND SEE WHICH TESTS GO RED — that is how you find out how many
+  properties it carries.** Run it on any condition load-bearing for safety. It took one edit
+  here and returned two properties nobody had connected.
+- ⚠ **AND A GUARD NO TEST CAN FAIL IS A CLAIM.** Reverting Wave 0.4's idempotency guard left
+  the entire suite green, because I1 is spared by the early return long before the send site.
+  The guard protects a state that is not reachable **today** — which is what makes it a guard —
+  so the test has to CONSTRUCT that state (I3) rather than wait for it. **Defensive code needs
+  a constructed-state test or it ships unverified.**
 - **Harness bugs caught by preconditions, not shipped as false REDs:** `contractors` keys on
   `id`, not `contractor_id`, and a blanket `DELETE FROM contractors` hits initDB's seeded row
   and raises 23503 in every `beforeEach` — a harness failure indistinguishable from a RED; and
