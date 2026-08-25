@@ -221,13 +221,22 @@ entry is the canonical record until then.**
       2026-08-21). Everything downstream — payouts, leaderboards, badges, cash-outs, rep
       metrics, the Referral Conversion Engine — sits on a join that has never fired.
 
+      ⚠ **THE FOUR `pendingReferral.js` LINE NUMBERS THAT STOOD HERE WERE ALL STALE**
+      (`:372`, `:304-308`, `:365`, `:570-574`), broken by Waves 0.2 and 0.3 inserting comment
+      blocks above each. **They are now cited by FUNCTION NAME**, per CLAUDE.md's
+      *"never cross-file by line number"* — which this entry was a live instance of, inside
+      the document that rule protects. `docs/GROUND_TRUTH_2026-08-21.md` §B1 carries the same
+      four and is left as the dated record it is.
+
       **TWO confirmed root causes, both in one file:**
       1. The matcher filters an **in-memory array that is empty on every webhook call**
-         (`pendingReferral.js:372`, `allClients.filter(...)` — see ground truth §B1) rather
-         than querying the persisted `jobber_clients` table. The file documents this as an MVP
-         shortcut at `:304-308`; the argument at `:365` defends not filtering *remotely*
-         (Jobber's `ClientFilterAttributes` has no name filter — true), and nobody has ever
-         argued against querying *locally*.
+         (`checkAndCreatePendingReferral`, `allClients.filter(...)` — see ground truth §B1)
+         rather than querying the persisted `jobber_clients` table. The file documented this
+         as an MVP shortcut in that function's header comment; the argument beside the filter
+         defends not filtering *remotely* (Jobber's `ClientFilterAttributes` has no name
+         filter — true), and nobody has ever argued against querying *locally*.
+         ✅ **FIXED — Wave 0.4 item 1, `e7fcbf9`.** `findReferrerCandidates()` now queries
+         `jobber_clients` with pg_trgm at threshold 0.6.
       2. Jobber client names are stored **untrimmed at all three write sites**
          (`webhooks/jobber.js:330`, `cron/jobs/jobberIncrementalSync.js:162`,
          `jobs/fullJobberImport.js:542`). The matcher's own `.trim()` only strips the ends of
@@ -240,9 +249,111 @@ entry is the canonical record until then.**
       lifecycle status for `users` rows and is **correct as written**. **Do not go looking for
       it.**
 
-      The `matched_user_id` writer exists and is reachable (`pendingReferral.js:570-574`, called
-      from `referrer.js:720`); its precondition is starved. **Name normalisation can run early
-      and independently.** → `docs/GROUND_TRUTH_2026-08-21.md`, Group B
+      The `matched_user_id` writer exists and is reachable (`matchPendingReferral`, called from
+      the email-verification path in `referrer.js`); its precondition is starved.
+      → `docs/GROUND_TRUTH_2026-08-21.md`, Group B
+
+      ⚠ **AND "NAME NORMALISATION CAN RUN EARLY AND INDEPENDENTLY" WAS THE WRONG CONCLUSION**
+      — not stale, wrong when written. It presumed an exact-equality matcher. Wave 0.4 replaced
+      that with pg_trgm, **which absorbs the whitespace defect entirely** (see the entry below).
+      Normalisation shipped anyway, for determinism, but it fixed nothing on its own and running
+      it "early and independently" would have moved zero of the 13 rows.
+### ⚠ WAVE 0.4 — LESSONS THAT COST MEASUREMENTS TO ACQUIRE (2026-08-25)
+
+*Recorded here rather than in a handoff, per R14. Each was measured, not reasoned.*
+
+- ⚠ **BUILD ORDER IS NOT DEPLOY ORDER.** Wave 0.4 sequenced matcher → gate, which is correct
+  for **building** — the gate has nothing to gate until the matcher works. But **pushing is
+  deploying**, and the matcher alone in production sends the entire backlog within one sync
+  cycle. **Any wave whose later item CONSTRAINS an earlier one must state its deploy grouping
+  explicitly rather than inherit it from the build sequence.** Caught before staging, not after.
+- ⚠ **AND THE PRE-PUSH GATE CAN MOVE THE BOUNDARY LATER STILL.** "Both suites green" meant the
+  earliest legal push for Wave 0.4 was after **item 4**, not item 2 — items 3 and 4 carry React
+  REDs. **The safety constraint and the test gate are independent, and the LATER of the two
+  governs. Compute the boundary from both.**
+- ⚠ **pg_trgm ABSORBS WHITESPACE AND CASE ENTIRELY.** Every variant of `tommy mills` scores
+  **1.0000** — interior double space, NBSP, tab, leading/trailing space, mixed case. Measured
+  2026-08-25. **Normalising before a trigram compare buys DETERMINISM** (stable ranking, real
+  ties), **not matchability.** ⚠ Wave 0.4's scope ruling originally cited Tommy Mills as proof
+  that normalisation was mandatory. **That was wrong and is corrected here** — and at
+  `findReferrerCandidates`, because a future session that tests it, finds trigram absorbs the
+  defect anyway, and removes the normalisation would be reasoning correctly from a false premise.
+- ⚠ **A GIN `gin_trgm_ops` INDEX IS INERT against `similarity(a,b) >= x`.** Only the `%`
+  operator can use it, and that additionally requires `SET pg_trgm.similarity_threshold`.
+  Measured on 18,651 rows: the function form plans a **Seq Scan whether or not the index
+  exists** (~40 ms); only the operator form plans an index scan. **Adding the index without
+  changing the predicate produces a mechanism that reports health it cannot observe** — the
+  catalogued shape, arriving inside a performance fix. Not built in 0.4; ~40 ms is not a
+  problem at this scale. When it is, change **both** together.
+- ⚠ **`[[:space:]]+`, NEVER `\s+`, AND IT PRODUCES NO ERROR.** On the node-postgres path a
+  `'\s+'` pattern does not reach the regex engine as a whitespace class — it matches the
+  literal letter `s`. `regexp_replace('tommy  mills','\s+',' ','g')` returns `'tommy  mill '`:
+  the doubled space **survives** and the `s` is **eaten**. Two equally-corrupted strings still
+  compare equal, so the damage stays invisible until a corrupted name is displayed.
+  `[[:space:]]` also strips NBSP, which `btrim()` alone does not.
+- ⚠ **VACUITY APPEARED FOR A THIRD CONSECUTIVE WAVE**, in tests written *after* the lesson was
+  recorded — four instances (M3, M6, M8, G5), all the same shape: **"X did not match" is
+  trivially true while NOTHING matches.** ⚠ **The lesson does not transfer; only the mechanism
+  does.** The durable form is a **POSITIVE CONTROL beside every negative assertion**
+  (`assertMatcherIsLive` in `server/test/wave04Matcher.test.js`), asserting the system is live
+  before asserting what it did not do.
+- **Harness bugs caught by preconditions, not shipped as false REDs:** `contractors` keys on
+  `id`, not `contractor_id`, and a blanket `DELETE FROM contractors` hits initDB's seeded row
+  and raises 23503 in every `beforeEach` — a harness failure indistinguishable from a RED; and
+  `AdminPendingReferrals` reads `d.pending`, not a bare array, so a bare-array mock renders
+  zero rows and every assertion reports "the thing is absent."
+- ⚠ **A FIXTURE CAN LAND EXACTLY ON AN INCLUSIVE BOUNDARY, AND THE FAILURE IS
+  INDISTINGUISHABLE FROM THE DEFECT THE TEST GUARDS.** G5's positive control failed while the
+  gate under test was working perfectly: `similarity('sadie texter','sam texter')` is
+  **exactly 0.6000**, the threshold is `>=`, so both fixtures cleared it, the run became an
+  ambiguity case, and nothing was sent — which is precisely what a broken gate looks like.
+  **General form: two short first names sharing a surname sit on the 0.6 boundary.** ⚠ **The
+  repair is not a better name, it is asserting the fixture's PREMISE** — measure the pair and
+  fail loudly if it drifts back over the line. A fixture chosen to be "obviously different" is
+  an assumption; a fixture whose separation is asserted is a measurement.
+- ⚠ **A ROLLBACK PATH CAN LIE IN THE UNSAFE DIRECTION, AND DEFAULT-OFF IS WHAT EXPOSED IT.**
+  `handlePrefToggle` computed its optimistic-rollback value as `prefs[triggerKey] !== false`,
+  collapsing **"never set"** into **true**. Harmless for fifteen default-ON switches, where
+  unset and true are the same state. For the first default-OFF control on the page, a **failed
+  save reverts the switch to ON** — the UI showing an open gate while the gate is closed.
+  ⚠ **Adding a control whose default differs from every existing one makes every shared helper
+  on that surface suspect: check each for an unset/true conflation before assuming the addition
+  is contained.** Two were found here — this rollback path and `NotifToggle`'s hardcoded
+  `checked !== false`.
+- ⚠ **LATENT ACTIVATION, THIRD INSTANCE — and the first that is a live 500 rather than a
+  filter.** `fetchReferrerContact` was never exported; `admin/index.js` has destructured and
+  called it since it was written, so `POST /api/admin/pending-referrals/:id/confirm-referrer`
+  raised `TypeError: fetchReferrerContact is not a function`, caught by the route's own catch
+  and returned as a generic 500. **Unreachable because the old matcher wrote `[]` on every
+  call**, so the "Confirm This Referrer" button never rendered. Wave 0.4 makes candidates
+  appear, which renders the button, which activates the defect. Fixed in `e7fcbf9`.
+  ⚠ **The pattern across three instances** (`admin/contacts.js:891`'s `is_archived` predicate,
+  this, and the T4b re-pointing): **a change that makes previously-impossible DATA appear
+  activates every code path that was dormant only because the data never arrived. When a fix
+  causes a state to occur for the first time, enumerate every consumer of that state before
+  assuming the fix is contained.**
+- ⚠ **A DEFECT PRESCRIBED BY A GOVERNING DOCUMENT REPRODUCES BY COMPLIANCE, NOT BY
+  COPY-PASTE.** The Contact Matching Standard specified `LOWER(TRIM(first || ' ' || last))` —
+  trim-after-concat, which cannot collapse an interior double space. **Two sites implement it
+  faithfully** (`admin/contacts.js:239`, `admin/campaigns.js:1064`) **and both carry the defect
+  as a consequence of obeying the rule correctly.** Corrected 2026-08-25 in
+  `.claude/rules/backend.md`. Those two sites are now **DIVERGENT from the Standard rather than
+  compliant with it**, which is the direction that gets noticed. Not changed in 0.4 — each is
+  its own blast radius.
+  ⚠ **This is a category above the eight inverted records this arc has corrected. Those went
+  stale. This one was wrong when written and has been propagating ever since.**
+- ⚠ **AND A SECOND RECORD THAT WAS FALSE AT AUTHORSHIP, NOT DECAYED.** This checklist's own
+  pending-referral entry read **"Name normalisation can run early and independently."** It
+  presumed an **exact-equality** matcher. Against the trigram matcher Wave 0.4 actually built,
+  normalisation changes no match outcome at all, so running it early and independently would
+  have moved **zero of the 13 rows** — while reading, to whoever ran it, like progress.
+  The Contact Matching Standard's trim-after-concat is the first instance; this is the second.
+  ⚠ **THE TWO CATEGORIES ARE FOUND BY DIFFERENT MEANS, AND ONLY ONE HAS A ROUTINE.** Stale
+  records are found by dates and by line drift — both cheap, both semi-automatic. **A record
+  that was never true has no drift to notice and no date that looks wrong. It is found only by
+  testing the claim, which nothing in this project routinely does.** When a governing sentence
+  asserts that something WILL WORK, the only check is to make it work and see.
+
 - [ ] **🔴 `jobber_client_id` NOT NULL violations — ~550 occurrences, LIVE (last 2026-08-21).**
       Registry KI-2b closed this in error; the failure is **upstream** of
       `upsertAndTagClient`'s write sites, on the sparse-payload fallback where the client id

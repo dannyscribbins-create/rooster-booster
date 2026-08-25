@@ -541,9 +541,21 @@ describe('Wave 0.4 — matcher rebuild, send gate and invite idempotency (RED fi
     // POSITIVE CONTROL for the channel, in this exact scenario. H2 proves the
     // Twilio stub fires when called directly; this proves the MATCH PATH reaches
     // it, so the zero above is the gate holding and not a dead code path.
+    //
+    // ⚠ THE SECOND FIXTURE MUST NOT COLLIDE WITH THE FIRST, AND THE OBVIOUS
+    // CHOICE DID. 'Sadie Texter' against 'Sam Texter' scores EXACTLY 0.6000 —
+    // the threshold is inclusive, so both cleared it, the run became an
+    // ambiguity, nothing was sent, and the control failed while the gate was
+    // working perfectly. Two short first names sharing a surname land right on
+    // the boundary. Asserted rather than assumed, because a fixture that
+    // silently drifts back over the line turns this control into a false alarm.
     await setGate(true);
-    await seedJobberClient('jc-sms2', 'Sadie', 'Texter', { phone: '770-555-8888' });
-    await runMatcher('Sadie Texter', referredClient('w04-sms2'));
+    await seedJobberClient('jc-sms2', 'Priya', 'Nakamura', { phone: '770-555-8888' });
+    const collide = await simOf('priya nakamura', 'sam texter');
+    assert.ok(collide < 0.6,
+      `fixture premise: the second SMS fixture must not also match the first referrer's name, or this becomes an ambiguity case — measured ${collide}`);
+
+    await runMatcher('Priya Nakamura', referredClient('w04-sms2'));
     assert.equal(sentSms.length, 1,
       'with the gate open the same path must actually send an SMS — if it does not, the assertion above proves nothing');
   });

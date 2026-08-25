@@ -132,12 +132,27 @@ const ALWAYS_ACTIVE = [
   'Error monitoring alerts',
 ];
 
-function NotifToggle({ triggerKey, checked, onToggle, flash }) {
-  const on = checked !== false; // missing keys default to true
+function NotifToggle({ triggerKey, checked, onToggle, flash, defaultOn = true, label }) {
+  // ⚠ THE DEFAULT USED TO BE HARDCODED HERE, AND ONE TRIGGER NEEDS THE OTHER ONE.
+  // This read `const on = checked !== false`, which renders a key the server has
+  // never heard of as ON. That is right for the fifteen triggers that ship
+  // enabled, and exactly wrong for referral_match_outreach, which ships OFF and
+  // whose first act if wrongly ON is to mail every referrer in the backlog.
+  //
+  // The existing call sites pass an already-resolved boolean
+  // (`prefs[item.key] !== false`), so they never hit the nullish branch and
+  // their behaviour is unchanged. Only a caller passing the RAW pref value —
+  // possibly undefined — reaches `defaultOn`.
+  const on = (checked === undefined || checked === null) ? defaultOn : checked !== false;
   return (
     <button
       role="switch"
       aria-checked={on}
+      // Gives the control an accessible name so tests can query it by role+name
+      // rather than walking the DOM from a label, which is how a layout change
+      // silently retargets a test at the wrong switch. Only supplied where a
+      // caller passes one; the existing switches are unchanged.
+      aria-label={label}
       onClick={() => onToggle(triggerKey, !on)}
       style={{
         width: 44, height: 24, borderRadius: 12, border: 'none', flexShrink: 0,
@@ -204,7 +219,12 @@ export default function AdminSettingsNotifications() {
   }, []);
 
   async function handlePrefToggle(triggerKey, value) {
-    const prev = prefs[triggerKey] !== false; // current state, default true
+    // ⚠ THE RAW VALUE, NOT A RESOLVED BOOLEAN. This read `prefs[triggerKey] !== false`,
+    // which collapses "never set" to true — so a failed save on a DEFAULT-OFF key
+    // reverted the switch to ON and showed the gate as open while it was closed.
+    // Wrong direction on a safety control. Keeping the raw value (undefined stays
+    // undefined) lets NotifToggle re-derive from that key's own default.
+    const prev = prefs[triggerKey];
     setPrefs(p => ({ ...p, [triggerKey]: value }));
     if (flashTimer.current) clearTimeout(flashTimer.current);
     try {
@@ -436,6 +456,43 @@ export default function AdminSettingsNotifications() {
           ))}
         </div>
       ))}
+
+      {/* ── Referral match outreach (Wave 0.4 item 2) ──────────────────────────
+          ⚠ DELIBERATELY NOT A MEMBER OF REFERRER_GROUPS. Every entry in that
+          array is rendered with `checked={prefs[item.key] !== false}`, which
+          resolves an unknown key to ON. This is the one trigger that ships OFF,
+          so it passes the RAW pref value and defaultOn={false} instead.
+          ⚠ It is also the only card here that governs TWO different messages to
+          TWO different people over TWO channels — the invite to the referrer and
+          the credit-attribution email to the referred client, by email and SMS.
+          The sub-copy says so because a contractor turning this off means off. */}
+      <p style={{ margin: '28px 0 12px', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans }}>Referral Matching</p>
+      <div id="notif-referral-match-outreach" style={{ ...sectionCard, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500, color: AD.textPrimary, fontFamily: AD.fontSans }}>Referral match outreach</p>
+            <p style={{ margin: 0, fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans, lineHeight: 1.4 }}>
+              Sent to both referrer and referred when a referral is matched to a referrer in your system. Both receive an invite to join the program.
+            </p>
+            {/* ⚠ Every other toggle on this page ships ON, so an OFF card reads as
+                broken unless the copy says otherwise. It also must not assume the
+                reason is pre-launch — a contractor may keep it off on purpose. */}
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, lineHeight: 1.4, fontStyle: 'italic' }}>
+              Off until you are ready to invite referrers mentioned in a referral’s profile.
+            </p>
+          </div>
+          <div style={{ position: 'relative', marginTop: 2 }}>
+            <NotifToggle
+              triggerKey="referral_match_outreach"
+              checked={prefs.referral_match_outreach}
+              defaultOn={false}
+              label="Referral match outreach"
+              onToggle={handlePrefToggle}
+              flash={flashKey === 'referral_match_outreach' ? flashStatus : null}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Post-Job Engagement Cadence */}
       <p style={{ margin: '28px 0 4px', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans }}>Post-Job Engagement Cadence</p>

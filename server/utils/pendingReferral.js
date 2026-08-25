@@ -315,6 +315,54 @@ async function fetchReferrerContact(jobberId, contractorId) {
   }
 }
 
+// ── REFERRAL MATCH OUTREACH GATE ──────────────────────────────────────────────
+// One contractor-level switch over EVERY message this file sends when a referral
+// is matched: the invite to the REFERRER and the credit-attribution email to the
+// REFERRED person, over email AND SMS. Zero outbound means zero.
+//
+// ⚠ DEFAULT OFF, AND IT IS THE ONLY DEFAULT-OFF TRIGGER IN THE TABLE.
+// The other fifteen notification_preferences triggers ship ON, and both the
+// server helper and the UI control encode that: isEmailSuppressed() treats an
+// ABSENT row as "not suppressed" (emailSuppression.js — send), and NotifToggle
+// computes `checked !== false` so an unknown key renders as ON. Both are correct
+// for their fifteen and exactly wrong here.
+//
+// ⚠ SO THIS DOES NOT — AND MUST NOT — REUSE isEmailSuppressed(). Two independent
+// reasons, either one disqualifying:
+//   1. An absent row must mean OFF here, and it means SEND there.
+//   2. It fails OPEN on a DB error, which is right when the consequence of a
+//      wrong answer is a missed notification. Here the consequence is mailing
+//      every referrer in the backlog, so this one FAILS CLOSED.
+// CLAUDE.md: write the guard the value needs, and say why it differs from the
+// ones beside it. This is that comment.
+//
+// Returns true ONLY on an explicit `email_enabled = true` row. Absent row,
+// NULL, false, or any error → false.
+const REFERRAL_MATCH_OUTREACH_KEY = 'referral_match_outreach';
+
+async function isMatchOutreachEnabled(contractorId) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT email_enabled FROM notification_preferences
+        WHERE contractor_id = $1 AND trigger_key = $2`,
+      [contractorId, REFERRAL_MATCH_OUTREACH_KEY]
+    );
+    // Strict === true. `rows[0]?.email_enabled` is undefined for an absent row
+    // and a truthiness check would be fine today, but the column is nullable in
+    // principle and this is the one predicate in the file where a wrong answer
+    // is outbound mail to real people.
+    return rows[0]?.email_enabled === true;
+  } catch (err) {
+    await logError({
+      req: null,
+      contractorId,
+      error: new Error(`isMatchOutreachEnabled: could not read the referral match outreach gate for ${contractorId} — failing CLOSED, no outreach sent: ${err.message}`),
+      source: 'pendingReferral — match outreach gate',
+    });
+    return false;
+  }
+}
+
 // ── REFERRER NAME MATCH THRESHOLD ─────────────────────────────────────────────
 // ⚠ 0.6, AND IT IS DELIBERATELY NOT THE CONTACT MATCHING STANDARD'S 0.4.
 // DO NOT "CORRECT" THIS INTO LINE WITH THE STANDARD. The Standard's 0.4 is a
@@ -539,16 +587,42 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
       );
       const pendingRecord = pendingResult.rows[0];
 
-      if (referrerEmail) {
-        await sendPendingInviteEmail(pendingRecord, contractorId);
-        inviteChannel = referrerPhone ? 'email_and_sms' : 'email';
+      // ⚠ THE GATE, AND IT SITS ABOVE BOTH CHANNELS RATHER THAN INSIDE EITHER.
+      // Twilio is dark today (sendPendingInviteSMS returns early unless
+      // TWILIO_10DLC_ACTIVE), so gating only the email would look complete and
+      // would deliver the same surprise through the other door on the day 10DLC
+      // clears. One switch, both channels.
+      if (await isMatchOutreachEnabled(contractorId)) {
+        if (referrerEmail) {
+          await sendPendingInviteEmail(pendingRecord, contractorId);
+          inviteChannel = referrerPhone ? 'email_and_sms' : 'email';
+        }
+        if (referrerPhone) {
+          await sendPendingInviteSMS(pendingRecord, contractorId);
+          if (inviteChannel === 'email') inviteChannel = 'email_and_sms';
+          else if (inviteChannel === 'none') inviteChannel = 'sms';
+        }
+        if (inviteChannel !== 'none') inviteSentAt = new Date();
       }
-      if (referrerPhone) {
-        await sendPendingInviteSMS(pendingRecord, contractorId);
-        if (inviteChannel === 'email') inviteChannel = 'email_and_sms';
-        else if (inviteChannel === 'none') inviteChannel = 'sms';
-      }
-      if (inviteChannel !== 'none') inviteSentAt = new Date();
+      // ⚠ WHEN THE GATE IS CLOSED, inviteChannel STAYS 'none' AND inviteSentAt
+      // STAYS NULL, AND THAT IS LOAD-BEARING IN TWO PLACES.
+      //
+      // 1. FORWARD-ONLY LIVES HERE, IN THE ROW, NOT IN A RUNTIME READ OF THE
+      //    TOGGLE. The match above has already set needs_admin_verification =
+      //    false. The isRetry gate requires needs_admin_verification === true,
+      //    so this row can never re-enter the send path on a later sync — which
+      //    is exactly what must remain true after an admin flips the toggle ON.
+      //    A runtime "is the gate open?" check at send time would release the
+      //    entire backlog the moment it flipped. It does not, because by then
+      //    the row's own state has taken it out of contention permanently.
+      //    ⚠ Consequence, and it is deliberate: a held row has NO automatic
+      //    release. Releasing one is the manual-send action deferred to the
+      //    Missing Referrals resolution workflow.
+      //
+      // 2. This trio — contact populated, invite_channel 'none', invite_sent_at
+      //    NULL — IS the held state the admin card derives from (item 3). No new
+      //    column: the fact is derived from the facts rather than duplicated
+      //    beside them.
 
     } else {
       // No match, multiple matches, or a lone candidate with no contact info —
@@ -575,7 +649,13 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
 
       // Send "help us give credit" email to the REFERRED PERSON only on first creation.
       // On retry, the referred client already received this email — do not resend.
-      if (!isRetry) {
+      //
+      // ⚠ THE SAME GATE COVERS THIS MESSAGE, AND THAT IS THE POINT OF ONE TOGGLE.
+      // It goes to a different person (the referred client, not the referrer) on
+      // a different branch, which is precisely why it would be missed. The card's
+      // sub-copy promises "both referrer and referred"; two switches could not
+      // honour that, and a contractor who turns outreach off means off.
+      if (!isRetry && await isMatchOutreachEnabled(contractorId)) {
         const referredEmail = getPrimaryEmail(client);
         const referredPhone = getPrimaryPhone(client);
         // diagnostic log — intentional
