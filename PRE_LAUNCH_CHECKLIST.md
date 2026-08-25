@@ -534,6 +534,61 @@ health it cannot observe*. Every outbound surface ignores the column entirely:
       pool across contractors or stay separate ledgers · which contractor's branding renders ·
       how cashout works when balances sit under two contractors with different reward structures
       and different Stripe accounts.
+### ⚠ NAMED BUILD — UNMATCHED-REFERRER RECOVERY FLOW
+
+**Designed 2026-08-24 (Danny). Est. 4–6 sessions. Scope AFTER Waves 0.4 and 0.5.**
+
+**PREMISE:** when a referral names a referrer who cannot be matched, **the referred person knows
+that referrer's contact info and has never been asked.** Route around the gap through the one
+person who can close it.
+
+**THE FLOW**
+1. Unmatched referral → outreach to the **REFERRED** person (email now, SMS when 10DLC clears)
+   directing them into the app.
+2. In-app popup, **priority over other popups**: *"We see you were referred by [name from
+   Jobber's referred-by field]. Can you give us their contact info so they get credit?"*
+3. On submit, the referrer's contact is **PERSISTED — this is the point of the flow.** Every
+   later message uses the same channel.
+4. Immediate outreach to the referrer: *"[referred person] mentioned you sent them our way.
+   Download the app to follow their progress and cash out your referral bonus if they hire us.
+   Free to download. — your friends at [contractor name]."*
+5. Cadence at each pipeline checkpoint: progress update + invite.
+6. At job completion / invoice paid: *"you have a $X referral bonus waiting."*
+7. Two post-job reminders, **DIFFERENT COPY** from the completion message.
+8. Chain **STOPS** at the second reminder, **OR** the moment they download — at which point they
+   move to the normal in-app notification chain.
+
+**TWO ENTRY POINTS, ONE FLOW:** contact from the CRM/RoofMiles record if matched, or contact
+supplied by the referred person if not.
+
+- [ ] ⚠ **BLOCKED ON SMS.** The referrer will more often have a phone than an email, so **SMS is
+      the primary channel, not a nice-to-have.** Twilio 10DLC is pending the LLC amendment.
+      **Verified 2026-08-25:** the gate is real and live — `pendingReferral.js:142` refuses to
+      send unless `NODE_ENV === 'production'` **and** `TWILIO_10DLC_ACTIVE === 'true'`, so the
+      main path is genuinely dark and untestable today. **Do not start before it clears.**
+- [ ] ⚠ **BLOCKED ON 0.4.** This is the **UNMATCHED** branch. Its size and design depend on how
+      large the unmatched population is once the matcher is fixed — **a 10% remainder and a 40%
+      remainder are different products.**
+- [ ] ⚠ **OVERLAPS EXISTING SCOPE — CHECK BEFORE BUILDING, DO NOT DUPLICATE.** The checkpoint
+      cadence is adjacent to **Engagement Intelligence L1–4** and the **Referral Conversion
+      Engine**; the popup is Wave 3 referrer-app work. **Verified 2026-08-25:** both are real and
+      named in `EXECUTION_SEQUENCE.md` (:35, :120, :134) — Engagement Intelligence L1–4 is one of
+      the two **post-launch carve-outs**, while Wave 3 itself is **launch-gating under D13** and
+      inserts between Waves 2 and 4. **A second cadence system next to the planned one is the
+      risk.**
+- [ ] ⚠ **RELATED, NOT THE SAME:** the **Missing Referrals resolution workflow** — admin-side
+      manual wiring, where the *contractor* resolves a referral by hand. This flow is the
+      *referred person* supplying what the system could not find. **Both are needed; neither
+      replaces the other.**
+      ⚠ **CORRECTION, 2026-08-25: it was described as "already a pre-launch blocker" and it is
+      NOT recorded as one here.** It exists as a shipped feature — `missing_referral_reports`
+      (`db.js:451`), admin read/resolve at `admin/index.js:1848` and `:1872` — and is registered
+      in `CLAUDE_REGISTRY.md:142` as *"Missing Referral Self-Report (Pending Referral Feature
+      3)"*. **But this file is the canonical index of open work, and it carries no entry for it.**
+      Either the remaining workflow gap belongs here as its own item, or "pre-launch blocker" is
+      the wrong label for something already shipped. **Decide which before Wave 0.4 closes** —
+      an unrecorded blocker is the failure mode R14 exists to prevent.
+
 ### ⚠ NAMED BUILD — ONE-REFERRER-ONE-CONTRACTOR IS RULED BUT UNENFORCED
 
 **Ruled 2026-08-24. No boundary implements it**, and it reads as true to anyone who does not
