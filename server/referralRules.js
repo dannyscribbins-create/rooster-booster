@@ -47,13 +47,28 @@ async function evaluateReferral(contractorId, invoiceData, referredBy) {
 
   // ── STEP 2 — Referrer Account Check (case-insensitive name match) ─────────────
   // Phone/email fallback deferred to future session.
-  // MVP: LOWER(full_name) = LOWER(referred_by) only.
+  // MVP: LOWER(full_name) = LOWER(referred_by), scoped to this contractor.
+  //
+  // ⚠ THE contractor_id PREDICATE IS THE MONEY GUARD (Wave 0.3 F8). Without it this
+  // matched a name across EVERY tenant, and the id it returns is written straight
+  // into referral_conversions with a bonus_amount by the invoice-paid handler — the
+  // table carrying UNIQUE(user_id, jobber_client_id). One contractor's paid invoice
+  // could therefore book a bonus against another contractor's referrer. Of the
+  // twelve unscoped matchers F8 found, this is the only one where a wrong match
+  // moves money, which is why it was fixed first.
+  //
+  // Unreachable while Accent is the only contractor — there is no second row to
+  // match — and live the day contractor #2 provisions.
+  //
+  // users.contractor_id is NOT NULL with an FK (db.js:1201-1240), so this predicate
+  // can never silently match nothing because the column was null.
   const referrerResult = await pool.query(
     `SELECT id FROM users
-     WHERE LOWER(full_name) = LOWER($1)
+     WHERE contractor_id = $2
+       AND LOWER(full_name) = LOWER($1)
        AND deleted_at IS NULL
      LIMIT 1`,
-    [referredBy.trim()]
+    [referredBy.trim(), contractorId]
   );
   if (referrerResult.rows.length === 0) {
     console.log(`[referralRules] No user match for referred_by: "${referredBy}" — routing to pending referral flow`);

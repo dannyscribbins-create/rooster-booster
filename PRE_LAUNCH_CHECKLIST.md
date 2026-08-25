@@ -578,6 +578,37 @@ check — which is why this is a named build rather than a checklist line.
       ⚠ **They DEPEND on `user_id` being same-tenant rather than ASSERTING it.** A real
       property, worth knowing, not worth changing here — but if cross-tenant `user_id` values
       ever appear, these read wrong and nothing in them would say so.
+- [ ] **⚠ RECORDING A LESSON DOES NOT PREVENT IT.** Three F8 tests (F8-9, F8-11, F8-12) were
+      **vacuous on first run** — a byte-window source slice overran into a **NEIGHBOURING**
+      query that legitimately carries `contractor_id`, including `postJobSequence.js:91`, **the
+      one scoped step of the very chain under test.** The instrument found the correct neighbour
+      and **reported the broken query as fixed.**
+      ⚠ **This is T11c repeating in the same wave, in tests written AFTER T11c's lesson was
+      recorded** — by the same author, with the lesson in the checklist at the time.
+      ⚠ **The durable fix is STRUCTURAL, not attentional:** a forward-only slice bounded at the
+      end of the SQL literal, plus non-vacuity assertions (slice under 400 chars, at most one
+      `SELECT`). The first version **could not detect its own overrun**; this one **cannot
+      overrun silently.**
+      **Any source-text test must assert the BOUNDS of what it read, not only the content.**
+- [ ] **⚠ A TEST'S ANCHOR MUST NOT LIVE INSIDE THE REGION THE FIX MODIFIES.** F8's source-text
+      needles embedded each `WHERE` clause. Adding `contractor_id` **ahead of** the name
+      predicate — the natural placement — made the needle stop matching, so the test failed with
+      `harness: needle not found` **AFTER the fix landed.**
+      ⚠ **This is the INVERSE of T11c and it is worse to diagnose.** T11c silently **PASSED**
+      against broken code. This silently **FAILS** against **correct** code, at the moment a
+      reader's instinct is to suspect the fix rather than the instrument.
+      **Anchor on structure the fix does not touch** — the SELECT list, an enclosing `const` —
+      **and verify each anchor is unique in its file.**
+      **Two shapes now recorded from one wave:** an anchor that drifts when the file is
+      **refactored** (T11c), and an anchor that breaks when the **fix lands** (F8). Both were
+      byte-window slices into changing regions.
+- [ ] **⚠ WHAT F8's SOURCE-TEXT BACKSTOP PROVES, AND WHAT IT DOES NOT.** Seven of F8's twelve
+      tests assert only that a `contractor_id` predicate is **present in the source** of one SQL
+      statement. They cannot prove the filter is **correct**, that it binds the **right
+      parameter**, or that the query is ever **reached**. Only the six behavioural tests
+      demonstrate that a cross-tenant row is actually not returned.
+      ⚠ **Twelve green F8 tests are not twelve verified behaviours** — six are, and the rest are
+      a presence check standing in for one. Recorded at the tests as well as here.
 - [ ] **⚠ A STATUS COMMENT IS A CLAIM WITH A SHELF LIFE.**
       `jobberIngestionRepair.test.js`'s header was corrected **twice in one session** —
       *"every test is expected to FAIL"*, then *"T7 and T9 remain skipped"* — each true when
