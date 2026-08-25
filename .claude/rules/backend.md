@@ -50,6 +50,54 @@ Rule: Contact field (email or phone) is the PRIMARY match key. Name similarity (
 - MEDIUM — do not auto-link: contact match alone, name unavailable
 - LOW — never link: name similarity only, no contact match
 
+⚠ **ONE NAMED EXCEPTION TO "LOW — never link" — the pending-referral referrer
+lookup** (`findReferrerCandidates` in `server/utils/pendingReferral.js`, Wave 0.4).
+It matches on **name alone, with no contact signal**, which the row above forbids.
+**This is deliberate and it must not be "corrected" back into compliance.**
+
+- **It has no contact to match on, and that absence IS the problem being solved.**
+  `pending_referrals.referred_by_name` is a free-text CRM field; `referred_by_email`
+  and `referred_by_phone` are exactly what the lookup EXISTS to populate. Applying
+  the rule here forbids the only signal available, so the match can never happen —
+  which is the measured state it corrected: 13 pending referrals, 0 ever matched.
+- **The safeguards are different, not absent.** The threshold is **0.6, not 0.4**
+  (see the note at `REFERRER_MATCH_THRESHOLD` — the Standard's 0.4 is calibrated as
+  a *confirmation* signal behind a contact-match primary key and is far too loose as
+  a primary key), and anything other than exactly one candidate goes to **admin
+  review** rather than auto-linking.
+- **Everything in the scope list above still obeys the rule unchanged.**
+
 Phone normalization: `REGEXP_REPLACE(phone, '[^0-9]', '', 'g')`. COALESCE to `''` for NULLs.
-Name normalization: `LOWER(TRIM(first || ' ' || last))`, COALESCE nulls to `''`.
+
+Name normalization: `BTRIM(REGEXP_REPLACE(LOWER(first || ' ' || last), '[[:space:]]+', ' ', 'g'))`,
+COALESCE nulls to `''`.
+
+⚠ **CORRECTED 2026-08-25 (Wave 0.4). THIS LINE PRESCRIBED THE DEFECT.** It read
+`LOWER(TRIM(first || ' ' || last))`. **Trimming AFTER concatenation only strips the
+ends of the joined string** — it cannot collapse an interior double space, and a
+trailing space on `first_name` produces exactly that. 22% of `jobber_clients` name
+rows are stored untrimmed, so this is the common case, not an edge one. A defect in
+a governing document reproduces into every site that obeys it, and **this one was
+obeyed faithfully twice**: `admin/contacts.js:239` and `admin/campaigns.js:1064`
+both still carry the old form and still carry the defect. They were **not** changed
+in Wave 0.4 — each is its own blast radius — but they are now divergent from this
+Standard rather than compliant with it, and that is the direction that gets noticed.
+
+⚠ **`[[:space:]]+`, NEVER `\s+`.** On the node-postgres path a `'\s+'` pattern does
+not reach the regex engine as a whitespace class — it matches the literal letter
+`s`. `regexp_replace('tommy  mills', '\s+', ' ', 'g')` returns `'tommy  mill '`:
+the doubled space SURVIVES and the `s` is eaten. It raises no error, and two
+equally-corrupted strings still compare equal, so the damage stays invisible until
+a corrupted name is displayed. `[[:space:]]` also strips NBSP, which `BTRIM()`
+alone does not.
+
+⚠ **Normalising before a pg_trgm compare buys DETERMINISM, not matchability.**
+pg_trgm builds trigrams over collapsed whitespace and folded case, so
+`similarity('tommy  mills','tommy mills')` is **1.0000** — as are the NBSP, tab,
+leading-space and mixed-case variants (measured 2026-08-25). Normalisation is what
+makes two rows differing only in whitespace score IDENTICALLY, so ranking is stable
+and a tie is a real tie. **If you test this, find that trigram absorbs whitespace
+anyway, and conclude the normalisation is pointless — that conclusion is correct
+reasoning from a premise this paragraph exists to remove.**
+
 pg_trgm: `CREATE EXTENSION IF NOT EXISTS pg_trgm` (wired in contacts.js at module load).

@@ -270,16 +270,44 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
   // ─────────────────────────────────────────────────────────────────────────
   // T4b — fetchReferrerContact FAILS SILENTLY (Ruling A).
   //
-  // pendingReferral.js:258-262 raw-reads the token and, on absence, returns
-  // { phone: null, email: null }. Those two nulls are written straight onto
-  // pending_referrals.referred_by_email / referred_by_phone — the exact column
-  // pair matchPendingReferral() keys on. The result is a pending referral that
-  // can never match, with no record anywhere of why.
+  // The property: fetchReferrerContact raw-read the token and, on absence,
+  // returned { phone: null, email: null } with no record anywhere of why.
+  // Wave 0.2 item 3 made that failure reach error_log. This test is that guard.
   //
   // ⚠ Same defect class as the webhook 401s never reaching error_log (Ruling C):
   // a downstream symptom with the cause discarded.
+  //
+  // ── ⚠ CORRECTION, 2026-08-25 (Wave 0.4). THE PARAGRAPH HERE WAS INVERTED, ──
+  // ── NOT MERELY STALE, AND IT INSTRUCTED AGAINST THE CURRENT DESIGN. ────────
+  // It read: "Those two nulls are written straight onto
+  // pending_referrals.referred_by_email / referred_by_phone — the exact column
+  // pair matchPendingReferral() keys on. The result is a pending referral that
+  // can never match."
+  //
+  // THAT CALLER RELATIONSHIP NO LONGER EXISTS. Wave 0.4 moved the referrer
+  // lookup onto the persisted jobber_clients table and reads email/phone
+  // straight off the matched row, so checkAndCreatePendingReferral does not call
+  // fetchReferrerContact at all. Its one remaining caller is the ADMIN route
+  // POST /api/admin/pending-referrals/:id/confirm-referrer, which resolves a
+  // Jobber id a human picked and has no local row to read.
+  //
+  // ⚠ THE SHAPE, BECAUSE IT IS THE CATALOGUED ONE ARRIVING BY A NEW ROUTE.
+  // This test did not fail because it was wrong, and it did not drift. It was
+  // RE-POINTED by a change in a different file — "a rule applied once to a
+  // surface does not stay applied when the surface moves", reaching a test
+  // through a CALLER RELATIONSHIP rather than through a refactor of the test's
+  // own subject. Nothing in the diff of pendingReferral.js looked like it
+  // touched this file.
+  //
+  // ⚠ SO THE DRIVER CHANGED AND THE ASSERTIONS DID NOT. The test now calls
+  // fetchReferrerContact directly. Driving it through checkAndCreatePendingReferral
+  // would assert a ROUTE the code no longer has; the property under guard was
+  // always "this function records its token failure", and that is what is
+  // asserted. The two removed preconditions were about the old route, not about
+  // the property — they are replaced by the return-value assertion below, which
+  // pins the SKIP contract the caller depends on.
   // ─────────────────────────────────────────────────────────────────────────
-  it('T4b — a token failure inside fetchReferrerContact must be logged (RED: pendingReferral.js:262 returns { phone: null, email: null } and calls no logError, so the referral is left permanently unmatchable with no record of the cause)', async () => {
+  it('T4b — a token failure inside fetchReferrerContact must be logged (RED: it returned { phone: null, email: null } and called no logError, so a caller was left with no record of the cause)', async () => {
     // Contractor exists; deliberately NO tokens row.
     await pool.query(`INSERT INTO contractors (id, name, status) VALUES ($1, $1, 'active')`, [TENANT]);
     await pool.query(
@@ -287,32 +315,20 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
        ON CONFLICT (contractor_id) DO NOTHING`, [TENANT]
     );
 
-    const { checkAndCreatePendingReferral } = require('../utils/pendingReferral');
+    const { fetchReferrerContact } = require('../utils/pendingReferral');
 
-    const referredClient = {
-      id: 'jc-t4b-referred', firstName: 'Referred', lastName: 'Person',
-      customFields: [], emails: [], phones: [],
-    };
-    // Exactly one name match, so the single-match branch runs and reaches
-    // fetchReferrerContact — the multi/zero-match branch never calls it.
-    const allClients = [{ id: 'jc-t4b-referrer', firstName: 'Jane', lastName: 'Referrer' }];
+    const result = await fetchReferrerContact('jc-t4b-referrer', TENANT);
 
-    await checkAndCreatePendingReferral(TENANT, referredClient, 'Jane Referrer', allClients);
-
-    // Precondition: the branch under test actually ran. Without this, a future
-    // change that stops reaching fetchReferrerContact would leave the RED
-    // assertion below passing for the wrong reason.
-    const { rows: prRows } = await pool.query(
-      `SELECT referrer_lookup_attempted, referred_by_email, referred_by_phone
-       FROM pending_referrals WHERE jobber_client_id = 'jc-t4b-referred'`
-    );
-    assert.equal(prRows.length, 1, 'precondition: the pending_referrals row must have been created');
-    assert.equal(prRows[0].referrer_lookup_attempted, true, 'precondition: the single-match lookup branch must have run');
-    assert.equal(prRows[0].referred_by_email, null, 'precondition: the lookup produced no email — this is the silent failure');
+    // Precondition: the SKIP path is what ran, and its contract is unchanged.
+    // Wave 0.2 preserved { phone: null, email: null } exactly so the caller's
+    // needs_admin_verification path was unaffected — the change was that the
+    // skip became RECORDED, not that it became a throw.
+    assert.deepEqual(result, { phone: null, email: null },
+      'precondition: a missing token must still SKIP, returning both nulls rather than throwing');
 
     const { rows: errs } = await pool.query('SELECT error_message, source FROM error_log');
     assert.ok(errs.length > 0,
-      'a token failure that leaves a pending referral permanently unmatchable must be recorded in error_log — nothing was logged');
+      'a token failure that leaves a referrer without contact info must be recorded in error_log — nothing was logged');
     assert.ok(
       errs.some(e => /token/i.test(e.error_message) || /referrer.?contact/i.test(e.source || '')),
       `the record must identify the cause as a token failure — got: ${JSON.stringify(errs)}`

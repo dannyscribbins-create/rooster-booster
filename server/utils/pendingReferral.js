@@ -315,17 +315,117 @@ async function fetchReferrerContact(jobberId, contractorId) {
   }
 }
 
+// ── REFERRER NAME MATCH THRESHOLD ─────────────────────────────────────────────
+// ⚠ 0.6, AND IT IS DELIBERATELY NOT THE CONTACT MATCHING STANDARD'S 0.4.
+// DO NOT "CORRECT" THIS INTO LINE WITH THE STANDARD. The Standard's 0.4 is a
+// CONFIRMATION signal sitting behind an email-or-phone primary key — it only
+// ever has to reject a false positive that already matched on contact details.
+// Here the name IS the primary key, with no second signal behind it, and 0.4 is
+// far too loose for that job: measured against the 13 production rows, "Bobby"
+// returned 16 candidates at 0.4 and "Phyllis Davis" returned 11. At 0.6, twelve
+// of the thirteen return exactly one, and "Allstate" correctly returns none.
+// Measured 2026-08-25 — the server suite brackets this to (0.5882, 0.6250] with
+// a fixture pair whose real similarity it asserts before relying on it.
+const REFERRER_MATCH_THRESHOLD = 0.6;
+
+// ── NORMALISED NAME EXPRESSION ────────────────────────────────────────────────
+// ⚠ [[:space:]]+ AND NOT \s+, AND THIS PRODUCES NO ERROR IF YOU GET IT WRONG.
+// On this path a '\s+' pattern does not reach the regex engine as a whitespace
+// class — it matches the literal letter "s". regexp_replace('tommy  mills',
+// '\s+', ' ', 'g') returns 'tommy  mill ': the doubled space SURVIVES and the
+// "s" of "mills" is eaten. Two equally-corrupted strings still compare equal, so
+// the damage is invisible until a corrupted name is displayed. Measured
+// 2026-08-25. [[:space:]] also strips NBSP, which btrim() alone does not.
+//
+// ⚠ WHY NORMALISE AT ALL, BECAUSE THE OBVIOUS REASON IS WRONG AND WAS RECORDED.
+// Wave 0.4's scope ruling originally read "0.4 MUST NORMALISE — Tommy Mills is
+// the proof." That is FALSE and correcting it is the point of this comment.
+// pg_trgm builds trigrams over collapsed whitespace and folded case, so
+// similarity('tommy  mills','tommy mills') is exactly 1.0000 — as are the NBSP,
+// tab, leading-space and mixed-case variants. The trigram query resolves the
+// specimen with no normalisation whatsoever.
+// Normalisation stays for two reasons that ARE true:
+//   1. DETERMINISM — two rows differing only in whitespace must score
+//      IDENTICALLY, so ranking is stable and a tie is a real tie.
+//   2. Consistency with the six other name-matching implementations in this
+//      codebase, which is the only thing preventing a seventh divergence.
+// ⚠ If you test this, find that trigram absorbs whitespace anyway, and conclude
+// the normalisation is dead code — you are reasoning correctly from a premise
+// this comment exists to remove. Leave it.
+const NORM_SQL = (expr) =>
+  `btrim(regexp_replace(lower(${expr}), '[[:space:]]+', ' ', 'g'))`;
+
+// ── FIND REFERRER CANDIDATES ──────────────────────────────────────────────────
+// Ranks jobber_clients rows for this contractor against a free-text "Referred
+// by" name, forward and reversed, and returns those at or above the threshold,
+// best first.
+//
+// Input:  contractorId, referredByName (raw CRM string, may be untrimmed/empty)
+// Output: [{ jobber_client_id, display_name, email, phone, score }], best first.
+//         Empty array when the name is blank or nothing clears the threshold.
+//
+// ⚠ REPLACED AN IN-MEMORY allClients.filter() THAT WAS EMPTY ON EVERY WEBHOOK
+// CALL. Both webhook handlers pass [] literally, and the incremental sync passes
+// only the current chunk window — so across 13 production pending referrals the
+// name match had never once succeeded. The table holds 18,651 rows for this
+// tenant and is not subject to Jobber's filter limitations at all.
+//
+// ⚠ NO INDEX IS USED HERE, AND ADDING ONE WITHOUT CHANGING THE PREDICATE DOES
+// NOTHING. A gin_trgm_ops index cannot serve `similarity(a,b) >= x` — only the
+// `%` operator can, which additionally requires SET pg_trgm.similarity_threshold.
+// Measured on 18,651 rows: the function form plans a Seq Scan whether or not the
+// index exists (~40 ms), and only the operator form plans an index scan. An
+// index added on its own is therefore inert while looking like a fix. Not built
+// in Wave 0.4 because ~40 ms is not a problem at this scale; when it becomes
+// one, change BOTH the index and this predicate together.
+//
+// is_archived is deliberately NOT filtered: uniform non-filtering across every
+// outbound surface was ruled 2026-08-23 and belongs to the Client Lifecycle
+// Protocol, not here.
+async function findReferrerCandidates(contractorId, referredByName) {
+  if (!referredByName || typeof referredByName !== 'string' || !referredByName.trim()) return [];
+
+  const fwd  = NORM_SQL(`coalesce(jc.first_name,'') || ' ' || coalesce(jc.last_name,'')`);
+  const rev  = NORM_SQL(`coalesce(jc.last_name,'')  || ' ' || coalesce(jc.first_name,'')`);
+  const best = `GREATEST(similarity(${fwd}, n.needle), similarity(${rev}, n.needle))`;
+
+  const { rows } = await pool.query(
+    `WITH n AS (SELECT ${NORM_SQL('$2::text')} AS needle)
+     SELECT jc.jobber_client_id,
+            btrim(regexp_replace(
+              coalesce(jc.first_name,'') || ' ' || coalesce(jc.last_name,''),
+              '[[:space:]]+', ' ', 'g')) AS display_name,
+            jc.email,
+            jc.phone,
+            ${best} AS score
+       FROM jobber_clients jc, n
+      WHERE jc.contractor_id = $1
+        AND ${best} >= $3
+      ORDER BY score DESC, jc.jobber_client_id`,
+    [contractorId, referredByName, REFERRER_MATCH_THRESHOLD]
+  );
+  return rows;
+}
+
 // ── CHECK AND CREATE PENDING REFERRAL ─────────────────────────────────────────
 // Called from syncSingleClient for every referred client.
 // If the referrer has no app account, creates a pending_referrals record then
 // looks them up in Jobber by name to find their contact info for the auto-invite.
 // No-op if user account already exists or record already processed.
 //
-// MVP: webhook path calls this with allClients=[] because the full client list is
-// not available per-request. When allClients=[] the name match always fails and the
-// record is flagged needs_admin_verification=true. The next scheduled full sync
-// (which has allClients populated) will re-attempt the name match for those records
-// via the isRetry path below.
+// ⚠ THE MVP NOTE THAT STOOD HERE IS RETIRED, NOT EDITED — IT IS NOW INVERTED.
+// It read: "webhook path calls this with allClients=[] ... When allClients=[] the
+// name match always fails". That was true and is now false: Wave 0.4 moved the
+// candidate source to the jobber_clients table, so an empty allClients no longer
+// affects the match at all. Both webhook handlers still pass [] literally
+// (webhooks/jobber.js, the two syncSingleClient calls) and that is now harmless.
+//
+// ⚠ allClients SURVIVES FOR ONE PURPOSE ONLY: the isRetry gate below still uses
+// `allClients.length > 0` as a proxy for "a scheduled sync is running", which
+// keeps webhook-triggered re-processing off. That proxy no longer means what its
+// name suggests and is a candidate for retirement — but changing retry frequency
+// is a behaviour change with its own blast radius and is deliberately NOT bundled
+// into the matcher rebuild. Flagged, not fixed.
 async function checkAndCreatePendingReferral(contractorId, client, referredByName, allClients = []) {
   // Check if referrer already has an account WITH THIS CONTRACTOR (Wave 0.3 F8).
   // ⚠ THIS ONE FAILS BY NOT ACTING, which is why it is the hardest of the twelve to
@@ -386,28 +486,44 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
   // The referrer is named in the "Referred by" field but their contact info is in
   // their own Jobber client record — not in the referred person's record.
   // Look them up by name to find their phone/email for the auto-invite.
+  //
   // Jobber ClientFilterAttributes does not support name filtering — confirmed in
-  // GraphiQL. Local matching against allClients is the correct approach.
+  // GraphiQL — so the lookup cannot happen remotely. It now happens against the
+  // persisted jobber_clients table (Wave 0.4). See findReferrerCandidates.
   let inviteChannel = 'none';
   let inviteSentAt = null;
 
   try {
-    const normalizedReferrerName = referredByName.trim().toLowerCase();
-
-    const matches = allClients.filter(c => {
-      const fullName = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
-      const reverseName = `${c.lastName || ''} ${c.firstName || ''}`.trim().toLowerCase();
-      return fullName === normalizedReferrerName || reverseName === normalizedReferrerName;
-    });
+    const matches = await findReferrerCandidates(contractorId, referredByName);
 
     await pool.query(
       'UPDATE pending_referrals SET referrer_lookup_attempted=true WHERE contractor_id=$1 AND jobber_client_id=$2',
       [contractorId, client.id]
     );
 
-    if (matches.length === 1) {
-      // Single match — fetch contact info via targeted Jobber query (bulk sync omits phones/emails)
-      const { phone: referrerPhone, email: referrerEmail } = await fetchReferrerContact(matches[0].id, contractorId);
+    // ⚠ A LONE CANDIDATE WITH NO WAY TO CONTACT THEM IS NOT A MATCH.
+    // referred_by_email / referred_by_phone are the exact column pair
+    // matchPendingReferral() keys on. Writing NULL into both while clearing
+    // needs_admin_verification produces a row that can never match and that
+    // nothing flags — which is the precise defect this wave exists to remove.
+    // So a single candidate carrying neither falls through to the admin branch
+    // below, where it is offered as a candidate rather than silently accepted.
+    const soleMatch = matches.length === 1 && (matches[0].email || matches[0].phone)
+      ? matches[0]
+      : null;
+
+    if (soleMatch) {
+      // ⚠ NO JOBBER ROUND-TRIP HERE, AND THAT IS THE POINT (Wave 0.4).
+      // This branch used to call fetchReferrerContact() for exactly these two
+      // values. All three jobber_clients write sites already persist them
+      // (fullJobberImport Step H, jobberIncrementalSync, upsertAndTagClient), so
+      // the round-trip bought nothing and cost one external call, one retry
+      // wrapper, and one silent-null failure mode on the critical path — a token
+      // problem there left the referral permanently unmatchable.
+      // fetchReferrerContact is still used by the ADMIN confirm-referrer route,
+      // which resolves an id a human picked and has no local row to read.
+      const referrerPhone = soleMatch.phone;
+      const referrerEmail = soleMatch.email;
 
       await pool.query(
         `UPDATE pending_referrals
@@ -435,10 +551,19 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
       if (inviteChannel !== 'none') inviteSentAt = new Date();
 
     } else {
-      // No match or multiple matches — flag for admin verification
+      // No match, multiple matches, or a lone candidate with no contact info —
+      // flag for admin verification and offer whatever candidates were found.
+      //
+      // ⚠ display_name IS ALREADY NORMALISED BY THE QUERY, not here. This string
+      // is rendered verbatim to an admin (AdminPendingReferrals.jsx candidate
+      // list), and 22% of jobber_clients name fields are stored untrimmed — the
+      // old `${first} ${last}`.trim() left an interior double space intact
+      // because trimming a joined string only strips its ends.
       const matchData = matches.map(m => ({
-        id: m.id,
-        name: `${m.firstName || ''} ${m.lastName || ''}`.trim(),
+        id: m.jobber_client_id,
+        name: m.display_name,
+        email: m.email,
+        phone: m.phone,
       }));
 
       await pool.query(
@@ -645,4 +770,19 @@ module.exports = {
   // Exported as of C/DL-2 Phase 3d-1. CLAUDE.md has always named this file as
   // escapeHtml's home; until now it was not actually importable from here.
   escapeHtml,
+  // ⚠ EXPORTED IN WAVE 0.4, AND THIS WAS A LIVE 500, NOT A TEST CONVENIENCE.
+  // admin/index.js's POST /api/admin/pending-referrals/:id/confirm-referrer has
+  // destructured this name since it was written. It was never exported, so the
+  // binding was `undefined` and calling it raised
+  // "TypeError: fetchReferrerContact is not a function" — caught by the route's
+  // own catch and returned to the admin as a generic 500.
+  //
+  // ⚠ IT WAS UNREACHABLE UNTIL NOW, WHICH IS WHY NOBODY FOUND IT. That route
+  // only runs when an admin clicks "Confirm This Referrer", and that button only
+  // renders when jobber_name_matches is non-empty (AdminPendingReferrals.jsx).
+  // The old in-memory matcher wrote `[]` on every single call, so the candidate
+  // list was always empty and the button never appeared. Wave 0.4's matcher
+  // writes real candidates for the first time — which ACTIVATES this path. A
+  // latent defect made live by a change in a different file.
+  fetchReferrerContact,
 };
