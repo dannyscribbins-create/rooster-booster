@@ -1707,12 +1707,42 @@ router.post('/api/admin/pending-referrals/:id/resend', resendInviteLimiter, requ
       return res.status(400).json({ error: 'No contact info available to resend.' });
     }
 
+    // ── THE OUTREACH GATE — REFUSAL, NOT OVERRIDE (Wave 0.4, ruled) ───────────
+    // ⚠ AN ADMIN CLICK IS NOT CONSENT TO SEND. The card's own copy reads
+    // "Invite pending your approval", which reads as an instruction to click —
+    // and a re-pull can produce a screen full of held rows each showing this
+    // button. Overriding on a deliberate click is precisely how a contractor
+    // sends forty invites they did not mean to send.
+    // Refusing costs one extra click and routes them to the control that governs
+    // the decision. Forward-only means opening the toggle does not release the
+    // backlog, so this is not a trap: it is the correct order of operations.
+    const { isMatchOutreachEnabled } = require('../../utils/pendingReferral');
+    if (!(await isMatchOutreachEnabled(contractorId))) {
+      return res.status(400).json({
+        error: 'Referral match outreach is turned off. Turn it on in Settings → Notifications → Referral match outreach to send invites.',
+      });
+    }
+
     const { sendPendingInviteEmail, sendPendingInviteSMS } = require('../../utils/pendingReferral');
     if (record.referred_by_email) await sendPendingInviteEmail(record, contractorId);
     if (record.referred_by_phone) await sendPendingInviteSMS(record, contractorId);
 
+    // ⚠ invite_sent_at IS SET WHEN IT WAS NEVER SET, AND THAT IS NOT COSMETIC.
+    // This route wrote invite_resent_at alone, which was right while every row
+    // reaching it had already been invited. Wave 0.4 created rows that have NOT
+    // been — matched-but-held — and on those, writing only resent_at leaves two
+    // things broken and both silently: the card keeps rendering the row as HELD
+    // (isHeld requires invite_sent_at IS NULL), so the admin sends and the UI
+    // says nothing was sent; and checkAndCreatePendingReferral's idempotency
+    // guard reads invite_sent_at, so the matcher would send a SECOND invite on
+    // the next sync. Two invites from one click.
+    // COALESCE, not an unconditional write: a genuine resend must not overwrite
+    // the original send timestamp.
     await pool.query(
-      'UPDATE pending_referrals SET invite_resent_at=NOW() WHERE id=$1',
+      `UPDATE pending_referrals
+          SET invite_resent_at = NOW(),
+              invite_sent_at   = COALESCE(invite_sent_at, NOW())
+        WHERE id = $1`,
       [req.params.id]
     );
     res.json({ success: true });
@@ -1751,6 +1781,29 @@ router.post('/api/admin/pending-referrals/:id/confirm-referrer', requirePermissi
   const { contractorId } = adminSession;
   const { referrer_name, referrer_jobber_id } = req.body || {};
   try {
+    // ── THE OUTREACH GATE — REFUSAL, NOT OVERRIDE (Wave 0.4, ruled) ───────────
+    // ⚠ CHECKED FIRST, BEFORE ANY WRITE OR ANY JOBBER CALL, so a refusal leaves
+    // no partial state. This action is not "record a choice" — the UI presents
+    // it as "Select the correct referrer to send their invite" and reports back
+    // "Referrer confirmed — invite sent." Confirming without sending would mean
+    // something different from what the admin was offered, so the whole action
+    // is refused rather than half-performed.
+    //
+    // ⚠ THIS PATH IS THE ONE WAVE 0.4 BROUGHT TO LIFE. It was unreachable
+    // before: the old matcher wrote an empty jobber_name_matches on every call,
+    // so the "Confirm This Referrer" button never rendered and this route was
+    // never exercised. The matcher rebuild writes real candidates.
+    //
+    // NOTE (recorded, not changed here): unlike /resend this route carries no
+    // rate limiter. /resend allows 3/hour. The omission looks like an oversight
+    // rather than a decision, but rate limits are not this fix.
+    const { isMatchOutreachEnabled } = require('../../utils/pendingReferral');
+    if (!(await isMatchOutreachEnabled(contractorId))) {
+      return res.status(400).json({
+        error: 'Referral match outreach is turned off. Turn it on in Settings → Notifications → Referral match outreach to confirm a referrer and send their invite.',
+      });
+    }
+
     let referrerPhone = null;
     let referrerEmail = null;
     if (referrer_jobber_id) {

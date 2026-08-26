@@ -412,6 +412,39 @@ recorded**, not updated with a new value. **Prefer asserting what a site DOES sa
 negative assertion is genuinely the only way to see a mechanism, say so in the comment —
 otherwise the next reader deletes it as redundant, which is the regression it exists to catch.
 
+### When a fix makes new DATA possible, enumerate every consumer before calling it contained
+
+A change that alters **which rows** a query returns is usually contained. A change that makes a
+**state occur for the first time** is not — it activates every code path that was dormant only
+because the data never arrived. Those paths have never run, so nothing has ever tested them, and
+they fail in ways their authors never considered, because the state they now receive did not
+exist when they were written.
+
+**Four instances across Waves 0.2 and 0.4, all found only by looking:**
+
+- `admin/contacts.js:891`'s `is_archived = false` predicate was vacuously true for years. Making
+  the column truthful would have activated it — gradually, in one surface only, as a side effect
+  of an ingestion fix.
+- `fetchReferrerContact` was never exported; `admin/index.js` had destructured and called it
+  since it was written, raising a `TypeError` caught as a generic 500. **Unreachable because the
+  matcher wrote `[]` on every call, so the button never rendered.** Writing real candidates
+  activated it.
+- **T4b was RE-POINTED, not broken**, by a change in a different file — the caller relationship
+  it drove through no longer existed.
+- The Pending Referrals send buttons keyed off `(referred_by_email || referred_by_phone)`, which
+  **meant** "was invited", because the same branch wrote contact and fired the invite together.
+  Wave 0.4 decoupled them. **The condition never changed; its meaning did.** Result: a live gate
+  bypass on the first matched-but-not-invited row in production history.
+
+**The check is mechanical.** Before shipping a fix that creates a new state, grep every reader of
+the columns or conditions involved and ask of each: **what did this condition mean before, and
+does it still mean that?** ⚠ **A condition whose meaning changed without its text changing is
+invisible to every diff, every test, and every review.**
+
+⚠ **Wave 0.3 bounds the rule.** Twelve tenant-scoping fixes changed which rows a query returned
+and activated nothing, because **no new state became possible**. The rule is about new STATES,
+not new RESULTS.
+
 ### A rule applied once to a surface does not stay applied when the surface moves
 
 ⚠ **THE RULE DID NOT FAIL. IT WAS NEVER RE-APPLIED.** `LockedSection`'s lock glyph declared

@@ -147,6 +147,40 @@ describe('Wave 0.4 items 3 and 4 — the held state and its deeplink (RED first)
     expect(screen.queryByText(HELD_BANNER)).toBeNull();
   });
 
+  // ── THE SEND BUTTONS MUST NOT RENDER ON A HELD ROW ─────────────────────────
+  // ⚠ THE RENDER CONDITION CHANGED MEANING WITHOUT BEING TOUCHED. Both send
+  // buttons gate on `(referred_by_email || referred_by_phone)`. Before Wave 0.4
+  // that was equivalent to "has been invited", because the same branch wrote the
+  // contact columns and fired the invite together. The matcher rebuild broke that
+  // coupling, so the condition now means "is invitable" — and a held row, which
+  // by definition must NOT be invited yet, satisfies it.
+  //
+  // A refused click is a worse experience than an absent button, and the banner
+  // already tells the admin what to do. So the buttons go away rather than
+  // erroring. The server-side refusal (wave04GateBypass.test.js) stays as the
+  // real control — this is the UI not offering an action it knows will fail.
+  it('P5 — neither send button renders on a held row (RED: both gate on contact-info-present, which a held row now satisfies, so the card offers a send on a row whose whole point is that nothing was sent)', async () => {
+    mockFetch([heldRow()]);
+    render(<AdminPendingReferrals />);
+    await screen.findByText(HELD_BANNER);
+
+    expect(screen.queryByText(/Resend Invite/i), 'Resend Invite must not be offered on a held row').toBeNull();
+    expect(screen.queryByText(/^Follow Up$/i), 'Follow Up must not be offered on a held row').toBeNull();
+    // Close Out is unaffected — closing a held row is legitimate.
+    expect(screen.getByText(/Close Out/i)).toBeTruthy();
+  });
+
+  // ⚠ POSITIVE CONTROL for P5. Without it, deleting both buttons outright would
+  // pass — and they are correct and wanted on a row that WAS invited.
+  it('P6 — both send buttons DO render on a row whose invite actually went out (the partner that stops P5 from being satisfied by removing them everywhere)', async () => {
+    mockFetch([sentRow()]);
+    render(<AdminPendingReferrals />);
+    await screen.findByText('ivy.sender@fixture.test.invalid');
+
+    expect(screen.getByText(/Resend Invite/i)).toBeTruthy();
+    expect(screen.getByText(/^Follow Up$/i)).toBeTruthy();
+  });
+
   // ── ITEM 4 — THE DEEPLINK ──────────────────────────────────────────────────
   // Small, and explicitly IN SCOPE precisely because it is the first thing a
   // build drops as creep. Without it the banner names a setting the admin then

@@ -363,6 +363,28 @@ entry is the canonical record until then.**
   The guard protects a state that is not reachable **today** — which is what makes it a guard —
   so the test has to CONSTRUCT that state (I3) rather than wait for it. **Defensive code needs
   a constructed-state test or it ships unverified.**
+
+### ⚠ THE SAME DEFECT, IN THE SAME FILE, REINTRODUCED HOURS AFTER CORRECTING IT
+
+- ⚠ **Wave 0.4 item 1 found `fetchReferrerContact` unexported from `pendingReferral.js` while
+  `admin/index.js` destructured and called it** — `TypeError: fetchReferrerContact is not a
+  function` on every "Confirm This Referrer" click, returned to the admin as a generic 500.
+  Latent only because the button never rendered.
+  ⚠ **The gate commit then added `isMatchOutreachEnabled` to the SAME FILE and did not export
+  it**, making the send gate **structurally unreachable from any route**. Three send routes
+  (`/resend`, `/confirm-referrer`, and Follow Up which is `/resend`) cannot check it even if
+  written to. Found by audit the same day, before the re-pull.
+- ⚠ **DOCUMENTING A MECHANISM DOES NOT PREVENT REPRODUCING IT.** This arc has now said that
+  three times and demonstrated it on itself: the T11c anchor lesson repeated in F8; vacuity
+  repeated across three consecutive waves *after* being recorded; and now an export defect
+  repeated **in the same file, inside the same session, hours after being corrected and
+  written up.** **The durable fix is never the record — it is a check that fails.**
+- ⚠ **NAMED BUILD CANDIDATE — the export/import conformance test.** A test asserting that every
+  name destructured from a `require()` inside `server/routes/**` exists in that module's
+  exports. **It would have caught both instances**, and it is the class of defect that produces
+  no error at require time: destructuring a missing name yields `undefined`, and the failure
+  surfaces only when the value is called. **Not built here.** Small, mechanical, and the first
+  check in this project that would catch a defect the records demonstrably could not.
 - **Harness bugs caught by preconditions, not shipped as false REDs:** `contractors` keys on
   `id`, not `contractor_id`, and a blanket `DELETE FROM contractors` hits initDB's seeded row
   and raises 23503 in every `beforeEach` — a harness failure indistinguishable from a RED; and
@@ -478,6 +500,19 @@ entry is the canonical record until then.**
       ⚠ **The root fix — `setup.js` not loading `.env` at all — is a NAMED BUILD, not a
       drive-by.** Several suites currently depend on the present behaviour. **Do not change it
       inside a feature session.**
+      ⚠ **SECOND INSTANCE, 2026-08-25 — IT IS A PATTERN, NOT AN INCIDENT, AND IT IS NOT
+      RESEND-SPECIFIC.** The same leak applies to **every** credential in `.env`. Wave 0.4's
+      gate-bypass fix hit it with the **Jobber** key: `/confirm-referrer` resolves contact
+      details through `fetchReferrerContact`, which posts to `api.getjobber.com`, so
+      `wave04GateBypass.test.js` would have called **Accent's live Jobber account** on every
+      run had `axios.post` not been fenced.
+      ⚠ **Each instance has been mitigated INDIVIDUALLY** — a `require.cache` stub for Resend,
+      an `axios` fence for Jobber — **and the root cause has never been fixed, so every new
+      suite touching an outbound path inherits it.** The mitigations are per-suite and invisible
+      to the next author.
+      ⚠ **UNTIL THE NAMED BUILD LANDS: any test exercising a path that calls an external
+      service must fence it EXPLICITLY. A test that silently succeeds by hitting production is
+      indistinguishable from one that passed.**
 - [ ] **The MVP comment above both `CLIENT_*` handlers was INVERTED, not merely stale.**
       It claimed the webhook payload *"may not include full nested quotes/jobs/invoices data"*
       when in fact it includes **no client object at all**. **A wrong comment defending a wrong

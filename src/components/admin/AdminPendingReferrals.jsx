@@ -367,8 +367,23 @@ export default function AdminPendingReferrals({ onOpenOutreachSetting }) {
                 {isPending && (
                   <>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 4 }}>
-                      {/* Resend Invite — only if contact info is available */}
-                      {(row.referred_by_email || row.referred_by_phone) && (
+                      {/* ⚠ THE CONDITION CHANGED MEANING WITHOUT BEING TOUCHED.
+                          These two buttons gated on `(email || phone)` alone, and
+                          before Wave 0.4 that WAS equivalent to "has been invited":
+                          the same branch wrote the contact columns and fired the
+                          invite together, so contact-present implied invite-sent.
+                          The matcher rebuild broke that coupling. A HELD row —
+                          matched, contact resolved, deliberately not invited — now
+                          satisfies the old condition, so the card was offering a
+                          send on the one row whose entire point is that nothing was
+                          sent. `&& !isHeld` restores the intent.
+                          The server refuses these sends too (both routes check the
+                          outreach gate); this is the UI declining to offer an action
+                          it already knows will fail, because a refused click reads
+                          as a broken button. Close Out is deliberately unaffected —
+                          closing a held row is legitimate. */}
+                      {/* Resend Invite — only for rows that were actually invited */}
+                      {!isHeld && (row.referred_by_email || row.referred_by_phone) && (
                         <Btn
                           variant="outline"
                           size="sm"
@@ -379,8 +394,9 @@ export default function AdminPendingReferrals({ onOpenOutreachSetting }) {
                         </Btn>
                       )}
 
-                      {/* Follow Up */}
-                      {(row.referred_by_email || row.referred_by_phone) && (
+                      {/* Follow Up — same condition, same reason; it posts to the
+                          same /resend route that Resend Invite does. */}
+                      {!isHeld && (row.referred_by_email || row.referred_by_phone) && (
                         <Btn
                           variant="outline"
                           size="sm"

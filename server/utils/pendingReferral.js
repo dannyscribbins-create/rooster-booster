@@ -866,6 +866,19 @@ module.exports = {
   // Exported as of C/DL-2 Phase 3d-1. CLAUDE.md has always named this file as
   // escapeHtml's home; until now it was not actually importable from here.
   escapeHtml,
+  // ⚠ THE GATE MUST BE EXPORTED OR IT IS NOT A GATE.
+  // It was added to this file and left module-private, which made it
+  // structurally unreachable from the three admin routes that send invites —
+  // /resend, Follow Up (which is /resend) and /confirm-referrer. All three
+  // therefore sent unconditionally, and none of them COULD have checked it.
+  //
+  // ⚠ THIS IS THE SAME DEFECT AS fetchReferrerContact BELOW, IN THE SAME FILE,
+  // REINTRODUCED HOURS AFTER CORRECTING IT. Destructuring a missing name yields
+  // `undefined` and raises nothing at require time, so the omission is invisible
+  // until the value is called. A record of the mechanism did not prevent the
+  // repeat; a check that fails would have. See PRE_LAUNCH_CHECKLIST.md — the
+  // export/import conformance test is recorded there as a named build.
+  isMatchOutreachEnabled,
   // ⚠ EXPORTED IN WAVE 0.4, AND THIS WAS A LIVE 500, NOT A TEST CONVENIENCE.
   // admin/index.js's POST /api/admin/pending-referrals/:id/confirm-referrer has
   // destructured this name since it was written. It was never exported, so the
