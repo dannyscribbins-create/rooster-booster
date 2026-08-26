@@ -25,7 +25,8 @@
 // existing ones do not, and N1 pins it.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import React from 'react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import AdminSettingsNotifications from './AdminSettingsNotifications';
 import BrandingProvider from '../shared/BrandingProvider';
@@ -157,5 +158,128 @@ describe('Wave 0.4 item 2 — the referral match outreach send gate (RED first)'
     await screen.findByText(GATE_LABEL);
     const card = container.querySelector(`#${GATE_ANCHOR}`);
     expect(card.style.boxShadow).not.toContain('0 0 0 3px');
+  });
+
+  // ── ⚠ THE STICKY-NAV BUG (reported from production behaviour, 2026-08-25) ──
+  //
+  // After the Pending Referrals deeplink is used once, EVERY subsequent click of
+  // the settings gear re-navigates to Notifications and re-scrolls to this card.
+  // It persists until a page refresh, which is what points at state rather than
+  // a re-fire: a refresh resets the request.
+  //
+  // MECHANISM: AdminComponents renders `settingsActive ? <AdminSettings/> : ...`
+  // — a ternary, so AdminSettings UNMOUNTS on close and REMOUNTS on open. Its
+  // navRequest effect therefore runs fresh on every mount, and the request was
+  // still sitting there truthy because nothing ever cleared it.
+  //
+  // ⚠ THE { token } PATTERN IS NOT THE DEFECT AND MUST BE PRESERVED. A repeat
+  // deeplink to a card the admin is already looking at has to re-fire, and only
+  // a changing token can express that. The defect is CONSUMPTION: the request is
+  // read and never marked spent. The token is what makes the NEXT request
+  // distinguishable from the last one — it is the fix's foundation, not its bug.
+  //
+  // ── WHAT THIS HARNESS IS, AND WHAT IT DELIBERATELY DOES NOT COVER ─────────
+  // It mimics AdminApp's OWNERSHIP: the parent holds the request and clears it
+  // when the child reports consumption. That is the contract under test. It does
+  // NOT prove AdminApp is wired this way — that plumbing runs through AdminShell
+  // and AdminSettings and is verified by reading the diff, not here. Stated so
+  // the split is deliberate rather than an unnoticed gap.
+  function StickyNavHarness() {
+    const [navRequest, setNavRequest] = React.useState(null);
+    const [open, setOpen] = React.useState(false);
+    return (
+      <BrandingProvider supplied={null}>
+        <button onClick={() => { setNavRequest({ token: Date.now() + Math.random() }); setOpen(true); }}>
+          fire-deeplink
+        </button>
+        <button onClick={() => setOpen(false)}>close-settings</button>
+        <button onClick={() => setOpen(true)}>open-settings</button>
+        {open && (
+          <AdminSettingsNotifications
+            navRequest={navRequest}
+            onNavRequestConsumed={() => setNavRequest(null)}
+          />
+        )}
+      </BrandingProvider>
+    );
+  }
+
+  const isHighlighted = (container) => {
+    const card = container.querySelector(`#${GATE_ANCHOR}`);
+    return !!card && card.style.boxShadow.includes('0 0 0 3px');
+  };
+
+  it('N10 — a consumed deeplink does not re-fire when Settings is reopened normally (RED: nothing clears the request, and AdminSettings remounts on every open, so the jump repeats until a page refresh)', async () => {
+    const { container } = render(<StickyNavHarness />);
+
+    // 1 — deeplink fires and highlights.
+    fireEvent.click(screen.getByText('fire-deeplink'));
+    await screen.findByText(GATE_LABEL);
+    expect(isHighlighted(container), 'precondition: the deeplink must highlight on arrival').toBe(true);
+
+    // 2 — navigate away, then 3 — open Settings normally.
+    fireEvent.click(screen.getByText('close-settings'));
+    fireEvent.click(screen.getByText('open-settings'));
+    await screen.findByText(GATE_LABEL);
+
+    // 4 — the actual assertion.
+    expect(isHighlighted(container),
+      'a spent deeplink must not re-fire on an ordinary visit to Settings').toBe(false);
+  });
+
+  // ⚠ THE POSITIVE CONTROL, AND IT IS THE ONE THAT MATTERS HERE. N10 alone
+  // passes against a deeplink that stopped working entirely — which is exactly
+  // the obvious wrong fix (clear the request before the child ever reads it).
+  it('N11 — a NEW deeplink after a consumed one still fires (the partner that stops N10 from being satisfied by breaking the deeplink)', async () => {
+    const { container } = render(<StickyNavHarness />);
+
+    fireEvent.click(screen.getByText('fire-deeplink'));
+    await screen.findByText(GATE_LABEL);
+    fireEvent.click(screen.getByText('close-settings'));
+    fireEvent.click(screen.getByText('open-settings'));
+    await screen.findByText(GATE_LABEL);
+    expect(isHighlighted(container), 'precondition: the spent request must not re-fire').toBe(false);
+
+    // A genuinely new request — new token — must still work.
+    fireEvent.click(screen.getByText('fire-deeplink'));
+    await screen.findByText(GATE_LABEL);
+    expect(isHighlighted(container),
+      'a fresh deeplink must still highlight — clearing the request must not disable the feature').toBe(true);
+  });
+
+  // ⚠ N12 — THE HIGHLIGHT MUST STILL TURN ITSELF OFF AFTER CONSUMPTION.
+  //
+  // ⚠ THIS TEST'S FIRST VERSION ASSERTED THE WRONG THING AND WAS CORRECTED HERE.
+  // It asserted "the cue is still visible after the request is marked spent" and
+  // described the naive fix as making the highlight flash and die. That is not
+  // what the naive fix does, and the test proved it: reverting to the naive form
+  // (a local `const t` cleared by the effect's own cleanup) left N12 GREEN.
+  //
+  // THE ACTUAL FAILURE MODE IS THE OPPOSITE. Consuming the request nulls
+  // navRequest, the dep changes, React runs the cleanup — which cancels the
+  // timeout but does NOT reset highlightGate. So the cue turns on and NEVER
+  // TURNS OFF: a permanently ringed card, on a page the admin returns to
+  // constantly. Cancelling the only thing that would have ended it.
+  //
+  // Hence fake timers and an assertion about what happens at 2s. Verified to go
+  // RED against the naive form, which is the check the first version skipped.
+  it('N12 — the highlight clears itself after 2s even though the request was consumed at 0s (RED against the naive fix, whose cleanup cancels the only timer that would end it)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { container } = render(<StickyNavHarness />);
+      fireEvent.click(screen.getByText('fire-deeplink'));
+      await screen.findByText(GATE_LABEL);
+
+      // Precondition: the cue is up, and it survived consumption at 0s.
+      expect(isHighlighted(container),
+        'precondition: the cue must be visible after the request is marked spent').toBe(true);
+
+      await act(async () => { vi.advanceTimersByTime(2500); });
+
+      expect(isHighlighted(container),
+        'the cue must end on its own — a permanent ring on a page the admin returns to constantly is not a momentary cue').toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -296,7 +296,7 @@ export default function AdminPanel({ onLogout }) {
   return (
     <AdminPermissionsContext.Provider value={permState}>
       <BrandingProvider supplied={suppliedBranding}>
-        <AdminShell page={page} setPage={handleNavClick} onLogout={onLogout} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsNotifNavRequest={notifNavRequest} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
+        <AdminShell page={page} setPage={handleNavClick} onLogout={onLogout} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsNotifNavRequest={notifNavRequest} onSettingsNotifNavConsumed={() => setNotifNavRequest(null)} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
           {pages[page]}
         </AdminShell>
         <AdminInboxSidebar

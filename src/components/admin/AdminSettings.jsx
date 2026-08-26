@@ -241,7 +241,7 @@ function SystemSettings() {
   );
 }
 
-export default function AdminSettings({ teamNavRequest, notifNavRequest, initialTeamOpenFlagCount = 0 }) {
+export default function AdminSettings({ teamNavRequest, notifNavRequest, onNotifNavConsumed, initialTeamOpenFlagCount = 0 }) {
   const { branding } = useAdminBranding();
   const [settingsPage, setSettingsPage] = useState('company');
   // Seeded from AdminApp's login-time fetch so the sidebar badge is accurate even before
@@ -268,7 +268,7 @@ export default function AdminSettings({ teamNavRequest, notifNavRequest, initial
     'my-profile':  <AdminSettingsMyProfile />,
     company:       <CompanyDetailsSettings />,
     branding:      <BrandingProfileSettings />,
-    notifications: <AdminSettingsNotifications navRequest={notifNavRequest} />,
+    notifications: <AdminSettingsNotifications navRequest={notifNavRequest} onNavRequestConsumed={onNotifNavConsumed} />,
     experience:    <AdminSettingsExperience />,
     referral:      <ReferralProgramSettings />,
     banking:       <BankingSettings />,

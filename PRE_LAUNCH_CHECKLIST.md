@@ -385,6 +385,35 @@ entry is the canonical record until then.**
   no error at require time: destructuring a missing name yields `undefined`, and the failure
   surfaces only when the value is called. **Not built here.** Small, mechanical, and the first
   check in this project that would catch a defect the records demonstrably could not.
+- ⚠ **A TEST WRITTEN AGAINST AN IMAGINED FAILURE MODE GUARDS NOTHING, AND LOOKS EXACTLY LIKE
+  COVERAGE.** N12 (`AdminSettingsNotificationsGate.test.jsx`) was authored asserting that the
+  naive deeplink fix makes the highlight *"flash and die."* Probed against the naive form, **it
+  stayed GREEN — the description was backwards.** That fix cancels the timeout on the effect's
+  cleanup but never resets `highlightGate`, so the cue turns on and **never turns off**: a
+  permanently highlighted card, not a flash. The test asserted "still visible", which is true
+  under both implementations.
+  ⚠ **CAUGHT ONLY BY BUILDING THE BROKEN VERSION.** Re-reading would not have found it — the
+  test was internally coherent and its subject was real. **A test's PREMISE needs the same proof
+  its subject does: state the failure mode, build the broken implementation, and confirm the
+  test sees THAT and not something adjacent.** Rewritten with fake timers asserting the
+  highlight clears at 2s, verified RED against the naive form.
+  ⚠ **A DIFFERENT SHAPE FROM VACUITY AND FROM THE CALLER-SHAPE RULE.** A vacuous test asserts
+  something that cannot fail; a caller-shape test measures the wrong caller; **this one measured
+  the right thing about the wrong failure** — guard and defect simply did not intersect. All
+  three survive review; only the third is also caught by a naive-implementation probe.
+- ⚠ **MANAGE TEAM CARRIES THE IDENTICAL STICKY-NAV BUG — NOT FIXED.** `setTeamNavRequest`
+  (`AdminApp.jsx:316`) is never cleared, and both consumers (`AdminSettings.jsx:256`,
+  `AdminTeamSettings.jsx:1512`) have the same shape as the referral deeplink that was found
+  sticking. **The Inbox → Manage Team deeplink almost certainly sticks the same way**: after one
+  use, every later click of the settings gear re-navigates to Manage Team until a page refresh.
+  Wave 0.4's deeplink **inherited the pattern from it**. Not fixed here — separate surface, its
+  own tests, and folding it into a referral commit would hide it. **Fix when that surface is
+  next opened.**
+  ⚠ **THE GENERAL SHAPE, for any future nav-request:** a `{ token }` nav request needs an
+  **explicit consume**. The token is correct and must stay — only a changing token makes a
+  repeat jump re-fire. But **the consumer cannot own the clear, because it unmounts with the
+  subtree** (`settingsActive ? <AdminSettings/> : ...` is a ternary, so a ref inside it dies on
+  close). **The consumer SIGNALS consumption; the state owner CLEARS.**
 - **Harness bugs caught by preconditions, not shipped as false REDs:** `contractors` keys on
   `id`, not `contractor_id`, and a blanket `DELETE FROM contractors` hits initDB's seeded row
   and raises 23503 in every `beforeEach` — a harness failure indistinguishable from a RED; and

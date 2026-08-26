@@ -180,11 +180,34 @@ function NotifToggle({ triggerKey, checked, onToggle, flash, defaultOn = true, l
 // second jump to a card the admin is already looking at still re-fires. A
 // boolean could not do that — it would be true the first time and true the
 // second, and nothing would happen.
-export default function AdminSettingsNotifications({ navRequest }) {
+// ⚠ onNavRequestConsumed IS WHAT MAKES THE DEEPLINK NON-STICKY, AND ITS ABSENCE
+// WAS A REAL BUG. AdminComponents renders `settingsActive ? <AdminSettings/> :
+// ...` — a ternary — so this whole subtree UNMOUNTS when Settings closes and
+// REMOUNTS when it reopens. The effect below therefore runs fresh on every open,
+// and while nothing cleared the request it was still sitting there truthy: after
+// one deeplink, every later click of the settings gear re-navigated here and
+// re-scrolled, until a page refresh reset the state.
+//
+// ⚠ THE FIX IS CONSUMPTION, NOT A CHANGE TO THE { token } PATTERN. The token
+// must stay — a repeat deeplink to a card the admin is already looking at has to
+// re-fire, and only a changing token can express that. What was missing is the
+// consumer telling the owner the request is spent.
+//
+// The CONSUMER signals it, not the issuer: this component is the thing that
+// actually scrolls and highlights, so it is the thing that knows the request has
+// been acted on. AdminApp owns the state and does the clearing.
+export default function AdminSettingsNotifications({ navRequest, onNavRequestConsumed }) {
   // Momentary highlight so arrival is visible. The banner that sent the admin
   // here names one setting on a page of twenty; landing without a cue leaves
   // them scanning for it, which is the whole reason the deeplink exists.
   const [highlightGate, setHighlightGate] = useState(false);
+  // ⚠ THE TIMER LIVES IN A REF, AND THAT IS LOAD-BEARING RATHER THAN TIDY.
+  // It used to be a local `const t` returned from this effect's cleanup. Once
+  // the effect reports consumption, the parent sets navRequest to null, the dep
+  // changes, React runs that cleanup — and the highlight would be cancelled a
+  // few milliseconds after appearing. The cue has to outlive the request that
+  // caused it, so the timer is cleared on UNMOUNT only.
+  const highlightTimer = useRef(null);
   useEffect(() => {
     if (!navRequest) return;
     const el = document.getElementById('notif-referral-match-outreach');
@@ -194,9 +217,16 @@ export default function AdminSettingsNotifications({ navRequest }) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     setHighlightGate(true);
-    const t = setTimeout(() => setHighlightGate(false), 2000);
-    return () => clearTimeout(t);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightGate(false), 2000);
+    // Reported LAST, after the request has actually been acted on.
+    if (onNavRequestConsumed) onNavRequestConsumed();
   }, [navRequest?.token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Unmount-only cleanup for the highlight timer — see the ref's note above.
+  useEffect(() => () => {
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+  }, []);
 
   // Feeds the Live preview's [Company] substitution. Same reason as
   // AnnouncementPreviewPopup above: the resolver is module-level and takes the
