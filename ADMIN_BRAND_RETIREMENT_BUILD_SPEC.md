@@ -122,7 +122,7 @@ Wiring source 1 would close R2 for both surfaces at once (3b unified the door), 
 **Recorded for the future build (Phase 6 → checklist):**
 1. When built, super admin is **fully RoofMiles-branded** — no contractor lockup. Both files currently hardcode `NAVY = '#012854'`; Phase 5 retires those two constants along with the rest of the palette.
 2. **Intended shape is cross-tenant READ** — a birds-eye layer over contractor account performance and stats, for Danny and future RoofMiles staff. It is intended to live **outside the app and outside web access**, reachable by Danny only. The env gate is the first step toward that, not a detour.
-3. **The bypass is wider than the intent.** `permissions.js:47-51` returns `next()` for `role='super_admin'` on **every** gated route — including `cashout_approve` and the Stripe ACH transfer endpoint. That is a full cross-tenant *write* bypass. The build must start from read-only aggregation, not inherit a blanket bypass.
+3. **The bypass is wider than the intent.** `server/middleware/permissions.js:47-51` returns `next()` for `role='super_admin'` on **every** gated route — including `cashout_approve` and the Stripe ACH transfer endpoint. That is a full cross-tenant *write* bypass. The build must start from read-only aggregation, not inherit a blanket bypass. *(Path corrected 2026-08-27: this read `permissions.js:47-51`. **The RANGE was right; the PATH was wrong.** There is no `server/permissions/permissions.js` — that directory holds `registry.js` only, and the near-miss is why the wrong path survived in two governing documents and was copied rather than re-derived. Within the range, `:49` is the `if`, `:50` the `return next()`. `src/App.jsx:393` had it right all along — the only correct citation in the repository was a code comment.)*
 
 **Why it is latent and not live:** all 130 `requirePermission`-gated routes independently call `verifyAdminSession()`, which filters `role='admin'` — verified by parsing every router block; zero routes lack a `verify*Session` call. A super-admin token passes the middleware and then 401s in the handler. Additionally, a super-admin session carries `contractor_id = NULL`, and `WHERE contractor_id = $1` with NULL matches nothing.
 
@@ -275,7 +275,7 @@ Fix, per D-I and the design rules:
 - Mark `HARDCODED_ACCENT_INVENTORY.md` superseded (D-O).
 - Correct checklist:213 — the `google_place_id` divergence is a deleted file, not a live split (D-E).
 - **New checklist entries:**
-  - Super admin: RoofMiles-branded when built; cross-tenant **read** intent vs. the current blanket write bypass at `permissions.js:49`; intended to live outside app/web access (D-K).
+  - Super admin: RoofMiles-branded when built; cross-tenant **read** intent vs. the current blanket write bypass at `server/middleware/permissions.js:49-51`; intended to live outside app/web access (D-K). *(Corrected 2026-08-27: read `permissions.js:49`. The path was wrong — see D-K — and `:49` is the `if` predicate, not the `return next()`, which is `:50`.)*
   - The `requirePermission` ⇒ `verify*Session` invariant test — pre-launch security list (D-K).
   - `ADMIN_PASSWORD`: establish what the legacy admin login mints before retiring it (D-L).
   - `LockedSection`'s `#012854` — owned by the pre-launch sweep; missed by this sweep **by construction** (D-G).

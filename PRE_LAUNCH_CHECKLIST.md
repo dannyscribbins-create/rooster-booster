@@ -192,9 +192,14 @@ entry is the canonical record until then.**
 - [ ] **Swap Stripe `pk_test_` for the live publishable key** (`VITE_STRIPE_PUBLISHABLE_KEY`)
       and confirm `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` are live values.
 - [ ] **🔴 SUPER ADMIN — the bypass is wider than the intent, and the account is seeded.**
-      `permissions.js:48-50` returns `next()` for `role='super_admin'` on **every** gated
-      route, `:49` being the return — including `cashout_approve` and the Stripe ACH transfer
-      endpoint. That is a full cross-tenant **write** bypass. The stated product intent is
+      `server/middleware/permissions.js:49-51` returns `next()` for `role='super_admin'` on
+      **every** gated route, `:50` being the return — including `cashout_approve` and the Stripe
+      ACH transfer endpoint. *(Corrected 2026-08-27. This line read `permissions.js:48-50`, `:49`
+      being the return. **Both the path and the range were wrong.** There is no
+      `server/permissions/permissions.js` — that directory holds `registry.js` only, which is
+      exactly why the wrong path looks plausible and survived two governing documents. `:49` is
+      the `if`, `:50` is the `return next()`, `:51` the closing brace.)*
+      That is a full cross-tenant **write** bypass. The stated product intent is
       cross-tenant **READ** — a birds-eye layer over contractor account performance for Danny
       and future RoofMiles staff, intended to live **outside the app and outside web access**.
       **The build must start from read-only aggregation, not inherit a blanket bypass.**
@@ -258,6 +263,95 @@ entry is the canonical record until then.**
       that with pg_trgm, **which absorbs the whitespace defect entirely** (see the entry below).
       Normalisation shipped anyway, for determinism, but it fixed nothing on its own and running
       it "early and independently" would have moved zero of the 13 rows.
+
+- [ ] **🔴 `admin/referrers.js` — THREE CROSS-TENANT WRITES WITH NO TENANCY PREDICATE.**
+      *(Wave 1.1 Phase 0, 2026-08-27. Recorded nowhere before.)*
+      - **`:94-99` `PATCH /api/admin/users/:id/pin`** — `UPDATE users SET pin=$1 WHERE id=$2`.
+        Sets a homeowner's **login credential** by numeric id, at any contractor.
+      - **`:106-109` `DELETE /api/admin/users/:id`** — `DELETE FROM users WHERE id=$1`. A hard
+        delete, and `sessions.user_id` is `ON DELETE CASCADE`.
+      - **`:118-139` `POST /api/admin/users/:id/match-jobber`** — `SELECT id, full_name, email,
+        phone FROM users WHERE id = $1` (PII read) and `UPDATE users SET jobber_client_id`,
+        both untenanted. The `pipeline_cache` lookup beside them **is** contractor-scoped,
+        which is what makes the omission look deliberate and is why it reads as safe.
+      ⚠ **THE MECHANISM IS THE DISCARD FORM.** Both `:95` and `:107` write
+      `if (!await verifyAdminSession(req, res)) return;` — that function **returns**
+      `contractorId`, and this form throws it away. The value was in scope and was not used.
+      ⚠ **REACHABLE BY AN ORDINARY `referrers.manage` SESSION AT ANY CONTRACTOR** — no
+      super-admin token, no bypass, no NULL `contractor_id`. **Not exploitable while one
+      tenant exists; unconditionally launch-gating.** → Wave 1.1-c
+
+- [ ] **🔴 `stripe.js:161` `POST /api/admin/stripe/transfer` — TWO DEFECTS COMPOUNDING.**
+      It reads `{ cashoutRequestId, userId, bonusAmount }` from `req.body` and passes them to
+      `executeStripeTransfer(pool, …)` with **no tenancy anywhere in the chain**; and
+      `utils/stripeTransfer.js:44-47` then resolves the connected account from a **hardcoded
+      contractor literal** (`WHERE contractor_id = 'accent-roofing'`), so it always pays out of
+      one account regardless of caller. ⚠ **NULL `contractor_id` does not protect this route,
+      because the route never asks.** The second mechanism that keeps the super-admin bypass
+      latent is absent here specifically. Its sibling `admin/cashouts.js:56-58` **is** correctly
+      scoped — the contrast is the evidence this is an omission, not a design.
+      ⚠ `'accent-roofing'` is the **pre-rename ghost id** (`CONTRACTOR2_READINESS_AUDIT.md` F9),
+      so establish whether this path resolves to a real row at all before assuming it merely
+      lacks multi-tenancy. → Wave 1.1-c, with contractor-ID reconciliation
+
+- [ ] **🟠 FOUR REFERRER STRIPE ROUTES INLINE RAW TOKEN CHECKS — a live *Never Break These
+      Rules* violation.** `stripe.js:198-203`, `:254-259`, `:308-313`, `:353-354`. Each
+      hand-rolls `SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at >
+      NOW()` instead of calling `verifyReferrerSession()`, which CLAUDE.md names as one of the
+      only authorised ways to protect an endpoint.
+      **What the inline copies miss:** `u.deleted_at IS NULL` — **a soft-deleted homeowner keeps
+      working** — and `s.contractor_id IS NOT NULL`; and they never call `applySessionSlide`, so
+      **these four routes silently opt out of D7's 30-day slide** while every other referrer
+      route extends it. A person whose only activity is banking would be logged out on a
+      schedule nobody chose.
+      ⚠ **INVISIBLE TO EVERY EXISTING GUARD.** `adminRouteCoverage.test.js` filters
+      `/api/admin/*`; these are `/api/referrer/*`, so they are neither gated, nor allowlisted,
+      nor checked. `POST /api/referrer/stripe/save-bank-account` is a **step-up target**.
+      → Wave 1.1-d
+
+- [ ] **🔴 NO REACTIVATION PATH — DEACTIVATION IS A ONE-WAY DOOR.**
+      Every write to `team_members.active` in the entire codebase is `SET active = false` at
+      `admin/team.js:555`. `PATCH /api/admin/team/:id` builds its `UPDATE` from a four-field
+      allowlist (`:294-297`, applied at `:303`) — `full_name`, `title_id`, `tier`,
+      `jobber_user_id` — which `active` cannot reach. There is no route, no admin control and
+      no script that sets it back. **Restoring a member requires a direct DB edit.**
+      A contractor who deactivates the wrong person on a Friday has no self-service recovery.
+      Ships as a one-way door the moment a contractor has staff. → Decision E-min, Wave 1.3
+
+- [ ] **🔴 SH-10 IS LARGER THAN FILED — A USER-VISIBLE TOGGLE REPORTING PROTECTION THAT DOES
+      NOT EXIST.** Storage ✓ editor ✓ validator ✓ **delivery ✗** — the four-condition test from
+      `CDL_3b_BUILD_SPEC.md` §8.0, with the one condition that leaves no trace in the schema or
+      the admin panel missing.
+      **Built:** `users.totp_secret` / `totp_enabled` / `sms_2fa_enabled` (`db.js:287-289`);
+      four routes (`account.js:219-303`); `speakeasy` in `package.json`; a full toggle UI at
+      `ManageAccount.jsx:781-897`, including a real `speakeasy.totp.verify` at enrolment time.
+      **Not built:** `totp_enabled` and `sms_2fa_enabled` are read by **nothing** outside
+      `account.js`'s own settings echo and the toggle that sets them.
+      `gatherLoginCandidates` (`referrer.js:1118-1132`) does not select the columns, and
+      `POST /api/login` mints a session at `referrer.js:1431` with **no second factor**.
+      ⚠ **Silent wrongness on a security surface, live at Accent today** — a referrer can turn
+      2FA on, see it reported as on, and be protected by nothing.
+      ⚠ **TWO ACTIONS, AND THE FIRST IS NOT THE SECOND.** (1) **Now:** relabel or disable the
+      toggle, so the UI stops making a claim the server does not honour. (2) **Wave 4 Session
+      8:** enforce at login, per the fix direction already decided.
+      → `SECURITY_HARDENING_SPEC.md` SH-10 (bundled with SH-13)
+
+- [ ] **🟠 FIFTEEN GATED HANDLERS NEVER REFERENCE `contractor_id`.** Of 130
+      `requirePermission`-gated routes, these 15 contain no `contractor_id`/`contractorId`
+      anywhere in the handler body (verified 2026-08-27 by comment-stripped parse):
+      `campaigns.js:1936`, `:2158`, `:2177` · `admin/index.js:1263`, `:1470`, `:1622`, `:1634`,
+      `:1894`, `:2195` · `metrics.js:11` · `referrers.js:94`, `:106` · `stripe.js:52`, `:122`,
+      `:161`.
+      **Three are unconditionally broken today** — `referrers.js:94`, `referrers.js:106`,
+      `stripe.js:161` (their own entries above) → **Wave 1.1-c**. **The other twelve are exposed
+      only if `verifyAdminSession`'s `role='admin'` filter changes**, which is the filter holding
+      the super-admin bypass latent → **Wave 2.3 tenancy sweep**. Some of the twelve may
+      delegate scoping to a helper; each needs reading, not assuming.
+      ⚠ **THE STRUCTURAL FIX IS THE CALL FORM, NOT FIFTEEN PATCHES.** 17 of the 135
+      `verifyAdminSession` call sites use `if (!await verifyAdminSession(req, res)) return;`,
+      which **discards the `contractorId` the function already returned** and so cannot scope by
+      tenant even in principle. Making the capture form the only form deletes the special case
+      and keeps it deleted — **fix by routing, not by replacing the value** (ABR R4).
 ### ⚠ WAVE 0.4 — LESSONS THAT COST MEASUREMENTS TO ACQUIRE (2026-08-25)
 
 *Recorded here rather than in a handoff, per R14. Each was measured, not reasoned.*
@@ -1586,14 +1680,25 @@ root cause, and patching them separately produces five unrelated special cases)
 
 ---
 
-- [ ] **⚠ REPO-WIDE EOL NORMALISATION via `.gitattributes`.** The working tree is already
-      **MIXED**: `docs/ARCHITECTURE.md` is CRLF while `EXECUTION_SEQUENCE.md` is LF — same
+- [x] **✅ SHIPPED 2026-08-27 (`8884a97`) — REPO-WIDE EOL NORMALISATION via `.gitattributes`.**
+      *The description below is the state as FOUND. It is kept because it is the record of why
+      the work was done; the present tense in it is no longer true.* The working tree was
+      **MIXED**: `docs/ARCHITECTURE.md` was CRLF while `EXECUTION_SEQUENCE.md` was LF — same
       repo, same `core.autocrlf=true`. Wave 0.1 found the CRLF trap in a document reader, but
       it sits under **every tool and test that reads repo source as text**.
-      `* text=auto eol=lf`, with binary exclusions for `.png`/`.woff2`, retires the class.
-      ⚠ **NOT A DRIVE-BY.** It rewrites working-tree line endings across the whole repo on the
-      next checkout. Own session, Backblaze confirmed first, full `npm test` after. **Do not
-      fold into a feature commit.**
+      `* text=auto eol=lf` retires the class.
+      ⚠ **THREE BINARY EXCLUSIONS ARE NEEDED, NOT TWO. This line named `.png`/`.woff2` and was
+      short by one:** `public/favicon.ico` is tracked, so **`*.ico`** is required. All three
+      shipped. `*.docx` was considered and deliberately excluded — nothing tracked corresponds
+      to it, and `text=auto` detects it anyway.
+      ⚠ **NOT A DRIVE-BY — AND THIS CAUTION WAS ATTACHED TO THE WRONG STEP.** It belongs to the
+      `git reset --hard` **worktree refresh**, which rewrites working-tree line endings across
+      the whole repo, **not to the commit**. The commit touched **zero content lines** and left
+      `git blame` completely unaffected, because the index was already 100% LF (410 of 410
+      tracked text files) before it landed — so the usual objection did not apply.
+      Post-refresh verification: **411 `w/lf` · 1 `w/none` · 11 `w/-text` · zero CRLF · zero
+      mixed**, binary integrity 11/11, `npm test` identical to baseline, `architecture --check`
+      clean on all six guards including the two the CRLF bug defeated.
       ⚠ **FOURTH INSTANCE, AND THE CASE IS NOW STRONGER (Wave 0.2 item 4, 2026-08-24): THE TRAP
       HAS BITTEN THE GUARD-PROOF PROCEDURE ITSELF.** The first three instances were tools and
       production code. This one defeated a **verification step**: a `perl` revert using `\n\n`
@@ -1704,6 +1809,88 @@ root cause, and patching them separately produces five unrelated special cases)
       **THE RULE: dated-snapshot immunity applies only where the WHOLE document shares its
       date. Where later content has been inserted, correct in place** — the protection that
       makes `docs/GROUND_TRUTH_2026-08-21.md` safe to leave alone does not transfer.
+
+---
+
+## Wave 0 close-out — the four R14 entries owed (written 2026-08-27)
+
+*Found during the Wave 0 close-out and deliberately NOT written then, because each belongs to
+the session that rules on it. Owed before this arc closes; written here first, per R14.*
+
+- [ ] **🔴 `/confirm-referrer` HAS NO CLOSED-ROW CHECK AND ITS SIBLING `/resend` DOES.**
+      `admin/index.js:1816-1824` UPDATEs `pending_referrals` on `WHERE id AND contractor_id`
+      with **no `status` filter**, writes `referred_by_phone` / `referred_by_email` /
+      `referred_by_name`, and then sends the invite. `POST .../:id/resend` refuses closed rows
+      explicitly at `admin/index.js:1703-1705`. **The route that merely RE-SENDS refuses; the
+      route that writes contact details AND sends refuses nothing.** Same shape as the Wave 0.4
+      gate-bypass repair — a check written on one route and never carried across.
+      ⚠ Recorded in-code at `admin/index.js:1797-1799`: this route also carries **no rate
+      limiter** while `/resend` allows 3/hour. That note calls the omission "an oversight rather
+      than a decision" and correctly declines to fix it there. Both belong to one session.
+- [ ] **`server/test/linkGeneratorSweep.test.js:82` splits on a bare `'\n'`.**
+      `text.split('\n')` inside `findNeedle()`. Harmless while the working tree is LF (it is,
+      verified below), and it is exactly the construction the CRLF class defeats — the sweep
+      would report clean against a CRLF checkout while every line carried a trailing `\r`.
+      Fix is one character: `/\r?\n/`. → `CLAUDE.md` → *Guards agreeing is not evidence*
+- [ ] **⚠ `scripts/architecture.js:650` — THE `\r` ARM OF GUARD 6 IS NOW STRUCTURALLY
+      UNFIREABLE. DO NOT DELETE IT.** Guard 6 is the path-sanity check
+      `/[←│├└─\r]/.test(e.path)` — the one guard with an input independent of the parse, and
+      the only one that caught the Wave 0.1 CRLF failure. Since `:523` now splits on
+      `/\r?\n/`, **no `\r` can ever reach a parsed path**, so one of its five characters can
+      no longer fire. The guard is at four-fifths coverage and reports full health.
+      ⚠ **It stays because `:523` is what makes it unfireable.** The day anyone changes that
+      split back, the `\r` arm is the only thing that catches it. Deleting it as dead code
+      removes the fence around the defect it exists to catch — and *"a guard silently reduced
+      to four-fifths coverage is a mechanism reporting health it no longer observes."*
+- [x] **✅ CLOSED — the three mixed-ending files, and the state that defeats per-file EOL
+      sniffing.** `landing.csv`, `ReferralProgramSettings.jsx`, `ReferrerApp.jsx` were
+      **recorded nowhere before the Wave 0 close-out**, and a mixed file is precisely what a
+      per-file "is this CRLF?" sniff cannot classify — it answers for whichever line it read.
+      **The state no longer exists.** `.gitattributes` (`8884a97`) pins `* text=auto eol=lf`;
+      `git ls-files --eol` reports **411 `i/lf w/lf`, 11 binaries, 1 `none`, zero CRLF, zero
+      mixed**, and a byte-level read of all three files confirms LF-only.
+      ⚠ **The lesson is what survives, not the file list:** *do not sniff EOL per file.* A
+      mixed file has no per-file answer. Pin it in `.gitattributes` and split on `/\r?\n/`.
+      ⚠ **AND THE TOOL THAT MEASURES THIS LIES IN BOTH DIRECTIONS.** `.gitattributes`'s own
+      header records Git Bash `grep` reporting **0** matches on a file carrying 91 CRs. This
+      session observed the **opposite** error from the same tool: `grep -c $'\r'` returned the
+      file's FULL line count on four LF-only files — the escape was not expanded, so it matched
+      the letter `r` on every line. **`git ls-files --eol`, or a byte count in Node. Never
+      `grep`, in either direction, and never `git status`.**
+
+### Amendments to existing entries, from the same close-out
+
+- **`:1593` named TWO binary extensions where THREE are needed** — corrected in place in the
+  EOL entry above. `public/favicon.ico` is tracked, so `*.ico` is required. `*.docx` was
+  considered and deliberately excluded: nothing tracked corresponds to it, and `text=auto`
+  detects it anyway.
+- **`:1594`'s "NOT A DRIVE-BY" caution was right but attached to the wrong step** — also
+  corrected in place above. It belongs to the `git reset --hard` **worktree refresh**, not to
+  the commit. The commit itself touched zero content lines and left `git blame` untouched,
+  because the index was already 100% LF before it landed.
+
+### Found and not ruled — three, carried forward
+
+- [ ] **Archived clients rose 18 → 19 against a Jobber population of 141. Expected larger.**
+      Determine which of the two it is: Step G's filter excludes archived clients, or
+      `is_archived` is written unfaithfully. **Contractor-#2 relevant** — an unfaithful
+      `is_archived` was already vacuously true for years at `admin/contacts.js:891`, and this
+      is the same column. → Client Lifecycle Protocol named build
+- [ ] **`architecture --check` reports an entry count one higher after regeneration than
+      listed, in BOTH blocks, while reporting zero drift in all three directions.**
+      Backend **93 listed → 94 after regeneration**; frontend **114 listed → 115**. Verified
+      2026-08-27 at `8884a97`. Reproduced on a pre-change clone during the close-out, so it is
+      **pre-existing and not caused by the `.gitattributes` work.** An off-by-exactly-one in
+      each block, alongside `ON DISK NOT LISTED: 0` and `LISTED NOT ON DISK: 0`, points at the
+      regenerator and the parser disagreeing about one structural line per block rather than at
+      a real file. ⚠ **Low severity, but it is a counting discrepancy inside the mechanism whose
+      entire job is counting** — resolve it before the count is ever cited as evidence.
+- [ ] **`fullJobberImport` does not MAINTAIN tags** — recorded in `7ad7787` and still unruled.
+      Adequate for Accent, whose 1,838 rows accumulated via sync and webhooks. **Not adequate
+      for contractor #2**, whose first action is a full import that fetches none: zero native
+      tags at onboarding and empty dynamic-audience surfaces on day one. Any fix is per-client
+      fetches across 46,677 clients, not a selection-set change. **Decide before contractor-#2
+      provisioning (Wave 2).**
 
 ---
 

@@ -198,7 +198,16 @@ From `CLAUDE.md` as of 48a93ed, plus what this reconciliation established:
 - **`npm run sizing` for counts, never a hand-count.** ⚠ Every un-generated count in the project's records is a **lower bound**, not a total — `grep -c` counts lines. Read any of them as "at least N."
 - **Close the entry when the arc closes.** R14 governs deferral; the closure half governs completion. A list that can only grow becomes a list of things that were once true.
 - **State a check's failure mode and prove it fails that way** before trusting that it passes. The sizing script shipped with a false positive on its first run, caught only by contradiction.
-- **`npm test -- --test-concurrency=1`.** Two concurrent runs orphan `pg_trgm` unrecoverably.
+- **`npm test` — plain, with no appended flag.** ⚠ **CORRECTED 2026-08-27. This line read
+  `npm test -- --test-concurrency=1`, and that instruction was WRONG — it would have handed an
+  unknown flag to the wrong runner.** `test` is `npm run lint && npm run test:server && npm run
+  test:react`, and `npm test -- <flag>` appends to the **END** of that chain — i.e. to
+  `vitest run`, never to `node --test`. The safety property is already structural:
+  `"test:server": "node --test --test-concurrency=1 server/test/*.test.js"` bakes the flag into
+  the invocation, which registry Known Issue 15 records as the correct place for it. Nothing is
+  weakened by dropping it here. *(Two concurrent runs do orphan `pg_trgm` unrecoverably — that
+  half was true, and it is what the baked-in flag prevents.)*
+  → `docs/GROUND_TRUTH_2026-08-21.md` § *F1 — the command actually run, and why*
 - **Backblaze confirmed** before any database, money, or auth-path deploy.
 
 ---

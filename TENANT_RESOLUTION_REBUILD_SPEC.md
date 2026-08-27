@@ -183,8 +183,23 @@ await pool.query(
   [token, expiresAt, 'admin', teamMember.contractor_id, teamMember.id]
 );
 ```
+⚠ **THE BLOCK BELOW IS A PRE-D7 RECORD. It is left verbatim and marked, not rewritten**
+(R7: a record describes the state it was written against). What it shows was accurate when
+written; three things have since moved, and a reader copying it today would be copying a
+shape that no longer exists:
+
+- **The SELECT is stale.** C/DL-3b Phase 4 (D7, sliding expiry) widened it to
+  `SELECT s.id, s.contractor_id, s.team_member_id, s.created_at, s.expires_at` — the three
+  added columns feed `applySessionSlide()`. **The key property this section is making is
+  unaffected**: `contractor_id` still comes off the verified session row and never from the
+  request, which is the whole point of the example.
+- **Both line citations have rotted.** `admin/index.js:66-67` is now `:103-106`;
+  `auth.js:11-32` is now `:45-70`. Verified 2026-08-27 at `8884a97`.
+- **`verifyAdminSession()` still does not join `team_members`** — that is R4, still open, and
+  this block is the earliest record of the shape that makes it possible.
+
 ```js
-// server/middleware/auth.js:11-32
+// server/middleware/auth.js:11-32   ← PRE-D7; now :45-70, see the marker above
 async function verifyAdminSession(req, res) {
   ...
   const result = await pool.query(
