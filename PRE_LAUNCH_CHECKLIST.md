@@ -624,6 +624,37 @@ entry is the canonical record until then.**
       Not urgent at Accent's scale; **must be closed before contractor #2.**
       ⚠ **Item 4 needs a RED-FIRST test that a CLIENT_UPDATE carrying `isArchived: true` writes
       `is_archived = true`.** Without it this is a GraphQL string change and an assumption.
+- [ ] **⚠ `fullJobberImport` DOES NOT INGEST JOBBER NATIVE TAGS AT ALL — UNRULED, AND THE
+      TAG-WIPE GUARD DOES NOT ADDRESS IT.** Raised 2026-08-26 by the tag-wipe guard session.
+      **This is a state nobody has decided on, not a defect** — recorded so the decision is
+      made deliberately rather than discovered during contractor #2's onboarding.
+      **What the guard did and did not do.** Step A's selection set omits `tags`, so Step I
+      passed `undefined` into `deriveAndSaveTags` and every import run DELETEd every
+      `jobber_tag:%` / `source='jobber_crm'` row for every client and restored none. Measured
+      in production 2026-08-26, contractor `accent-roofing-dev`: **1,838 `jobber_tag` rows
+      across 386 clients, 218 distinct values**, all carrying `source='jobber_crm'` and a
+      non-null `jobber_client_id` (so all had an upstream original in Jobber; none was
+      hand-created). The guard makes the destruction **unrepresentable** — a caller that did
+      not fetch tags can no longer delete them. **It does not make the import FETCH them, and
+      it was never meant to.**
+      ⚠ **ADEQUATE FOR ACCENT, NOT FOR CONTRACTOR #2 — and the difference is the whole
+      point.** At Accent the 1,838 rows accumulated over months of incremental syncs and
+      webhooks, and both of those paths select `tags` and keep them current. **A new
+      contractor's FIRST action is a full import, which fetches no tags.** They see **zero**
+      native tags at onboarding and acquire them only as individual clients happen to be
+      edited in Jobber afterwards. **A contractor arriving with years of tag history in their
+      CRM gets none of it on day one** — and native tags feed dynamic campaign audiences, so
+      the surfaces that read them are empty too.
+      ⚠ **THE CHEAP ROUTE IS CLOSED — DO NOT SCOPE THIS AS A SELECTION-SET CHANGE.** Adding
+      `tags { nodes { label } }` to Step A costs **10,305 points per 100-node page against a
+      10,000-point ceiling** (Session 75; re-confirmed 2026-08-26, the current set measures
+      `actualQueryCost` 2,285 at `first:100`). It is always throttled and breaks the FIRST
+      page. **Any fix is per-client tag fetches** — 46,677 clients at Jobber today — which is
+      a pacing and runtime problem, not a query edit. `tagWipeGuard.test.js` T4 is a standing
+      tripwire on that query text and will fire on anyone who tries the cheap route.
+      **Decide before contractor #2:** per-client fetch during onboarding, a one-off backfill
+      job, or an explicit ruling that incremental-sync convergence is sufficient and new
+      contractors start with no tag history.
 
 ### ⚠ NAMED BUILD — CLIENT LIFECYCLE PROTOCOL (ARCHIVE AND DELETE)
 
