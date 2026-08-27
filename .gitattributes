@@ -1,0 +1,43 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# LINE ENDINGS ARE DECIDED BY THIS REPO, NOT BY WHOEVER CHECKED IT OUT.
+#
+# core.autocrlf=true was in effect here from the SYSTEM gitconfig
+# (C:/Program Files/Git/etc/gitconfig) — the Git-for-Windows installer default.
+# It was set in NEITHER this repository NOR the user's global config, so the
+# rule deciding every file's bytes on disk was recorded nowhere a reader could
+# find it, and the same commits produced different working trees on different
+# machines. That is what this file fixes: the decision now lives in the repo.
+#
+# The index was ALREADY 100% LF when this file was added — 410 of 410 tracked
+# text files, zero CRLF, zero mixed (git ls-files --eol, 2026-08-27, HEAD
+# 5aa4c9c). So this file changed NO blob and NO history: git add --renormalize
+# staged nothing but this file, and git blame is untouched.
+#
+# What was broken is the CHECKOUT side, and only that. A fresh clone
+# materialised all 410 text files as CRLF. That is the class behind four
+# incidents on the Wave 0 arc, one of which DEFEATED A GUARD-PROOF: a
+# $-anchored regex silently no-ops against CRLF because JavaScript's '.' does
+# not match '\r', so the match fails and the code carries on with unstripped
+# text. Five guards once reported PASS on the resulting broken parse.
+#
+# ⚠ VERIFY THIS FILE'S EFFECT WITH `git ls-files --eol`.
+#   NOT `git status` — it reads through the clean filter and reports an empty
+#   diff while every file on disk is still CRLF.
+#   NOT Git Bash `grep` — it strips CR in text mode and reported 0 matches on
+#   a file carrying 91 of them.
+#   Both were observed lying during the change that added this file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+* text=auto eol=lf
+
+# The 11 tracked binaries are all correctly auto-detected today: a full
+# renormalization was rehearsed in a throwaway clone and all 11 hashes came
+# through intact. These three lines are belt-and-braces — detection is a
+# content heuristic re-evaluated per blob, and a binary corrupted by an eol
+# filter is not repairable in place.
+# ⚠ .ico is listed because there IS one tracked (public/favicon.ico).
+#   PRE_LAUNCH_CHECKLIST.md:1593 proposes only .png/.woff2 — two extensions
+#   where three are needed.
+*.png   binary
+*.ico   binary
+*.woff2 binary
