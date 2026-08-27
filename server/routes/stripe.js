@@ -187,7 +187,35 @@ router.post('/api/admin/stripe/transfer', requirePermission('cashout_approve'), 
 
 // ─────────────────────────────────────────────────────────────
 // REFERRER BANK CONNECTION ROUTES
-// Protected by referrer session auth (same pattern as referrer.js)
+//
+// ⚠ THIS HEADER USED TO SAY "Protected by referrer session auth (same pattern
+// as referrer.js)". THAT WAS NOT TRUE, AND IT IS AN INVERTED RECORD RATHER
+// THAN A STALE ONE — it told the next reader a mechanism was in place, so the
+// reader who checked would stop checking. Corrected 2026-08-27, Wave 1.1.
+//
+// WHAT THESE FOUR ROUTES ACTUALLY DO. Each one hand-rolls its own session
+// lookup instead of calling verifyReferrerSession():
+//     SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()
+// That is a live violation of CLAUDE.md's Never Break These Rules, which names
+// verifyReferrerSession() as one of the only authorised ways to protect an
+// endpoint and says never to inline a raw token check.
+//
+// THREE THINGS THE INLINE COPIES MISS, and the third is the surprising one:
+//   1. u.deleted_at IS NULL  — a SOFT-DELETED homeowner keeps working here.
+//   2. s.contractor_id IS NOT NULL.
+//   3. applySessionSlide()   — so these four routes silently opt OUT of D7's
+//      30-day sliding window while every other referrer route extends it. A
+//      person whose only activity is banking ages out on a schedule nobody
+//      chose. Nothing fails; the session just quietly expires early.
+//
+// AND NO GUARD SEES ANY OF IT: adminRouteCoverage.test.js filters /api/admin/*
+// and these are /api/referrer/*, so they are neither gated, nor allowlisted,
+// nor checked. save-bank-account is also a step-up re-auth target.
+//
+// ⚠ DO NOT "FIX" THIS BY COPYING THE MISSING PREDICATES INTO THE FOUR COPIES.
+// That keeps four hand-rolled auth paths and guarantees the next divergence.
+// Route them through verifyReferrerSession() — Wave 1.1-d owns this.
+//
 // Sensitive values: never log payment method IDs, bank tokens,
 // Financial Connections account IDs, or decrypted values anywhere
 // ─────────────────────────────────────────────────────────────

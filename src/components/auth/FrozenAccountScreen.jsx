@@ -37,6 +37,15 @@ import useEntrance from '../../hooks/useEntrance';
 // FRESH login only — deactivation deletes live sessions, so there is never a
 // surviving session that lands here.
 //
+// ⚠ access_state IS A REJECTED DESIGN, NOT A COLUMN. It was never built, and
+// this line is the only place in the repository that names it — so a reader who
+// greps for it lands here and nowhere else. Recorded 2026-08-27 because the
+// sentence is easy to skim as "the column exists and we chose not to read it."
+// It does not exist. If a half-authenticated state is ever proposed again (a
+// step-up re-auth flow is the likely occasion), this is the record that it was
+// already considered and declined for THIS surface, and the decision has to be
+// re-derived rather than assumed either way.
+//
 // VIEW-ONLY, DELIBERATELY. There is no credential field. Offering one would
 // invite exactly the retry loop D3 exists to end: today a deactivated person with
 // the correct password is told it is wrong, retries, and burns the rate limiter.
