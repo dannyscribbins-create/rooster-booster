@@ -78,15 +78,56 @@ async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData,
 
     // ── JOBBER NATIVE TAGS (full replace) ─────────────────────────────────────
     const nativeTagNodes = clientData.tags?.nodes || [];
-    // Remove all existing jobber_tag:* written by jobber_crm source
-    await pool.query(
-      `DELETE FROM contact_tags
-       WHERE jobber_client_id = $1
-         AND contractor_id = $2
-         AND tag LIKE 'jobber_tag:%'
-         AND source = 'jobber_crm'`,
-      [jobberClientId, contractorId]
-    );
+
+    // ⚠ THE DISCRIMINATOR IS `!== undefined`. `!= null` WOULD BE WRONG — DO NOT
+    // "TIDY" IT INTO LINE WITH THE NULL-ISH CHECKS ELSEWHERE IN THIS FILE.
+    //
+    // Three states reach this line and they do not mean the same thing:
+    //   tags === undefined     the CALLER never selected `tags` in its GraphQL query,
+    //                          so Jobber was never ASKED. Deleting here destroys data
+    //                          that has no other source in this process.
+    //   tags === { nodes: [] } we asked; this client genuinely has no tags.
+    //   tags === null          we asked; Jobber answered null for the empty connection.
+    //
+    // The last two are ANSWERS and must DELETE. Only the first is the absence of one.
+    // `!= null` collapses null into undefined, so it blocks the third case and makes
+    // jobber_tag rows APPEND-ONLY — a tag removed in Jobber would never leave. That is
+    // a quieter bug than the one this guard fixes, and it is why the shape of the
+    // response is deliberately NOT what is being tested here.
+    //
+    // ⚠ WHETHER JOBBER EVER RETURNS null FOR AN EMPTY CONNECTION IS NOT ESTABLISHED —
+    // no fixture, test or measurement in this repo records it. This guard is correct
+    // under BOTH answers, which is why the question was left open rather than settled
+    // by a console session nobody can re-check. Do not "simplify" it on the assumption
+    // that null cannot occur.
+    //
+    // PROVEN, NOT REASONED. Probe B (Wave 0.2, Phase 2) wrote this guard as `!= null`:
+    // T3b was the ONLY test in the suite that went red — T1, T2 and T3a all stayed
+    // green. GP2 in server/test/tagWipeGuard.test.js re-runs that probe against this
+    // final code, so the claim above is checked rather than remembered.
+    //
+    // Same idiom as CLAUDE.md's `Number.isFinite` rule: the guard matches its own
+    // value's meaning, not the form of its siblings.
+    //
+    // WHAT MADE THIS LIVE: fullJobberImport's Step A omits `tags` from its selection
+    // set (deliberately — it costs 10,305 points per 100-node page against a 10,000
+    // ceiling; see T4), so Step I passed undefined here and every run wiped the lot.
+    // Measured in production 2026-08-26, contractor accent-roofing-dev: 1,838
+    // jobber_tag rows across 386 clients, 218 distinct values.
+    //
+    // The write loop below needs no guard: nativeTagNodes is [] when tags is
+    // undefined, so it is already a no-op on that path.
+    if (clientData.tags !== undefined) {
+      // Remove all existing jobber_tag:* written by jobber_crm source
+      await pool.query(
+        `DELETE FROM contact_tags
+         WHERE jobber_client_id = $1
+           AND contractor_id = $2
+           AND tag LIKE 'jobber_tag:%'
+           AND source = 'jobber_crm'`,
+        [jobberClientId, contractorId]
+      );
+    }
     for (const node of nativeTagNodes) {
       if (!node.label || !node.label.trim()) continue;
       const tagVal = `jobber_tag:${normalizeTagValue(node.label)}`;
