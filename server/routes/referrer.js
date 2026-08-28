@@ -1672,10 +1672,16 @@ router.post('/api/cashout', cashoutLimiter, [
 
       if (shouldAutoFire) {
         try {
+          // contractorId comes from the referrer's own verified session, above.
+          // Before it was threaded through, this path resolved the connected
+          // account from a hardcoded literal inside executeStripeTransfer — and
+          // this is the AUTO-FIRE path, which moves money with no admin review
+          // under payout_automation = 'full_auto'.
           await executeStripeTransfer(pool, {
             userId,
             cashoutRequestId: newCashoutId,
-            bonusAmount: parseFloat(amount)
+            bonusAmount: parseFloat(amount),
+            contractorId
           });
           await pool.query(
             'UPDATE cashout_requests SET status = $1 WHERE id = $2',

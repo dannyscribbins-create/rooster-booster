@@ -62,9 +62,9 @@ const TENANT_B = 'w11c-tenant-b';
 const ACCT_A = 'acct_w11c_tenant_a';
 
 // ⚠ EVERY D4 TEST USES A NEGATIVE AMOUNT, ON PURPOSE — SECOND SAFETY GUARD.
-// executeStripeTransfer() throws 'invalid_amount' at
-// server/utils/stripeTransfer.js:57 when amountInCents <= 0, which is AFTER the
-// contractor_settings read (:44-47) and BEFORE stripe.transfers.create (:60).
+// executeStripeTransfer() throws 'invalid_amount' when amountInCents <= 0, and
+// that check sits AFTER the connected-account resolution and BEFORE
+// stripe.transfers.create — see server/utils/stripeTransfer.js.
 // That ordering is what lets these tests observe the account resolution without
 // any network call ever being dispatched to Stripe. The dummy key above is the
 // first guard; this is the second, and they are independent.
@@ -467,8 +467,9 @@ describe('Wave 1.1-c — cross-tenant credential and money writes (RED)', () => 
   // one and reporting green on the other is the failure mode here.
   //
   // ⚠ AND A THIRD THING, WHICH IS WHY THESE TESTS ARE SHAPED THE WAY THEY ARE.
-  // stripeTransfer.js:46 reads `WHERE contractor_id = 'accent-roofing'` — the
-  // GHOST id, which has no row in production or here. So TODAY every call down
+  // executeStripeTransfer resolved the connected account from a hardcoded
+  // `WHERE contractor_id = 'accent-roofing'` — the GHOST id, which has no row in
+  // production or here. So TODAY every call down
   // this path terminates at that lookup with 400 no_stripe_account, regardless
   // of who called or whose money it is. That masks the tenancy defect behind a
   // plausible-looking error: a naive "cross-tenant request is rejected" test
@@ -489,8 +490,8 @@ describe('Wave 1.1-c — cross-tenant credential and money writes (RED)', () => 
 
       // ⚠ THIS TEST WEARS TWO HATS, AND BOTH ARE NECESSARY.
       // As a RED it is the assertion for D4's SECOND defect: tenant A has
-      // completed Connect, and the hardcoded literal at stripeTransfer.js:46
-      // reports it as unconnected.
+      // completed Connect, and the hardcoded literal in executeStripeTransfer
+      // reported it as unconnected.
       // As a POSITIVE CONTROL it is the only thing that gives the fail-closed
       // test below any meaning — that one is green today purely because the
       // ghost id makes EVERY contractor look unconfigured, so without this pair
@@ -498,7 +499,8 @@ describe('Wave 1.1-c — cross-tenant credential and money writes (RED)', () => 
       //
       // Tenant A HAS a connected account (ACCT_A). Reaching the amount check
       // proves the contractor_settings SELECT returned tenant A's row — that is
-      // the only way past stripeTransfer.js:49-51. A literal cannot produce this
+      // the only way past getContractorStripeAccountId's no-account throw. A
+      // literal cannot produce this
       // result, because ACCT_A exists under TENANT_A and under nothing else.
       assert.notEqual(
         res.body && res.body.error, 'no_stripe_account',
@@ -537,7 +539,7 @@ describe('Wave 1.1-c — cross-tenant credential and money writes (RED)', () => 
 
       // TODAY: 400 no_stripe_account. The route accepted another tenant's ids,
       // read tenant B's encrypted bank token and decrypted it
-      // (stripeTransfer.js:29-41), and only failed later at the ghost-id lookup.
+      // in executeStripeTransfer, and only failed later at the ghost-id lookup.
       // It was never rejected on tenancy — there is no tenancy check to reject it.
       assert.notEqual(
         res.status, 400,

@@ -159,13 +159,35 @@ router.post('/api/admin/stripe/disconnect', requirePermission('finance_settings.
 // TODO: Danny to remove STRIPE_TEST_ACCOUNT_ID from Railway env vars — no longer used
 
 router.post('/api/admin/stripe/transfer', requirePermission('cashout_approve'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { cashoutRequestId, userId, bonusAmount } = req.body;
   if (!cashoutRequestId || !userId || !bonusAmount) {
     return res.status(400).json({ error: 'cashoutRequestId, userId, and bonusAmount are required' });
   }
   try {
-    const result = await executeStripeTransfer(pool, { userId, cashoutRequestId, bonusAmount });
+    // ── TENANCY, IN THE PREDICATE ─────────────────────────────────────────────
+    // All three inputs arrive from req.body and none of them was checked against
+    // anything before this. The join also BINDS the payee to the cashout: userId
+    // is no longer an independent parameter that happens to be passed alongside
+    // cashoutRequestId, which is what the endpoint always meant.
+    //
+    // This is a gate, but it is not the only thing holding tenancy — both reads
+    // inside executeStripeTransfer are scoped by contractorId too. Deleting this
+    // block would produce a 404-less path, not an unscoped one.
+    const owned = await pool.query(
+      `SELECT 1 FROM cashout_requests cr
+         JOIN users u ON u.id = cr.user_id
+        WHERE cr.id = $1 AND cr.user_id = $2
+          AND cr.contractor_id = $3 AND u.contractor_id = $3`,
+      [cashoutRequestId, userId, contractorId]
+    );
+    if (owned.rowCount === 0) {
+      return res.status(404).json({ error: 'not_found', message: 'Cashout request not found' });
+    }
+
+    const result = await executeStripeTransfer(pool, { userId, cashoutRequestId, bonusAmount, contractorId });
     return res.json({ success: true, transferId: result.transferId });
   } catch (err) {
     if (err.code === 'no_bank_account') {
