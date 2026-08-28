@@ -164,9 +164,19 @@ entry is the canonical record until then.**
       30-day session. Cash-out approval / mark-paid · bank and payout details · password
       changes · team deactivation · permission and role changes · Stripe Connect. Without it a
       30-day token is a 30-day key to the money paths. → `CDL_3b_BUILD_SPEC.md` §10
-- [ ] **R4 — `verifyAdminSession()` does not check `team_members.active`.** Latent today
-      (deactivation deletes sessions first), reachable via `PATCH /api/admin/me/title`.
-      → §10
+- [x] **✅ R4 — CLOSED in `9ad52f2` (Wave 1.1-b), verified in production.**
+      `verifyAdminSession()` now `LEFT JOIN`s `team_members` and denies when the member is
+      `active = false`, or when the member row is gone. A legacy session with
+      `team_member_id` NULL stays **allowed, deliberately** — rejecting those is a different
+      change, they are already failed closed downstream, and an `INNER JOIN` would break
+      `server/test/contractorContext.test.js`'s characterisation plus every session minted by
+      `helpers.js`'s `seedSession()`.
+      **Shipped with it:** the deactivate handler's session `DELETE` and `active = false`
+      `UPDATE` are now one transaction — they were two bare `pool.query` calls, so a failed
+      `UPDATE` left the sessions gone and the member still active. **The two were one defect
+      seen twice:** that half-applied state is exactly the state R4 could not survive.
+      → the four surviving findings are in the Wave 1.1 section; **the FK entry there is
+      load-bearing for this fix and must be read before touching the schema**
 - [ ] **`err.message` reaching the client — 45 sites, not ~40.** Generated 2026-08-21, HEAD
       `304813f`: `referrer.js` (19), `account.js` (15), `admin/referrers.js` (5),
       `admin/index.js` (3), `admin/cashouts.js` (2), `stripe.js` (1). All in `server/routes/`;
@@ -182,6 +192,19 @@ entry is the canonical record until then.**
       never-cross-file-by-line-number rule, firing on the checklist itself.**
       ⚠ **DO NOT HAND-EDIT THIS COUNT. Run `npm run sizing`.** → §10
 - [ ] **Delete the RBAC test accounts** created during Decision A testing.
+      ⚠ **THEY ARE NOT INDEPENDENT ROWS, AND THIS ENTRY USED TO ASSUME THEY WERE.**
+      Three `users` rows have **coupled `team_members` rows sharing the same email** —
+      `users 7 / tm 6` (admin), **`users 13 / tm 1` (OWNER)**, `users 2 / tm 5` (admin) — and
+      `sessions.user_id` is **`ON DELETE CASCADE`**, so deleting a `users` row silently takes
+      its sessions with it. Deleting one side of a pair leaves the other authenticating alone
+      and changes what `gatherLoginCandidates()` returns for that address.
+      **Delete pairs deliberately, decide each side, and check the OWNER pair last** — that one
+      is a live Owner on Accent's roster. → the full table is in the Wave 1.1 section
+      ⚠ **AND THERE IS STILL NO REACTIVATION ROUTE, WHICH MAKES ANY MISTAKE HERE ONE-WAY.**
+      Every write to `team_members.active` in the codebase is `SET active = false` inside the
+      deactivate handler in `server/routes/admin/team.js`; `PATCH /api/admin/team/:id` builds
+      its `UPDATE` from a four-field allowlist that `active` cannot reach. **Deactivation is
+      irreversible without a direct DB edit until E-min lands in Wave 1.3.**
 - [ ] **Retire `ADMIN_PASSWORD`** — superseded by per-member team credentials. Still required
       at boot (`server.js` crashes without it, intentionally) so retiring it is a code change,
       not just an env deletion. → `CLAUDE.md`, `SECURITY_HARDENING_SPEC.md`
@@ -205,7 +228,14 @@ entry is the canonical record until then.**
       **The build must start from read-only aggregation, not inherit a blanket bypass.**
       One account is seeded (`admin1@roofmiles.com`, 2026-06-21); the seed env vars have since
       been removed from Railway, so the row persists and **cannot be re-seeded over** — a
-      password reset would need a direct DB edit. Client routes are gated by
+      password reset would need a direct DB edit.
+      ✅ **VERIFIED 2026-08-28, not inherited.** Both vars are absent from the Railway backend
+      service (31 vars, read alphabetically, checked at the `STRIPE_SECRET…` → `TWILIO_10DLC…`
+      boundary where they would sit); `super_admins` holds exactly 1 row; the seed block in
+      `server/db.js` requires **both** vars **and** an empty table. It cannot re-run.
+      ⚠ **AND THAT SAME ADDRESS IS ALSO A `users` ROW AND AN ACTIVE `team_members` ROW** —
+      three surfaces, three passwords. See the Wave 1.1 section, and the binding ruling in
+      *C/DL-3b-2* that keeps credential recovery away from this table. Client routes are gated by
       `VITE_ENABLE_RM_CONTROL` (default off, ABR Phase 1); **the server route stays live.**
       When built: **fully RoofMiles-branded, no contractor lockup** — ABR Phase 5 already
       retired both `NAVY = '#012854'` constants.
@@ -1374,6 +1404,28 @@ check — which is why this is a named build rather than a checklist line.
 
 ## C/DL-3b-2 — team credential recovery + 2FA
 
+- [ ] **🔴 BINDING RULING — CREDENTIAL RECOVERY QUERIES `users` AND `team_members` ONLY. IT
+      NEVER QUERIES `super_admins`.** *(Ruled 2026-08-28, from the Wave 1.1 production read.)*
+      Recovery for the super-admin account stays **a direct DB edit, deliberately.**
+      **The reason:** an account that exists to bypass permissions must not have a self-service
+      path to its own credential. Its current protection *is* that nobody can reset it — the
+      seed vars are gone from Railway and cannot re-run, so the row is unreachable except by
+      hand. A recovery flow would hand it a door it does not have today.
+      ⚠ **THE TRAP IS THE OBVIOUS IMPLEMENTATION, SO NAME IT HERE.** The natural answer to
+      *"which account are you recovering?"* is to email the caller a list of their matches.
+      For an address present in `super_admins` **that discloses the surface exists to whoever
+      holds the inbox** — and 3b's verify-then-disambiguate rule already forbids revealing
+      account existence before a credential is proven. **Excluding the table makes the
+      disclosure impossible rather than merely handled.** A conditional that omits super-admin
+      matches from the list is the same defect with a filter in front of it.
+      ⚠ **THIS HOLDS AFTER THE TEST ROWS ARE WIPED. The boundary is about the SURFACE, not
+      about these rows** — see *One email spans three auth surfaces* in the Wave 1.1 section.
+- [ ] **⚠ DUAL IDENTITY IS A DESIGNED CONDITION THIS BUILD MUST HANDLE, NOT AN ANOMALY TO
+      CLEAN UP.** Three emails currently exist in both `users` and `team_members`; the three
+      live pairs are test data and will be wiped, but `gatherLoginCandidates()` gathers across
+      both tables **by design** and it will recur with real contractors. A recovery flow that
+      assumes one row per address is wrong for the same reason a login flow would be.
+      → the pairs and the counting query are in the Wave 1.1 section
 - [ ] **🔴 Team members have NO password reset path at all.** `pin_reset_tokens` FKs to
       `users(id)`, so a `team_members` row has nowhere to hold a token and
       `POST /api/forgot-pin` cannot serve one. **The only recovery today is an admin
@@ -1891,6 +1943,98 @@ the session that rules on it. Owed before this arc closes; written here first, p
       tags at onboarding and empty dynamic-audience surfaces on day one. Any fix is per-client
       fetches across 46,677 clients, not a selection-set change. **Decide before contractor-#2
       provisioning (Wave 2).**
+
+---
+
+## Wave 1.1 — production facts and findings (written 2026-08-28)
+
+*1.1-doc, cite-check, 1.1-a and 1.1-b all shipped: `c2434d2`, `9d5b97c`, `bcc289c`, `be7a6ab`,
+`9ad52f2`. **1.1-b is verified in production** — Backblaze confirmed before the push, admin
+login clean, no issues across the panel, and deactivation exercised through the UI with the
+roster moving to 4 active / 1 inactive, so both halves of the new transaction committed.
+1.1-c is next.*
+
+### Production facts — queried in Railway 2026-08-28, recorded nowhere before
+
+- [ ] **DUAL IDENTITY IS THREE, NOT ONE.** The records carried a single case. Production has
+      three, all `accent-roofing-dev` on both sides, all `team_members` rows active:
+
+      | users | team_members | tier |
+      |---|---|---|
+      | 7  | 6 | admin |
+      | 13 | 1 | **OWNER** |
+      | 2  | 5 | admin |
+
+      Counted with a `LOWER()` join, because `POST /api/login` matches case-insensitively and
+      an `=` join undercounts:
+      `SELECT COUNT(DISTINCT LOWER(u.email)) FROM users u JOIN team_members t ON LOWER(t.email) = LOWER(u.email);`
+      ⚠ **BOTH HALVES OF THIS ARE TRUE AND THEY READ AS CONTRADICTORY IF ONLY ONE IS RECORDED.**
+      - **Dual identity is a DESIGNED state, not an anomaly.** `gatherLoginCandidates()` in
+        `server/routes/referrer.js` queries both tables deliberately, orders `team_members`
+        first, compares *every* candidate, and issues a choice token when more than one
+        password opens. It will recur with real contractors.
+      - **These three specific pairs are TEST DATA** and will be wiped before Accent onboards.
+        **Not a live exposure.** 1.1-f must handle the case as a designed-for condition, not
+        as an incident to clean up.
+- [ ] **ONE EMAIL SPANS THREE AUTH SURFACES.** `admin1@roofmiles.com` exists as
+      `users` id 7 (`accent-roofing-dev`, created 2026-04-23), `team_members` id 6 (admin,
+      active — "Adam IN" on Accent's roster), and `super_admins` id 1 (created 2026-06-21,
+      matching the seeded date). **Three passwords, three login doors.**
+      `POST /api/login` covers the first two via `gatherLoginCandidates()`;
+      `POST /api/rm-control/login` is a separate route that knows nothing about them.
+      **That is why this never surfaced — the surfaces do not meet in the login path.**
+      → the binding ruling for 1.1-f is in *C/DL-3b-2* below
+- [x] **✅ THE SUPER-ADMIN SEED IS DORMANT — CONFIRMED, NOT INFERRED (2026-08-28).**
+      `SUPER_ADMIN_SEED_EMAIL` and `SUPER_ADMIN_SEED_PASSWORD` are **absent** from the Railway
+      backend service variables — 31 vars, read alphabetically, verified at the
+      `STRIPE_SECRET…` → `TWILIO_10DLC…` boundary where they would sit. `super_admins` holds
+      exactly **1** row. The seed block in `server/db.js` requires **both** vars **and** an
+      empty table, so it can never re-run. *(The super-admin entry above stated this as
+      inherited fact; it is now measured.)*
+
+### Code findings — 1.1-a and 1.1-b
+
+- [ ] **🔴 `sessions_team_member_id_fkey` IS LOAD-BEARING FOR R4'S FIX — DO NOT CHANGE IT TO
+      `SET NULL`.** It is `ON DELETE NO ACTION` (`confdeltype = 'a'`), which is what makes a
+      dangling `team_member_id` unreachable. Change it to `SET NULL` and deleting a team member
+      **NULLs their live session's `team_member_id` — which R4's legacy disjunct ALLOWS.**
+      A deleted employee's token keeps working, the dangling-reference case stops being
+      reachable, and **nothing goes red, because the legacy fence silently absorbs it.**
+      It would be introduced by a migration, by someone who never opens
+      `server/middleware/auth.js`.
+      A tripwire in `server/test/adminSessionActive.test.js` asserts `confdeltype = 'a'` and
+      carries the reasoning in its failure message.
+      ⚠ **AND THE TRIPWIRE ONLY PROTECTS THE CODEBASE.** A schema change made directly in the
+      Railway console never runs the suite. There is no mechanism for that path.
+- [x] **✅ RESOLVED in `9ad52f2` — THE READ/WRITE ASYMMETRY ACROSS THE FIVE SESSION-ONLY
+      ROUTES.** Before the fix, a deactivated member holding a live token **could not READ
+      their own row** (`GET /api/admin/me` carries `AND active = true`) but **COULD WRITE their
+      title** (`PATCH /api/admin/me/title` had no `active` predicate). Three of the five
+      session-only routes were live reads or writes for a deactivated member; all five now 401.
+      ⚠ **THE LESSON OUTLIVES THE FIX: guard placement was INVERTED RELATIVE TO RISK, and the
+      two sites sit ~12 lines apart in the same file.** The read was fenced and the write was
+      not — the opposite of what any reader would assume, which is exactly why nobody looked.
+      When auditing a pair of routes over one resource, check the WRITE first.
+- [ ] **THE 130 GATED ROUTES ARE PROTECTED BY THE MEMBER LOOKUP, NOT BY THE JSONB RE-READ.**
+      The record's summary — *"`requirePermission` re-checks live permissions"* — is near-true
+      and **names the wrong mechanism.** What protects them is the `AND active = true` on the
+      member lookup inside `server/middleware/permissions.js`: zero rows → **403 before the
+      handler runs.** The JSONB read never happens.
+      **This is what makes R4's blast radius genuinely five routes rather than 135**, and a
+      summary naming the wrong mechanism would have sized it wrong.
+- [ ] **`server/test/adminRouteCoverage.test.js`'s route-count tripwire is now EXACT.** The old
+      `adminRoutes.length >= 60` floor sat under half the true population (137). Replaced with
+      an exact match on `EXPECTED_ADMIN_ROUTE_COUNT`, in the `architecture --check` pattern.
+      ⚠ **WHAT IT DOES NOT OBSERVE**, recorded beside it in the file and here: a route whose
+      **gate changed**; a gate that **stopped working**; **one route added and another removed
+      in the same commit** (demonstrated by renaming a route — the count held at 137 and the
+      guard stayed green); anything **outside `/api/admin/*`**, which includes the four
+      `/api/referrer/stripe/*` routes that inline raw token checks; and whether a gated route
+      **verifies a session**, which is `server/test/adminRouteInvariant.test.js`'s job.
+      ⚠ **IT ALSO MEANS EVERY FUTURE ROUTE CHANGE FAILS THE SUITE UNTIL THE CONSTANT IS
+      UPDATED. THAT IS INTENDED — it is the deliberate decision the exact match exists to
+      force.** Update the number *because you changed the routes*, and say so in the commit.
+      **"Update the number to make it green" is the reflex this note exists to prevent.**
 
 ---
 

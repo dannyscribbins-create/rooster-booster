@@ -323,12 +323,65 @@ scoped file **silently unscopes a non-negotiable** — it now loads only for ses
 happen to open a matching file. The scoped copies say this too, and that is exactly why it
 must also be said here: **a rule protecting resident rules cannot itself be scoped.**
 
+### Adding a comment block is a citation-rotting edit
+
+**Comments feel inert. They are not: they move every line beneath them.**
+
+`9ad52f2` added a ~45-line explanatory comment to `verifyAdminSession()`. Four citations below
+it in the same commit's own files went stale — `server/middleware/auth.js:86-90` and `:209`
+became `:137` and `:256`, and the fix moved `server/routes/admin/team.js:554-555` to
+`:575-576`. **Every one still resolved to real code.** That is the silent variety: the number stays plausible, the file exists, the line
+exists, and it describes something else entirely.
+
+**Before adding a comment block, grep for citations into the lines below it.** Or write the
+citation by role in the first place, per the rule above — a handler name does not drift.
+
+⚠ **AND `scripts/citecheck.js` DOES NOT CATCH THIS, WHICH IS WHY THE RULE IS HERE.** *"We have
+a tool for that now"* is what lets the next one through. **Three confirmed limits, all
+measured:**
+- **It cannot see a wrong range inside a file that resolves.** Measured at `c2434d2^`: all
+  three `permissions.js` citations reported OK, including the wrong one. That was the defect
+  the tool was built after.
+- **It goes blind on frequently-edited documents.** STALE compares git timestamps per FILE, so
+  any edit clears every staleness signal inside it. `server/routes/admin/contacts.js:891` is
+  cited in five places including this file, names a predicate deleted 2026-08-24, and reports OK.
+  **A low STALE count on a hot document is NO EVIDENCE, not health** — and the governing
+  documents are the hottest.
+- **It cannot see line drift caused by the edit being made**, which is this rule's whole
+  subject.
+
+**The mechanism that caught all four was the audit, not the tool.** Run
+`npm run citecheck`, then still read the citations you moved.
+
 ---
 
 ## Test Design — learnings that cost production bugs to acquire
 
 *Read before writing a test, not after it goes green. Every rule below was learned by shipping
 something a green suite did not catch.*
+
+### CANCELLED and SKIPPED are FAILURES until explained — read all four numbers
+
+**A test run reports `pass`, `fail`, `cancelled` and `skipped`. Reading two of them is how a
+suite that did not run reads as a suite that passed.**
+
+Wave 1.1-b's first RED run reported **3 pass / 2 fail / 2 CANCELLED**. The two failures were
+the expected ones, the summary line looked entirely plausible, and **the entire transaction
+suite had not executed.** Cause: two `describe`s in one file each called `initTestDb()` in
+`before()` and `pool.end()` in `after()` — and `initTestDb()` returns the **`server/db.js` pool
+SINGLETON**, so the first suite's teardown killed the pool the second was about to use. It
+surfaced as `Cannot use a pool after calling end on the pool`, thrown from inside `initDB()`,
+**during setup** — which is why the tests were cancelled rather than failed.
+
+⚠ **A CANCELLED SUITE REPORTS NEITHER PASS NOR FAIL.** It contributes nothing to either
+column, so a green-looking `fail 0` can sit directly above tests that never ran. `skipped` has
+the same property. **Neither number is ever acceptable unexplained — treat both as failures
+until you can say why.**
+
+**Practically: one pool per test FILE.** A file-level `before`/`after` pair, never one per
+`describe`. And when a count moves, check all four before concluding anything.
+
+*Sixth recorded instance of a mechanism producing output that resembles a result.*
 
 ### A test's own greenness is not evidence that it tests anything
 
