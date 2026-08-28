@@ -173,9 +173,14 @@ router.post('/api/admin/stripe/transfer', requirePermission('cashout_approve'), 
     // is no longer an independent parameter that happens to be passed alongside
     // cashoutRequestId, which is what the endpoint always meant.
     //
-    // This is a gate, but it is not the only thing holding tenancy — both reads
-    // inside executeStripeTransfer are scoped by contractorId too. Deleting this
-    // block would produce a 404-less path, not an unscoped one.
+    // ⚠ THIS GATE IS THE CONTROL. DO NOT WEAKEN IT ON THE STRENGTH OF THE READS
+    // BELOW IT. Removing it during a guard-proof injection produced a 400
+    // no_bank_account rather than a leak, because executeStripeTransfer's own
+    // scoped user read happened to catch the cross-tenant id — but that is
+    // INCIDENTAL, not designed. The shapes do not match because nothing intended
+    // them to, and the coincidence disappears the moment that read changes. The
+    // inner scoping is correct on its own terms; it is not a second gate, and
+    // this comment exists so nobody records it as one.
     const owned = await pool.query(
       `SELECT 1 FROM cashout_requests cr
          JOIN users u ON u.id = cr.user_id

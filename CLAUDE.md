@@ -437,6 +437,30 @@ every one was found by forcing the failure.**
 them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this
 keeps happening.
 
+### Sweep from the shared UTILITY outward, not from the entry point inward
+
+**A sweep scoped to a directory, a route file, or a call chain traced downward will miss the
+caller that sits outside it — and nothing announces the omission.**
+
+**Twice in Wave 1.1 alone:**
+- Decision A Phase 4A/4B enumerated gated routes and **missed `server/routes/stripe.js`
+  entirely**, because it sat outside `server/routes/admin/` while serving five
+  `/api/admin/stripe/*` routes.
+- Wave 1.1-c Phase 0 was asked to trace the chain *route → Stripe*, did so correctly, and
+  **missed the other caller of `executeStripeTransfer()`** — `POST /api/cashout`'s auto-fire
+  path in `server/routes/referrer.js`, which moves money with **no admin review** under
+  `payout_automation='full_auto'` and drew on the same hardcoded literal. It was found only
+  because changing the function's signature forced an enumeration of its callers.
+
+⚠ **THE DOWNWARD FRAME IS THE TRAP, AND IT IS THE NATURAL ONE.** "What does this route call?"
+terminates at the leaf and feels complete. **"Who calls this?" is the question that finds the
+second caller**, and it is the only one of the two that can.
+
+**Practically: when a fix touches a shared utility, `grep` its export name repo-wide BEFORE
+deciding the blast radius** — not the directory it lives in, not the route that led you to it.
+This is the same rule as *"When a fix makes new DATA possible, enumerate every consumer"*,
+applied to code paths rather than to states.
+
 ### A plausible-looking rejection is not the rejection you are testing for
 
 **This is the negative test's counterpart to "green by construction."** A positive test can
