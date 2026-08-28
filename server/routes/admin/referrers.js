@@ -14,8 +14,17 @@ router.get('/api/admin/users', requirePermission('referrers'), async (req, res) 
   const { contractorId } = adminSession;
   const { signup_source, joined_after, joined_before } = req.query;
   try {
-    const conditions = [];
-    const params = [];
+    // contractorId is bound to $1 and pushed FIRST, so the tenancy predicate is
+    // unconditional: conditions is never empty, where is never the empty string,
+    // and no combination of query filters can produce an unscoped query.
+    //
+    // It used to be pushed LAST, with the lifecycle_status subqueries computing
+    // their own placeholder index from the running params length. That scoped the
+    // subqueries correctly and left the outer FROM users u reading every tenant's
+    // homeowners — the correct-looking scoping beside it is what made the omission
+    // read as deliberate. Binding it first removes the index arithmetic entirely.
+    const params = [contractorId];
+    const conditions = ['u.contractor_id = $1'];
     if (signup_source) {
       params.push(signup_source);
       conditions.push(`u.signup_source = $${params.length}`);
@@ -28,7 +37,7 @@ router.get('/api/admin/users', requirePermission('referrers'), async (req, res) 
       params.push(new Date(joined_before));
       conditions.push(`u.created_at <= $${params.length}`);
     }
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const where = `WHERE ${conditions.join(' AND ')}`;
     const sql = `
       SELECT
         u.id, u.full_name, u.email, u.phone, u.created_at,
@@ -39,11 +48,11 @@ router.get('/api/admin/users', requirePermission('referrers'), async (req, res) 
           WHEN u.signup_source != 'peer_link' THEN NULL
           WHEN (
             EXISTS (SELECT 1 FROM referral_conversions rc WHERE rc.user_id = u.id)
-            OR EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'paid' AND pc.contractor_id = $${params.length + 1})
+            OR EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'paid' AND pc.contractor_id = $1)
           ) THEN 'in_pipeline_paid'
-          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'sold' AND pc.contractor_id = $${params.length + 1}) THEN 'in_pipeline_sold'
-          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'inspection' AND pc.contractor_id = $${params.length + 1}) THEN 'in_pipeline_inspection'
-          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.contractor_id = $${params.length + 1}) THEN 'in_pipeline_lead'
+          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'sold' AND pc.contractor_id = $1) THEN 'in_pipeline_sold'
+          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.pipeline_status = 'inspection' AND pc.contractor_id = $1) THEN 'in_pipeline_inspection'
+          WHEN EXISTS (SELECT 1 FROM pipeline_cache pc WHERE LOWER(pc.referred_by) = LOWER(u.full_name) AND pc.contractor_id = $1) THEN 'in_pipeline_lead'
           WHEN EXISTS (SELECT 1 FROM booking_requests br WHERE br.submitted_by_user_id = u.id AND br.status != 'matched') THEN 'booking_requested'
           ELSE 'app_account_only'
         END AS lifecycle_status
@@ -52,7 +61,6 @@ router.get('/api/admin/users', requirePermission('referrers'), async (req, res) 
       ${where}
       ORDER BY u.created_at DESC
     `;
-    params.push(contractorId);
     const result = await pool.query(sql, params);
     res.json(result.rows);
   } catch (err) {
@@ -92,11 +100,14 @@ router.post('/api/admin/users', requirePermission('referrers.manage'), async (re
   }
 });
 router.patch('/api/admin/users/:id/pin', requirePermission('referrers.manage'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   const { pin } = req.body;
   if (!pin || pin.length < 4) return res.status(400).json({ error: 'PIN must be at least 4 digits' });
   try {
-    await pool.query('UPDATE users SET pin=$1 WHERE id=$2', [await bcrypt.hash(String(pin), 10), req.params.id]);
+    const result = await pool.query('UPDATE users SET pin=$1 WHERE id=$2 AND contractor_id=$3', [await bcrypt.hash(String(pin), 10), req.params.id, contractorId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
@@ -104,9 +115,12 @@ router.patch('/api/admin/users/:id/pin', requirePermission('referrers.manage'), 
   }
 });
 router.delete('/api/admin/users/:id', requirePermission('referrers.manage'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
-    await pool.query('DELETE FROM users WHERE id=$1', [req.params.id]);
+    const result = await pool.query('DELETE FROM users WHERE id=$1 AND contractor_id=$2', [req.params.id, contractorId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'User not found' });
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
@@ -120,7 +134,7 @@ router.post('/api/admin/users/:id/match-jobber', requirePermission('referrers.ma
   if (!adminSession) return;
   const { contractorId } = adminSession;
   try {
-    const userResult = await pool.query('SELECT id, full_name, email, phone FROM users WHERE id = $1', [req.params.id]);
+    const userResult = await pool.query('SELECT id, full_name, email, phone FROM users WHERE id = $1 AND contractor_id = $2', [req.params.id, contractorId]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = userResult.rows[0];
 
@@ -134,9 +148,17 @@ router.post('/api/admin/users/:id/match-jobber', requirePermission('referrers.ma
       [contractorId, user.full_name]
     );
 
+    // ⚠ THE TWO activity_log WRITES BELOW ARE THE ONLY UNSCOPED STATEMENTS LEFT IN
+    // THIS FILE, AND THEY CANNOT BE SCOPED: activity_log has no contractor_id
+    // column at all (server/db.js — the CREATE TABLE has event_type, full_name,
+    // email, detail, created_at, category, contact_id and nothing else). Both rows
+    // are reachable only after the tenanted SELECT above has already matched, so
+    // no cross-tenant row can be written through this path — but the audit trail
+    // itself is tenant-blind. Same class as the tracked payout_announcements gap;
+    // do not "fix" it here, it needs a migration.
     if (cacheResult.rows.length > 0) {
       const matched = cacheResult.rows[0];
-      await pool.query('UPDATE users SET jobber_client_id = $1 WHERE id = $2', [matched.jobber_client_id, user.id]);
+      await pool.query('UPDATE users SET jobber_client_id = $1 WHERE id = $2 AND contractor_id = $3', [matched.jobber_client_id, user.id, contractorId]);
       await pool.query(
         `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ('admin', $1, $2, $3)`,
         [user.full_name, user.email, `Admin manually matched to Jobber client via pipeline_cache: ${matched.jobber_client_id}`]
@@ -175,8 +197,9 @@ router.get('/api/admin/referrer/:name', requirePermission('referrers'), async (r
          FROM users u
          LEFT JOIN users ref ON ref.id = u.invited_by_user_id
          WHERE u.full_name = $1
+           AND u.contractor_id = $2
          LIMIT 1`,
-        [name]
+        [name, contractorId]
       ),
     ]);
     const userInfo = userResult.rows[0] || null;
