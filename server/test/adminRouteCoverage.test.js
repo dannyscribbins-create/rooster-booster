@@ -117,18 +117,60 @@ describe('admin route enforcement coverage', () => {
   });
 
   // ── Sanity: the router walk produced a meaningful result ──────────────────
-  it('router walk: found a plausible number of /api/admin/* routes', () => {
-    // Phase 0 confirmed ~114 /api/admin/* route/method combinations across the
-    // 7 admin sub-routers + 5 stripe routes. A count below 60 means the recursive
-    // walk is broken, not that routes are missing — the walk must be fixed before
-    // any "all gated" result can be trusted.
-    assert.ok(
-      adminRoutes.length >= 60,
-      `Router walk returned only ${adminRoutes.length} /api/admin/* routes — ` +
-        `expected ≥ 60. The recursive walk in collectAdminRoutes() is likely broken. ` +
-        `Do NOT interpret this as "all routes are gated" — many routes may be invisible.`
+  //
+  // ⚠ THIS WAS A FLOOR OF 60 AND THE FLOOR COULD NEVER FIRE. Corrected in
+  // Wave 1.1-a. The old assertion was `adminRoutes.length >= 60`, above a
+  // comment claiming "~114 route/method combinations". Both numbers were
+  // wrong: the true population is 137, and a floor at 60 sits UNDER HALF of
+  // it — the walk could have lost 55% of the surface and still reported a
+  // plausible-looking count. It is the fifth instance of CLAUDE.md's
+  // "mechanism that reports health it cannot observe", and its failure
+  // message made it worse by explicitly reassuring the reader.
+  //
+  // ⚠ AND THE FIX IS NOT A HIGHER FLOOR. Raising 60 to 130 recreates the same
+  // defect one value up: still unfalsifiable in the direction that matters
+  // (routes disappearing in ones and twos), still a hand-picked number with
+  // no source. An EXACT match against a recorded constant is falsifiable in
+  // BOTH directions and forces a deliberate decision on every change, which
+  // is the architecture.js --check pattern.
+  const EXPECTED_ADMIN_ROUTE_COUNT = 137; // measured 2026-08-28, HEAD bcc289c
+  it('router walk: /api/admin/* route count matches the recorded number exactly', () => {
+    assert.equal(
+      adminRoutes.length,
+      EXPECTED_ADMIN_ROUTE_COUNT,
+      `Router walk found ${adminRoutes.length} /api/admin/* route/method combinations; ` +
+        `EXPECTED_ADMIN_ROUTE_COUNT is ${EXPECTED_ADMIN_ROUTE_COUNT}.\n` +
+        `If you ADDED or REMOVED an admin route, this is correct and expected — update ` +
+        `the constant in this file, deliberately, and say so in the commit.\n` +
+        `If you did NOT change any route, the recursive walk in collectAdminRoutes() ` +
+        `is broken. Fix the walk. Do NOT interpret a low number as "all routes are ` +
+        `gated" — many routes may simply be invisible to the walk.`
     );
   });
+
+  // ── ⚠ WHAT THIS GUARD DOES NOT OBSERVE ────────────────────────────────────
+  // Stated here because the tripwire it replaced failed precisely by reporting
+  // health it could not see, and a mechanism whose limits are undocumented
+  // becomes a mechanism whose limits are unknown.
+  //
+  // An exact-match count guard sees DRIFT IN THE NUMBER OF ROUTES. It is blind
+  // to every one of these:
+  //   - A route whose GATE CHANGED. Swapping requirePermission('cashouts') for
+  //     requirePermission('dashboard') keeps the count at 137. (The coverage
+  //     assertion below sees only that SOME gate is present, never which one —
+  //     that is server/test/registryReconciliation.test.js's job.)
+  //   - A gate that stopped working. A requirePermission that returns next()
+  //     unconditionally is still counted, still "present", still green here.
+  //   - ONE ROUTE ADDED AND ANOTHER REMOVED IN THE SAME COMMIT. The count is
+  //     unchanged and this guard says nothing. The coverage assertion below
+  //     would still catch a new UNGATED route, but a new GATED one arrives
+  //     completely silently.
+  //   - Anything outside /api/admin/*. collectAdminRoutes() filters on that
+  //     prefix, so the four /api/referrer/stripe/* routes that inline raw token
+  //     checks are invisible to this entire file (PRE_LAUNCH_CHECKLIST.md).
+  //   - Whether a gated route also verifies a session. That invariant lives in
+  //     server/test/adminRouteInvariant.test.js and is deliberately a separate
+  //     file, so one is caught disjointly from the other.
 
   // ── Sanity: allowlisted routes actually exist in the walk ─────────────────
   it('router walk: all allowlisted public routes are present in the collected set', () => {
