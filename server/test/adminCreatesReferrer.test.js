@@ -2,8 +2,8 @@
 
 // Phase 3 (RED) of the tenant-resolution rebuild — the Q5 tripwire.
 // TENANT_RESOLUTION_REBUILD_SPEC.md Section 2 Step 3 calls out that adding
-// users.contractor_id NOT NULL breaks POST /api/admin/users (admin/referrers.js:69)
-// and its founding-referrer COUNT(*) (admin/referrers.js:79) the instant it ships,
+// users.contractor_id NOT NULL breaks POST /api/admin/users (admin/referrers.js:78)
+// and its founding-referrer COUNT(*) (admin/referrers.js:86) the instant it ships,
 // unless both are fixed in the SAME deploy as the migration. This suite pins the
 // END-STATE behavior (per-contractor scoping) so that fix can't be forgotten.
 //
@@ -139,7 +139,7 @@ describe('admin-created referrer — per-contractor scoping (Q5, tenant-resoluti
 
   it('founding-referrer count is per-contractor', async () => {
     // Populate tenant-b past the 20-user founding window; tenant-a stays empty.
-    // admin/referrers.js:79's COUNT(*) FROM users is GLOBAL today — this is the exact
+    // admin/referrers.js:86's COUNT(*) FROM users is GLOBAL today — this is the exact
     // MVP shortcut CLAUDE.md flags ("scope this count per contractorId at scale").
     for (let i = 0; i < 25; i++) {
       await seedUser(pool, {

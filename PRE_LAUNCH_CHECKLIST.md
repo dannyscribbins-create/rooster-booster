@@ -181,9 +181,9 @@ entry is the canonical record until then.**
       `304813f`: `referrer.js` (19), `account.js` (15), `admin/referrers.js` (5),
       `admin/index.js` (3), `admin/cashouts.js` (2), `stripe.js` (1). All in `server/routes/`;
       none elsewhere in `server/`. SH-3 sized this at "43+" and was closer than this entry was.
-      ⚠ **FIVE ARE NOT THE PLAIN `{ error: err.message }` FORM** — `admin/referrers.js:154,190`
+      ⚠ **FIVE ARE NOT THE PLAIN `{ error: err.message }` FORM** — `admin/referrers.js:176,213`
       concatenate (`'Jobber match failed: ' + err.message`), and `admin/index.js:1294,1329` and
-      `stripe.js:184` return it under a `message:` key beside a `success: false` or an error
+      `server/routes/stripe.js:206` return it under a `message:` key beside a `success: false` or an error
       code. **A regex written only against the plain form leaves those five** and reads as
       finished.
       ⚠ **`referrer.js:1158`, cited by this entry until 2026-08-21, is STALE** — that line is
@@ -280,7 +280,7 @@ entry is the canonical record until then.**
 
       ⚠ **A THIRD cause was previously recorded (a funnel-status join reading `referred_by`
       instead of `client_name`) and is FALSIFIED** — there is no such join on
-      `pending_referrals` at all. The nearest query, `admin/referrers.js:42-46`, computes
+      `pending_referrals` at all. The nearest query, `admin/referrers.js:51-55`, computes
       lifecycle status for `users` rows and is **correct as written**. **Do not go looking for
       it.**
 
@@ -294,8 +294,27 @@ entry is the canonical record until then.**
       Normalisation shipped anyway, for determinism, but it fixed nothing on its own and running
       it "early and independently" would have moved zero of the 13 rows.
 
-- [ ] **🔴 `admin/referrers.js` — THREE CROSS-TENANT WRITES WITH NO TENANCY PREDICATE.**
-      *(Wave 1.1 Phase 0, 2026-08-27. Recorded nowhere before.)*
+- [x] **✅ CLOSED 2026-08-28 (Wave 1.1-c, `203f4b1`) — `admin/referrers.js` cross-tenant writes.
+      FIVE, not three.** *(Raised Wave 1.1 Phase 0, 2026-08-27. Recorded nowhere before.)*
+      **Phase 0 of 1.1-c found two more, same file and same class, folded in on Danny's ruling:**
+      `GET /api/admin/users` listed every tenant's homeowners with PII — the handler scoped its
+      `pipeline_cache` subqueries and not its outer `FROM users u` — and `GET /api/admin/referrer/:name`
+      resolved a referrer by name with no tenancy at all.
+      **All five are scoped by a `contractor_id` predicate in the WHERE clause**, never by an
+      early-return check. Verified by `server/test/crossTenantCredentialWrites.test.js`, which
+      MANUFACTURES a second contractor — at one tenant none of this is verifiable in production,
+      so the suite is the whole proof.
+      ⚠ **STILL OPEN IN THIS FILE, DELIBERATELY:** the two `activity_log` writes in match-jobber
+      cannot be scoped, because `activity_log` has no `contractor_id` column. No cross-tenant row can
+      be written through them — both sit downstream of the now-tenanted SELECT — but the audit trail
+      itself is tenant-blind. Same class as `payout_announcements`; needs a migration. → Wave 2.3
+      ⚠ **`GET /api/admin/referrer/:name` IS COVERED BY A SOURCE-TEXT ASSERTION, NOT AN HTTP ONE.**
+      It proves the predicate APPEARS, not that it WORKS. HTTP testing is structurally impossible:
+      the handler awaits `getCRMAdapter()` before the query, no test contractor has a connected CRM
+      so it throws first, and seeding one does not help — the acculynx and servicetitan adapters are
+      stubs that throw, and jobber makes a live network call. **There is no input that produces a 200
+      without contacting Jobber.** Same tradeoff `adminRouteInvariant.test.js` priced and chose.
+      *Original finding, preserved:*
       - **`:94-99` `PATCH /api/admin/users/:id/pin`** — `UPDATE users SET pin=$1 WHERE id=$2`.
         Sets a homeowner's **login credential** by numeric id, at any contractor.
       - **`:106-109` `DELETE /api/admin/users/:id`** — `DELETE FROM users WHERE id=$1`. A hard
@@ -309,9 +328,32 @@ entry is the canonical record until then.**
       `contractorId`, and this form throws it away. The value was in scope and was not used.
       ⚠ **REACHABLE BY AN ORDINARY `referrers.manage` SESSION AT ANY CONTRACTOR** — no
       super-admin token, no bypass, no NULL `contractor_id`. **Not exploitable while one
-      tenant exists; unconditionally launch-gating.** → Wave 1.1-c
+      tenant exists; unconditionally launch-gating.** → Wave 1.1-c — **DONE, `203f4b1`.**
 
-- [ ] **🔴 `stripe.js:161` `POST /api/admin/stripe/transfer` — TWO DEFECTS COMPOUNDING.**
+- [x] **✅ CLOSED 2026-08-28 (Wave 1.1-c, `f0b2116`) — `POST /api/admin/stripe/transfer`.
+      THREE defects, not two, and a fourth filed separately.**
+      **What shipped:** tenancy is a predicate at every layer — the route requires the cashout AND
+      the payee to belong to the caller's contractor, and both reads inside `executeStripeTransfer`
+      are independently scoped, so removing the route gate yields a 404-less path rather than an
+      unscoped one. The connected account resolves through `getContractorStripeAccountId(pool,
+      contractorId)`, modelled on `getContractorAccessToken()` per registry Known Issues 2a.
+      Not-configured returns 400 `no_stripe_account` — no fallback to a literal, an env var, or the
+      first row in the table.
+      🔴 **THE THIRD DEFECT: THE LITERAL WAS THE GHOST ID, SO IT RESOLVED TO NOTHING.**
+      `contractor_settings` holds one row, `accent-roofing-dev`. The admin Banking Settings card
+      reads that row through the same literal and **reported NOT CONNECTED against a live, healthy
+      connection** (`acct_...N98EW`, active since 2026-08-02) for three and a half weeks.
+      **Expected after deploy, to be CHECKED against reality rather than assumed: the card lights up
+      as connected, with NO reconnection step.** If it does not, the fix is resolving to something
+      other than the session's contractor.
+      ⚠ **A SECOND CALLER, FOUND BY ENUMERATING CONSUMERS RATHER THAN TRACING THE ROUTE:**
+      `referrer.js`'s `POST /api/cashout` auto-fire path also called `executeStripeTransfer`, and so
+      also drew on the ghost literal. It moves money with **no admin review** under
+      `payout_automation = 'full_auto'`. Fixed in the same commit.
+      ⚠ **SCOPE LIMIT — "STRIPE IS TENANTED NOW" IS A QUARTER TRUE.** Only the money route was
+      fixed. Its four onboarding siblings still read the module-level literal — see the entry below.
+      *Original finding, preserved:*
+- [x] **🔴 `stripe.js:161` `POST /api/admin/stripe/transfer` — TWO DEFECTS COMPOUNDING.**
       It reads `{ cashoutRequestId, userId, bonusAmount }` from `req.body` and passes them to
       `executeStripeTransfer(pool, …)` with **no tenancy anywhere in the chain**; and
       `utils/stripeTransfer.js:44-47` then resolves the connected account from a **hardcoded
@@ -324,8 +366,68 @@ entry is the canonical record until then.**
       so establish whether this path resolves to a real row at all before assuming it merely
       lacks multi-tenancy. → Wave 1.1-c, with contractor-ID reconciliation
 
+- [ ] **🔴 DO NOT PRESS "CONNECT STRIPE" — STANDING HAZARD UNTIL THE FOUR ONBOARDING
+      ROUTES ARE FIXED.** *(Wave 1.1-c, 2026-08-28.)* `create-account-link` (`server/routes/stripe.js:52`),
+      `confirm-connection` (`:89`), `connection-status` (`:122`) and `disconnect` (`:141`) still read
+      the module-level `CONTRACTOR_ID = 'accent-roofing'` — the ghost id. `upsertStripeAccount()`
+      writes `INSERT ... ON CONFLICT (contractor_id)` keyed to it, and **`contractor_settings.
+      contractor_id` has NO foreign key to `contractors`**, so pressing the button creates a second
+      settings row under a contractor that does not exist, **beside the working one** — re-opening
+      the split-brain this file records as closed on 2026-08-21. Same shape as the Jobber OAuth
+      button. → Wave 1.4 / Wave 2.3
+
+- [ ] **🔴 THE ACH ENDPOINT MUST NOT GO LIVE UNTIL THE CONNECT ARCHITECTURE IS RULED ON.**
+      *(Wave 1.1-c, 2026-08-28. This dependency existed in NO document before now.)*
+      Danny's model is confirmed: RoofMiles' platform account is the **bridge**; contractors onboard
+      through Connect and attach their own bank; referrer cash-outs draw from the **contractor's**
+      funds. So `destination: contractorStripeAccountId` is a real leg and the direction is **not**
+      inverted. **What is missing is the SECOND leg** — funds land in the contractor's connected
+      account and **nothing pays the referrer**, with the decrypted `paymentMethodId` dead where it
+      is computed. ⚠ **And under the current code the first leg is funded from the PLATFORM balance,
+      not the contractor's, which inverts who pays.** Destination charges vs separate charges-and-
+      transfers vs direct payout from the connected account — tax and liability consequences.
+      **Its own session, with the Stripe docs open.** It sits between the LLC / Stripe-live milestone
+      and this unruled question, and neither document knew about the other.
+
+- [ ] **🟠 `stripe.transfers.create` IS THE ONLY UNRETRIED STRIPE CALL, AND IT CARRIES NO
+      IDEMPOTENCY KEY.** *(Wave 1.1-c Phase 0, 2026-08-28.)* Every other Stripe call in the codebase
+      uses `retryWithBackoff` with `stripeShouldRetry`; the money-movement one does not — a live
+      *Never Break These Rules* violation. ⚠ **Adding retry WITHOUT an idempotency key would risk
+      double-paying**, so these are one change, not two. → with the Connect ruling above
+
+- [ ] **🟠 A CLUSTER OF `referrer.js` CITATIONS IS STALE BY HUNDREDS OF LINES, AND
+      `citecheck` REPORTS THEM OK.** *(Found Wave 1.1-c, 2026-08-28, while auditing this session's
+      own line drift.)* Every one resolves to real code, which is the silent variety — the number
+      is plausible, the file exists, the line exists, and it describes something else.
+      **Measured at `f0b2116`:**
+      · `TENANT_RESOLUTION_REBUILD_SPEC.md:398-401` (rows B11-B14) — `referrer.js:1889` for
+        `POST /api/referrer/missing-referral` (**actually :2718**, off by 829); `:2143` for
+        `POST /api/referrer/feedback` (**:2964**); `:2221` for `GET /api/referrer/schedules`
+        (**:3050**); `:2253` for `GET /api/referrer/conversions` (**:3081**).
+      · `server/test/brandingTheme.test.js:533` and `server/test/logoUpload.test.js:252` both cite
+        `RESEND_CODE_LIMIT` at `referrer.js:2794-2800`. **It is at :164.** Two files carry the same
+        wrong number — the N-copies problem, and the second copy reads as confirmation.
+      · `server/routes/admin/team.js:569` cites `server/routes/referrer.js:2026-2038` for a
+        checked-out-client note; that range is now inside an unrelated `pool.connect()` block.
+      ⚠ **DELIBERATELY NOT "FIXED" BY THIS SESSION.** Wave 1.1-c added 6 lines to `referrer.js`,
+      so it shifted these by 6 — but they were already wrong by 800 to 2,600 lines beforehand.
+      Applying a +6 correction would have produced a differently-wrong number **that looks like
+      repair**, which is worse than leaving it visibly stale. They need re-deriving from the
+      symbols they name, not arithmetic.
+      ⚠ **AND THEY ARE THE ARGUMENT FOR CITING BY ROLE.** This session converted its own test file's
+      references from line numbers to handler and route names for exactly this reason; a handler
+      name does not drift. → §10
+
+- [ ] **🟠 THE BANKING SETTINGS CARD CANNOT TELL A FAILED FETCH FROM "NOT CONNECTED".**
+      *(Wave 1.1-c Phase 0, 2026-08-28.)* `src/components/admin/BankingSettings.jsx` does
+      `stripeRes.ok ? await stripeRes.json() : {}` and then defaults to `'not_connected'`, inside a
+      `catch {}`. **A 403 from `requirePermission('finance_settings')`, a network failure, and a
+      genuinely unconnected contractor all render identically.** Live regardless of the ghost-id fix
+      — that fix removed one cause of a wrong answer, not the card's inability to report one.
+      → §10
+
 - [ ] **🟠 FOUR REFERRER STRIPE ROUTES INLINE RAW TOKEN CHECKS — a live *Never Break These
-      Rules* violation.** `stripe.js:198-203`, `:254-259`, `:308-313`, `:353-354`. Each
+      Rules* violation.** `server/routes/stripe.js:252`, `:308`, `:362`, `:403`. Each
       hand-rolls `SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at >
       NOW()` instead of calling `verifyReferrerSession()`, which CLAUDE.md names as one of the
       only authorised ways to protect an endpoint.

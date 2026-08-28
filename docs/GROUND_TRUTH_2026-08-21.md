@@ -102,7 +102,7 @@ falsified, and one is confirmed with a correction to its mechanism.**
 | Check | Expected | Actual | Verdict | Delta |
 |---|---|---|---|---|
 | **B1** matcher candidate source | in-memory `allClients`, not a `SELECT` on `jobber_clients` | `server/utils/pendingReferral.js:372` — `const matches = allClients.filter(...)`. `allClients` is the function's 4th parameter, defaulting to `[]` | **MATCH** | Confirmed verbatim. No query against `jobber_clients` exists anywhere on this path. |
-| **B2** funnel-status join on `referred_by` | compares `referred_by` where it should compare `client_name` | **No such SQL exists.** The pending-referral read (`admin/index.js:1668–1682`) selects 22 columns from `pending_referrals` alone — **no join, no pipeline status.** | **MISMATCH — claim falsified** | The nearest match is `admin/referrers.js:42–46`, which is about `users`, not pending referrals, and **is correct as written.** One of three root causes retires. See below. |
+| **B2** funnel-status join on `referred_by` | compares `referred_by` where it should compare `client_name` | **No such SQL exists.** The pending-referral read (`admin/index.js:1668–1682`) selects 22 columns from `pending_referrals` alone — **no join, no pipeline status.** | **MISMATCH — claim falsified** | The nearest match is `admin/referrers.js:51–55`, which is about `users`, not pending referrals, and **is correct as written.** One of three root causes retires. See below. |
 | **B3** name normalisation on write | none — names stored as Jobber returns them | **Confirmed. Three write sites, zero trim.** | **MATCH** | With a correction that changes the SQL Danny should run — `jobber_clients` has **no `name` column.** See below. |
 | **B4** a `matched_user_id` writer exists | at least one writer; the precondition never becomes true | **One writer**, `pendingReferral.js:570–574`; **one caller**, `referrer.js:720` | **MATCH** | The writer exists and is reachable. The precondition is the failure. Chain traced below. |
 
@@ -162,7 +162,7 @@ ORDER BY ...
 **No join. No `pipeline_cache`. No funnel status.** The referrer-side read
 (`referrer.js:2666–2672`) likewise reads `pending_referrals` alone.
 
-The record almost certainly points at **`server/routes/admin/referrers.js:42–46`**, which does
+The record almost certainly points at **`server/routes/admin/referrers.js:51–55`**, which does
 join on `referred_by`:
 
 ```sql
@@ -337,13 +337,13 @@ returns **59**; **45** of those sit inside a response body. Verified no multi-li
 `server/routes/`.
 
 Two shapes worth knowing before scoping: **five are not the plain `{ error: err.message }`
-form** — `admin/referrers.js:154,190` concatenate (`'Jobber match failed: ' + err.message`),
+form** — `admin/referrers.js:176,213` concatenate (`'Jobber match failed: ' + err.message`),
 `admin/index.js:1294,1329` and `stripe.js:184` return it under a `message:` key alongside a
 `success: false` or an error code. A regex-only sweep written against the plain form leaves those
 five.
 
 **The checklist's per-file citations are right where they name files and wrong where they name
-lines:** `account.js (15 sites)` ✅, `admin/cashouts.js:37,156` ✅, `admin/referrers.js:60,103,113`
+lines:** `account.js (15 sites)` ✅, `admin/cashouts.js:37,156` ✅, `admin/referrers.js:68,114,127`
 ✅ (but it has **5**, not 3), and **`referrer.js:1158` ✗** — that line is now inside
 `compareCandidate`, which routes through `logError` and returns `null`. `referrer.js` has 19 leak
 sites and 1158 is not one of them.

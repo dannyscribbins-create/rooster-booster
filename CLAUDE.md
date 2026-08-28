@@ -437,6 +437,34 @@ every one was found by forcing the failure.**
 them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this
 keeps happening.
 
+### A plausible-looking rejection is not the rejection you are testing for
+
+**This is the negative test's counterpart to "green by construction."** A positive test can
+pass without asserting anything; a NEGATIVE test can pass because the request was refused for
+a reason that has nothing to do with what it claims to prove. It reads identically either way
+— refused is refused — and the assertion never has to be wrong to be worthless.
+
+**Three instances in one afternoon, building the Wave 1.1-c harness:**
+- A cross-tenant `DELETE` was refused because `cashout_requests.user_id` is `ON DELETE
+  NO ACTION` and the victim held a cashout. The route 500'd, the row survived, **the tenancy
+  test passed** — and there was no tenancy check in the code at all. Caught only because the
+  positive control beside it also broke.
+- The **ghost contractor id** made every call to the ACH endpoint return `400
+  no_stripe_account` regardless of caller, so "a cross-tenant request is rejected" passed
+  vacuously against a route that performed no tenancy check whatsoever. **A defect masked a
+  defect.**
+- A source-text needle of `contractor_id` would have matched the `contractorId` already in
+  the handler for an unrelated reason — the `toContain`-on-a-bare-value trap wearing a
+  third costume.
+
+**THE RULE: a negative test must assert WHY the request was refused, not only THAT it was.**
+Pin the status code AND the state that proves the intended mechanism fired — the row still
+exists, the hash did not change, the error is *this* error and not that one. And when a
+negative goes green, **ask what else could have produced that same green.**
+
+⚠ **THE POSITIVE CONTROL IS WHAT CATCHES THIS, WHICH IS WHY IT IS ORDERED FIRST.** Two of the
+three above were invisible in the negative and obvious in the positive.
+
 ### A RED narrative is a record, not a claim about today
 
 A comment written to explain why a test was RED describes **the state it was written

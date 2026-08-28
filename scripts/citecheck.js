@@ -215,7 +215,7 @@ function buildLastCommitMap() {
 // ─── the tracked-file index, and the suffix resolver ─────────────────────────
 // ⚠ THE BARE-FILENAME CONVENTION IS WHY THIS RESOLVER EXISTS. 81 of the 130
 // distinct cited paths in this repo do NOT resolve from the repo root:
-// `account.js:436`, `team.js:555`, `admin/referrers.js:69`. Every one is a real
+// `account.js:436`, `team.js:555`, `admin/referrers.js:78`. Every one is a real
 // citation that a human resolves by convention. Resolving only from root would
 // report all 81 as FILE_MISSING and drown the real findings — a check whose
 // noise floor is above its signal is not a check.
