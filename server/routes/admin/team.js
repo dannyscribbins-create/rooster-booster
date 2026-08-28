@@ -551,8 +551,36 @@ router.patch('/api/admin/team/:id/deactivate', requirePermission('team.manage'),
       }
     }
 
-    await pool.query(`DELETE FROM sessions WHERE team_member_id = $1`, [targetId]);
-    await pool.query(`UPDATE team_members SET active = false WHERE id = $1`, [targetId]);
+    // ── BOTH HALVES COMMIT OR NEITHER DOES (Wave 1.1-b) ──────────────────────
+    // These were two bare pool.query() calls with no transaction. Each ran in
+    // its own implicit commit, so a failure on the UPDATE left the sessions
+    // ALREADY DELETED while the member was still active=true: the caller saw a
+    // 500 and the member simply logged back in. The revocation looked like it
+    // had happened and had not.
+    //
+    // ⚠ THE ORDER IS LOAD-BEARING AND SO IS THE ATOMICITY. Deleting sessions
+    // BEFORE flipping the flag is what has kept R4 (a live session belonging to
+    // an inactive member) off every product path — see the active disjunct in
+    // server/middleware/auth.js. A half-applied pair is precisely that state,
+    // manufactured by an error. The two defects are one defect seen twice, and
+    // they were closed together.
+    //
+    // Pattern copied from POST /api/admin/team/accept-invite above (:183-220)
+    // and server/routes/referrer.js:2026-2038 — checked-out client, explicit
+    // BEGIN/COMMIT/ROLLBACK, released in finally. The rethrow hands the error to
+    // this route's existing catch so it is logged exactly once.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM sessions WHERE team_member_id = $1`, [targetId]);
+      await client.query(`UPDATE team_members SET active = false WHERE id = $1`, [targetId]);
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     res.json({ success: true });
   } catch (err) {

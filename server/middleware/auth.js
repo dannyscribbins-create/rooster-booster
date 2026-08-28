@@ -46,10 +46,57 @@ async function verifyAdminSession(req, res) {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   if (!token) { res.status(401).json({ error: 'Not authorized' }); return null; }
   try {
+    // ── THE active DISJUNCT — R4, closed in Wave 1.1-b ───────────────────────
+    // This function used to query `sessions` alone and never look at
+    // team_members, so a DEACTIVATED member holding a live token kept working
+    // on every session-only route. It was unreachable in practice only because
+    // deactivation deletes sessions FIRST (server/routes/admin/team.js), which
+    // is an ordering, not a guarantee — and the same Wave made that pair
+    // transactional so the ordering can no longer half-apply.
+    //
+    // FOUR CASES, AND ONLY THE THIRD AND FOURTH ARE NEW BEHAVIOUR:
+    //   team_member_id IS NULL   → ALLOWED. Deliberately unchanged; see below.
+    //   member active = true     → allowed.
+    //   member active = false    → DENIED. This is R4.
+    //   member row deleted       → DENIED. See the three-valued note below.
+    //
+    // ⚠ THE DELETED-ROW DENIAL IS THREE-VALUED LOGIC, NOT A WRITTEN BRANCH.
+    // On a LEFT JOIN miss `tm.active` is NULL, so `tm.active = true` evaluates
+    // to NULL — not false — and the whole disjunct is NULL, which WHERE treats
+    // as not-true and filters the row out. It fails closed, but nothing on this
+    // line says so, which is exactly how a later reader "simplifies" it.
+    // ⚠ DO NOT REWRITE THIS AS `tm.active IS NOT FALSE`. That reads as
+    // equivalent and is not: NULL IS NOT FALSE is TRUE, so a session pointing
+    // at a deleted member would be ALLOWED. server/test/adminSessionActive.test.js
+    // fences both spellings.
+    //
+    // ⚠ AND THE NULL CASE DEPENDS ON A FOREIGN KEY THAT LIVES ELSEWHERE.
+    // `sessions_team_member_id_fkey` is ON DELETE NO ACTION, which is what makes
+    // a dangling team_member_id unreachable. If a migration ever changes it to
+    // SET NULL, deleting a member NULLs their live session's team_member_id and
+    // the legacy branch above ALLOWS it — a deleted employee keeps their access,
+    // introduced by someone who never opened this file. There is a tripwire on
+    // that FK in server/test/adminSessionActive.test.js; it exists for this line.
+    //
+    // ⚠ WHY LEFT JOIN AND NOT INNER, WHICH IS WHAT verifyReferrerSession USES.
+    // A legacy admin session predating the team_member_id column carries NULL,
+    // and rejecting those is a DIFFERENT change from R4. They are already failed
+    // closed everywhere it matters — server/middleware/permissions.js:58-61 and
+    // GET /api/admin/me's own `AND active = true`. An INNER JOIN would also
+    // break server/test/contractorContext.test.js:202-207, which characterises
+    // this exact behaviour, and would invalidate every admin session minted by
+    // server/test/helpers.js's seedSession(), which does not set the column.
+    // Tighten it deliberately, in its own change, or not at all.
+    //
+    // A super-admin session is NOT affected and cannot be: it carries
+    // role='super_admin' and is filtered out by `s.role=$2` one clause below,
+    // before the join is ever consulted.
     const result = await pool.query(
       `SELECT s.id, s.contractor_id, s.team_member_id, s.created_at, s.expires_at
          FROM sessions s
-        WHERE s.token=$1 AND s.role=$2 AND s.expires_at > NOW()`,
+         LEFT JOIN team_members tm ON tm.id = s.team_member_id
+        WHERE s.token=$1 AND s.role=$2 AND s.expires_at > NOW()
+          AND (s.team_member_id IS NULL OR tm.active = true)`,
       [token, 'admin']
     );
     if (!result.rows.length) {
