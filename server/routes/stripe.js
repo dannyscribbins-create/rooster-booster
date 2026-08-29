@@ -10,7 +10,36 @@ const { encrypt, decrypt } = require('../utils/encryption');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
 
 const router = express.Router();
-const CONTRACTOR_ID = 'accent-roofing'; // MVP: pull from session at multi-contractor scale
+
+// ── ⚠ THE MODULE-LEVEL CONTRACTOR LITERAL IS GONE — WAVE 1.1-e ───────────────
+// A module-scope constant used to sit on this line holding the PRE-RENAME GHOST
+// contractor id, with a comment promising to pull it from the session at
+// multi-contractor scale. Production's only contractor row carries the renamed
+// id, so all five sites that read the constant resolved to ZERO ROWS, and
+// getStripeRow()'s `|| { … 'not_connected' }` fallback turned that into a
+// plausible answer: the admin Banking Settings card reported NOT CONNECTED
+// against a live, healthy connection (acct_…N98EW, active since 2026-08-02) for
+// roughly four weeks. A hardcoded literal that resolves to nothing does not
+// fail loudly; it manufactures a measurement.
+//
+// ⚠ DELETING THE CONSTANT IS LOAD-BEARING, NOT TIDINESS — AND ONE COVERAGE
+// ARGUMENT DEPENDS ON IT. Route 2's UPDATE predicate is unreachable from any
+// test: stripe.accounts.retrieve() must succeed first, and no test may reach
+// Stripe. It is covered BY CONSTRUCTION — with the constant gone, the old
+// predicate cannot resolve at all. **Reinstating an "unused" constant here
+// would silently remove protection that lives in no test.**
+//
+// ⚠ AND THE FIX WAS DYNAMIC-ID-FIRST, NOT A RENAME. The old literal was NOT
+// swapped for the renamed one. A half-completed rename is what created this
+// split-brain in the first place; finishing it the same way would only move the
+// next failure.
+//
+// ⚠ NEITHER THE RETIRED LITERAL NOR THE RETIRED SYMBOL NAME IS WRITTEN
+// ANYWHERE ABOVE, AND THAT IS DELIBERATE. Both are swept by
+// server/test/stripeContractorResolution.test.js, and the first draft of this
+// comment tripped it. The prose was reworded; the sweep was NOT given a
+// comments-are-exempt carve-out. A retired symbol quoted in a comment is how it
+// gets pasted back into code.
 
 function getStripeClient() {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -21,39 +50,67 @@ function getStripeClient() {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-async function getStripeRow() {
-  try {
-    const r = await pool.query(
-      'SELECT stripe_account_id, stripe_connect_status FROM contractor_settings WHERE contractor_id = $1',
-      [CONTRACTOR_ID]
-    );
-    return r.rows[0] || { stripe_account_id: null, stripe_connect_status: 'not_connected' };
-  } catch (err) {
+// contractorId is REQUIRED and is never defaulted — modelled on
+// getContractorStripeAccountId() in server/utils/stripeTransfer.js, which
+// CLAUDE_REGISTRY.md Known Issues 2a instructs this shape for: resolve from the
+// session's contractorId, and do not reintroduce getDefaultContractorId().
+//
+// ⚠ THE `|| { … 'not_connected' }` FALLBACK STAYS, AND IT IS NOW HONEST.
+// It was never the bug — it is the correct answer for a contractor who has
+// signed up and not finished Stripe Connect, and the admin card needs a shape
+// to render. What made it a defect was that the LOOKUP could not find a row it
+// should have found, so "not configured" and "wrong tenant id" were the same
+// output. With the predicate resolved from the caller, the fallback now means
+// only what it says.
+async function getStripeRow(contractorId) {
+  if (!contractorId) {
+    const err = new Error('getStripeRow: contractorId is required');
+    await logError({ req: null, error: err, source: 'getStripeRow' });
     throw err;
   }
+  const r = await pool.query(
+    'SELECT stripe_account_id, stripe_connect_status FROM contractor_settings WHERE contractor_id = $1',
+    [contractorId]
+  );
+  return r.rows[0] || { stripe_account_id: null, stripe_connect_status: 'not_connected' };
 }
 
-async function upsertStripeAccount(stripeAccountId, status) {
-  try {
-    await pool.query(
-      `INSERT INTO contractor_settings (contractor_id, stripe_account_id, stripe_connect_status)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (contractor_id) DO UPDATE
-         SET stripe_account_id = $2, stripe_connect_status = $3, updated_at = NOW()`,
-      [CONTRACTOR_ID, stripeAccountId, status]
-    );
-  } catch (err) {
+// 🔴 THE WRITE PATH, AND THE ONE THAT HAD TEETH. contractor_settings.contractor_id
+// is UNIQUE NOT NULL with NO FOREIGN KEY to contractors, so a row under a
+// non-existent contractor is perfectly legal — this INSERT … ON CONFLICT keyed
+// to the ghost would have created a PHANTOM row the first time anyone pressed
+// "Connect Stripe". That is why the standing "do not press Connect Stripe"
+// order existed, and why it lifts with this change.
+//
+// No fallback here, and there must never be one. A write path that defaults its
+// tenant is strictly worse than the defect being fixed.
+async function upsertStripeAccount(contractorId, stripeAccountId, status) {
+  if (!contractorId) {
+    const err = new Error('upsertStripeAccount: contractorId is required');
+    await logError({ req: null, error: err, source: 'upsertStripeAccount' });
     throw err;
   }
+  await pool.query(
+    `INSERT INTO contractor_settings (contractor_id, stripe_account_id, stripe_connect_status)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (contractor_id) DO UPDATE
+       SET stripe_account_id = $2, stripe_connect_status = $3, updated_at = NOW()`,
+    [contractorId, stripeAccountId, status]
+  );
 }
 
 // ── Route 1: POST /api/admin/stripe/create-account-link ───────────────────────
 
 router.post('/api/admin/stripe/create-account-link', requirePermission('finance_settings.manage'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  // CAPTURE form, not the discard form. All four onboarding routes below used
+  // `if (!await verifyAdminSession(req, res)) return;` and threw the session
+  // away, which is why a literal was the only contractor id available to them.
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     const stripe = getStripeClient();
-    const row = await getStripeRow();
+    const row = await getStripeRow(contractorId);
     let stripeAccountId = row.stripe_account_id;
 
     if (!stripeAccountId) {
@@ -62,7 +119,7 @@ router.post('/api/admin/stripe/create-account-link', requirePermission('finance_
         { retries: 2, shouldRetry: stripeShouldRetry }
       );
       stripeAccountId = account.id;
-      await upsertStripeAccount(stripeAccountId, 'pending');
+      await upsertStripeAccount(contractorId, stripeAccountId, 'pending');
     }
     // Status not updated here — confirm-connection (Route 2) is the canonical status updater after onboarding
 
@@ -87,9 +144,11 @@ router.post('/api/admin/stripe/create-account-link', requirePermission('finance_
 // ── Route 2: POST /api/admin/stripe/confirm-connection ────────────────────────
 
 router.post('/api/admin/stripe/confirm-connection', requirePermission('finance_settings.manage'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
-    const row = await getStripeRow();
+    const row = await getStripeRow(contractorId);
     if (!row.stripe_account_id) {
       return res.status(400).json({ error: 'No Stripe account linked' });
     }
@@ -103,7 +162,7 @@ router.post('/api/admin/stripe/confirm-connection', requirePermission('finance_s
     const status = (account.charges_enabled && account.payouts_enabled) ? 'active' : 'pending';
     await pool.query(
       `UPDATE contractor_settings SET stripe_connect_status = $1, updated_at = NOW() WHERE contractor_id = $2`,
-      [status, CONTRACTOR_ID]
+      [status, contractorId]
     );
 
     res.json({
@@ -120,9 +179,11 @@ router.post('/api/admin/stripe/confirm-connection', requirePermission('finance_s
 // ── Route 3: GET /api/admin/stripe/connection-status ─────────────────────────
 
 router.get('/api/admin/stripe/connection-status', requirePermission('finance_settings'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
-    const row = await getStripeRow();
+    const row = await getStripeRow(contractorId);
     const maskedId = row.stripe_account_id
       ? `...${row.stripe_account_id.slice(-6)}`
       : null;
@@ -139,14 +200,20 @@ router.get('/api/admin/stripe/connection-status', requirePermission('finance_set
 // ── Route 4: POST /api/admin/stripe/disconnect ────────────────────────────────
 
 router.post('/api/admin/stripe/disconnect', requirePermission('finance_settings.manage'), async (req, res) => {
-  if (!await verifyAdminSession(req, res)) return;
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
   try {
     // MVP: local-only clear. Stripe Standard accounts require manual deauthorization via Stripe dashboard.
+    // ⚠ AN UPDATE, AND IT MUST STAY AN UPDATE. A contractor with no
+    // contractor_settings row matches nothing here, and that is correct — never
+    // "helpfully" turn this into an upsert, which would manufacture a row on a
+    // disconnect.
     await pool.query(
       `UPDATE contractor_settings
          SET stripe_account_id = NULL, stripe_connect_status = 'not_connected', updated_at = NOW()
        WHERE contractor_id = $1`,
-      [CONTRACTOR_ID]
+      [contractorId]
     );
     res.json({ success: true });
   } catch (err) {
@@ -271,7 +338,10 @@ router.post('/api/referrer/stripe/create-financial-connections-session', async (
   try {
     const referrerSession = await verifyReferrerSession(req, res);
     if (!referrerSession) return;
-    const { userId } = referrerSession;
+    // contractorId comes off the session descriptor verifyReferrerSession
+    // already returns — a destructure, not a second lookup. It stamps the
+    // Stripe customer's metadata below.
+    const { userId, contractorId } = referrerSession;
 
     const userResult = await pool.query(
       'SELECT id, full_name, email, stripe_customer_id FROM users WHERE id = $1',
@@ -288,7 +358,13 @@ router.post('/api/referrer/stripe/create-financial-connections-session', async (
         () => stripe.customers.create({
           name: user.full_name,
           email: user.email,
-          metadata: { roofmiles_user_id: String(user.id), contractor_id: 'accent-roofing' }
+          // ⚠ NOT PURELY FORWARD-LOOKING. Every Stripe customer created before
+          // Wave 1.1-e carries the pre-rename ghost id in this metadata field —
+          // an id with no contractors row. That is the field anyone would
+          // reconcile Stripe records against tenants by. The BACKFILL for those
+          // existing customers is filed to the Stripe architecture phase; this
+          // line only stops the bleeding.
+          metadata: { roofmiles_user_id: String(user.id), contractor_id: contractorId }
         }),
         { retries: 2, shouldRetry: stripeShouldRetry }
       );
@@ -435,3 +511,21 @@ router.post('/api/referrer/stripe/disconnect-bank', async (req, res) => {
 });
 
 module.exports = router;
+
+// ADDITIVE, AND DELIBERATELY NOT A NAMED-EXPORTS OBJECT — the same pattern and
+// the same reason as server/routes/landing.js and server/routes/branding.js.
+// server/app.js requires this module and passes the result straight to
+// app.use('/', stripeRoutes), so replacing the line above with
+// { router, getStripeRow, … } would unmount five admin routes and four referrer
+// routes. A router is a function object, so a property hangs off it without
+// disturbing what the module exports.
+//
+// Exposed for test, and it is the ONLY level at which route 1 is testable.
+// POST /api/admin/stripe/create-account-link calls getStripeClient() as the
+// first statement in its try and reaches stripe.accountLinks.create on every
+// success, so its contractor resolution cannot be exercised end-to-end without
+// a real network call. server/test/stripeContractorResolution.test.js asserts
+// these two directly instead, and records in its header that the route-level
+// assertion is ABSENT rather than overlooked.
+module.exports.getStripeRow = getStripeRow;
+module.exports.upsertStripeAccount = upsertStripeAccount;

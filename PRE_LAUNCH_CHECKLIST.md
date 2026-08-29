@@ -193,9 +193,11 @@ entry is the canonical record until then.**
       none elsewhere in `server/`. SH-3 sized this at "43+" and was closer than this entry was.
       ⚠ **FIVE ARE NOT THE PLAIN `{ error: err.message }` FORM** — `admin/referrers.js:176,213`
       concatenate (`'Jobber match failed: ' + err.message`), and `admin/index.js:1294,1329` and
-      `server/routes/stripe.js:211` return it under a `message:` key beside a `success: false` or an error
+      `server/routes/stripe.js`'s **`transfer` handler** (its `transfer_failed` 500) returns it under
+      a `message:` key beside a `success: false` or an error
       code. **A regex written only against the plain form leaves those five** and reads as
-      finished.
+      finished. *(That last was `stripe.js:211`, verified correct and shifted by Wave 1.1-e;
+      re-cited by ROLE.)*
       ⚠ **`referrer.js:1158`, cited by this entry until 2026-08-21, is STALE** — that line is
       now inside `compareCandidate`, which routes through `logError()` and returns `null`. It
       leaks nothing. `referrer.js` has 19 leak sites and 1158 is not one of them. **This is the
@@ -376,15 +378,24 @@ entry is the canonical record until then.**
       so establish whether this path resolves to a real row at all before assuming it merely
       lacks multi-tenancy. → Wave 1.1-c, with contractor-ID reconciliation
 
-- [ ] **🔴 DO NOT PRESS "CONNECT STRIPE" — STANDING HAZARD UNTIL THE FOUR ONBOARDING
-      ROUTES ARE FIXED.** *(Wave 1.1-c, 2026-08-28.)* `create-account-link` (`server/routes/stripe.js:52`),
-      `confirm-connection` (`:89`), `connection-status` (`:122`) and `disconnect` (`:141`) still read
-      the module-level `CONTRACTOR_ID = 'accent-roofing'` — the ghost id. `upsertStripeAccount()`
-      writes `INSERT ... ON CONFLICT (contractor_id)` keyed to it, and **`contractor_settings.
-      contractor_id` has NO foreign key to `contractors`**, so pressing the button creates a second
-      settings row under a contractor that does not exist, **beside the working one** — re-opening
-      the split-brain this file records as closed on 2026-08-21. Same shape as the Jobber OAuth
-      button. → Wave 1.4 / Wave 2.3
+- [x] **✅ LIFTED 2026-08-29 (Wave 1.1-e), CONDITIONAL ON THE POST-DEPLOY CHECK — was 🔴 DO NOT
+      PRESS "CONNECT STRIPE", STANDING HAZARD UNTIL THE FOUR ONBOARDING ROUTES ARE FIXED.**
+      *(Raised Wave 1.1-c, 2026-08-28; live for three phases.)* The four routes —
+      `create-account-link`, `confirm-connection`, `connection-status`, `disconnect` — read the
+      module-level ghost-id constant, and `upsertStripeAccount()` wrote
+      `INSERT … ON CONFLICT (contractor_id)` keyed to it. **`contractor_settings.contractor_id`
+      has NO foreign key to `contractors`** (still true — the FK is filed to the Stripe
+      architecture phase), so pressing the button would have created a settings row under a
+      contractor that does not exist, **beside the working one**. Same shape as the Jobber OAuth
+      button.
+      **All five reads now resolve from the caller's session and the constant is deleted** —
+      see the ghost-id cluster entry below.
+      ⚠ **THE ORDER LIFTS WHEN THE CARD IS CONFIRMED, NOT WHEN THE COMMIT LANDS.** The
+      post-deploy check is that Banking Settings shows **Stripe Connected, `acct_…N98EW`, with
+      no reconnection step**. **Do not press the button to verify** — the card lighting up is
+      the proof, and pressing it would exercise the write path against a live, healthy row for
+      no reason. If the card still reads not-connected, the resolution is not reading the
+      session's contractor and the order stands.
 
 - [ ] **🔴 THE ACH ENDPOINT MUST NOT GO LIVE UNTIL THE CONNECT ARCHITECTURE IS RULED ON.**
       *(Wave 1.1-c, 2026-08-28. This dependency existed in NO document before now.)*
@@ -602,21 +613,50 @@ entry is the canonical record until then.**
       **Blocked on the mount-relative limit above** — `/api/account/*` cannot simply be added
       as a third prefix today.
 
-- [ ] **🟠 THE STRIPE SURFACE STILL WRITES THE GHOST ID — one cluster, three sites.**
-      *(Wave 1.1-c/1.1-d. Grouped deliberately: they share a root cause and should be swept
-      together, not discovered one at a time.)*
-      1. The four **admin onboarding** routes read the module-level `CONTRACTOR_ID =
-         'accent-roofing'` (`server/routes/stripe.js:13`) — `create-account-link` (`:52`),
-         `confirm-connection` (`:89`), `connection-status` (`:122`), `disconnect` (`:141`).
-         **⚠ DO NOT PRESS "CONNECT STRIPE"** — see the standing-hazard entry above.
-      2. `server/routes/stripe.js:291` stamps `metadata: { …, contractor_id: 'accent-roofing' }`
-         onto **every Stripe customer it creates**. 🔴 **NOT PURELY FORWARD-LOOKING: every Stripe
-         customer created since the rename already carries a contractor id that does not exist in
-         the `contractors` table.** That is the field anyone would use to reconcile Stripe
-         records against tenants, and **there is no backfill plan.** As of Wave 1.1-d the
-         correctly-resolved `contractorId` is in scope four lines above it, unused.
-      3. `getStripeRow()` / `upsertStripeAccount()` are keyed on the same constant.
-      → Wave 1.4 contractor-ID reconciliation / Wave 2.3
+- [x] **✅ CLOSED 2026-08-29 (Wave 1.1-e) — THE GHOST ID IS GONE FROM THE STRIPE SURFACE, AND
+      THE "DO NOT PRESS CONNECT STRIPE" ORDER LIFTS ONCE THE CARD IS CONFIRMED.**
+      *(Was 🟠, Wave 1.1-c/1.1-d, grouped deliberately because the three sites share a root
+      cause.)* All five reads of the module-level literal in `server/routes/stripe.js` now
+      resolve from the caller's session:
+      1. The four **admin onboarding** routes take the **capture form** of `verifyAdminSession()`
+         and thread `contractorId` — `create-account-link`, `confirm-connection`,
+         `connection-status`, `disconnect`. Cited by role, not by line: this phase moved every
+         one of those numbers.
+      2. The Stripe **customer metadata** stamp now carries the resolved `contractorId`, from
+         the descriptor `verifyReferrerSession()` already returns — a destructure, not a second
+         lookup. 🔴 **THE BACKFILL IS STILL OWED AND IS NOT CLOSED BY THIS** — see the follow-on
+         entry below.
+      3. `getStripeRow()` and `upsertStripeAccount()` are **exported, required-argument**
+         functions that throw on a missing `contractorId` and never default — modelled on
+         `getContractorStripeAccountId()` in `server/utils/stripeTransfer.js`, per registry
+         Known Issues 2a.
+      ⚠ **THE MODULE-LEVEL CONSTANT WAS DELETED, NOT LEFT UNUSED, AND ONE COVERAGE ARGUMENT
+      DEPENDS ON THAT.** Route 2's `UPDATE` predicate is unreachable from any test —
+      `stripe.accounts.retrieve()` must succeed first and no test may reach Stripe — so it is
+      covered **by construction**: with the constant gone, the old predicate cannot resolve.
+      **Reinstating an "unused" constant there would silently remove protection that lives in
+      no test.**
+      ⚠ **DYNAMIC-ID-FIRST, NOT A RENAME.** The literal was not swapped for the renamed id
+      anywhere. A half-completed rename is what created this in the first place.
+      **Verified by `server/test/stripeContractorResolution.test.js` — 22 tests**, which seeds
+      the ghost row deliberately so the suite is independent of production's data state.
+      → the two follow-ons are the next entries.
+
+- [ ] **🟠 THE STRIPE CUSTOMER METADATA BACKFILL IS STILL OWED.** *(Split out of the ghost-id
+      cluster on its close, Wave 1.1-e, 2026-08-29 — the forward-looking half shipped and the
+      backward-looking half did not, and an entry that closes both would lose it.)*
+      Every Stripe customer created **before** 2026-08-29 carries a `contractor_id` in its
+      metadata that has **no row in the `contractors` table**. That is the field anyone would
+      use to reconcile Stripe records against tenants. New customers are now stamped correctly;
+      **the existing ones are not, and nothing yet enumerates them.**
+      → Stripe architecture phase.
+
+- [ ] **🟡 `BankingSettings.jsx` CANNOT DISTINGUISH A 403 FROM NOT-CONNECTED.** *(Filed Wave
+      1.1-e, out of scope by agreement.)* The card renders "not connected" for a permission
+      denial, a network failure and a genuinely unconfigured contractor alike. That is the same
+      shape as the defect 1.1-e just fixed — a surface that manufactures a plausible answer
+      instead of reporting what it actually knows — one layer up, in the frontend.
+      → Stripe architecture phase.
 
 - [ ] **🔴 NO REACTIVATION PATH — DEACTIVATION IS A ONE-WAY DOOR.**
       Every write to `team_members.active` in the entire codebase is `SET active = false` at
@@ -649,10 +689,14 @@ entry is the canonical record until then.**
       `requirePermission`-gated routes, these 15 contain no `contractor_id`/`contractorId`
       anywhere in the handler body (verified 2026-08-27 by comment-stripped parse):
       `campaigns.js:1936`, `:2158`, `:2177` · `admin/index.js:1263`, `:1470`, `:1622`, `:1634`,
-      `:1894`, `:2195` · `metrics.js:11` · `referrers.js:94`, `:106` · `stripe.js:52`, `:122`,
-      `:161`.
-      **Three are unconditionally broken today** — `referrers.js:94`, `referrers.js:106`,
-      `stripe.js:161` (their own entries above) → **Wave 1.1-c**. **The other twelve are exposed
+      `:1894`, `:2195` · `metrics.js:11` · `referrers.js:94`, `:106` · and in
+      `server/routes/stripe.js`, the `create-account-link`, `connection-status` and `transfer`
+      handlers. *(That trio was `stripe.js:52`, `:122`, `:161`, verified correct and shifted by
+      Wave 1.1-e; re-cited by ROLE so it stops rotting. Note the first two now take the CAPTURE
+      form of `verifyAdminSession()` — 1.1-e changed them — so only `transfer` still matches
+      this entry's "discards the return value" description.)*
+      **Three are unconditionally broken today** — `referrers.js:94`, `referrers.js:106`, and
+      the `transfer` handler (their own entries above) → **Wave 1.1-c**. **The other twelve are exposed
       only if `verifyAdminSession`'s `role='admin'` filter changes**, which is the filter holding
       the super-admin bypass latent → **Wave 2.3 tenancy sweep**. Some of the twelve may
       delegate scoping to a helper; each needs reading, not assuming.
@@ -1606,8 +1650,11 @@ check — which is why this is a named build rather than a checklist line.
       **⚠ AND THE `?admin=true` PRODUCERS ARE EIGHT, NOT FIVE.** Five carry it in email
       (`pipelineSync.js:268`, `referrer.js:552,2774`, `resendWebhook.js:228,310`). Three are
       **redirects**, excluded by this entry's own framing rather than by anyone's decision:
-      **`oauth.js:138`** (`?admin=true&section=crm`) and **`stripe.js:73,74`** (Connect refresh
-      and return URLs). The parameter is inert since C/DL-3b Phase 5 — all eight land on the
+      **`oauth.js:138`** (`?admin=true&section=crm`) and **`server/routes/stripe.js`'s
+      `create-account-link` handler** — the `refresh_url` and `return_url` it builds for the
+      Stripe Connect account link. *(Cited by ROLE, not by line: this pair was
+      `stripe.js:73,74`, was verified correct, and was shifted by Wave 1.1-e. A handler name
+      does not drift.)* The parameter is inert since C/DL-3b Phase 5 — all eight land on the
       unified door — but a sweep that removes five and leaves three has not removed it.
       ⚠ **The `section=crm` entry below already records that it has never had a reader, and
       does not notice the `?admin=true` sitting in the same string.** Two records of one line,
@@ -1800,8 +1847,12 @@ root cause, and patching them separately produces five unrelated special cases)
       now.** Recorded as F10 in `CONTRACTOR2_READINESS_AUDIT.md`, where "hardcoded literal"
       understates it.
 - [ ] **Server `contractor_id` defaults / phantom-id literals:** `db.js` (column defaults and
-      seed rows), `crm/jobber.js:106`, `middleware/errorLogger.js:141`, `routes/stripe.js:13`
-      and `:223`. Registry Known Issues 2a's "STILL OPEN" list also names `oauth.js`,
+      seed rows), `crm/jobber.js:106`, `middleware/errorLogger.js:141`.
+      ⚠ **`routes/stripe.js` IS DONE — CLOSED BY WAVE 1.1-e, 2026-08-29.** Both of its literals
+      are gone: the module-level constant is **deleted** (not left unused) and the Stripe
+      customer metadata stamp resolves from the session. This line used to cite them by line
+      number; the numbers are not restored, because the subject no longer exists.
+      Registry Known Issues 2a's "STILL OPEN" list also names `oauth.js`,
       `notificationEmail.js`, `stripeTransfer.js`.
 - [ ] **`db.js:1532` — `SELECT id FROM contractors LIMIT 1` with no `ORDER BY`**, inside the
       `OWNER_SEED_EMAIL` block. Non-deterministic the moment a second row exists; the seeded

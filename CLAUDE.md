@@ -847,7 +847,7 @@ missing the standard trailers** — which is how you can spot the others, if the
 
 ### Jobber API
 - All Jobber GraphQL calls wrapped in retryWithBackoff with jobberShouldRetry.
-- retryHelpers (resendShouldRetry, twilioShouldRetry, jobberShouldRetry, anthropicShouldRetry) live in server/utils/retryHelpers.js — never redefine locally.
+- retryHelpers (resendShouldRetry, twilioShouldRetry, jobberShouldRetry, anthropicShouldRetry, **stripeShouldRetry**) live in server/utils/retryHelpers.js — never redefine locally. ⚠ `stripeShouldRetry` was missing from this list until 2026-08-29 while being imported and used in `server/routes/stripe.js` — **an incomplete resident list is how someone concludes a helper does not exist and writes a fifth one locally**, which is the exact thing this line forbids.
 - Jobber API version: `2026-02-17`. Do not change without verifying changelog.
 - `ClientFilterAttributes` does NOT support name/firstName/lastName filtering — always filter locally in JS.
 - Jobber GraphQL is read-only. Never add mutations without explicit instruction.
