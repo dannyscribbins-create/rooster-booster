@@ -29,7 +29,83 @@
 //         npm run citecheck -- --strict          exit 1 if any problem found.
 //                                                FOR THE FIXTURE PROOF ONLY.
 //                                                Never put this in a gate.
+//         npm run citecheck -- --changed-files   citations pointing INTO files
+//                                                you just changed, ranked by
+//                                                how likely the change rotted
+//                                                them. Defaults to the working
+//                                                tree vs HEAD; takes an
+//                                                optional <rev> ("what did that
+//                                                commit rot?") or <revA>..<revB>.
 // Zero dependencies; Node core only.
+//
+// ─── ⚠ --changed-files EXISTS BECAUSE THE FULL REPORT ANSWERS THE WRONG ──────
+// ─── QUESTION AT THE MOMENT YOU NEED IT ──────────────────────────────────────
+// The standard run answers "is anything wrong anywhere" — 500+ citations, a
+// large and permanently-nonzero STALE count, and no way to tell which of them
+// YOU just broke. This mode answers the question a session actually has: "I
+// touched these files; which citations did that rot?"
+//
+// THE RISK RANK IS THE WHOLE POINT, not decoration. Editing one hot file puts
+// dozens of citations in scope, and a flat list of dozens is noise that gets
+// ignored within a week. Three ranks, computed from the diff's hunk geometry in
+// PRE-IMAGE coordinates:
+//   LIKELY ROTTED    lines were inserted or deleted ABOVE the cited line, so
+//                    the number now names different code. ⚠ This is the class a
+//                    human reader cannot see: the path still resolves, the line
+//                    still exists, and it describes something else.
+//   CONTENT CHANGED  the cited lines themselves were edited. The number is
+//                    still right; the sentence about them may not be.
+//   TARGET TOUCHED   the file changed, entirely below the citation. Context.
+//
+// MEASURED AGAINST ITS ORIGINATING CASE. `69dea0b` added a five-line comment to
+// server/routes/stripe.js and touched no document. PRE_LAUNCH_CHECKLIST.md
+// cited stripe.js:206 on one line and :252, :308, :362, :403 on another — all
+// below the hunk, all shifted, and the checklist was not edited, so STALE could
+// see them but only as five entries buried in a 118-line suspicion list. Run as
+// `--changed-files HEAD` in a worktree at 69dea0b, this mode reports both lines
+// as LIKELY ROTTED and reports nothing else. That is the proof, and it was run.
+//
+// ⚠ IT FLAGS TARGETS. IT NEVER VERIFIES SUBJECTS. Everything in "WHAT THIS
+// SCRIPT CANNOT SEE" below still applies, and one item deserves repeating here
+// because this mode invites the opposite assumption: it would NOT have caught
+// the original permissions.js wrong-range error. That citation was wrong when
+// it was WRITTEN; no file changed under it, so no diff would ever surface it.
+// This mode sees rot caused by an edit. It cannot see a number that was never
+// right.
+//
+// ⚠ ⚠ AND THE COROLLARY, WHICH IS A TRAP AND WAS FOUND BY USING THIS ON ITS
+// FIRST REAL RUN: "LIKELY ROTTED" MEANS "YOUR EDIT MOVED THE TARGET LINE." IT
+// DOES NOT MEAN "THIS CITATION WAS CORRECT AND IS NOW WRONG." A citation that
+// was ALREADY rotted reports identically — the geometry is the same either way,
+// because the diff knows nothing about what the citation was ever pointing at.
+//
+// ⚠ SO DO NOT REPAIR BY ADDING THE DELTA. It is the obvious fix, it is one
+// keystroke, and applied to an already-rotted citation it CERTIFIES a wrong
+// number as repaired — which is precisely how db209f3's citation repair
+// falsified one of the four it was fixing. MEASURED: the commit that shipped
+// this mode flagged eleven of its own citations as LIKELY ROTTED, and on
+// verification ALL ELEVEN had already been wrong beforehand, some by many
+// commits. Adding 10 to each would have produced eleven confidently-wrong
+// citations and a commit message saying they were repaired.
+//
+// THE PROCEDURE, when this mode flags something: read the cited content at the
+// OLD line in the OLD revision, and confirm it is what the citing sentence
+// describes. Only then shift it. If it was already wrong, the fix is re-deriving
+// where the subject actually lives — a different and larger job, and one to
+// record rather than improvise.
+//
+// ⚠ AND SOME CITATIONS MUST NOT BE SHIFTED AT ALL. docs/GROUND_TRUTH_2026-08-21.md
+// is a DATED SNAPSHOT: it quotes the content it cites, verbatim, as of
+// 2026-08-21. Its line numbers are part of a record of a past state, not
+// pointers into today's file. Renumbering them to today would make the document
+// claim its quotes come from lines that now hold something else. Same
+// distinction as CLAUDE.md's RED-narrative rule — a record is not a claim about
+// today.
+//
+// ⚠ AND IT PRINTS. Like everything else here, it never touches the exit code
+// and must never be wired into a hook or a gate. A pre-commit hard gate on a
+// heuristic gets bypassed within a week, and citecheck's IT-PRINTS contract is
+// the reason it is still worth running.
 //
 // ─── WHAT THE FIVE VERDICTS MEAN ─────────────────────────────────────────────
 //   FILE_MISSING  the cited path resolves to nothing tracked. A real defect.
@@ -144,6 +220,18 @@ const PATH_ARG = pathIdx !== -1 ? argv[pathIdx + 1] : null;
 const grepIdx = argv.indexOf('--grep');
 const GREP = grepIdx !== -1 ? argv[grepIdx + 1] : null;
 
+// --changed-files [<rev>|<revA>..<revB>]: filter the findings down to citations
+// that point INTO files the change touched, and rank them by how likely the
+// change rotted them. Takes an OPTIONAL value — a following token starting with
+// '-' is the next flag, not this one's argument.
+// CHANGED_FILES is null when the flag is absent and '' when it is present with
+// no value; those are different states and `|| null` would collapse them.
+const changedIdx = argv.indexOf('--changed-files');
+const CHANGED_FILES =
+  changedIdx === -1
+    ? null
+    : (argv[changedIdx + 1] && !argv[changedIdx + 1].startsWith('-') ? argv[changedIdx + 1] : '');
+
 // ─── EXTENSIONS THAT MAKE A `thing:NNN` A CITATION ───────────────────────────
 // An allow-list, not a deny-list, and that is what makes the hazard handling
 // fail CLOSED. `4.5:1`, `1.67:1`, `3.06:1` and `13.71:1` are contrast ratios
@@ -210,6 +298,64 @@ function buildLastCommitMap() {
     if (!map.has(line)) map.set(line, cur);
   }
   return map;
+}
+
+// ─── --changed-files plumbing ────────────────────────────────────────────────
+// resolveChangedSpec() turns the flag's argument into a (base, head) pair:
+//   (no argument)   the working tree against HEAD — "what have I edited but not
+//                   committed?", which is the pre-commit question.
+//   <rev>           the files changed BY that commit: <rev>^ .. <rev>. This is
+//                   the "I just committed; what did it rot?" question, and it
+//                   is the form the 69dea0b proof uses.
+//   <revA>..<revB>  an explicit range, passed through.
+// head === null means "the working tree", which is how git spells it when you
+// give `git diff` one revision and no second one.
+function resolveChangedSpec(arg) {
+  if (!arg) return { base: 'HEAD', head: null, label: '(working tree vs HEAD)' };
+  if (arg.includes('..')) {
+    const [b, h] = arg.split('..');
+    return { base: b, head: h || 'HEAD', label: arg };
+  }
+  // ⚠ `~1`, NEVER `^`. execSync spawns cmd.exe on Windows, where `^` is the
+  // ESCAPE character: `git diff a1b2c3^ a1b2c3` reaches git as
+  // `git diff a1b2c3 a1b2c3`, which is a valid command that returns NOTHING.
+  // No error, no warning — the mode reported "0 changed file(s)" against a
+  // five-file commit and looked like a clean run. Caught on the first smoke
+  // test only because the expected answer was known. `~1` means the same thing
+  // to git and nothing at all to cmd.exe.
+  const sha = git(`git rev-parse --short ${arg}`, arg);
+  return { base: `${arg}~1`, head: arg, label: `${arg} (${sha})` };
+}
+
+// --no-renames so a rename reads as delete + add. A renamed target is a
+// FILE_MISSING for the old name anyway, and rename detection would let a
+// citation to the old path look merely "touched".
+function changedFiles(base, head) {
+  const raw = git(`git diff --no-renames --name-only ${base} ${head || ''}`.trim());
+  return raw.split(/\r?\n/).filter(Boolean);
+}
+
+// Hunk geometry in PRE-IMAGE coordinates, which is the numbering a citation
+// written before the change was counting in. --unified=0 so each hunk is the
+// changed lines and nothing else; with context lines the old-start would sit
+// above the real edit and a citation just above it would read as shifted.
+//
+// `@@ -a,b +c,d @@` — b or d omitted means 1, and `-a,0` marks a pure insertion
+// AT that point. Only the two headers' numbers are used; the body is ignored.
+function hunkGeometry(base, head, file) {
+  const raw = git(`git diff --no-renames --unified=0 ${base} ${head || ''} -- ${file}`.trim());
+  const hunks = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const m = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (!m) continue;
+    hunks.push({
+      oldStart: Number(m[1]),
+      oldLines: m[2] === undefined ? 1 : Number(m[2]),
+      newStart: Number(m[3]),
+      newLines: m[4] === undefined ? 1 : Number(m[4]),
+    });
+  }
+  return hunks;
 }
 
 // ─── the tracked-file index, and the suffix resolver ─────────────────────────
@@ -441,6 +587,91 @@ console.log('  ⚠ The suffix bucket is the bare-filename convention (`team.js:5
 console.log('    legitimate and dominant here — but a bare name is also what let a WRONG');
 console.log('    path live in two governing documents unnoticed, because there was never');
 console.log('    a full path to be wrong about. Prefer repo-relative paths in new records.');
+
+// ─── --changed-files: what did THIS edit rot? ────────────────────────────────
+// The whole report answers "is anything wrong anywhere". This section answers
+// the question a session actually has: "I just changed these files — which
+// citations did I break?" It is a FILTER over the same findings, plus a risk
+// rank, and it computes nothing the standard report could not.
+if (CHANGED_FILES !== null) {
+  const { base, head, label } = resolveChangedSpec(CHANGED_FILES);
+  const touched = changedFiles(base, head);
+
+  console.log('\n' + '-'.repeat(76));
+  console.log(`--changed-files ${label} — citations pointing INTO the ${touched.length} changed file(s)`);
+  console.log('  ADVISORY. This section never changes the exit code. It flags TARGETS,');
+  console.log('  it does not verify SUBJECTS — read the header before trusting a clean run.');
+  console.log('-'.repeat(76));
+
+  if (!touched.length) {
+    console.log('  (no files changed for that spec)');
+  } else {
+    // Per changed file, the hunk geometry in PRE-IMAGE coordinates — the
+    // numbering the citation was written against.
+    const geometry = new Map();
+    for (const f of touched) geometry.set(f, hunkGeometry(base, head, f));
+
+    const touchedSet = new Set(touched);
+    const ranked = [];
+    for (const f of findings) {
+      if (!f.target || !touchedSet.has(f.target)) continue;
+      const nums = f.lineSpec.match(/\d+/g).map(Number);
+      const lo = Math.min(...nums);
+      const hi = Math.max(...nums);
+      const hunks = geometry.get(f.target) || [];
+
+      // Net line delta introduced ABOVE the cited line. Non-zero means the
+      // cited number now names a different line than it did — the citation
+      // rotted, silently, and it still resolves and is still in range, which
+      // is exactly the class a human reader cannot see.
+      let deltaAbove = 0;
+      let intersects = false;
+      for (const h of hunks) {
+        const hEnd = h.oldStart + Math.max(h.oldLines, 1) - 1;
+        if (hEnd < lo) deltaAbove += h.newLines - h.oldLines;
+        if (h.oldStart <= hi && hEnd >= lo) intersects = true;
+      }
+
+      let rank, why;
+      if (deltaAbove !== 0) {
+        rank = 1;
+        why = `LIKELY ROTTED   ${deltaAbove > 0 ? '+' : ''}${deltaAbove} line(s) inserted above line ${lo}`;
+      } else if (intersects) {
+        rank = 2;
+        why = 'CONTENT CHANGED the cited lines themselves were edited; the number still points there';
+      } else {
+        rank = 3;
+        why = 'TARGET TOUCHED  the file changed, but only below the citation';
+      }
+      ranked.push({ f, rank, why });
+    }
+
+    ranked.sort((a, b) => a.rank - b.rank || a.f.doc.localeCompare(b.f.doc) || a.f.docLine - b.f.docLine);
+
+    if (!ranked.length) {
+      console.log('  (no citation in any scanned document points into a changed file)');
+    } else {
+      const counts = [1, 2, 3].map((r) => ranked.filter((x) => x.rank === r).length);
+      console.log(`  ${counts[0]} likely rotted · ${counts[1]} content changed · ${counts[2]} target touched\n`);
+      for (const { f, why } of ranked) {
+        console.log(`  ${why}`);
+        console.log(`      ${f.raw}  →  ${f.target}`);
+        console.log(`      cited at ${f.doc}:${f.docLine}`);
+      }
+      console.log('');
+      console.log('  ⚠ LIKELY ROTTED is the one to act on. The others are context: a citation');
+      console.log('    whose target merely changed is usually fine, and drowning the real');
+      console.log('    finding in those is how this mode would get ignored.');
+      console.log('');
+      console.log('  ⚠ DO NOT REPAIR BY ADDING THE DELTA. "LIKELY ROTTED" means your edit MOVED');
+      console.log('    the target line — NOT that the citation was right before. An already-');
+      console.log('    rotted citation reports identically, and adding the delta certifies a');
+      console.log('    wrong number as repaired. Read the cited content at the OLD line in the');
+      console.log('    OLD revision first. Some citations (dated snapshots that quote what they');
+      console.log('    cite) must not be shifted at all. See the header.');
+    }
+  }
+}
 
 console.log('\n' + '='.repeat(76));
 console.log(`TOTALS — OK ${ok.length} · STALE ${stale.length} · AMBIGUOUS ${ambiguous.length} · PAST_EOF ${pastEof.length} · FILE_MISSING ${missing.length}`);

@@ -538,6 +538,28 @@ entry is the canonical record until then.**
       Same position as `POST /api/admin/team/accept-invite` — which does **not** have this
       weakness, because its token identifies the invitee.)*
 
+- [ ] **🟠 ELEVEN CITATIONS INTO THIS FILE ARE ROTTED, AND THEY WERE ALREADY ROTTED BEFORE
+      THE COMMIT THAT SURFACED THEM.** *(Found Wave 1.1-d2 by `npm run citecheck --
+      --changed-files` on its own first real run, 2026-08-29.)* Five in
+      `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` (citing lines 70, 76, 80, 88, 114) and six in
+      `docs/GROUND_TRUTH_2026-08-21.md` (citing lines 38, 47, 57, 293, 600, 617). Every one
+      resolves, every one is in range, and every one names content that is not what the citing
+      sentence describes — the class a reader cannot detect by looking, and the class
+      `citecheck`'s STALE verdict goes blind to on a hot document like this one.
+      ⚠ **DO NOT REPAIR THEM BY ADDING THE LINE DELTA.** Wave 1.1-d2 verified all eleven
+      line-by-line against the pre-commit content: they are clean shifts, and they were **wrong
+      before the shift**. Adding the delta would certify eleven wrong numbers as repaired —
+      which is exactly how `db209f3`'s citation repair falsified one of the four it was fixing.
+      **The repair is re-deriving where each subject actually lives**, one at a time.
+      ⚠ **AND `docs/GROUND_TRUTH_2026-08-21.md` MAY NOT BE RENUMBERED AT ALL.** It is a dated
+      snapshot that **quotes verbatim** the content it cites, as of 2026-08-21. Its line numbers
+      are part of a record of a past state, not pointers into today's file; renumbering them
+      would make the document claim its quotes come from lines that now hold something else.
+      Same distinction as CLAUDE.md's RED-narrative rule. The right fix there is probably to
+      say *"as of 2026-08-21"* beside the citations, or drop the numbers and keep the quotes.
+      **Its six are therefore a different job from the spec's five, and should not be swept
+      together.**
+
 - [ ] **🟠 THE ROUTE COLLECTOR'S PREFIX FILTER IS MOUNT-RELATIVE, AND A THIRD PREFIX WOULD
       PASS VACUOUSLY.** *(Found Wave 1.1-d2, 2026-08-29, while parameterising the collector.)*
       `collectRoutes(layerStack, prefix)` in `server/test/helpers/adminRouterIntrospection.js`
