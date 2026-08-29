@@ -542,7 +542,11 @@ entry is the canonical record until then.**
       THE COMMIT THAT SURFACED THEM.** *(Found Wave 1.1-d2 by `npm run citecheck --
       --changed-files` on its own first real run, 2026-08-29.)* Five in
       `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` (citing lines 70, 76, 80, 88, 114) and six in
-      `docs/GROUND_TRUTH_2026-08-21.md` (citing lines 38, 47, 57, 293, 600, 617). Every one
+      `docs/GROUND_TRUTH_2026-08-21.md` (citing lines 38, 47, 57, 293, 600, 617). **A twelfth
+      was found the same way one commit later:** `docs/GROUND_TRUTH_2026-08-21.md:25` cites
+      `CLAUDE.md:502` as *"the one `git add -A`, Session Safety Protocol step 6"*, and
+      `CLAUDE.md:502` has held the negative-test rule for some time. Same document, same
+      already-rotted-first pattern, same ruling below. Every one of the twelve
       resolves, every one is in range, and every one names content that is not what the citing
       sentence describes — the class a reader cannot detect by looking, and the class
       `citecheck`'s STALE verdict goes blind to on a hot document like this one.

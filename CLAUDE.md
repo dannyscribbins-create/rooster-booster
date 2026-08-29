@@ -348,10 +348,36 @@ measured:**
   **A low STALE count on a hot document is NO EVIDENCE, not health** — and the governing
   documents are the hottest.
 - **It cannot see line drift caused by the edit being made**, which is this rule's whole
-  subject.
+  subject. ⚠ **PARTLY CLOSED IN WAVE 1.1-d2 — `npm run citecheck -- --changed-files` now
+  reports citations pointing into files you just touched, ranked. Read the next block before
+  acting on it.**
 
 **The mechanism that caught all four was the audit, not the tool.** Run
 `npm run citecheck`, then still read the citations you moved.
+
+⚠ **`--changed-files` SAYS "LIKELY ROTTED". IT MEANS "YOUR EDIT MOVED THE TARGET LINE." IT
+DOES NOT MEAN "THIS CITATION WAS CORRECT BEFORE."** An already-rotted citation reports
+*identically*, because a diff knows nothing about what the citation was ever pointing at.
+
+⚠ **SO DO NOT REPAIR BY ADDING THE DELTA.** It is the obvious fix, it is one keystroke, and on
+an already-rotted citation it **certifies a wrong number as repaired** — which is exactly how
+`db209f3`'s citation repair falsified one of the four it was fixing. **Measured: the commit
+that shipped the mode flagged ELEVEN of its own citations, and on verification ALL ELEVEN had
+already been wrong beforehand**, some by many commits. Adding 10 to each would have produced
+eleven confidently-wrong citations under a message saying they were repaired.
+
+**The procedure: read the cited content at the OLD line in the OLD revision and confirm it is
+what the citing sentence describes. Only then shift it.** If it was already wrong, the fix is
+re-deriving where the subject lives — a different and larger job, and one to record rather
+than improvise.
+
+⚠ **AND SOME CITATIONS MUST NOT BE SHIFTED AT ALL.** `docs/GROUND_TRUTH_2026-08-21.md` is a
+**dated snapshot that quotes verbatim what it cites**. Its line numbers are part of a record
+of a past state, not pointers into today's file; renumbering them would make the document
+claim its quotes come from lines that now hold something else. Same distinction as the
+RED-narrative rule below — **a record is not a claim about today.** Its six flagged citations
+are a *different job* from the five in `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` and must not be
+swept together.
 
 ---
 
@@ -713,6 +739,29 @@ else's line endings turns a two-line diff into a whole-file one.
 asserting that a parsed path cannot contain an annotation delimiter, a tree connector, or a
 CR. It read the parse OUTPUT against an independent invariant rather than re-reading the
 parse. That is what independence means here.
+
+### A shell harness lies plausibly, and never with an error
+
+**Three tools in this project have silently returned a wrong answer through a shell, and not
+one of them raised anything.** They are not related by tool; they are related by *shape* —
+a metacharacter belonging to a layer nobody was thinking about.
+
+- **`grep -c $'\r'` returned full line counts on LF-only files.**
+- **`\d` in a shell-quoted pattern reached Node as `d`** — it matched the letter, not a digit.
+  (Same family as the `'\s+'`-in-Postgres defect in `.claude/rules/backend.md`.)
+- ⚠ **ANY GIT REV-SPEC CONTAINING `^` IS UNSAFE IN A NODE-SHELLED COMMAND ON WINDOWS. USE
+  `~1`.** `execSync` spawns **cmd.exe**, where `^` is the **escape character**, so
+  `git diff <sha>^ <sha>` reaches git as `git diff <sha> <sha>` — a *valid* command that
+  returns nothing. Measured in Wave 1.1-d2: it reported **"0 changed file(s)" against a
+  five-file commit** and was indistinguishable from a clean run. `~1` means the same thing to
+  git and nothing at all to cmd.exe.
+
+**All three produced a PLAUSIBLE WRONG ANSWER rather than an error**, which is why none was
+caught by looking and why the rule cannot be "be careful with quoting."
+
+**Practically: regex-bearing or escape-bearing code goes in a FILE, never a shell one-liner**
+— and when a harness returns a number, **know the expected answer before you run it.** The
+`^` case was caught only because a five-file commit was known to be five files.
 
 ### A number in a governing document needs a source
 
