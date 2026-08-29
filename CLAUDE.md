@@ -437,6 +437,26 @@ every one was found by forcing the failure.**
 them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this
 keeps happening.
 
+### A safety measure copied from a prior phase must be RE-DERIVED, not inherited
+
+**A guard is correct against a code path, not in the abstract. Carried forward unchecked, it
+can permit the exact thing it was written to prevent.**
+
+Wave 1.1-c pinned `STRIPE_SECRET_KEY` to a dummy so its tests could get PAST
+`executeStripeTransfer()`'s first statement, which aborts on a missing key. Wave 1.1-d inherited
+that instruction — and it was **exactly wrong there**. Those four routes call
+`getStripeClient()` only AFTER the auth check, and it throws on a falsy key, so **emptying** the
+key makes constructing a client structurally impossible while **pinning a dummy would have let
+one route dial `api.stripe.com` for real.** Same instruction, opposite effect, one phase apart.
+
+⚠ **THE TELL IS THAT THE MEASURE IS DESCRIBED BY ITS MECHANISM, NOT ITS PROPERTY.** "Pin the key
+to a dummy" is a mechanism; "no test may reach Stripe" is the property. **Re-derive the
+mechanism from the property against the new path every time** — and state which one you are
+relying on, so the next phase inherits the property.
+
+*(Same root cause as the `permissions.js` path: true in one context, carried forward unchecked,
+wrong in the next.)*
+
 ### Sweep from the shared UTILITY outward, not from the entry point inward
 
 **A sweep scoped to a directory, a route file, or a call chain traced downward will miss the

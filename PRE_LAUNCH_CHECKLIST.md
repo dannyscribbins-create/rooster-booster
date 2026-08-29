@@ -183,7 +183,7 @@ entry is the canonical record until then.**
       none elsewhere in `server/`. SH-3 sized this at "43+" and was closer than this entry was.
       ⚠ **FIVE ARE NOT THE PLAIN `{ error: err.message }` FORM** — `admin/referrers.js:176,213`
       concatenate (`'Jobber match failed: ' + err.message`), and `admin/index.js:1294,1329` and
-      `server/routes/stripe.js:206` return it under a `message:` key beside a `success: false` or an error
+      `server/routes/stripe.js:211` return it under a `message:` key beside a `success: false` or an error
       code. **A regex written only against the plain form leaves those five** and reads as
       finished.
       ⚠ **`referrer.js:1158`, cited by this entry until 2026-08-21, is STALE** — that line is
@@ -426,8 +426,31 @@ entry is the canonical record until then.**
       — that fix removed one cause of a wrong answer, not the card's inability to report one.
       → §10
 
-- [ ] **🟠 FOUR REFERRER STRIPE ROUTES INLINE RAW TOKEN CHECKS — a live *Never Break These
-      Rules* violation.** `server/routes/stripe.js:252`, `:308`, `:362`, `:403`. Each
+- [x] **✅ CLOSED 2026-08-28 (Wave 1.1-d) — the four referrer Stripe routes now call
+      `verifyReferrerSession()`. This was the LAST inline-auth violation in the codebase.**
+      Cited by role rather than by line, because this phase moved every one of these numbers
+      and the previous citation had already rotted once: the four are
+      `POST /api/referrer/stripe/create-financial-connections-session`,
+      `POST …/save-bank-account`, `GET …/bank-status` and `POST …/disconnect-bank`, all in
+      `server/routes/stripe.js`.
+      **SIX differences, not the three recorded here.** Phase 0 diffed the inline block against
+      the verifier line by line and found three more: the **INNER JOIN on users** (the inline
+      query returned `user_id = NULL` for a session with no user, and the handlers ran their
+      whole body against it — `bank-status` answered 200 and `disconnect-bank` reported
+      **success**); the **auth error path** (a throw in the session lookup landed in the route's
+      catch, so an authentication outage was reported as *"Failed to fetch bank status"*); and
+      **`logError` attribution** (that failure was stamped `backend` against a banking route, so
+      nothing in ops pointed at auth).
+      ⚠ **THE `deleted_at` FIX IS TEST-ONLY AND MUST NOT READ AS PRODUCTION-CONFIRMED.**
+      `SELECT COUNT(*) FROM users WHERE deleted_at IS NOT NULL` returned **0** on 2026-08-28.
+      No account has ever been soft-deleted at Accent, so nothing exercises it in production —
+      `server/test/referrerStripeInlineAuth.test.js` is the entire verification. Same position
+      as Wave 0.3's twelve tenant-scoping fixes and 1.1-c's six.
+      ⚠ **THE BLIND SPOT THAT HID THEM IS STILL OPEN** — see the 1.1-d2 entry below. Closing
+      these four did not close the reason nothing was looking.
+      *Original finding, preserved:*
+- [x] **🟠 FOUR REFERRER STRIPE ROUTES INLINE RAW TOKEN CHECKS — a live *Never Break These
+      Rules* violation.** Each
       hand-rolls `SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at >
       NOW()` instead of calling `verifyReferrerSession()`, which CLAUDE.md names as one of the
       only authorised ways to protect an endpoint.
@@ -439,7 +462,39 @@ entry is the canonical record until then.**
       ⚠ **INVISIBLE TO EVERY EXISTING GUARD.** `adminRouteCoverage.test.js` filters
       `/api/admin/*`; these are `/api/referrer/*`, so they are neither gated, nor allowlisted,
       nor checked. `POST /api/referrer/stripe/save-bank-account` is a **step-up target**.
-      → Wave 1.1-d
+      → Wave 1.1-d — **DONE.**
+
+- [ ] **🔴 NOTHING ASSERTS THE INLINE-AUTH RULE OVER `/api/referrer/*` — WAVE 1.1-d2.**
+      *(Scoped 2026-08-28. This is the reason the four routes above survived, and closing them
+      did not close it.)* `adminRouteInvariant.test.js` already walks the router stack and reads
+      handler source via `fn.toString()`; the only gap is that `collectAdminRoutes()` filters on
+      the `/api/admin/` prefix. `adminRouteCoverage.test.js` says so in its own limitations
+      comment — the file that would have caught them documents why it did not.
+      **Cost: ~1-2 hours.** Generalise the collector to take a prefix; add a sibling assertion
+      over `/api/referrer/*` requiring each handler either to call a `verify*Session` or to be
+      explicitly allowlisted with a stated reason.
+      ⚠ **THE ALLOWLIST IS LOAD-BEARING, NOT DECORATION.** `POST /api/logout` is deliberately
+      unauthenticated (an idempotent 200 so the route cannot be used as a token oracle), and the
+      public signup and login routes cannot verify a session they are about to mint. Each needs
+      its reason written down, or the next reader deletes the entry as an oversight.
+      ⚠ **IT NEEDS ITS OWN RED.** A guard whose failure mode has never been observed is a claim,
+      not a control — which is the whole lesson of the four routes it is meant to catch.
+
+- [ ] **🟠 THE STRIPE SURFACE STILL WRITES THE GHOST ID — one cluster, three sites.**
+      *(Wave 1.1-c/1.1-d. Grouped deliberately: they share a root cause and should be swept
+      together, not discovered one at a time.)*
+      1. The four **admin onboarding** routes read the module-level `CONTRACTOR_ID =
+         'accent-roofing'` (`server/routes/stripe.js:13`) — `create-account-link` (`:52`),
+         `confirm-connection` (`:89`), `connection-status` (`:122`), `disconnect` (`:141`).
+         **⚠ DO NOT PRESS "CONNECT STRIPE"** — see the standing-hazard entry above.
+      2. `server/routes/stripe.js:291` stamps `metadata: { …, contractor_id: 'accent-roofing' }`
+         onto **every Stripe customer it creates**. 🔴 **NOT PURELY FORWARD-LOOKING: every Stripe
+         customer created since the rename already carries a contractor id that does not exist in
+         the `contractors` table.** That is the field anyone would use to reconcile Stripe
+         records against tenants, and **there is no backfill plan.** As of Wave 1.1-d the
+         correctly-resolved `contractorId` is in scope four lines above it, unused.
+      3. `getStripeRow()` / `upsertStripeAccount()` are keyed on the same constant.
+      → Wave 1.4 contractor-ID reconciliation / Wave 2.3
 
 - [ ] **🔴 NO REACTIVATION PATH — DEACTIVATION IS A ONE-WAY DOOR.**
       Every write to `team_members.active` in the entire codebase is `SET active = false` at

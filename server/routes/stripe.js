@@ -1,7 +1,7 @@
 const express = require('express');
 const Stripe = require('stripe');
 const { pool } = require('../db');
-const { verifyAdminSession } = require('../middleware/auth');
+const { verifyAdminSession, verifyReferrerSession } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
 const { logError } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
@@ -215,33 +215,51 @@ router.post('/api/admin/stripe/transfer', requirePermission('cashout_approve'), 
 // ─────────────────────────────────────────────────────────────
 // REFERRER BANK CONNECTION ROUTES
 //
-// ⚠ THIS HEADER USED TO SAY "Protected by referrer session auth (same pattern
-// as referrer.js)". THAT WAS NOT TRUE, AND IT IS AN INVERTED RECORD RATHER
-// THAN A STALE ONE — it told the next reader a mechanism was in place, so the
-// reader who checked would stop checking. Corrected 2026-08-27, Wave 1.1.
+// All four routes below are protected by verifyReferrerSession(), the sanctioned
+// verifier — CLOSED 2026-08-28, Wave 1.1-d.
 //
-// WHAT THESE FOUR ROUTES ACTUALLY DO. Each one hand-rolls its own session
-// lookup instead of calling verifyReferrerSession():
+// ── THE RECORD OF WHAT WAS HERE, KEPT BECAUSE IT EXPLAINS THE SHAPE ──────────
+//
+// ⚠ THIS HEADER ONCE SAID "Protected by referrer session auth (same pattern
+// as referrer.js)". THAT WAS NOT TRUE, AND IT WAS AN INVERTED RECORD RATHER
+// THAN A STALE ONE — it told the next reader a mechanism was in place, so the
+// reader who checked would stop checking. Corrected 2026-08-27, Wave 1.1; the
+// sentence is true as of the fix below, which is exactly why the history stays.
+//
+// WHAT THESE FOUR ROUTES USED TO DO. Each hand-rolled its own session lookup
+// instead of calling verifyReferrerSession():
 //     SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()
-// That is a live violation of CLAUDE.md's Never Break These Rules, which names
+// That was a live violation of CLAUDE.md's Never Break These Rules, which names
 // verifyReferrerSession() as one of the only authorised ways to protect an
 // endpoint and says never to inline a raw token check.
 //
-// THREE THINGS THE INLINE COPIES MISS, and the third is the surprising one:
-//   1. u.deleted_at IS NULL  — a SOFT-DELETED homeowner keeps working here.
-//   2. s.contractor_id IS NOT NULL.
-//   3. applySessionSlide()   — so these four routes silently opt OUT of D7's
-//      30-day sliding window while every other referrer route extends it. A
-//      person whose only activity is banking ages out on a schedule nobody
-//      chose. Nothing fails; the session just quietly expires early.
+// SIX DIFFERENCES, not the three first recorded. All six are now closed, and
+// each has an assertion in server/test/referrerStripeInlineAuth.test.js:
+//   1. u.deleted_at IS NULL  — a SOFT-DELETED homeowner kept working here.
+//      ⚠ TEST-ONLY: production held ZERO soft-deleted users on 2026-08-28, so
+//      nothing exercises this in production and the suite is the whole proof.
+//   2. s.contractor_id IS NOT NULL — a tenant-less session authenticated.
+//   3. applySessionSlide()   — these four silently opted OUT of D7's 30-day
+//      sliding window while every other referrer route extended it. A person
+//      whose only activity was banking aged out on a schedule nobody chose.
+//      Nothing failed; the session just quietly expired early.
+//   4. JOIN users — the inline query returned user_id = NULL for a session with
+//      no user behind it, and the handlers ran their whole body against it.
+//      bank-status answered 200, and disconnect-bank reported SUCCESS.
+//   5. The auth error path — a throw in the session lookup landed in the
+//      ROUTE's catch, so an authentication outage was reported to the caller as
+//      "Failed to fetch bank status".
+//   6. logError attribution — that same failure was stamped 'backend' against a
+//      banking route, so nothing in ops pointed at auth.
 //
-// AND NO GUARD SEES ANY OF IT: adminRouteCoverage.test.js filters /api/admin/*
-// and these are /api/referrer/*, so they are neither gated, nor allowlisted,
-// nor checked. save-bank-account is also a step-up re-auth target.
+// AND NO GUARD SAW ANY OF IT: adminRouteCoverage.test.js filters /api/admin/*
+// and these are /api/referrer/*, so they were neither gated, nor allowlisted,
+// nor checked. ⚠ THAT GAP IS STILL OPEN — the fix below closes these four, not
+// the blind spot that hid them. A companion invariant over /api/referrer/* is
+// Wave 1.1-d2. save-bank-account is also a step-up re-auth target.
 //
-// ⚠ DO NOT "FIX" THIS BY COPYING THE MISSING PREDICATES INTO THE FOUR COPIES.
-// That keeps four hand-rolled auth paths and guarantees the next divergence.
-// Route them through verifyReferrerSession() — Wave 1.1-d owns this.
+// ⚠ DO NOT "FIX" A FUTURE DIVERGENCE BY COPYING PREDICATES INTO A HANDLER.
+// That is what produced these four. Route everything through the verifier.
 //
 // Sensitive values: never log payment method IDs, bank tokens,
 // Financial Connections account IDs, or decrypted values anywhere
@@ -250,19 +268,14 @@ router.post('/api/admin/stripe/transfer', requirePermission('cashout_approve'), 
 // ── Route 6: POST /api/referrer/stripe/create-financial-connections-session ───
 
 router.post('/api/referrer/stripe/create-financial-connections-session', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const user_id = sessionResult.rows[0].user_id;
+    const referrerSession = await verifyReferrerSession(req, res);
+    if (!referrerSession) return;
+    const { userId } = referrerSession;
 
     const userResult = await pool.query(
       'SELECT id, full_name, email, stripe_customer_id FROM users WHERE id = $1',
-      [user_id]
+      [userId]
     );
     if (!userResult.rows.length) return res.status(404).json({ error: 'User not found' });
     const user = userResult.rows[0];
@@ -282,7 +295,7 @@ router.post('/api/referrer/stripe/create-financial-connections-session', async (
       customerId = customer.id;
       await pool.query(
         'UPDATE users SET stripe_customer_id = $1 WHERE id = $2',
-        [customerId, user_id]
+        [customerId, userId]
       );
     }
 
@@ -306,15 +319,10 @@ router.post('/api/referrer/stripe/create-financial-connections-session', async (
 // ── Route 7: POST /api/referrer/stripe/save-bank-account ─────────────────────
 
 router.post('/api/referrer/stripe/save-bank-account', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const user_id = sessionResult.rows[0].user_id;
+    const referrerSession = await verifyReferrerSession(req, res);
+    if (!referrerSession) return;
+    const { userId } = referrerSession;
 
     const { financialConnectionsAccountId } = req.body;
     if (!financialConnectionsAccountId) {
@@ -323,7 +331,7 @@ router.post('/api/referrer/stripe/save-bank-account', async (req, res) => {
 
     const userResult = await pool.query(
       'SELECT stripe_bank_account_token, full_name FROM users WHERE id = $1',
-      [user_id]
+      [userId]
     );
     if (!userResult.rows.length) return res.status(404).json({ error: 'User not found' });
     const userRow = userResult.rows[0];
@@ -342,13 +350,13 @@ router.post('/api/referrer/stripe/save-bank-account', async (req, res) => {
 
     await pool.query(
       'UPDATE users SET stripe_bank_account_token = $1 WHERE id = $2',
-      [encrypted, user_id]
+      [encrypted, userId]
     );
 
     const bankName = paymentMethod.us_bank_account?.bank_name || null;
     const last4 = paymentMethod.us_bank_account?.last4 || null;
 
-    console.log('[stripe] bank account saved for user', user_id); // diagnostic log — intentional
+    console.log('[stripe] bank account saved for user', userId); // diagnostic log — intentional
 
     res.json({ success: true, bankName, last4 });
   } catch (err) {
@@ -360,19 +368,14 @@ router.post('/api/referrer/stripe/save-bank-account', async (req, res) => {
 // ── Route 8: GET /api/referrer/stripe/bank-status ────────────────────────────
 
 router.get('/api/referrer/stripe/bank-status', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const user_id = sessionResult.rows[0].user_id;
+    const referrerSession = await verifyReferrerSession(req, res);
+    if (!referrerSession) return;
+    const { userId } = referrerSession;
 
     const result = await pool.query(
       'SELECT stripe_bank_account_token FROM users WHERE id = $1',
-      [user_id]
+      [userId]
     );
     if (!result.rows.length || !result.rows[0].stripe_bank_account_token) {
       return res.json({ connected: false });
@@ -401,20 +404,15 @@ router.get('/api/referrer/stripe/bank-status', async (req, res) => {
 // ── Route 9: POST /api/referrer/stripe/disconnect-bank ───────────────────────
 
 router.post('/api/referrer/stripe/disconnect-bank', async (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Not authorized' });
   try {
-    const sessionResult = await pool.query(
-      'SELECT user_id FROM sessions WHERE token=$1 AND role=$2 AND expires_at > NOW()',
-      [token, 'referrer']
-    );
-    if (sessionResult.rows.length === 0) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-    const user_id = sessionResult.rows[0].user_id;
+    const referrerSession = await verifyReferrerSession(req, res);
+    if (!referrerSession) return;
+    const { userId } = referrerSession;
 
     const pendingResult = await pool.query(
       `SELECT COUNT(*) FROM cashout_requests
        WHERE user_id = $1 AND status IN ('pending', 'approved')`,
-      [user_id]
+      [userId]
     );
     if (parseInt(pendingResult.rows[0].count) > 0) {
       return res.status(400).json({
@@ -426,7 +424,7 @@ router.post('/api/referrer/stripe/disconnect-bank', async (req, res) => {
     // Clear only the bank token — keep stripe_customer_id so it can be reused on reconnect
     await pool.query(
       'UPDATE users SET stripe_bank_account_token = NULL WHERE id = $1',
-      [user_id]
+      [userId]
     );
 
     res.json({ success: true });
