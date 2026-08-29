@@ -69,71 +69,18 @@ const GATE_MIDDLEWARES = [
   // { label: 'requireStepUp',   fnName: 'stepUpMiddleware',     marker: 'stepUp' },
 ];
 
-// The four sanctioned session verifiers (server/middleware/auth.js:233-239).
-// ⚠ ANCHORED ON THE CALL, NOT THE NAME. The trailing `\s*\(` is what makes this
-// evidence of an invocation rather than of the string appearing somewhere —
-// CLAUDE.md's toContain-on-a-bare-value trap, in a different costume. A bare
-// name matches an import line, a property, or a mention in a string.
-const SESSION_VERIFIER_RE =
-  /\b(?:verifyAdminSession|verifyReferrerSession|verifySuperAdminSession|verifyAnySession)\s*\(/;
-
-// ─── stripComments(): a real scanner, not a regex ────────────────────────────
-// ⚠ THIS IS LOAD-BEARING AND THERE IS A LIVE SUBJECT FOR IT.
-// server/routes/admin/index.js:982 — inside the POST /api/admin/branding/logo
-// handler — reads:
-//     // TENANCY. contractorId comes from verifyAdminSession and from nowhere
-// That comment is INSIDE the handler body, so fn.toString() returns it. Without
-// stripping, a route could satisfy this test on a comment alone. That is
-// precisely the shape Phase 0's first parser hit: it reported a false violation
-// on POST /api/admin/login because it matched `requirePermission('branding')`
-// in the comment at server/routes/admin/index.js:129.
+// ─── SESSION_VERIFIER_RE and stripComments() — MOVED, NOT DELETED ────────────
+// Both lived here until Wave 1.1-d2, when server/test/sessionAuthInvariant.test.js
+// needed the identical scanner and a second copy would have been the duplicate-
+// logic violation in CLAUDE.md's Code Cleanliness Standard. They now live in
+// server/test/helpers/sourceScan.js, which carries the full reasoning verbatim —
+// including the live subject at server/routes/admin/index.js:982 that makes
+// comment-stripping load-bearing, and the regex-literal limitation.
 //
-// A regex cannot do this correctly. `'https://x'` contains `//`, and a naive
-// line-comment strip would delete the rest of the line — which could delete a
-// REAL call sitting after a URL. So this tracks string, template and comment
-// state properly.
-//
-// Known limitation: a REGEX LITERAL containing `//` or `/*` would confuse it,
-// because distinguishing `/` as division from `/` as a regex delimiter needs a
-// real parser. No handler in this codebase contains one. If that changes, this
-// fails toward reporting a violation (text gets eaten, the call disappears),
-// which is the safe direction — a false alarm, never a false pass.
-function stripComments(src) {
-  let out = '';
-  let i = 0;
-  const n = src.length;
-  while (i < n) {
-    const c = src[i];
-    const next = src[i + 1];
-    // line comment
-    if (c === '/' && next === '/') {
-      while (i < n && src[i] !== '\n') i++;
-      continue;
-    }
-    // block comment
-    if (c === '/' && next === '*') {
-      i += 2;
-      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++;
-      i += 2;
-      continue;
-    }
-    // string or template literal — copied through verbatim, including any
-    // slashes inside it, so a URL in a string cannot start a fake comment.
-    if (c === '"' || c === "'" || c === '`') {
-      const quote = c;
-      out += c; i++;
-      while (i < n) {
-        if (src[i] === '\\') { out += src[i] + (src[i + 1] || ''); i += 2; continue; }
-        out += src[i];
-        if (src[i] === quote) { i++; break; }
-        i++;
-      }
-      continue;
-    }
-    out += c; i++;
-  }
-  return out;
-}
+// The non-vacuity test below still asserts against them. It did not move: it is
+// this suite's proof that the scanner it depends on actually strips, and the
+// sibling suite has its own.
+const { SESSION_VERIFIER_RE, stripComments } = require('./helpers/sourceScan');
 
 // ─── the checker ─────────────────────────────────────────────────────────────
 // gates is a PARAMETER, defaulting to the module constant, so a test can prove

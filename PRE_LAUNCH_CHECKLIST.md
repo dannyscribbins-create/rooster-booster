@@ -29,6 +29,16 @@ unrecorded through four subsequent commits. No test, no gate, and no review noti
 someone remembered." When you finish a session, add what you deferred **before** you write the
 handoff, not after.
 
+⚠ **"WAVE 1" AND "WAVE 1.1" ARE TWO DIFFERENT NUMBERING AXES AND THEY DO NOT NEST.**
+`EXECUTION_SEQUENCE.md`'s **Waves 0–5** are the *product* sequence — Wave 0 is "make a referral
+convert", Wave 1 is "the field rep interface", Wave 4 is security hardening. The **Wave 1.1**
+security sub-arc (1.1-a … 1.1-e) is tracked **only in this document**; it appears nowhere in
+`EXECUTION_SEQUENCE.md`, so a session sent to "the plan of record" for it will find nothing and
+may reasonably conclude it is untracked. **1.1-x is not a subdivision of product Wave 1** —
+`grep`ping either document for the other's wave number returns a confident wrong answer. Said
+once, here, because it is the kind of collision that surfaces inside a handoff, where it is
+expensive.
+
 - [ ] **🔴 SIX OF THIS DOCUMENT'S OWED ENTRIES EXIST ONLY IN AN UNTRACKED BINARY.**
       `RoofMiles_Handoff_ABR_Phases1-4.docx` is the sole record of the four super-admin /
       `verify*Session` / `ADMIN_PASSWORD` / `LockedSection` entries written into this file by
@@ -464,21 +474,107 @@ entry is the canonical record until then.**
       nor checked. `POST /api/referrer/stripe/save-bank-account` is a **step-up target**.
       → Wave 1.1-d — **DONE.**
 
-- [ ] **🔴 NOTHING ASSERTS THE INLINE-AUTH RULE OVER `/api/referrer/*` — WAVE 1.1-d2.**
-      *(Scoped 2026-08-28. This is the reason the four routes above survived, and closing them
-      did not close it.)* `adminRouteInvariant.test.js` already walks the router stack and reads
-      handler source via `fn.toString()`; the only gap is that `collectAdminRoutes()` filters on
-      the `/api/admin/` prefix. `adminRouteCoverage.test.js` says so in its own limitations
-      comment — the file that would have caught them documents why it did not.
-      **Cost: ~1-2 hours.** Generalise the collector to take a prefix; add a sibling assertion
-      over `/api/referrer/*` requiring each handler either to call a `verify*Session` or to be
-      explicitly allowlisted with a stated reason.
-      ⚠ **THE ALLOWLIST IS LOAD-BEARING, NOT DECORATION.** `POST /api/logout` is deliberately
-      unauthenticated (an idempotent 200 so the route cannot be used as a token oracle), and the
-      public signup and login routes cannot verify a session they are about to mint. Each needs
-      its reason written down, or the next reader deletes the entry as an oversight.
-      ⚠ **IT NEEDS ITS OWN RED.** A guard whose failure mode has never been observed is a claim,
-      not a control — which is the whole lesson of the four routes it is meant to catch.
+- [x] **✅ CLOSED 2026-08-29 (Wave 1.1-d2) — `server/test/sessionAuthInvariant.test.js` now
+      asserts the inline-auth rule, and it asserts it TWO ways.**
+      *(Scoped 2026-08-28. This was the reason the four routes above survived, and closing them
+      did not close it.)*
+      **A.** Every `/api/referrer/*` route calls a `verify*Session` or is allowlisted with a
+      written reason. Measured on the real `createApp()` router stack: **23 routes, 22 passing
+      on their own merits, 1 allowlisted.** A 4.3% allowlist against `adminRouteCoverage`'s
+      7-of-137 (5.1%) — the referrer surface is the *stronger* subject of the two.
+      **B.** No file under `server/**/*.js` (excluding `server/test/**`) contains a raw session
+      lookup outside three allowlisted sites. **B is the assertion that would have caught the
+      four**, and A alone would not have: those routes DID check a session, they just did it
+      wrong. A is the missing-call gap; B is the wrong-call gap.
+      ⚠ **THE NEEDLE FOR B IS "NAMES `sessions` AND FILTERS ON `token`" — NOT "A SELECT".**
+      A SELECT-only needle makes the `POST /api/logout` allowlist entry **unfirable**, and an
+      allowlist entry that can never fire is decoration — the precise defect this guard exists
+      to prevent. It extracts SQL string/template literals *after* comment-stripping, which is
+      what separates the four `INSERT INTO sessions (…, token, …)` mint sites (token as a
+      **column name**) from the three real lookups (token as a **predicate**).
+      ⚠ **THIS ENTRY USED TO SAY THE ALLOWLIST WOULD NEED `POST /api/logout` AND THE PUBLIC
+      SIGNUP AND LOGIN ROUTES. THAT WAS WRONG, AND IT IS CORRECTED HERE RATHER THAN DELETED,
+      because the wrong version is what a reader would have built to.** None of those three
+      are `/api/referrer/*` — they are `/api/logout`, `/api/signup` and `/api/login`. Under
+      **A** the allowlist is **exactly one entry**
+      (`POST /api/referrer/claim-experience-token`); `POST /api/logout` belongs to **B**; and
+      signup/login are matched by neither assertion, because they mint a token rather than
+      filtering on one.
+      ⚠ **IT GOT ITS OWN RED — five controls, all injected in-process on every run**, so none
+      of them is a claim about a probe someone ran once in a terminal: a route with no session
+      call goes RED on A; a constructed inline raw lookup goes RED on B (the 1.1-d shape, which
+      has no natural subject now the four are fixed); a properly-verified route is NOT flagged;
+      **removing either allowlist entry turns the guard RED**, which is what makes both
+      allowlists consulted rather than decorative; and `server/routes/stripe.js`'s 1.1-d record
+      comment — which still contains the removed `SELECT … FROM sessions WHERE token=$1` — is
+      NOT flagged, proving comment-stripping fires on a live subject.
+      → It opened three follow-ons, the next three entries.
+
+- [ ] **🟡 `POST /api/referrer/claim-experience-token` TAKES `user_id` FROM THE REQUEST BODY
+      AND NEVER BINDS IT TO THE TOKEN.** *(Found Wave 1.1-d2 Phase 0, 2026-08-29 — it is the
+      one route of 23 that assertion A cannot pass.)* `server/routes/referrer.js`, the
+      `claim-experience-token` handler. The `experience_invite_tokens` row it looks up carries
+      `contractor_id` and `jobber_invoice_id`; it does **not** carry a user. So the token
+      authenticates the **invite**, and nothing whatsoever authenticates **whose**
+      `experience_prompts` row gets created — the handler validates that `user_id` names a real
+      user and then trusts it. Violates CLAUDE.md's first *Security Standards* line: *"Never
+      trust identity values from the request — `user_id`, `full_name`, `email` must come from
+      verified session token via DB lookup."*
+      **Impact today is small, and that is deliberately not the reason this is filed:** a stray
+      `experience_prompts` row against an arbitrary user, and a single-use token burned. There
+      are **no points, no incentive and no solicitation** attached to this prompt — it is a
+      "how was your experience" branch to either a public review or internal feedback — so
+      `MEMBER_RANK_ECONOMY_SPEC.md` §2's hard prohibition (*no points for reviews*) is **not**
+      engaged. It was briefly raised at 🟠 on the assumption that it was; it is 🟡.
+      ⚠ **FILE IT ON THE CLASS, NOT THE IMPACT.** An unbound caller-supplied `user_id` is the
+      shape that gets copied into a route where the impact is not minor.
+      ⚠ **THE ROUTE IS ALLOWLISTED IN THE 1.1-d2 GUARD AND THIS WEAKNESS IS NAMED IN THE
+      ALLOWLIST ENTRY'S OWN REASON TEXT, NOT ONLY HERE.** The entry is what someone reads when
+      they ask why this route is exempt. A reason that said *"the caller has no session yet"*
+      and stopped there would be a half-truth that reads as clean — which is how an exemption
+      launders a defect.
+      *(The exemption itself is sound: `src/App.jsx` fires this from the signup flow at the
+      email-verify step, before any token has been minted, so there is no session to verify.
+      Same position as `POST /api/admin/team/accept-invite` — which does **not** have this
+      weakness, because its token identifies the invitee.)*
+
+- [ ] **🟠 THE ROUTE COLLECTOR'S PREFIX FILTER IS MOUNT-RELATIVE, AND A THIRD PREFIX WOULD
+      PASS VACUOUSLY.** *(Found Wave 1.1-d2, 2026-08-29, while parameterising the collector.)*
+      `collectRoutes(layerStack, prefix)` in `server/test/helpers/adminRouterIntrospection.js`
+      filters `layer.route.path`, which is **relative to the router's mount point**. It works
+      for `/api/admin/` and for `/api/referrer/` for one reason only: `adminRoutes`,
+      `stripeRoutes` and `referrerRoutes` are all mounted at `'/'` in `createApp()`.
+      `accountRoutes` is mounted at `/api/account`, so its fifteen routes surface from the walk
+      as `GET /me`, `PUT /name`, `GET /sessions` — **a `'/api/account/'` prefix would collect
+      ZERO routes and every assertion over it would pass trivially.**
+      ⚠ **THIS IS A TRAP THAT LOOKS EXACTLY LIKE SUCCESS**, and it is CLAUDE.md's *"a mechanism
+      that reports health it cannot observe"* with the failure pre-loaded rather than
+      discovered. The 1.1-d2 guard mitigates it — every prefix carries a non-vacuity floor that
+      fails loudly on an empty collection, and the limit is stated in both the helper's header
+      and the guard's — but **mitigated is not fixed**: the floor tells you the prefix is wrong,
+      it does not make the prefix work.
+      **The fix, when someone needs a third surface:** thread the mount path through the
+      recursion (`layer.regexp` on the parent, or pass an accumulated prefix down) so the walk
+      yields absolute paths. Until then, only `'/'`-mounted routers can be given a prefix.
+
+- [ ] **🟡 NAMED COVERAGE GAP — the 1.1-d2 guard covers 23 of ~48 session-bearing
+      referrer-surface routes.** *(Recorded Wave 1.1-d2, 2026-08-29, at the moment of shipping
+      the guard rather than after someone trusted it.)* Assertion A is scoped by URL prefix, and
+      **a prefix-scoped guard is itself the downward frame CLAUDE.md warns about** in *Sweep
+      from the shared UTILITY outward*. Twenty-five session-authed referrer-facing routes sit
+      outside `/api/referrer/*` and are invisible to it: `POST /api/cashout`,
+      `GET /api/pipeline`, all fifteen `/api/account/*`, `GET|POST /api/profile/photo`,
+      `POST /api/review/dismiss`, `POST /api/announcement/seen`,
+      `GET /api/referral/pending/match-check`, `PUT /api/referral/pending/:id/seen`,
+      `GET /api/preferences/theme-mode` and `GET /api/session`. All twenty-five **do** call a
+      `verify*Session` today — verified 2026-08-29 by the same source-text check — so this is a
+      gap in the FENCE, not a gap in the code.
+      ⚠ **`adminRouteCoverage.test.js` NAMED ITS OWN GAP IN A COMMENT AND WAS BELIEVED AS
+      COVERAGE ANYWAY** — that comment is why the four Stripe routes survived. So this is
+      recorded here, where a green run cannot be mistaken for completeness, and not only in the
+      test file. Assertion B is unaffected: it sweeps the whole server tree and has no prefix.
+      **Blocked on the mount-relative limit above** — `/api/account/*` cannot simply be added
+      as a third prefix today.
 
 - [ ] **🟠 THE STRIPE SURFACE STILL WRITES THE GHOST ID — one cluster, three sites.**
       *(Wave 1.1-c/1.1-d. Grouped deliberately: they share a root cause and should be swept
