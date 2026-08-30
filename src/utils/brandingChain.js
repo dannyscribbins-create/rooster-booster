@@ -230,8 +230,16 @@ async function brandingForSlug(ctx, slug) {
 // branding and would still have nothing to write through.
 //
 // Wiring this source is C/DL-3c's (spec D-J): it needs the contractors.slug
-// backfill, and it reopens the deliberate non-enumerability of
-// GET /api/branding/:slug at PRE_LAUNCH_CHECKLIST.md:139-143. When it lands, R2
+// BACKFILL AND ITS MINT PATH — nothing writes that column today, and validateSlug
+// and isSlugMutable have zero production callers — and it reopens the deliberate
+// non-enumerability of GET /api/branding/:slug, recorded under "The branding
+// chain" in PRE_LAUNCH_CHECKLIST.md as the open security question.
+// ⚠ CITED BY ROLE, NOT BY LINE, AND HERE IS WHY. This read
+// "PRE_LAUNCH_CHECKLIST.md:139-143". Its sibling copy in
+// ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md was CORRECT when written at ceae890 — and
+// was ALREADY FALSE when copied here at 923958b. The two were never right at the
+// same time, so no single arithmetic repair could ever have fixed both. Adding a
+// delta would have certified a number that was never right. When it lands, R2
 // falls out of the ordering with no further change here — source 1 is first, so
 // it wins and the write-through rewrites the stored hint.
 // eslint-disable-next-line no-unused-vars

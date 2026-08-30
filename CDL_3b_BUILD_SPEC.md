@@ -628,10 +628,25 @@ The admin surfaces carry the same hardcoded Accent identity the referrer surface
 - **Contractor-#2 gate:** `team_members.email` is globally unique while `users.email` is per-tenant — two contractors cannot share an employee email.
   - **Non-deterministic owner-seed contractor lookup.** *(Found in C/DL-3b Phase 2A; deliberately not fixed there.)* `db.js:1532`'s `SELECT id FROM contractors LIMIT 1`, inside the `OWNER_SEED_EMAIL` block, has no `ORDER BY`. Non-deterministic the moment a second `contractors` row exists — the seeded Owner could land under an arbitrary tenant. Same non-determinism class as the arbitrary-row bug `tenantIsolation.test.js:138,158` fences, in the seed path.
   - **🔴 HARD BLOCKER — `LoginScreen.jsx` cannot render `choice_required`.** *(Found in C/DL-3b Phase 2B; accepted as a deploy-window gap.)* The unified login returns `{ choice_required, choice_token, identities }` when more than one candidate matches, and the deployed screen reads `data.success` — so it shows its generic error instead of the choice screen. **Unreachable with one contractor** (the multi-match case needs the same email *and* the same password at two tenants). **Reachable the moment a second contractor exists.** The choice screen ships in **Phase 5** (§7.1); until it does, a second contractor must not be created. This is the one item on this list that blocks rather than degrades.
-  - **Team members have NO password reset path at all.** *(Consequence of the Phase 2B forgot-pin ruling — users-only, deliberate.)* `pin_reset_tokens` FKs to `users(id)`, so a `team_members` row has nowhere to hold a reset token and `POST /api/forgot-pin` cannot serve one. Today the only recovery is an admin re-invite. It is not contractor-#2-specific, but it will matter the first time a field rep forgets their password — and reps are the population most likely to. Its own future item; needs the same dual-nullable subject shape `user_preferences` uses, and it overlaps with 3b-2's 2FA blocker (both existing code tables FK to `users(id)` too).
+  - ~~**Team members have NO password reset path at all.** *(Consequence of the Phase 2B forgot-pin ruling — users-only, deliberate.)* `pin_reset_tokens` FKs to `users(id)`, so a `team_members` row has nowhere to hold a reset token and `POST /api/forgot-pin` cannot serve one. Today the only recovery is an admin re-invite.~~ ✅ **INVERTED — SHIPPED IN WAVE 1.1. DO NOT BUILD THIS.** *(Corrected 2026-08-30 by C/DL-3c Phase 0.5.)* ⚠ **Say INVERTED, not "out of date" — this sentence instructs a builder to build something that already exists**, which is the reading that costs a session. `pin_reset_tokens` now carries the **dual-nullable subject shape this bullet itself prescribed** (`server/db.js:2037-2047`, with an `exactly_one_subject` CHECK); `POST /api/forgot-pin` stamps `team_member_id` (`server/routes/referrer.js:1960-1964`); `POST /api/reset-pin` writes `UPDATE team_members SET password_hash` (`server/routes/referrer.js:2193`). **The text is struck rather than deleted because its prescription was RIGHT and was followed** — deleting it would erase the reasoning that produced the fix. ⚠ **What it correctly anticipated and is STILL OPEN is the 2FA half:** `email_verifications` and `verification_codes` FK to `users(id)` too, Wave 1.1 widened all three subjects, and shipped **only** the recovery half of C/DL-3b-2. **2FA remains scoped, recorded and unscheduled** → `DECISION_C_DL_BUILD_SPEC.md` §17, A24.7.
 - **`contractors.slug` backfill.** `getInviteHostSlug`'s header notes that a NULL slug is "the state EVERY contractor except the first is in today." Source 2 cannot resolve a contractor without one, and slug creation must become a required, non-skippable onboarding step.
 
-### Documentation corrections owed (A23 amendment)
+### Documentation corrections owed (A23 amendment) — ✅ **WRITTEN 2026-08-30 as `DECISION_C_DL_BUILD_SPEC.md` §16, A23**
+
+> ⚠ **THIS HEADING RESERVED A NUMBER AND NOTHING EVER CLAIMED IT, AND THAT COST A LATER SESSION A
+> PHASE 0.** For roughly three weeks *"A23 amendment"* pointed at an amendment that did not exist,
+> so a reader following it could not tell whether it had been written and lost or never written.
+> **C/DL-3c's Phase 0 re-derived bullets 1 and 2 from source, at read-only-session cost, with no
+> idea 3b had already found them.** The finding survived; the mechanism that retires it did not.
+> **Third instance in this arc of a correction that was found, recorded, and then lost** — with the
+> D13 warning that outlived its own amendment, and the `18 → 12` count fixed in three copies and
+> not in the canonical document. **All three share one shape: a record that can be ADDED and has
+> nothing that REMOVES it.** → CLAUDE.md, *the closure half*.
+>
+> **Status of the four bullets below: (1) and (2) corrected in A23.1/A23.2 — `RENDER_TOKEN_KEYS`
+> already matches §5, and A20's "gap" was a layer confusion, so A22's "it lands here" is
+> discharged. (3) discharged by the documentation restructure. (4) discharged in substance.**
+> The bullets are kept as the record of what was found.
 
 - `DECISION_C_DL_BUILD_SPEC.md` **§5** — "surface and text do not exist today" is **closed** by 3a Phase 3. `RENDER_TOKEN_KEYS` is exactly `['primary','secondary','bg','surface','text']`.
 - `DECISION_C_DL_BUILD_SPEC.md` **A20 / §15** — the surface/text gap is **already closed**. `--brand-*` (four tokens, landing page) and `--rm-*` (five tokens, React) are **different layers, not a gap** (D11).

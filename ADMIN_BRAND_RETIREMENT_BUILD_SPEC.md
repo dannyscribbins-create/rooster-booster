@@ -99,7 +99,7 @@ It is a `var(--rm-bg, #012854)` fallback whose whole premise is Ruling 5, and Ph
 
 ### D-I — No wrong frame. The chrome paints immediately; the logo joins the existing repaint.
 
-Frame-1 branded chrome is **not achievable** and the reason is structural: `rm_brand_hint` stores a bare slug (`brandingChain.js:333-341`), not a branding block. The slug says *who*; the palette and logo still need a fetch. And the hint is not written for admins at all — source 1 is a hard `return null` (`brandingChain.js:216`); Phase 5 of 3b never wired it.
+Frame-1 branded chrome is **not achievable** and the reason is structural: `rm_brand_hint` stores a bare slug (`brandingChain.js`, the frozen `BRANDING_SOURCES` array — **cited by role: C/DL-3c added a comment block above it, which would have rotted a line number**), not a branding block. The slug says *who*; the palette and logo still need a fetch. And the hint is not written for admins at all — source 1 is a hard `return null` (`brandingChain.js:216`); Phase 5 of 3b never wired it.
 
 **Do not hold the shell.** `AdminApp.jsx:163-166` has no loading branch — the panel paints instantly today with placeholder identity ("Team Member", initials `?`, greeting without a name) and repaints when `/api/admin/me` lands. Adding a spinner would trade a real universal delay for a cosmetic one.
 
@@ -111,7 +111,9 @@ Frame-1 branded chrome is **not achievable** and the reason is structural: `rm_b
 
 ### D-J — The hint write-through repair is not this session's, in any phase.
 
-Wiring source 1 would close R2 for both surfaces at once (3b unified the door), but it requires (a) the `contractors.slug` backfill, which belongs to contractor-ID reconciliation, and (b) it triggers the open security question at `PRE_LAUNCH_CHECKLIST.md:139-143` — `GET /api/branding/:slug` is deliberately non-enumerable and refuses to echo a slug. That ruling is owed to C/DL-3c. Folding it in here would answer it by accident.
+Wiring source 1 would close R2 for both surfaces at once (3b unified the door), but it requires (a) the `contractors.slug` **backfill AND its mint path** — ⚠ **verified 2026-08-30: NOTHING writes that column**, and `validateSlug`/`isSlugMutable` have zero production callers — which belongs to contractor-ID reconciliation (backfill) and Wave 2.2's onboarding wizard (mint path), and (b) it triggers the open security question recorded under **"The branding chain"** in `PRE_LAUNCH_CHECKLIST.md` — `GET /api/branding/:slug` is deliberately non-enumerable and refuses to echo a slug. ⚠ **AND THE POSTURE IS WIDER THAN THIS SENTENCE SAID:** `GET /api/admin/me` performs the **same** slug-dropping destructure on an **already-authenticated** response, so the rule is *"no slug on ANY response"*, not *"no slug on a public one"* — R2 reverses a twice-applied rule. That ruling is owed to C/DL-3c. Folding it in here would answer it by accident.
+
+> ⚠ **CITED BY ROLE. This carried the line number `:139-143`, which was CORRECT when written here (`ceae890`) and was ALREADY FALSE when copied into `src/utils/brandingChain.js` (`923958b`).** The subject has since moved roughly 2,200 lines. **The two copies were never simultaneously right, so no arithmetic repair could ever have fixed both** — which is this repo's sharpest worked example of the standing rule against delta repair. Never cross-file by line number.
 
 ### D-K — Super admin: gated off, recorded, not built.
 

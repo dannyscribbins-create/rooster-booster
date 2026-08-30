@@ -433,9 +433,16 @@ something looks wrong — the point is that nothing does.
 
 ### A test's own greenness is not evidence that it tests anything
 
-**Six vacuity instances were found in C/DL-3b, in six different shapes, a seventh in the
-Admin Brand Retirement build and an eighth in its 6B pass. None was findable by reading;
+**TEN shapes are recorded below.** Six were found in C/DL-3b, a seventh in the Admin Brand
+Retirement build, an eighth in its 6B pass, a ninth in Wave 1.1-g, and a tenth predicted in
+C/DL-3c Phase 0 before it could ship. **None of the nine that shipped was findable by reading;
 every one was found by forcing the failure.**
+
+⚠ **THIS INTRO SAID "SIX … A SEVENTH … AN EIGHTH" ABOVE A LIST OF NINE UNTIL 2026-08-30.** Shape 9
+was appended without it, and shape 10 would have left it two behind. **The count lives in the list,
+not in this sentence — recount by reading when you add one.** Same failure this file records for
+its own test-count tripwire and for `PRE_LAUNCH_CHECKLIST.md`'s *"FIVE items"* above a list of six:
+**a hand-maintained number in prose nobody edits when the thing it counts grows.**
 
 1. **A case row proves nothing until the field exists.** Five rows added to the branding drift
    guard passed vacuously — that guard compares two copies, so a field absent from **both** is
@@ -499,6 +506,32 @@ every one was found by forcing the failure.**
    admin-session case with a sibling on the same fixture and **no** `?reset=`, which must
    render the panel. That sibling is the proof the session is admin-surface, and it fails
    loudly if the fixture ever stops producing one.
+
+10. **A DEFAULT THAT MAKES THE NEGATIVE CASE INDISTINGUISHABLE FROM THE BROKEN CASE.** A tenth
+    shape, and **the first recorded BEFORE it could ship** — predicted in C/DL-3c Phase 0 against
+    the rep app's revenue gate, which is not built yet.
+    `AdminPermissionsContext` is created **with a default value** (`src/hooks/useAdminPermissions.js`),
+    and all eight of its consumers live in `src/components/admin/`. **The rep surface renders
+    outside `AdminApp` entirely.** So a rep component calling `usePermissions()` outside the
+    provider does not throw — it receives the default, where `rep_revenue_visibility` is
+    `undefined` → falsy → **revenue hidden.** A test that mounts that component with the flag off
+    and asserts *"revenue is not rendered"* **passes identically against completely unwired code.**
+    ⚠ **THE BEHAVIOUR FAILS SAFE, WHICH IS EXACTLY WHY NOBODY LOOKS.** The gate is closed either
+    way; only the REASON differs, and the reason is the entire property under test.
+    ⚠ **DISTINCT FROM #5 AND #9, AND THE DISTINCTION IS WORTH KEEPING.** #5 is *"the default hid a
+    bug in the sibling nobody asserted"*; this is *"the default hid the absence of the wiring"* —
+    same family, inverted. #9's fixture set a **correlate** of the precondition; this sets nothing
+    at all and still goes green. **And unlike #1, #4 and #8, the assertion here CAN fail** — it
+    simply cannot tell two states apart. **That is a different defect from an unfalsifiable
+    assertion and must not be filed with them.**
+    **THE RULE: when a context carries a default, every flag-OFF test must be paired with a flag-ON
+    sibling on the SAME MOUNT.** The flag-ON case is the proof that the provider is present and the
+    value reaches the component; without it, flag-OFF proves nothing about wiring. Structurally
+    the same repair as #9 — **observe the CONSEQUENCE, not the setup.**
+    ⚠ **AND PREFER DELETING THE DEFAULT WHERE THE CONSUMER CANNOT LEGITIMATELY RENDER WITHOUT A
+    PROVIDER.** `useAdminBranding()` throws rather than defaulting, deliberately (D-H), and that
+    throw is exercised on every referrer boot instead of only in a test. **A default is a claim
+    that its absence is acceptable — fix by routing, not by asserting harder.**
 
 **The conclusion:** non-vacuity assertions belong in tests that look **too simple to need
 them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this

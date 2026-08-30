@@ -459,6 +459,78 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       **Same class as F8 and Wave 0.3's twelve, on a surface neither swept** — a `LEFT JOIN` whose
       scoping sits in the `ON` clause reads as tenant-scoped to a grep and is not.
 
+- [ ] **🔴 `GET /api/admin/activity` SERVES EVERY TENANT'S ACTIVITY LOG TO EVERY TENANT'S ADMIN.**
+      *(Raised C/DL-3c Phase 0, confirmed Phase 0.5, 2026-08-30.)*
+      `server/routes/admin/metrics.js:11-26`, gated `requirePermission('activity')` +
+      `verifyAdminSession`. Both branches run
+      `SELECT id, event_type, full_name, email, detail, created_at, category, contact_id FROM
+      activity_log [WHERE category = $1] ORDER BY created_at DESC LIMIT 100` — **no tenancy
+      predicate**, because **`activity_log` has no `contractor_id` column** (`server/db.js:33-37`;
+      complete column list `id`, `event_type`, `full_name`, `email`, `detail`, `created_at`,
+      `category`, `contact_id`, the last added at `:751`). **No actor id and no target id either.**
+      **What leaks:** homeowner and team-member **names and email addresses**, plus free-text
+      `detail` — including audit strings like *"Rep flags updated for team_member id=17 by
+      team_member id=3: field_rep false→true, attributable false→true"*
+      (`server/routes/admin/team.js:425-428`).
+      ⚠ **WORSE IN CONTENT THAN THE LEADERBOARD LEAK DIRECTLY ABOVE, WHICH IS FILED AT THE SAME
+      SEVERITY.** That one leaks names and profile photos; this leaks **email addresses and audit
+      text**. Same latent-at-Accent / live-at-#2 class.
+      ⚠ **AND IT IS NOT LATENT — THE FIFTEEN-HANDLERS ENTRY SAID IT WAS.** That entry reads *"the
+      other twelve are exposed only if `verifyAdminSession`'s `role='admin'` filter changes."*
+      **False here: a legitimately authenticated Owner at contractor A reads contractor B's rows
+      today**, and there is no column to filter on. **An inverted record, not a stale one** — it
+      instructed a reader to defer a live leak. Corrected in place at that entry.
+      ⚠ **NOT FIXABLE BY ADDING A PREDICATE**, which is what separates it from the leaderboard
+      leak. It needs the `activity_log` migration — `contractor_id` plus actor and target ids —
+      **with a backfill ruling for existing rows, whose tenant is not recoverable.** Same class as
+      `payout_announcements`. → **Wave 2.3.** The **write** side is already recorded above (the two
+      `activity_log` writes in match-jobber) and is the same migration; **this entry is the READ
+      side, which existed only as a bare `metrics.js:11` token inside a hygiene list.**
+      ⚠ **AND IT IS WHY MOCKUP SCREEN 7A/7B IS NOT A 3c READ SURFACE.** A rep activity feed on this
+      table would make a tenant-blind read user-facing to a population an order of magnitude larger
+      than "admins". **But 2.3 is not a blocker for that feed** — a rep needs assignment events and
+      pipeline movement, which `client_rep_assignments` and `pipeline_cache` already carry **with
+      tenancy**. **A different build, not a blocked one.** → `DECISION_C_DL_BUILD_SPEC.md` §17, A24.3.
+
+- [ ] **🔴 NOTHING MINTS `contractors.slug`. THIS IS A LAUNCH GATE THAT WAS HIDING INSIDE THE WORD
+      "BACKFILL."** *(Found C/DL-3c Phase 0.5, 2026-08-30.)*
+      **TWO pieces of work, and only one of them was ever recorded:**
+      **(1) THE MINT PATH — does not exist, launch-gating.** Verified three ways: no
+      `UPDATE contractors SET slug` or slug-carrying `INSERT INTO contractors` anywhere in
+      `server/**` outside tests; `validateSlug` and `isSlugMutable` (`server/utils/contractorSlug.js`)
+      have **zero production callers — they appear only in `server/test/contractorSlug.test.js`**;
+      and `src/**` has **no admin field, no settings input and no onboarding step** that writes it.
+      ⚠ **`generateSlug()` at `server/routes/admin/index.js:603` and `server/routes/referrer.js:2282`
+      is a red herring** — it is `inviteTokens.generateSlug()`, which mints an **invite-token** slug
+      on `contractor_invite_links`. **A different table with a confusingly identical function name.**
+      **(2) THE BACKFILL — existing rows.** → `EXECUTION_SEQUENCE.md` row 1.4.
+      **THE DISTINCTION IS THE WHOLE FINDING: a backfill fixes the rows that exist while a
+      contractor onboarding tomorrow still cannot acquire one.** §0's launch definition is *a
+      contractor RoofMiles has never met signs up, provisions, onboards and runs their program with
+      **nobody at RoofMiles touching anything***. **If their slug has to be typed in by hand,
+      RoofMiles is touching something.**
+      In `CDL_3b_BUILD_SPEC.md` §8.0's five-condition vocabulary: **storage ✓ · validator ✓ ·
+      editor ✗ · delivery ✗ · derivable ✗** — and *derivable* is ✗ **deliberately**, because
+      `server/db.js:1148-1160` forbids deriving it from `contractors.id`: *"A migration that did
+      `UPDATE contractors SET slug = id` would satisfy every schema check while defeating the
+      column's only purpose."* ⚠ **Condition (c), the editor, is the one that leaves a trace in
+      NEITHER the schema NOR the admin panel** — which is why a column with a UNIQUE index, a
+      validator, a resolver and five consumers reads as a shipped feature.
+      **THE CODE ALREADY SAID SO, in a place nobody reads at scoping time.**
+      `server/utils/contractorSlug.js`'s `getInviteHostSlug` header: *"slug IS NULL — **the state
+      EVERY contractor except the first is in today***." And `CDL_3b_BUILD_SPEC.md` §10 adds the
+      missing half: *"slug creation must become a required, non-skippable onboarding step."*
+      **EVERYTHING DOWNSTREAM THAT A SLUG IS A PRECONDITION FOR:** contractor subdomain resolution
+      (`<slug>.roofmiles.com`) · every QR and referral link built by `buildInviteUrl` ·
+      the branded landing page · D4 branding sources 2, 2.5 and 3 · and the credential-link
+      branding fix below.
+      ⚠ **SEQUENCING, AND THE REASON MATTERS MORE THAN THE ORDER: shipping `&brand=<slug>` before
+      the mint path exists would close a checklist entry and change nothing for anyone new** — the
+      slug resolves NULL, the parameter is omitted, and the product behaves exactly as it does
+      today. **A ticked box over an unchanged product is worse than an open one.**
+      → **BUILD IT IN `EXECUTION_SEQUENCE.md` ROW 2.2** (the onboarding wizard's account/brand
+      step, required and non-skippable), **backfill at row 1.4.** Both rows now name this entry.
+
 - [ ] **🔴 AN ALL-ZERO SCHEDULE WRITES NO CONVERSION ROW, SO A PAID REFERRAL LEAVES NO RECORD.**
       `server/referralRules.js:294-296` — `if (bonusAmount <= 0) return { qualified: false,
       reason: 'calculated_bonus_is_zero' }` — returns before any insert.
@@ -1209,9 +1281,17 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       form of `verifyAdminSession()` — 1.1-e changed them — so only `transfer` still matches
       this entry's "discards the return value" description.)*
       **Three are unconditionally broken today** — `referrers.js:94`, `referrers.js:106`, and
-      the `transfer` handler (their own entries above) → **Wave 1.1-c**. **The other twelve are exposed
-      only if `verifyAdminSession`'s `role='admin'` filter changes**, which is the filter holding
-      the super-admin bypass latent → **Wave 2.3 tenancy sweep**. Some of the twelve may
+      the `transfer` handler (their own entries above) → **Wave 1.1-c**.
+      ⚠ **`metrics.js:11` IS A FOURTH, AND THIS ENTRY MIS-CLASSIFIED IT AS LATENT — see its own
+      entry above.** *(Corrected C/DL-3c Phase 0.5, 2026-08-30.)* `GET /api/admin/activity` is
+      exposed **now**, to any legitimately authenticated admin at any contractor. **No filter change
+      is required, because `activity_log` has no `contractor_id` column to filter on.** The
+      `role='admin'` filter holds the *super-admin* bypass latent and is irrelevant to it.
+      ⚠ **That made this an INVERTED record, not a misplaced one: a reader acting on the sentence
+      below deferred a live cross-tenant leak to a sweep.**
+      **The other ELEVEN are exposed only if `verifyAdminSession`'s `role='admin'` filter changes**,
+      which is the filter holding
+      the super-admin bypass latent → **Wave 2.3 tenancy sweep**. Some of the eleven may
       delegate scoping to a helper; each needs reading, not assuming.
       ⚠ **THE STRUCTURAL FIX IS THE CALL FORM, NOT FIFTEEN PATCHES.** 17 of the 135
       `verifyAdminSession` call sites use `if (!await verifyAdminSession(req, res)) return;`,
@@ -2322,8 +2402,17 @@ check — which is why this is a named build rather than a checklist line.
 
 ## C/DL-3c — the rep app
 
-**The theme-engine pass — FIVE items, ONE design pass** (§10 has the full entry; they share a
-root cause, and patching them separately produces five unrelated special cases)
+**The theme-engine pass — SIX items, ONE design pass** (§10 has the full entry; they share a
+root cause, and patching them separately produces six unrelated special cases)
+
+> ⚠ **THIS HEADER SAID "FIVE" ABOVE A LIST OF SIX — TWICE IN ONE SENTENCE — UNTIL 2026-08-30.**
+> The sixth (the Sign In button's palette) was appended later and is marked *"NEW, from the Phase 5
+> visual check"*; the header was not touched. `EXECUTION_SEQUENCE.md` row 1.3 said "six-item" and
+> was right; `CDL_3b_BUILD_SPEC.md` §10 says "five items" above a blockquote saying "NOT AS THREE
+> PATCHES" — **three numbers for one list, across two documents.** ⚠ **Count by reading the
+> checkboxes.** Fifth hand-maintained count found below its true value in this arc, and the second
+> inside the document set that records *"a number in a governing document needs a source."*
+
 - [ ] `on-primary` render token — white on the platform default is **3.06:1**, below AA, in
       both modes. Currently worked around locally in two files.
 - [ ] Light mode has **no contrast floor on `primary` at all** — `BRAND_ON_DARK_MIN_CONTRAST`
@@ -2347,6 +2436,59 @@ root cause, and patching them separately produces five unrelated special cases)
       Echoing one on an *authenticated* response is *probably* safe — but "probably safe" is
       not the standard for partially reversing a stated security posture. **Reason about it
       explicitly and record the answer.**
+      ⚠ **THE POSTURE IS WIDER THAN THIS ENTRY SAID, AND THAT CHANGES WHAT R2 REVERSES.**
+      *(Found C/DL-3c Phase 0.5.)* `GET /api/admin/me` performs **the same slug-dropping
+      destructure** — `const { slug: _slugNotReturned, ...theme } = resolved;` — on an
+      **already-authenticated** response, citing the same CD-24 reason as `branding.js`.
+      **So the rule is "no slug on ANY response," not "no slug on a public one."** R2 reverses a
+      **twice-applied** rule. ⚠ **Price the narrower option before ruling:** return the slug from
+      `GET /api/session` **only** — one endpoint, rehydration-time, already role-aware — and leave
+      `POST /api/login` and `GET /api/admin/me` untouched. One reversal instead of three.
+
+- [ ] **🔴 CREDENTIAL-LINK BRANDING — A TEAM MEMBER NEVER SEES THEIR OWN CONTRACTOR, AND IT IS
+      STRUCTURAL RATHER THAN INTERMITTENT.** *(Ruled C/DL-3c Phase 0.5, 2026-08-30.)*
+      **The mechanism, recorded because the symptom reads as a bug and is not one:** credential
+      emails must point at `app.roofmiles.com`, because `<slug>.roofmiles.com` runs
+      `server/routes/landing.js` and **never loads React**. There, with no session and no prior
+      branded arrival, the D4 chain **correctly** answers source 5, neutral. Nothing is broken.
+      ⚠ **WHY TEAM MEMBERS ARE WORSE OFF THAN HOMEOWNERS — THIS IS THE FINDING.** A homeowner
+      arrives QR → branded landing page → carrying `?brand=`, so source 2.5 fires and **writes the
+      hint**; every later credential page is branded by source 3. **A team member never passes
+      through a branded surface at all** — they are created by an admin and emailed a link straight
+      to the SPA. **Source 3 is empty on first arrival and nothing will ever fill it.**
+      ⚠ **R2 WOULD NOT HAVE FIXED THIS.** R2 makes *login* overwrite the hint, which helps on the
+      **next** visit. On a reset or invite page there is no session yet. **Two decisions, not one**
+      — and this one does **not** touch the slug-echo posture above, because no API returns a slug.
+      **THE FIX:** the email is generated server-side where the contractor is already known, so the
+      URL carries **`&brand=<contractors.slug>`** and the shipped source 2.5 resolves it and writes
+      the hint. Omit the parameter when the slug is NULL — the chain already suppresses
+      write-through on a null slug, so it degrades to today's behaviour rather than breaking.
+      **THE THREE SITES, ENUMERATED RATHER THAN SAMPLED — THEY DO NOT BEHAVE THE SAME:**
+      · `server/routes/referrer.js:1968` — `?reset=` → `ResetPinScreen`, D4 chain, **neutral today**
+      · `server/routes/admin/team.js:115` and `:628` — `?admin_invite=` → `AdminSetPasswordScreen`,
+        which mounts **ABOVE `ThemeProvider`** and has **no chain at all**
+      ⚠ **`SignupScreen` AND `EmailVerifyScreen` ARE ALREADY BRANDED — DO NOT SWEEP THEM IN.** They
+      take `branding` as a **prop** from `GET /api/invite/:slug` (`src/App.jsx:177`), a different
+      mechanism entirely. **A uniform sweep would replace a working path with a second one.**
+      ⚠ **`AdminSetPasswordScreen` CARRIES A STANDING CONTRARY RULING — RE-DERIVE IT, DO NOT
+      OVERRIDE IT.** `src/components/admin/AdminSetPasswordScreen.jsx` rules the platform mark in
+      place because the only route touching an invite token **consumes** it, and adding a
+      `GET …/invite/:token/branding` would answer *"is this token valid?"* by whether branding comes
+      back — **an oracle on an enumeration-safe path, traded for a logo.** ✅ **`&brand=` satisfies
+      that comment's OWN stated revisit condition by a route it did not consider — the EMAIL, not an
+      API. The posture is met, not argued around; no oracle is created.** But the screen still needs
+      **its own `ThemeProvider` instance**, exactly as `?reset=` got one in Wave 1.1-g — **never** by
+      moving it under the shared provider, which is the `ThemeContext`-default trap that would ship
+      a neutral logo to a contractor's team member with nothing failing.
+      ⚠ **SEVERITY IS NOT AESTHETIC.** Wave 1.1 recorded that a `*.vercel.app` reset URL *"is what a
+      phishing link looks like."* A neutral-branded page is a milder form of the same: an employee
+      gets an email about **their company's** account and lands on a page carrying a company they
+      have never heard of. **It is the first door every contractor-#2 employee walks through.**
+      **Dynamic-id-first: read the slug from `contractors`, never hardcode.**
+      🔴 **BLOCKED ON THE `contractors.slug` MINT PATH** (its own entry above) — **not merely on the
+      backfill.** ⚠ **Shipping `&brand=` before the mint path exists would close this entry and
+      change nothing for anyone new**, which is the closure-half failure in its most deceptive form:
+      a ticked box over an unchanged product.
 - [ ] Source 2 issues a wasted request on every boot (host resolution on `app.roofmiles.com`
       always returns null). **Only worth fixing if pre-paint latency measures.** *(Not
       previously recorded.)*
@@ -2604,8 +2746,19 @@ root cause, and patching them separately produces five unrelated special cases)
       ⚠ **TO RE-OPEN THIS, ESTABLISH THREE THINGS FIRST: the threshold, the unit, and the
       consequence.** Without all three there is no budget to sweep against, only a number.
 - [ ] **Retire the four spec-level copies of the exact-path staging rule.**
-      `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md:291`, `CDL_3a_BUILD_SPEC.md:273`,
-      `CDL_3b_BUILD_SPEC.md:422` and `UI_OVERHAUL_SPEC.md:290` each carry it; **THREE carry a
+      `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md`, `CDL_3a_BUILD_SPEC.md`, `CDL_3b_BUILD_SPEC.md` and
+      `UI_OVERHAUL_SPEC.md` each carry it — **cited by ROLE**: in each, the bullet beginning
+      *"Exact-path git staging"* in that spec's cross-cutting-discipline list. ⚠ **THE LINE NUMBERS
+      WERE REMOVED DELIBERATELY, AND THE REASON IS A WORKED EXAMPLE.** *(C/DL-3c Phase 1,
+      2026-08-30.)* This entry cited four files by line. `citecheck --changed-files` flagged the
+      **ABR** one because that spec was edited in the same commit — it had been **correct**, and the
+      edit moved it `:291 → :293`. Verifying it forced a read of the other three, and
+      **`UI_OVERHAUL_SPEC.md:290` was ALREADY WRONG** — it points at *"Phase 0 read-only
+      investigation before each phase"*; the staging bullet is at `:292`, and **citecheck never
+      flagged it because that file was not touched.** ⚠ **Shifting all four by this commit's delta
+      would have moved the one correct citation and left the wrong one wrong** — the precise failure
+      the standing rule against arithmetic repair exists to prevent, met in the same entry as the
+      rule it describes. **THREE carry a
       wrong protected-file list** (3a names four, two of which were tracked the whole time; 3b
       names a different five). As of session A the rule is resident in `CLAUDE.md`, so all four
       are redundant and three are wrong.

@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v1.4 — amended 2026-08-08 with pre-auth branding resolution and URL topology (see §15, amendment A22). Previously v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. Governs three build sessions (§4). Changes require a spec amendment.
+**Status:** LOCKED v1.6 — amended 2026-08-30, the session decomposition superseded (§17, amendment A24). Previously v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -63,11 +63,11 @@ Settled in the planning session of 2026-07-24 unless noted.
 |---|---|
 | **CD-1** | DL folds into C. One token scheme serves all link surfaces; C consumes it rather than inventing a parallel one. |
 | **CD-2** | LP folds into C. Rep links cannot onboard anyone end-to-end without the landing page. |
-| **CD-3** | Three build sessions, in order: **C/DL-1** token foundation → **C/DL-2** landing page → **C/DL-3** rep surfaces. One fresh chat per session, seeded with this spec. |
+| **CD-3** | ~~Three build sessions, in order: **C/DL-1** token foundation → **C/DL-2** landing page → **C/DL-3** rep surfaces.~~ ⚠ **AMENDED BY A24 (§17): SEVEN SESSIONS**, in order — **C/DL-1** token foundation → **C/DL-2** landing page → **C/DL-3a** primitives + rep-promotion → **C/DL-3b** the door → **C/DL-3c** rep shell + read surfaces → **C/DL-3d** add client + roster → **C/DL-3e** network. Struck rather than deleted because §4 and §10 were written against the original and still read as if it held. One fresh chat per session, seeded with this spec. |
 | **CD-4** | **Unified blended entry.** One white-labeled door. The client/homeowner experience is always the default face, branding driven by contractor context and never by login type. A quiet "Team member login" affordance swaps to team login. After auth, the system reads role and routes to Referrer / FieldRep / Admin. This **supersedes the mockup's FieldRepApp-branded splash → field-rep login flow** (mockup 1A/1B), which contradicts RBAC §7. Changing the existing client login is explicitly permitted: pre-launch, blast radius is zero. |
 | **CD-5** | Auth field is **labelled "Password"**, accepts **any characters**, and authenticates through the **existing PIN mechanism**. Phase 0 must verify the stored credential column and validators actually accept alphanumeric input at usable length — if numeric-only or fixed-length, that is a migration, not a label change. |
 | **CD-6** | **Light/dark is a rep preference**, set by the rep in their own app settings. Brand palette comes from the contractor; mode comes from the person. |
-| **CD-7** | **Revenue visibility, one rule:** where revenue is a *stat card in a grid* it is **omitted entirely** (no lock, no empty slot — mockup 2B); where revenue is a *field in a detail view* it renders via the **locked-but-visible primitive** with hidden-value treatment (mockup 4B, Global UI States). Driven by the admin-controlled `rep_revenue_visibility` flag. |
+| **CD-7** | **Revenue visibility, one rule:** where revenue is a *stat card in a grid* it is **omitted entirely** (no lock, no empty slot — mockup 2B); where revenue is a *field in a detail view* it renders via the **locked-but-visible primitive** with hidden-value treatment (mockup 4B, Global UI States). Driven by the admin-controlled `rep_revenue_visibility` flag. ⚠ **AMENDED BY A24.4 (§17) — "HIDDEN" IS A SERVER RESPONSIBILITY, NOT A CSS ONE.** `LockedSection` `mode="element"` renders children at `opacity: 0.35` (`src/components/shared/LockedSection.jsx:34-46`), so the figure would be legible on screen and present in the DOM — **a data exposure, not a styling question.** With the flag off the **server omits the value** and sends `revenue_hidden: true`; the client renders the locked placeholder from the field's **absence**. **The stat-card half is UNCHANGED.** Only the detail-view half moves. |
 | **CD-8** | Domain is **`roofmiles.com` + per-contractor subdomains**, per DL-1. The mockup's `roofmiles.link/danny-s` is a visual placeholder and is void. |
 | **CD-9** | **2FA is in scope** for team accounts. Phase 0 confirms what capability exists on the user-facing side today and whether it is reusable as-is. |
 | **CD-10** | **Today's Focus** ships as a UI slot in the mockup's position, fed by **one simple rule**: surface the rep's attributed clients whose own referrals are furthest along in the pipeline, naming the client and the referral's stage. No scoring engine. Deliberate expansion point toward Engagement Intelligence later. |
@@ -146,14 +146,14 @@ Settled in the planning session of 2026-07-24 unless noted.
 ### C/DL-3 — Rep Surfaces
 **Plain language:** the login everyone shares, the ability to make someone a rep, and the rep's actual app.
 
-**Scope, in build order**
-1. **Rep-promotion write-path.** Nothing in the product currently sets `is_field_rep` or `rep_revenue_visibility` — the Field Rep preset stamps permission JSONB only, and the Field Rep title is display-only. FA named this; it is a hard prerequisite because there is no point routing to a surface nobody can be assigned to. Include the coherence check FA proposed (attributable ⇒ field rep).
-2. **Unified blended login** (CD-4), replacing the current client login, with role routing and multi-role handling (an Owner who is also a rep).
-3. **2FA** (CD-9).
-4. **FieldRepApp shell**: bottom nav (Home · Clients · + Add · Network · Profile), theme provider, locked-but-visible primitive, loading/empty/error/success primitives from the mockup's Global UI States page.
-5. **Screens**: 2A/2B dashboard · 3A/3B add client · 4A catalogue · 4B client detail · 5A constellation · 5B focus mode · 6 profile · 7A/7B activity · 8 flagged read-only · 9 frozen.
-6. **Add Client behaviors**: pre-generated QR, text/email send, consent capture, soft-save, resend.
-7. **Roster** (see OD-4).
+**Scope, in build order** — ⚠ **SUPERSEDED ITEM BY ITEM BY A24 (§17). This list was written when "C/DL-3" was one session; it is five. Read the session tag on each item, not the heading.**
+1. ~~**Rep-promotion write-path.** Nothing in the product currently sets `is_field_rep` or `rep_revenue_visibility` — the Field Rep preset stamps permission JSONB only, and the Field Rep title is display-only. FA named this; it is a hard prerequisite because there is no point routing to a surface nobody can be assigned to.~~ ✅ **SHIPPED — C/DL-3a Phase 2A.** ⚠ **THE PREMISE IS FALSE NOW, NOT JUST THE ASSIGNMENT** — a reader who takes the struck sentence at face value concludes the flags are still unwritable. `POST /api/admin/team/:id/promote` (`server/routes/admin/team.js:340`) is the **sole writer** of all three rep flags, on its own `rep_promotion` permission (`server/permissions/registry.js:136-142`); `PATCH /api/admin/team/:id` returns **422** naming it. The coherence check FA proposed (attributable ⇒ field rep) is enforced on the **MERGED** state (`team.js:385-399`), turning `is_field_rep` off **cascades** both dependent flags, and the `team_members_rep_coherence` CHECK (`server/db.js:1666-1674`) is an independent second layer.
+2. ~~**Unified blended login** (CD-4), replacing the current client login, with role routing and multi-role handling (an Owner who is also a rep).~~ ✅ **SHIPPED — C/DL-3b Phase 5**, with D1 verify-then-disambiguate and D2's choice token. ⚠ **The multi-role case is only HALF closed:** an owner-rep or admin-rep correctly keeps the admin panel and has **no route to the rep surface at all**. The surface switcher is 3c's, and `surfaceFor()` is written so it **relaxes** the rule rather than reversing it.
+3. **2FA** (CD-9) — 🔴 **NOT SHIPPED, AND OWNED BY NO SESSION IN THIS ARC. Scoped, recorded, unscheduled.** → **A24.7**, which recommends Wave 4's SH-10 / SH-13 login-path session. **Not 3c.**
+4. **FieldRepApp shell** — **C/DL-3c.** ⚠ **Two corrections.** The bottom nav listed here is *Home · Clients · **+ Add** · Network · Profile* — **`+ Add` is 3d's**, with the mint path it opens; 3c's nav is **Home · Clients · Network · Profile**. And the **theme provider and all six primitives already exist** (`src/components/shared/`, 3a Phase 4A + 3b Phase 1, which mounts eleven CSS variables — five brand + six status). **3c consumes them and builds no second provider.**
+5. **Screens** — **SPLIT ACROSS 3c / 3d / 3e / Wave 1.6 / Wave 2.3. See §10 as amended by A24.2.**
+6. ~~**Add Client behaviors**: pre-generated QR, text/email send, consent capture, soft-save, resend.~~ → **C/DL-3d.** Ruled by `CDL_3a_BUILD_SPEC.md` §9, which names the rep-token mint path and the `qr_link` writer as 3d, and independently by `CDL_3b_BUILD_SPEC.md` §11. ⚠ The **text-link** half additionally depends on SMS, which is dark behind `TWILIO_10DLC_ACTIVE`. ⚠ `supersedeToken()` (CD-14's resend) **has never been implemented** — `contractor_invite_links.superseded_by` exists and nothing writes it.
+7. ~~**Roster** (see OD-4).~~ → **C/DL-3d builds it; C/DL-3c specs its query shape and index.** `server/db.js:1509-1511` defers the roster indexes *"until C/DL-3 defines the roster's actual query shape"* — that definition is 3c's, the build is 3d's.
 
 **Phase 0**
 1. Confirm `rep_revenue_visibility` and `is_field_rep` columns exist on `team_members` and confirm — by grep — that nothing writes them today.
@@ -245,23 +245,28 @@ Phase 0 of C/DL-3 must determine where user-level preferences live today — whe
 
 ## 10. Screen → Session Map
 
+> ⚠ **SUPERSEDED ROW BY ROW BY A24 (§17). Read the Session column, not the heading.** This map was
+> written when "C/DL-3" was one session. It is five (3a · 3b · 3c · 3d · 3e). **Of the fourteen
+> rows below that said `C/DL-3`: five shipped · four move out · two are SPLIT · three stay 3c.**
+> Old values are struck rather than deleted so anyone who remembers the map sees why it changed.
+
 | Mockup page | Session | Notes |
 |---|---|---|
-| Token table + visual language | C/DL-3 | Theme + status vocabulary |
-| 1A Splash | C/DL-3 | **Reworked** per CD-4 — not a FieldRepApp-branded splash |
-| 1B Login | C/DL-3 | **Reworked** per CD-4 — unified blended entry |
-| 1C Set Password / 1D Forgot | C/DL-3 | Reuses existing Resend/reset-token machinery |
-| 2A / 2B Home Dashboard | C/DL-3 | Revenue rule CD-7; Today's Focus CD-10 |
-| 3A / 3B Add Client | C/DL-3 | Depends on token layer from C/DL-1 |
-| 4A Catalogue · 4B Client Detail | C/DL-3 | |
-| 5A / 5B Network | C/DL-3 | Heaviest single build in the arc |
-| 6 Profile | C/DL-3 | Theme toggle (CD-6), 2FA (CD-9), attribution type display-only |
-| 7A / 7B Activity | C/DL-3 | |
-| 8 Assignment Flagged | C/DL-3 | Read-only; resolution stays admin-only per FA |
-| 9 Frozen / Offboarding | C/DL-3 | View only; Decision E logic out of scope |
-| Global UI States | C/DL-3 | Build **first** in the session — everything else consumes it |
-| — Landing page | C/DL-2 | Not in this mockup; see LANDING_PAGE_SPEC.md |
-| — Roster | C/DL-3 | Not in mockup; OD-4 |
+| Token table + visual language | ~~C/DL-3~~ **3c** | Theme + status vocabulary. Maps onto CHECK enums that already ship (`provisional_source IN ('mode_a','mode_b','qr_link')`; `sticky_source` plus FA's `'manual'`) — read-only, **no mint path** |
+| 1A Splash | ~~C/DL-3~~ ✅ **SHIPPED — 3b Phase 5** | **Reworked** per CD-4 — not a FieldRepApp-branded splash |
+| 1B Login | ~~C/DL-3~~ ✅ **SHIPPED — 3b Phase 5** | **Reworked** per CD-4 — unified blended entry |
+| 1C Set Password / 1D Forgot | ~~C/DL-3~~ ✅ **SHIPPED — 3b + Wave 1.1-g** | Reuses existing Resend/reset-token machinery. ⚠ Wave 1.1 added the **team-member** reset path — `CDL_3b_BUILD_SPEC.md` §10's *"team members have NO password reset path at all"* is **INVERTED**, not merely stale |
+| 2A / 2B Home Dashboard | ~~C/DL-3~~ **SPLIT — 2A → 3c · 2B revenue variant → WAVE 1.6** | Today's Focus (CD-10) is 3c. **The revenue card is not: true job revenue is stored in no populated column, and Job Revenue Capture is Wave 1.5.** CD-7's flag-ON direction cannot be honestly tested against a column that does not exist |
+| 3A / 3B Add Client | ~~C/DL-3~~ **3d** | Depends on the token layer from C/DL-1 **and on the rep-token MINT path, which `CDL_3a_BUILD_SPEC.md` §9 assigns to 3d.** ⚠ The text-link half additionally depends on SMS, dark behind `TWILIO_10DLC_ACTIVE` |
+| 4A Catalogue · 4B Client Detail | ~~C/DL-3~~ **SPLIT — both → 3c, MINUS 4B's revenue FIELD → WAVE 1.6** | Pure reads keyed `(contractor_id, jobber_client_id)`. The locked-but-visible treatment is built and tested in 3c per CD-7 as amended by A24.4; the value it hides arrives at 1.6 |
+| 5A / 5B Network | ~~C/DL-3~~ **3e** | Heaviest single build in the arc. ⚠ Two approved React Flow prototypes exist — **re-find them, don't re-prototype**. 3e also owns the router decision (A24.6) |
+| 6 Profile | ~~C/DL-3~~ **3c, MINUS 2FA** | Theme toggle (CD-6) — ⚠ **three pieces, not one:** a `setPreference` writer (**zero** production callers today), a `team_member`-subject read path (`GET /api/preferences/theme-mode` is `verifyReferrerSession`-only, and a rep's token is on the admin key), and the switch. **2FA (CD-9) is not 3c's — see A24.7.** Attribution type display-only |
+| 7A / 7B Activity | ~~C/DL-3~~ **WAVE 2.3 — AND RE-SCOPED, NOT MERELY DEFERRED** | 🔴 `activity_log` has no `contractor_id`, no actor id, no target id (`server/db.js:33-37`). **A rep feed probably should not read it at all** — assignment events and pipeline movement already carry tenancy in `client_rep_assignments` and `pipeline_cache`. **A different build, not a blocked one.** → A24.3 |
+| 8 Assignment Flagged | ~~C/DL-3~~ **3c** | Read-only; resolution stays admin-only per FA. `flagged_assignments` already has a live admin queue — this is a second, read-only consumer |
+| 9 Frozen / Offboarding | ~~C/DL-3~~ ✅ **SHIPPED — 3b Phase 3** | View only; Decision E logic out of scope. ⚠ **E-min still owes the reactivation path** — `server/routes/admin/team.js:576` is the only write to `active` anywhere, and it writes `false` |
+| Global UI States | ~~C/DL-3~~ ✅ **SHIPPED — 3a Phase 4A** | ~~Build **first** in the session — everything else consumes it~~ **Already built.** All six primitives are in `src/components/shared/`; 3c consumes them and builds no second set |
+| — Landing page | C/DL-2 | ✅ **SHIPPED.** Not in this mockup; see LANDING_PAGE_SPEC.md. **The one row here that was never `C/DL-3`** |
+| — Roster | ~~C/DL-3~~ **3d builds · 3c SPECS its query shape** | Not in mockup; OD-4. Its columns live on the token row 3d mints — but `server/db.js:1509-1511` defers the roster indexes *"until C/DL-3 defines the roster's actual query shape"*, and that definition is cheaper to make while the schema is being read than after a query exists |
 
 ---
 
@@ -452,3 +457,238 @@ Three binding rules:
 - **The Capacitor session builds:** source 4's actual implementation (DL-B).
 
 **A20 INTERACTION — the token-set gap is now load-bearing on this surface.** The shipped theme token set from C/DL-2 is `{primary, secondary, accent, background}`. §5 of this spec names `primary`, `secondary`, `bg`, `surface`, `text`. A20 (§13) flagged that mismatch and deliberately left it unresolved, noting it would land on this build or the next. **It lands here:** if the login surface and FieldRepApp consume the same variables as the landing page — which §5's "one system, three surfaces, no second implementation" requires — then **the `surface` / `text` gap must close in C/DL-3.** Recorded explicitly against A20 so that session does not rediscover it mid-build.
+
+> ⚠ **THAT LAST CLAUSE DID NOT HOLD, AND SAYING SO IS THE POINT.** C/DL-3c's Phase 0 rediscovered
+> the whole of A20 from source, at Phase 0 cost, because the gap had already closed and nothing
+> here said so. **See A23 (§16).**
+
+---
+
+## 16. Amendments — v1.5, 2026-08-30 (documentation corrections)
+
+**A23 — THE DOCUMENTATION CORRECTIONS AMENDMENT, WRITTEN AS RESERVED.**
+
+⚠ **THIS NUMBER WAS RESERVED AND THEN NEVER USED.** `CDL_3b_BUILD_SPEC.md` §10 carries a heading
+reading *"Documentation corrections owed (A23 amendment)"* with four bullets. C/DL-3b found them,
+recorded them, and closed. **No amendment was ever written**, so the forward reference pointed at
+nothing and a reader who followed it could not tell whether the amendment had been written and
+lost or never written at all.
+
+⚠ **RECORD THE COST, BECAUSE THE COST IS THE FINDING.** C/DL-3c's Phase 0 spent part of a
+read-only session **re-deriving bullets 1 and 2 from source** — that `RENDER_TOKEN_KEYS` already
+matches §5, and that A20's gap is not a gap — with no idea either had been found before. **3b had
+already done that work and written it down.** The finding survived; the mechanism that would have
+retired it did not exist.
+
+**This is the THIRD instance in this arc of a correction that was found, recorded, and then lost:**
+- the D13 warning that outlived its own amendment,
+- `MEMBER_RANK_ECONOMY_SPEC.md` §13's `18 → 12` count, corrected in all three copies **except the
+  canonical document**,
+- and this one.
+**All three share a shape: a record that can be ADDED but has nothing that REMOVES it.** That is
+CLAUDE.md's closure-half rule, and it is why an amendment is written here rather than a note.
+
+---
+
+**A23.1 — §5's parenthetical is VOID. `surface` and `text` DO exist.**
+
+§5 ends *"(The shipped resolver emits a different set — see amendment A20, §13. `surface` and
+`text` do not exist today and the gap is unresolved.)"* **That is false and has been since C/DL-3a
+Phase 3.** `src/utils/themeTokens.mjs:62`:
+
+```js
+const RENDER_TOKEN_KEYS = Object.freeze(['primary', 'secondary', 'bg', 'surface', 'text']);
+```
+
+**That is §5's token set exactly, in §5's order**, and the CSS custom-property names are built
+programmatically from it so the two cannot drift.
+
+**A23.2 — A20's "gap" was a LAYER CONFUSION, not a gap. A22's "IT LANDS HERE" is discharged.**
+
+A20 compared `resolveBrandingTheme`'s output — `primaryColor` · `secondaryColor` · `accentColor` ·
+`backgroundColor` — against §5's five render tokens and concluded they disagreed. **They are two
+different layers of one system and were never meant to match.** The first is the **stored brand
+input**; `deriveThemeTokens(brand, mode)` (`src/utils/themeTokens.mjs`) maps that input onto the
+five **render tokens**, mode-aware, with contrast floors applied.
+
+`--brand-*` (four raw palette colours, server-rendered, pre-auth, light-only, on the landing page)
+and `--rm-*` (five derived, mode-aware tokens in React) are **deliberately separate namespaces per
+3b's D11**, for the same reason.
+
+**Consequence: A22's closing ruling — *"the `surface` / `text` gap must close in C/DL-3"* — is
+DISCHARGED, and it was discharged by 3a before A22 was written.** C/DL-3c inherits no token work
+from it. ⚠ **The A20 and A22 texts are kept, not deleted** — they are the record of a real question
+that was asked and answered, and a reader who finds only the answer cannot tell it was ever argued.
+
+**A23.3 — bullet 3 of the reserved list is itself now DISCHARGED, and is recorded rather than dropped.**
+
+3b's third bullet read *"`CLAUDE.md` is materially stale — test counts (says 734/35 across 6;
+actual 784/128 across 10), backend folder structure (omits 13 files), frontend structure (omits
+10 …), and the database table list (omits 11 tables). Owed a full doc pass."*
+
+**The doc pass happened.** `CLAUDE.md`'s test tripwire now reads 1118 server / 177 suites / 483
+React / 34 files, measured at HEAD `7252cc5`; the folder structures and the table list moved to
+`docs/ARCHITECTURE.md` in restructure Phase 1, with `npm run architecture -- --check` walking the
+tree instead of a hand-maintained list. ⚠ **The bullet is marked discharged rather than deleted,
+because a reserved item that simply vanishes is indistinguishable from one that was forgotten** —
+which is the failure this whole amendment exists to close.
+
+**A23.4 — bullet 4 is discharged in substance and restated because the ruling is load-bearing.**
+
+`HARDCODED_ACCENT_INVENTORY.md` **is a partial sample, not a map.** It has been wrong on every
+verified check. A header note now says so on the inventory itself. **Any sweep opens with a fresh
+grep and treats the file as a starting hint only.**
+
+**A23.5 — nothing from the reserved list is unresolved.** All four bullets are accounted for:
+two corrected here (A23.1, A23.2), two discharged (A23.3, A23.4). ⚠ `CDL_3b_BUILD_SPEC.md`'s
+heading is amended in the same commit to point here, so the forward reference resolves.
+
+---
+
+## 17. Amendments — v1.6, 2026-08-30 (the session decomposition is superseded)
+
+**A24 — THE ARC IS SEVEN SESSIONS, NOT THREE, AND §4 AND §10 WERE WRITTEN WHEN IT WAS THREE.**
+
+Every "C/DL-3" in §4 and §10 means **"somewhere in 3a–3e"**. It reads as **"this session."** That
+is the whole defect: a reader opening §10 to ask *"is this screen mine?"* gets `C/DL-3` fourteen
+times and no way to tell.
+
+**THE AUTHORITY ALREADY EXISTED AND WAS NEVER APPLIED HERE.** `CDL_3a_BUILD_SPEC.md` §9 —
+3a's own approved *Explicitly out of scope* list — names **3d and 3e by number**:
+
+> *"…the `qr_link` writer **(3d)** · the rep-token mint path **(3d)** · the network graph **(3e)**…"*
+
+That was written **after** §10's map and therefore already superseded it; **nobody marked §10.**
+`CDL_3b_BUILD_SPEC.md` §11 says the same independently (*"the FieldRepApp shell and bottom nav
+(→ 3c) · … the rep-token mint path and Add Client (→ 3d) · the network graph (→ 3e)"*), and
+`EXECUTION_SEQUENCE.md` rows 1.3 and 1.7 agree with both. **Three documents ruled it; the spec was
+never told.**
+
+### A24.1 — CD-3 is amended in place. §4 and §10 are STRUCK, not deleted.
+
+Struck rather than deleted so anyone who remembers the old map sees **why** it changed — the same
+technique RANK-17 used. A deleted row leaves a reader who half-remembers it unable to tell whether
+they misremembered or the document changed under them.
+
+### A24.2 — THE COUNT, AND IT IS THE ARGUMENT FOR MARKING THE MAP AT ALL
+
+§10 has **fifteen rows, fourteen of which say "C/DL-3".** Of those fourteen:
+
+| | Rows | Which |
+|---|---|---|
+| **Already shipped** | **5** | 1A Splash · 1B Login · 1C/1D · 9 Frozen · Global UI States |
+| **Move out of 3c entirely** | **4** | 3A/3B Add Client → 3d · 5A/5B Network → 3e · 7A/7B Activity → Wave 2.3 · Roster → 3d |
+| **Must be SPLIT** | **2** | 2A/2B Home Dashboard · 4A Catalogue · 4B Client Detail |
+| **Stay 3c** | **3** | Token table + visual language · 8 Assignment Flagged · 6 Profile (minus 2FA) |
+
+**Three of fourteen survive unqualified.** ⚠ **A map where four rows in five are wrong is not a map
+a careful reader can rescue** — which is why it is marked rather than left to be read carefully.
+The fifteenth row (`— Landing page`) was never C/DL-3 and shipped with C/DL-2.
+
+### A24.3 — RULING 1: 7A/7B ACTIVITY DEFERS TO WAVE 2.3, AND IS RE-SCOPED WHILE IT GOES
+
+`activity_log` has **no `contractor_id`, no actor id and no target id** (`server/db.js:33-37`, plus
+`ALTER … ADD COLUMN contact_id` at `:751`). It is a shared audit table with live consumers, and
+repairing it inside a shell build is the wrong place. It is already listed at Wave 2.3.
+
+⚠ **THE DEFERRAL CARRIES A SCOPING NOTE, OR 2.3 INHERITS A WRONG PREMISE. A rep activity feed
+probably should not read `activity_log` AT ALL.** What a rep needs is **referrer and client
+activity** — assignment events and pipeline movement — and `client_rep_assignments` and
+`pipeline_cache` already carry both **with tenancy**, keyed `(contractor_id, jobber_client_id)`.
+The referrer's membership tier joins in once the RANK arc lands (consolidated after Wave 1.4 under
+D14). **That is a DIFFERENT BUILD, not a blocked one**, and 2.3's schema migration is a
+prerequisite for the *admin* activity log, not for the rep feed.
+
+### A24.4 — RULING 2: CD-7's REVENUE GATE — THE SERVER OMITS THE VALUE
+
+🔴 `LockedSection` `mode="element"` renders its children at `opacity: 0.35` with pointer events off
+(`src/components/shared/LockedSection.jsx:34-46`). **The figure would be legible on screen and
+present in the DOM — readable in devtools whatever the opacity.** `rep_revenue_visibility = false`
+is an admin's decision that a *specific rep* may not see revenue, and the number would be sent to
+that rep's browser. **That is a data exposure, not a styling question.**
+
+**RULED: when the flag is off, the SERVER omits the value entirely and sends `revenue_hidden: true`.
+The client renders the locked placeholder from the field's ABSENCE.**
+
+CD-7 is **fully satisfied** — the rep still sees that a gated revenue field exists, which is the
+whole point of *locked-but-visible*, and there is no value to leak. It also makes the flag-off case
+testable **on the payload** rather than on rendered opacity, which is the only form of that
+assertion with a reachable failure.
+
+⚠ **THIS CHANGES ONLY CD-7's DETAIL-VIEW HALF. The stat-card half is unchanged** — omitted entirely
+from the grid, no lock, no empty slot.
+
+### A24.5 — RULING 3: THE JOIN KEY IS `(contractor_id, jobber_client_id)`
+
+⚠ **AND THE EMAIL BRIDGE IS REJECTED, WITH ITS REASON RECORDED, BECAUSE IT WAS PROPOSED IN WRITING
+AND WILL BE PROPOSED AGAIN.** **`users.email` is UNIQUE PER CONTRACTOR, not globally** —
+`users_contractor_id_email_unique UNIQUE (contractor_id, email)` (`server/db.js:1254-1262`), which
+**deliberately replaced** the old global `users_email_key`. One homeowner holding accounts with two
+contractors is a *supported state*; 3b's D1 verify-then-disambiguate exists precisely to resolve it.
+**An email bridge without a `contractor_id` predicate is a CROSS-TENANT JOIN.**
+
+⚠ **AND THERE ARE THREE JOBBER BRIDGES OF DIFFERING AUTHORITY. C/DL-3c's Phase 0 recommended the
+weakest of them; corrected here before anything was built on it.**
+
+| Bridge | What it is actually for | Caveat |
+|---|---|---|
+| **`users.jobber_client_id`** | **Authoritative** — "does this Jobber client have an app account?" | **NULL for peer signups BY DESIGN** — the signup path logs *"No Jobber client match found at signup — expected for peer signups"* |
+| `contacts.jobber_client_id` | Denormalised campaign-side column | **Not set at signup.** Written by the Jobber CSV import and by a lazy fallback when an admin opens a contact drawer |
+| `contact_jobber_links` | The real link table — `match_confidence`, `matched_on`, `UNIQUE(contact_id, jobber_client_id)`, three indexes | **Many clients per contact**; written by the Contact Matching Standard pass |
+
+**The KEY stays `(contractor_id, jobber_client_id)`. Which TABLE you join to changes** — and for
+membership it is `users`, not `contacts`.
+
+⚠ **THE STATE SPACE IS FOUR, NOT THREE, AND COLLAPSING IT IS HOW EVERY HOMEOWNER IN THE BOOK GETS
+LABELLED A MEMBER OF A PROGRAM THEY NEVER JOINED:** *matched app user* · *app user with no Jobber
+match (a peer signup — legitimate and expected)* · *known contact, not an app user* · *nothing
+known at all*. **No single column distinguishes them, and `COALESCE(…, false)` collapses three into
+one.** 3c renders the unknown state as unknown.
+
+⚠ **3c BUILDS THE BRIDGE POSSIBLE, NOT POPULATED.** No rank renders in 3c (D14). The only
+requirement is that the later membership join is a **JOIN clause**, not a restructure.
+
+### A24.6 — RULING 5: THE ROUTER MIGRATION DEFERS TO 3e, WITH A BINDING CONDITION
+
+D10 leaves 3c. The bottom nav is **tab state within one surface**, exactly as the referrer app's
+five tabs work today; a router migration would rewrite the auth routing 3b just built and fenced —
+including three load-bearing `ThemeProvider` boundaries and Wave 1.1-g's `?reset=` precedence fix,
+which is a production defect encoded as ordering — inside a session whose job is a shell.
+
+⚠ **THE CONDITION IS WHAT MAKES THE DEFERRAL SAFE, AND IT IS BINDING: every rep screen's state
+lives in ONE place at the shell level that a router could later drive.** Not screen state scattered
+through components. The migration then rewires **one variable's source** rather than untangling
+five screens.
+
+⚠ **AND IT MUST BE PARAMETERISED, NOT A BARE STRING:**
+```js
+{ screen: 'clientDetail', clientId: 482 }   // yes
+'clientDetail'                              // no
+```
+**REASON:** Today's Focus (CD-10) is already planned to open a *specific client's* profile from the
+dashboard banner. That is in-app navigation and needs no router — but **a string-only screen state
+cannot express "which client,"** so it would need untangling later in exactly the way this
+condition exists to prevent.
+
+**Eventual scope: ONE session covering all three surfaces** — referrer app, admin panel, rep
+interface. **3e owns the decision**, because focus-mode drill-down and Capacitor deep links are the
+real forcing functions. Named here so it is scheduled rather than rediscovered.
+
+### A24.7 — THE 2FA ORPHAN
+
+§4 item 3 scopes 2FA to this arc. **3b's D9 split it to C/DL-3b-2; Wave 1.1 executed only that
+session's credential-recovery half — plus the dual-nullable subject shape both halves needed — and
+closed.** It is tracked as open items in `PRE_LAUNCH_CHECKLIST.md` under *C/DL-3b-2 — team
+credential recovery + 2FA*, and it has **no row in `EXECUTION_SEQUENCE.md`'s wave table.**
+
+**Scoped, recorded, unscheduled.** → **Recommended owner: Wave 4's SH-10 / SH-13 login-path
+hardening session**, because it is the same missing mechanism at the same call site — SH-10 is
+storage ✓ editor ✓ validator ✓ **delivery ✗**, `gatherLoginCandidates` does not select
+`totp_enabled`, and the single-match branch mints a session with no second factor. **Team 2FA is
+that identical gap for the other identity table, and the half-authenticated session state is one
+design, not two.** ⚠ **Not 3c**, which is a read shell.
+
+⚠ **AND THE SECOND ORPHAN MATTERS MORE TO THIS ARC: step-up re-authentication did not ship either**,
+and step-up — not 2FA — is the control D7's 30-day session was explicitly traded against. **3c
+widens exactly that population.** Both belong in the Wave 4 login-path session; **if only one is
+scheduled, step-up is the one.**
