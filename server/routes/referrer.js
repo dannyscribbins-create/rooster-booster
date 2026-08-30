@@ -2014,10 +2014,35 @@ router.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
   }
 
   try {
+    // ── WAVE 1.1-g — THE TOKEN RESOLVES TO EITHER SUBJECT ────────────────────
+    //
+    // ⚠ THE JOINS ARE LEFT JOINS AND THAT IS THE WHOLE FIX'S FOUNDATION. This was
+    // `JOIN users u ON u.id = prt.user_id` — an INNER join, so a team_member-subject
+    // row (user_id NULL since Wave 1.1-f) was DROPPED, rows.length hit 0, and the
+    // handler answered "Reset link is invalid or has expired." — byte-identical to a
+    // genuine expiry, with nothing logged anywhere. A team member would have watched
+    // a valid link be refused with no signal on either side of the wire.
+    //
+    // ⚠ AND FIXING ONLY THE JOIN WOULD HAVE BEEN WORSE THAN THE DEFECT. The row
+    // would then resolve and `UPDATE users SET pin=$1 WHERE id=$2` would run with a
+    // NULL id: zero rows updated, no error raised, the token burned, and
+    // `success: true` returned. A FALSE SUCCESS ON A CREDENTIAL PATH. The defect was
+    // never "the join" — it is "reset-pin cannot serve a team_member-subject row",
+    // and the join is one of three places that was true. The other two are the
+    // UPDATE target and the bcrypt cost below.
+    //
+    // exactly_one_subject (db.js, Wave 1.1-f) guarantees precisely one of the two
+    // LEFT JOINs can produce a row, so the branch below is total and no row can
+    // satisfy both arms.
     const tokenResult = await pool.query(
-      `SELECT prt.user_id, u.full_name, u.email
+      `SELECT prt.user_id, prt.team_member_id,
+              u.full_name  AS user_name,   u.email  AS user_email,
+              tm.full_name AS member_name, tm.email AS member_email,
+              tm.active    AS member_active,
+              tm.contractor_id AS member_contractor_id
        FROM pin_reset_tokens prt
-       JOIN users u ON u.id = prt.user_id
+       LEFT JOIN users u         ON u.id  = prt.user_id
+       LEFT JOIN team_members tm ON tm.id = prt.team_member_id
        WHERE prt.token = $1 AND prt.used_at IS NULL AND prt.expires_at > NOW()`,
       [token]
     );
@@ -2026,13 +2051,53 @@ router.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Reset link is invalid or has expired.' });
     }
 
-    const { user_id, full_name, email } = tokenResult.rows[0];
-    const hashedPin = await bcrypt.hash(String(pin), 10);
+    const row = tokenResult.rows[0];
+    const isTeam = row.team_member_id !== null;
+
+    // A subject column that points at no row. Both FKs are ON DELETE CASCADE so the
+    // token would have been deleted with its subject and this should be unreachable —
+    // it is here because the alternative is an UPDATE against a NULL id, which is the
+    // silent-success failure this commit exists to remove. A vanished identity joins
+    // the generic bucket for the same reason loadCandidateById puts one there: it is
+    // indistinguishable from a forged token and must stay that way.
+    const subjectName  = isTeam ? row.member_name  : row.user_name;
+    const subjectEmail = isTeam ? row.member_email : row.user_email;
+    if (subjectEmail == null) {
+      return res.status(400).json({ error: 'Reset link is invalid or has expired.' });
+    }
+
+    // ── THE FROZEN BRANCH, AND ITS POSITION IS THE DESIGN (mirrors /api/login) ──
+    // `active` is deliberately absent from POST /api/forgot-pin's lookup: that
+    // endpoint proves NOTHING, so any branch on account state there is a
+    // disclosure channel readable by an unauthenticated caller. The freeze is
+    // enforced HERE instead, where the caller holds a valid 64-hex token — which is
+    // proof of mailbox possession, the same proof that already licenses naming the
+    // contractor in the reset email's body.
+    //
+    // ⚠ THE TOKEN IS DELIBERATELY NOT BURNED ON THIS PATH, AND A LATER READER WILL
+    // WANT TO "FIX" THAT. Burning would mean a member reactivated an hour later must
+    // request a second link for no security gain — this rejection disclosed nothing
+    // that a burn protects, and the token's own expiry still bounds it.
+    if (isTeam && row.member_active === false) {
+      return res.status(403).json(await buildFrozenAccountBody(pool, row.member_contractor_id));
+    }
+
+    // ⚠ THE COST FOLLOWS THE SUBJECT, NOT THE ROUTE. This line was a hardcoded 10 —
+    // the `users` cost — and every other writer of team_members.password_hash uses
+    // 12 (admin/team.js's create and accept-invite, and db.js's two seed paths). A
+    // team member resetting through the old handler would have been silently
+    // downgraded from cost 12 to cost 10 with nothing reporting it: the login
+    // compare succeeds either way, so no test and no user could have noticed.
+    const hashedPin = await bcrypt.hash(String(pin), isTeam ? 12 : 10);
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('UPDATE users SET pin=$1 WHERE id=$2', [hashedPin, user_id]);
+      if (isTeam) {
+        await client.query('UPDATE team_members SET password_hash=$1 WHERE id=$2', [hashedPin, row.team_member_id]);
+      } else {
+        await client.query('UPDATE users SET pin=$1 WHERE id=$2', [hashedPin, row.user_id]);
+      }
       await client.query('UPDATE pin_reset_tokens SET used_at=NOW() WHERE token=$1', [token]);
       await client.query('COMMIT');
     } catch (txErr) {
@@ -2043,15 +2108,28 @@ router.post('/api/reset-pin', resetPinLimiter, async (req, res) => {
       client.release();
     }
     try {
+      // The event_type stays 'pin_reset' for BOTH subjects. Nothing branches on this
+      // value anywhere — it is display copy — so introducing a second one would make
+      // every future filter have to learn about it while buying nothing. Only the
+      // human-readable detail distinguishes the two surfaces. Same reasoning as
+      // issueSessionFor's session role: no query needs to learn a new value.
       await pool.query(
         `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ($1, $2, $3, $4)`,
-        ['pin_reset', full_name, email, 'PIN reset via email link']
+        ['pin_reset', subjectName, subjectEmail,
+          isTeam ? 'Admin password reset via email link' : 'PIN reset via email link']
       );
     } catch (logErr) {
       await logError({ req, error: logErr });
       console.error('Activity log error (reset-pin):', logErr);
     }
 
+    // ⚠ MINTS NOTHING, AND THAT IS A SECURITY PROPERTY RATHER THAN AN OMISSION.
+    // A RESET MUST NOT BECOME A 2FA BYPASS. There is no second factor on any login
+    // path today (SH-10: storage, editor and validator built, DELIVERY absent), so a
+    // session issued here would skip a check that does not exist yet — and would
+    // acquire the ability to skip one the day it does. Returning no session makes
+    // that structurally impossible instead of currently harmless. The person signs
+    // in at the unified door with the password they just set.
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err });
