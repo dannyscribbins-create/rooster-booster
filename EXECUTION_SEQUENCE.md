@@ -40,7 +40,8 @@ SCHEDULE** — pace is re-assessed once the documentation-repair sessions finish
 work resumes.
 
 **What the ruling changes, in order of when it bites:** RANK R1 must be designed against the
-full economy at **1.2** rather than retrofitted · **UX Phase 0** moves from Wave 3 to near
+full economy rather than retrofitted — **at the head of the consolidated RANK arc, not at 1.2,
+which D14 vacated** · **UX Phase 0** moves from Wave 3 to near
 **1.4**, gating the whole UI Overhaul arc · `MEMBER_RANK_ECONOMY_SPEC.md` **§13's 12 open
 decisions become launch-blocking** · **RANK §2's review-points prohibition** (Google policy)
 is now adjacent to the Referral Conversion Engine rather than separated from it by a launch.
@@ -48,7 +49,10 @@ Unaffected by the carve-outs: List-Unsubscribe before the first real campaign se
 apex legal-links 404, are launch-gating regardless.
 
 **Canonical record:** `PRE_LAUNCH_CHECKLIST.md` → *D13*. ⚠ Decision IDs are not sequential —
-D1–D12 and D-A…D-O are taken; grep before assigning a new one.
+**`D1`–`D14` and `D-A`…`D-O` are taken**, across **five** separate series (C/DL-3b holds
+`D1`–`D12`; `CDL_3a_BUILD_SPEC.md` holds its own colliding `D1`–`D4`; the roadmap holds `D13`
+and `D14`; Admin Brand Retirement holds `D-A`…`D-O`; `DECISION_C_DL_BUILD_SPEC.md` and
+`LANDING_PAGE_SPEC.md` hold `D0`). **Grep before assigning a new one.**
 
 ---
 
@@ -77,7 +81,7 @@ The main acquisition channel, and where you want to be.
 | # | Session | Contents |
 |---|---|---|
 | 1.1 | ✅ **Auth surface batch — COMPLETE 2026-08-30**, `c2434d2` → `7252cc5`, eleven phases (1.1-doc · cite-check · 1.1-a · 1.1-b · 1.1-c · 1.1-d · 1.1-d2 · 1.1-e · 1.1-f · 1.1-g). **Verified end to end in production.** Test baseline at close, measured: **1118 server / 177 suites / 483 React / 34 files, exit 0.** **Three of four planned items shipped** — team credential recovery, R4, and the super-admin write-bypass invariant test (`server/test/adminRouteInvariant.test.js`). ⚠ **STEP-UP RE-AUTH DID NOT SHIP** and is still the control that makes D7's 30-day session safe → `CDL_3b_BUILD_SPEC.md` §10. ⚠ **2FA DID NOT SHIP EITHER** — only the recovery half of C/DL-3b-2, plus the dual-nullable subject shape both halves needed. ⚠ **THE WAVE CLOSED FAR MORE THAN IT WAS SCOPED FOR** — cross-tenant credential and money writes, four inline-auth Stripe routes, a ghost contractor id across the whole admin Stripe surface, a second money-moving caller nobody had enumerated, a bcrypt cost that silently weakened team credentials, and a forgot-password form offered to team members whose requests the server discarded. Full inventory: `PRE_LAUNCH_CHECKLIST.md` → *Wave 1.1 — production facts and findings*. |
-| 1.2 | **RANK R1 — NEXT** | Rank derivation + read surfaces. ⚠ Required by RANK-8 *before or alongside* 1.3 — rank is derived at read time from `referral_conversions`, never stored, so the "flows through to both surfaces" property is free once R1 exists. RANK's own header says FieldRepApp is out of scope except RANK-8; that exception has a scheduling cost. **⚠ THREE RULINGS LANDED 2026-08-30 and are now in `MEMBER_RANK_ECONOMY_SPEC.md` §13 — read them before designing:** **RANK-2** thresholds LOCKED at `0/1/3/6/10` (Bronze's 0 explicit, so one lookup serves every member) · **RANK-9** Legend ships in R1, Owner-only, no permission flag may confer it, revocable **for correction not management**, and it carries the **first documented exception to §11's copy lock** · **RANK-17** medallions are **platform-locked** in-house SVG, not contractor-themed — which inverted §10.2 and §11. **⚠ ONE SUB-QUESTION DECIDES THE PHASE: if any Legend privilege reaches the payout multiplier, Legend is R2 money-path work, not R1.** |
+| 1.2 | ⛔ **VACATED 2026-08-30 — D14** | **RANK R1 no longer lands here.** The Member Rank & Points Economy consolidates as **ONE arc after Wave 1.4** → see **Wave 3 → RANK**. **1.3 is now next.** ⚠ **THE ROW NUMBER IS KEPT DELIBERATELY** — the Wave 3 header below forbids renumbering (*"The wave NUMBERS are deliberately unchanged"*) because other specs cite waves by number; vacating in place keeps every existing citation true. ⚠ **WHY, and it is not a scheduling preference:** `MEMBER_RANK_ECONOMY_SPEC.md:9` states *"Hard prerequisites: contractor-ID reconciliation complete"* — that is **1.4**, so RANK at 1.2 always violated the spec's own prerequisite. Neither D13 nor the three 2026-08-30 rulings caught it; **the header was never read against the row**, because a document consulted for its §13 is never read from the top. ⚠ **THE THREE RULINGS OF 2026-08-30 ARE NOT VACATED WITH THE ROW** — **RANK-2** (thresholds `0/1/3/6/10`, Bronze's 0 explicit), **RANK-9** (Legend in R1, Owner-only, no permission flag may confer it, revocable for correction not management, first documented exception to §11's copy lock) and **RANK-17** (medallions platform-locked in-house SVG, not contractor-themed) are **live and move with the arc**, in `MEMBER_RANK_ECONOMY_SPEC.md` §13. RANK-9's sub-question — does any Legend privilege reach the payout multiplier — stays open and is held **off the critical path** by the five-rung/overlay constraint recorded at §13's head-of-arc findings. Canonical record: `PRE_LAUNCH_CHECKLIST.md` → *D14*. |
 | 1.3 | **C/DL-3c + E-min** | Rep app shell, read surfaces, the six-item theme pass (incl. `on-primary` at 3.06:1 and the missing light-mode contrast floor), `useAdminPermissions` context plumbing, D10 router decision, theme toggle (engine and store already exist — only the switch is missing), owner→rep surface switcher, R2's open security question on echoing a slug — **⚠ and now the credential-link branding question, which walks into the same wall** (Wave 1.1-g: contractor-branded reset/invite screens are **not** served by the D4 chain on `<slug>.roofmiles.com`, because that host runs `server/routes/landing.js`'s server-rendered page and never loads React; the cheaper path is keeping credential links on `app.roofmiles.com` and giving `ThemeContext` a resolvable input that is not the host, which needs R2 answered first). **E-min rides along:** build the reactivation path (no route sets `active = true` anywhere) and close the frozen-rep-with-homeowner-account question in writing. ⚠ Ground truth found `surfaceFor()` returns before the rep rule because the referrer descriptor doesn't carry `is_field_rep` — so this is a one-way-door fix, not a security gate. Fold R4 in if 1.1 didn't. |
 | 1.4 | **Contractor-ID reconciliation** | Its own auth/money-adjacent session, Phase 0 first. `account.js:436` is live-broken. ⚠ **Size it from 80/170, not from 77/166 and never from 5** — and open with a fresh grep or `npm run sizing`, never `HARDCODED_ACCENT_INVENTORY.md` (four wrong checks out of four). Adopt the session/connection-derived pattern; `getDefaultContractorId()` was deleted. Folds in `contractors.slug` backfill and `db.js:1532`. |
 | 1.5 | **Job Revenue Capture** | True job revenue is stored nowhere. One ruling owed: contracted-sold price vs collected-paid amount. ⚠ Its recorded blocker — "the full-sync aborts every cycle" — is **false** as of 2026-08-21. Only `account.js:436` gated it, which 1.4 clears. |
@@ -125,9 +129,11 @@ launch-gating.
 - **UX Phase 0 moves earlier.** It now gates this entire arc, which is pre-launch, so it
   belongs close to **1.4** rather than here. Partly discharged already (§11.1's three shared
   primitives exist) — **re-scope, do not rebuild.**
-- **RANK R1's schema and derivation contract must be designed against the FULL economy at
-  Wave 1.2**, not retrofitted, because R1 is now the foundation for R2–R4 landing pre-launch.
-  A design-time cost at 1.2, not a build-time one.
+- **RANK R1's schema and derivation contract must be designed against the FULL economy**, not
+  retrofitted, because R1 is the foundation for R2–R4 landing pre-launch. A design-time cost,
+  not a build-time one. ⚠ **This read *"at Wave 1.2"* and *"a design-time cost at 1.2"* until
+  D14 vacated that row (2026-08-30). The standard is unchanged; it is now owed at the head of
+  the consolidated RANK arc.** → `PRE_LAUNCH_CHECKLIST.md` → *D14*.
 - **`MEMBER_RANK_ECONOMY_SPEC.md` §13's 12 open decisions are now LAUNCH-BLOCKING** and need
   deliberate scheduling rather than discovery during R2.
 - ⚠ **RANK §2 hard-prohibits points for reviews** (Google policy — it can penalize the
@@ -140,7 +146,7 @@ launch-gating.
 | **UX Phase 0** | A full audit across every referrer UX component and sequence, before the arc is sequenced at all. ⚠ Ground truth found all three of §11.1's shared primitives already exist — this spec's Phase 4.1/4.4 scope is substantially discharged and the document didn't know it. Re-scope, don't rebuild. Runs after 1.4. |
 | **UI Overhaul arc** | Phases 1–5 per `UI_OVERHAUL_SPEC.md`, re-scoped by Phase 0. UX-2 is a QA pass, not a build — the theme engine produces both modes and `user_preferences` is the store; only the toggle was missing, and 1.3 built it. |
 | **Referrer psychology session** | UX-6's 7.1/7.2 (endowed progress, goal gradient) — ruled to a dedicated referrer-app session after the field rep interface, alongside the other gamification and presentation work. |
-| **RANK R2–R4** | Points economy, store, redemption. 12 open decisions in `MEMBER_RANK_ECONOMY_SPEC.md` §13. ⚠ RANK §2 hard-prohibits points for reviews (Google policy — it can penalize the *contractor's* listing); whoever builds the Referral Conversion Engine's review→referral sequence must have read it. |
+| **RANK — the whole arc, R1 included** | Ladder + derivation (R1) · tier bonus (R2) · points economy, store, redemption (R3–R4). ⚠ **THIS ROW READ "RANK R2–R4" UNTIL 2026-08-30 BECAUSE R1 SAT AT WAVE 1.2. D14 VACATED THAT ROW** — the arc is one build and does not split. ⚠ **READ ITS POSITION FROM THIS SENTENCE, NOT FROM THE TABLE'S ORDER: the arc runs AFTER WAVE 1.4** (contractor-ID reconciliation), which `MEMBER_RANK_ECONOMY_SPEC.md:9` names as its hard prerequisite. Same technique as this wave's own insertion point above — **stated, never renumbered.** **12 open decisions** in §13 (12 live of 15 rows, measured 2026-08-30 at HEAD `d16bc31`), launch-blocking, moving with the arc. Head-of-arc design work is archived at §13, *Head-of-arc design findings*. ⚠ RANK §2 hard-prohibits points for reviews (Google policy — it can penalize the *contractor's* listing); whoever builds the Referral Conversion Engine's review→referral sequence must have read it. |
 | **Referral Conversion Engine** | 8 features, zero code. Features 1–3 are ~1 session and directly raise referral volume — the cheapest revenue-side work in the queue. |
 | **Campaigns completion** | Resend webhooks first (prerequisite for scoring) · status lifecycle (campaign 55 sits at `current_batch=2, total_batches=1`, still `active`, only exit a lazy 90-day expiry) · `List-Unsubscribe` ⚠ **required before the first real campaign send** · apex legal links 404 · Audience→Builder integration · bulk import · Flow Builder · Engagement Intelligence L1–4. |
 | **Celebration System** | Sessions A–E, alongside the UI Overhaul. |
@@ -222,7 +228,7 @@ Not blocking. Recorded on `PRE_LAUNCH_CHECKLIST.md` under Named builds.
   compared against it here was a **byte** count labelled *"chars"*; its consequence is a
   console warning, not truncation. The 40,000 traced to one unsourced line copied into four
   documents. → `PRE_LAUNCH_CHECKLIST.md` → *CLAUDE.md's 40,000-char budget*.
-- **The `.docx` conversion — SIX files, not five.** They are the entire untracked working tree, and six checklist entries depend on one of them. Converting them closes the working-tree question completely.
+- **The `.docx` conversion — enumerate with `git ls-files '*.docx'` and `git status --porcelain`, never from a number written here.** ⚠ **This read *"SIX files, not five. They are the entire untracked working tree … Converting them closes the working-tree question completely."* Both halves went stale.** There were **eight** `.docx` as of 2026-08-30, and `RoofMiles_Handoff_Wave1.1_CloseOut.md` was untracked **and already markdown** — so converting every `.docx` no longer closed the working-tree question; it left a committable record behind. *(That file was tracked by the Document Reconciliation pass, 2026-08-30.)* **Six checklist entries still depend on `RoofMiles_BuildSequence_JobRevenueCapture.docx` — that dependency is the real information here; the count never was.** ⚠ **A count of files in a directory does not belong in prose nobody edits when the directory changes.** Third such count found below its true value in one pass, alongside `PRE_LAUNCH_CHECKLIST.md`'s `.docx` index row and the retired "24 files, 3 directories".
 - **Four redundant spec copies of the staging rule** — three carry wrong file lists. Now redundant since CLAUDE.md carries it.
 - **`CLAUDE_REGISTRY.md` split** — 69,170 chars, and `db.js:1662` names "Known Issue 13" inside a production `console.error`, so the section number is load-bearing at runtime.
 - **`error_log.resolved` has never been set on any row**, and the `backend` source carries 48 distinct errors with no route attribution — 72% of error volume in an ungroupable bin.
@@ -244,4 +250,22 @@ Not blocking. Recorded on `PRE_LAUNCH_CHECKLIST.md` under Named builds.
 
 ---
 
-*Sequenced against production state verified 2026-08-21 and the corrected records at 48a93ed. Wave 0 is next.*
+## ⚠ WHAT IS NEXT — a live pointer, not part of the dated record below
+
+**Wave 1.3 — C/DL-3c + E-min.** Wave 0 is complete; Wave 1.1 closed 2026-08-30 at `d16bc31`;
+**Wave 1.2 is VACATED (D14)** and RANK now runs as one arc after Wave 1.4. Row 1.2 is kept in
+place so existing citations stay true — **do not read the table's order as the running order.**
+
+⚠ **THIS LINE READ *"Wave 0 is next"* UNTIL 2026-08-30, INSIDE THE DATED SENTENCE BELOW.** That
+is why it survived two completed waves: **it looked like part of a historical record while being
+a live instruction**, and a reader who correctly discounted the date discounted the pointer with
+it. The two are now separated on purpose. **A pointer is not a record — if it tells you what to
+do next, it is not allowed to sit inside a sentence that begins with a verification date.**
+*(Corrected by the Document Reconciliation pass, 2026-08-30. This is the last line of the plan
+of record and a fresh session reads it first.)*
+
+---
+
+*Record: sequenced against production state verified 2026-08-21 and the corrected records at
+48a93ed. **This sentence is a dated record of what this document was sequenced against — it is
+not a statement about today, and nothing about what to do next belongs in it.***

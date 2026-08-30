@@ -117,7 +117,9 @@ B1/B2 split was App-Store-submission vs Accent-rollout; that line no longer exis
 ### D13 — "referrer app fully loaded" means WIDE. Ruled 2026-08-23 (Danny).
 
 ⚠ **Decision IDs D1–D12 are taken by the C/DL-3b series and D-A…D-O by the Admin Brand
-Retirement arc. `D13` was confirmed free by grep before use** — `EXECUTION_SEQUENCE.md` Wave
+Retirement arc. `D13` was confirmed free by grep before use** *(and `D14` since — see below;
+the full five-series enumeration lives there, because this one names only three)* —
+`EXECUTION_SEQUENCE.md` Wave
 1.1 cites *"D7's missing safety control"*, so the next free number is not the next number
 after the last one you happen to see.
 
@@ -134,13 +136,38 @@ and feature work resumes.
 **Five consequences, recorded so they are not rediscovered during the build:**
 1. **RANK R1 scope changes.** Under the narrow reading R1 was derivation plus read surfaces.
    Under wide it is the foundation for R2–R4 (points economy, store, redemption), so its
-   schema and derivation contract must be designed against the **full economy at Wave 1.2**
-   rather than retrofitted. A design-time cost at 1.2, not a build-time one.
+   schema and derivation contract must be designed against the **full economy** rather than
+   retrofitted. A design-time cost, not a build-time one.
+   ⚠ **THE STANDARD SURVIVES; ITS LOCATION MOVED.** This read *"the full economy at Wave 1.2"*
+   and *"a design-time cost at 1.2"* until D14 (2026-08-30) vacated Wave 1.2 and consolidated
+   RANK into one arc after Wave 1.4. **The design work is now owed at the HEAD OF THE
+   CONSOLIDATED ARC**, not at 1.2. Recorded rather than rewritten because D13's reasoning is
+   *why* the standard exists, and a reader who finds only the new location cannot tell whether
+   the standard was ever argued for. → D14 below.
 2. **UX Phase 0 moves earlier** — it now gates the whole UI Overhaul arc, which is pre-launch,
    so it belongs near 1.4 rather than in Wave 3. **Partly discharged already**: §11.1's three
    shared primitives exist. **Re-scope, do not rebuild.**
-3. **`MEMBER_RANK_ECONOMY_SPEC.md` §13's 18 open decisions become LAUNCH-BLOCKING** and need
+3. **`MEMBER_RANK_ECONOMY_SPEC.md` §13's open decisions become LAUNCH-BLOCKING** and need
    scheduling deliberately, rather than being discovered during R2.
+   **Count: 12 live of 15 rows** — measured 2026-08-30 at HEAD `d16bc31` by reading the §13
+   Open table. Struck: RANK-2, RANK-9, RANK-17, all resolved 2026-08-30.
+   ⚠ **THIS SAID "18", AND 18 WAS NEVER CORRECT — NOT STALE, WRONG ON THE DAY IT WAS WRITTEN.**
+   It entered at `39a099f` (2026-08-23); at that very commit the table held **15 rows, all 15
+   live**. It was never a measurement of anything. **The correction is therefore not "18 → 12"**
+   — a reader who inherits a bare 12 inherits the same unsourced claim in better shape. The
+   date, the HEAD and the method above are the point of this entry.
+   ⚠ **AND THE MEASUREMENT METHOD MATTERS: `grep -c "| RANK-"` RETURNS 12 AND IS THE WRONG
+   METHOD.** Struck rows read `| ~~RANK-` and simply fail to match the literal, so the right
+   answer and the wrong method coincide **only while strikethrough remains the retirement
+   notation.** Count `^| ~~RANK-` and subtract, or read the table.
+   ⚠ **`EXECUTION_SEQUENCE.md` says 12 in all three of its places and is correct** (§1's change
+   list, the Wave 3 insertion consequences, and the Wave 3 RANK row). The Wave 1.1 close-out
+   (`d16bc31`, 2026-08-30) found this error, fixed all three copies **there**, and **never
+   opened this document** — then recorded the finding in an untracked handoff. **This is the
+   canonical document, and it was the one copy left wrong by the pass that found the error.**
+   *(Third instance of "a number in a governing document needs a source" — and the first in the
+   canonical document itself. → `CLAUDE.md` → **A number in a governing document needs a
+   source**.)*
 4. **RANK §2 hard-prohibits points for reviews** (Google policy — it can penalize the
    contractor's own listing). Under wide, RANK R2–R4 and the Referral Conversion Engine both
    land pre-launch and are now **adjacent rather than separated by a launch**. Whoever builds
@@ -149,9 +176,68 @@ and feature work resumes.
    campaign send, and the apex legal-links 404 is a live defect. Both are launch-gating
    regardless.
 
-⚠ **`EXECUTION_SEQUENCE.md` still says *"This document assumes the narrow reading."* That
-sentence is now FALSE.** The amendment lands in its own session with its own diff; **this
-entry is the canonical record until then.**
+✅ **CLOSED 2026-08-30. The amendment landed at `EXECUTION_SEQUENCE.md:28-31`**, which now reads
+*"This paragraph read 'This document assumes the narrow reading' until that date, and that
+sentence is now false."* The *"until then"* condition is discharged; both documents agree. This
+entry read *"⚠ `EXECUTION_SEQUENCE.md` still says … this entry is the canonical record until
+then."*
+
+⚠ **WHY THIS ENTRY OUTLIVED ITS OWN CONDITION, RECORDED BECAUSE IT IS THE POINT.** Nothing was
+wrong with the warning — it was correct, and correctly written. **It had no closer.** The
+amending session edited `EXECUTION_SEQUENCE.md` in three places and never opened the entry that
+was waiting on it. That is CLAUDE.md's **closure half** verbatim: *a tracking mechanism needs
+both halves; when you add an entry, say what will REMOVE it and who does that.* **The removing
+act here was the amendment itself** — so the amending session was always the closer, and the
+entry did not say so. **Any entry that names another document's state must name the edit that
+closes it.**
+
+### D14 — RANK consolidates as ONE arc after Wave 1.4. Wave 1.2 is VACATED. Ruled 2026-08-30 (Danny).
+
+⚠ **`D14` was confirmed free by grep before use.** `D1`–`D12` are held by the C/DL-3b series,
+`D13` by the roadmap, `D-A`…`D-O` by the Admin Brand Retirement arc — **and
+`CDL_3a_BUILD_SPEC.md:28,31,34,37` holds a FIFTH, separate `D1`–`D4` that collides numerically
+with 3b's and is named in neither existing warning.** A sweep for `D14`–`D29` across all `*.md`,
+`server/`, `src/` and `scripts/` returned zero. **Grep before assigning; there are five series,
+not three** — and the warning above about non-sequential IDs is itself incomplete, which is the
+same shape as the thing it warns about.
+
+**RULING: the Member Rank & Points Economy lands as ONE arc, after Wave 1.4.** Wave 1.2 is
+vacated. R1 does not detach and ship ahead of the arc.
+
+⚠ **THE JUSTIFICATION IS NOT A SCHEDULING PREFERENCE — IT IS THE SPEC'S OWN PREREQUISITE.**
+`MEMBER_RANK_ECONOMY_SPEC.md:9` reads: *"**Sequencing:** Post-current-roadmap. Hard
+prerequisites: contractor-ID reconciliation complete."* **Contractor-ID reconciliation is Wave
+1.4** (`EXECUTION_SEQUENCE.md`, Wave 1 table, row 1.4). Placing RANK at 1.2 therefore **always violated the spec's
+own stated hard prerequisite**, from the moment the row was written.
+
+⚠ **NEITHER D13 NOR THE THREE 2026-08-30 RULINGS ADDRESSED THIS, AND THAT IS THE FINDING.** The
+row was argued over repeatedly — scope, phase, three decisions resolved against it — and **the
+spec's Sequencing line was never read against the row it was sequencing.** Nothing was wrong; a
+document was consulted for its §13 and never for its header. **A prerequisite stated in a header
+is not read by anyone who arrives at the document through a section link**, which is how every
+reader arrived here.
+
+**Consequences:**
+1. **3c (Wave 1.3) ships NO rank surface and NO empty rank slot.** Not a slot, not a stub, not a
+   `null` field. **A reserved slot is a promise that costs a review to keep.**
+2. **RANK-8's sequencing question closes on its SECOND branch** — *"3c ships the slot and R1
+   fills it"* — amended: 3c ships **neither** slot nor rank, and the arc builds both.
+   → `MEMBER_RANK_ECONOMY_SPEC.md` §13, RANK-8.
+3. **The 12 open §13 decisions remain LAUNCH-BLOCKING and move WITH the arc.** D13 is
+   **unchanged** by this — the arc is still pre-launch. This ruling moves *when*, never
+   *whether*.
+4. **D13's design standard still binds**, at the head of the consolidated arc rather than at
+   Wave 1.2 — see consequence 1 of D13 above. The head-of-arc design work is archived at
+   `MEMBER_RANK_ECONOMY_SPEC.md` §13, *Head-of-arc design findings*.
+
+⚠ **WHAT CLOSES THIS ENTRY:** the consolidated RANK arc reaching its own close-out. Until then it
+is open. *(Naming the closer because the entry directly above it is a worked example of what
+happens when one does not.)*
+
+**Row 1.2 is marked VACATED IN PLACE. Rows 1.3–1.7 are NOT renumbered** —
+`EXECUTION_SEQUENCE.md`'s **Wave 3 header** forbids it (*"The wave NUMBERS are deliberately
+unchanged"*), and this checklist, the C/DL specs and the RANK spec
+all cite 1.3 / 1.4 / 1.7 by number. Every existing citation stays true.
 
 ---
 
@@ -312,6 +398,121 @@ entry is the canonical record until then.**
       list.** → D-K
 
 **Correctness / data integrity**
+
+**Found by the vacated Wave 1.2 Phase 0 (2026-08-30). Six findings, none rank-dependent — they
+were found while sizing rank and they are defects in the referral engine, the leaderboard and
+the badge system. Recorded here rather than carried into the RANK arc, because a rank build
+that fixes them acquires a money-path review standard it was scoped to avoid.** → D14.
+
+- [ ] **🔴 A READ ENDPOINT WRITES A PAYOUT ROW FROM A HARDCODED AMOUNT, BYPASSING THE
+      CONTRACTOR'S SCHEDULE ENTIRELY.**
+      `server/routes/referrer.js:897-905` — reached from `GET /api/pipeline`, i.e. **a referrer
+      opening their app** — inserts a `referral_conversions` row whose `bonus_amount` comes from
+      `server/crm/jobber.js:218-219`'s `500 + boost`, both **platform constants**
+      (`server/constants/boostSchedule.js:5`). It gates on `item.bonusEarned`
+      (`pipeline_status === 'paid' && !pre_start_date`, `server/crm/jobber.js:211`) and **never
+      calls `evaluateReferral()`** — verified by reading the whole handler, not by grep. It
+      consults no `referral_schedules` row, no minimum-invoice gate, no job-type match and no
+      financed-payment wait. **`referral_conversions.bonus_amount` IS the payout amount** — it is
+      what complete cards render and what balance reads.
+      ⚠ **THIS IS LIVE AT ACCENT TODAY, NOT LATENT — AND THE ORIGINAL WORDING OF THIS ENTRY SAID
+      OTHERWISE.** It was drafted as *"invisible at Accent because $500 happens to match; wrong at
+      contractor #2."* **That is true of ONE of Accent's two schedules and false of the other.**
+      Accent is seeded with **two** (`server/db.js:834-892`):
+      **Schedule A "Full Roof Replacement"** — escalating, `minimum_invoice` **9500**, steps
+      500/600/700/750/800/850/900, which **do** match `500 + boost` exactly; and
+      **Schedule B "Repair"** — **tiered**, `minimum_invoice` **950**, payouts **50 / 100 / 150 /
+      200**, which do not match anything.
+      **So a $1,500 Repair referral is worth $100 under the schedule and $500 + boost down this
+      path — a 5× overpayment written by a GET**, and a $1,000 job that Schedule A's $9,500 floor
+      would reject entirely still collects $500 here, because this writer applies no floor at all.
+      ⚠ **AND THE TWO WRITERS RACE, WITH THE LOSER SILENTLY DISCARDED.** Both use
+      `ON CONFLICT (user_id, jobber_client_id) DO NOTHING`, so the insert is idempotent and never
+      500s — **whichever fires FIRST sets the amount permanently.** A referrer who opens their app
+      before the invoice-paid webhook lands gets the hardcoded figure; one who does not gets the
+      schedule's. **The payout depends on when the referrer happened to open the app.**
+      ⚠ **THEY ALSO DISAGREE ABOUT WHETHER A REFERRAL HAPPENED AT ALL.** Under an all-zero
+      schedule (see the entry below) `webhooks/jobber.js` writes **no row** while this path writes
+      **$500**. Two writers, opposite answers, same referral. **Neither is reachable from the
+      other's tests.**
+      ⚠ **UNVERIFIED IN PRODUCTION.** The figures above are the **seed** (`db.js:830`, which fires
+      only on an empty table); production may have been edited since. **Confirm before sizing the
+      fix** — Railway console, one statement:
+      `SELECT id, name, payout_model, minimum_invoice, flat_amount, tier_brackets, escalating_steps FROM referral_schedules WHERE contractor_id = 'accent-roofing' LIMIT 100000;`
+      **The ruling owed:** retire this writer into `evaluateReferral()`, or state in writing why a
+      second, schedule-blind write path exists. **It is not a cleanup item — it decides what a
+      conversion row MEANS.**
+      → design constraint recorded at `MEMBER_RANK_ECONOMY_SPEC.md` §13, head-of-arc finding 6.
+
+- [ ] **🔴 THE LEADERBOARD TOP-10 LEAKS USERS ACROSS TENANTS.**
+      `server/routes/referrer.js:2638-2639` (all-time) and `:2659-2662` (period). The
+      `referral_conversions` join is tenant-scoped; **`users` carries no `WHERE` clause at all**,
+      so every user on the platform is a candidate row and other tenants' users land at
+      `converted_count = 0`.
+      **Consequence:** with fewer than ten local referrers holding conversions — **which is every
+      contractor at launch, and is the exact condition warmup mode exists for** — another
+      contractor's referrers' `full_name` and `profile_photo` render in this contractor's
+      leaderboard. `ORDER BY converted_count DESC LIMIT 10` hides it the moment ten local
+      referrers convert, so it **heals as a tenant grows** and is invisible in any mature fixture.
+      ⚠ **UNFENCED.** No test covers it, and before 2026-08-30 the word "leaderboard" appeared in
+      this checklist exactly once, inside a list.
+      **Same class as F8 and Wave 0.3's twelve, on a surface neither swept** — a `LEFT JOIN` whose
+      scoping sits in the `ON` clause reads as tenant-scoped to a grep and is not.
+
+- [ ] **🔴 AN ALL-ZERO SCHEDULE WRITES NO CONVERSION ROW, SO A PAID REFERRAL LEAVES NO RECORD.**
+      `server/referralRules.js:294-296` — `if (bonusAmount <= 0) return { qualified: false,
+      reason: 'calculated_bonus_is_zero' }` — returns before any insert.
+      ⚠ **THIS IS A REFERRAL-ENGINE CORRECTNESS QUESTION, NOT A RANK ONE, AND IT NEEDS ITS OWN
+      RULING.** `referral_conversions` is **the audit record that a referral converted**; it backs
+      the leaderboard, period earnings, the escalating-step counter and the one-bonus-per-client
+      `UNIQUE`. Withholding that record **on a payout condition** conflates *"this referral
+      happened"* with *"this referral paid something."*
+      **The ruling owed:** does a qualified paid referral computing to $0 get a row with
+      `bonus_amount = 0`, or no row? Today it is no row, and nothing says that was decided.
+      ⚠ **It is not hypothetical.** `MEMBER_RANK_ECONOMY_SPEC.md` §4.3 blesses all-zeros
+      explicitly — *"All-zeros legal (pure status mode)"* — so a contractor configuring exactly
+      what the spec permits generates **no conversion rows at all**, and every downstream surface
+      reads empty with nothing reporting why.
+
+- [ ] **🔴 MILESTONE BADGES COUNT PIPELINE ROWS, NOT PAID CONVERSIONS.**
+      `server/routes/referrer.js:908` passes `data.pipeline.length` to `checkAndAwardBadges`,
+      which is **every pipeline row — leads, inspections, sold, closed**. The candidates at
+      `:251-255` (`first_referral`, `milestone_5`, `milestone_10`, `milestone_25`) are named for
+      referrals and gated on that total.
+      **A referrer with 5 leads and 0 paid jobs holds `milestone_5` in production today.**
+      ⚠ **The badge is user-visible** (`src/components/referrer/BadgeCelebrationPopup.jsx`,
+      `ProfileTab.jsx`, and the leaderboard's `display_badge`), so this is a claim the product
+      makes to a referrer about work they have not done. **Award is one-way** — `user_badges` has
+      no revocation path, so anything already granted stays granted whatever the fix.
+      → mechanism recorded at `CLAUDE_REGISTRY.md` → *Known Issues 17*.
+
+- [ ] **🟠 `referral_conversions.payout_status` IS AN INERT COLUMN WHOSE COMMENT CLAIMS IT
+      ENFORCES SOMETHING.** Declared twice (`server/db.js:154`, `:782`). **Zero production reads,
+      zero writes, zero `WHERE` clauses, zero occurrences in `src/`.** Its own comment at
+      `db.js:780-781` reads *"Defaults to pending_review — no payout moves without explicit
+      approval."* **Nothing enforces that.** Every row has sat at `'pending_review'` since the
+      column was added, including rows for referrals that were paid.
+      A mechanism reporting a state it has no way of observing — CLAUDE.md's named class, and the
+      fifth confirmed instance.
+      ⚠ **NOTE FOR THE RANK/ECONOMY ARC:** R2 will reach for this as the natural home for reversal
+      state (RANK §3.9). **It is not a free column** — the zero-bonus ruling above decides what
+      `payout_status` would even mean, and §3.9's asymmetry is currently *vacuously satisfied*
+      rather than held (rank ignores reversals because nothing records them). **Adding reversal
+      state ACTIVATES a state that has never occurred**, which is the *"when a fix makes new DATA
+      possible"* rule: enumerate every reader of `referral_conversions` first.
+
+- [ ] **🟡 `referral_conversions` HAS NO INDEX BEYOND ITS PK AND `UNIQUE(user_id,
+      jobber_client_id)`.** `grep "CREATE INDEX.*referral_conversions"` across `server/db.js` and
+      `server/migrations/*.js` returns **zero**.
+      `WHERE user_id = …` rides the UNIQUE index's leading column and is fine. **Every
+      `WHERE contractor_id = …` is a sequential scan** — including both shipping leaderboard
+      variants, which scan on every Rankings tab load. `converted_at` is unindexed entirely, so
+      every period-filtered query scans too.
+      Not urgent at Accent's row count; **it is the shape that stops being fine quietly.** One
+      composite `(contractor_id, user_id, converted_at)` covers all three access patterns.
+      ⚠ **Append near the END of `db.js`** — the highest citation into that file is around
+      `:1672`, so a block below it rots nothing.
+
 - [ ] **🔴 NO PENDING REFERRAL HAS EVER CONVERTED END TO END.**
       All 13 `pending_referrals` rows carry `matched_user_id = NULL` (verified in production,
       2026-08-21). Everything downstream — payouts, leaderboards, badges, cash-outs, rep
@@ -514,6 +715,27 @@ entry is the canonical record until then.**
       (`:76`, `:80`, already in the five above), and **two in THIS FILE at `:631-632` — which are
       the lines that RECORD the `CLAUDE.md:502` rot.** ⚠ **Repairing those two would destroy the
       evidence**: the whole point of the sentence is to quote the wrong number.
+      ⚠ **THE DOCUMENT RECONCILIATION PASS MOVED THEM AGAIN (2026-08-30, same day) —
+      `--changed-files` flagged 17, and AGAIN only ONE required action, which was the pass's
+      OWN.** Seven in `docs/GROUND_TRUTH_2026-08-21.md` and one more `CLAUDE.md:502` citation
+      there (dated snapshot — never renumber) · **four** in
+      `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` (`:70`, `:76`, `:80`, `:114`) · five in THIS FILE
+      recording the `CLAUDE.md:502` rot (repairing destroys the evidence) · and **one the pass
+      itself had just written**, citing `EXECUTION_SEQUENCE.md:225` in a bullet whose target that
+      same pass had moved. **It was rewritten to cite by ROLE rather than by line**, which is the
+      standing rule and the only permanent fix.
+      ⚠ **TWO OF THE FOUR ABR CITATIONS WERE ALREADY WRONG BEFORE THAT PASS TOUCHED ANYTHING**,
+      both verified by reading the cited content at the OLD line in the OLD revision (`d16bc31`):
+      **`:114`** cites the `contractors.slug` backfill and points at *"UX Phase 0 moves earlier"*
+      plus the §13 decision count; **`:70`** cites *"option (B) — a light plate behind the logo
+      area"* and points at the **D13 WIDE ruling**. Neither describes its target.
+      ⚠ **ADDING THE DELTA WOULD HAVE CERTIFIED TWO WRONG NUMBERS AS REPAIRED** — the exact
+      failure `--changed-files`' own warning describes, and the reason the mode says "LIKELY
+      ROTTED" rather than "was correct before". **Left wrong and recorded here rather than
+      improvised**; re-deriving where their subjects live is a different and larger job.
+      ⚠ **AND THE ABR COUNT KEEPS GROWING BECAUSE NOBODY HAS EVER RE-DERIVED THEM** — "the five
+      above", then "two of the five", now four flagged with two proven wrong. **This cluster
+      needs one deliberate pass, not another line on this list.**
       ⚠ **AND ONE NEW MEMBER OF THE CLUSTER: `docs/GROUND_TRUTH_2026-08-21.md:34`**, which is not
       in the six enumerated above. **The list of eleven-then-twelve is now at least thirteen, and
       it is a hand-maintained list of a hand-maintained problem** — re-run
@@ -2315,6 +2537,13 @@ root cause, and patching them separately produces five unrelated special cases)
       listed and 6 are suppressed by design. Among them `utils/sessionPolicy.js`, which
       `CLAUDE.md`'s non-negotiable session rule cites BY NAME as the one place the numbers
       live: **the rules pointed at a file the map did not list.**
+      ⚠ **THIS ENTRY DISAGREES WITH ITSELF ABOUT THE FILE COUNT AND NEITHER FIGURE HAS BEEN
+      RE-MEASURED.** This line says **30**; the ⚠ paragraph below says *"the truth was **29**
+      and 11."* Noted 2026-08-30 by the Document Reconciliation pass, **deliberately not
+      resolved there** — it needs its own look, and guessing which is right is how an unsourced
+      number gets laundered into a sourced one. **Quote neither as settled.** `npm run
+      architecture -- --check` is the measurement; the two figures above are a record of a past
+      state and may both be wrong.
       ⚠ **THE HAND-MAINTAINED MISSING-FILE AND MISSING-DIRECTORY LISTS THAT STOOD HERE WERE
       DELETED, NOT CORRECTED.** They said 24 files and 3 directories; the truth was 29 and 11,
       and the directory list omitted `server/permissions/` while the file list named
@@ -2468,9 +2697,11 @@ root cause, and patching them separately produces five unrelated special cases)
       **The plan of record for the next ~50 sessions was never tracked until `99ab323`.**
       A handoff recorded the inverse of what a commit did, in the document that governs
       sequencing.
-      ⚠ **`EXECUTION_SEQUENCE.md:42` still carries the superseded "24 files, 3 directories"
-      figures.** Left deliberately — that file is amended in its own session, with its own
-      diff.
+      ✅ **CLOSED 2026-08-30.** This read *"`EXECUTION_SEQUENCE.md:42` still carries the
+      superseded '24 files, 3 directories' figures. Left deliberately."* The correction had
+      already landed; the figures sit retired in `EXECUTION_SEQUENCE.md`'s **Wave 0 row 0.1**, and line 42 holds
+      an unrelated sentence. **Second of two copies of this claim** — reasoning recorded once,
+      at the twin entry below in *Wave 0.1 — findings*, rather than repeated here.
 - **⚠ AN APPROVAL IS NOT AN OBSERVATION.** During Wave 0.1 an approval message asserted
       *"Commit 3 approved and committed"* when only the approval had occurred. Working from
       that, **`3e67547` (Commit 2) was written into two tracked records as the SHA that
@@ -2480,15 +2711,36 @@ root cause, and patching them separately produces five unrelated special cases)
       carries** — `git log --format='%H %s' -1 <sha>` and `git show --name-status <sha>`.
       **Never cite a SHA on the strength of a message that says it exists.** ⚠ This is the
       session's own defect class, authored inside the commit that records that class.
-- **⚠ `EXECUTION_SEQUENCE.md:42` carries the superseded "24 files, 3 directories" figures**
-      (true values **29** and **11**). Deliberately not edited in Wave 0.1 — that file is
-      amended in its own session with its own diff. **Fold this correction into the D13
-      wide-scope amendment so the file is touched once.**
+- ✅ **CLOSED 2026-08-30 — the "24 files, 3 directories" correction had ALREADY LANDED.** This
+      entry read *"`EXECUTION_SEQUENCE.md:42` carries the superseded figures (true values 29 and
+      11) … **Fold this correction into the D13 wide-scope amendment so the file is touched
+      once.**"* The figures now sit in **`EXECUTION_SEQUENCE.md`'s Wave 0 row 0.1**, explicitly retired: *"the
+      figures once quoted here (24 files, 3 directories) were themselves lower bounds and are
+      deliberately not restated."* Nothing was owed.
+      ⚠ **THE CITATION ROTTED TWICE OVER.** Line 42 does not hold stale figures — it holds the
+      **D13 change-list sentence**. A line number that moved **and** a subject that moved, and
+      the entry read as perfectly plausible in both respects.
+      ⚠ **A STALE FACT GETS DISCOUNTED; A STALE INSTRUCTION GETS EXECUTED.** That is why this
+      one mattered more than the ordinary rot beside it. Following it as written would have
+      meant editing the **D13 change list** to insert a file-count correction that belongs
+      nowhere near it — a session doing exactly as instructed, damaging the document it was
+      sent to repair. **Any entry that instructs a future session must name what discharges
+      it.** Same closure-half failure as the *narrow reading* warning in the D13 entry above,
+      in its more dangerous form: that one merely outlived its condition; this one issued
+      orders after its condition was gone.
+      *(Found by the Document Reconciliation pass, 2026-08-30. See also the twin copy above in
+      the Wave 0.1 findings, closed with it.)*
 - **Decision IDs are NOT sequential.** `D1`–`D12` are taken (C/DL-3b holds a block; the Admin
       Brand Retirement arc holds `D-A`…`D-O`). **The next free number is not the number after
       the last one you happen to see** — `EXECUTION_SEQUENCE.md` Wave 1.1 cites *"D7's
       missing safety control"*, which is easy to read as the high-water mark and is not.
       **Grep before assigning.** Recorded because `D13` was assigned on that basis.
+      ⚠ **UPDATED 2026-08-30 — `D14` IS NOW TAKEN TOO, AND THIS WARNING WAS ITSELF INCOMPLETE.**
+      There are **five** series, not three: `CDL_3a_BUILD_SPEC.md` holds its own `D1`–`D4` that
+      **collide numerically with C/DL-3b's**, and `DECISION_C_DL_BUILD_SPEC.md` /
+      `LANDING_PAGE_SPEC.md` hold `D0`. **Next free: `D15`.** *(A warning about incomplete
+      enumeration that was itself an incomplete enumeration — recorded rather than quietly
+      widened, because that is the same shape it warns about.)* → D14.
 - **⚠ FOUR SELF-INFLICTED INSTANCES OF THIS ARC'S OWN DEFECT CLASS OCCURRED DURING THE ARC,
       AND MECHANISMS CAUGHT ALL FOUR — ATTENTION CAUGHT NONE.**
       1. A Commit-2 SHA written into two tracked records as the commit that tracked the plan
@@ -2879,6 +3131,6 @@ quadruples is evidence about the estimate, not about the wave:
 | `RoofMiles_Master_Findings_Session94_5_v2.docx` | §6 — the register of ~90 designed-but-unbuilt features. Feature work is **NOT** indexed in this checklist; it lives there |
 | `MEMBER_RANK_ECONOMY_SPEC.md` | Rank, points, and store economy. Phasing R1–R4, open decisions §13 |
 | `UI_OVERHAUL_SPEC.md` | Referrer-app UX arc, the design-psychology foundation, and the binding ethical guardrails. Open decisions §12 |
-| `*.docx` in the repo root | Job Revenue Capture · Landing Page Ambient Branding |
+| `*.docx` in the repo root | **Enumerate with `git status --porcelain` / `git ls-files '*.docx'` — do NOT read a count from this row.** ⚠ This row named TWO files (Job Revenue Capture · Landing Page Ambient Branding) until 2026-08-30; there were **eight**, and the six handoff `.docx` were invisible to the canonical document's own index of itself. **The fix is not "two → eight"** — that is the same claim in better shape, and it decays the next time a file lands. **A count of files in a directory does not belong in prose nobody edits when the directory changes.** *(Third hand-maintained file count found below its true value in one pass — alongside `EXECUTION_SEQUENCE.md`'s **§5 "Still owed on the records"** `.docx` bullet, which said "SIX files", and the retired "24 files, 3 directories". The pattern is not carelessness about files; it is that directories change and prose does not. **Cited by role, not line, because this pass's own edit moved that bullet** — which is the rule this parenthesis is an instance of.)* **The one thing here that is real information and is kept:** six entries in this checklist depend on `RoofMiles_BuildSequence_JobRevenueCapture.docx`, so that file's conversion is load-bearing and the others are not |
 | `npm run architecture -- --check` | **The folder structure of `server/` and `src/`. GENERATED — there is no hand-maintained list any more.** Prints every excluded file and every suppressed directory by name. `scripts/architecture.js` |
 | `npm run sizing` | escapeHtml definitions, brand literals, `err.message` leaks. Generated counts; paste the dated output |

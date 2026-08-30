@@ -282,6 +282,7 @@ through `useBranding()`, never from a file on a drive.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
 - Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1118 server tests across 177 suites, and 483 React tests across 34 files** (measured 2026-08-30 at HEAD `7252cc5`, Wave 1.1 close-out, by running the gate). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD STAYS `7252cc5` DELIBERATELY — DO NOT "UPDATE" IT TO THE WAVE'S CLOSING SHA.** Wave 1.1 closed at `d16bc31`, which is docs-only; the gate was re-run there on 2026-08-30 and returned the identical four numbers. **`7252cc5` is where the measurement was actually taken, and that is what makes the figure re-checkable.** Rewriting it to a HEAD the measurement was not taken at would make the citation *less* true while looking tidier. **Second time a tripwire in this file has attracted a well-meaning edit** — the first set it 171 tests below its own floor.
   ⚠ **THIS TRIPWIRE HAD GONE STALE BY 171 SERVER TESTS AND WAS RE-ARMED HERE.** It read *"947 server tests and 459 React tests across 31 files (measured 2026-08-21, HEAD `d0fb3aa`)"* — the figure `docs/GROUND_TRUTH_2026-08-21.md` established, correct on the day and never moved since. At 947 it could not fire until someone deleted a fifth of the server suite. **That is the second time this exact tripwire has been found below its own floor**, and it is the worked example in *A mechanism that reports health it cannot observe* below. The failure mode is structural: a hand-maintained number in a document nobody edits when the thing it measures grows. **When you find it stale, re-arm it with the figure you MEASURED and the HEAD you measured it at** — never an estimate, and never a number carried from a prior session's report. ⚠ Check the EXIT CODE, not the pass count — a suite can report passing while exiting 1. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count that jumps far above 31 means the include glob has been widened and is picking up the server suite — see the warning above.)
 - Characterization rule: a failing or surprising test result means STOP and report — never adjust production code to satisfy a test, and never silently adjust a test to satisfy the code. Deliberate behavior changes update the relevant test openly and are documented in the session handoff.
 - Migration idempotency proofs must include a reproduction seeded with production's actual pre-existing row shapes, not only fresh-schema runs — a test DB rebuilt from scratch every run can never exercise "a real pre-existing row already in some legacy state," which is exactly what breaks in production and never breaks locally. See `CLAUDE_REGISTRY.md` (ST session, Architecture Notes) for the incident that established this.
@@ -824,6 +825,27 @@ day: the test-count tripwire set below its own floor, `docs/ARCHITECTURE.md`'s s
 check pointed at a file that no longer held the structure, and a size threshold that was
 never a constant and was counted in a different unit than every figure compared against it.
 **All three looked like working mechanisms.**
+
+⚠ **A FOURTH, IN THE CANONICAL DOCUMENT, AND IT WAS NEVER CORRECT RATHER THAN GONE STALE.**
+`PRE_LAUNCH_CHECKLIST.md`'s D13 entry said *"§13's 18 open decisions"*. It entered at `39a099f`,
+and **at that very commit the table held 15 rows, all 15 live** — it was never a measurement of
+anything. `EXECUTION_SEQUENCE.md` said 12 in three places and was right. **The previous doc pass
+found the error, fixed all three correct copies, and never opened the canonical one** — then
+recorded the finding in an untracked handoff. **Fixing the copies you are looking at is not
+fixing the claim; ask which document is canonical BEFORE deciding you are done.**
+
+⚠ **AND A NUMBER CAN BE RIGHT FOR THE WRONG REASON, WHICH IS THE HARDEST VARIANT TO SEE.**
+Counting `MEMBER_RANK_ECONOMY_SPEC.md` §13's live decisions with `grep -c "| RANK-"` returns
+**12**, which is the correct live count — but not because it counts live rows. Struck rows read
+`| ~~RANK-` and **fail to match the literal**. The right answer and the wrong method coincide
+**only while strikethrough remains the retirement notation**; retire a decision any other way and
+the same command returns a confidently wrong number under a method that has "always worked."
+**Verifying a count means knowing what the needle EXCLUDES, not comparing the output to your
+expectation.**
+⚠ **THIS BELONGS HERE AND NOT WITH THE VACUITY SHAPES, AND THE DISTINCTION IS WORTH KEEPING.**
+Every vacuity shape is *"this assertion cannot fail."* **This is the opposite** — the assertion
+could have failed, and the number came out right by a coincidence of notation. Filing it with the
+vacuity shapes would blur a distinction that section spends its length maintaining.
 
 ---
 

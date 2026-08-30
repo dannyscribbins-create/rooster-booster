@@ -365,7 +365,7 @@ remembers the old rule. §10.2 carries the same correction.
 
 | Phase | Contents | Notes |
 | --- | --- | --- |
-| **R1 — Rank core** | Ladder/derivation/celebration/medallions/identity block/tier page/leaderboard/Legend/transition interstitial | No money-path. Auto-grandfathering. Shippable alone. |
+| **R1 — Rank core** | Ladder/derivation/celebration/medallions/identity block/tier page/leaderboard/Legend/transition interstitial | No money-path. Auto-grandfathering. ⚠ **NOT DETACHED — D14, 2026-08-30.** This read *"Shippable alone"*, and it is still **technically** true: R1 has no money-path and stands up without R2–R4. **It is no longer the plan.** R1 does not ship ahead of the arc, because this spec's own header (`:9`) makes contractor-ID reconciliation a hard prerequisite for all of it. **Contents unchanged.** |
 | **R2 — Tier bonus** | Multiplier engine · receipts · admin Tiers page core + preview + calibration widget + alignment helper | Money-path (§4.4). Pilot at 0% ⇒ zero live payout change on deploy. |
 | **R3 — Points + Store** | Ledger · earn triggers + multipliers · store UI both shelves · offer CRUD · drawer flows · discounts · redemption records + inbox · Choice Benefits (per RANK-11) · notification matrix items | One referrer-visible release. Largest phase — likely splits into R3a (points+in-house) / R3b (Tremendous). |
 | **R4 — Tremendous** | If split out of R3: API client, webhooks, gated Gold+ catalog, cash purchase path | Blocked on RANK-7. |
@@ -404,6 +404,13 @@ that special case would be written more than once and would eventually disagree 
   stay inside **store gating**, Legend is R1 as ruled. **If any privilege reaches the payout
   multiplier, Legend becomes R2** and money-path work under §4.4 — a different review standard,
   not merely a later date.
+- ⚠ **THAT SUB-QUESTION IS HELD OFF THE CRITICAL PATH BY A DATA-MODEL CONSTRAINT, NOT BY
+  SCHEDULING.** *(Added 2026-08-30, Wave 1.2 Phase 0.)* **`RANK_LADDER` has exactly FIVE rungs and
+  `legend` is a separate nullable OVERLAY field — never a sixth rung.** Modelled as an overlay,
+  the derivation is invariant under either answer and the sub-question can be settled any time
+  before R2 with no rework. **Modelled as a rung, `tier_bonus_pct[rank]` acquires a
+  contractor-authored, contractor-privileged key and the sub-question becomes BLOCKING.**
+  → *Head-of-arc design findings*, finding 3, below.
 
 **RANK-17 — RESOLVED 2026-08-30 (Danny): medallions are PLATFORM-LOCKED, built in-house as SVG.**
 - **One fixed palette. Bronze is bronze, Silver is silver** — the metals are the identity, and a
@@ -434,6 +441,109 @@ out of scope except RANK-8"* — **that exception now has a scheduling cost.** A
 first would ship with a rank slot it cannot fill, or would be revisited to add one. Either R1
 precedes the 3c surfaces, or 3c ships the slot and R1 fills it — **decide which, deliberately,
 rather than discovering it during 3c.**
+
+✅ **DECIDED 2026-08-30 (Danny) — D14: THE SECOND BRANCH, AMENDED. 3c ships NO rank surface AND
+NO empty slot**, and the consolidated RANK arc builds both later. Not a slot, not a stub, not a
+`null` field — **a reserved slot is a promise that costs a review to keep**, and the branch as
+originally written ("3c ships the slot") still assumed R1 was imminent.
+⚠ **RANK-8's SUBSTANCE IS UNCHANGED AND STILL BINDING** — rank remains read-only-visible on both
+the field rep interface and the admin panel, at a glance. **Only its timing moved.** The
+sequencing consequence recorded above was real and was correctly raised; it is now answered.
+⚠ **AND THE ANSWER CAME FROM THIS DOCUMENT'S OWN HEADER, WHICH NOBODY HAD READ AGAINST THE
+ROADMAP ROW:** `:9` states *"Hard prerequisites: contractor-ID reconciliation complete"* — Wave
+1.4. RANK at Wave 1.2 always violated it. **A prerequisite in a header is invisible to every
+reader who arrives via a section link**, which is how this document is always read.
+Canonical record: `PRE_LAUNCH_CHECKLIST.md` → *D14*.
+
+### Head-of-arc design findings (Wave 1.2 Phase 0, 2026-08-30 — archived here when 1.2 was vacated)
+
+⚠ **THESE ARE THE ARC'S HEAD-OF-ARC DESIGN WORK, NOT NOTES.** D13 requires the derivation
+contract to be designed against the full economy; this is that design, done, and it is recorded
+here because the session that produced it was vacated and it existed nowhere else.
+**Every claim below was verified against source at HEAD `d16bc31`.**
+
+**1. The derivation contract, and the as-of read.**
+`deriveMemberRank({ userId, contractorId, asOf?, client? })`. §4.5 locks rank at conversion time
+and §5.3 locks the points multiplier to rank at event time — **both are reads of this one
+contract**, so as-of is a parameter with "now" as the default, never a second function. The
+optional `client` exists because R2 must call it **inside the same transaction as a conversion
+insert** (rank-at-conversion needs the count *before* the insert commits); a version taking only
+a pool cannot be called from there.
+**A stable deterministic ordering key already exists: `(converted_at, id)`**, `id` being `SERIAL`
+(`server/db.js:149`). No schema change is needed for determinism.
+**Where it lives:** `server/utils/rankDerivation.js`. It must be callable from a webhook handler,
+a route handler and a cron job. **Not `referralRules.js`** — that would make the money engine the
+owner of a read surface.
+**The SQL already ships**, correctly tenant-scoped, at `server/referralRules.js:271-273`:
+`SELECT COUNT(*) FROM referral_conversions WHERE user_id = $1 AND contractor_id = $2`.
+
+**2. ⚠ `converted_at` IS THE RECORD TIME, NOT THE BUSINESS-EVENT TIME.**
+Both writers stamp `NOW()` — `server/routes/webhooks/jobber.js:1118` and
+`server/routes/referrer.js:902`. **The second stamps `NOW()` when a referrer opens their app**,
+which can be days or weeks after the invoice was paid in Jobber. **There is no `invoice_paid_at`
+column.**
+**Consequence: any stored point-in-time value computed before that column exists is computed
+against the wrong instant** — and it is stored, so it is wrong permanently and silently.
+**The column must land before R2 computes a single multiplier.** R1 is unaffected (rank reads the
+same either way); R2 is not.
+
+**3. `RANK_LADDER` HAS EXACTLY FIVE RUNGS. `legend` IS A SEPARATE NULLABLE OVERLAY FIELD.**
+Recorded against **RANK-9**, whose sub-question is still open: *does any Legend privilege reach
+the §4.2 payout multiplier?*
+**Modelled as an overlay, the derivation is invariant under either answer** — Legend is granted,
+not earned, contributes nothing to the count and reads nothing from it. The sub-question can be
+answered any time before R2 with no rework, and is **off the critical path.**
+⚠ **Modelled as a SIXTH RUNG — which is the tempting shape, because it renders in the same slot —
+`tier_bonus_pct[rank]` acquires a contractor-authored, contractor-privileged key, the ladder
+object becomes money-path-adjacent, and the sub-question becomes BLOCKING.** The overlay is what
+keeps it open harmlessly. **This is a condition on the data model, not a preference.**
+
+**4. THE PAYLOAD FIELD IS `memberRank`. NEVER `rank`. NEVER `tier`.**
+Both obvious names are already taken by live meanings, and one collides on the exact component
+§10.1 puts the tier glyph in:
+- **`rank` = leaderboard position.** The payload ships `userRank` (`server/routes/referrer.js:2775,2786`),
+  consumed at `src/components/referrer/RankingsTab.jsx:58,465`; shout copy buckets by
+  `rank1 / rank2_3 / rank4_7 / rank8_10` (`src/constants/shouts.js:1-2`) in **two** components —
+  `RankingsTab.jsx:91-92` and `ProfileTab.jsx:603-604`.
+- **`tier` is taken twice.** `team_members.tier` (`'general'|'admin'|'owner'`, `server/db.js:1183`),
+  which `surfaceFor()` routes the whole application on (`src/App.jsx:57`); and the
+  `tier_1`/`tier_2` contact filters (`server/routes/admin/contacts.js:220-231`).
+**Decide this before the first line of the derivation, not at the renderer** — it is a payload
+contract across three surfaces.
+
+**5. THE NON-MEMBER STATE — a fourth state the ladder does not cover.**
+RANK-2 made Bronze's `0` explicit so *"the same lookup that finds Gold finds Bronze."* **That is
+total over MEMBERS and partial over CLIENTS.** A rep's client list is keyed on `jobber_client_id`
+(`client_rep_assignments`), not `users.id`; most rows have **no `users` row at all**, and such a
+person is not a Bronze member — they are not a member.
+**The natural implementation returns `count = 0 → Bronze` and labels every homeowner in the
+contractor's book a Bronze member of a programme they never joined.**
+**Rule: a null `memberRank` renders NOTHING.** Same class as the identity-bearing-values rule —
+rank says *who* someone is, so it gets no default.
+
+**6. ⚠ THE TWO CONVERSION WRITERS APPLY DIFFERENT GATES, so §3.3 is true of one and false of the
+other.** §3.3 claims *qualified* is *"defined by the contractor's existing schedule gates,
+inherited automatically with zero new config."*
+- `server/routes/webhooks/jobber.js:1105` gates on `evaluateReferral()` — the real schedule rules.
+- `server/routes/referrer.js:897` gates on `item.bonusEarned` (`pipeline_status === 'paid' &&
+  !pre_start_date`, `server/crm/jobber.js:211`) and writes a **hardcoded `500 + boost`**
+  (`server/crm/jobber.js:218-219`). **It inherits no schedule gate at all**, and it fires on a
+  **read** — a referrer opening their pipeline.
+**Rank counts rows from both.** Either the second writer is retired into the first, or §3.3 is
+rewritten to say what is true. **Do not build derivation on top of §3.3 as written.**
+⚠ **THIS IS ALSO A LIVE MONEY-PATH DEFECT IN ITS OWN RIGHT, TRACKED SEPARATELY** — `bonus_amount`
+is the payout amount and the second writer's is a platform constant. → `PRE_LAUNCH_CHECKLIST.md`
+→ *A read endpoint writes a payout row from a hardcoded amount*.
+
+**7. §3.9's CLAWBACK ASYMMETRY IS CURRENTLY VACUOUSLY SATISFIED, NOT HELD.**
+Rank ignores reversals **because nothing records reversals** — there is no reversal, void or
+refunded column, and `payout_status` is inert (zero production reads or writes; `server/db.js:154`,
+`:782`).
+⚠ **The distinction matters because R2 adds the column.** At that moment a state that has never
+occurred becomes possible, and **every existing consumer of `referral_conversions` becomes a
+consumer of it** — leaderboard counts, period earnings, the escalating-step counter, the
+one-bonus-per-client guarantee. That is CLAUDE.md's *"when a fix makes new DATA possible"* rule
+exactly. **Enumerate the readers before adding the column, not after.**
 
 ### Open (Danny)
 
