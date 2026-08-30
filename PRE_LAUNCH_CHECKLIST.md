@@ -666,6 +666,101 @@ entry is the canonical record until then.**
       the ghost row deliberately so the suite is independent of production's data state.
       → the two follow-ons are the next entries.
 
+- [x] **🔴 `?reset=` LOST TO SESSION-BASED ROUTING — A TEAM MEMBER CLICKING THEIR RESET LINK
+      WHILE LOGGED IN LANDED IN THE ADMIN PANEL. CLOSED 2026-08-30.** *(Found by an end-to-end
+      test on production, the same day 1.1-g shipped. Client-side only; the server was correct
+      throughout — `pin_reset_tokens` id 6 kept `used_at IS NULL`, so nothing was consumed and
+      neither 1.1-g commit needed reverting.)*
+      `src/App.jsx` is a flat sequence of early returns, and `renderThemedRoute()` is
+      **declared near the bottom but called five returns down** — below
+      `if (surfaceFor(session) === 'admin') return <AdminPanel …>`. `?reset=` was consumed
+      inside that function, so an admin-surface session short-circuited it: no password screen,
+      no password changed, and the token left unburned and valid for the rest of its hour.
+      ⚠ **IT WAS `admin`-ONLY, AND THAT IS WHY IT SURVIVED.** `'referrer'` and `'rep'` sessions
+      were never intercepted and fell through to the reset branch, so the referrer reset path
+      **has always worked**. Nothing in that chain changed and no condition changed meaning —
+      **Wave 1.1-g made admin-session + `?reset=` co-occur for the first time in the product's
+      history.** That is Wave 0.4's *"a change that makes a STATE occur for the first time
+      activates a dormant path"* rule landing on **routing** rather than on data.
+      **Fixed** by moving the branch beside `?admin_invite=`, above the boot gate — the sibling
+      case was written correctly the first time, with the reasoning *"Checked before isAdmin so
+      an invitee with no session always reaches the set-password screen"* sitting **ten lines
+      from the parameter that did not get it**. It carries its own `ThemeProvider`: moving it up
+      bare would not throw, because `ThemeContext` has a default — it would **silently render
+      the neutral palette and the platform logo to a contractor's person**.
+      **The existing session is deliberately left untouched** — clearing on arrival is either a
+      server-side logout destroying a session the person may still want, or a client-only clear,
+      which is the defect D6 closed reintroduced through a side door. Invalidation belongs on a
+      *completed* reset, server-side → filed against the 2FA entry.
+      ⚠ **TWO READING FAILURES ARE WHY ONLY AN END-TO-END TEST COULD FIND THIS, AND BOTH ARE
+      WORTH KEEPING.** (1) Phase 0 read the source and reported `?reset=` sat "above the admin
+      branch" — *"top of `renderThemedRoute()`"* and *"top of the routing chain"* are different
+      claims about a function invoked five returns down, and the file's own comment (*"checked
+      AFTER it"*) is true and incomplete. (2) The React fence written to cover exactly this set
+      a **token** and never a **session** → new vacuity shape #9, `CLAUDE.md`.
+      **Fenced by** `src/components/auth/resetSurfaceRoleBlind.test.jsx`, rewritten: each
+      admin-session case is paired with a sibling on the same fixture and no `?reset=` that must
+      render the panel, so the precondition is proven by its consequence.
+
+- [ ] **🔴 `FRONTEND_URL` POINTS AT A `*.vercel.app` PREVIEW HOST, SO EVERY EMAILED RESET AND
+      INVITE LINK READS AS PHISHING.** *(Verified on Railway 2026-08-30.)*
+      It is `https://rooster-booster-dannyscribbins-6082s-projects.vercel.app`. It should be
+      `https://app.roofmiles.com`. **The severity is not aesthetics** — a contractor's team
+      member receives a credential email whose button points at a long random vercel.app
+      subdomain, which is exactly what a phishing link looks like and exactly what security
+      training tells people not to click. Reset links are built as
+      `${FRONTEND_URL}/?reset=${token}` (`server/routes/referrer.js`), and ~12 other consumers
+      build admin, unsubscribe and cadence links from the same variable.
+      **Config change, not code.** Not made here — 1.1-g route precedence was frontend-only, and
+      a Railway env change is a separate act with a separate blast radius.
+      ⚠ **DNS, verified 2026-08-30:** `roofmiles.com` = marketing site · `app.roofmiles.com` =
+      the React app, RoofMiles-branded login · `accent.roofmiles.com` = Accent-branded referrer
+      signup. `INVITE_LINK_BASE_URL` = `https://roofmiles.com` — **the MARKETING site, not the
+      app** (🟡 verify against a real invite email what that is concatenated with; invite links
+      may be landing on the marketing page).
+
+- [ ] **🔴 `<slug>.roofmiles.com/?reset=` CANNOT WORK, AND IT IS NOT A ROUTING BUG — IT IS A
+      DIFFERENT APPLICATION.** *(Tested on production 2026-08-30, incognito, no session:
+      `https://accent.roofmiles.com/?reset=<valid token>` renders Accent's branded referrer
+      signup page, not the reset screen. Diagnosed Wave 1.1-g route precedence.)*
+      ⚠ **THE `?reset=` PRECEDENCE FIX DOES NOT COVER THIS AND CANNOT.** A slug host resolves to
+      the **Railway backend**, where `server/routes/landing.js`'s `router.get('/')` calls
+      `serveLanding(req, res, null, …)`. `resolveLanding()` derives the contractor from
+      `req.hostname`, and the route matches the path `/` **regardless of query string** — so
+      Express returns a **server-rendered HTML landing page**. `src/App.jsx` never runs; React is
+      never loaded; `?reset=` is an ignored query parameter on an entirely separate app.
+      `app.roofmiles.com` is served by **Vercel** (the SPA), and `app` is a reserved subdomain
+      that `resolveHostToContractor()` correctly resolves to nothing.
+      ⇒ **`FRONTEND_URL` must point at `app.roofmiles.com` and can never point at a slug host.**
+      That answers the question the entry above was blocked on.
+- [ ] **🟡 DESIGN QUESTION, NOW ANSWERABLE AND ANSWERED IN PART: contractor-branded reset and
+      invite links are NOT served by the D4 chain on `<slug>.roofmiles.com` — that host runs the
+      server-rendered landing page, which has no reset or invite surface at all.** Serving them
+      there would mean **building those surfaces in `landing.js`**, not routing to them.
+      The cheaper alternative, and probably the right one: keep every credential link on
+      `app.roofmiles.com` and let the **D4 chain brand the screen from something other than the
+      host** — `ResetPinScreen` already reads `branding` from `ThemeContext` and would need a
+      resolvable input there. That collides with the slug-echo security question at
+      `PRE_LAUNCH_CHECKLIST.md`'s R2 item (`GET /api/branding/:slug` is deliberately
+      non-enumerable and refuses to echo a slug), which is the same wall `AdminSetPasswordScreen`
+      hit and answered with the platform mark.
+      → Wave 1.3, with R2. **Not a bug; a decision.**
+
+- [ ] **🟠 `?signup=` AND `?exp=` HAVE THE IDENTICAL PRECEDENCE SHAPE — ENUMERATED, NOT FIXED.**
+      *(Swept Wave 1.1-g route precedence, 2026-08-30, from the PATTERN outward — every
+      `URLSearchParams` / `location.search` read in `src/**` — rather than from the known route
+      inward, per the 1.1-c rule.)*
+      `src/App.jsx` reads `?signup=` and `?exp=` into state at mount and consumes both **inside
+      `renderThemedRoute()`**, below the admin branch. An admin-surface session clicking a
+      contractor's signup invite gets the panel. Lower severity than `?reset=` — not a
+      credential surface, and the affected person is staff clicking a homeowner-facing link —
+      but it is the same mechanism and it will not surface on its own.
+      **Correct today and needing no change:** `?admin_invite=` (already above the boot gate);
+      `?token=` on `/email-preferences` (a pathname route, above everything); `?stripe_connect=`,
+      `?stripe_bank=`/`?linked_account=` and `?brand=` (not routing inputs — they run inside an
+      already-open surface or inside branding resolution).
+      ⚠ **One rule, one route, one phase** — 1.1-g asserted the rule on `?reset=` only.
+
 - [x] **🔴 THE FORGOT-PASSWORD FORM WAS OFFERED TO TEAM MEMBERS AND THE SERVER SILENTLY
       DISCARDED THE REQUEST — CLOSED BY WAVE 1.1-g, 2026-08-30.** *(Schema shipped by 1.1-f
       2026-08-29; the resolver and routes by 1.1-g, commits `3674c13` and the issuance commit

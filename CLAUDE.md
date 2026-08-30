@@ -459,6 +459,25 @@ every one was found by forcing the failure.**
    protection was **timing, not the fixture**, and they would pass identically against `{}`.
    **Ask "what dies if this is removed", not "is it green with this present."**
 
+9. **A FIXTURE THAT ESTABLISHES A PRECONDITION'S PROXY RATHER THAN THE PRECONDITION.** A ninth
+   shape, found in Wave 1.1-g when the defect it claimed to cover reached production.
+   `resetSurfaceRoleBlind.test.jsx` was named *"the admin surface never intercepts"*, set
+   `ADMIN_TOKEN_KEY` in localStorage, and asserted the reset screen rendered. It passed — and
+   its `installFetch()` answered **401 on `/api/session` unconditionally**, so `session` stayed
+   `null`, `surfaceFor(null)` was `'login'`, and the admin branch it named was never reached.
+   **The file drove the no-session path three times under three different names.** Four days
+   later a team member clicked a reset link while logged in and landed in the admin panel.
+   **A stored token is not a session.** The token is an INPUT to boot rehydration; the SESSION
+   is what the branch reads. Setting the correlate looks exactly like setting the condition.
+   ⚠ **THIS IS WORSE THAN NO TEST, AND THAT IS THE PART TO INTERNALISE.** The NAME occupied the
+   space where real coverage would have gone — the next reader sees the title in the file list
+   and stops looking. An absent test at least leaves a hole someone can find.
+   ⚠ **THE FIX IS STRUCTURAL, NOT MORE CARE.** Assert the precondition **inside** the test, by
+   observing its CONSEQUENCE rather than its setup: the repaired file pairs each
+   admin-session case with a sibling on the same fixture and **no** `?reset=`, which must
+   render the panel. That sibling is the proof the session is admin-surface, and it fails
+   loudly if the fixture ever stops producing one.
+
 **The conclusion:** non-vacuity assertions belong in tests that look **too simple to need
 them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this
 keeps happening.

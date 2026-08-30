@@ -409,6 +409,53 @@ export default function App() {
   }
   if (adminInviteToken) return <AdminSetPasswordScreen token={adminInviteToken} />;
 
+  // ── ?reset= OUTRANKS SESSION-BASED ROUTING (Wave 1.1-g, route precedence) ───
+  //
+  // ⚠ THIS BRANCH USED TO LIVE INSIDE renderThemedRoute(), AND THAT WAS A LIVE
+  // DEFECT FOUND IN PRODUCTION. renderThemedRoute() is declared at the bottom of
+  // this component but CALLED five early returns down — below
+  // `if (surfaceFor(session) === 'admin')`. So a team member who clicked their
+  // emailed reset link while holding a live admin session was handed the ADMIN
+  // PANEL: no password screen, no password changed, and the token left unburned
+  // and valid for the rest of its hour. Someone who believes they are logged out
+  // but is not — or anyone on a shared machine — lands inside an account instead
+  // of a password form.
+  //
+  // ⚠ IT WAS admin-ONLY, WHICH IS WHY IT SURVIVED REVIEW AND A TEST. 'referrer'
+  // and 'rep' sessions were never intercepted, so they fell through to the reset
+  // branch and worked correctly — as the referrer reset path always had. Nothing
+  // about this chain changed; Wave 1.1-g simply made admin-session + `?reset=`
+  // co-occur for the first time in the product's history. A condition whose
+  // meaning never changed, meeting a state that had never arrived.
+  //
+  // PLACED BESIDE ?admin_invite= DELIBERATELY, NOT MERELY EARLIER. That branch is
+  // the same case — a person arriving on an emailed single-use link who may or
+  // may not hold a session — and it was written correctly the first time, with
+  // the reasoning ten lines above the parameter that did not get it. Reusing its
+  // position rather than inventing a second mechanism is what stops the two
+  // siblings from drifting.
+  //
+  // ⚠ IT CARRIES ITS OWN ThemeProvider, AND THAT IS NOT DECORATION. Unlike
+  // AdminSetPasswordScreen above — which is admin-chrome and deliberately mounts
+  // outside the provider — ResetPinScreen is a WHITE-LABEL surface that reads
+  // `branding` from ThemeContext. ThemeContext has a default value, so moving it
+  // up here bare would NOT throw: it would silently render the neutral palette
+  // and the platform logo to a contractor's person, with nothing failing. Same
+  // one-instance-per-branch shape as the boot gate below.
+  //
+  // ⚠ THE EXISTING SESSION IS DELIBERATELY LEFT ALONE, AND A LATER READER WILL
+  // WANT TO CLEAR IT. Clearing on arrival is either a server-side logout that
+  // destroys a session the person may still want if they abandon the reset, or a
+  // client-only clear — which is precisely the defect D6 was raised to eliminate,
+  // reintroduced through a side door. Invalidating sessions belongs on a
+  // COMPLETED reset, server-side; it is filed against the 2FA build.
+  // src/components/auth/resetSurfaceRoleBlind.test.jsx asserts the non-mutation.
+  if (resetToken) return (
+    <ThemeProvider>
+      <ResetPinScreen token={resetToken} />
+    </ThemeProvider>
+  );
+
   // ── THE ADMIN BRANCH MUST STAY OUTSIDE THE PROVIDER (Phase 1, Ruling 5) ─────
   // It moved from "before anything is known" to "after the identity is known",
   // which is the whole point of Phase 5 — but its POSITION relative to
@@ -463,11 +510,17 @@ export default function App() {
     // replaced. The spinner is still inside a provider, so it is still
     // contractor-themed (LoadingIndicator's first production consumer, §6.1).
     //
-    // resetToken and the signup/verify flow are checked AFTER it, and that is
-    // correct: those screens are reached by a link, and someone arriving on a
-    // password-reset link should not have that screen yanked away a moment later
-    // because a stale token happened to still validate.
-    if (resetToken) return <ResetPinScreen token={resetToken} />;
+    // The signup/verify flow is checked AFTER it, and that is correct: those
+    // screens are reached by a link, and someone arriving on one should not have
+    // it yanked away a moment later because a stale token happened to validate.
+    //
+    // ⚠ resetToken USED TO BE CHECKED HERE AND IT MOVED (Wave 1.1-g route
+    // precedence). This comment used to name it alongside the signup flow, which
+    // read as though the two were equally placed. They were not: `?reset=` was
+    // reachable only for sessions that got past the admin branch above, so a
+    // team member holding a live admin session was handed the panel instead of
+    // the password form. It now sits beside `?admin_invite=`, above the boot
+    // gate. Do not move it back down here.
     if (showVerify) return (
       <EmailVerifyScreen
         userId={pendingUserId}
