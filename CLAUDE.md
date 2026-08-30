@@ -281,7 +281,8 @@ through `useBranding()`, never from a file on a drive.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **947 server tests and 459 React tests across 31 files** (measured 2026-08-21, HEAD `d0fb3aa` — see `docs/GROUND_TRUTH_2026-08-21.md`). A drop below these numbers means tests were deleted; stop and report. ⚠ Check the EXIT CODE, not the pass count — a suite can report passing while exiting 1. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count that jumps far above 31 means the include glob has been widened and is picking up the server suite — see the warning above.)
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1118 server tests across 177 suites, and 483 React tests across 34 files** (measured 2026-08-30 at HEAD `7252cc5`, Wave 1.1 close-out, by running the gate). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THIS TRIPWIRE HAD GONE STALE BY 171 SERVER TESTS AND WAS RE-ARMED HERE.** It read *"947 server tests and 459 React tests across 31 files (measured 2026-08-21, HEAD `d0fb3aa`)"* — the figure `docs/GROUND_TRUTH_2026-08-21.md` established, correct on the day and never moved since. At 947 it could not fire until someone deleted a fifth of the server suite. **That is the second time this exact tripwire has been found below its own floor**, and it is the worked example in *A mechanism that reports health it cannot observe* below. The failure mode is structural: a hand-maintained number in a document nobody edits when the thing it measures grows. **When you find it stale, re-arm it with the figure you MEASURED and the HEAD you measured it at** — never an estimate, and never a number carried from a prior session's report. ⚠ Check the EXIT CODE, not the pass count — a suite can report passing while exiting 1. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count that jumps far above 31 means the include glob has been widened and is picking up the server suite — see the warning above.)
 - Characterization rule: a failing or surprising test result means STOP and report — never adjust production code to satisfy a test, and never silently adjust a test to satisfy the code. Deliberate behavior changes update the relevant test openly and are documented in the session handoff.
 - Migration idempotency proofs must include a reproduction seeded with production's actual pre-existing row shapes, not only fresh-schema runs — a test DB rebuilt from scratch every run can never exercise "a real pre-existing row already in some legacy state," which is exactly what breaks in production and never breaks locally. See `CLAUDE_REGISTRY.md` (ST session, Architecture Notes) for the incident that established this.
 
@@ -371,6 +372,17 @@ what the citing sentence describes. Only then shift it.** If it was already wron
 re-deriving where the subject lives — a different and larger job, and one to record rather
 than improvise.
 
+**And the cheapest mitigation is WHERE you insert, which costs nothing to get right.**
+Append new `server/db.js` migrations near the **END** of the file. The highest citation
+anywhere into `db.js` is around `:1672`, so a block landing below that moves nothing anyone
+points at. Measured in Wave 1.1-f: its block landed at roughly `:1963` and `--changed-files`
+reported **54 TARGET TOUCHED and only 1 LIKELY ROTTED**. The same block inserted mid-file
+would have rotted dozens.
+⚠ **This is a convention, not a licence to move a block that must sit elsewhere.** 1.1-f's
+placement was forced by a *correctness* constraint — the three tables are `CREATE`d above
+`team_members`, so an inline `REFERENCES` would kill a fresh-database boot — and the citation
+benefit was a side effect. **Correctness first, then this.**
+
 ⚠ **AND SOME CITATIONS MUST NOT BE SHIFTED AT ALL.** `docs/GROUND_TRUTH_2026-08-21.md` is a
 **dated snapshot that quotes verbatim what it cites**. Its line numbers are part of a record
 of a past state, not pointers into today's file; renumbering them would make the document
@@ -403,6 +415,15 @@ surfaced as `Cannot use a pool after calling end on the pool`, thrown from insid
 column, so a green-looking `fail 0` can sit directly above tests that never ran. `skipped` has
 the same property. **Neither number is ever acceptable unexplained — treat both as failures
 until you can say why.**
+
+⚠ **AND THE SECOND TELL IS A WHOLE-FILE SHAPE, NOT A TEST RESULT: A MODULE-LOAD FAILURE.**
+When a test file throws while being *imported* — a bad `require`, a syntax error, a missing
+export — nothing inside it ever registers, so the run reports **`suites 0`** (or `pass 0` /
+`fail 0` with every test in the file marked failed at once). **The distinguishing feature is
+that the numbers move in FILE-sized jumps rather than by ones.** A non-zero test count sitting
+beside `suites 0` is the signature, and it is easy to read as "the runner did something" when
+the runner did nothing at all. **Read `suites` alongside `tests` on every run**, not only when
+something looks wrong — the point is that nothing does.
 
 **Practically: one pool per test FILE.** A file-level `before`/`after` pair, never one per
 `describe`. And when a count moves, check all four before concluding anything.
@@ -673,10 +694,24 @@ repo-wide — server routes, email templates, redirects — and enumerate **cons
 too, remembering that a consumer need not sit on the obvious path: any component can read
 `window.location` directly.
 
-### Two rules about defaults
+### Two rules about defaults, and a third about the absence a default hides
 
 - **Canonical-default rule.** When a default exists in two places, **the one that reaches
   production users is canonical**; the other is a copy that drifted.
+- ⚠ **A DEFAULT VALUE MAKES A MISSING PROVIDER INDISTINGUISHABLE FROM A CORRECT ONE.** Added
+  Wave 1.1-g. A `createContext(defaultValue)` does not throw when a consumer renders outside
+  its provider — it silently hands over the default, and **every test stays green**.
+  Moving `ResetPinScreen` above `ThemeProvider` (the correct fix for a routing defect) would
+  have rendered `NEUTRAL_BRANDING` and the platform logo **to a contractor's team member on a
+  white-label surface**, with nothing failing anywhere. It carries its own provider instance
+  instead.
+  **Same class as two defects already recorded here:** `getStripeRow()`'s
+  `|| { … not_connected }`, where zero rows produced a manufactured "not connected" that read
+  exactly like a real one; and the lock icon's `var()` fallback, which painted correctly right
+  up until the surface it assumed was repainted. **A fallback is a claim that its absence is
+  acceptable — check that the claim is still true wherever you move the consumer.**
+  Practically: when relocating a component in a routing chain, ask **which providers it was
+  inside** before the move, not only which branches ran before it.
 - **Identity-bearing values get no defaults.** A logo, a review link, a phone number —
   anything that says **who** the contractor is — resolves to `null` when unset, and the
   consumer decides whether to draw the element. Borrowing another contractor's value is a

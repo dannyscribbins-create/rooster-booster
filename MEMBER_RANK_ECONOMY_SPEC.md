@@ -321,7 +321,9 @@ Danny's inventory of everything this touches, organized. Each item names its pha
 
 ### 10.2 Tier graphics
 
-Five medallion designs + Legend flair, rendered from contractor theme tokens (contractor-themed visuals, platform-locked identity). Progress arc integral to the asset. Static + celebration variants. ⚠️ RANK-17: designed in-house vs commissioned.
+Five medallion designs + Legend flair. ⚠️ **RANK-17 RESOLVED 2026-08-30 — PLATFORM-LOCKED, BUILT IN-HOUSE AS SVG. THIS LINE PREVIOUSLY READ "rendered from contractor theme tokens (contractor-themed visuals, platform-locked identity)" AND THAT IS NOW INVERTED, NOT MERELY STALE** — it would tell a builder to theme the one thing the ruling says must not be themed. One fixed metal palette across every contractor: Bronze is bronze, Silver is silver. **The celebration's ACCENT GLOW stays contractor-themed**; the emblem is platform identity, the moment around it is the contractor's.
+⚠ **Design constraint carried into the build: silver, platinum and diamond all want to be pale cool metal — distinguish by SHAPE or ORNAMENT, not hue.** Three near-identical cool greys at thumbnail size is a legibility failure no palette tuning fixes.
+**Emblems are static assets; the progress arc and the celebration are rendered in code**, never baked into the files — otherwise every arc position becomes its own asset. Progress arc integral to the *presentation*, not to the file. Static + celebration variants.
 
 ### 10.3 Admin panel — §8, plus schedule config flow gains the bonus-awareness preview hooks (existing four-type config itself unchanged).
 
@@ -347,7 +349,13 @@ Points liability scales with activity. Recommendation: **ranks universal on ever
 
 **Platform-locked:** rank names/order/thresholds · anchor rate · earn events + base amounts · tier earn multipliers · discount ladder · all client-facing copy variants · Tremendous curation.
 **Contractor-configured:** tier bonus % · in-house offers (incl. points prices, gates, choice flags) · Legend grants · Owner points gifts (§5.4).
-**Contractor-themed:** medallions, celebrations, store visuals, email templates.
+**Contractor-themed:** ~~medallions,~~ celebrations, store visuals, email templates.
+⚠ **MEDALLIONS MOVED TO PLATFORM-LOCKED — RANK-17, 2026-08-30.** One fixed metal palette; Bronze
+is bronze and Silver is silver, and a contractor-themed medallion is not a medallion. **The
+celebration's ACCENT GLOW stays contractor-themed** — the emblem is platform identity, the moment
+around it is the contractor's. Add medallions to the platform-locked line above when this file is
+next restructured; struck through here rather than deleted so the change is visible to anyone who
+remembers the old rule. §10.2 carries the same correction.
 **Rejected v1:** custom rank names.
 **Tenancy:** `contractor_id` on every ledger and redemption row; balances and redemptions never cross tenants.
 
@@ -371,6 +379,47 @@ Each phase: Phase 0 read-only investigation → spec confirm → RED tests → b
 ### Resolved (recorded for the trail)
 RANK-1 order (locked, conventional) · RANK-4 conversion-time rank (locked) · RANK-5 grandfathering (moot — automatic) · v0.1's schedule-restructure design (superseded by decoupled+bonus) · clawback asymmetry (locked §3.9) · receipt pattern, copy hardcoding, discount-ladder-not-per-offer, anchor-derived Tremendous pricing (locked mechanisms).
 
+**RANK-2 — LOCKED 2026-08-30 (Danny): thresholds are `0 / 1 / 3 / 6 / 10`.**
+Bronze 0 · Silver 1 · Gold 3 · Platinum 6 · Diamond 10 paid referrals.
+⚠ **BRONZE'S `0` IS EXPLICIT, AND THAT IS THE DESIGN, NOT A FORMALITY.** Writing the floor as a
+real row means **the same lookup that finds Gold finds Bronze** — "the highest threshold this
+member has met" is total over every member, including one with zero conversions. Leaving Bronze
+implicit would require a below-first-threshold special case in every consumer that derives rank,
+and rank is derived at **read time** in several places (§4.5, RANK-8's two read surfaces), so
+that special case would be written more than once and would eventually disagree with itself.
+
+**RANK-9 — RESOLVED 2026-08-30 (Danny): Legend ships in R1.**
+- **Owner-only grant. NO PERMISSION FLAG MAY CONFER IT** — same defence-in-depth class as
+  `cashout_approve` and Tremendous settings: the wall is that the capability cannot be delegated
+  at all, not that it is gated behind a flag someone could grant.
+- **Grantable AND revocable in the data.** ⚠ **REVOCATION EXISTS FOR CORRECTION, NOT
+  MANAGEMENT**, and is deliberately **not surfaced in v1's routine flow**. Recorded because the
+  data model alone reads as an invitation: a `revoked_at` column with no note beside it is how a
+  revoke button ends up in the normal grant screen, turning a recognition into a lever.
+- **Legend carries CONTRACTOR-DESIGNATED PRIVILEGES and a CONTRACTOR-AUTHORED LABEL.**
+  ⚠ **THIS IS THE FIRST DOCUMENTED EXCEPTION TO §11's COPY LOCK** — every other client-facing
+  string is platform-hardcoded. Marked as an exception rather than quietly widening the rule,
+  because §11's value is that it is otherwise absolute.
+- ⚠ **STILL OPEN: the Legend privilege SET, and it decides the phase.** If Legend's privileges
+  stay inside **store gating**, Legend is R1 as ruled. **If any privilege reaches the payout
+  multiplier, Legend becomes R2** and money-path work under §4.4 — a different review standard,
+  not merely a later date.
+
+**RANK-17 — RESOLVED 2026-08-30 (Danny): medallions are PLATFORM-LOCKED, built in-house as SVG.**
+- **One fixed palette. Bronze is bronze, Silver is silver** — the metals are the identity, and a
+  contractor-themed medallion is not a medallion.
+- ⚠ **THIS MOVES MEDALLIONS FROM CONTRACTOR-THEMED TO PLATFORM-LOCKED IN TWO PLACES** — §10.2 and
+  §11's config table. Both were edited in the same commit as this ruling; if either still reads
+  "contractor theme tokens", it was missed.
+- **The celebration ACCENT GLOW stays contractor-themed** — the emblem is platform identity, the
+  moment around it is the contractor's. That split is the whole ruling and collapsing it in
+  either direction loses one of the two.
+- ⚠ **THE REMAINING DESIGN CONSTRAINT IS A REAL ONE: silver, platinum and diamond all want to be
+  pale cool metal.** Distinguish them by **shape or ornament, not hue** — three near-identical
+  cool greys at thumbnail size is a legibility failure that no palette tuning fixes.
+- **Emblems are static assets; the progress arc and the celebration are rendered in code**, never
+  baked into the files — otherwise every arc position is a separate asset.
+
 **RANK-8 — RESOLVED 2026-08-21 (Danny): YES, and broader than asked.** Referrer member rank is
 visible **read-only on BOTH the field rep interface AND the admin panel**, on contacts/referrers,
 **at a glance**.
@@ -390,11 +439,11 @@ rather than discovering it during 3c.**
 
 | # | Decision | Blocks |
 | --- | --- | --- |
-| RANK-2 | Thresholds 1/3/5/7 vs 1/3/6/10 | R1 |
+| ~~RANK-2~~ | ~~Thresholds 1/3/5/7 vs 1/3/6/10~~ **LOCKED 2026-08-30 — see Resolved above** | R1 |
 | RANK-3v2 | Default bonus curve numbers | R2 |
 | RANK-6 | Points on raw submission vs first verified stage (recommended) | R3 |
 | RANK-7 | Tremendous float funding + account structure (now priceable: ~$3–5/active referrer/yr) | R3/R4 |
-| RANK-9 | Legend in R1 (recommended: yes) | R1 |
+| ~~RANK-9~~ | ~~Legend in R1 (recommended: yes)~~ **RESOLVED 2026-08-30 — YES, ships in R1. See Resolved above; ⚠ one sub-question stays open** | R1 |
 | RANK-10 | Bonus edits prospective-only (recommended: yes) | R2 |
 | RANK-11 | Choice Benefits R3 vs fast-follow | R3 |
 | RANK-12 | Anchor 1pt = $0.01 (recommended: lock) | R3 |
@@ -402,6 +451,6 @@ rather than discovering it during 3c.**
 | RANK-14 | Discount ladder numbers (indicative 10/15/20) | R3 |
 | RANK-15 | Push on contractor fulfillment of in-house redemption | R3 |
 | RANK-16 | Store nav placement: own tab vs inside existing surface | R3 |
-| RANK-17 | Medallion assets: in-house vs commissioned | R1 |
+| ~~RANK-17~~ | ~~Medallion assets: in-house vs commissioned~~ **RESOLVED 2026-08-30 — in-house SVG, and PLATFORM-LOCKED rather than contractor-themed. See Resolved above** | R1 |
 | RANK-18 | Plan gating: ranks universal + store Growth+? (recommendation §10.7) | R3, pricing |
 | RANK-19 | Gifting v1 requires app account (recommended) vs pre-credit invited clients (future idea) | R3 |

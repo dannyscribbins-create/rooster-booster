@@ -157,6 +157,55 @@ entry is the canonical record until then.**
 
 ## 🔴 PRE-LAUNCH — must be done before real contractor traffic
 
+**Money path — the Stripe architecture phase**
+
+- [ ] **🔴🔴 DO NOT SWITCH STRIPE TO LIVE MODE BEFORE THE ARCHITECTURE PHASE COMPLETES.**
+      *(This gate existed in no document until 2026-08-30. Written first because it is the one
+      that cannot be un-done by a later commit.)*
+      **The LLC clearing will make live mode available well before the code is right**, and the
+      natural next act — "switch to live and run one real transaction end to end" — is exactly
+      the wrong one.
+      ⚠ **THE TRAP IS THAT A GREEN LIVE TEST WOULD PROVE THE WRONG ARCHITECTURE WORKS.** There
+      is **no ACH debit mandate anywhere in the code**, so no version of an end-to-end live test
+      exercises the intended architecture. Money would move **out of the PLATFORM balance**,
+      which is precisely what the direct-charge design exists to prevent — and it would move
+      successfully, and look like a pass.
+      **A mechanism that reports health it cannot observe**, in its most expensive form: real
+      money, a real Stripe account, and a result that reads as validation.
+
+- [ ] **🔴 THE STRIPE ARCHITECTURE PHASE — after the field rep interface (Wave 1.3), before
+      launch.** *(Scope from a separate design session, recorded here 2026-08-30 because it
+      existed only in a chat window.)*
+      **Leg 1 is a CHARGE, not a payout.** ACH debit via `PaymentIntent` on `us_bank_account`,
+      structured as a **DIRECT CHARGE on the contractor's connected account**, settling into
+      **their** balance and never the platform's.
+      ⚠ **MISSING SURFACE — the contractor must attach their bank TWICE.** Once as a **payout
+      destination** (Connect onboarding — exists) and once as a **saved payment method with an
+      ACH debit mandate** (**does not exist anywhere in the product**). This is a build, not a
+      configuration.
+      ⚠ **RULING OWED: wait-for-settlement vs instant.** Wait-for-settlement is 5–8 business
+      days with **zero float and zero fronting**; instant requires fronting, already ruled out.
+      **No-float + no-fronting + instant is not available** — the trilemma is the decision.
+      ⚠ **LEG 2 IS OPEN: contractor balance → referrer bank.** A payout only reaches the
+      connected account's **own** external bank, and the referrer is not one. Candidates: a
+      lightweight recipient connected account · Global Payouts · Tremendous. **⚠ Global Payouts
+      is public preview on a preview API version — a real risk to accept on a money path.**
+      ⚠ **PAYER OF RECORD / 1099s — Stripe Connect is a FILING SERVICE, not the determinant of
+      obligation.** The direct-charge architecture gives a defensible basis for **the contractor**
+      being payer; making referrers connected accounts muddies it. **CPA + payments attorney
+      before build.** It decides whether **SSN collection** sits with RoofMiles or with each
+      contractor — a materially different product. **The reporting threshold goes in a NAMED
+      CONSTANT**; thresholds have moved in recent legislation and a literal will rot silently.
+      **Deferred INTO this phase** (each has its own entry elsewhere; listed so the phase's
+      scope is not rediscovered): the **FK on `contractor_settings.contractor_id`** — its
+      absence is why a phantom row was possible at all · **idempotency on `transfers.create`**
+      ⚠ **which must land WITH retry, never before — adding retry without an idempotency key
+      risks double-paying** · **webhook tenancy** · the **customer-metadata backfill** for every
+      Stripe customer created carrying a contractor id that does not exist (**likely moot if
+      sandbox records do not survive the live switch — check before scoping it**) ·
+      **`BankingSettings.jsx` cannot distinguish a 403 from not-connected**.
+      ✅ **Subscription billing is UNAFFECTED and independent — buildable at any time.**
+
 **Security / auth**
 - [ ] **OAuth `state` is validated for EXISTENCE, not AUTHENTICITY.**
       `/auth/jobber` and `/callback` cannot use auth headers (browser redirect). TF made the
@@ -459,6 +508,16 @@ entry is the canonical record until then.**
       ⚠ **`docs/GROUND_TRUTH_2026-08-21.md:163` was also flagged and MUST NOT BE TOUCHED.** It is
       a dated snapshot that quotes verbatim what it cites; renumbering it would make it claim its
       quotes come from lines that now hold something else.
+      ⚠ **WAVE 1.1's CLOSE-OUT COMMIT MOVED THEM ONCE MORE (2026-08-30) — `--changed-files`
+      flagged 12, and again NOT ONE required action.** Eight in `docs/GROUND_TRUTH_2026-08-21.md`
+      (the dated snapshot — never renumber), two in `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md`
+      (`:76`, `:80`, already in the five above), and **two in THIS FILE at `:631-632` — which are
+      the lines that RECORD the `CLAUDE.md:502` rot.** ⚠ **Repairing those two would destroy the
+      evidence**: the whole point of the sentence is to quote the wrong number.
+      ⚠ **AND ONE NEW MEMBER OF THE CLUSTER: `docs/GROUND_TRUTH_2026-08-21.md:34`**, which is not
+      in the six enumerated above. **The list of eleven-then-twelve is now at least thirteen, and
+      it is a hand-maintained list of a hand-maintained problem** — re-run
+      `citecheck -- --changed-files` rather than trusting this enumeration.
       ⚠ **AND THEY ARE THE ARGUMENT FOR CITING BY ROLE.** This session converted its own test file's
       references from line numbers to handler and route names for exactly this reason; a handler
       name does not drift. → §10
@@ -702,22 +761,47 @@ entry is the canonical record until then.**
       admin-session case is paired with a sibling on the same fixture and no `?reset=` that must
       render the panel, so the precondition is proven by its consequence.
 
-- [ ] **🔴 `FRONTEND_URL` POINTS AT A `*.vercel.app` PREVIEW HOST, SO EVERY EMAILED RESET AND
-      INVITE LINK READS AS PHISHING.** *(Verified on Railway 2026-08-30.)*
-      It is `https://rooster-booster-dannyscribbins-6082s-projects.vercel.app`. It should be
-      `https://app.roofmiles.com`. **The severity is not aesthetics** — a contractor's team
-      member receives a credential email whose button points at a long random vercel.app
-      subdomain, which is exactly what a phishing link looks like and exactly what security
-      training tells people not to click. Reset links are built as
-      `${FRONTEND_URL}/?reset=${token}` (`server/routes/referrer.js`), and ~12 other consumers
-      build admin, unsubscribe and cadence links from the same variable.
-      **Config change, not code.** Not made here — 1.1-g route precedence was frontend-only, and
-      a Railway env change is a separate act with a separate blast radius.
+- [x] **🔴 `FRONTEND_URL` POINTED AT A `*.vercel.app` PREVIEW HOST, SO EVERY EMAILED RESET AND
+      INVITE LINK READ AS PHISHING — CORRECTED 2026-08-30.**
+      It was `https://rooster-booster-dannyscribbins-6082s-projects.vercel.app`; it is now
+      `https://app.roofmiles.com`. **The severity was not aesthetics** — a contractor's team
+      member received a credential email whose button pointed at a long random vercel.app
+      subdomain, which is what a phishing link looks like and what security training tells
+      people not to click. Reset links build as `${FRONTEND_URL}/?reset=${token}`
+      (`server/routes/referrer.js`), and **35 other occurrences** in production server code
+      build admin, unsubscribe, Stripe `return_url` and cadence links from the same variable.
+      *(⚠ `server/utils/inviteTokens.js`'s header says "38 other consumers". Measured
+      2026-08-30: **35** occurrences of `process.env.FRONTEND_URL` in non-test `server/**`.
+      Close enough to be plausible and not equal — an unsourced number, left in place rather
+      than replaced with another one, per `CLAUDE.md`.)*
+      **A Railway config change, not code**, made before the end-to-end verification.
+
+- [x] **✅ `INVITE_LINK_BASE_URL = https://roofmiles.com` IS CORRECT, AND THE CONCERN ABOUT IT
+      WAS WRONG.** *(Verified against source 2026-08-30 — the assumption was that a marketing
+      apex would be naively concatenated and land invitees on the marketing page.)*
+      **It is not concatenated. It is parsed as a URL and rebuilt.** `buildInviteUrl()` in
+      `server/utils/inviteTokens.js` is **two-stage**: with the variable **unset** it emits the
+      legacy `${FRONTEND_URL}?signup=<slug>`; with it **set** it emits
+      `https://<contractorSlug>.<base>/i/<slug>` — prepending the contractor's subdomain and
+      **replacing** the path. So the apex is a *base for subdomain construction*, never a final
+      host, and a real invite renders as `https://accent.roofmiles.com/i/<slug>` — which is
+      exactly the host serving `server/routes/landing.js`'s `router.get('/i/:slug')`.
+      ⚠ **THE STAGE-2 PRECONDITIONS BOTH NOW HOLD** — wildcard DNS/TLS for `*.roofmiles.com`,
+      and C/DL-2's landing page serving `/i/:slug` — which is why the variable being set is
+      correct rather than premature. **Do not "fix" this to `app.roofmiles.com`:** that would
+      send every invitee to the SPA, which has no `/i/:slug` route and would load the app root
+      and die silently.
+      *(⚠ That header cites `src/App.jsx:58-59` for the slug read; it is at `:132-135` now.
+      Pre-existing rot, not repaired here — re-derive by symbol, not by delta.)*
       ⚠ **DNS, verified 2026-08-30:** `roofmiles.com` = marketing site · `app.roofmiles.com` =
-      the React app, RoofMiles-branded login · `accent.roofmiles.com` = Accent-branded referrer
-      signup. `INVITE_LINK_BASE_URL` = `https://roofmiles.com` — **the MARKETING site, not the
-      app** (🟡 verify against a real invite email what that is concatenated with; invite links
-      may be landing on the marketing page).
+      the SPA (Vercel), RoofMiles-branded login · `accent.roofmiles.com` = **the Railway
+      backend** serving `landing.js`'s server-rendered HTML.
+
+- [ ] **🟠 TWO OVERLAPPING WILDCARD DNS RECORDS — `*` to Railway and `*` ALIAS to Vercel.**
+      *(Recorded 2026-08-30.)* Needs **a dedicated cleanup session with a rollback plan**, not
+      an incidental edit: the two records decide which of two applications answers every
+      contractor subdomain, and getting it wrong takes every tenant's landing page down at
+      once. **Not urgent while one contractor is live; it is a launch-gating tidy.**
 
 - [ ] **🔴 `<slug>.roofmiles.com/?reset=` CANNOT WORK, AND IT IS NOT A ROUTING BUG — IT IS A
       DIFFERENT APPLICATION.** *(Tested on production 2026-08-30, incognito, no session:
@@ -835,6 +919,19 @@ entry is the canonical record until then.**
       as of the recovery path shipping. A sweep written now must reason about **two** subject
       columns rather than one, and the three non-unique partial indexes added in 1.1-g are what
       would make a subject-scoped sweep cheap.
+
+- [ ] **🔴 `email_verifications.user_id`'s `DROP NOT NULL` IS A PRACTICAL ONE-WAY DOOR.**
+      *(Shipped Wave 1.1-f, 2026-08-29. Recorded at the wave close because it constrains a
+      future decision rather than describing a defect.)*
+      Re-adding `NOT NULL` requires the table to hold **zero `NULL` `user_id` rows at that
+      moment** — so the door closes further the more the column is used, and the operation
+      would have to be scheduled against live data rather than simply written.
+      **No data was rewritten or deleted** by 1.1-f, and the `exactly_one_subject` CHECK means
+      a subject-less row is still refused; what was given up is the ability to enforce the
+      *specific* subject at the column level.
+      ⚠ **This matters NOW rather than in the abstract**, because Wave 1.1-g is what first puts
+      `NULL`-`user_id` rows into these tables — `pin_reset_tokens` today, and
+      `email_verifications` the moment the 2FA build lands.
 
 - [ ] **🟠 THE STRIPE CUSTOMER METADATA BACKFILL IS STILL OWED.** *(Split out of the ghost-id
       cluster on its close, Wave 1.1-e, 2026-08-29 — the forward-looking half shipped and the
@@ -2593,6 +2690,104 @@ roster moving to 4 active / 1 inactive, so both halves of the new transaction co
       UPDATED. THAT IS INTENDED — it is the deliberate decision the exact match exists to
       force.** Update the number *because you changed the routes*, and say so in the commit.
       **"Update the number to make it green" is the reflex this note exists to prevent.**
+
+### Railway / production reads — the four this wave depended on, with dates
+
+*Recorded because they existed only in a chat window, and every one of them was load-bearing
+for a ruling. **A production read that is not written down is a measurement nobody can re-check.***
+
+- [ ] **DUAL IDENTITY = THREE (2026-08-29).** users 7 / tm 6 (admin) · users 13 / tm 1
+      (**OWNER**) · users 2 / tm 5 (admin). All `accent-roofing-dev` on both sides, all
+      `team_members` rows active. ⚠ **Test data — will be wiped before Accent onboards.** The
+      design conclusion does not depend on them: dual identity is a **designed** state that
+      `gatherLoginCandidates()` handles deliberately and **will recur with real contractors**.
+      Full entry and the counting query above.
+- [ ] **SUPER-ADMIN SEED VARS ABSENT; `super_admins` HOLDS ONE ROW (2026-08-29).**
+      `admin1@roofmiles.com`, created 2026-06-21 — **the same address as users 7 / tm 6**, which
+      is precisely why the recovery path must never query that table. The seed vars are gone from
+      Railway and cannot re-run, so the row persists and cannot be seeded over.
+- [ ] **`contractor_settings` HOLDS EXACTLY ONE ROW (2026-08-29)** — `accent-roofing-dev`,
+      `acct_1TUQ508MswQN98EW`, active. **No ghost row and no merge to perform**; the
+      long-recorded split-brain was already closed and the record had not been updated. Closed
+      in `CLAUDE_REGISTRY.md` Known Issue 2a.
+- [ ] **FOUR `exactly_one_subject` CONSTRAINTS (2026-08-29)** — `pin_reset_tokens`,
+      `verification_codes`, `email_verifications` from Wave 1.1-f, **plus
+      `user_preferences_exactly_one_subject`**, which has existed since C/DL-3a. Both
+      `email_verifications.user_id` and `.team_member_id` verified `is_nullable = YES`. Deploy
+      logs on `c99d8d19` showed the three ✓ migration lines in the expected order with
+      `email_verifications` **last**, and the boot completed clean through cron registration.
+      ⚠ **The fourth is why a `COUNT(*) = 3` check would have looked wrong** — count by name.
+
+### ✅ WAVE 1.1 — CLOSED 2026-08-30, verified in production
+
+**Eleven phases, `c2434d2` → `7252cc5`.** 1.1-doc (`c2434d2`, `9d5b97c`) · cite-check
+(`bcc289c`) · 1.1-a (`be7a6ab`) · 1.1-b (`9ad52f2`) · 1.1-c (`c95b092`, `203f4b1`, `f0b2116`,
+`db209f3`, `69dea0b`) · 1.1-d (`ae70e50`) · 1.1-d2 (`e89ce8e`, `49018eb`, `c1a81d5`) · 1.1-e
+(`08b2fc0`) · 1.1-f (`1b6b574`) · 1.1-g (`3674c13`, `4ca32a5`, `7252cc5`).
+
+**Test baseline at close, measured by running the gate at `7252cc5`: 1118 server tests across
+177 suites, 483 React tests across 34 files, exit 0, `cancelled 0 / skipped 0`.** The last
+figure with a source before this was 947 / 459 / 31 at `d0fb3aa` (2026-08-21,
+`docs/GROUND_TRUTH_2026-08-21.md`); `CLAUDE.md`'s tripwire was re-armed from 947 in this
+commit. ⚠ **No intermediate wave-start figure is recorded anywhere in the repository** — any
+"1015" style delta is unsourced and should not be repeated.
+
+**End-to-end production verification, 2026-08-30:** logged in as team member 7 holding a live
+admin session, requested a reset, clicked the link **while still logged in**, reached the
+password screen, set a new password, signed in with it. RoofMiles-branded, which is the open
+Wave 1.3 design question and **not** a fault. `FRONTEND_URL` was corrected to
+`https://app.roofmiles.com` before the test.
+
+**Three of the four items 1.1 was planned around shipped: C/DL-3b-2's recovery half, R4, and
+the super-admin write-bypass invariant test (`server/test/adminRouteInvariant.test.js`).
+⚠ STEP-UP RE-AUTHENTICATION DID NOT SHIP** and remains the security control that makes D7's
+30-day session safe → `CDL_3b_BUILD_SPEC.md` §10.
+
+#### ⚠ What Wave 1.1 FOUND that nobody knew about when it was scoped
+
+The wave was planned as four items and closed considerably more. Recorded because a scope that
+quadruples is evidence about the estimate, not about the wave:
+
+- **Cross-tenant credential and money writes** in `server/routes/admin/referrers.js` —
+  untenanted `users` queries letting one contractor's admin reach another contractor's rows,
+  including PIN writes. Five queries were scoped in `203f4b1`.
+- **The ACH transfer endpoint carried compounded defects** — a tenancy hole *and* a hardcoded
+  connected account, either of which alone would have been a money-path incident.
+- **Four referrer Stripe routes inlined raw session checks** instead of
+  `verifyReferrerSession()`, violating a *Never Break* rule with no test able to see it.
+- **The entire admin Stripe surface read a ghost contractor id** and returned a **manufactured
+  "not connected"** — `|| { … not_connected }` over zero rows, indistinguishable from a real
+  read, so the panel lied identically whether Stripe was connected or not.
+- **`executeStripeTransfer()` had a second caller** — `POST /api/cashout`'s auto-fire path,
+  which moves money with **no admin review** under `payout_automation='full_auto'` — found only
+  because changing the signature forced an enumeration of callers.
+- **The bcrypt cost differs by subject** (12 for `team_members`, 10 for `users`) and
+  `reset-pin` hardcoded 10, so a team-member reset silently weakened the credential.
+- **The forgot-password form had been offered to team members since C/DL-3b Phase 5** while the
+  server silently discarded the request — a promise the server did not keep, on a credential
+  surface, created by a change of premise rather than a change of code.
+- **`?reset=` lost to session-based routing**, so a logged-in team member clicking their reset
+  link got the admin panel. Found by an end-to-end test **after** the fence written to cover it
+  passed green.
+
+#### Guard limits established this wave — every guard's blind spot, named
+
+- [ ] **`scripts/citecheck.js` has three measured limits** — it cannot see a wrong range inside
+      a file that resolves; it goes blind on frequently-edited documents (**a low STALE count on
+      a hot document is NO EVIDENCE, not health**); and it cannot see line drift caused by the
+      edit being made. `--changed-files` partly closes the third. Full text in `CLAUDE.md`.
+- [ ] **⚠ THE ROUTE COLLECTOR IS MOUNT-RELATIVE, AND A THIRD PREFIX WOULD PASS VACUOUSLY.**
+      `server/test/adminRouteCoverage.test.js` and `adminRouteInvariant.test.js` filter on
+      `layer.route.path`, which carries the path **as registered on its router** — not the
+      mounted path. That works for `/api/admin/` and `/api/referrer/` **only because those
+      routers mount at `'/'`** in `server/app.js`. `accountRoutes` mounts at `/api/account`, so
+      its routes register as `/verify-phone`, not `/api/account/verify-phone`. **A future guard
+      pointed at a third prefix would collect ZERO routes and report PASS.** That is a mechanism
+      reporting health it cannot observe — assert a non-zero collection count first.
+- [ ] **The referrer-surface guard covers 23 of ~48 session-bearing routes.** Outside it:
+      `/api/cashout`, `/api/pipeline`, all 15 `/api/account/*`, `/api/profile/photo`,
+      `/api/review/dismiss`, `/api/announcement/seen`, `/api/referral/pending/*`,
+      `/api/preferences/theme-mode`, `/api/session`. **A clean run is evidence about the 23.**
 
 ---
 
