@@ -23,15 +23,9 @@
 //   session minted here would skip a check that does not exist yet — and would
 //   silently acquire the ability to skip one the day it does. Issuing no
 //   session makes that structurally impossible rather than currently harmless.
-// A RESET MUST NOT BECOME AN ACCOUNT-ENUMERATION ORACLE: this is the ISSUANCE
-//   half's constraint and its assertions arrive with the issuance commit. What
-//   redemption owes it is below — the frozen branch answers 403 only to a caller
-//   already holding a valid token, never to one merely asking.
-//
-// ⚠ THIS FILE IS THE REDEMPTION HALF ONLY. POST /api/forgot-pin still queries
-// `users` alone; the issuance commit adds Group A beside Group B here. Nothing
-// in the working tree mints a team_member-subject token yet, which is why this
-// commit is INERT IN PRODUCTION while being the fix that must land first.
+// A RESET MUST NOT BECOME AN ACCOUNT-ENUMERATION ORACLE: the HTTP response is
+//   constant across every match count and shape, and super_admins is never
+//   queried — asserted TWO ways, because only one of them can see a filter.
 //
 // ── NO TEST MAY SEND EMAIL — THE PROPERTY, AND THE MECHANISM RE-DERIVED ─────
 // ⚠ THIS ROUTER EXPORTS A SEAM THAT DOES NOT COVER THESE ROUTES, AND REACHING
@@ -83,6 +77,8 @@ require.cache[_resendPath] = {
 
 const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { request: _httpRequest } = require('node:http');
 const bcrypt = require('bcrypt');
 
@@ -250,6 +246,233 @@ describe('Wave 1.1-g — team credential recovery', () => {
     await seedContractor(pool, TENANT_B);
     await pool.query('UPDATE contractor_settings SET company_name = $1 WHERE contractor_id = $2', [NAME_A, TENANT_A]);
     await pool.query('UPDATE contractor_settings SET company_name = $1 WHERE contractor_id = $2', [NAME_B, TENANT_B]);
+  });
+
+  // ══ GROUP A — ISSUANCE (POST /api/forgot-pin) ══════════════════════════════
+
+  it('A1 [RED] a team member request mints a team_member-subject token and sends one email', async () => {
+    const email = 'a1-team@recov.test';
+    const memberId = await seedTeamMember(TENANT_A, email);
+
+    const res = await httpPost(port, FORGOT, { email });
+    assert.equal(res.status, 200, res.raw);
+
+    const { rows } = await pool.query(
+      'SELECT user_id, team_member_id FROM pin_reset_tokens WHERE team_member_id = $1',
+      [memberId]
+    );
+    assert.equal(
+      rows.length, 1,
+      'expected exactly one team_member-subject reset token. forgot-pin queries `users` only, ' +
+      'so a team member request writes nothing and the caller is told a link is on its way.'
+    );
+    // The subject shape, not just its presence: exactly_one_subject is a CHECK,
+    // but a handler that stamped BOTH columns would have been rejected at insert
+    // and surfaced as zero rows above — this pins which one is set.
+    assert.equal(rows[0].user_id, null, 'a team_member-subject token must leave user_id NULL');
+
+    // ⚠ THE STUB'S POSITIVE PROOF. Not "no mail was sent" — that is what an
+    // uninstalled stub also reports. One payload, addressed to this member.
+    const sent = emailsTo(email);
+    assert.equal(sent.length, 1, 'one matching account, one email');
+    assert.ok(sent[0].html.includes(NAME_A), `the email must name ${NAME_A}`);
+  });
+
+  it('A1b [RED] the team member email is addressed to a colleague, not to a referrer', async () => {
+    // E2. The referrer template says "your Rooster Booster referral account" and
+    // subjects itself "Reset your Rooster Booster PIN". A team member has no
+    // referral account and no PIN — sending it unchanged serves them a broken
+    // feature, the same class as the hardcoded-contractor-name defects C9 removed
+    // from this exact template.
+    //
+    // ⚠ ANCHORED ON THE SURROUNDING SENTENCE, NEVER A BARE VALUE. A needle of
+    // 'password' would match the referrer copy too; the claim under test is which
+    // ACCOUNT the mail describes, and that lives in the phrase around the word.
+    const email = 'a1b-team@recov.test';
+    await seedTeamMember(TENANT_A, email);
+
+    await httpPost(port, FORGOT, { email });
+    const sent = emailsTo(email);
+    assert.equal(sent.length, 1, 'precondition: one email');
+
+    assert.ok(
+      !/referral account/i.test(sent[0].html),
+      'the team member email calls their admin account a "referral account"'
+    );
+    assert.ok(
+      !/\bPIN\b/.test(sent[0].subject),
+      `the team member subject says PIN: ${JSON.stringify(sent[0].subject)}`
+    );
+    assert.ok(
+      /admin/i.test(sent[0].html),
+      'the team member email never mentions the admin panel it is a credential for'
+    );
+  });
+
+  it('A2 [RED] a dual-identity address mints one token per subject and sends one email each', async () => {
+    // R2 — dual identity is a DESIGNED state, not an anomaly. gatherLoginCandidates()
+    // already handles it for login; the recovery path follows that shape.
+    //
+    // A SHARED TOKEN WOULD BE THE ARBITRARY-ROW BUG RELOCATED INTO THE MAILBOX:
+    // whichever email arrived first would reset whichever subject the server
+    // happened to pick, and the person could not tell which.
+    const email = 'a2-dual@recov.test';
+    const userId = await seedReferrer(TENANT_A, email);
+    const memberId = await seedTeamMember(TENANT_B, email);
+
+    const res = await httpPost(port, FORGOT, { email });
+    assert.equal(res.status, 200, res.raw);
+
+    const { rows } = await pool.query(
+      `SELECT token, user_id, team_member_id FROM pin_reset_tokens
+        ORDER BY team_member_id NULLS FIRST`
+    );
+    assert.equal(rows.length, 2, `a dual-identity address needs one token per subject, got ${rows.length}`);
+    assert.deepEqual(
+      [rows[0].user_id, rows[0].team_member_id], [userId, null],
+      'the first token must name the users row and only that'
+    );
+    assert.deepEqual(
+      [rows[1].user_id, rows[1].team_member_id], [null, memberId],
+      'the second token must name the team_members row and only that'
+    );
+    assert.notEqual(rows[0].token, rows[1].token, 'each subject needs its own token');
+
+    const sent = emailsTo(email);
+    assert.equal(sent.length, 2, `two accounts must produce two emails, got ${sent.length}`);
+    assert.ok(sent.some(e => e.html.includes(NAME_A)), `no email named ${NAME_A}`);
+    assert.ok(sent.some(e => e.html.includes(NAME_B)), `no email named ${NAME_B}`);
+  });
+
+  it('A3 the response is byte-identical across every match count and shape', async () => {
+    // ⚠ GREEN IN THE RED STATE, BY DESIGN — AND SAYING SO IS THE POINT.
+    // The team-only and dual columns are currently identical to the zero column
+    // BY ACCIDENT: forgot-pin does no work for either, so of course they match.
+    // This test demonstrates nothing about the defect. It is a REGRESSION FENCE
+    // for the fix — the fix is what could make these diverge, by returning early
+    // for an unmatched address or varying with the number of sends.
+    // A1 and A2 are what prove the fix happened.
+    await seedReferrer(TENANT_A, 'a3-user@recov.test');
+    await seedTeamMember(TENANT_A, 'a3-team@recov.test');
+    await seedReferrer(TENANT_A, 'a3-dual@recov.test');
+    await seedTeamMember(TENANT_B, 'a3-dual@recov.test');
+
+    const none = await httpPost(port, FORGOT, { email: 'a3-nobody@recov.test' });
+    const user = await httpPost(port, FORGOT, { email: 'a3-user@recov.test' });
+    const team = await httpPost(port, FORGOT, { email: 'a3-team@recov.test' });
+    const dual = await httpPost(port, FORGOT, { email: 'a3-dual@recov.test' });
+
+    for (const [label, r] of [['none', none], ['user', user], ['team', team], ['dual', dual]]) {
+      assert.equal(r.status, 200, `${label}: ${r.raw}`);
+    }
+    assert.equal(none.raw, user.raw, 'zero and one match must be indistinguishable');
+    assert.equal(user.raw, team.raw, 'a users match and a team match must be indistinguishable');
+    assert.equal(team.raw, dual.raw, 'one and two matches must be indistinguishable');
+
+    // The counterweight, without which identical responses could have been
+    // achieved by mailing an address with no account behind it.
+    assert.equal(emailsTo('a3-nobody@recov.test').length, 0, 'a miss must send nothing');
+  });
+
+  it('A4 [RED] super_admins is never queried — behavioural half, with its positive control', async () => {
+    // 🔴 R1, BINDING. An account that exists to bypass permissions must not have a
+    // self-service path to its own credential. Its protection IS that nobody can
+    // reset it.
+    const saEmail = 'a4-super@recov.test';
+    const saHash = await bcrypt.hash('placeholder-password', 12);
+    await pool.query(
+      `INSERT INTO super_admins (email, password_hash) VALUES ($1, $2)`,
+      [saEmail, saHash]
+    );
+
+    // ⚠ THE POSITIVE CONTROL IS IN THE SAME TEST AND IS ORDERED FIRST IN INTENT.
+    // "Zero tokens for the super-admin address" is satisfied by a handler that
+    // does nothing at all, which is exactly today's state. Without a live subject
+    // proving the path works, this assertion is worthless.
+    const liveEmail = 'a4-live@recov.test';
+    await seedTeamMember(TENANT_A, liveEmail);
+
+    const live = await httpPost(port, FORGOT, { email: liveEmail });
+    const sa = await httpPost(port, FORGOT, { email: saEmail });
+
+    assert.equal(live.status, 200, live.raw);
+    assert.equal(sa.status, 200, sa.raw);
+    assert.equal(sa.raw, live.raw, 'a super-admin address must be indistinguishable from any other');
+
+    const { rows: liveRows } = await pool.query('SELECT 1 FROM pin_reset_tokens');
+    assert.equal(
+      liveRows.length, 1,
+      'POSITIVE CONTROL FAILED: the live team member got no token, so "the super-admin got ' +
+      'no token" proves nothing — the path rejects everything.'
+    );
+    assert.equal(emailsTo(saEmail).length, 0, 'no mail may be sent to a super-admin-only address');
+  });
+
+  it('A4b super_admins appears nowhere in the forgot-pin handler — the structural half', async () => {
+    // ⚠ THE BEHAVIOURAL HALF CANNOT SEE THE DIFFERENCE BETWEEN "NEVER QUERIED"
+    // AND "QUERIED AND FILTERED OUT", AND R1 RULES THOSE ARE THE SAME DEFECT WITH
+    // A FILTER IN FRONT OF IT. A handler that SELECTed super_admins and dropped
+    // the matches would pass A4 exactly. Only reading the source catches it.
+    //
+    // ⚠ AND THIS READS THE SOURCE TEXT, NOT AN IMPORT. A check built on requiring
+    // the module and inspecting an export cannot fail the way this needs to.
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'routes', 'referrer.js'),
+      'utf8'
+    );
+
+    // ⚠ SPLIT ON /\r?\n/. JavaScript's `.` does not match \r, so a $-anchored
+    // pattern silently no-ops on a CRLF line — and with core.autocrlf=true (the
+    // Windows default) a tracked LF file becomes CRLF in the working tree the
+    // moment anyone runs git checkout. Never normalise as a side effect.
+    const lines = src.split(/\r?\n/);
+    const start = lines.findIndex(l => l.includes("router.post('/api/forgot-pin'"));
+    assert.ok(start >= 0, 'could not locate the forgot-pin handler — this check is mis-pointed');
+    const end = lines.findIndex((l, i) => i > start && l.startsWith('router.'));
+    assert.ok(end > start, 'could not locate the end of the forgot-pin handler');
+
+    const handler = lines.slice(start, end).join('\n');
+
+    assert.ok(
+      !/super_admins/.test(handler),
+      'the forgot-pin handler references super_admins. R1 forbids querying it at all — ' +
+      'a conditional that omits super-admin matches is the same disclosure with a filter ' +
+      'in front of it.'
+    );
+    // The shape R1 asks to be copied: two tables, the same two gatherLoginCandidates
+    // reads. Asserted positively so this cannot pass against a handler that queries
+    // nothing.
+    assert.ok(/FROM users/.test(handler), 'the handler must still query users');
+    assert.ok(/FROM team_members/.test(handler), 'the handler must query team_members');
+  });
+
+  it('A5 [RED] a deactivated team member is indistinguishable at request time, and still gets a token', async () => {
+    // active = true STAYS ABSENT from the gather, and the reason here is stronger
+    // than D3's: forgot-pin proves NOTHING, so any branch on `active` is a
+    // state-disclosure channel readable by an unauthenticated caller. The freeze
+    // is enforced at redemption, where the credential has been proven by mailbox
+    // possession.
+    //
+    // ⚠ THE SECOND ASSERTION IS THE ONE THAT MATTERS. A handler that quietly
+    // skipped inactive members would pass a response-only check while leaking the
+    // state through mail volume and timing.
+    const email = 'a5-frozen@recov.test';
+    const memberId = await seedTeamMember(TENANT_A, email, { active: false });
+
+    const frozen = await httpPost(port, FORGOT, { email });
+    const miss = await httpPost(port, FORGOT, { email: 'a5-nobody@recov.test' });
+
+    assert.equal(frozen.status, 200, frozen.raw);
+    assert.equal(frozen.raw, miss.raw, 'a frozen member must be indistinguishable from an unknown address');
+
+    const { rows } = await pool.query(
+      'SELECT 1 FROM pin_reset_tokens WHERE team_member_id = $1', [memberId]
+    );
+    assert.equal(
+      rows.length, 1,
+      'a deactivated member must still be issued a token — filtering at the gather is the ' +
+      'enumeration channel this design exists to avoid. The freeze belongs at redemption.'
+    );
   });
 
   // ══ GROUP B — REDEMPTION (POST /api/reset-pin), tokens seeded directly ═════

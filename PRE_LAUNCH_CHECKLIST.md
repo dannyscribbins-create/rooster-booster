@@ -444,6 +444,21 @@ entry is the canonical record until then.**
       Applying a +6 correction would have produced a differently-wrong number **that looks like
       repair**, which is worse than leaving it visibly stale. They need re-deriving from the
       symbols they name, not arithmetic.
+      ⚠ **WAVE 1.1-g MOVED THEM AGAIN, 2026-08-30 — SO THE DELTAS RECORDED ABOVE ARE A RECORD OF
+      `f0b2116`, NOT A RECIPE.** 1.1-g inserted ~150 lines into `referrer.js` above most of them.
+      `citecheck -- --changed-files` flagged **9 LIKELY ROTTED**; every one was checked at its OLD
+      line in the OLD revision and **not one was correct beforehand**, which is the measured
+      pattern this mode's own header warns about. **Nothing was repaired, deliberately** — a
+      relocation and a correction may not share a commit (`CLAUDE.md`, *Relocations are
+      verbatim*), and this commit moved the lines.
+      **One addition to the cluster, re-derived by symbol rather than arithmetic:**
+      `CDL_3b_BUILD_SPEC.md:449` cites `referrer.js:2774` for the second notification-email
+      `?admin=true` link. It was at **`:2780`** at `1b6b574` — already off by 6, same family as
+      the rest — and is at **`:2954`** now. The sibling `referrer.js:552` in that same sentence
+      **is correct** and must not be swept with it.
+      ⚠ **`docs/GROUND_TRUTH_2026-08-21.md:163` was also flagged and MUST NOT BE TOUCHED.** It is
+      a dated snapshot that quotes verbatim what it cites; renumbering it would make it claim its
+      quotes come from lines that now hold something else.
       ⚠ **AND THEY ARE THE ARGUMENT FOR CITING BY ROLE.** This session converted its own test file's
       references from line numbers to handler and route names for exactly this reason; a handler
       name does not drift. → §10
@@ -651,31 +666,64 @@ entry is the canonical record until then.**
       the ghost row deliberately so the suite is independent of production's data state.
       → the two follow-ons are the next entries.
 
-- [ ] **🔴 TEAM MEMBERS HAVE NO CREDENTIAL RECOVERY PATH — WAVE 1.1-g, AND THE SCHEMA IS
-      ALREADY THERE.** *(Shape shipped by Wave 1.1-f, 2026-08-29. The only recovery today is an
-      admin re-invite.)* All three recovery tables now carry a nullable `team_member_id` with
-      `ON DELETE CASCADE` and an `exactly_one_subject` CHECK — `pin_reset_tokens`,
-      `verification_codes`, `email_verifications`. **Nothing reads or writes the column.** That
-      is 1.1-g's work, and it starts with these two, which are already known and must not be
-      rediscovered:
-      1. 🔴 **`server/routes/referrer.js`, `POST /api/reset-pin` — the token lookup joins
-         `JOIN users u ON u.id = prt.user_id`, an INNER join.** A `team_member`-subject row is
-         dropped, `rows.length === 0`, and the handler answers **"Reset link is invalid or has
-         expired."** — byte-identical to a genuine expiry. **SILENT.**
-      2. 🔴 **`server/routes/referrer.js`, `POST /api/signup/resend-code` — the retirement sweep
-         `WHERE user_id = $1 AND used_at IS NULL` never matches a `team_member`-subject row**, so
-         old codes are never retired, accumulate, and stay simultaneously valid. The `INSERT`
-         beside it in the same transaction succeeds, so nothing errors. **SILENT.**
-      Both cited by ROLE, not by line — these two have already rotted once.
-      ⚠ **NEITHER MISBEHAVES UNTIL A `team_member`-SUBJECT ROW EXISTS, AND NOTHING CREATES ONE
-      UNTIL 1.1-g.** They were deliberately left unfixed: a migration plus an auth feature in one
-      deploy is two failure modes sharing one revert.
-      **Also for 1.1-g: the non-unique `team_member_id` indexes.** 1.1-f deliberately shipped
-      none. `ON DELETE CASCADE` without an index on the referencing column means a sequential
-      scan per `team_members` delete — but the column is 100% NULL until 1.1-g, no query reads
-      it, and team members are **deactivated rather than deleted** (`server/routes/admin/team.js`
-      only ever writes `active = false`), so the scan may never fire at all. Add them when the
-      column carries rows, **with a measurement behind them rather than an expectation.**
+- [x] **🔴 THE FORGOT-PASSWORD FORM WAS OFFERED TO TEAM MEMBERS AND THE SERVER SILENTLY
+      DISCARDED THE REQUEST — CLOSED BY WAVE 1.1-g, 2026-08-30.** *(Schema shipped by 1.1-f
+      2026-08-29; the resolver and routes by 1.1-g, commits `3674c13` and the issuance commit
+      beside it.)*
+      ⚠ **THIS ENTRY USED TO READ "TEAM MEMBERS HAVE NO CREDENTIAL RECOVERY PATH", AND THAT
+      UNDERSTATED IT.** Since C/DL-3b Phase 5 unified the door,
+      `src/components/auth/LoginScreen.jsx` has shipped a forgot-password sub-form for **every**
+      role. A team member typed their address, was told *"If that email is registered, you'll
+      receive a reset link shortly"*, and **received nothing** — `POST /api/forgot-pin` queried
+      `users` only. **A promise the server did not keep, on a credential surface.** Nobody
+      changed a line of that handler to create the defect; **Phase 5 changed the premise under
+      it**, which is the *"a rule applied once to a surface does not stay applied when the
+      surface moves"* failure with the roles reversed.
+      **Shipped:** issuance queries `users` **and** `team_members` on `LOWER(email)` following
+      `gatherLoginCandidates()`'s shape (team ordered first, combined list capped at
+      `LOGIN_CANDIDATE_CAP`); redemption resolves either subject; the bcrypt cost follows the
+      **subject**, not the route; a frozen member is issued a token and stopped at **redemption**
+      with a 403, never filtered at the gather; the reset **mints no session**; the response is
+      byte-identical for zero, one, team-only and dual matches; the super-admin table is never
+      queried — asserted behaviourally **and** on the handler's source text, because only the
+      second can see a filter. Team members get their own email copy (they have no *referral
+      account* and no *PIN*). **No frontend build was needed** —
+      `src/components/auth/ResetPinScreen.jsx` was already role-blind, now fenced by
+      `src/components/auth/resetSurfaceRoleBlind.test.jsx`.
+      **Fenced by** `server/test/teamCredentialRecovery.test.js` — 14 tests, guard-proofed in
+      both directions.
+      ⚠ **The three non-unique partial `team_member_id` indexes shipped with it**, deferred from
+      1.1-f and now **measured** rather than expected: at 20,001 rows spread across 2,000
+      members, the cascade's RI probe goes **Seq Scan ~1.0 ms → Bitmap Heap Scan ~0.05 ms** on
+      all three. *(The first run of that measurement put every row on one member, so a Seq Scan
+      was genuinely optimal and the planner declined the index while the timings still
+      "improved" — the plan node is what exposed it. Recorded in `server/db.js`.)*
+      → **the second of the two silent consumers is NOT closed — next entry.**
+
+- [ ] **🔴 `POST /api/signup/resend-code`'s RETIREMENT SWEEP IS STILL SUBJECT-BLIND — AND IT IS
+      ACTIVATED BY THE 2FA BUILD, NOT BY A `team_member`-SUBJECT ROW.** *(Sharpened Wave 1.1-g
+      Phase 0, 2026-08-30. The previous wording said it misbehaves "the moment a
+      `team_member`-subject row exists", and **that is wrong** — 1.1-g created such rows and this
+      did not activate.)*
+      `server/routes/referrer.js`, `POST /api/signup/resend-code`: the sweep
+      `UPDATE email_verifications SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL`
+      never matches a `team_member`-subject row, so old codes would never be retired, would
+      accumulate, and would stay simultaneously valid — while the `INSERT` beside it in the same
+      transaction succeeds, so **nothing errors. SILENT.**
+      ⚠ **WHY IT IS DORMANT.** The route's subject comes from a **`users`-only lookup** —
+      `SELECT id, email, contractor_id FROM users WHERE contractor_id = $1 AND LOWER(email) =
+      LOWER($2) AND email_verified = false` — so it can only ever hold a `users` id. The row it
+      would mishandle arrives when **team members get emailed 6-digit codes**, i.e. the 2FA half
+      of *C/DL-3b-2* below. **Fix it with that build, not before** — a speculative change to a
+      working referrer-facing path with no test that can meaningfully exercise it is the
+      green-by-construction shape this repo keeps recording.
+      **The other 12 consumers were enumerated and none is activated** *(1.1-g Phase 0 — grep 29
+      / read 14 in production code, reconciling exactly against 1.1-f's grep 19 / read 14)*:
+      `server/routes/account.js`'s six sit behind `verifyReferrerSession()` and a team member's
+      session carries `role='admin'`, so they are rejected outright;
+      `server/routes/referrer.js:477/641/649` are the `users`-only signup path; the
+      `UPDATE pin_reset_tokens SET used_at` is keyed on `token` and is subject-agnostic. **Only
+      the reset-pin lookup was live, and 1.1-g closed it.**
 
 - [ ] **🟡 NOTHING EVER DELETES A ROW FROM THE THREE RECOVERY TABLES — THEY GROW FOREVER.**
       *(Found Wave 1.1-f Phase 0, 2026-08-29, while enumerating consumers.)* `pin_reset_tokens`,
@@ -687,6 +735,11 @@ entry is the canonical record until then.**
       and `used_at IS NULL`, so a stale row is inert. It is recorded because it is a live fact
       that will not resurface on its own, and because a `sessions`-style sweep would now also
       have to reason about the `team_member_id` subject.
+      ⚠ **UPDATED WAVE 1.1-g, 2026-08-30 — THE SUBJECT COLUMN IS NO LONGER HYPOTHETICAL.**
+      `pin_reset_tokens` is the **first of the three to actually carry `team_member_id` rows**,
+      as of the recovery path shipping. A sweep written now must reason about **two** subject
+      columns rather than one, and the three non-unique partial indexes added in 1.1-g are what
+      would make a subject-scoped sweep cheap.
 
 - [ ] **🟠 THE STRIPE CUSTOMER METADATA BACKFILL IS STILL OWED.** *(Split out of the ghost-id
       cluster on its close, Wave 1.1-e, 2026-08-29 — the forward-looking half shipped and the
@@ -1811,9 +1864,43 @@ check — which is why this is a named build rather than a checklist line.
       CHECK. Same blocker as the reset path above — **do them together**.
 - [ ] **A half-authenticated session state.** A token minted after password success but before
       second-factor success **must not be usable as a normal session**, or 2FA is decorative.
-- [ ] **⚠ A RESET MUST NOT BECOME A 2FA BYPASS.** If the reset path can mint a full session
-      without the second factor, it is a hole straight through the feature being built.
-      Design both paths against each other, not separately.
+- [x] **⚠ A RESET MUST NOT BECOME A 2FA BYPASS.** ~~If the reset path can mint a full session
+      without the second factor, it is a hole straight through the feature being built.~~
+      **CLOSED STRUCTURALLY BY WAVE 1.1-g, 2026-08-30 — and it must stay closed the way it was
+      closed.** `POST /api/reset-pin` **mints nothing**: no session row, no token in the body,
+      for either subject. That is not an omission, it is the answer. A path that issues no
+      session cannot skip a check that does not exist yet **and cannot acquire the ability to
+      skip one later** — which a "remember to also check 2FA here" note could never guarantee.
+      Fenced by `server/test/teamCredentialRecovery.test.js`'s *mints nothing* test, which
+      asserts the positive fact (`sessions` count unchanged, no 64-hex in the body) with a real
+      login beside it as the non-vacuity control.
+      ⚠ **If a future session adds session-minting to the reset path, it re-opens this.**
+- [ ] **🔴 WHEN 2FA LANDS, THE RESET PATH MUST INVALIDATE EXISTING SESSIONS FOR THE SUBJECT —
+      AND SO MUST `accept-invite`, WHICH HAS THE IDENTICAL GAP TODAY.** *(Filed Wave 1.1-g,
+      2026-08-30, as the half its design deliberately left open.)*
+      A reset performed **against an attacker who already holds a stolen session changes
+      nothing for them** — the credential rotates, the live bearer token does not. Today
+      `POST /api/reset-pin` and `POST /api/admin/team/accept-invite` both leave every existing
+      `sessions` row for that subject valid for its full remaining lifetime, which under D7 is
+      up to a 30-day sliding window.
+      **Both halves, because fixing one is the trap:** reset is the obvious one; `accept-invite`
+      is reached by the same population and nobody would think to look at it.
+      ⚠ **This is why the 30-day session and step-up re-auth are one decision, not two** — see
+      the D7 tradeoff note in `CLAUDE.md` (*Never Break → Session lifetime*).
+- [ ] **⚠ TWO TOKEN SYSTEMS NOW WRITE `team_members.password_hash`, AND THEY MUST AGREE.**
+      *(Recorded Wave 1.1-g, 2026-08-30.)* `team_member_invite_tokens` (via
+      `POST /api/admin/team/accept-invite`) and `pin_reset_tokens` (via `POST /api/reset-pin`).
+      **Not wrong** — `users` has exactly the same pair, onboarding plus recovery, and the two
+      genuinely differ: 24h vs 1h TTL, admin-initiated vs holder-initiated, and only one of them
+      can be triggered by an unauthenticated stranger.
+      **The standing obligation is that both writers agree on the password rules.** They did
+      not: `reset-pin` hardcoded bcrypt cost **10** (the `users` cost) while every other writer
+      of `team_members.password_hash` uses **12**, so a team-member reset silently downgraded
+      the credential. **Fixed in 1.1-g — the cost now follows the SUBJECT, not the route** — and
+      pinned by a paired assertion (`$2b$12$` for a team reset, `$2b$10$` for a referrer reset),
+      because asserting 12 alone goes green against an implementation that raises *every* reset
+      to 12. Length already agrees at 8–200.
+      ⚠ **A third writer inherits this obligation.** Check cost and length against both.
 - [ ] Enrolment flag on `team_members` · rate limiting · a recovery path for a rep who loses
       email access.
 

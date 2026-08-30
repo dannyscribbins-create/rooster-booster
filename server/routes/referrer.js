@@ -1872,28 +1872,95 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
   // it sends mail to an address the caller supplies — an unbounded fan-out here
   // is an abuse primitive, not a feature.
   //
-  // USERS ONLY. team_members has no reset flow to reach (pin_reset_tokens FKs to
-  // users(id)); a team-member reset path is its own future item.
+  // ── WAVE 1.1-g — BOTH SUBJECTS, AND THE OLD COMMENT HERE WAS A PROMISE ─────
+  //
+  // ⚠ THIS BLOCK USED TO READ "USERS ONLY. team_members has no reset flow to
+  // reach (pin_reset_tokens FKs to users(id)); a team-member reset path is its
+  // own future item." That was true when written and became a LIVE DEFECT at
+  // C/DL-3b Phase 5 without a line of this file changing.
+  //
+  // Phase 5 unified the door: src/components/auth/LoginScreen.jsx is now the one
+  // login screen for EVERY role, and it ships a forgot-password sub-form that
+  // posts here. So a team member has been able to type their address, be told
+  // "If that email is registered, you'll receive a reset link shortly", and
+  // RECEIVE NOTHING — the request silently discarded by the lookup below. The
+  // path was OFFERED and the promise was not kept, on a credential surface.
+  // "Team members have no recovery path" understated it.
+  //
+  // gatherLoginCandidates() ALREADY SOLVES THIS SHAPE FOR LOGIN and this follows
+  // it rather than inventing a second one: both tables on LOWER(email),
+  // team_members ORDERED FIRST, the combined list truncated at LOGIN_CANDIDATE_CAP.
+  // The ordering is load-bearing for the same reason it is there — the cap
+  // truncates the COMBINED list, so the at-most-one employee row must not be
+  // pushed out by many homeowner accounts sharing the address.
+  //
+  // 🔴 THE SUPER-ADMIN TABLE IS NEVER QUERIED, PERMANENTLY (C/DL-3b-2, binding).
+  // An account that exists to bypass permissions must not have a self-service
+  // path to its own credential; its protection IS that nobody can reset it.
+  // Recovery for it stays a direct database edit.
+  //
+  // ⚠ THIS IS AN ABSENCE, NOT A FILTER, AND THE DIFFERENCE IS THE WHOLE RULING.
+  // A conditional that omitted those matches from the fan-out would disclose the
+  // surface to whoever holds the inbox — the same defect with a filter in front
+  // of it. Excluding the table makes the disclosure impossible rather than
+  // merely handled.
+  //
+  // ⚠ AND THE TABLE'S NAME IS DELIBERATELY NOT WRITTEN ANYWHERE IN THIS HANDLER,
+  // INCLUDING HERE. server/test/teamCredentialRecovery.test.js reads this
+  // handler's source text and fails on the literal, because a behavioural test
+  // cannot tell "never queried" from "queried and filtered". Writing the name in
+  // a comment is how it gets pasted into a query later, so the guard fires on
+  // prose too — and the correct response is this rewording, never a
+  // comments-are-exempt carve-out in the guard.
+  //
+  // ⚠ `active` IS DELIBERATELY ABSENT FROM THE team_members LOOKUP, and the
+  // reason is STRONGER here than the one in gatherLoginCandidates. There it
+  // avoids a misleading 401; here the endpoint proves NOTHING, so any branch on
+  // account state is a disclosure channel readable by an unauthenticated caller —
+  // through the response, through timing, and through whether mail arrives. A
+  // frozen member is issued a token like anyone else and is stopped at
+  // REDEMPTION, where POST /api/reset-pin answers 403 to a caller who has already
+  // proven mailbox possession.
   const { email } = req.body;
   const genericResponse = { message: "If that email is registered, you'll receive a reset link shortly." };
 
   try {
+    const emailArg = email == null ? '' : String(email);
+    const teamResult = await pool.query(
+      `SELECT id, full_name, email, contractor_id
+         FROM team_members
+        WHERE LOWER(email) = LOWER($1)
+        ORDER BY id
+        LIMIT $2`,
+      [emailArg, LOGIN_CANDIDATE_CAP]
+    );
     const userResult = await pool.query(
       `SELECT id, full_name, email, contractor_id
          FROM users
         WHERE LOWER(email) = LOWER($1)
         ORDER BY contractor_id, id
         LIMIT $2`,
-      [email == null ? '' : String(email), LOGIN_CANDIDATE_CAP]
+      [emailArg, LOGIN_CANDIDATE_CAP]
     );
 
-    for (const user of userResult.rows) {
+    // One shape for both subjects so the send loop below never asks which table a
+    // recipient came from — the same reason gatherLoginCandidates normalises its
+    // two row types into one candidate shape.
+    const recipients = [
+      ...teamResult.rows.map(row => ({ isTeam: true, row })),
+      ...userResult.rows.map(row => ({ isTeam: false, row })),
+    ].slice(0, LOGIN_CANDIDATE_CAP);
+
+    for (const { isTeam, row: user } of recipients) {
       const token = crypto.randomBytes(32).toString('hex');
 
+      // EXACTLY ONE SUBJECT COLUMN IS SET. exactly_one_subject (db.js, Wave 1.1-f)
+      // is a CHECK, so stamping both — or neither — is refused at the insert
+      // rather than producing a token no consumer can resolve.
       await pool.query(
-        `INSERT INTO pin_reset_tokens (user_id, token, expires_at)
-         VALUES ($1, $2, NOW() + interval '1 hour')`,
-        [user.id, token]
+        `INSERT INTO pin_reset_tokens (user_id, team_member_id, token, expires_at)
+         VALUES ($1, $2, $3, NOW() + interval '1 hour')`,
+        [isTeam ? null : user.id, isTeam ? user.id : null, token]
       );
 
       const frontendUrl = process.env.FRONTEND_URL || '';
@@ -1933,18 +2000,43 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
           pinResetBranding ? pinResetBranding.companyName : ROOFMILES_DEFAULTS.companyName
         );
 
+        // ── THE COPY VARIES BY SUBJECT; NOTHING ELSE DOES (Wave 1.1-g) ───────
+        // A team member has no referral account, no PIN, and does not sign into
+        // the referrer app. Sending them the referrer template would tell them
+        // "someone requested a PIN reset for your Rooster Booster referral
+        // account" about their ADMIN credential — a person who reads that and
+        // deletes it as phishing has been served a broken feature, which is the
+        // same class of defect as the hardcoded contractor names C9 removed from
+        // this exact template.
+        //
+        // ⚠ ONLY THE WORDS BRANCH. Same white-label loader, same three-rung
+        // chain, same escaped-for-HTML / raw-for-headers split, same link, same
+        // 1-hour expiry, same swallowed failure. A second SEND path is how the
+        // two copies drift and how one of them quietly loses its escaping.
+        //
+        // ⚠ NO BACKTICKS IN THESE COMMENTS — they sit inside a template literal,
+        // where one would close the string and silently drop everything after it.
+        const resetNoun = isTeam ? 'password' : 'PIN';
+        const resetHeading = isTeam ? 'Reset your password' : 'Reset your PIN';
+        const resetBody = isTeam
+          ? 'Someone requested a password reset for your admin panel account. Click the button below to set a new password. This link expires in 1 hour.'
+          : 'Someone requested a PIN reset for your Rooster Booster referral account. Click the button below to set a new PIN. This link expires in 1 hour.';
+
         await retryWithBackoff(
           () => resend.emails.send({
           from: `${pinResetFromName} <noreply@roofmiles.com>`,
           to: user.email,
-          subject: 'Reset your Rooster Booster PIN',
+          // RAW, never escaped — a plain-text header has no markup to inject
+          // into, and escaping one delivers "Smith &amp; Sons" to the inbox.
+          subject: isTeam
+            ? `Reset your ${pinResetFromName} admin password`
+            : 'Reset your Rooster Booster PIN',
           html: `
             <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
               <p style="font-size: 20px; font-weight: 700; color: #012854; margin: 0 0 8px;">${pinResetCompanyName}</p>
-              <h1 style="font-size: 24px; color: #012854; margin: 0 0 16px;">Reset your PIN</h1>
+              <h1 style="font-size: 24px; color: #012854; margin: 0 0 16px;">${resetHeading}</h1>
               <p style="font-size: 15px; color: #444; margin: 0 0 24px;">
-                Someone requested a PIN reset for your Rooster Booster referral account.
-                Click the button below to set a new PIN. This link expires in 1 hour.
+                ${resetBody}
               </p>
               <a href="${resetUrl}" style="
                 display: inline-block;
@@ -1956,9 +2048,9 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
                 font-weight: 700;
                 font-size: 15px;
                 margin-bottom: 24px;
-              ">Set New PIN</a>
+              ">Set New ${isTeam ? 'Password' : 'PIN'}</a>
               <p style="font-size: 13px; color: #888; margin: 0;">
-                If you didn't request this, you can safely ignore this email. Your PIN has not been changed.
+                If you didn't request this, you can safely ignore this email. Your ${resetNoun} has not been changed.
               </p>
             </div>
           `,
@@ -1974,7 +2066,11 @@ router.post('/api/forgot-pin', forgotPinLimiter, async (req, res) => {
       try {
         await pool.query(
           `INSERT INTO activity_log (event_type, full_name, email, detail) VALUES ($1, $2, $3, $4)`,
-          ['pin_reset_request', user.full_name, user.email, 'Reset link sent']
+          // event_type stays 'pin_reset_request' for both subjects — nothing
+          // branches on this value anywhere, so a second one would make every
+          // future filter learn about it for nothing. Only the detail differs.
+          ['pin_reset_request', user.full_name, user.email,
+            isTeam ? 'Admin reset link sent' : 'Reset link sent']
         );
       } catch (logErr) {
         await logError({ req, error: logErr });

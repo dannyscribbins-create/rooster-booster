@@ -1996,9 +1996,16 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // the same user inside one transaction. A UNIQUE (user_id, …) here would break
   // resend on its second call. Copying a measure by its MECHANISM instead of its
   // PROPERTY is the failure this codebase keeps recording — the property does not
-  // transfer, so the indexes do not. Non-unique indexes on team_member_id are
-  // also deliberately absent: nothing carries a value there until 1.1-g, so they
-  // would be speculative. Filed to 1.1-g, to be added with a measurement.
+  // transfer, so the indexes do not.
+  //
+  // ⚠ THE SECOND HALF OF THIS PARAGRAPH HAS INVERTED, NOT MERELY AGED. It read
+  // "Non-unique indexes on team_member_id are also deliberately absent: nothing
+  // carries a value there until 1.1-g, so they would be speculative. Filed to
+  // 1.1-g, to be added with a measurement." 1.1-g arrived, the column carries
+  // rows, and the measurement was taken — THE INDEXES NOW EXIST, at the bottom of
+  // this block. Left as written it would have told the next reader that an index
+  // they can see in the schema was a mistake. The UNIQUE-index refusal above is
+  // untouched and still binding.
   //
   // ⚠ THE STATEMENT ORDER IS DELIBERATE AND IT DECIDES WHERE AN ABORT LANDS.
   // Per table: ADD COLUMN → (DROP NOT NULL) → guard → ADD CONSTRAINT. The guard's
@@ -2071,6 +2078,42 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       );
       console.log(`✓ migration: ${tbl}.exactly_one_subject`); // diagnostic log — intentional
     }
+  }
+
+  // ── WAVE 1.1-g — THE team_member_id INDEXES, DEFERRED FROM 1.1-f ────────────
+  // 1.1-f shipped none on purpose: the CASCADE argument was real but the column
+  // was 100% NULL, so an index would have been a speculative answer to a cost
+  // nothing was paying. 1.1-g is what starts writing rows there, so they land
+  // here — WITH A MEASUREMENT RATHER THAN AN EXPECTATION.
+  //
+  // MEASURED 2026-08-30 on the local test database, 20,001 rows per table spread
+  // across 2,000 team members, probing the referential-integrity query Postgres
+  // actually runs on a cascading delete
+  // (SELECT 1 FROM ONLY <table> WHERE team_member_id = $1 FOR KEY SHARE):
+  //
+  //     pin_reset_tokens      Seq Scan 1.07 ms  ->  Bitmap Heap Scan 0.05 ms
+  //     verification_codes    Seq Scan 0.99 ms  ->  Bitmap Heap Scan 0.04 ms
+  //     email_verifications   Seq Scan 0.81 ms  ->  Bitmap Heap Scan 0.05 ms
+  //
+  // ⚠ THE FIRST RUN OF THAT MEASUREMENT REPORTED A PLAUSIBLE WRONG ANSWER AND IS
+  // WORTH RECORDING. It put all 20,000 rows on ONE member, so every row matched
+  // the probe, a Seq Scan was genuinely optimal, and the planner declined the
+  // index — while the timings still "improved" from cache warming. The plan node
+  // is what exposed it; the milliseconds alone would have certified the index as
+  // working. Rows must be SPREAD for the probe to be selective, which is also
+  // what a real deployment looks like.
+  //
+  // NON-UNIQUE, AND PARTIAL ON IS NOT NULL. Non-unique because two of these three
+  // tables actively depend on several live rows per subject — the reason the
+  // block above refuses to copy user_preferences' UNIQUE indexes, unchanged here.
+  // Partial because the column is NULL on every user-subject row, which is nearly
+  // all of them: indexing those entries would cost storage to record an absence
+  // no query ever probes for.
+  for (const tbl of DUAL_SUBJECT_TABLES) {
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS ${tbl}_team_member_id_idx
+         ON ${tbl} (team_member_id) WHERE team_member_id IS NOT NULL`
+    );
   }
 
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
