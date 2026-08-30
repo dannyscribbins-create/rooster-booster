@@ -390,12 +390,21 @@ entry is the canonical record until then.**
       button.
       **All five reads now resolve from the caller's session and the constant is deleted** —
       see the ghost-id cluster entry below.
-      ⚠ **THE ORDER LIFTS WHEN THE CARD IS CONFIRMED, NOT WHEN THE COMMIT LANDS.** The
-      post-deploy check is that Banking Settings shows **Stripe Connected, `acct_…N98EW`, with
-      no reconnection step**. **Do not press the button to verify** — the card lighting up is
-      the proof, and pressing it would exercise the write path against a live, healthy row for
-      no reason. If the card still reads not-connected, the resolution is not reading the
-      session's contractor and the order stands.
+      ✅ **CONFIRMED 2026-08-29 AND THE ORDER IS LIFTED.** Banking Settings shows **Stripe
+      Connected · Account `…QN98EW` · "ACH payouts are active" · a Disconnect button**, with no
+      reconnection step. Verified against production. The card was never pressed — the card
+      lighting up was the proof, and pressing it would have exercised the write path against a
+      live, healthy row for no reason. **The ghost-id fix is confirmed end-to-end against real
+      data**, which is a stronger statement than a green suite: the test seeds its own ghost,
+      production had none, and the card still went from wrong to right.
+      ⚠ **WHAT IS CLOSED IS THE STRIPE SURFACE. THE GHOST ID IS NOT GONE.** Read this before
+      quoting the line above. `server/routes/stripe.js` is tenanted; the wider `'accent-roofing'`
+      literal surface is untouched — `server/db.js` (11 column defaults plus the seed guard),
+      `server/utils/notificationEmail.js` (two defaulted parameters), `server/routes/account.js:436`,
+      `server/middleware/errorLogger.js`, `server/crm/jobber.js`. All are on registry Known
+      Issues 2a's **STILL OPEN** list. **"Stripe is tenanted now" must not be allowed to read as
+      "the ghost id is gone"** — that is the same one-word slide that let the split-brain claim
+      sit stale for seven weeks.
 
 - [ ] **🔴 THE ACH ENDPOINT MUST NOT GO LIVE UNTIL THE CONNECT ARCHITECTURE IS RULED ON.**
       *(Wave 1.1-c, 2026-08-28. This dependency existed in NO document before now.)*
@@ -641,6 +650,43 @@ entry is the canonical record until then.**
       **Verified by `server/test/stripeContractorResolution.test.js` — 22 tests**, which seeds
       the ghost row deliberately so the suite is independent of production's data state.
       → the two follow-ons are the next entries.
+
+- [ ] **🔴 TEAM MEMBERS HAVE NO CREDENTIAL RECOVERY PATH — WAVE 1.1-g, AND THE SCHEMA IS
+      ALREADY THERE.** *(Shape shipped by Wave 1.1-f, 2026-08-29. The only recovery today is an
+      admin re-invite.)* All three recovery tables now carry a nullable `team_member_id` with
+      `ON DELETE CASCADE` and an `exactly_one_subject` CHECK — `pin_reset_tokens`,
+      `verification_codes`, `email_verifications`. **Nothing reads or writes the column.** That
+      is 1.1-g's work, and it starts with these two, which are already known and must not be
+      rediscovered:
+      1. 🔴 **`server/routes/referrer.js`, `POST /api/reset-pin` — the token lookup joins
+         `JOIN users u ON u.id = prt.user_id`, an INNER join.** A `team_member`-subject row is
+         dropped, `rows.length === 0`, and the handler answers **"Reset link is invalid or has
+         expired."** — byte-identical to a genuine expiry. **SILENT.**
+      2. 🔴 **`server/routes/referrer.js`, `POST /api/signup/resend-code` — the retirement sweep
+         `WHERE user_id = $1 AND used_at IS NULL` never matches a `team_member`-subject row**, so
+         old codes are never retired, accumulate, and stay simultaneously valid. The `INSERT`
+         beside it in the same transaction succeeds, so nothing errors. **SILENT.**
+      Both cited by ROLE, not by line — these two have already rotted once.
+      ⚠ **NEITHER MISBEHAVES UNTIL A `team_member`-SUBJECT ROW EXISTS, AND NOTHING CREATES ONE
+      UNTIL 1.1-g.** They were deliberately left unfixed: a migration plus an auth feature in one
+      deploy is two failure modes sharing one revert.
+      **Also for 1.1-g: the non-unique `team_member_id` indexes.** 1.1-f deliberately shipped
+      none. `ON DELETE CASCADE` without an index on the referencing column means a sequential
+      scan per `team_members` delete — but the column is 100% NULL until 1.1-g, no query reads
+      it, and team members are **deactivated rather than deleted** (`server/routes/admin/team.js`
+      only ever writes `active = false`), so the scan may never fire at all. Add them when the
+      column carries rows, **with a measurement behind them rather than an expectation.**
+
+- [ ] **🟡 NOTHING EVER DELETES A ROW FROM THE THREE RECOVERY TABLES — THEY GROW FOREVER.**
+      *(Found Wave 1.1-f Phase 0, 2026-08-29, while enumerating consumers.)* `pin_reset_tokens`,
+      `verification_codes` and `email_verifications` have **no cleanup cron of any kind.**
+      `server/cron/jobs/sessionCleanup.js` sweeps `sessions` only; none of the other six jobs
+      touches them. Expired and used rows accumulate indefinitely.
+      Not urgent — the tables are tiny today (production held **5** `email_verifications` rows on
+      2026-08-29) — and **not** a correctness bug: every consumer filters on `expires_at > NOW()`
+      and `used_at IS NULL`, so a stale row is inert. It is recorded because it is a live fact
+      that will not resurface on its own, and because a `sessions`-style sweep would now also
+      have to reason about the `team_member_id` subject.
 
 - [ ] **🟠 THE STRIPE CUSTOMER METADATA BACKFILL IS STILL OWED.** *(Split out of the ghost-id
       cluster on its close, Wave 1.1-e, 2026-08-29 — the forward-looking half shipped and the

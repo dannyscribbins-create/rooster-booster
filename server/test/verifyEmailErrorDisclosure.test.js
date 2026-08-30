@@ -22,8 +22,18 @@
 //
 // WHAT THE LEAK ACTUALLY DISCLOSES. The failure this test drives is a Postgres
 // 22P02 (invalid_text_representation) raised by the first query in the handler:
-// `WHERE user_id = $1` against `email_verifications.user_id INTEGER NOT NULL`
-// (db.js:191). Postgres phrases that as
+// `WHERE user_id = $1` against `email_verifications.user_id`, which is an
+// INTEGER column (its declaration is the first column after the primary key in
+// the email_verifications CREATE TABLE block in server/db.js).
+//
+// ⚠ THIS USED TO READ "INTEGER NOT NULL (db.js:191)" AND BOTH HALVES WENT
+// STALE IN WAVE 1.1-f. The NOT NULL was dropped so a team_member-subject row
+// could exist, and the line number moved. Neither mattered to this test and
+// that is exactly why it would have rotted unnoticed: THE 22P02 COMES FROM THE
+// `INTEGER` TYPE, NOT FROM THE NOT NULL, so the probe still reaches the catch
+// block and the file stayed green through a change that falsified its own
+// explanation. Re-cited by role rather than by line for the same reason.
+// Postgres phrases that as
 //
 //     invalid input syntax for type integer: "<the value the caller sent>"
 //

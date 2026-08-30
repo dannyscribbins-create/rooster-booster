@@ -1961,6 +1961,118 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     ON user_preferences (team_member_id, pref_key)
     WHERE team_member_id IS NOT NULL`);
 
+  // ── WAVE 1.1-f — DUAL-NULLABLE SUBJECT ON THE THREE RECOVERY TABLES ─────────
+  // Team members have NO credential recovery path; the only recovery is an admin
+  // re-invite. All three recovery tables FK'd to users(id) with no team_member
+  // path. This gives them the subject shape. SCHEMA ONLY — 1.1-g builds the
+  // resolver and the routes. Nothing reads or writes team_member_id after this
+  // block, and that is the intended end state, not an oversight.
+  //
+  // ⚠⚠ PLACEMENT IS LOAD-BEARING, AND MOVING THIS BREAKS ONLY FRESH DEPLOYMENTS.
+  // These three tables are CREATEd near the TOP of this file — pin_reset_tokens,
+  // email_verifications and verification_codes, all well above team_members. So
+  // `team_member_id INTEGER REFERENCES team_members(id)` CANNOT be written inline
+  // in those CREATE TABLE blocks: on a brand-new database that is a forward
+  // reference to a table that does not exist yet and initDB() dies at boot.
+  //
+  // ⚠ AND THE BREAKAGE IS INVISIBLE WHERE YOU WOULD LOOK FOR IT. On any EXISTING
+  // database `CREATE TABLE IF NOT EXISTS` skips those blocks entirely, so the bad
+  // inline reference is never evaluated and everything appears fine — local,
+  // staging, production, all green. It fails only the next time someone builds
+  // from nothing. `server/test/dualSubjectMigration.test.js`'s FRESH BOOT test
+  // wipes the schema and rebuilds specifically to catch this; it is the only
+  // thing that can.
+  //
+  // This is user_preferences' "PLACEMENT IS LOAD-BEARING" note (just above) in
+  // reverse: that one is a NEW table that had to be created late; these are THREE
+  // OLD tables that must be ALTERed late.
+  //
+  // ⚠ NO UNIQUE INDEXES, AND THAT IS A RE-DERIVATION RATHER THAN AN OMISSION.
+  // user_preferences carries two partial UNIQUE indexes because its property is
+  // "one row per (subject, key)". None of these three has an analogous rule and
+  // TWO ACTIVELY DEPEND ON MULTIPLE ROWS PER SUBJECT: verification_codes'
+  // consumers select `ORDER BY created_at DESC LIMIT 1`, and the signup
+  // resend-code flow RETIRES THEN INSERTS a second email_verifications row for
+  // the same user inside one transaction. A UNIQUE (user_id, …) here would break
+  // resend on its second call. Copying a measure by its MECHANISM instead of its
+  // PROPERTY is the failure this codebase keeps recording — the property does not
+  // transfer, so the indexes do not. Non-unique indexes on team_member_id are
+  // also deliberately absent: nothing carries a value there until 1.1-g, so they
+  // would be speculative. Filed to 1.1-g, to be added with a measurement.
+  //
+  // ⚠ THE STATEMENT ORDER IS DELIBERATE AND IT DECIDES WHERE AN ABORT LANDS.
+  // Per table: ADD COLUMN → (DROP NOT NULL) → guard → ADD CONSTRAINT. The guard's
+  // violation query reads team_member_id, so the column must exist before it runs.
+  //
+  // AND THE TABLE ORDER MATTERS FOR THE SAME REASON. email_verifications is the
+  // only one whose user_id is NOT NULL, so it is the only one with a two-step
+  // change — and BETWEEN those two steps the table permits a both-NULL row, which
+  // is the one moment in this migration where the schema is weaker than either its
+  // before or its after state. If a boot crashed in that window the table would
+  // stay there until the next successful boot. It is processed LAST, after the two
+  // already-nullable tables, so that an abort on either of those leaves
+  // email_verifications COMPLETELY UNTOUCHED with its NOT NULL intact — the safest
+  // available failure state. Reordering these three for tidiness would widen that
+  // window and nothing would report it.
+  //
+  // ⚠ THE GUARD IS FAIL-CLOSED AND WRAPPED IN A WORK-REMAINING CHECK. The two
+  // already-nullable tables PERMIT a subject-less row today, so this CHECK is
+  // being added to tables that currently allow violations — it needs a real guard,
+  // not a fresh-schema assumption. Production was measured 2026-08-29 and is clean
+  // (0 / 0 / 5 rows), which is NOT the proof: the guard exists for the database
+  // that is not clean. The pg_constraint pre-check is the work-remaining wrapper —
+  // once the constraint exists the count never runs again, so this cannot re-crash
+  // a booted database. That is the ST-session defect recorded in CLAUDE_REGISTRY.md.
+  //
+  // Table names are interpolated below. They are a fixed literal list defined on
+  // the next line, never user input, and Postgres cannot parameterise an
+  // identifier in any case.
+  const DUAL_SUBJECT_TABLES = ['pin_reset_tokens', 'verification_codes', 'email_verifications'];
+  for (const tbl of DUAL_SUBJECT_TABLES) {
+    await pool.query(
+      `ALTER TABLE ${tbl} ADD COLUMN IF NOT EXISTS team_member_id INTEGER
+         REFERENCES team_members(id) ON DELETE CASCADE`
+    );
+
+    // Only email_verifications needs this; it is a no-op on an already-nullable
+    // column, so it stays idempotent on every re-run.
+    if (tbl === 'email_verifications') {
+      await pool.query('ALTER TABLE email_verifications ALTER COLUMN user_id DROP NOT NULL');
+    }
+
+    const constraintName = `${tbl}_exactly_one_subject`;
+    const { rows: already } = await pool.query(
+      'SELECT 1 FROM pg_constraint WHERE conname = $1',
+      [constraintName]
+    );
+    if (already.length === 0) {
+      const { rows: bad } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM ${tbl}
+          WHERE NOT ((user_id IS NOT NULL AND team_member_id IS NULL)
+                  OR (user_id IS NULL     AND team_member_id IS NOT NULL))`
+      );
+      if (bad[0].n > 0) {
+        throw new Error(
+          `initDB: cannot add ${constraintName} — ${tbl} holds ${bad[0].n} row(s) with ` +
+          `neither subject set. The exactly-one-subject rule cannot be applied until they ` +
+          `are resolved. Nothing was changed on ${tbl}; inspect with ` +
+          `SELECT * FROM ${tbl} WHERE user_id IS NULL AND team_member_id IS NULL.`
+        );
+      }
+      // Shape copied verbatim from user_preferences_exactly_one_subject above.
+      // EXACTLY one, not "at least one": a recovery token naming two different
+      // subjects has no coherent meaning and there is no index that would catch
+      // it. Do not relax this to the contact_tags "at least one" form.
+      await pool.query(
+        `ALTER TABLE ${tbl} ADD CONSTRAINT ${constraintName} CHECK (
+             (user_id IS NOT NULL AND team_member_id IS NULL)
+          OR (user_id IS NULL     AND team_member_id IS NOT NULL)
+        )`
+      );
+      console.log(`✓ migration: ${tbl}.exactly_one_subject`); // diagnostic log — intentional
+    }
+  }
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed
