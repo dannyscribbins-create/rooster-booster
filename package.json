@@ -55,6 +55,7 @@
     "test:react:watch": "vitest",
     "sizing": "node scripts/sizing.js",
     "architecture": "node scripts/architecture.js",
-    "citecheck": "node scripts/citecheck.js"
+    "citecheck": "node scripts/citecheck.js",
+    "tablecheck": "node scripts/tablecheck.js"
   }
 }

@@ -252,6 +252,36 @@ Standards* — **the defect D-B was raised about, and the reason the colours it 
 were never here.** Accent Roofing is a **contractor**; contractor identity resolves at runtime
 through `useBranding()`, never from a file on a drive.
 
+### ⚠ THE INFRASTRUCTURE IS STILL NAMED `rooster-booster`, AND THAT IS A KNOWN ACCEPTED STATE
+
+**A fresh session hunting for a RoofMiles-named resource will not find one, and will conclude it is
+looking at the wrong account.** That happened: C/DL-3c Phase 0.5 opened Railway, saw no project
+named for the product, and recorded *"none of them RoofMiles"* as a fact about **access**. It was
+an inference drawn from a **name**.
+
+- **RoofMiles** — the product and the platform-facing name. Resolved at runtime from
+  `resolveBrandingTheme(null).companyName`; there is deliberately no second copy
+  (`src/utils/platformIdentity.js`).
+- **Rooster Booster** — the name the project started under. ⚠ **Two source comments characterise
+  it differently and neither says "a contractor's white-label":** `src/utils/platformIdentity.js`
+  calls it *"the retired platform name"*, `src/utils/brandingTheme.mjs` calls it *"this platform's
+  internal codename"*. **Recorded as a discrepancy rather than resolved** — whichever is right, the
+  infrastructure consequence below is the same.
+- **Still stamped with the old name, each verified against source rather than copied from a list:**
+  the **Railway project** · the **GitHub repo** (`git remote -v` → `dannyscribbins-create/rooster-booster`)
+  · the **local working directory** (`C:\Users\stacy\rooster-booster`) · **`package.json`'s `name`**
+  and **`package-lock.json`'s two `name` fields**.
+
+⚠ **THE RENAME IS DELIBERATELY NOT DONE. IT IS NOT A CLEANUP ITEM SOMEONE SHOULD HELPFULLY CLOSE.**
+Renaming a Railway project or a Git remote touches deploy wiring on a **live** service for a
+**cosmetic** gain. It is recorded here as a known, accepted state so the next session neither
+"fixes" it nor mistakes it for evidence of anything.
+
+⚠ **AND THE GENERAL RULE, WHICH IS WHY THIS SITS IN A GOVERNING FILE RATHER THAN A HANDOFF: DO NOT
+INFER A FACT ABOUT ACCESS, OWNERSHIP OR IDENTITY FROM A NAME.** Stopping rather than guessing at an
+unfamiliar resource is right; **recording the guess as a finding is not.** Say what was observed,
+then say what was not checked.
+
 ---
 
 ## Deployment
@@ -289,7 +319,7 @@ through `useBranding()`, never from a file on a drive.
 
 ---
 
-## Editing mechanics — the two that produce no error
+## Editing mechanics — edits that produce no error
 
 ### Multi-range edits go in strictly DESCENDING order, and you ASSERT it
 
@@ -373,6 +403,26 @@ what the citing sentence describes. Only then shift it.** If it was already wron
 re-deriving where the subject lives — a different and larger job, and one to record rather
 than improvise.
 
+⚠ **THE SHARPEST PROOF OF THAT PROCEDURE, MEASURED IN C/DL-3c PHASE 1 — AND IT CAME FROM A LIST
+WHERE ONE MEMBER WAS FLAGGED AND THE REST WERE NOT.** `PRE_LAUNCH_CHECKLIST.md`'s *"Retire the four
+spec-level copies of the exact-path staging rule"* cited four files by line. `--changed-files`
+flagged **one** — `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md`, because that spec was edited in the same
+commit. It had been **correct**, and the edit moved it. Verifying it forced a read of the other
+three, and **`UI_OVERHAUL_SPEC.md:290` was ALREADY WRONG** — it pointed at *"Phase 0 read-only
+investigation before each phase"*, while the staging bullet sat two lines further down.
+**`citecheck` never flagged it, because that file was not touched.**
+**ADDING THIS COMMIT'S DELTA TO ALL FOUR WOULD HAVE MOVED THE ONE CORRECT CITATION AND LEFT THE
+WRONG ONE WRONG.** All four are now cited by role.
+
+⚠ **SECOND PROOF IN THE SAME PHASE, AND IT IS THE STRONGER FORM: the two copies of
+`PRE_LAUNCH_CHECKLIST.md:139-143` WERE NEVER SIMULTANEOUSLY RIGHT.** It was correct in
+`ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` when written at `ceae890`, and **already false when copied
+into `src/utils/brandingChain.js` at `923958b`.** No single delta could ever have repaired both,
+at any point in their history. **That is the argument against arithmetic repair in its strongest
+form: the two numbers were never the same fact.** Both now cite by role.
+→ *When the artifact under repair is a SET of citations* below, which is what finding these
+required.
+
 **And the cheapest mitigation is WHERE you insert, which costs nothing to get right.**
 Append new `server/db.js` migrations near the **END** of the file. The highest citation
 anywhere into `db.js` is around `:1672`, so a block landing below that moves nothing anyone
@@ -391,6 +441,27 @@ claim its quotes come from lines that now hold something else. Same distinction 
 RED-narrative rule below — **a record is not a claim about today.** Its six flagged citations
 are a *different job* from the five in `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` and must not be
 swept together.
+
+### An insertion can break a markdown TABLE, and the diff looks correct
+
+**Third member of this section, and the same shape as the two above: an edit that produces no
+error and changes what the document says.**
+
+C/DL-3c Phase 1 inserted an explanatory blockquote into `DECISION_C_DL_BUILD_SPEC.md` §10 and it
+landed **between the table's header separator and its first body row**. The file parsed. The diff
+showed exactly the intended text. **The table would have stopped rendering as a table** — taking
+the Session column with it, which was the entire point of the amendment that inserted it.
+
+⚠ **A DIFF CANNOT SHOW THIS.** A diff shows added and removed lines; it cannot show a document's
+relationship to its own structure changing. **It was found by re-reading the rendered section, not
+by reviewing the change.** Same reason the comment-block rule above exists: the edit is locally
+correct and globally wrong.
+
+**`npm run tablecheck`** — `scripts/tablecheck.js`, added for this. It walks the tracked `.md` list
+(never a hand-maintained one) and reports a separator row not followed by a body row.
+**Run it after any edit that inserts into or near a markdown table**, alongside `npm run citecheck`.
+⚠ **It PRINTS and always exits 0**, exactly like `citecheck`, and for the same reason recorded in
+that script's header — **it is not in `npm test` and must not be added to it.**
 
 ---
 
@@ -879,6 +950,68 @@ expectation.**
 Every vacuity shape is *"this assertion cannot fail."* **This is the opposite** — the assertion
 could have failed, and the number came out right by a coincidence of notation. Filing it with the
 vacuity shapes would blur a distinction that section spends its length maintaining.
+
+---
+
+### When the artifact under repair is a SET of citations, the unit of verification is the SET
+
+**Sampling cannot find the ones that look right.**
+
+⚠ **THIS IS NOT A VACUITY SHAPE, AND FILING IT WITH THEM WOULD BLUR A DISTINCTION THAT SECTION
+SPENDS ITS LENGTH MAINTAINING.** Every vacuity shape is *"this assertion cannot fail."* Here every
+one of these citations **could** have been checked and **would** have failed. It is a
+**verification-coverage** rule, and it sits beside *"a number in a governing document needs a
+source"* because both are about a claim nobody sourced.
+
+**The measured case, C/DL-3c Phase 1.** A repair was instructed against **three** `activity_log`
+citations in `CDL_3c_PHASE0_REPORT.md`. Grepping rather than trusting the count found **two**.
+Extracting **all 133** citations in that file and reading each against its own citing sentence
+found **three more**, each wrong by a different amount and by a different mechanism:
+
+- `contacts.jobber_client_id` cited `:738` — off by one, onto `is_app_user`.
+- `users.jobber_client_id` cited `:790` — **a different table entirely**; the number had been read
+  out of the wrong half of a two-block `sed` whose output was taken as one.
+- `rep_promotion`'s registry entry cited `:127-133` — ⚠ **it resolved to the ADJACENT
+  `rep_assignment` block.**
+
+⚠ **THE THIRD IS THE DANGEROUS SHAPE AND IT IS WHY THE RULE EXISTS. A CITATION THAT LANDS ON A
+PLAUSIBLE SIBLING READS AS CORRECT TO ANYONE WHO FOLLOWS IT.** It survives `citecheck` — the target
+resolves. It survives a sweep — the file exists. It survives a human spot-check — the content is
+about the right subject, one entry away. **Only reading it against the sentence that cites it
+catches it.** Same family as the substring rule directly below, one level up: there the *needle*
+matched a sibling, here the *line number* does.
+
+**THE RULE: when the artifact under repair is a SET of citations, the unit of verification is the
+SET, not the flagged members.** Enumerate every citation in the artifact, resolve each, and read it
+against its own sentence — then repair. **A spot-check of the suspicious ones would have found one
+of five.**
+
+⚠ **AND THE NEAR-MISS BENEATH IT IS ITS OWN INSTANCE: the repair note carried an UNSOURCED COUNT —
+"three places" — inside a document whose subject is unsourced counts, in the same paragraph that
+tells the reader to grep.**
+
+**Four self-referential miscounts that can be cited by location. This is a FLOOR, not a total —**
+the wider family is recorded in the section above, and the point of enumerating is that each one is
+checkable rather than asserted:
+
+1. `CDL_3c_PHASE05_RULINGS.md`'s repair note — *"three places"* against two.
+2. `CLAUDE.md`'s own vacuity-section intro — *"six … a seventh … an eighth"* above a list of
+   **nine**. Corrected in `97fd2e8`.
+3. `PRE_LAUNCH_CHECKLIST.md`'s theme-engine pass — *"FIVE items"* above a list of **six**, and the
+   number appeared **twice in one sentence**. Corrected in `97fd2e8`.
+4. ⚠ **THIS FILE'S OWN *Editing mechanics* HEADING, AND IT IS THE WORST OF THE FOUR BECAUSE OF WHAT
+   HAPPENED NEXT.** It read *"the two that produce no error"* over **three** subsections — wrong
+   before this session touched it. The session that added a fourth subsection first "fixed" it to
+   *"the three"*, **reproducing the identical error one number along, in the file that records the
+   rule, while writing this very list.** The count is now gone from the heading entirely.
+
+⚠ **THE LESSON IS NOT "COUNT MORE CAREFULLY." IT IS: DO NOT PUT A COUNT IN A HEADING OR A LEAD
+SENTENCE AT ALL** when the thing it counts is a list directly beneath it. A count there has no
+mechanism that updates it, and instance 4 shows that even a reader actively cataloguing this defect
+will bump the number rather than delete it. **Name the section for what it contains, not how much.**
+
+⚠ **Do not replace this enumeration with a running total.** A total is the thing that goes stale,
+which is the failure the whole section is about.
 
 ---
 

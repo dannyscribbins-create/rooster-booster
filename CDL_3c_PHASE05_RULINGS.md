@@ -16,6 +16,15 @@ named "standing untracked files" that were already tracked.**
 > file is the commit that applies the edits it proposes**, so every OLD TEXT quoted below is
 > deliberately the *pre-edit* text and every line number is one revision behind by construction.
 > That is what makes the proposals checkable against what was actually changed.
+>
+> ⚠ **CONSEQUENCE FOR `citecheck --changed-files`, RECORDED SO IT IS NOT RE-DERIVED EVERY TIME.**
+> This document cites `CLAUDE.md:436-438` and `CLAUDE.md:501` as **quotations of their pre-edit
+> content**. Any future edit to `CLAUDE.md` will flag them **LIKELY ROTTED**, correctly and
+> permanently. **They are not to be repaired.** They join the five `CLAUDE.md:502` citations in
+> `PRE_LAUNCH_CHECKLIST.md` — already ruled *"repairing destroys the evidence"* — and the dated
+> snapshot's own. ⚠ **A growing permanent false-positive class is the price of keeping records, and
+> it is the right price; what is NOT acceptable is a session re-deriving the ruling each time,
+> which is why it is written here rather than rediscovered.**
 
 ---
 
@@ -124,11 +133,49 @@ from `id` is the exact mistake `db.js:1152-1155` forbids).
 
 **A2b — How many contractor rows have a NULL or empty slug?**
 
-⚠ **I COULD NOT REACH THE PRODUCTION DATABASE, AND I AM REPORTING THAT RATHER THAN GUESSING.**
+~~⚠ **I COULD NOT REACH THE PRODUCTION DATABASE, AND I AM REPORTING THAT RATHER THAN GUESSING.**
 I opened Railway in a browser tab. The authenticated account is **"DSPro's Projects" (HOBBY)** and
 holds **three projects — `pretty-solace`, `ample-rejoicing`, `secure-compassion` — every one
 showing "No services."** None is the RoofMiles deployment. I did not go looking through unrelated
-projects and I closed the tab.
+projects and I closed the tab.~~
+
+> 🔴 **CORRECTED IN PLACE 2026-08-30, DANNY-CONFIRMED. THE STRUCK CLAIM IS WRONG, AND STRIKING
+> RATHER THAN DELETING IS THE POINT — anyone who read the original needs to see why it changed.**
+>
+> **THE ACCESS IS FINE.** DSPro is Danny's account, and it holds the deployment. **The project is
+> named `rooster-booster`** — the name the whole project started under, before the RoofMiles
+> rename, never updated. Same reason the local repo lives at `C:\Users\stacy\rooster-booster`, the
+> GitHub remote is `dannyscribbins-create/rooster-booster`, and `package.json`'s `name` is
+> `rooster-booster`. **The rename is deliberately not done** — it touches deploy wiring on a live
+> service for a cosmetic gain. → `CLAUDE.md`, *Brand Standards* → *the infrastructure is still
+> named `rooster-booster`*.
+>
+> ⚠ **WHAT I ACTUALLY GOT WRONG, STATED PRECISELY, BECAUSE THE SHAPE MATTERS MORE THAN THE FACT.**
+> **Stopping rather than guessing at an unfamiliar project was correct. Recording the inference as
+> a finding was not.** I observed three project cards and read their labels; I concluded *"none is
+> the RoofMiles deployment"* — **a fact about ACCESS inferred from a NAME** — and wrote it as
+> though it had been checked. It had not. The honest report was: *"I saw three projects whose names
+> I do not recognise, all showing 'No services'; I did not open any of them, so I cannot say
+> whether one is the deployment."*
+> ⚠ **AND I STILL CANNOT RECONCILE THE OBSERVATION WITH THE CORRECTION, SO I AM NOT PRETENDING TO.**
+> None of the three cards was *labelled* `rooster-booster`, and all three showed "No services" —
+> which is not what a live deployment's card looks like. **Whether the cards had not finished
+> loading, or the deployment sits under another workspace, is unverified.** Replacing one
+> name-based inference with another is the same mistake in the opposite direction.
+>
+> ✅ **THE CONSEQUENCE THAT MATTERS: THE QUERIES BELOW ARE RUNNABLE.** The bridge-coverage reads
+> this report deferred — A2b's slug count and Ruling 3's `jobber_client_id` coverage — are **not
+> blocked**, and their exact statements are already recorded here and at Ruling 3. **Run them.**
+> **FOUR production reads across this arc were deferred on this claim and are now all unblocked:**
+> (1) A2b's `contractors` slug count, above · (2) Ruling 3's `contacts` / `users`
+> `jobber_client_id` coverage, for the RANK arc to inherit · (3) whether
+> `team_members_rep_coherence` actually applied, which `CDL_3c_PHASE0_REPORT.md` records as **not
+> knowable from source** because `initDB()` skips the `ADD` when a row violates it · (4)
+> `INVITE_LINK_BASE_URL`'s value, which decides whether homeowner invites land on the branded
+> landing page or the SPA, and which Ruling 6's scope depends on.
+> ⚠ Nothing else in this report's *conclusions* rests on the unreachability: A2c's verdict that a
+> **mint path** is owed comes from source (no writer exists), not from a row count, and it does not
+> move whatever the count turns out to be.
 
 **The statement to run, when you are at a console that reaches production — one statement, no LIMIT:**
 

@@ -276,6 +276,32 @@ function buildInviteUrl(slug, { contractorSlug = null } = {}) {
 
   url.pathname = `/i/${slug}`;
   // Identity never travels in the query string — the token is the sole carrier.
+  //
+  // ⚠ THIS RULE IS ABOUT IDENTITY, NOT ABOUT THE QUERY STRING, AND THE DIFFERENCE
+  // IS LOAD-BEARING. It forbids putting anything TENANCY-BEARING here: a user id,
+  // a contractor id, a slug that some consumer might resolve to a tenant. The
+  // token row is what stamps contractor_id at signup (spec A5/A18), and a second
+  // carrier is a second thing that can disagree with it.
+  //
+  // IT DOES NOT FORBID A COSMETIC PARAMETER, AND A FUTURE SESSION WILL NEED TO
+  // KNOW THAT. The approved credential-link branding fix appends "?brand=<slug>"
+  // to the SPA credential routes so the D4 chain's source 2.5 can paint a team
+  // member's own contractor — see PRE_LAUNCH_CHECKLIST.md, "The branding chain",
+  // the credential-link entry. Source 2.5 is COSMETIC ONLY under CD-24 R1: it
+  // selects a logo and a palette and is never an input to which contractor's data
+  // is queried. Someone typing a different slug sees a wrong logo and gains
+  // nothing else.
+  //
+  // ⚠ AND THOSE ARE DIFFERENT URLS, WHICH IS THE PART THAT MAKES BOTH TRUE AT
+  // ONCE. This function builds the PUBLIC INVITE url, where the host already
+  // carries the contractor and the token carries the attribution — so there is
+  // genuinely nothing for a query string to add, and the line below is right.
+  // Credential emails are built elsewhere (referrer.js's reset link, team.js's
+  // admin_invite link), land on app.roofmiles.com where host resolution
+  // correctly returns null, and have no other carrier at all.
+  //
+  // Read as an absolute ban this comment would send that session either to
+  // violate a rule or to abandon a ruled fix. Both are worse than these lines.
   url.search = '';
   return url.toString();
 }
