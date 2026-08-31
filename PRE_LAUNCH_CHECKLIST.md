@@ -2744,18 +2744,44 @@ root cause, and patching them separately produces six unrelated special cases)
       decides" would strip an owner-rep of the admin panel with no route back. And RBAC correctly
       refuses a member whose permissions JSONB grants nothing. **Two correct systems producing a
       dead end between them, and the admin UI lets you build it.**
-      **The fix (Danny):** block **Admin** in the tier selector while **Field rep** is on, and
-      only enable the Field rep toggle at `tier='general'`.
-      ⚠ **IT MUST BE ENFORCED SERVER-SIDE TOO.** `POST /api/admin/team/:id/promote` is the sole
-      writer of the rep flags and **tier lives on a different endpoint**, so a disabled dropdown
-      is a suggestion, not a rule — the two can still be driven into the dead state one call
-      apart.
-      ⚠ **AND THE RULE IS TEMPORARY BY DESIGN. RECORD THE EXPIRY WITH IT.** Phase 2's **surface
-      switcher** is the feature that makes an admin-rep legitimate: with a switcher, holding both
-      is a person with two destinations rather than none. **The rule is "not both UNTIL the
-      switcher exists," never "never both."** ⚠ **Whoever builds the switcher removes this
-      guard** — a guard whose precondition is not written beside it outlives its reason, which is
-      how this codebase ends up defending decisions nobody would make again.
+      ~~**The fix (Danny):** block **Admin** in the tier selector while **Field rep** is on, and
+      only enable the Field rep toggle at `tier='general'`, enforced server-side too, and removed
+      when the switcher ships.~~
+
+      ⚠ **RULING A — THAT FIX IS VOID. IT WAS TOO NARROW.** *(Ruled 2026-08-31 by Danny on
+      C/DL-3c Phase 0's evidence, overturning the 1c ruling above. **The reversal and its reason
+      are recorded here because a ruling that changes without a recorded reason gets changed
+      back** — and the struck text stays so anyone who half-remembers it can tell they did not
+      misremember.)*
+      **WHY:** `requirePermission` short-circuits on `tier === 'owner'` **only** — its Owner
+      short-circuit step, `server/middleware/permissions.js`. So the dead end is produced by
+      **`permissions = {}`**, not by the tier×flag combination. `tier='general'`,
+      `is_field_rep=false`, `permissions={}` produces the **identical** dead end with no admin
+      tier and no rep flag anywhere in it, and the voided guard would not have touched it.
+      ⚠ **AND THAT CASE IS ONE STEP FROM THE NORMAL FLOW.** `src/components/admin/AdminTeamSettings.jsx`
+      defines the **`field_rep` preset** as `tier: 'general'`, `permissions: {}`, blurb *"No admin
+      panel access. Rep tracking and attribution only."* Its create flow posts
+      `{email, full_name, tier}`, then stamps that empty JSONB — **and does not set
+      `is_field_rep`.** That flag has one writer, `POST /:id/promote`, reached from a **different
+      modal**, and nothing links the two. **Create from the preset literally named "Field Rep",
+      send the invite, stop there — the obvious reading of that blurb — and they sign in to a
+      panel that refuses everything. The blurb is a promise the create flow cannot keep.**
+
+      **THE PROPERTY THAT GETS FIXED INSTEAD: *no member may land on a surface that will refuse
+      them everything.*** ⚠ **This rule has NO EXPIRY, and that is the point.** The voided guard
+      would have had to be removed the day the switcher shipped; this one covers the admin-rep
+      case, the preset case, and any future combination, and stays correct afterwards.
+      ⚠ **(i) AND (ii) BELOW ARE TWO HALVES, NOT TWO OPTIONS** — (ii) alone leaves every member
+      already in that state stranded, and (i) alone keeps minting new ones.
+      ⚠ **AND THE 8 REFUSED REQUESTS ARE A SEPARATE ENTRY** — the admin-panel badge-priming fix,
+      filed under the C/DL-3c Phase 2 block above. **(i) fixes what the person SEES; that entry
+      fixes what the browser DOES.** Doing either alone leaves the other visible.
+
+      - [ ] **(i) The admin panel renders an honest empty state for `permissions = {}`** — *"Your
+            Owner hasn't given you access to any sections yet"* — instead of eleven scrimmed
+            sections and eight refused requests. **Fixes everyone already in that state.**
+      - [ ] **(ii) The invite flow refuses to create a member with no permissions AND no rep
+            flag.** **Stops new ones.**
 
 **The branding chain**
 - [ ] **R2 — login does not write the hint from the session.** Requires a **slug** in the auth
@@ -2844,13 +2870,71 @@ root cause, and patching them separately produces six unrelated special cases)
 
 ## Decision E — rep lifecycle / offboarding
 
-- [ ] **🔴 NO REACTIVATION PATH EXISTS.** `team.js:555`'s `UPDATE team_members SET active =
-      false` is the **only** post-creation write to that column and it writes `false`
-      unconditionally; `PATCH /api/admin/team/:id` does not whitelist `active`. **No route in
-      the codebase can set it true.** An Owner who deactivates the wrong person cannot undo it
-      without a direct database edit. → §10
-- [ ] A frozen rep who **also holds a homeowner account** still has a working door — correct
-      behaviour, but E must rule on it deliberately rather than inherit it. → §10
+- [ ] **🔴 NO REACTIVATION PATH EXISTS.** The `UPDATE team_members SET active = false` inside
+      `PATCH /api/admin/team/:id/deactivate`'s transaction is the **only** post-creation write
+      to that column and it writes `false` unconditionally; `PATCH /api/admin/team/:id` does not
+      whitelist `active`. **No route in the codebase can set it true.** An Owner who deactivates
+      the wrong person cannot undo it without a direct database edit. → §10
+      ⚠ **CITED BY ROLE SINCE 2026-08-31. This line said `team.js:555`; the statement was at
+      `:576` and is now further down again** — Wave 1.1-b's transaction comment moved it once
+      and Phase 2a's guard moved it again. A handler name does not drift.
+
+- [ ] **🔴 RULING B — A FROZEN REP WHO ALSO HOLDS A HOMEOWNER ACCOUNT IS TOLD, ONCE, THEN
+      CONTINUES.** *(Ruled by Danny 2026-08-31, replacing "still has a working door — correct
+      behaviour, but E must rule on it deliberately rather than inherit it.")*
+      **THE MECHANISM, written down for the first time.** `gatherLoginCandidates` deliberately
+      does not filter on `active` and builds a candidate per matching row from **both** tables.
+      After the compare the handler partitions into `live` and `frozen`
+      (`server/routes/referrer.js:1421-1422`). Such a person has **one live candidate** — the
+      `users` row, which carries a hardcoded honest `active: true` because a homeowner cannot be
+      frozen — so the `live.length === 1` branch issues a session and **the 403
+      `FrozenAccountScreen` branch is STRUCTURALLY UNREACHABLE for them**: it requires
+      `live.length === 0`. They are silently placed in the referrer app and never told.
+      **THE RULING:** a screen saying they no longer have team access, with a link continuing to
+      their referrer dashboard.
+      ⚠ **IT IS A FOURTH OUTCOME, NOT A BRANCH INSIDE AN EXISTING ONE.** Today: no match → 401 ·
+      one → session · several → choice. This adds *one live match, but something they should
+      know first* — **a new shape in the auth response**, where the session is already minted
+      and the screen precedes the destination rather than replacing it.
+      ⚠ **AND IT DELIBERATELY REVERSES A POSTURE.** The choice screen is built from `live`, not
+      `matched`, on the stated ground that *"a frozen identity is not a destination"*. This makes
+      a frozen identity **visible** on purpose. **It does NOT make one selectable** — that
+      distinction is exactly what keeps D2's rejected shape rejected, and it must be written at
+      the site, not inferred from the diff.
+      ⚠ **THE CONTRACTOR NAME COMES FROM THE FROZEN `team_members` ROW, NEVER THE SESSION.** The
+      session being minted is a **referrer** session for a homeowner account that **may belong to
+      a different contractor** — `users` is `UNIQUE(contractor_id, email)` while
+      `team_members.email` is globally unique, so one person legitimately holds both under two
+      tenants. Read it dynamically from the frozen row's `contractor_id`. **No hardcoded
+      contractor id anywhere.**
+      ⚠ **A NEW COMPONENT, NOT A REUSE OF `FrozenAccountScreen`.** That screen is terminal and
+      takes `onBack`; this one is *acknowledged-then-continue* with a session already in hand.
+      Reusing it would conflate "you cannot get in" with "you got in, but something changed."
+
+- [ ] **🟠 RULING B's "ONCE" NEEDS A STORE, AND THE RESET IS COUPLED TO REACTIVATION.**
+      **Recommended: `user_preferences`, written SERVER-SIDE from the login handler.**
+      `getPreference`/`setPreference` (`server/utils/userPreferences.js`) are plain utils taking
+      `{subjectType, subjectId, contractorId, key, value}` and **require no session at all**, and
+      the table already carries a `team_member_id` subject column with the
+      `exactly_one_subject` CHECK. **No schema change, no Backblaze gate, no new route, and the
+      rep-only gate on `PUT /api/preferences/theme-mode` is not involved** — that gate is on the
+      HTTP writer, which this does not use.
+      ⚠ **`ON DELETE CASCADE` IS NOT A HAZARD HERE: deactivation sets `active = false` and keeps
+      the row**, so the preference survives the freeze that created it.
+      ⚠ **BUT SAY PLAINLY WHAT "ONCE" MEANS UNDER IT: ONCE OFFERED, NOT ONCE READ.** Writing at
+      login means someone who closes the tab before reading is never told again. Making it *once
+      READ* needs an acknowledgement round trip, and that has a real problem worth stating: the
+      minted session identifies the **`users`** row, not the frozen `team_members` row, so the
+      endpoint cannot take the subject from the request (identity from the request is forbidden)
+      and would have to re-derive it by email — safe only because `team_members.email` is
+      globally unique, which is the kind of reasoning that must be written down rather than
+      relied on. **If once-read is wanted, the cheaper shape is an opaque token in the login
+      response, mirroring `login_choice_tokens`.**
+      ⚠ **REPORTED, NOT DECIDED — THE RESET.** If a reactivated rep is frozen again, a flag that
+      never resets makes the second freeze **silent**, which is the defect this ruling exists to
+      fix. **The reactivation route must clear the key in the same transaction as
+      `active = true`.** That is a genuine coupling: E-min cannot ship without knowing Ruling B
+      exists, and Ruling B cannot be called done until reactivation clears it.
 - [ ] Candidate-cap displacement: a frozen `team_members` row now occupies one of the five
       login-candidate slots. Vanishingly unlikely, structurally real. → §10
 
