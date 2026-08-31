@@ -2471,6 +2471,13 @@ root cause, and patching them separately produces six unrelated special cases)
       `server/utils/themeTokens.js` (mirrored in `src/utils/themeTokens.mjs`) is now the one
       place the foreground for a primary-filled control is chosen, for every brand at once.
       When the palette question is ruled, that function is the only site that changes.
+      ⚠ **AND THERE ARE TWO VERDICTS, NOT ONE — THIS ENTRY IMPLIED ONE.** Seen live
+      2026-08-30: in **light** mode near-black on orange does read slightly warning-ish, which
+      is what the entry describes. In **dark** it reads clearly as the primary action, because
+      the orange is the brightest thing on the surface. **Same 6.16:1 both times** — what
+      changes is what surrounds it, not the pair. So whoever rules this is ruling on a
+      colour that is already correct in one of the two modes, and `readableForegroundOn()`
+      makes both calls at once. Still the UI Overhaul arc's, still not 3c's.
 
 **⬜ PHASE 3 MOUNTS THE THEME CONTROL IN PROFILE. 1b SHIPPED THE MECHANISM WITH NO CALLER.**
 - [ ] **What Phase 3 renders:** a light/dark switch on the rep Profile screen, reading `mode`
@@ -2507,8 +2514,27 @@ root cause, and patching them separately produces six unrelated special cases)
       on logout, or **(b)** narrow D8 explicitly to first-entry and accept this, recording that
       the login screen inherits the previous session's mode.
       ⚠ **Found C/DL-3c Phase 1b while answering how 1c would reach dark mode at all** — it is
-      also what makes 1c's walkthrough possible without a debug affordance, so a fix must not
-      land before 1c has used it.
+      also what makes 1c's walkthrough possible without a debug affordance. **1c has now used
+      it**, so that constraint is discharged and a fix is free to land.
+- [ ] **SEEN LIVE 2026-08-30, and the observation cuts toward (b).** Danny signed out of a dark
+      rep session and reported the dark login screen **looks intentional rather than broken** —
+      it reads as the product having a dark mode, not as a surface that failed to reset. That is
+      a real argument for **narrowing D8 to first-entry** rather than adding a logout reset.
+      ⚠ **THE DECISION IS STILL OWED — DO NOT CLOSE THIS ON THE OBSERVATION.** "It looks fine"
+      answers the aesthetic question and not the one D8 is about, which is what a *stranger* on a
+      shared machine inherits. Both options stay on the table.
+- [ ] ⚠ **THE SECOND SYMPTOM, AND IT IS WHY (b) IS NOT FREE. THE MODE SURVIVES LOGOUT AND THE
+      TOKEN DOES NOT.** *(Found 2026-08-30, live.)* `logoutWith()` clears `rb_admin_token`
+      while the provider never remounts, so the mode persists and the credential does not.
+      **A signed-out browser therefore sits in dark mode with no session and no way out of it
+      except signing back in.** Found the plain way: Danny had to sign in again purely to obtain
+      a token to flip the preference back to light.
+      **Filed INSIDE this entry deliberately — one root cause, two symptoms.** Splitting them
+      would let someone fix the visible one and leave the mechanism intact.
+      ⚠ **It is harmless today and it stops mattering the moment Phase 3 mounts the control**,
+      because a signed-in rep will have a switch. But it sharpens the choice above: option (b)
+      accepts a state that **no signed-out person can leave**, which is a different proposition
+      from accepting a dark login screen.
       **Recommended owner: Wave 4's SH-10/SH-13 login-path hardening session**, which already
       owns the shared door.
 
@@ -2521,28 +2547,69 @@ root cause, and patching them separately produces six unrelated special cases)
       `Skeleton` would sit on a light `R` canvas, in the surface with the most users.
       CD-21: *"Not in this arc: client-app dark variants, which need their own design pass."*
 
-**⚠ THE C/DL-3c PHASE 1c REAL-BROWSER CHECK — WHAT IT COVERS, AND WHAT IT CANNOT**
-- [ ] **1c covers the AUTH and REP surfaces in both modes. It does NOT cover the referrer
-      app, and that is CORRECT BY CONSTRUCTION rather than pending.**
-      **Covered:** `LoginScreen`, `ChoiceScreen`, `FrozenAccountScreen`, `ResetPinScreen`,
-      `RepPlaceholder`, and the shared primitives — every one paints from `--rm-*`.
-      **Not covered:** the five referrer tabs. They render from `R` (**793 `R.*` references
-      across 16 files; `--rm-*` appears zero times**), so flipping the mode changes nothing
-      on them. **A dark-mode walkthrough there would be checking a surface that cannot
-      respond.** Referrer dark belongs to the R/AD migration and to CD-21's deferred design
-      pass. ⚠ **1c must not report coverage of it** — a check reporting health it cannot
-      observe is this project's own recurring false-health shape.
-- [ ] **HOW 1c REACHES DARK MODE: the production path, and NO new mechanism** (ruled Phase 1b).
-      Set a rep's `theme_mode` via `PUT /api/preferences/theme-mode` with a rep token, then log
-      in — the rep app renders dark. Then **log out without reloading** and the login screen is
-      dark too, because one provider spans the tree and its mode survives (see the D8 entry).
-      ⚠ **A `?mode=` query param was rejected DELIBERATELY: it would prove the CSS and prove
-      nothing about the store**, and a debug affordance with no expiry is how `?admin=true`
-      survived as an inert parameter with producers and no reader.
-      ⚠ **`ResetPinScreen` and the boot spinner CANNOT be reached in dark by any route** —
-      each carries its **own** `ThemeProvider` instance (`App.jsx:463`, `:494`) and renders
-      with no session, so both are permanently light. `ResetPinScreen`'s logo plate is proven
-      by test and cannot be verified by eye.
+**⚠ THE C/DL-3c REAL-BROWSER CHECK — MOSTLY DISCHARGED LIVE 2026-08-30. NOT COMPLETE.**
+
+> **⚠ THIS RAN DURING 1b's DEPLOYMENT RATHER THAN AS ITS OWN PHASE.** Danny performed the
+> walkthrough on production against `team_members.id = 5` (`tier='general'`, `active`,
+> `is_field_rep=true`). **The first time any human has rendered dark mode in this product** —
+> the engine shipped in C/DL-3a, the variables mounted in 3b, and until 1b there was no switch.
+>
+> ⚠ **THE PREVIOUS VERSION OF THIS ENTRY CONTRADICTED ITSELF and is corrected here.** It listed
+> `ResetPinScreen` under *Covered* in one bullet and called it *"permanently light, cannot be
+> verified by eye"* in the next. Both were written in this arc, a phase apart, and neither
+> reader would have caught it — the entry was long enough that the two never sat side by side.
+
+- [x] **DISCHARGED LIVE, by eye, on production:**
+      `RepPlaceholder` in dark — near-black surface, orange heading, muted body, all resolving
+      from `--rm-*` · **`BrandLogo`'s plate on `RepPlaceholder` AND `LoginScreen`** — reads
+      deliberate, radius matches the card, padding even · `LoginScreen` in dark · the Sign In
+      button in **both** modes · the round-trip back to light · the admin panel light-only with
+      the `#012854` scrim intact · the referrer app.
+      ⚠ **THE PLATE IS THE ONE THING NO TEST COULD EVER HAVE PROVEN.** `jsdom` never resolves
+      `var()`, so every automated assertion about it is declaration-level. "Does it look
+      deliberate rather than pasted on" was only ever answerable by a person, and it has been
+      answered.
+      ⚠ Also verified live: the writer round-tripped (`{ mode: 'dark' }` → reload → `light`),
+      **`user_preferences`' first production write and first read-back**, and the **first ever
+      live execution of the tenancy predicate** that shipped in 3a with no caller. And the client
+      presented the **admin** key — before 1b it read `getReferrerToken()` alone, so a rep's
+      stored mode could never load at all.
+
+- [ ] **⏭ DEFERRED TO PHASE 2's CLOSE, with the reason — not skipped:**
+      · **The four 4A primitives, `Skeleton` and `LockedSection` in dark.** ⚠ **There is no
+        surface that renders them yet.** `RepPlaceholder` does not use them, so there is
+        currently nowhere to look. **Phase 2's shell gives them one**, and that is the right
+        moment.
+      · **A second contractor in both modes.** More meaningful against real rep screens than
+        against a placeholder — the point is proving a token is *derived* rather than
+        coincidentally right, and a placeholder shows too few tokens to tell.
+      · **`ChoiceScreen` and `FrozenAccountScreen` in dark.** Both are reachable only under a
+        specific credential condition (a genuine multi-match; a deactivated account), neither of
+        which was contrived during the walkthrough.
+      · **The desktop gutter seam** — already **measured** (1.124:1 platform, 1.048:1 navy;
+        light-mode only, wide-viewport only) and it closes with the R/AD migration. Cosmetic,
+        recorded, needs no second look.
+
+- [ ] **⛔ NOT COVERED, AND CORRECT BY CONSTRUCTION rather than pending:**
+      · **The five referrer tabs.** They read no `--rm-*` at all (**793 `R.*` across 16 files,
+        zero `--rm-*`**), so no mode change reaches them. A walkthrough there would be checking
+        a surface that cannot respond. ⚠ **Nothing may report coverage of it** — a check
+        reporting health it cannot observe is this project's own recurring false-health shape.
+      · **`ResetPinScreen` and `BootSpinner` are PERMANENTLY LIGHT.** Each carries its **own**
+        `ThemeProvider` instance (`src/App.jsx:463`, `src/App.jsx:494`) and renders with no
+        session, so no stored mode can reach either. **Ruled acceptable 2026-08-30: an
+        always-light reset screen is a coherent state, not a broken one.**
+        ⚠ **THE CONSEQUENCE IS RECORDED HERE RATHER THAN LEFT IMPLIED: `BrandLogo`'s plate on
+        those two screens is verified by test and is UNVERIFIABLE BY EYE.** There is no route
+        that renders them dark. Anyone later assuming the live walkthrough covered every plate
+        would be wrong, and nothing else would tell them.
+
+- [ ] **HOW DARK MODE IS REACHED, kept because Phase 2 will need it again** (ruled Phase 1b).
+      Set a rep's `theme_mode` via `PUT /api/preferences/theme-mode` with a rep token, then
+      reload — the mode is read once on boot. ⚠ **A `?mode=` query param was rejected
+      DELIBERATELY: it would prove the CSS and prove nothing about the store**, and a debug
+      affordance with no expiry is how `?admin=true` survived as an inert parameter with
+      producers and no reader.
 
 **🔴 THE R/AD → CSS-VARIABLE MIGRATION — UNOWNED UNTIL 2026-08-30, AND LAUNCH-GATING**
 - [ ] **THE MEASURED STATE.** `src/components/referrer/*` plus `src/components/shared/Screen.jsx`
@@ -2551,6 +2618,12 @@ root cause, and patching them separately produces six unrelated special cases)
       `R.*`, 448 lines) and `EmailVerifyScreen.jsx` (34 `R.*`, 367 lines) — two AUTH surfaces
       that are also wholly off the theme system and sit outside `referrer/`, so a migration
       scoped by folder would orphan them exactly as this item was orphaned.
+- [ ] ⚠ **IT NOW HAS A VISUAL WITNESS, NOT ONLY A GREP.** *(Seen live 2026-08-30.)* The
+      referrer dashboard paints the retired Accent navy `#012854` header card and red buttons
+      **beside** an orange themed app — `R.*` and `--rm-*` rendering side by side on one
+      screen. **That is the difference between a measurement and something a contractor can
+      see**, and it is the argument this entry was missing: 793 references is a number, and two
+      palettes on one dashboard is the product looking unfinished.
 - [ ] **WHAT IT BLOCKS.** Referrer dark mode · CD-21's deferred client-app design pass ·
       `UI_OVERHAUL_SPEC.md` UX-2's real completion · `Screen.jsx`'s hardcoded page colour and
       the desktop seam recorded under the body-background item above.
@@ -2576,6 +2649,41 @@ root cause, and patching them separately produces six unrelated special cases)
       `UI_OVERHAUL_SPEC.md`, whose scope is `src/components/referrer/*`: the same 16 files.
       **Filed with CD-21's deferred design pass as ONE item**, because you cannot design
       referrer dark variants against a surface that cannot express a variant.
+
+**⚠ FOR C/DL-3c PHASE 2 — FOUND LIVE DURING THE 1c WALKTHROUGH, FILED NOT BUILT**
+
+- [ ] **🟠 FOURTEEN 403s FIRE ON EVERY `RepPlaceholder` LOAD.** *(Console read, 2026-08-30.)*
+      `/api/admin/stats`, `/api/admin/cashouts`, `/api/admin/team`, `/api/admin/messages`,
+      `/api/admin/settings`, `.../referrals/summary` and others — **all correctly refused.**
+      ⚠ **THIS IS NOT A SECURITY PROBLEM AND MUST NOT BE FILED AS ONE. The server says no, which
+      is the system working.** What it is: fourteen wasted round trips on every load, and
+      evidence that **admin fetches fire from somewhere that is not gated on which surface is
+      being rendered** — a rep surface should not be asking for the admin dashboard at all.
+      **Phase 2 owns the permissions seam, so it owns this.**
+      ⚠ **FOURTEEN IS A FLOOR FROM ONE CONSOLE READ, NOT A MEASUREMENT.** Size it in Phase 2
+      before acting on the number — this entry states where it came from precisely so nobody
+      inherits it as a count.
+
+- [ ] **🔴 AN ADMIN-TIER FIELD REP HAS NO WORKING DESTINATION.** *(Verified live 2026-08-30.)*
+      With `tier='admin'` and `is_field_rep=true`, the member routed to the **admin panel** and
+      got **"Access denied" across every section.**
+      ⚠ **BOTH HALVES ARE CORRECT, WHICH IS WHY THIS IS WORTH RECORDING.** C/DL-3b's routing
+      rule sends only a **general**-tier field rep to the rep surface, deliberately — "is_field_rep
+      decides" would strip an owner-rep of the admin panel with no route back. And RBAC correctly
+      refuses a member whose permissions JSONB grants nothing. **Two correct systems producing a
+      dead end between them, and the admin UI lets you build it.**
+      **The fix (Danny):** block **Admin** in the tier selector while **Field rep** is on, and
+      only enable the Field rep toggle at `tier='general'`.
+      ⚠ **IT MUST BE ENFORCED SERVER-SIDE TOO.** `POST /api/admin/team/:id/promote` is the sole
+      writer of the rep flags and **tier lives on a different endpoint**, so a disabled dropdown
+      is a suggestion, not a rule — the two can still be driven into the dead state one call
+      apart.
+      ⚠ **AND THE RULE IS TEMPORARY BY DESIGN. RECORD THE EXPIRY WITH IT.** Phase 2's **surface
+      switcher** is the feature that makes an admin-rep legitimate: with a switcher, holding both
+      is a person with two destinations rather than none. **The rule is "not both UNTIL the
+      switcher exists," never "never both."** ⚠ **Whoever builds the switcher removes this
+      guard** — a guard whose precondition is not written beside it outlives its reason, which is
+      how this codebase ends up defending decisions nobody would make again.
 
 **The branding chain**
 - [ ] **R2 — login does not write the hint from the session.** Requires a **slug** in the auth
