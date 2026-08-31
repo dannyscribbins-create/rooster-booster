@@ -39,6 +39,40 @@
 // selected by GET /api/admin/me, so widening these two payloads is a one-word
 // edit that nothing else would catch.
 //
+// ── ⚠ C/DL-3c PHASE 2a BUILT THE CONSUMER AND DID NOT WIDEN THIS. READ WHY ──
+//
+// The pin was written so that widening would be a DELIBERATE ACT rather than a
+// one-word edit. Phase 2a is the session that finally had a reason to widen —
+// the rep surface needed rep_revenue_visibility for CD-7's gate — and the
+// deliberate act it produced was to LEAVE THIS ALONE.
+//
+// ⚠ THE TWO PAYLOADS ARE NOT THE ONLY WAY TO THE CLIENT, AND THEY ARE THE WRONG
+// ONE. `GET /api/admin/me` has selected and returned all three rep flags since
+// C/DL-3a. It is session-only and deliberately ungated (it is on
+// server/test/adminRouteCoverage.test.js's PUBLIC_ADMIN_ROUTES allowlist,
+// because a permission gate on a self-read would lock out newly-created
+// accounts), so a general-tier field rep holding an EMPTY permissions JSONB
+// already gets a 200 from it. Phase 2a widened the CLIENT HOOK that reads that
+// endpoint — src/hooks/useAdminPermissions.js — and touched no server code at
+// all. Nothing needs these flags at boot: is_field_rep is already here for
+// routing, and rep_revenue_visibility is not read until a revenue-bearing
+// screen renders, which is long after /api/admin/me has resolved.
+//
+// ⚠ SO WIDENING WOULD HAVE COST A WORKING FENCE AND BOUGHT NOTHING. That is the
+// whole record. Do not read "3c needed the flags" as "3c should have widened
+// this" — it needed them somewhere else, and they were already there.
+//
+// ⚠ AND IF A LATER PHASE DOES HAVE A REASON, THE REPAIR IS NOT TO INVERT THE
+// VALUE IN PLACE. This is a negative assertion, and when the correct answer
+// becomes "present" its purpose REVERSES rather than going stale — it stays
+// true, stays green, and becomes the thing standing between the codebase and
+// the change. Delete it with the reason recorded, and replace it with what the
+// payload DOES say: agreement between the two responses (this file's actual
+// subject), `false` present rather than omitted, and — the stronger fence —
+// that a GATED ROUTE re-reads the flag from team_members rather than trusting
+// the token, which is what server/middleware/auth.js's "never for
+// authorisation" rule actually protects.
+//
 // NO DATABASE SCHEMA CHANGE. is_field_rep is an existing column (C/DL-3a).
 // ─────────────────────────────────────────────────────────────────────────────
 

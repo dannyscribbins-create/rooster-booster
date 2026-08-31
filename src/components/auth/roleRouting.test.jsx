@@ -153,6 +153,64 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
     expect(referrerApp()).toBeNull();
   });
 
+  // ── THE 403 FENCE (C/DL-3c Phase 2a) ────────────────────────────────────────
+  //
+  // PRE_LAUNCH_CHECKLIST.md filed "FOURTEEN 403s FIRE ON EVERY RepPlaceholder
+  // LOAD" from a console read during the 1c walkthrough. ⚠ THAT ATTRIBUTION WAS
+  // WRONG AND THIS TEST IS WHERE IT WAS DISPROVED. On the rep branch the mounted
+  // tree is App → ThemeProvider → BrandingProvider → ThemeLayer → RepSurface →
+  // RepPlaceholder. AdminPanel returns at App.jsx:498, FIVE early returns above
+  // the rep branch, so AdminApp — the only thing that primes badge counts — never
+  // mounts at all. The endpoints in that entry (/api/admin/stats, .../cashouts,
+  // .../team, .../settings) are exactly AdminApp's and AdminSettings' mount sets,
+  // seen in the same walkthrough on a console that was not cleared between
+  // navigations.
+  //
+  // ⚠ THE ASSERTION IS "ONLY /api/admin/me", NOT "NO /api/admin/ AT ALL", AND THE
+  // DIFFERENCE IS THE WHOLE POINT. Phase 2a feeds the rep capabilities context
+  // from GET /api/admin/me, which is session-only and on adminRouteCoverage's
+  // PUBLIC_ADMIN_ROUTES allowlist by design — a general-tier rep with an empty
+  // permissions JSONB gets a 200 from it. Every OTHER /api/admin/* route carries
+  // requirePermission() and would 403. So "no admin fetch" would be false the
+  // moment the seam landed, and a fence that has to be relaxed is a fence nobody
+  // trusts. This one is exact and stays true.
+  //
+  // ⚠ KEPT PERMANENTLY. It is the fence against anyone later wiring a GATED admin
+  // fetch above the surface split — which is the only way the storm could ever
+  // become real on this surface.
+  it('[RED] FENCE — the rep surface calls NO gated admin endpoint, only /api/admin/me', async () => {
+    localStorage.setItem(ADMIN_TOKEN_KEY, 'team-token');
+    installFetch(TEAM_SESSION('general', true));
+
+    render(<App />);
+
+    await waitFor(() => expect(repPlaceholder()).toBeTruthy());
+
+    const adminCalls = global.fetch.mock.calls
+      .map(c => String(c[0]))
+      .filter(u => u.includes('/api/admin/'));
+    const gated = adminCalls.filter(u => !u.includes('/api/admin/me'));
+
+    expect(
+      gated,
+      `the rep surface requested ${gated.length} gated admin endpoint(s): ${gated.join(', ')}. ` +
+      'Every /api/admin/* route except /api/admin/me, /api/admin/titles, /api/admin/notifications ' +
+      'and the login/invite pair carries requirePermission(), and a general-tier rep holds an ' +
+      'empty permissions JSONB — so each of these is a guaranteed 403 on every load. If a rep ' +
+      'genuinely needs this data, it belongs on a rep-prefixed route with an own-book predicate, ' +
+      'not on an admin route that happens to answer.'
+    ).toEqual([]);
+
+    // NON-VACUITY: the filter above returns [] just as happily when nothing was
+    // fetched at all — a broken mock, a tree that never rendered, a renamed
+    // property on vi.fn(). The seam's own call must be present.
+    expect(
+      adminCalls.some(u => u.includes('/api/admin/me')),
+      'the rep surface made NO /api/admin/me call, so the empty gated-call list above is ' +
+      'evidence about nothing. Either the capabilities context is unwired or this mock is.'
+    ).toBe(true);
+  });
+
   it('[RED] GUARD — general tier WITHOUT the field-rep flag → the admin panel, not the rep surface', async () => {
     // Office staff. This is the assertion that fails if the rule ever collapses
     // to "tier decides", which was a rejected option precisely because it routes

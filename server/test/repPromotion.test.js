@@ -345,7 +345,29 @@ describe('C/DL-3a Phase 2A — rep-promotion write-path', () => {
   });
 
   // ══ GROUP 3 — the general PATCH may no longer write rep flags ═══════════════
-  describe('PATCH /api/admin/team/:id no longer writes is_attributable', () => {
+  //
+  // ⚠ THIS BLOCK COVERED ONE FLAG OF THREE UNTIL C/DL-3c PHASE 2a, AND THE OTHER
+  // TWO FAILED DIFFERENTLY FROM EACH OTHER — which is why they are pinned by
+  // BODY as well as by status.
+  //
+  // `is_attributable` has had an explicit 422 since C/DL-3a Phase 2A. The other
+  // two rep flags had NO handling at all, so what the PATCH did with them
+  // depended on what else was in the request:
+  //
+  //   { full_name: 'X', is_field_rep: true }  → 200. full_name written, the rep
+  //                                             flag SILENTLY DISCARDED by the
+  //                                             whitelist destructure.
+  //   { is_field_rep: true }                  → 400 'No fields to update' —
+  //                                             a refusal, but for the wrong
+  //                                             reason. The caller is told their
+  //                                             request was empty; it was not.
+  //
+  // ⚠ THE SECOND IS WHY A "NOT 200" ASSERTION WOULD HAVE BEEN WORTHLESS HERE.
+  // 400 and 422 are both refusals and read identically to anything checking only
+  // that the write did not land. CLAUDE.md: a plausible-looking rejection is not
+  // the rejection you are testing for — so every case below pins the STATUS, the
+  // ERROR BODY, and the row.
+  describe('PATCH /api/admin/team/:id no longer writes any of the three rep flags', () => {
     it('is_attributable in the PATCH body is rejected — promote is the only writer', async () => {
       const target = await seedTeamMember(pool, { contractorId: CID_A, isFieldRep: true });
 
@@ -362,6 +384,78 @@ describe('C/DL-3a Phase 2A — rep-promotion write-path', () => {
         rows[0].full_name, 'Renamed Via Patch',
         'rejection must be whole-request — no partial write of the legal fields'
       );
+    });
+
+    // ── THE TWO FLAGS THAT WERE SILENTLY DISCARDED (C/DL-3c Phase 2a) ────────
+    // Table-driven over the two, because the defect is the SAME defect twice and
+    // writing it out twice invites the two copies to drift.
+    for (const flag of ['is_field_rep', 'rep_revenue_visibility']) {
+      it(`[RED] ${flag} alongside a legal field → 422, and the legal field is NOT written`, async () => {
+        const target = await seedTeamMember(pool, { contractorId: CID_A });
+
+        const res = await httpRequest(port, 'PATCH', `/api/admin/team/${target}`,
+          { full_name: 'Renamed Beside A Rep Flag', [flag]: true }, ownerAToken);
+
+        assert.equal(res.status, 422,
+          `PATCH must refuse a body carrying ${flag}. Before Phase 2a this returned 200 and ` +
+          'discarded the flag in the whitelist destructure — the caller was told the write succeeded.');
+
+        // ⚠ THE BODY, NOT ONLY THE STATUS. A 422 from express-validator on some
+        // unrelated field would satisfy a status-only check and prove nothing
+        // about this flag being the reason.
+        assert.match(String(res.body.error), /promote/,
+          'the refusal must name POST /:id/promote, so the caller is told where the writer IS — ' +
+          'the same shape is_attributable has carried since C/DL-3a Phase 2A');
+        assert.match(String(res.body.error), new RegExp(flag),
+          'the refusal must name the offending flag');
+
+        const flags = await readFlags(pool, target);
+        assert.equal(flags[flag], false, `PATCH must not write ${flag}`);
+
+        const { rows } = await pool.query('SELECT full_name FROM team_members WHERE id = $1', [target]);
+        assert.notEqual(
+          rows[0].full_name, 'Renamed Beside A Rep Flag',
+          'rejection must be whole-request — no partial write of the legal fields'
+        );
+      });
+
+      it(`[RED] ${flag} ALONE → 422 naming promote, not 400 'No fields to update'`, async () => {
+        // ⚠ THE DISTINCTION THIS CASE EXISTS FOR. Today the whitelist finds no
+        // recognised field, falls through to `updates.length === 0`, and answers
+        // 400 'No fields to update'. The request was NOT empty — it asked for
+        // something this endpoint will not do, and saying "you sent nothing"
+        // sends the caller looking in the wrong place.
+        const target = await seedTeamMember(pool, { contractorId: CID_A });
+
+        const res = await httpRequest(port, 'PATCH', `/api/admin/team/${target}`,
+          { [flag]: true }, ownerAToken);
+
+        assert.equal(res.status, 422,
+          `a body containing ONLY ${flag} must be refused as unwritable-here (422), not reported ` +
+          'as empty (400). Both are refusals; only one tells the truth.');
+        assert.match(String(res.body.error), /promote/);
+
+        const flags = await readFlags(pool, target);
+        assert.equal(flags[flag], false);
+      });
+    }
+
+    it('[RED] the guard reads the KEY, not its truthiness — false is refused too', async () => {
+      // ⚠ `is_attributable: false` is already refused by the existing guard, which
+      // tests `!== undefined`. The two new guards must match it. A guard written
+      // as `if (req.body[flag])` would let `false` through to be silently
+      // discarded — the identical defect, surviving in the half nobody sends by
+      // hand but a client's diff-based save sends constantly.
+      const target = await seedTeamMember(pool, { contractorId: CID_A, isFieldRep: true });
+
+      const res = await httpRequest(port, 'PATCH', `/api/admin/team/${target}`,
+        { full_name: 'Renamed Beside A False Flag', is_field_rep: false }, ownerAToken);
+
+      assert.equal(res.status, 422, 'a FALSE rep flag must be refused exactly like a true one');
+      assert.match(String(res.body.error), /promote/);
+
+      const flags = await readFlags(pool, target);
+      assert.equal(flags.is_field_rep, true, 'the demotion must not have landed through the PATCH');
     });
 
     it('PATCH still updates its own legal fields', async () => {

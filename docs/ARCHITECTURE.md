@@ -122,11 +122,22 @@ server/
     ├── themeTokens.js
     └── userPreferences.js
 ```
-<!-- generated 2026-08-31 · HEAD 4519cdb · 78 files, 15 dirs · npm run architecture -- --check -->
+<!-- generated 2026-08-31 · HEAD 5bdae0b · 78 files, 15 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: backend -->
 
+> ⚠ **THIS PARAGRAPH EXISTS TWICE — once under each generated block — AND THE TWO COPIES
+> MUST MOVE TOGETHER.** The exclusion counts below were **117 / 10** until 2026-08-31 and
+> the test figure was stale by **21**, in both copies. It is hand-maintained prose sitting
+> directly beneath a block that PRINTS the true number on every run: `npm run architecture
+> -- --check` reports `EXCLUDED — test files N` per block (2026-08-31: backend 103 +
+> frontend 36). Nothing updates this sentence when a test file is added, so it drifts by
+> one every time anyone writes a test and by nothing at all when they do not. **Read the
+> check's output; correct this from it rather than from memory** — and prefer teaching
+> `scripts/architecture.js` to emit these two numbers into the block over correcting them
+> here again.
+>
 > **Scope of the two blocks above and below.** Code files only: `.js`, `.jsx`, `.mjs`,
-> `.css`, `.md`. **Excluded** — 117 test files (`*.test.*` and everything under
+> `.css`, `.md`. **Excluded** — 139 test files (`*.test.*` and everything under
 > `server/test/`) and 10 asset/binary files (`.png`, `.woff2`, `.txt`). ⚠ `src/index.css`
 > is **not** an asset; it is listed. **Directories holding zero listed files are
 > suppressed**, because an empty-looking directory cannot be told apart from a genuinely
@@ -225,7 +236,8 @@ src/
 │   │   ├── ReferrerApp.jsx         ← tab shell + BottomNav
 │   │   └── RewardScheduleCard.jsx  ← reads from referral_schedules via API — does NOT use BOOST_TABLE
 │   ├── rep/
-│   │   └── RepPlaceholder.jsx      ← 3c placeholder; reached only by tier='general' AND is_field_rep
+│   │   ├── RepPlaceholder.jsx      ← 3c placeholder; reached only by tier='general' AND is_field_rep
+│   │   └── RepSurface.jsx          ← rep tree root + RepCapabilitiesContext consumer; Phase 3 puts the shell here
 │   ├── shared/
 │   │   ├── AnimCard.jsx
 │   │   ├── AvatarCircle.jsx
@@ -270,11 +282,22 @@ src/
     ├── safeStorage.js              ← safeLocalStorage()/safeSessionStorage() — throw-proof storage access
     └── themeTokens.mjs             ← deriveThemeTokens() + themeCssVariables() + RENDER_TOKEN_KEYS
 ```
-<!-- generated 2026-08-31 · HEAD 4519cdb · 101 files, 14 dirs · npm run architecture -- --check -->
+<!-- generated 2026-08-31 · HEAD 5bdae0b · 102 files, 14 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: frontend -->
 
+> ⚠ **THIS PARAGRAPH EXISTS TWICE — once under each generated block — AND THE TWO COPIES
+> MUST MOVE TOGETHER.** The exclusion counts below were **117 / 10** until 2026-08-31 and
+> the test figure was stale by **21**, in both copies. It is hand-maintained prose sitting
+> directly beneath a block that PRINTS the true number on every run: `npm run architecture
+> -- --check` reports `EXCLUDED — test files N` per block (2026-08-31: backend 103 +
+> frontend 36). Nothing updates this sentence when a test file is added, so it drifts by
+> one every time anyone writes a test and by nothing at all when they do not. **Read the
+> check's output; correct this from it rather than from memory** — and prefer teaching
+> `scripts/architecture.js` to emit these two numbers into the block over correcting them
+> here again.
+>
 > **Scope of the two blocks above and below.** Code files only: `.js`, `.jsx`, `.mjs`,
-> `.css`, `.md`. **Excluded** — 117 test files (`*.test.*` and everything under
+> `.css`, `.md`. **Excluded** — 139 test files (`*.test.*` and everything under
 > `server/test/`) and 10 asset/binary files (`.png`, `.woff2`, `.txt`). ⚠ `src/index.css`
 > is **not** an asset; it is listed. **Directories holding zero listed files are
 > suppressed**, because an empty-looking directory cannot be told apart from a genuinely

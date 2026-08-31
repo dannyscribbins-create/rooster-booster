@@ -95,11 +95,30 @@ function installFetch({ member = memberRow() } = {}) {
     if (u.includes('/promote')) return jsonResponse({ id: MEMBER_ID, ...member });
     if (u.includes('/permissions')) return jsonResponse({ success: true });
     if (u.includes(TEAM_URL) && method === 'PATCH') {
-      // The real Phase 2A contract: a PATCH carrying is_attributable is rejected
-      // outright. Modelled so a drawer that regresses to the old wiring fails here
-      // the same way it fails in production, instead of quietly going green.
-      if (String(opts.body || '').includes('is_attributable')) {
-        return jsonResponse({ error: 'is_attributable is no longer writable here — use POST /api/admin/team/:id/promote' }, 422);
+      // The real contract: a PATCH carrying ANY of the three rep flags is
+      // rejected outright. Modelled so a drawer that regresses to the old wiring
+      // fails here the same way it fails in production, instead of quietly going
+      // green.
+      //
+      // ⚠ THIS IS A MIRROR OF A SERVER MESSAGE AND THEREFORE COSTS TWO EDITS.
+      // The original is the UNWRITABLE_REP_FLAGS guard at the top of
+      // PATCH /api/admin/team/:id (server/routes/admin/team.js) — cited by role,
+      // not by line, because that guard has moved once already. Change the
+      // wording there and this fixture AND the needle in the save test below
+      // both go stale, and the needle's staleness is SILENT: it is a negative
+      // assertion, so a string that can no longer appear makes it pass forever.
+      //
+      // ⚠ IT COVERED is_attributable ALONE UNTIL C/DL-3c PHASE 2a, WHICH IS WHY
+      // THE OTHER TWO NEEDED A SERVER FIX AT ALL. A drawer regression that put
+      // is_field_rep on the PATCH body would have been modelled here as a 200 —
+      // matching production, which silently discarded it and reported success.
+      const repFlagOnPatch = ['is_field_rep', 'is_attributable', 'rep_revenue_visibility']
+        .find(f => String(opts.body || '').includes(f));
+      if (repFlagOnPatch) {
+        return jsonResponse(
+          { error: `${repFlagOnPatch} is not writable here — use POST /api/admin/team/:id/promote` },
+          422
+        );
       }
       return jsonResponse({ id: MEMBER_ID });
     }
@@ -217,12 +236,24 @@ describe('MemberEditDrawer — rep promotion area', () => {
     expect(JSON.parse(promotes[0].body).is_attributable).toBe(true);
 
     // The negative half is the point of the test, not a bonus: a drawer that calls
-    // promote AND still ships is_attributable on the PATCH would fail the save with
-    // a 422 while looking correct in the promote assertion above.
+    // promote AND still ships a rep flag on the PATCH would fail the save with a
+    // 422 while looking correct in the promote assertion above.
+    //
+    // ⚠ ALL THREE, NOT JUST is_attributable (C/DL-3c Phase 2a). The other two had
+    // no server guard until 2a, so a drawer shipping them on the PATCH would have
+    // been discarded in silence — the loop below is what stops that returning.
     for (const c of callsTo(TEAM_URL, 'PATCH')) {
-      expect(String(c.body || '')).not.toContain('is_attributable');
+      for (const flag of ['is_field_rep', 'is_attributable', 'rep_revenue_visibility']) {
+        expect(String(c.body || ''), `PATCH body carries ${flag}`).not.toContain(flag);
+      }
     }
-    expect(screen.queryByText(/no longer writable here/)).toBeNull();
+    // ⚠ A NEGATIVE ASSERTION WHOSE NEEDLE IS A SERVER MESSAGE — and it went stale
+    // the moment 2a reworded that message from "is no longer writable here" to
+    // "is not writable here". A needle that can never match makes this pass
+    // forever, which is the fence-guarding-the-defect shape: still true, still
+    // green, and no longer watching anything. Re-pointed with the fixture above;
+    // the two must move together.
+    expect(screen.queryByText(/not writable here/)).toBeNull();
   });
 
   it('[RED] an admin without rep_promotion sees the area locked, not interactive', async () => {

@@ -240,10 +240,29 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(422).json({ errors: errors.array() });
 
-  if (req.body.is_attributable !== undefined) {
-    return res.status(422).json({
-      error: 'is_attributable is no longer writable here — use POST /api/admin/team/:id/promote',
-    });
+  // ── ALL THREE REP FLAGS ARE UNWRITABLE HERE (C/DL-3c Phase 2a) ─────────────
+  // Guarded is_attributable ALONE from C/DL-3a Phase 2A until now; the other two
+  // were silently discarded by the whitelist destructure below, or reported as
+  // 'No fields to update' when sent alone. Both behaviours are MEASURED and
+  // recorded once, in repPromotion.test.js's GROUP 3 header — not restated here.
+  //
+  // ⚠ `!== undefined`, NOT TRUTHINESS. `if (req.body[flag])` reads as equivalent
+  // and would let `false` through to be discarded exactly as before — and `false`
+  // is what a diff-based client save sends constantly, while `true` is what a
+  // human sends by hand. That spelling would keep the defect in the half nobody
+  // tests by accident; the [RED] false case in GROUP 3 is its fence.
+  //
+  // REFUSE, NEVER FORWARD. POST /:id/promote is the sole writer because it judges
+  // coherence on the MERGED state, cascades dependents off on demotion, carries
+  // its own rep_promotion permission, and writes the before→after audit row. A
+  // PATCH that quietly wrote one flag bypasses all four.
+  const UNWRITABLE_REP_FLAGS = ['is_field_rep', 'is_attributable', 'rep_revenue_visibility'];
+  for (const flag of UNWRITABLE_REP_FLAGS) {
+    if (req.body[flag] !== undefined) {
+      return res.status(422).json({
+        error: `${flag} is not writable here — use POST /api/admin/team/:id/promote`,
+      });
+    }
   }
 
   const adminSession = await verifyAdminSession(req, res);

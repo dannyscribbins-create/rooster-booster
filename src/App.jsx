@@ -15,7 +15,10 @@ import SuperAdminLoginScreen from './components/superAdmin/SuperAdminLoginScreen
 import SuperAdminShell from './components/superAdmin/SuperAdminShell';
 import AdminSetPasswordScreen from './components/admin/AdminSetPasswordScreen';
 import ThemeProvider from './components/shared/ThemeProvider';
-import RepPlaceholder from './components/rep/RepPlaceholder';
+import RepSurface from './components/rep/RepSurface';
+import useAdminPermissions, {
+  RepCapabilitiesContext, useRepCapabilitiesValue,
+} from './hooks/useAdminPermissions';
 import {
   fetchSession,
   getReferrerToken, setReferrerToken, clearReferrerToken, logoutReferrer,
@@ -297,6 +300,29 @@ export default function App() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, announcement, announcementSettings]);
+
+  // ── THE REP CAPABILITIES READ (C/DL-3c Phase 2a) ────────────────────────────
+  //
+  // GET /api/admin/me, for the rep surface only. The panel's copy of this read
+  // lives in AdminApp and is untouched; this is the same hook, called for the
+  // one surface that has no provider above it.
+  //
+  // ⚠ THE ARGUMENT GATES THE FETCH, NOT THE HOOK CALL. useAdminPermissions fires
+  // only when `authed` becomes true, so on the login, referrer and admin surfaces
+  // this costs one closure and zero requests — the admin panel still does its own
+  // read inside AdminApp, and a homeowner never touches an admin endpoint.
+  //
+  // ⚠ /api/admin/me IS THE RIGHT ENDPOINT FOR A REP AND THAT IS NOT AN ACCIDENT
+  // OF NAMING. It is session-only and deliberately ungated — it sits on
+  // server/test/adminRouteCoverage.test.js's PUBLIC_ADMIN_ROUTES allowlist
+  // because a permission gate on a self-read would lock out newly-created
+  // accounts before any flags are assigned. A general-tier field rep holds an
+  // EMPTY permissions JSONB and gets a 200 from it today, with no server change.
+  // Every OTHER /api/admin/* route carries requirePermission() and would 403 —
+  // src/components/auth/roleRouting.test.jsx fences that this is the only one
+  // this surface calls.
+  const repPermissionState = useAdminPermissions(surfaceFor(session) === 'rep');
+  const repCapabilities = useRepCapabilitiesValue(repPermissionState);
 
   // ── THE ONE PLACE AUTHENTICATION LANDS (C/DL-3b Phase 5) ────────────────────
   // Called by the unified door with whatever POST /api/login or
@@ -586,7 +612,23 @@ export default function App() {
     );
     // THE REP SURFACE IS INSIDE THE PROVIDER, unlike the admin panel — it is a
     // white-labeled rep-facing screen that paints from --rm-*, not admin chrome.
-    if (surfaceFor(session) === 'rep') return <RepPlaceholder onLogout={handleLogout} />;
+    //
+    // ── AND IT CARRIES ITS OWN CAPABILITIES PROVIDER (C/DL-3c Phase 2a) ──────
+    // The admin panel mounts AdminPermissionsContext inside AdminApp; this tree
+    // renders five early returns BELOW that branch and never sees it. Reps get
+    // their own context, with no default, so a rep component rendered outside
+    // this provider throws instead of quietly receiving a closed gate that reads
+    // exactly like a correctly closed one — see useRepCapabilities().
+    //
+    // ⚠ THE PROVIDER IS HERE AND THE CONSUMER IS IN RepSurface, NOT BOTH IN ONE
+    // PLACE. If RepSurface mounted its own provider there would be no "outside
+    // the provider" state left to throw in, and App's wiring — which is the
+    // thing that can actually break — would not be under test at all.
+    if (surfaceFor(session) === 'rep') return (
+      <RepCapabilitiesContext.Provider value={repCapabilities}>
+        <RepSurface onLogout={handleLogout} />
+      </RepCapabilitiesContext.Provider>
+    );
 
     if (!loggedIn) return <LoginScreen onAuthenticated={handleAuthenticated} />;
 

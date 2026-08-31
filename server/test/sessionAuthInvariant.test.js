@@ -42,18 +42,43 @@ const { createApp } = require('../app');
 // ── ⚠ WHAT THIS FILE DOES NOT COVER, SAID WHERE A GREEN RUN CANNOT HIDE IT ───
 // Assertion A is scoped BY URL PREFIX, and a prefix-scoped guard is itself the
 // downward frame CLAUDE.md warns about in "Sweep from the shared UTILITY
-// outward". It covers 23 routes. There are ~48 session-bearing referrer-surface
-// routes. The 25 outside it:
+// outward". It covers 23 routes. There are ~49 session-bearing referrer-surface
+// routes. The 26 outside it:
 //     POST /api/cashout · GET /api/pipeline · all 15 /api/account/* ·
 //     GET|POST /api/profile/photo · POST /api/review/dismiss ·
 //     POST /api/announcement/seen · GET /api/referral/pending/match-check ·
 //     PUT /api/referral/pending/:id/seen · GET /api/preferences/theme-mode ·
-//     GET /api/session
-// All 25 DO call a verify*Session as of 2026-08-29 (measured with this file's
-// own checker). So this is a gap in the FENCE, not a gap in the code — but it is
+//     PUT /api/preferences/theme-mode · GET /api/session
+// All 26 DO call a verify*Session as of 2026-08-31 — MEASURED, not counted by
+// eye: walk createApp()'s real router stack, keep every route whose path starts
+// with neither prefix, and test each layer's stripComments(String(handle))
+// against SESSION_VERIFIER_RE from ./helpers/sourceScan. That returns 214 routes
+// in the stack, 53 outside both prefixes, 26 of them session-bearing. Re-run it
+// the same way rather than adjusting the number to taste.
+// So this is a gap in the FENCE, not a gap in the code — but it is
 // a real gap, it is recorded in PRE_LAUNCH_CHECKLIST.md, and it is written here
 // too because adminRouteCoverage.test.js named ITS gap in a comment and was
 // believed as coverage anyway. That comment is why the four routes survived.
+//
+// ⚠ THIS LIST READ "25" AND "~48" AND WENT STALE NINE COMMITS LATER, IN THE SAME
+// ARC, AND THE WAY IT HAPPENED IS THE POINT.
+// `PUT /api/preferences/theme-mode` shipped in `9c99fdb` (C/DL-3c Phase 1b) —
+// session-bearing via verifyAnySession, outside /api/referrer/, and outside
+// /api/admin/ too, so it is collected by NEITHER prefixed guard. The route is
+// correct and Assertion B covers it. What was wrong was the RECORD — and the
+// record is what a future session reads to decide whether a fence covers
+// something. The commit that added the route was a user_preferences commit;
+// nobody had any reason to open a session-auth test.
+//
+// ⚠ THAT IS CLAUDE.md's "a list that can only grow" IN ITS PUREST FORM: this
+// enumeration has a mechanism for recording a route ARRIVING (someone writes it
+// down) and none at all for the population changing underneath it. It cannot be
+// fixed by counting more carefully. THE REAL FIX IS THE ONE THE HELPER'S HEADER
+// ALREADY NAMES — thread the mount path through collectRoutes()'s recursion so
+// the walk yields ABSOLUTE paths, after which a single prefix-free sweep replaces
+// this hand-maintained sentence entirely. Until that lands, whoever adds a
+// session-bearing route outside /api/referrer/* must edit this list, and this
+// paragraph is the only thing that tells them so.
 //
 // ⚠ AND /api/account/* CANNOT SIMPLY BE ADDED AS A THIRD PREFIX TODAY.
 // collectRoutes() matches a MOUNT-RELATIVE path; accountRoutes mounts at

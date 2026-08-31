@@ -158,7 +158,11 @@ const ARROW_NEEDLE = /[←→↔↚↠⇐⇒⇦⇨⟵⟶⬅⮕➜]|(?:^|\s)<-{1,
 // ANNOTATION SET, AND SAY SO IN THE COMMIT MESSAGE. Bumping it to make a run
 // go green is the rubber-stamp failure this guard exists to prevent.
 // There is no override flag. See "THE THREE GUARDS" in the header.
-const ANNOTATION_BASELINE = { backend: 54, frontend: 50 }; // 104 total
+// frontend 50 → 51 on 2026-08-31 (C/DL-3c Phase 2a): ONE annotation added, on
+// src/components/rep/RepSurface.jsx — the rep tree's new root and the first
+// consumer of RepCapabilitiesContext. Deliberate, and the reason the guard fired
+// is the reason it exists: it noticed. Nothing was removed; backend is untouched.
+const ANNOTATION_BASELINE = { backend: 54, frontend: 51 }; // 105 total
 
 // ─── block definitions ───────────────────────────────────────────────────────
 // TWO blocks, TWO marker pairs, deliberately never merged. The backend and

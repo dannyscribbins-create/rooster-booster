@@ -202,12 +202,34 @@ async function verifySuperAdminSession(req, res) {
  * owner is gone must not rehydrate: a soft-deleted homeowner and a deactivated
  * team member both land on 401 here.
  *
- * NOTE — THE `active` CHECK BELOW IS STRICTER THAN verifyAdminSession(). That
+ * ⚠ NOTE — THIS PARAGRAPH SAID THE OPPOSITE OF THE TRUTH UNTIL C/DL-3c PHASE 2a,
+ * AND IT IS RECORDED RATHER THAN QUIETLY REPLACED.
+ *
+ * It read: "THE `active` CHECK BELOW IS STRICTER THAN verifyAdminSession(). That
  * function does not join team_members at all (spec §10, PRE-LAUNCH item R4).
- * Closing R4 generally is out of Phase 4's scope, but this endpoint is new and
- * there is no reason to build the gap into it. The inconsistency runs in the
- * SAFE direction: a deactivated member fails to rehydrate and is shown the
- * login screen.
+ * Closing R4 generally is out of Phase 4's scope…"
+ *
+ * That was true when written and has been FALSE since `9ad52f2` (Wave 1.1-b),
+ * which closed R4. verifyAdminSession() is in THIS FILE, roughly a hundred lines
+ * above, and its LEFT JOIN on team_members sits under a heading that says so.
+ * The two functions now agree: a deactivated member is denied by both.
+ *
+ * ⚠ SAY INVERTED, NOT STALE, BECAUSE OF WHAT A READER DOES WITH IT. "Out of
+ * date" invites someone to discount the sentence and keep the conclusion — and
+ * the conclusion here is "there is a live R4 gap", which sends them hunting for
+ * a hole that was filled. That is not hypothetical: a C/DL-3c session prompt
+ * carried exactly that belief, sourced from this paragraph.
+ *
+ * ⚠ AND NO TOOL IN THIS REPO COULD HAVE CAUGHT IT. `citecheck` resolves
+ * citations; this is not a citation, it is a sentence, and its subject is a
+ * function rather than a line. The only mechanism that finds this class is a
+ * reader checking a claim against the code beside it.
+ *
+ * THE ONE REAL DIFFERENCE THAT REMAINS is the join type, not the check:
+ * verifyAdminSession() uses a LEFT JOIN so a LEGACY session carrying a NULL
+ * team_member_id is still allowed (deliberately — see its own comment); this
+ * function denies that case outright. The inconsistency still runs in the SAFE
+ * direction here.
  *
  * @returns {object|null} a role-shaped descriptor, or null after sending 401.
  */

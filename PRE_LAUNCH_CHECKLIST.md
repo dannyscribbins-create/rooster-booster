@@ -2652,17 +2652,89 @@ root cause, and patching them separately produces six unrelated special cases)
 
 **⚠ FOR C/DL-3c PHASE 2 — FOUND LIVE DURING THE 1c WALKTHROUGH, FILED NOT BUILT**
 
-- [ ] **🟠 FOURTEEN 403s FIRE ON EVERY `RepPlaceholder` LOAD.** *(Console read, 2026-08-30.)*
-      `/api/admin/stats`, `/api/admin/cashouts`, `/api/admin/team`, `/api/admin/messages`,
-      `/api/admin/settings`, `.../referrals/summary` and others — **all correctly refused.**
-      ⚠ **THIS IS NOT A SECURITY PROBLEM AND MUST NOT BE FILED AS ONE. The server says no, which
-      is the system working.** What it is: fourteen wasted round trips on every load, and
-      evidence that **admin fetches fire from somewhere that is not gated on which surface is
-      being rendered** — a rep surface should not be asking for the admin dashboard at all.
-      **Phase 2 owns the permissions seam, so it owns this.**
-      ⚠ **FOURTEEN IS A FLOOR FROM ONE CONSOLE READ, NOT A MEASUREMENT.** Size it in Phase 2
-      before acting on the number — this entry states where it came from precisely so nobody
-      inherits it as a count.
+- [x] ~~**🟠 FOURTEEN 403s FIRE ON EVERY `RepPlaceholder` LOAD.**~~ ✅ **RE-FILED — THE
+      ATTRIBUTION WAS WRONG. NOT A REP-SURFACE DEFECT AT ALL.** *(Measured in C/DL-3c Phase 2a;
+      originally filed from a console read, 2026-08-30.)*
+      ⚠ **SAY MIS-ATTRIBUTED, NOT FIXED — NOTHING WAS REPAIRED ON THE REP SURFACE, BECAUSE
+      NOTHING WAS WRONG WITH IT.** On the rep branch the mounted tree is `App → ThemeProvider →
+      BrandingProvider → ThemeLayer → RepSurface → RepPlaceholder`. `AdminPanel` returns five
+      early returns ABOVE the rep branch in `src/App.jsx`, so `AdminApp` — the only thing that
+      primes badge counts — never mounts. `RepPlaceholder` contains zero `fetch` calls.
+      **A gated admin request is structurally unreachable on that surface.**
+      **Where the 403s actually came from:** the admin panel, in the same walkthrough, on a
+      console that was not cleared between navigations. The named endpoints are exactly
+      `AdminApp`'s and Settings' mount sets — and `/api/admin/settings` and `/api/admin/team`
+      cannot be produced by a dashboard boot at all, which is the tell.
+      **Fenced permanently** by *"FENCE — the rep surface calls NO gated admin endpoint, only
+      `/api/admin/me`"* in `src/components/auth/roleRouting.test.jsx`. ⚠ The fence allows
+      `/api/admin/me` deliberately — it is session-only and on `adminRouteCoverage`'s
+      `PUBLIC_ADMIN_ROUTES` allowlist, and Phase 2a feeds the rep capabilities context from it.
+      Guard-proofed: wiring two gated fetches onto the rep branch makes it RED and names them.
+
+- [ ] **🟠 THE REAL VERSION OF THE ABOVE — THE ADMIN PANEL FIRES 8 GUARANTEED 403s ON EVERY BOOT
+      FOR ANY NON-OWNER WITH AN EMPTY `permissions` JSONB.** *(Enumerated from source, C/DL-3c
+      Phase 2a. NOT live-measured — do that before acting.)*
+      `requirePermission` short-circuits on `tier='owner'` **only**, so an `admin`-tier member
+      with `{}` is refused everywhere just as a `general`-tier one is. On the dashboard alone:
+      10 requests, 8 of them 403 — `messages`, `cashouts`, `flagged-referrals/summary` (**twice**,
+      see below), `pending-referrals`, `missing-referrals`, `team/flagged-assignments`, `stats`.
+      **The cause is a data dependency, not routing:** `AdminApp.primeBadgeCounts()` fires for
+      every sidebar badge before `/api/admin/me` has said which sections the member can see.
+      **The fix is to wait on `permState` and skip flags the member lacks** — an admin-panel
+      change that helps every low-permission member, not a rep change.
+
+- [ ] **🟡 `GET /api/admin/flagged-referrals/summary` IS FETCHED TWICE ON EVERY ADMIN PANEL
+      BOOT** — `AdminApp`'s `primeBadgeCounts()` for the sidebar badge and `AdminDashboard`'s own
+      effect for its card. Two components, two pieces of state, one endpoint, for **every**
+      member including Owners. *(Found C/DL-3c Phase 2a; filed, not fixed.)* Fold into the
+      badge-priming fix above — they are one change.
+
+- [ ] **🟠 88 CITATIONS WERE ROTTED BY C/DL-3c PHASE 2a's OWN COMMIT, KNOWINGLY, AND ARE NOT
+      REPAIRED.** *(`npm run citecheck -- --changed-files`, 2026-08-31, measured at the end of
+      the session: **88 likely rotted · 4 content changed · 59 target touched**, across 13
+      changed files. Findings read in full, not tailed.)*
+      Cause: two comment blocks high in two heavily-cited files — `server/routes/admin/team.js`
+      (**+19**, reaching 40 citations) and `src/App.jsx` (**+26**, reaching 23) — plus four test
+      files. **This is CLAUDE.md's *"adding a comment block is a citation-rotting edit"*
+      happening on purpose: the guard has to sit at the top of the handler, so POSITION was not
+      available as a mitigation. SIZE was — the `team.js` block went from +31 to +19 by deleting
+      its restatement of a fact `repPromotion.test.js` already recorded in full.**
+      ⚠ **AND THE TOTAL WENT UP, FROM 87 TO 88, WHILE THAT TRIM CUT TWELVE LINES — which is
+      worth knowing before anyone reads a delta as progress.** Editing this checklist and
+      `CDL_3b_BUILD_SPEC.md` made them changed files too, so citations pointing INTO them
+      started counting. **The measure moves when the measured SET moves, not only when the code
+      does.** The first figure was written mid-session and was already stale by the time it was
+      committed; it is replaced here rather than left to be discovered.
+      ⚠ **DO NOT REPAIR BY ADDING THE DELTA. THE TOOL SAYS "YOUR EDIT MOVED THE TARGET LINE",
+      NOT "THIS WAS CORRECT BEFORE"** — and this arc has already measured a commit whose eleven
+      flagged citations were *all* wrong beforehand. Read each at the OLD line in the OLD
+      revision against its own citing sentence, then shift.
+      ⚠ **AND `docs/GROUND_TRUTH_2026-08-21.md`'s NINE MUST NOT BE SHIFTED AT ALL.** It is a
+      dated snapshot that quotes verbatim what it cites; renumbering would make it claim its
+      quotes come from lines that now hold something else. **That is a different job from the
+      rest and must not be swept together with them.**
+      **Counted by citing document, so the work can be scoped:** `CDL_3c_PHASE0_REPORT.md` 30 ·
+      `PRE_LAUNCH_CHECKLIST.md` 14 · `docs/GROUND_TRUTH_2026-08-21.md` 11 ·
+      `CDL_3c_PHASE05_RULINGS.md` 11 · `CDL_3b_BUILD_SPEC.md` 7 ·
+      `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` 4 · `DECISION_C_DL_BUILD_SPEC.md` 3 ·
+      `CLAUDE_REGISTRY.md` 3 · `CLAUDE.md` 2 · `CDL_3a_BUILD_SPEC.md` 2 ·
+      `MEMBER_RANK_ECONOMY_SPEC.md` 1. **= 88.**
+      **Prefer re-citing by ROLE over re-deriving a number** wherever the subject has a name.
+      ⚠ **THE 30 IN `CDL_3c_PHASE0_REPORT.md` ARE PROBABLY NOT WORTH REPAIRING AT ALL, AND THAT
+      IS A DECISION SOMEONE SHOULD MAKE RATHER THAN INHERIT.** It is a dated Phase 0
+      investigation record, like `GROUND_TRUTH` — but unlike `GROUND_TRUTH` it is also the
+      working document this arc reads from, so the two arguments genuinely conflict. **Rule on
+      which it is before touching any of them.**
+
+- [ ] **🟡 `docs/ARCHITECTURE.md`'s EXCLUSION COUNTS ARE HAND-MAINTAINED PROSE BESIDE A BLOCK
+      THAT PRINTS THE TRUE NUMBER.** *(Found and corrected C/DL-3c Phase 2a: the paragraph said
+      **117** test files against a real **139**, stale by 21 before this session touched
+      anything — and it exists **twice**, once under each generated block.)*
+      Corrected in both copies, but the correction decays by one every time anyone writes a
+      test. **The structural fix is to teach `scripts/architecture.js` to emit the two exclusion
+      counts into the generated block**, where regeneration keeps them true — the same move that
+      retired the hand-maintained folder listing. Small, and it retires a recurring defect class
+      rather than one instance of it.
 
 - [ ] **🔴 AN ADMIN-TIER FIELD REP HAS NO WORKING DESTINATION.** *(Verified live 2026-08-30.)*
       With `tier='admin'` and `is_field_rep=true`, the member routed to the **admin panel** and
