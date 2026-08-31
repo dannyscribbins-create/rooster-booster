@@ -122,7 +122,7 @@ server/
     ├── themeTokens.js
     └── userPreferences.js
 ```
-<!-- generated 2026-08-23 · HEAD c3161f0 · 78 files, 15 dirs · npm run architecture -- --check -->
+<!-- generated 2026-08-31 · HEAD 4519cdb · 78 files, 15 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: backend -->
 
 > **Scope of the two blocks above and below.** Code files only: `.js`, `.jsx`, `.mjs`,
@@ -229,6 +229,7 @@ src/
 │   ├── shared/
 │   │   ├── AnimCard.jsx
 │   │   ├── AvatarCircle.jsx
+│   │   ├── BrandLogo.jsx
 │   │   ├── BrandingProvider.jsx
 │   │   ├── ContactModal.jsx
 │   │   ├── EmptyState.jsx
@@ -269,7 +270,7 @@ src/
     ├── safeStorage.js              ← safeLocalStorage()/safeSessionStorage() — throw-proof storage access
     └── themeTokens.mjs             ← deriveThemeTokens() + themeCssVariables() + RENDER_TOKEN_KEYS
 ```
-<!-- generated 2026-08-23 · HEAD c3161f0 · 100 files, 14 dirs · npm run architecture -- --check -->
+<!-- generated 2026-08-31 · HEAD 4519cdb · 101 files, 14 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: frontend -->
 
 > **Scope of the two blocks above and below.** Code files only: `.js`, `.jsx`, `.mjs`,

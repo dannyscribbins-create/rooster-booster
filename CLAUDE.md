@@ -348,6 +348,18 @@ fact into a comment, ask whether a NAME would do.** Same-file, cite by role; cro
 by name. **Never cross-file by line number** — ABR 6B step 4 corrected four citations that had
 gone stale, one of which the correcting commit itself falsified.
 
+⚠ **A MEASURED INSTANCE, AND THE WAY THE LAST COPY SURFACED IS THE LESSON.** C/DL-3c Phase 1a
+found one claim — *"the theme engine exists, so only the toggle is missing"* — repeated across
+governing documents, engine-true and surface-false in every copy. A deliberate enumeration
+found **three**. The **fourth** (`EXECUTION_SEQUENCE.md`'s Wave 3 *UI Overhaul arc* row) was
+found **by opening that file to make one of the other three edits** — not by any search.
+**Grep found the copies that shared a phrase; the fourth said the same thing in different
+words**, which is precisely what a needle cannot reach. ⚠ **This happened in the same session
+that filed the checklist item the claim had been hiding** — so the enumeration was careful, was
+the whole point of the work, and was still short by one. **Budget for N-1 as the expected
+outcome of a search, not as a failure of one.** When a claim matters, the search is a starting
+set: read the files that would have reason to carry it.
+
 ⚠ **AND THE INVERSE, WHICH IS THE DANGEROUS DIRECTION. When deduplicating, dedupe TOWARD the
 resident copy, never away from it.** The `.claude/rules/*.md` files elaborate non-negotiables
 that stay resident here. Deleting the resident line because a fuller version exists in a
@@ -901,9 +913,10 @@ parse. That is what independence means here.
 
 ### A shell harness lies plausibly, and never with an error
 
-**Three tools in this project have silently returned a wrong answer through a shell, and not
-one of them raised anything.** They are not related by tool; they are related by *shape* —
-a metacharacter belonging to a layer nobody was thinking about.
+**Tools in this project have silently returned a wrong answer through a shell, and not one of
+them raised anything.** They are not related by tool; they are related by *shape* — something
+belonging to a layer nobody was thinking about: a metacharacter, or the size of the window the
+answer was read through.
 
 - **`grep -c $'\r'` returned full line counts on LF-only files.**
 - **`\d` in a shell-quoted pattern reached Node as `d`** — it matched the letter, not a digit.
@@ -914,13 +927,35 @@ a metacharacter belonging to a layer nobody was thinking about.
   returns nothing. Measured in Wave 1.1-d2: it reported **"0 changed file(s)" against a
   five-file commit** and was indistinguishable from a clean run. `~1` means the same thing to
   git and nothing at all to cmd.exe.
+- ⚠ **NEVER `tail` A CHECK WHOSE TOTALS PRINT LAST. READ THE FINDINGS SECTION IN FULL, OR
+  READ NOTHING AND SAY SO.** Measured in C/DL-3c Phase 1a: `npm run citecheck -- --changed-files`
+  piped through `tail -25` put the TOTALS line **inside** the window and the four
+  `LIKELY ROTTED` findings **outside** it. The output read as a clean run and was reported as
+  *"zero LIKELY ROTTED"* before a second look found them.
+  ⚠ **THIS IS NOT A QUOTING BUG — IT IS THE HEALTH-REPORTING CLASS ARRIVING THROUGH TERMINAL
+  PAGINATION.** A truncated read that happens to preserve the reassuring line reports health
+  it never observed, which is the failure *A mechanism that reports health it cannot observe*
+  is about. The mechanism here is `tail`.
+  **The checks in this repo whose summary prints LAST, verified by running each:**
+  `citecheck` · `tablecheck` · `sizing` · `architecture` (both the bare form and `--check`) ·
+  `node --test` (the `tests/suites/pass/fail/cancelled/skipped/todo` block) · `vitest run`.
+  ⚠ **`npm test` IS THE WORST OF THEM AND THE ONE MOST LIKELY TO BE TAILED.** It chains three
+  tools with `&&`, so the last summary in the stream is **Vitest's**. When the run is green, a
+  `tail` shows the React numbers and **cannot show the server numbers at all** — and the server
+  suite is where the count tripwire lives. Grep the four `ℹ` lines by name instead.
 
-**All three produced a PLAUSIBLE WRONG ANSWER rather than an error**, which is why none was
+**Every one produced a PLAUSIBLE WRONG ANSWER rather than an error**, which is why none was
 caught by looking and why the rule cannot be "be careful with quoting."
 
 **Practically: regex-bearing or escape-bearing code goes in a FILE, never a shell one-liner**
 — and when a harness returns a number, **know the expected answer before you run it.** The
 `^` case was caught only because a five-file commit was known to be five files.
+
+⚠ **AND A SECOND SIDE EFFECT WORTH KNOWING BEFORE YOU RUN ONE: `npm run architecture` WRITES
+TO A TRACKED FILE.** The bare form regenerates `docs/ARCHITECTURE.md`; `npm run architecture --
+--check` is the read-only form and is the one the generated comment inside that file names.
+Running the bare form to "see what it says" modifies the working tree. `citecheck`,
+`tablecheck` and `--check` all print and exit 0, touching nothing.
 
 ### A number in a governing document needs a source
 
