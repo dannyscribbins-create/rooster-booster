@@ -1,6 +1,7 @@
 import { useContext } from 'react';
 import { ThemeContext } from '../shared/ThemeProvider';
 import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
+import BrandLogo from '../shared/BrandLogo';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─── Field Rep Surface — 3c PLACEHOLDER ───────────────────────────────────────
@@ -52,11 +53,7 @@ export default function RepPlaceholder({ onLogout }) {
         transform: cardVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
       }}>
-        <img
-          src={logoSrc}
-          alt={companyName}
-          style={{ width: 120, height: 'auto', display: 'block', margin: '0 auto 20px' }}
-        />
+        <BrandLogo src={logoSrc} alt={companyName} marginBottom={20} />
 
         <div style={{
           fontSize: 13, fontWeight: 600, letterSpacing: '0.04em',

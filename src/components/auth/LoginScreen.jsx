@@ -1,8 +1,8 @@
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useState } from 'react';
 import { BACKEND_URL } from '../../config/contractor';
 import { ThemeContext } from '../shared/ThemeProvider';
-import { deriveThemeTokens, contrastRatio } from '../../utils/themeTokens.mjs';
 import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
+import BrandLogo from '../shared/BrandLogo';
 import ContactModal from '../shared/ContactModal';
 import FrozenAccountScreen from './FrozenAccountScreen';
 import ChoiceScreen from './ChoiceScreen';
@@ -25,7 +25,7 @@ import useEntrance from '../../hooks/useEntrance';
 // Anyone can flip the affordance and learn nothing.
 //
 // ── ⚠ THIS IS THE FIRST SURFACE IN THE PRODUCT TO ACTUALLY PAINT FROM --rm-* ──
-// Phase 1 mounted eleven custom properties and nothing consumed them; every
+// Phase 1 mounted the --rm-* custom properties and nothing consumed them; every
 // theme test since has been declaration-level, because jsdom never resolves
 // var(). Every colour below is a var() with a platform-default fallback, so the
 // screen is correct with no provider at all and contractor-branded under one.
@@ -34,18 +34,31 @@ import useEntrance from '../../hooks/useEntrance';
 // ThemeContext, which the D4 chain resolved; this file consults the chain's
 // OUTPUT and never a source.
 //
-// ── THE ONE PIECE OF COLOUR MATH THAT IS DONE HERE, AND WHY ─────────────────
-// The theme engine guarantees `primary` is readable AS TEXT ON `surface`. It says
-// nothing about text ON a primary FILL, and those are different questions — the
-// platform default #F26A1B carries only 3.06:1 against white, which is below the
-// AA floor for the button label. There is no `on-primary` render token to read,
-// so this screen picks the readable foreground itself, per brand, from the same
-// derivation the provider used.
+// ── NO COLOUR MATH IS DONE HERE ANY MORE — THE GAP CLOSED ──────────────────
+// ⚠ THIS BLOCK IS INVERTED FROM WHAT IT SAID, NOT MERELY OUT OF DATE, WHICH IS
+// WHY IT IS REWRITTEN RATHER THAN DATED. It read "There is no `on-primary`
+// render token to read, so this screen picks the readable foreground itself" and
+// went on to describe a local useMemo as the correct approach. A reader
+// following that today would rebuild a workaround that no longer has anything to
+// work around.
 //
-// This is a LOCAL FIX FOR A REAL GAP, not a private theme: a proper `on-primary`
-// token belongs in themeTokens (both copies, plus the drift guard) and is
-// recorded as a 3c item. Until it exists, the alternative is a login button whose
-// label fails contrast on the platform's own palette.
+// WHAT WAS TRUE AND STILL IS: the theme engine guarantees `primary` is readable
+// as text ON `surface`, and says nothing about text ON a primary FILL. Those are
+// different questions, and the platform default #F26A1B carries only 3.06:1
+// under a white label — below the AA floor for this button's 15px/700 text.
+//
+// WHAT CHANGED: C/DL-3c Phase 1a Ruling 1 made `onPrimary` a real render token,
+// so the answer arrives as `--rm-on-primary` with the other brand variables and
+// this file simply reads it. The local computation is gone from here and from
+// ResetPinScreen, which carried the identical copy.
+//
+// ⚠ AND THE FALLBACK IS #000000, NOT THE #111111 THIS FILE USED TO RETURN. The
+// pair (white, #111111) cannot hold 4.5:1 for every fill — measured, it bottoms
+// out at 4.345:1 and misses AA on blues, which is why the token uses the true
+// extremes. #000000 is also the correct answer for the `--rm-primary` fallback
+// beside it: with no provider mounted this button paints #F26A1B, and black on
+// #F26A1B is 6.85:1 against white's 3.06:1. Fallbacks are chosen for where the
+// component renders with nothing mounted — the rule statusTheme.js states.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── THE COPY IS ROLE-NEUTRAL, AND THAT IS A RULING ──────────────────────────
@@ -83,7 +96,7 @@ import useEntrance from '../../hooks/useEntrance';
 // supposed to contact them.
 
 export default function LoginScreen({ onAuthenticated }) {
-  const { branding, mode } = useContext(ThemeContext);
+  const { branding } = useContext(ThemeContext);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -125,22 +138,6 @@ export default function LoginScreen({ onAuthenticated }) {
   const subtitle = branding?.companyName
     ? `Sign in to ${branding.companyName}`
     : 'Sign in to your account';
-
-  // The readable foreground for a primary-filled control. Recomputed only when the
-  // brand or the mode changes, because it is the same pure derivation the provider
-  // ran and there is no reason to repeat it per keystroke.
-  const onPrimary = useMemo(() => {
-    try {
-      const { primary } = deriveThemeTokens(branding, mode || 'light');
-      return contrastRatio('#FFFFFF', primary) >= contrastRatio('#111111', primary)
-        ? '#FFFFFF'
-        : '#111111';
-    } catch {
-      // deriveThemeTokens throws only on an unknown mode or an unusable palette.
-      // A login button is not worth a crash; white is the historical default.
-      return '#FFFFFF';
-    }
-  }, [branding, mode]);
 
   // ── SUBMIT ────────────────────────────────────────────────────────────────
   // async/await throughout (CLAUDE.md). The three .then() chains this file used
@@ -299,11 +296,7 @@ export default function LoginScreen({ onAuthenticated }) {
         transform: cardVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
       }}>
-        <img
-          src={logoSrc}
-          alt={companyName}
-          style={{ width: 120, height: 'auto', display: 'block', margin: '0 auto 20px' }}
-        />
+        <BrandLogo src={logoSrc} alt={companyName} marginBottom={20} />
 
         <h2 style={{
           margin: '0 0 8px', fontSize: 22, fontWeight: 700,
@@ -420,7 +413,7 @@ export default function LoginScreen({ onAuthenticated }) {
             {forgotStatus !== 'sent' && (
               <button onClick={handleForgot} disabled={forgotStatus === 'loading'} style={{
                 width: '100%', marginTop: 16,
-                backgroundColor: 'var(--rm-primary, #F26A1B)', color: onPrimary,
+                backgroundColor: 'var(--rm-primary, #F26A1B)', color: 'var(--rm-on-primary, #000000)',
                 border: 'none', borderRadius: 10, padding: 16,
                 fontSize: 15, fontWeight: 700, fontFamily: 'Montserrat, system-ui, sans-serif',
                 cursor: forgotStatus === 'loading' ? 'default' : 'pointer',
@@ -449,7 +442,7 @@ export default function LoginScreen({ onAuthenticated }) {
         ) : (
           <button onClick={handleLogin} disabled={loading} style={{
             width: '100%', marginTop: 16,
-            backgroundColor: 'var(--rm-primary, #F26A1B)', color: onPrimary,
+            backgroundColor: 'var(--rm-primary, #F26A1B)', color: 'var(--rm-on-primary, #000000)',
             border: 'none', borderRadius: 10, padding: 16,
             fontSize: 15, fontWeight: 700, fontFamily: 'Montserrat, system-ui, sans-serif',
             cursor: loading ? 'default' : 'pointer',

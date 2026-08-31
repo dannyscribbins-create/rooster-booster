@@ -8,7 +8,7 @@ import { resolveBranding, createBrandingContext } from '../../utils/brandingChai
 // EXTRACTED FROM ThemeProvider, WHICH NOW CONSUMES IT. Everything about how
 // branding is RESOLVED lives here — the D4 chain call, the neutral starting
 // state, the cancelled-after-unmount guard. Everything about how branding is
-// PAINTED stays in ThemeProvider: the mode, the eleven --rm-* custom properties,
+// PAINTED stays in ThemeProvider: the mode, the --rm-* custom properties,
 // and the one wrapper element that carries them.
 //
 // ── ⚠ THIS PROVIDER MOUNTS NO ELEMENT AND EMITS NO CSS VARIABLE ────────────

@@ -2,7 +2,7 @@
 // C/DL-3b PHASE 1 STEP 4 — THE THEME PROVIDER
 //
 // THIS IS THE FIRST SURFACE IN THE PRODUCT TO MOUNT --rm-*. Everything C/DL-3a
-// built — the derivation engine, the five brand tokens, the six status tokens and
+// built — the derivation engine, the brand tokens, the status tokens and
 // every primitive that declares var(--rm-X, fallback) — has been inert until now.
 // The moment this provider mounts, all of it becomes visible at once.
 //
@@ -31,12 +31,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { render, screen, waitFor } from '@testing-library/react';
-import { RENDER_TOKEN_KEYS, deriveThemeTokens } from '../../utils/themeTokens.mjs';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { RENDER_TOKEN_KEYS, RENDER_TOKEN_VARS, deriveThemeTokens, contrastRatio, TEXT_CONTRAST_MIN } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
 import { resolveBrandingTheme, BRANDING_THEME_DEFAULTS } from '../../utils/brandingTheme.mjs';
 import { BRAND_HINT_STORAGE_KEY } from '../../utils/brandingChain';
 import ThemeProvider, { ThemeContext, themeVariables, DEFAULT_THEME_MODE } from './ThemeProvider';
 import { useContext } from 'react';
+
+// jsdom reports a literal inline colour as rgb(...). Derived from the token
+// rather than retyped, so the expectation cannot drift from the emitted value.
+function cssColor(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
 
 const SLUG_A = 'alpharoofing';
 const APEX = 'roofmiles.com';
@@ -55,7 +64,7 @@ const NEUTRAL = Object.freeze(resolveBrandingTheme(null));
 // Every custom property the provider is contractually required to mount, built
 // FROM the two source-of-truth exports rather than written out. If either grows,
 // this grows with it.
-const EVERY_BRAND_VAR = RENDER_TOKEN_KEYS.map(k => `--rm-${k}`);
+const EVERY_BRAND_VAR = Object.values(RENDER_TOKEN_VARS);
 const EVERY_STATUS_VAR = Object.values(STATUS_VARS);
 const EVERY_VAR = [...EVERY_BRAND_VAR, ...EVERY_STATUS_VAR];
 
@@ -99,7 +108,7 @@ afterEach(() => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-describe('themeVariables — the eleven custom properties', () => {
+describe('themeVariables — every mounted custom property', () => {
 
   it('emits every brand var and every status var, counted from the source of truth', () => {
     const vars = themeVariables(BRAND_A, 'light');
@@ -108,12 +117,12 @@ describe('themeVariables — the eleven custom properties', () => {
     expect(Object.keys(vars)).toHaveLength(RENDER_TOKEN_KEYS.length + Object.keys(STATUS_VARS).length);
   });
 
-  it('the five brand vars carry deriveThemeTokens\' output for that mode', () => {
+  it('the brand vars carry deriveThemeTokens\' output for that mode', () => {
     for (const mode of ['light', 'dark']) {
       const tokens = deriveThemeTokens(BRAND_A, mode);
       const vars = themeVariables(BRAND_A, mode);
       for (const key of RENDER_TOKEN_KEYS) {
-        expect(vars[`--rm-${key}`], `--rm-${key} in ${mode} mode`).toBe(tokens[key]);
+        expect(vars[RENDER_TOKEN_VARS[key]], `${RENDER_TOKEN_VARS[key]} in ${mode} mode`).toBe(tokens[key]);
       }
     }
   });
@@ -172,7 +181,7 @@ describe('themeVariables — the eleven custom properties', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe('ThemeProvider — mounting', () => {
 
-  it('mounts all eleven variables on its own wrapper element', async () => {
+  it('mounts every variable on its own wrapper element', async () => {
     render(<ThemeProvider context={makeContext()} fetchStoredMode={async () => null}>
       <p>child</p>
     </ThemeProvider>);
@@ -419,5 +428,175 @@ describe('ThemeContext — the second createContext in src/', () => {
     expect('contractor_id' in captured.branding).toBe(false);
     expect('slug' in captured.branding).toBe(false);
     expect(JSON.stringify(captured.branding).includes(SLUG_A)).toBe(false);
+  });
+});
+
+// ── C/DL-3c PHASE 1a — THE onPrimary PAIR ──────────────────────────────────
+//
+// ⚠ THIS IS THE ONE COLOUR CLAIM THIS SUITE CAN ACTUALLY PROVE, and it is worth
+// being precise about why, because the file header says no test here proves a
+// rendered colour and that remains true.
+//
+// The limitation is that jsdom never RESOLVES var(), so a test cannot learn
+// what colour a component ends up painted. But --rm-primary and
+// --rm-on-primary are both mounted as literal hex strings on one element, and
+// the contrast between two hex strings is arithmetic. So this proves the
+// RELATIONSHIP between the two mounted values — which is the entire content of
+// Ruling 1 — without proving that any button reads them.
+//
+// WHAT STILL NEEDS EYES, stated here so the gap is not mistaken for coverage:
+// that the Sign In button actually picks the property up, that the two
+// together look like a primary action rather than a warning, and that the
+// fallback pair paints correctly with no provider mounted. Phase 1c.
+describe('C/DL-3c Phase 1a — the onPrimary pair is legible as mounted', () => {
+
+  it('mounts --rm-on-primary at AA or better against the --rm-primary beside it', async () => {
+    for (const [label, brand] of [['brand A', BRAND_A], ['neutral', NEUTRAL]]) {
+      for (const mode of ['light', 'dark']) {
+        const vars = themeVariables(brand, mode);
+        const primary = vars[RENDER_TOKEN_VARS.primary];
+        const onPrimary = vars[RENDER_TOKEN_VARS.onPrimary];
+
+        // Both must be real hex, or contrastRatio would throw and the failure
+        // would read as a maths problem rather than a missing property.
+        expect(primary, `${label}/${mode}: --rm-primary`).toMatch(/^#[0-9A-F]{6}$/i);
+        expect(onPrimary, `${label}/${mode}: --rm-on-primary`).toMatch(/^#[0-9A-F]{6}$/i);
+
+        const ratio = contrastRatio(onPrimary, primary);
+        expect(
+          ratio,
+          `${label}/${mode}: ${onPrimary} on ${primary} is ${ratio.toFixed(2)}:1, below AA`
+        ).toBeGreaterThanOrEqual(TEXT_CONTRAST_MIN);
+      }
+    }
+  });
+
+  it('carries the pair through a real mount, not only through themeVariables()', async () => {
+    // themeVariables() is a pure function and the tests above call it directly.
+    // THAT IS NOT THE SAME CLAIM as "the provider mounts it": a token could be
+    // computed correctly and dropped on the way to the element, which is the
+    // shape of every silent-failure defect this file's header describes.
+    render(<ThemeProvider context={makeContext()} fetchStoredMode={async () => null}>
+      <p>child</p>
+    </ThemeProvider>);
+    await screen.findByText('child');
+
+    const root = themeRoot();
+    const primary = root.style.getPropertyValue(RENDER_TOKEN_VARS.primary).trim();
+    const onPrimary = root.style.getPropertyValue(RENDER_TOKEN_VARS.onPrimary).trim();
+
+    expect(onPrimary, '--rm-on-primary never reached the wrapper element').not.toBe('');
+    expect(contrastRatio(onPrimary, primary)).toBeGreaterThanOrEqual(TEXT_CONTRAST_MIN);
+  });
+
+  it('answers differently for two brands, so the mounted value is derived', async () => {
+    // NON-VACUITY. Every assertion above is satisfied by a provider that mounts
+    // a constant #000000 for every contractor — black clears AA against most
+    // fills, so a hardcoded token would look correct here and be wrong on the
+    // first brand whose primary is dark. These two palettes disagree, and the
+    // disagreement is the proof the value is computed per brand.
+    const dark = themeVariables(
+      { primaryColor: '#101820', secondaryColor: '#1C2D4D', backgroundColor: '#FFFFFF' }, 'light'
+    );
+    const light = themeVariables(
+      { primaryColor: '#FFF176', secondaryColor: '#333333', backgroundColor: '#FFFFFF' }, 'light'
+    );
+
+    expect(dark[RENDER_TOKEN_VARS.onPrimary]).toBe('#FFFFFF');
+    expect(light[RENDER_TOKEN_VARS.onPrimary]).toBe('#000000');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C/DL-3c PHASE 1a — RULING 4 — THE PAGE BACKGROUND FOLLOWS THE THEME
+//
+// THE DEFECT. useReferrerFonts() in App.jsx set document.body.style.background
+// to R.bgPage — a hardcoded literal from the light-only R palette, written by a
+// FONT LOADER. body sits above this provider's wrapper element, so var(--rm-bg)
+// cannot resolve there and the page ground could never follow the theme.
+//
+// ⚠ WHAT THIS FIX IS AND IS NOT, RECORDED BECAUSE THE ENTRY IT CLOSES OVERSTATED
+// IT. The pre-launch item bills this as "latent today and the first thing anyone
+// sees the moment the toggle lands." That is FALSE. Every themed surface —
+// LoginScreen, ChoiceScreen, FrozenAccountScreen, ResetPinScreen, RepPlaceholder
+// — paints its own minHeight:100vh canvas from var(--rm-bg), so body is covered
+// on all five. The only place it shows through is the referrer app's desktop
+// gutters beside the 430px column, and the referrer app is held in light mode
+// (CD-21). So this is correct, worth making, and INVISIBLE TODAY.
+//
+// The line that would have made the billing true is Screen.jsx's own hardcoded
+// R.bgPage, which is referrer-tree-only and belongs to the R/AD migration.
+//
+// ⚠ THE UNMOUNT RESTORE IS TESTED, NOT ONLY THE SET. An effect that sets a
+// global and never restores it looks identical for as long as the provider is
+// mounted — which is always, in production and in most tests. It is only
+// distinguishable at teardown, so that is where it is asserted.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('ThemeProvider — the page background (Ruling 4)', () => {
+  const SENTINEL = 'rgb(1, 2, 3)';
+
+  beforeEach(() => {
+    // A known prior value, so "restored" is distinguishable from "cleared" —
+    // an effect that resets to '' would pass a naive check against the default.
+    document.body.style.background = SENTINEL;
+  });
+
+  it('paints document.body from the derived bg token', async () => {
+    const expected = deriveThemeTokens(NEUTRAL, 'light').bg;
+
+    render(<ThemeProvider mode="light" context={makeContext()} fetchStoredMode={async () => null}>
+      <p>child</p>
+    </ThemeProvider>);
+    await screen.findByText('child');
+
+    expect(document.body.style.background).toBe(cssColor(expected));
+  });
+
+  it('follows the MODE, not just the brand', async () => {
+    // NON-VACUITY: the two modes must produce different grounds, or "body
+    // follows the theme" is satisfied by a constant. Asserted as a difference
+    // first, so a derivation that ignored mode fails here rather than in the
+    // value check below.
+    const light = deriveThemeTokens(NEUTRAL, 'light').bg;
+    const dark = deriveThemeTokens(NEUTRAL, 'dark').bg;
+    expect(dark, 'the two modes derive the same bg — this test proves nothing').not.toBe(light);
+
+    const { unmount } = render(<ThemeProvider mode="dark" context={makeContext()} fetchStoredMode={async () => null}>
+      <p>child</p>
+    </ThemeProvider>);
+    await screen.findByText('child');
+
+    expect(document.body.style.background).toBe(cssColor(dark));
+    unmount();
+  });
+
+  it('RESTORES the previous background when it unmounts', async () => {
+    const { unmount } = render(<ThemeProvider mode="dark" context={makeContext()} fetchStoredMode={async () => null}>
+      <p>child</p>
+    </ThemeProvider>);
+    await screen.findByText('child');
+
+    // Precondition: it actually changed something. Without this the restore
+    // assertion below passes against a provider that never wrote at all.
+    expect(document.body.style.background).not.toBe(SENTINEL);
+
+    unmount();
+    expect(document.body.style.background, 'the provider left the page ground behind it').toBe(SENTINEL);
+  });
+
+  it('App.jsx no longer writes a hardcoded page background', () => {
+    // SCOPE FENCE on the half this suite cannot reach by rendering. The write
+    // has to be GONE from useReferrerFonts, not merely overridden later — two
+    // writers racing on one global is the state this replaces.
+    //
+    // A source assertion alone would be vacuity shape 6 (a sweep proves a string
+    // is absent and nothing about whether the file still runs). It is not alone:
+    // App.jsx is mounted by seven existing suites — bootRehydration,
+    // deepLinkSurvival, EmailVerifyScreen, resetSurfaceRoleBlind, roleRouting,
+    // tenantIdentity and App.test.jsx — so a broken App fails the gate loudly.
+    const source = readFileSync(resolve(process.cwd(), 'src/App.jsx'), 'utf8');
+
+    expect(source).not.toMatch(/document\.body\.style\.background/);
+    expect(source).not.toMatch(/R\.bgPage/);
   });
 });

@@ -1,4 +1,5 @@
 import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
+import BrandLogo from '../shared/BrandLogo';
 import useEntrance from '../../hooks/useEntrance';
 
 // ⚠ REPAINTED ONTO --rm-* IN PHASE 5, and this is a SCOPE ADDITION to §7.1's
@@ -87,11 +88,7 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
         <div style={{ height: 4, backgroundColor: accentColor || 'var(--rm-primary, #F26A1B)' }} />
 
         <div style={{ padding: '32px 28px', textAlign: 'center' }}>
-          <img
-            src={logoSrc}
-            alt={companyName}
-            style={{ width: 120, height: 'auto', display: 'block', margin: '0 auto 16px' }}
-          />
+          <BrandLogo src={logoSrc} alt={companyName} marginBottom={16} />
 
           <div style={{
             fontSize: 13, fontWeight: 600, letterSpacing: '0.04em',

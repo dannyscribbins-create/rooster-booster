@@ -1,9 +1,9 @@
 // ─── Semantic Status Tokens ───────────────────────────────────────────────────
 //
-// WHY THIS FILE EXISTS AND WHY IT IS SEPARATE FROM THE FIVE BRAND TOKENS.
-// The theme engine (src/utils/themeTokens.js) derives exactly five render tokens
-// from a contractor's brand — primary, secondary, bg, surface, text. NONE of
-// them is a status colour: there is no red, green or amber anywhere in that set,
+// WHY THIS FILE EXISTS AND WHY IT IS SEPARATE FROM THE BRAND TOKENS.
+// The theme engine (src/utils/themeTokens.js) derives its render tokens from a
+// contractor's brand — see RENDER_TOKEN_KEYS for the current set. NONE of them
+// is a status colour: there is no red, green or amber anywhere in that set,
 // and there cannot be, because "danger" is not a thing a brand palette implies.
 // Status is a SEMANTIC CONSTANT, not a derived value, so it deliberately does
 // NOT go through deriveThemeTokens (ruling: C/DL-3a Phase 4A).
@@ -26,7 +26,7 @@
 // THE CONTRACT. The LIGHT values are what ship as the hardcoded var() fallbacks
 // inside the primitives; the DARK values are mounted by the theme provider in
 // 3b/3c. This is the same fallback-is-light / dark-arrives-with-the-mount
-// arrangement the five brand tokens already have — an unmounted page is a light
+// arrangement the brand tokens already have — an unmounted page is a light
 // page, so the light value is the correct thing to fall back to.
 //
 // ⚠ HONEST LIMITATION, STATED RATHER THAN BURIED. Unlike --rm-text, which the

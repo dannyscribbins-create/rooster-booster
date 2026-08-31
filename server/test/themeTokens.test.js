@@ -4,7 +4,7 @@
 // C/DL-3a PHASE 3 — RED SUITE — DERIVED LIGHT/DARK THEME TOKENS
 //
 // WHAT THIS PINS. A pure derivation layer: given a contractor's resolved brand
-// colours and a mode ('light' | 'dark'), produce the five render tokens for that
+// colours and a mode ('light' | 'dark'), produce the render tokens for that
 // mode, plus the CSS custom properties that express them. Mounted nowhere this
 // phase — the deliverable is the engine and its invariants.
 //
@@ -21,8 +21,8 @@
 // The base resolver keeps its four consumers (landingResolve.js, landing.js,
 // referrer.js, BrandingPreview.jsx) and its whole-output deepEqual fences
 // (brandingTheme.test.js:160, landingResolve.test.js:724) unchanged. accentColor
-// stays a base brand value and is deliberately NOT one of the five render
-// tokens — it paints soft washes, which is a different job from any of the five.
+// stays a base brand value and is deliberately NOT one of the render tokens —
+// it paints soft washes, which is a different job from any of them.
 //
 // THE HARD INVARIANT, and the only one whose constant is not tunable: the `text`
 // token must clear WCAG AA (>= 4.5:1) against its own `surface` in BOTH modes,
@@ -197,13 +197,20 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
 
   // ── 2. SHAPE ───────────────────────────────────────────────────────────────
 
-  it('returns exactly the five render tokens, every value a valid #RRGGBB', async () => {
+  it('returns exactly the render tokens, every value a valid #RRGGBB', async () => {
     const { deriveThemeTokens, RENDER_TOKEN_KEYS } = tt();
 
+    // ⚠ HAND-WRITTEN ON PURPOSE, same reason as the CSS property list below:
+    // it is the independent input that makes RENDER_TOKEN_KEYS falsifiable.
+    // WAS THE FIVE OF SPEC §5 UNTIL C/DL-3c PHASE 1a, which appended `onPrimary`
+    // under Ruling 1. The §5 claim now lives in the Phase 1a suite, which pins
+    // the first five AND their order — amendment A23.1 depends on that prefix,
+    // so it is asserted where it can be read next to its reason rather than
+    // being silently absorbed into this sorted list.
     assert.deepEqual(
       [...RENDER_TOKEN_KEYS].sort(),
-      ['bg', 'primary', 'secondary', 'surface', 'text'],
-      'the exported token key list is not the five tokens §5 specifies'
+      ['bg', 'onPrimary', 'primary', 'secondary', 'surface', 'text'],
+      'the exported token key list is not the render token set'
     );
 
     for (const [label, brand] of BRANDS) {
@@ -427,7 +434,16 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
 
   // ── 7. CSS CUSTOM PROPERTIES ───────────────────────────────────────────────
 
-  it('themeCssVariables emits the five --rm-* properties carrying the token values', async () => {
+  it('themeCssVariables emits every --rm-* property carrying the token values', async () => {
+    // ⚠ THE NAME LIST STAYS HAND-WRITTEN, DELIBERATELY, and it is the only
+    // hand-written copy of it in the suite. Everything else derives its
+    // expectations from RENDER_TOKEN_KEYS, which means a typo'd or dropped key
+    // would change both the code and its own assertion together and nothing
+    // would fail. This list is the independent input that makes the set
+    // falsifiable at all — the "guards agreeing is not evidence when they share
+    // an input" rule. Adding a token is supposed to fail here and be updated on
+    // purpose; that is what happened in C/DL-3c Phase 1a, which added
+    // --rm-on-primary and was the first change to this list since it was written.
     const { deriveThemeTokens, themeCssVariables } = tt();
 
     for (const [label, brand] of BRANDS) {
@@ -437,14 +453,15 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
 
         assert.deepEqual(
           Object.keys(vars).sort(),
-          ['--rm-bg', '--rm-primary', '--rm-secondary', '--rm-surface', '--rm-text'],
+          ['--rm-bg', '--rm-on-primary', '--rm-primary', '--rm-secondary', '--rm-surface', '--rm-text'],
           `${label}/${mode}: wrong CSS custom property names`
         );
-        assert.equal(vars['--rm-primary'],   tokens.primary,   `${label}/${mode}: --rm-primary`);
-        assert.equal(vars['--rm-secondary'], tokens.secondary, `${label}/${mode}: --rm-secondary`);
-        assert.equal(vars['--rm-bg'],        tokens.bg,        `${label}/${mode}: --rm-bg`);
-        assert.equal(vars['--rm-surface'],   tokens.surface,   `${label}/${mode}: --rm-surface`);
-        assert.equal(vars['--rm-text'],      tokens.text,      `${label}/${mode}: --rm-text`);
+        assert.equal(vars['--rm-primary'],    tokens.primary,   `${label}/${mode}: --rm-primary`);
+        assert.equal(vars['--rm-secondary'],  tokens.secondary, `${label}/${mode}: --rm-secondary`);
+        assert.equal(vars['--rm-bg'],         tokens.bg,        `${label}/${mode}: --rm-bg`);
+        assert.equal(vars['--rm-surface'],    tokens.surface,   `${label}/${mode}: --rm-surface`);
+        assert.equal(vars['--rm-text'],       tokens.text,      `${label}/${mode}: --rm-text`);
+        assert.equal(vars['--rm-on-primary'], tokens.onPrimary, `${label}/${mode}: --rm-on-primary`);
       }
     }
   });
@@ -489,7 +506,8 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
       'MIRROR DRIFT: the two copies declare different render token keys'
     );
     for (const key of [
-      'TEXT_CONTRAST_MIN', 'BRAND_ON_DARK_MIN_CONTRAST', 'LIGHT_SURFACE_HEX',
+      'TEXT_CONTRAST_MIN', 'BRAND_ON_DARK_MIN_CONTRAST', 'BRAND_ON_LIGHT_MIN_CONTRAST',
+      'LIGHT_SURFACE_HEX',
       'DARK_BG_TARGET_L', 'DARK_SURFACE_LIFT_L', 'DARK_TEXT_TARGET_L',
       'DARK_BG_MAX_SATURATION', 'NUDGE_STEP_L', 'NUDGE_MAX_STEPS',
     ]) {
@@ -551,6 +569,319 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
     }
     // And accentColor is still a base brand value, deliberately not a render token.
     assert.equal(base.accentColor, BRANDING_THEME_DEFAULTS.accentColor);
-    assert.equal(tt().RENDER_TOKEN_KEYS.includes('accent'), false, 'accent is not one of the five render tokens');
+    assert.equal(tt().RENDER_TOKEN_KEYS.includes('accent'), false, 'accent is not one of the render tokens');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C/DL-3c PHASE 1a — RED SUITE — THE onPrimary TOKEN AND THE LIGHT-MODE FILL FLOOR
+//
+// TWO RULINGS, AND THEY ARE ONE DESIGN. Ruling 1 adds a SIXTH render token,
+// `onPrimary`: the readable foreground for a control FILLED with `primary`.
+// Ruling 2 adds a light-mode floor on `primary` ITSELF. They are separated on
+// purpose, and each carries the number that belongs to it:
+//
+//     onPrimary IS TEXT    -> TEXT_CONTRAST_MIN (4.5)          WCAG SC 1.4.3
+//     primary   IS A FILL  -> BRAND_ON_LIGHT_MIN_CONTRAST (3)  WCAG SC 1.4.11
+//
+// WHY A TOKEN RATHER THAN THE LOCAL WORKAROUND IT REPLACES. LoginScreen.jsx and
+// ResetPinScreen.jsx each carried a private useMemo computing this value, and
+// both said in a comment that a real token was owed. A per-file workaround does
+// not generalise: `--rm-secondary` has ZERO paint consumers today, and white on
+// the DARK-mode secondary measures about 3.05:1 (it is 13.71:1 in light, because
+// dark BRIGHTENS the brand tones). The first component to paint text on a
+// secondary fill inherits this identical defect, mode-flipped, and invisible
+// until the toggle ships. A token is where that gets fixed once.
+//
+// EXPECTED RED TODAY, all for one documented reason: `onPrimary` is not in
+// RENDER_TOKEN_KEYS and BRAND_ON_LIGHT_MIN_CONTRAST does not exist, so each test
+// fails on its own assertion naming the missing piece.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A brand whose primary is EFFECTIVELY INVISIBLE on a light card — 1.16:1
+// against #FFFFFF. THE THREE FIXTURES ABOVE CANNOT PROVE THE LIGHT FLOOR FIRES:
+// measured, RoofMiles is 3.06:1, Accent-like 5.62:1 and the "pathological"
+// mid-grey 4.29:1, so every one of them clears a 3:1 floor unchanged and a test
+// run only against them would pass VACUOUSLY against a derivation that has no
+// floor at all (CLAUDE.md vacuity shape 1 — a case row proves nothing until the
+// condition it needs actually occurs).
+//
+// IT IS PATHOLOGICAL FOR A DIFFERENT REASON than PATHOLOGICAL above. That one is
+// a mid-tone grey chosen to break the TEXT floor; this one is a pale yellow
+// chosen to break the FILL floor. Two floors, two witnesses.
+const INVISIBLE_PRIMARY = Object.freeze(resolveBrandingTheme({
+  company_name:     'Pale Yellow Co',
+  primary_color:    '#FFF176',
+  secondary_color:  '#333333',
+  accent_color:     '#FFFDE7',
+  landing_bg_color: '#FFFFFF',
+}));
+
+describe('C/DL-3c Phase 1a — onPrimary and the light-mode fill floor', () => {
+
+  // ── RULING 1 — THE SIXTH RENDER TOKEN ──────────────────────────────────────
+
+  it('[RED] onPrimary is a render token, present and valid in every brand and mode', async () => {
+    const { deriveThemeTokens, RENDER_TOKEN_KEYS } = tt();
+
+    assert.ok(
+      RENDER_TOKEN_KEYS.includes('onPrimary'),
+      'RENDER_TOKEN_KEYS does not include onPrimary — the readable foreground for a ' +
+      'primary-filled control is still every consumer private problem'
+    );
+
+    // THE FIRST FIVE KEEP THEIR IDENTITY AND THEIR ORDER. Amendment A23.1 rests
+    // on RENDER_TOKEN_KEYS being spec section 5's set "exactly, in section 5's
+    // order"; appending a sixth preserves that prefix, and reordering would
+    // falsify an amendment rather than merely churn a list.
+    assert.deepEqual(
+      RENDER_TOKEN_KEYS.slice(0, 5),
+      ['primary', 'secondary', 'bg', 'surface', 'text'],
+      'the first five render tokens are no longer spec section 5 set in section 5 order'
+    );
+
+    for (const [label, brand] of [...BRANDS, ['invisible primary', INVISIBLE_PRIMARY]]) {
+      for (const mode of MODES) {
+        const tokens = deriveThemeTokens(brand, mode);
+        assert.match(
+          tokens.onPrimary ?? '', HEX_RE,
+          `${label}/${mode}: onPrimary is ${JSON.stringify(tokens.onPrimary)}, not a valid #RRGGBB`
+        );
+      }
+    }
+  });
+
+  it('[RED] onPrimary clears the WCAG AA text floor against its own mode primary', async () => {
+    const { deriveThemeTokens, contrastRatio, TEXT_CONTRAST_MIN } = tt();
+
+    // THE AUTHORITY, NOT RE-DERIVED HERE. The label this token carries is 15px/700
+    // on the Sign In button, which is below WCAG's large-text threshold (18.66px
+    // bold), so SC 1.4.3's 4.5:1 applies rather than 3:1. The same 15px/700
+    // reasoning is written independently at AdminSetPasswordScreen.jsx's disabled
+    // button comment and in campaigns.js's email-button comment; this cites them
+    // rather than arguing it a third time.
+    assert.equal(TEXT_CONTRAST_MIN, 4.5, 'the text floor must be WCAG AA 4.5:1');
+
+    for (const [label, brand] of [...BRANDS, ['invisible primary', INVISIBLE_PRIMARY]]) {
+      for (const mode of MODES) {
+        const { primary, onPrimary } = deriveThemeTokens(brand, mode);
+        const ratio = contrastRatio(onPrimary, primary);
+        assert.ok(
+          ratio >= TEXT_CONTRAST_MIN,
+          `${label}/${mode}: onPrimary ${onPrimary} on primary ${primary} is ` +
+          `${ratio.toFixed(2)}:1, below the ${TEXT_CONTRAST_MIN}:1 floor`
+        );
+      }
+    }
+  });
+
+  it('[RED] onPrimary is DERIVED per brand — the two known palettes disagree about it', async () => {
+    // NON-VACUITY, AND THE MEASUREMENT THAT DECIDED RULING 1. A hardcoded
+    // foreground is wrong for one of the two brands this product actually has:
+    // on #F26A1B white is 3.06:1 and black is 6.85:1, so the label must be dark;
+    // on #C62828 white is 5.62:1 and black is 3.74:1, so it must be light.
+    // Asserting only the floor above would go green against `return '#000000'`.
+    const { deriveThemeTokens, contrastRatio } = tt();
+
+    const roofmiles = deriveThemeTokens(ROOFMILES, 'light');
+    const accent    = deriveThemeTokens(ACCENT_LIKE, 'light');
+
+    // NAME THE MISSING PIECE BEFORE COMPARING. Without this, an absent token
+    // makes the comparison below `notEqual(undefined, undefined)` — a correct
+    // failure reporting "both brands got the same onPrimary", which is true and
+    // is not the reason.
+    for (const [label, t] of [['RoofMiles', roofmiles], ['Accent-like', accent]]) {
+      assert.equal(
+        typeof t.onPrimary, 'string',
+        `${label}: onPrimary is ${JSON.stringify(t.onPrimary)} — the token is not derived at all`
+      );
+    }
+
+    assert.notEqual(
+      roofmiles.onPrimary, accent.onPrimary,
+      'both brands got the same onPrimary — the token is a constant, not a derivation ' +
+      `(RoofMiles primary ${roofmiles.primary}, Accent-like primary ${accent.primary})`
+    );
+
+    // And each one is on the correct side, so "different" cannot be satisfied by
+    // two wrong answers.
+    assert.ok(
+      contrastRatio(roofmiles.onPrimary, roofmiles.primary) > contrastRatio('#FFFFFF', roofmiles.primary),
+      'RoofMiles onPrimary is no better than white on its own primary'
+    );
+    assert.ok(
+      contrastRatio(accent.onPrimary, accent.primary) > contrastRatio('#000000', accent.primary),
+      'Accent-like onPrimary is no better than black on its own primary'
+    );
+  });
+
+  it('[RED] onPrimary holds the floor for EVERY possible fill, not only the fixtures', async () => {
+    // THE FIXTURES CANNOT PROVE THIS. Four brands is four samples of a function
+    // whose input is any colour a contractor can type into Branding Settings.
+    // Sweeping the space is what turns "passes for our palettes" into an
+    // invariant — and the invariant is real: the best of pure white and pure
+    // black is at worst 4.583:1 (at #5D60FF), which is why this token can
+    // guarantee 4.5 without a nudge loop.
+    const { deriveThemeTokens, contrastRatio, TEXT_CONTRAST_MIN } = tt();
+
+    let worst = { ratio: Infinity, primary: null, onPrimary: null };
+    for (let r = 0; r < 256; r += 17) {
+      for (let g = 0; g < 256; g += 17) {
+        for (let b = 0; b < 256; b += 17) {
+          const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+          const { primary, onPrimary } = deriveThemeTokens(
+            { primaryColor: hex, secondaryColor: '#1C2D4D', backgroundColor: '#FFFFFF' }, 'light'
+          );
+          const ratio = contrastRatio(onPrimary, primary);
+          if (ratio < worst.ratio) worst = { ratio, primary, onPrimary };
+        }
+      }
+    }
+
+    assert.ok(
+      worst.ratio >= TEXT_CONTRAST_MIN,
+      `the worst fill in the sweep was ${worst.primary}, where onPrimary ` +
+      `${worst.onPrimary} reaches only ${worst.ratio.toFixed(3)}:1 — below ${TEXT_CONTRAST_MIN}:1`
+    );
+  });
+
+  it('[RED] onPrimary may not be softened to #111111 — that value cannot hold the floor', async () => {
+    // A FENCE AROUND A REAL, MEASURED TRAP, and the reason the retired workaround
+    // was not simply moved into the module. BOTH local copies of this computation
+    // (LoginScreen.jsx and ResetPinScreen.jsx) chose between #FFFFFF and #111111,
+    // and #111111 is the natural "softer than pure black" instinct.
+    //
+    // IT DOES NOT HOLD. Measured over the colour space, max(white, #111111)
+    // bottoms out at 4.345:1 — below AA — and misses 4.5:1 on roughly 3.4% of
+    // sampled colours where pure black would have cleared it. Blue fills are the
+    // worst case, and a blue brand primary is entirely ordinary.
+    //
+    // ASSERTED ON THE WITNESS RATHER THAN ONLY ON THE SHIPPED VALUE, deliberately:
+    // this must fail if someone re-softens the token, and it must keep saying WHY.
+    const { deriveThemeTokens, contrastRatio, TEXT_CONTRAST_MIN } = tt();
+
+    const WITNESS = '#7260FF';
+    const soft = Math.max(contrastRatio('#FFFFFF', WITNESS), contrastRatio('#111111', WITNESS));
+    const pure = Math.max(contrastRatio('#FFFFFF', WITNESS), contrastRatio('#000000', WITNESS));
+
+    assert.ok(soft < TEXT_CONTRAST_MIN, `${WITNESS} no longer witnesses the #111111 shortfall`);
+    assert.ok(pure >= TEXT_CONTRAST_MIN, `${WITNESS} is not reachable by pure black either`);
+
+    // The shipped token must be on the right side of that.
+    const { primary, onPrimary } = deriveThemeTokens(
+      { primaryColor: WITNESS, secondaryColor: '#1C2D4D', backgroundColor: '#FFFFFF' }, 'light'
+    );
+    assert.ok(
+      contrastRatio(onPrimary, primary) >= TEXT_CONTRAST_MIN,
+      `onPrimary ${onPrimary} on ${primary} is below AA — it has been softened away from pure black`
+    );
+  });
+
+  // ── RULING 2 — THE LIGHT-MODE FILL FLOOR ───────────────────────────────────
+
+  it('[RED] the light-mode fill floor is 3:1 and is NOT the text floor', async () => {
+    const { BRAND_ON_LIGHT_MIN_CONTRAST, TEXT_CONTRAST_MIN, BRAND_ON_DARK_MIN_CONTRAST } = tt();
+
+    // THIS PINS A RULING, NOT AN IMPLEMENTATION DETAIL, and that is why it
+    // asserts an exact number in a file that otherwise refuses to pin hexes.
+    // MEASURED: a 4.5:1 floor here repaints the platform's own #F26A1B to
+    // #C54F0B — a visibly browner orange, applied silently by a derivation
+    // function, everywhere in light mode. That is a rebrand, not a contrast fix.
+    // 3:1 leaves every real palette untouched and bites only where primary is
+    // genuinely invisible. If this number is ever raised, it must be raised
+    // deliberately, and this test is where that argument happens.
+    assert.equal(
+      BRAND_ON_LIGHT_MIN_CONTRAST, 3,
+      'the light-mode fill floor is WCAG SC 1.4.11 non-text contrast (3:1) — raising it ' +
+      'to the text floor repaints #F26A1B to #C54F0B across the whole light-mode app'
+    );
+    assert.notEqual(
+      BRAND_ON_LIGHT_MIN_CONTRAST, TEXT_CONTRAST_MIN,
+      'the fill floor and the text floor have been collapsed into one number — they are ' +
+      'deliberately different: primary is a FILL (1.4.11), onPrimary is TEXT (1.4.3)'
+    );
+    // The dark floor is untouched by this ruling.
+    assert.equal(
+      BRAND_ON_DARK_MIN_CONTRAST, 5.25,
+      'the dark brand floor moved — it is not this ruling subject'
+    );
+  });
+
+  it('[RED] light mode nudges a primary that is invisible on its own surface', async () => {
+    const { deriveThemeTokens, contrastRatio, BRAND_ON_LIGHT_MIN_CONTRAST } = tt();
+
+    // THE FLOOR MUST EXIST BEFORE THE WITNESS CAN BE JUDGED AGAINST IT. Without
+    // this line an absent constant makes `1.16 < undefined` false, and the
+    // non-vacuity guard below reports "the witness no longer fails the floor" —
+    // a message that blames the fixture for a missing export.
+    assert.equal(
+      typeof BRAND_ON_LIGHT_MIN_CONTRAST, 'number',
+      'BRAND_ON_LIGHT_MIN_CONTRAST is not exported — the light-mode fill floor does not exist'
+    );
+
+    // NON-VACUITY: prove the RAW input actually fails, so that the pass below is
+    // evidence the floor fired rather than evidence it was never needed.
+    const raw = INVISIBLE_PRIMARY.primaryColor;
+    const before = contrastRatio(raw, '#FFFFFF');
+    assert.ok(
+      before < BRAND_ON_LIGHT_MIN_CONTRAST,
+      `the witness brand primary ${raw} is ${before.toFixed(2)}:1 on white — it no longer ` +
+      'fails the floor, so this test proves nothing and needs a new witness'
+    );
+
+    const { primary, surface } = deriveThemeTokens(INVISIBLE_PRIMARY, 'light');
+    assert.notEqual(primary, raw, 'the invisible primary was passed through unchanged — no floor fired');
+    const after = contrastRatio(primary, surface);
+    assert.ok(
+      after >= BRAND_ON_LIGHT_MIN_CONTRAST,
+      `light primary ${primary} on surface ${surface} is ${after.toFixed(2)}:1, below the ` +
+      `${BRAND_ON_LIGHT_MIN_CONTRAST}:1 fill floor`
+    );
+
+    // And every other brand holds it too.
+    for (const [label, brand] of BRANDS) {
+      const t = deriveThemeTokens(brand, 'light');
+      const ratio = contrastRatio(t.primary, t.surface);
+      assert.ok(
+        ratio >= BRAND_ON_LIGHT_MIN_CONTRAST,
+        `${label}: light primary ${t.primary} on ${t.surface} is ${ratio.toFixed(2)}:1`
+      );
+    }
+  });
+
+  it('[RED] a primary that already clears the floor is still a strict passthrough', async () => {
+    // THE ANTI-REBRAND FENCE — the positive half of Ruling 2, and the half that
+    // would be silently lost if the floor were later "tidied" upward. Stated as
+    // what the derivation DOES say (passthrough), not as what it must avoid.
+    //
+    // #F26A1B clears the fill floor by 0.064 — the tightest real case in the
+    // product, which makes it the right witness: any raise of the floor at all
+    // moves the platform's own brand colour and fails here first.
+    const { deriveThemeTokens, contrastRatio, BRAND_ON_LIGHT_MIN_CONTRAST } = tt();
+
+    // Same reason as the test above: without this, an absent constant makes the
+    // per-brand guard blame each fixture instead of the missing export.
+    assert.equal(
+      typeof BRAND_ON_LIGHT_MIN_CONTRAST, 'number',
+      'BRAND_ON_LIGHT_MIN_CONTRAST is not exported — the light-mode fill floor does not exist'
+    );
+
+    for (const [label, brand] of BRANDS) {
+      const ratio = contrastRatio(brand.primaryColor, '#FFFFFF');
+      assert.ok(
+        ratio >= BRAND_ON_LIGHT_MIN_CONTRAST,
+        `${label} no longer clears the floor on its own, so it cannot witness passthrough`
+      );
+      assert.equal(
+        deriveThemeTokens(brand, 'light').primary, brand.primaryColor,
+        `${label}: light primary was repainted from ${brand.primaryColor} even though it ` +
+        `already measured ${ratio.toFixed(3)}:1 — the floor is catching good input`
+      );
+    }
+
+    assert.equal(
+      deriveThemeTokens(ROOFMILES, 'light').primary, '#F26A1B',
+      'the platform brand orange has been repainted in light mode'
+    );
   });
 });

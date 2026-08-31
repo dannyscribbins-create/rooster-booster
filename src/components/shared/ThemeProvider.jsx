@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS } from '../../utils/themeTokens.mjs';
+import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS, RENDER_TOKEN_VARS } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
 import BrandingProvider, { NEUTRAL_BRANDING, useAdminBranding } from './BrandingProvider';
 import { BACKEND_URL } from '../../config/contractor';
@@ -9,15 +9,15 @@ import { getReferrerToken } from '../../utils/authStorage';
 // THE THEME PROVIDER — C/DL-3b Phase 1, spec D8
 //
 // THE FIRST SURFACE IN THE PRODUCT TO MOUNT --rm-*. Everything C/DL-3a built has
-// been inert until now: the derivation engine, the five brand tokens, the six
-// status tokens, and every primitive in this folder that declares
+// been inert until now: the derivation engine, the brand tokens, the status
+// tokens, and every primitive in this folder that declares
 // var(--rm-X, fallback). themeCssVariables() has had ZERO production callers
 // since it shipped; this is its first. The moment this provider mounts, every one
 // of those primitives changes appearance at once.
 //
 // It takes the branding BrandingProvider resolved through the D4 chain
-// (src/utils/brandingChain.js), derives the five render tokens for the active
-// mode, and mounts eleven custom properties on ONE element. Resolution itself
+// (src/utils/brandingChain.js), derives the render tokens for the active
+// mode, and mounts every brand and status property on ONE element. Resolution
 // moved out in Phase 2A — see "WHAT MOVED OUT" below.
 //
 // ── ⚠ RULING 5 — IT MOUNTS ON ITS OWN WRAPPER, NOT ON :root ────────────────
@@ -60,8 +60,8 @@ import { getReferrerToken } from '../../utils/authStorage';
 // intentional and must not acquire a new ancestor box just because the app
 // gained a theme.
 //
-// ── WHAT GETS MOUNTED: ELEVEN, NOT NINE ────────────────────────────────────
-// Five brand vars from themeCssVariables(deriveThemeTokens(brand, mode)), plus
+// ── WHAT GETS MOUNTED: BOTH SETS, AND THE SECOND ONE IS EASY TO FORGET ─────
+// The brand vars from themeCssVariables(deriveThemeTokens(brand, mode)), plus
 // SIX status vars — STATUS_VARS has six entries, not the four the 3b spec prose
 // says. Both lists are built programmatically from RENDER_TOKEN_KEYS and
 // STATUS_VARS so the property set cannot drift from the token set; hand-writing
@@ -78,7 +78,7 @@ import { getReferrerToken } from '../../utils/authStorage';
 // see that file's header for why the split is structural rather than tidy.
 //
 // This file's contract to the referrer app is unchanged by that move: same
-// chain, same values, same eleven properties, same single wrapper element.
+// chain, same values, same property set, same single wrapper element.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Spec D8. Light on the login screen and on first entry, for every role — already
@@ -92,7 +92,9 @@ export const DEFAULT_THEME_MODE = 'light';
  *        falls back to the platform palette rather than throwing (normalizeBrand's
  *        documented contract — a throw here is an unstyled surface).
  * @param {'light'|'dark'} mode - required.
- * @returns {object} eleven entries: five --rm-<token> plus the six in STATUS_VARS.
+ * @returns {object} one --rm-<token> entry per RENDER_TOKEN_KEYS key, plus one
+ *          per role in STATUS_VARS. COUNTED BY NEITHER — both lists are read at
+ *          run time, so this contract survives a token being added to either.
  * @throws on an unknown mode, on a malformed derived token, or if STATUS_VARS and
  *         the status palettes have drifted apart. Throwing beats rendering: an
  *         emitted "--rm-text: undefined" is a silent failure with one invisible
@@ -228,7 +230,7 @@ export default function ThemeProvider({
 
 /**
  * The painting half. Reads the resolved branding, owns the light/dark mode, and
- * mounts the eleven custom properties on the one wrapper element (Ruling 5).
+ * mounts every custom property on the one wrapper element (Ruling 5).
  *
  * NOT EXPORTED. It is meaningless without a BrandingProvider above it — and it
  * says so by construction, since useAdminBranding() throws rather than
@@ -271,6 +273,36 @@ function ThemeLayer({ children, fetchStoredMode, mode: pinnedMode }) {
   // become a half-styled render — see its JSDoc. ErrorBoundary is the right place
   // for it to land, not a swallow here.
   const vars = useMemo(() => themeVariables(branding, mode), [branding, mode]);
+
+  // ── THE PAGE GROUND (C/DL-3c Phase 1a, Ruling 4) ───────────────────────────
+  //
+  // body IS OUTSIDE THE TREE THIS PROVIDER OWNS, so this is imperative on
+  // purpose. Ruling 5 keeps the custom properties on the wrapper below rather
+  // than on :root, which means var(--rm-bg) cannot resolve on body — there is no
+  // declarative way to reach it that does not reintroduce the global mount and
+  // the white-scrim failure with it.
+  //
+  // IT REPLACES A WRITE IN useReferrerFonts(), a font loader, which set a
+  // hardcoded light-palette literal that could never follow the mode.
+  //
+  // ⚠ AND IT IS INVISIBLE TODAY, WHICH IS WORTH KNOWING BEFORE SOMEONE "FIXES"
+  // IT AGAIN. Every themed surface paints its own minHeight:100vh canvas from
+  // var(--rm-bg), so body is covered on all of them. The single place it shows
+  // through is the referrer app's desktop gutters beside its 430px column — and
+  // that column still paints the R palette's own page colour (Screen.jsx), which
+  // is referrer-tree-only and belongs to the R/AD migration. Until that lands,
+  // this makes the gutter the contractor's real background while the column
+  // stays on R: a faint seam on a wide viewport, measured at 1.124:1 for the
+  // platform palette. Closing that seam is the migration's job, not this one's.
+  //
+  // RESTORES ON UNMOUNT rather than clearing. Another provider instance may sit
+  // above this one — ResetPinScreen carries its own — and clearing would leave
+  // the page unpainted on the way back out.
+  useEffect(() => {
+    const previous = document.body.style.background;
+    document.body.style.background = vars[RENDER_TOKEN_VARS.bg];
+    return () => { document.body.style.background = previous; };
+  }, [vars]);
 
   const value = useMemo(() => ({ mode, branding, source }), [mode, branding, source]);
 

@@ -1,8 +1,8 @@
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useState } from 'react';
 import { BACKEND_URL } from '../../config/contractor';
 import { ThemeContext } from '../shared/ThemeProvider';
-import { deriveThemeTokens, contrastRatio } from '../../utils/themeTokens.mjs';
 import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
+import BrandLogo from '../shared/BrandLogo';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─── Set a New Password ───────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ import useEntrance from '../../hooks/useEntrance';
 // D12 — the unified 8-character minimum. The `^\d{4}$` era is over: no maxLength
 // of 4, no digit coercion, and the word PIN appears nowhere a person can read.
 export default function ResetPinScreen({ token }) {
-  const { branding, mode } = useContext(ThemeContext);
+  const { branding } = useContext(ThemeContext);
 
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -37,19 +37,13 @@ export default function ResetPinScreen({ token }) {
   const companyName = branding?.companyName || 'RoofMiles';
   const logoSrc = branding?.logoUrl || roofMilesLogo;
 
-  // See LoginScreen's header: the theme engine guarantees `primary` reads as TEXT
-  // on `surface`, not as a background under a label. Same local computation, same
-  // reason, and the same 3c follow-up owed.
-  const onPrimary = useMemo(() => {
-    try {
-      const { primary } = deriveThemeTokens(branding, mode || 'light');
-      return contrastRatio('#FFFFFF', primary) >= contrastRatio('#111111', primary)
-        ? '#FFFFFF'
-        : '#111111';
-    } catch {
-      return '#FFFFFF';
-    }
-  }, [branding, mode]);
+  // ⚠ THE LOCAL onPrimary COMPUTATION THAT USED TO SIT HERE IS GONE (C/DL-3c
+  // Phase 1a, Ruling 1). It is now the `--rm-on-primary` render token, read
+  // directly on the submit button below. Recorded rather than simply deleted
+  // because this file's copy was the SECOND one — the comment it carried said
+  // "same local computation, same reason" and pointed at LoginScreen, which is
+  // exactly the shape a third copy would have taken. There is one derivation
+  // now, in themeTokens, and it is the only place this decision is made.
 
   // The server enforces the same floor (POST /api/reset-pin). This check exists
   // so the person is told before a round trip, not instead of one.
@@ -127,11 +121,7 @@ export default function ResetPinScreen({ token }) {
         transform: cardVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
       }}>
-        <img
-          src={logoSrc}
-          alt={companyName}
-          style={{ width: 120, height: 'auto', display: 'block', margin: '0 auto 20px' }}
-        />
+        <BrandLogo src={logoSrc} alt={companyName} marginBottom={20} />
 
         <h2 style={{
           margin: '0 0 8px', fontSize: 22, fontWeight: 700,
@@ -204,7 +194,7 @@ export default function ResetPinScreen({ token }) {
 
             <button onClick={handleSubmit} disabled={status === 'loading'} style={{
               width: '100%', marginTop: 16,
-              backgroundColor: 'var(--rm-primary, #F26A1B)', color: onPrimary,
+              backgroundColor: 'var(--rm-primary, #F26A1B)', color: 'var(--rm-on-primary, #000000)',
               border: 'none', borderRadius: 10, padding: 16,
               fontSize: 15, fontWeight: 700, fontFamily: 'Montserrat, system-ui, sans-serif',
               cursor: status === 'loading' ? 'default' : 'pointer',

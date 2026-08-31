@@ -246,7 +246,7 @@ describe('ErrorState', () => {
 
   it('renders its status colour from the semantic danger variable', () => {
     // Status is NOT brand-derived and does not go through deriveThemeTokens —
-    // the five --rm-* tokens carry no red at all. The fallback is the LIGHT
+    // the --rm-* brand tokens carry no red at all. The fallback is the LIGHT
     // value; the dark value is mounted by the provider in 3b/3c.
     const { root } = renderThemed(<ErrorState title="Could not load pipeline" />);
     const heading = screen.getByText('Could not load pipeline');

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { R } from './constants/theme';
 import AdminPanel from './components/admin/AdminApp';
 import { BACKEND_URL } from './config/contractor';
 import { isRmControlEnabled } from './config/featureFlags';
@@ -85,7 +84,18 @@ function useReferrerFonts() {
     focusStyle.textContent = "button:focus-visible,a:focus-visible{outline:2px solid #012854;outline-offset:2px;border-radius:inherit;}";
     document.head.appendChild(focusStyle);
     document.body.style.margin = "0";
-    document.body.style.background = R.bgPage;
+    // ⚠ THE PAGE BACKGROUND IS NOT WRITTEN HERE ANY MORE (C/DL-3c Phase 1a,
+    // Ruling 4). This line used to paint the page ground on the body element with
+    // the R palette's hardcoded page colour — a light-only literal, set by a
+    // FONT LOADER, which is why it could never follow the theme.
+    //
+    // It belongs to ThemeProvider, which is the thing that knows the mode and
+    // the contractor. body sits ABOVE that provider's wrapper element, so
+    // var(--rm-bg) cannot resolve there — the provider writes the value
+    // imperatively instead and restores it on unmount. See ThemeLayer.
+    //
+    // ⚠ DO NOT RE-ADD A BACKGROUND WRITE HERE. Two writers on one global race,
+    // and the loser is whichever effect happens to run second.
   }, []);
 }
 

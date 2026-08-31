@@ -33,8 +33,8 @@
 //
 // ── WHAT THIS IS ─────────────────────────────────────────────────────────────
 // One pure function turning a contractor's resolved brand colours plus a mode
-// into the five render tokens the mockup specifies (DECISION_C_DL_BUILD_SPEC.md
-// section 5), and a second turning those tokens into CSS custom properties.
+// into the render tokens the mockup specifies (DECISION_C_DL_BUILD_SPEC.md
+// section 5, plus onPrimary — see RENDER_TOKEN_KEYS), and a second turning those tokens into CSS custom properties.
 //
 //     deriveThemeTokens(resolveBrandingTheme(row), 'dark')  ->  { primary, ... }
 //     themeCssVariables(tokens)                             ->  { '--rm-bg', ... }
@@ -43,8 +43,8 @@
 // amendment A20's second option, taken deliberately. The base resolver keeps its
 // four consumers and its whole-output deepEqual fences unchanged; this module
 // composes on top of it. accentColor stays a BASE brand value and is
-// deliberately not one of the five render tokens — it paints soft washes, which
-// is a different job from any of the five.
+// deliberately not one of the render tokens — it paints soft washes, which is a
+// different job from any of them.
 //
 // DARK MODE IS DERIVED, not stored. There is no second palette in the database
 // and no dark-mode columns: one stored brand, two computed themes. That is what
@@ -65,9 +65,55 @@ const { BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE } = require('./brandingTheme');
 // WCAG AA, several tests assert against it by name, and lowering it makes the
 // product illegible for exactly the users least able to say so.
 
-// The five render tokens, in the order section 5 lists them. Exported so the CSS
-// variable names cannot drift from the token set.
-const RENDER_TOKEN_KEYS = Object.freeze(['primary', 'secondary', 'bg', 'surface', 'text']);
+// The render tokens. Exported so the CSS variable names cannot drift from the
+// token set.
+//
+// ⚠ SIX SINCE C/DL-3c PHASE 1a, AND THE FIRST FIVE ARE ORDER-SENSITIVE.
+// DECISION_C_DL_BUILD_SPEC.md amendment A23.1 rests on this list being spec
+// section 5's token set "exactly, in section 5's order". `onPrimary` is
+// APPENDED so that claim stays literally true of the prefix — reordering this
+// list would falsify an amendment rather than merely churn a line.
+//
+// onPrimary is the readable foreground for a control filled with `primary`. It
+// is a render token rather than a second registry because it is derived per
+// brand and per mode exactly as the other five are, and spec section 5's rule
+// is one theming system with no second implementation.
+const RENDER_TOKEN_KEYS = Object.freeze(['primary', 'secondary', 'bg', 'surface', 'text', 'onPrimary']);
+
+// camelCase token key -> kebab-case custom-property suffix. `onPrimary` becomes
+// `on-primary`; the five original keys are single lowercase words and pass
+// through untouched, which is what made this safe to introduce after the fact.
+//
+// ⚠ IT EXISTS BECAUSE CSS CUSTOM PROPERTIES ARE CASE-SENSITIVE, so `--rm-onPrimary`
+// would be a perfectly valid property that simply is not the one anybody writes.
+// Every hand-authored consumer in src/ reaches for kebab-case, because that is
+// what STATUS_VARS already established (`--rm-danger-text`, `--rm-success-text`).
+// A camelCase property would resolve to nothing in every component that used the
+// obvious spelling, and would do it SILENTLY — var() falls back rather than
+// erroring, so the fallback colour paints and nothing anywhere reports a miss.
+function cssName(key) {
+  return key.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+// THE TOKEN KEY -> CUSTOM PROPERTY NAME MAP. Exactly the role STATUS_VARS plays
+// for the status palette, and added for exactly the reason that one exists.
+//
+// ⚠ IT IS HERE BECAUSE A SECOND NAMING RULE ALREADY CAUSED A FAILURE. Consumers
+// were reconstructing property names themselves with `\`--rm-${key}\`` —
+// ThemeProvider.test.jsx and BrandingProvider.test.jsx both did. That is a
+// SECOND implementation of the naming rule, and it agreed with this module only
+// while every key happened to be a single lowercase word. `onPrimary` ended
+// that: the tests derived `--rm-onPrimary`, the module emitted
+// `--rm-on-primary`, and five assertions failed on a disagreement about
+// spelling rather than about behaviour.
+//
+// So the names are PUBLISHED rather than derivable. A consumer that reads this
+// map cannot spell a property differently from the one that gets mounted, which
+// is the same guarantee STATUS_VARS gives and the same reason themeCssVariables
+// builds from RENDER_TOKEN_KEYS instead of a hand-written list.
+const RENDER_TOKEN_VARS = Object.freeze(
+  Object.fromEntries(RENDER_TOKEN_KEYS.map((key) => [key, `--rm-${cssName(key)}`]))
+);
 
 // HARD INVARIANT — WCAG AA normal text. Not tunable.
 const TEXT_CONTRAST_MIN = 4.5;
@@ -97,6 +143,38 @@ const TEXT_CONTRAST_MIN = 4.5;
 // different headroom, that is a deliberate split into two constants, not a quiet
 // edit to this one.
 const BRAND_ON_DARK_MIN_CONTRAST = 5.25;
+
+// ⚠ NOT TUNABLE BY TASTE, AND DELIBERATELY NOT TEXT_CONTRAST_MIN. This is the
+// floor `primary` must clear against the LIGHT surface (C/DL-3c Phase 1a,
+// Ruling 2). Before it existed, light mode had no floor on primary at all —
+// dark had one and light did not, so light was the unguarded mode.
+//
+// WHY 3 AND NOT 4.5, WHICH IS THE OBVIOUS SYMMETRY AND IS WRONG HERE.
+// `primary` is a FILL and a graphic — a button background, a border, a focus
+// ring, a spinner arc. WCAG's number for that is SC 1.4.11 non-text contrast,
+// which is 3:1. TEXT_CONTRAST_MIN (SC 1.4.3, 4.5:1) is the number for TEXT, and
+// the text that sits on this fill has its own token: onPrimary. TWO NUMBERS FOR
+// TWO DIFFERENT PAIRS, each applied to the thing it is the number for.
+//
+// ⚠ AND THE MEASUREMENT THAT SETTLED IT, because "tighten it to match the text
+// floor" is a one-character edit that looks like an improvement. At 4.5 this
+// loop repaints the platform's own #F26A1B (3.064:1 on white) to #C54F0B — a
+// visibly browner orange, everywhere in light mode, applied silently by a
+// derivation function. That is a REBRAND, not a contrast fix. At 3 it repaints
+// nothing real: RoofMiles 3.06, an Accent-like red 5.62 and even the mid-grey
+// pathological fixture 4.29 all pass through untouched, and the floor fires
+// only on a palette that is genuinely invisible on a white card (a pale yellow
+// #FFF176 at 1.16:1 becomes #9F8F00). A floor is for catching pathological
+// input, not for adjusting good input.
+//
+// ⚠ ITS SIBLING GOVERNS BOTH BRAND TONES AND THIS ONE GOVERNS ONLY primary, and
+// that asymmetry is deliberate rather than an oversight. BRAND_ON_DARK_MIN_CONTRAST
+// has to move secondary too, because on a near-black canvas a dark brand tone is
+// invisible and there is no way around it. In light mode secondary is not
+// painted anywhere and `text` already derives from it with its own floor, so a
+// second nudge would change a value nothing reads. See the forward-trap note at
+// readableForegroundOn for what changes if that stops being true.
+const BRAND_ON_LIGHT_MIN_CONTRAST = 3;
 
 // Tunable. The light-mode card colour. See the light-mode note at
 // deriveLightTokens for why this is not derived from the contractor's bg.
@@ -280,9 +358,59 @@ function normalizeBrand(brand) {
   };
 }
 
-// LIGHT THEME. primary, secondary and bg are the contractor's own values,
-// unchanged — the light theme IS their brand, and inventing a tint of it would
-// mean the colour they picked is not the colour they get.
+// Returns the readable foreground for a control FILLED with `fill` — the value
+// the onPrimary token carries.
+//
+// WHY THE TWO EXTREMES AND NOT A NUDGE LOOP, which is how every other floor in
+// this file is met. Pure white and pure black are the endpoints of the contrast
+// range, so max(white, black) is by construction the BEST foreground any colour
+// can have. Its minimum over the whole colour space is 4.583:1, at #5D60FF —
+// above TEXT_CONTRAST_MIN. So this is not "nudge until it passes"; it is
+// "the best available always passes", which is a stronger property and needs no
+// iteration, no step size and no give-up branch.
+//
+// ⚠ PURE BLACK, NOT #111111, AND THE DIFFERENCE IS NOT COSMETIC. Both retired
+// local workarounds (LoginScreen.jsx, ResetPinScreen.jsx) chose between #FFFFFF
+// and #111111, which is the natural softer-than-black instinct. MEASURED, that
+// pair bottoms out at 4.345:1 — BELOW AA — and misses 4.5:1 on roughly 3.4% of
+// sampled colours where pure black clears it. The failures are blues; a blue
+// brand primary is entirely ordinary. The guarantee above holds only for the
+// true extremes, so the extremes are what this returns. themeTokens.test.js
+// fences this with #7260FF as the witness.
+//
+// ⚠ AND THIS IS THE ONE PLACE THAT DECISION IS MADE. The palette question the
+// pre-launch checklist raises about the Sign In button — near-black on orange
+// reading as a warning rather than a primary action — is a judgement about THIS
+// function's output, for every brand at once. It belongs to the UI Overhaul
+// arc; when it is ruled, this is the single site that changes.
+function readableForegroundOn(fill) {
+  return contrastRatio('#FFFFFF', fill) >= contrastRatio('#000000', fill)
+    ? '#FFFFFF'
+    : '#000000';
+}
+
+// ⚠ FORWARD TRAP, RECORDED WHERE THE NEXT PERSON TO HIT IT WILL BE STANDING.
+// There is deliberately NO onSecondary token, because nothing paints on a
+// secondary fill today — `--rm-secondary` has zero paint consumers in src/.
+// THE MOMENT SOMETHING DOES, IT INHERITS onPrimary'S DEFECT, MODE-FLIPPED AND
+// INVISIBLE IN TESTING: white on the light-mode secondary measures 13.71:1 for
+// the platform brand, and white on the DARK-mode secondary measures ~3.05:1,
+// because deriveDarkTokens BRIGHTENS the brand tones to survive the dark canvas.
+// A component built and eyeballed in light mode is therefore built against the
+// good half of that pair. The fix is `onSecondary: readableForegroundOn(secondary)`
+// in both derivations plus the key in RENDER_TOKEN_KEYS — the same shape as
+// onPrimary, which is why this helper takes the fill as an argument rather than
+// hardcoding primary. It is NOT built now because a token with no consumer is a
+// token nobody re-derives when it moves.
+
+// LIGHT THEME. secondary and bg are the contractor's own values, unchanged —
+// the light theme IS their brand, and inventing a tint of it would mean the
+// colour they picked is not the colour they get.
+//
+// ⚠ primary IS NO LONGER AN UNCONDITIONAL PASSTHROUGH (C/DL-3c Phase 1a,
+// Ruling 2), and the qualifier matters more than the change: it is a
+// passthrough for every palette that clears BRAND_ON_LIGHT_MIN_CONTRAST, which
+// measured is every real one. The floor exists for the palette that does not.
 //
 // KNOWN AND ACCEPTED CONSEQUENCE (ruled C/DL-3a Phase 3): because bg is a strict
 // passthrough and its platform default is #FFFFFF, bg and surface can be the
@@ -294,8 +422,18 @@ function normalizeBrand(brand) {
 // silent one taken here.
 function deriveLightTokens(brand) {
   const surface = LIGHT_SURFACE_HEX;
+
+  // DARKENS, unlike the dark theme's brightening, because the surface it has to
+  // survive is white. The predicate is BRAND_ON_LIGHT_MIN_CONTRAST and not
+  // TEXT_CONTRAST_MIN on purpose — see that constant for why the two numbers
+  // differ and why this one must not be raised to match its sibling.
+  const primary = nudgeLightnessUntil(
+    brand.primaryColor, -1,
+    (candidate) => contrastRatio(candidate, surface) >= BRAND_ON_LIGHT_MIN_CONTRAST
+  );
+
   return {
-    primary:   brand.primaryColor,
+    primary,
     secondary: brand.secondaryColor,
     bg:        brand.backgroundColor,
     surface,
@@ -305,6 +443,10 @@ function deriveLightTokens(brand) {
       brand.secondaryColor, -1,
       (candidate) => contrastRatio(candidate, surface) >= TEXT_CONTRAST_MIN
     ),
+    // Against the FLOORED primary, for the same reason dark computes it against
+    // the brightened one: the foreground must answer about the colour that is
+    // actually painted.
+    onPrimary: readableForegroundOn(primary),
   };
 }
 
@@ -322,11 +464,18 @@ function deriveDarkTokens(brand) {
 
   const readableOnSurface = (candidate) => contrastRatio(candidate, surface) >= BRAND_ON_DARK_MIN_CONTRAST;
 
+  const primary = nudgeLightnessUntil(brand.primaryColor, 1, readableOnSurface);
+
   return {
-    primary:   nudgeLightnessUntil(brand.primaryColor,   1, readableOnSurface),
+    primary,
     secondary: nudgeLightnessUntil(brand.secondaryColor, 1, readableOnSurface),
     bg,
     surface,
+    // COMPUTED FROM THE BRIGHTENED primary, not from brand.primaryColor. In
+    // dark mode the fill is not the colour the contractor stored, so a
+    // foreground derived from the stored value would be answering about a
+    // colour that never appears on screen.
+    onPrimary: readableForegroundOn(primary),
     // Text starts as a light foreground carrying the brand's hue, then LIGHTENS
     // until it clears the floor. The starting point is already legible for any
     // ordinary palette; the loop is what covers the ones that are not.
@@ -338,7 +487,7 @@ function deriveDarkTokens(brand) {
 }
 
 /**
- * Derives the five render tokens for one contractor in one mode.
+ * Derives the render tokens for one contractor in one mode.
  *
  * @param {object|null|undefined} brand - resolveBrandingTheme's output, or
  *        anything else; unusable values fall back to the platform defaults
@@ -346,9 +495,13 @@ function deriveDarkTokens(brand) {
  * @param {'light'|'dark'} mode - required. An unknown mode THROWS rather than
  *        defaulting: a silently-defaulted mode paints a dark-mode user a white
  *        surface and logs nothing anywhere.
- * @returns {{primary: string, secondary: string, bg: string, surface: string, text: string}}
- *          Every value a valid #RRGGBB. text is guaranteed to clear
- *          TEXT_CONTRAST_MIN against surface in both modes.
+ * @returns {{primary: string, secondary: string, bg: string, surface: string,
+ *            text: string, onPrimary: string}}
+ *          Every value a valid #RRGGBB. TWO GUARANTEES, AND THEY ARE MEASURED
+ *          AGAINST DIFFERENT THINGS: `text` clears TEXT_CONTRAST_MIN against
+ *          `surface`, and `onPrimary` clears TEXT_CONTRAST_MIN against
+ *          `primary`. Both hold in both modes. `primary` itself clears only the
+ *          weaker FILL floor — see BRAND_ON_LIGHT_MIN_CONTRAST.
  */
 function deriveThemeTokens(brand, mode) {
   if (mode !== 'light' && mode !== 'dark') {
@@ -359,7 +512,7 @@ function deriveThemeTokens(brand, mode) {
 }
 
 /**
- * Maps the five render tokens onto their CSS custom properties.
+ * Maps the render tokens onto their CSS custom properties.
  *
  * Names are built FROM RENDER_TOKEN_KEYS so the property set cannot drift from
  * the token set. Trivial and pure by design — the hybrid split is deliberate:
@@ -380,7 +533,7 @@ function themeCssVariables(tokens) {
     if (typeof value !== 'string' || !BRANDING_HEX_RE.test(value)) {
       throw new Error(`themeTokens: token '${key}' is ${JSON.stringify(value)}, not a #RRGGBB colour`);
     }
-    vars[`--rm-${key}`] = value;
+    vars[RENDER_TOKEN_VARS[key]] = value;
   }
   return vars;
 }
@@ -395,8 +548,10 @@ module.exports = {
   relativeLuminance,
   contrastRatio,
   RENDER_TOKEN_KEYS,
+  RENDER_TOKEN_VARS,
   TEXT_CONTRAST_MIN,
   BRAND_ON_DARK_MIN_CONTRAST,
+  BRAND_ON_LIGHT_MIN_CONTRAST,
   LIGHT_SURFACE_HEX,
   DARK_BG_TARGET_L,
   DARK_SURFACE_LIFT_L,

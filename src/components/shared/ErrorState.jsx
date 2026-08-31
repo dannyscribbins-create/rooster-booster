@@ -52,7 +52,7 @@ export default function ErrorState({
 
       <div style={{
         fontFamily: R.fontSans, fontWeight: 700, fontSize: 16,
-        // Status text, NOT --rm-primary. The five brand tokens carry no red at
+        // Status text, NOT --rm-primary. The brand tokens carry no red at
         // all, which is the whole reason statusTheme.js exists.
         color: statusVar('dangerText'),
       }}>

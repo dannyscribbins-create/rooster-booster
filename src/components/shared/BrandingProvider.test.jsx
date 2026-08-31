@@ -3,7 +3,7 @@
 //
 // D-H splits branding delivery in two. `BrandingProvider` owns { branding,
 // source } and NOTHING ELSE: no DOM element, no CSS custom property.
-// `ThemeProvider` consumes it and adds `mode` plus the eleven --rm-* variables
+// `ThemeProvider` consumes it and adds `mode` plus the --rm-* variables
 // on its own wrapper. The admin panel will mount BrandingProvider alone (Phase
 // 2B), and Ruling 5 is then preserved STRUCTURALLY — the admin branch cannot
 // acquire --rm-* because the provider it mounts has no code path that emits one.
@@ -28,7 +28,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { render, screen, waitFor } from '@testing-library/react';
-import { RENDER_TOKEN_KEYS } from '../../utils/themeTokens.mjs';
+import { RENDER_TOKEN_VARS } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS } from '../../constants/statusTheme';
 import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 import BrandingProvider, { AdminBrandingContext, useAdminBranding } from './BrandingProvider';
@@ -51,11 +51,11 @@ const BRAND = Object.freeze(resolveBrandingTheme({
 
 const NEUTRAL = Object.freeze(resolveBrandingTheme(null));
 
-// Same eleven property names ThemeProvider is contractually required to mount,
+// The same property names ThemeProvider is contractually required to mount,
 // built FROM the source-of-truth exports rather than written out — so if either
 // list grows, the "emits none of them" assertion grows with it.
 const EVERY_VAR = [
-  ...RENDER_TOKEN_KEYS.map(k => `--rm-${k}`),
+  ...Object.values(RENDER_TOKEN_VARS),
   ...Object.values(STATUS_VARS),
 ];
 

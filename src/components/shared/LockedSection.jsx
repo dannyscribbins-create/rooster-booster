@@ -8,11 +8,21 @@ import { statusVar } from '../../constants/statusTheme';
 // ⚠ LIVES IN shared/, NOT admin/ (moved C/DL-3a Phase 4B). It was under admin/
 // because only the admin panel had permissions; the rep app needs it in 3b/3c, so
 // it moved before it acquired a second cross-folder importer. It still imports AD
-// — full de-AD-ing is 3b/3c work, and cannot finish here regardless: there is no
-// --rm-* border token for AD.borderStrong to become, since RENDER_TOKEN_KEYS is
-// primary / secondary / bg / surface / text. That is the ONLY remaining reason;
-// LockedSection.test.jsx's "reads its card chrome from the AD tokens" case
-// carries the same statement.
+// — full de-AD-ing is 3b/3c work, and cannot finish here regardless: NO RENDER
+// TOKEN EXPRESSES A BORDER, so AD.borderStrong has nothing to become. That is
+// the ONLY remaining reason; LockedSection.test.jsx's "reads its card chrome
+// from the AD tokens" case carries the same statement.
+//
+// ⚠ THE REASON WAS RESTATED IN C/DL-3c PHASE 1a, AND THE RESTATEMENT IS THE
+// POINT. This sentence used to justify itself by ENUMERATING the token set —
+// "since RENDER_TOKEN_KEYS is primary / secondary / bg / surface / text". Phase
+// 1a appended `onPrimary`, which made that enumeration false while leaving the
+// conclusion true. A correct conclusion resting on a false premise is worse than
+// a wrong one: the next reader checks the premise, finds it does not match the
+// file, and reverses a decision that was right. The claim is now about what the
+// token set DOES — none of its members is a border — which stays true however
+// the list grows, and is falsified only by the thing that should actually
+// reopen this: a border token arriving.
 //
 // THE STATUS TOKEN IS NO LONGER AN EXCEPTION. This component used to declare the
 // DARK status value where every other primitive declares the light one, and ABR
