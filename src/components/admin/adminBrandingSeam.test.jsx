@@ -153,15 +153,41 @@ describe('Phase 2B — the admin panel mounts BrandingProvider and the hook reso
   });
 
   it('[RED] paints immediately with the NEUTRAL identity — never another contractor\'s (D-I)', async () => {
-    // D-I: frame-1 branded chrome is not achievable, and holding the shell would
-    // trade a real universal delay for a cosmetic one. The panel paints at once
-    // with no contractor lockup and the identity joins the repaint that
-    // /api/admin/me already causes. Synchronous — no await before this read.
+    // ⚠ THIS CASE READ THE PROBE SYNCHRONOUSLY UNTIL C/DL-3c PHASE 2b, BECAUSE
+    // THE PANEL PAINTED ON FRAME 1. IT NO LONGER DOES. Recorded rather than
+    // quietly adjusted — this is a standing ruling meeting a newer one.
+    //
+    // D-I ruled: frame-1 BRANDED chrome is not achievable, and holding the shell
+    // would trade a real universal delay for a COSMETIC one. Ruling A(i) now
+    // holds the shell until /api/admin/me resolves — but for PERMISSIONS, not
+    // for branding, and permissions are not cosmetic: painting sections before
+    // knowing whether the member has any is what produced eleven scrims and
+    // eight guaranteed 403s on every boot.
+    //
+    // ⚠ AND THE NEUTRAL FRAME IS NOW GONE ENTIRELY, WHICH IS AN IMPROVEMENT AND
+    // NOT A REGRESSION — BUT IT IS A REAL CHANGE AND IS RECORDED AS ONE.
+    // Branding and permissions ride the SAME /api/admin/me response, so a panel
+    // that waits for permissions has already been handed the identity by the
+    // time it paints. There is no longer a neutral-then-branded repaint at all:
+    // the first frame is correctly branded.
+    //
+    // D-I's guarantee was never "show neutral first" — it was NEVER SHOW ANOTHER
+    // CONTRACTOR'S IDENTITY, with neutral as the only honest thing to paint
+    // while the answer was outstanding. With no outstanding window, the
+    // guarantee holds by construction. THAT is what this case asserts now: the
+    // first painted frame carries THIS tenant and no other.
     installFetch();
     render(<AdminPanel onLogout={() => {}} />);
 
-    expect(screen.getByTestId('page-probe').textContent).toContain(NEUTRAL.companyName);
-    expect(screen.getByTestId('page-probe').textContent).not.toContain(TENANT_BRANDING.companyName);
+    // The first painted frame, whenever it arrives.
+    await waitFor(() => expect(screen.queryByTestId('page-probe')).toBeTruthy());
+    const firstPaint = screen.getByTestId('page-probe').textContent;
+    expect(firstPaint, 'the first frame must name THIS tenant').toContain(TENANT_BRANDING.companyName);
+    // ⚠ THE NEGATIVE IS THE HALF THAT MATTERS, and it is why this case survives
+    // its own rewrite rather than being deleted: no OTHER contractor's name, and
+    // no platform placeholder standing in for one, may ever appear on a panel
+    // that belongs to a tenant.
+    expect(firstPaint, 'no platform placeholder in place of the tenant').not.toContain(NEUTRAL.companyName);
 
     // …and then it arrives, on the same tick as tier and permissions.
     await waitFor(() =>

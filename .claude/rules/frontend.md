@@ -53,5 +53,8 @@ only. Wrap deferred async work in `safeAsync()` (`src/utils/clientErrorReporter.
 throw reaches a log.
 
 ⚠ **An unwrapped `(async () => {...})()` inside a component reaches NO log and NO console.**
-`AdminApp.jsx:148` is the live example — its two siblings at `:120` and `:130` show the
-shape it should have.
+The live example is the IIFE inside `AdminApp.jsx`'s `primeBadgeCounts()`; the two
+`safeAsync(...)` calls in the inbox/notification effect above it show the shape it should have.
+⚠ **CITED BY ROLE SINCE 2026-08-31.** This read `AdminApp.jsx:148` with siblings at `:120` and
+`:130`, and C/DL-3c Phase 2b moved all three — the gating work inserted comment blocks above
+them. A function name does not drift, and `citecheck` never sees a scoped rule file's prose.

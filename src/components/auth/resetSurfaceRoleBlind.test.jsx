@@ -101,7 +101,16 @@ function installFetch(session) {
       return { ok: true, status: 200, json: async () => ({ pipeline: [], balance: 0, paidCount: 0 }) };
     }
     if (u.includes('/api/admin/me')) {
-      return { ok: true, status: 200, json: async () => ({ tier: session?.tier ?? null, permissions: {} }) };
+      // ⚠ `permissions` GAINED A GRANTED FLAG IN C/DL-3c PHASE 2b — a deliberate
+      // fixture change. Ruling A(i) makes an empty JSONB on a non-Owner render
+      // the honest empty state instead of the panel, and THIS FILE'S SUBJECT is
+      // whether `?reset=` outranks session-based routing. It was never about
+      // what an unpermissioned member sees once routed, and it only passed on
+      // `{}` because the old panel rendered regardless. The alternative would
+      // have been weakening A(i) to keep a fixture green.
+      return { ok: true, status: 200, json: async () => ({
+        tier: session?.tier ?? null, permissions: { dashboard: true },
+      }) };
     }
     if (u.includes('/api/admin/stats')) {
       return { ok: true, status: 200, json: async () => ADMIN_STATS_ZEROS };

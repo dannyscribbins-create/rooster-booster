@@ -47,7 +47,7 @@ import RepPlaceholder from './RepPlaceholder';
 // display:contents so the wrapper carries attributes without generating a layout
 // box — the same reason ThemeProvider's variable-bearing div uses it. RepPlaceholder
 // paints its own minHeight:100vh canvas and must not acquire an ancestor box.
-export default function RepSurface({ onLogout }) {
+export default function RepSurface({ onLogout, switcher = null }) {
   // THROWS outside its provider, deliberately. See useRepCapabilities().
   const caps = useRepCapabilities();
 
@@ -63,7 +63,7 @@ export default function RepSurface({ onLogout }) {
       data-rep-attributable={String(caps.is_attributable === true)}
       data-rep-revenue-visible={String(caps.rep_revenue_visibility === true)}
     >
-      <RepPlaceholder onLogout={onLogout} />
+      <RepPlaceholder onLogout={onLogout} switcher={switcher} />
     </div>
   );
 }

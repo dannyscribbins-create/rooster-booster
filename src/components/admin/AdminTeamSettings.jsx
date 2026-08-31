@@ -96,8 +96,26 @@ const PRESETS = [
     name: 'Field Rep',
     tier: 'general',
     icon: 'ph-hard-hat',
-    blurb: 'No admin panel access. Rep tracking and attribution only.',
+    // ⚠ THE BLURB USED TO SAY "Rep tracking and attribution only" AND THE PRESET
+    // DELIVERED NEITHER (C/DL-3c Phase 2b, Ruling A(ii)). It set permissions {}
+    // and never touched is_field_rep, so someone created from the preset named
+    // "Field Rep" was routed to the ADMIN PANEL and refused everything. The copy
+    // now describes what actually happens, and `repFlags` below is what makes it
+    // true.
+    blurb: 'No admin panel access — routed to the rep app. Attribution is granted separately.',
     permissions: {},
+    // ── ⚠ DECLARATIVE, AND NOT is_attributable ────────────────────────────────
+    // Written on the preset rather than special-cased on its id, so a second
+    // rep-shaped preset needs data and not a branch.
+    //
+    // is_field_rep ONLY. Attribution is what decides whose clients count, and
+    // POST /:id/promote carries its own `rep_promotion` permission precisely
+    // because — in that endpoint's own words — promotion mints attributable reps
+    // and attribution drives payouts. AT-1 is binding too: flipping it changes
+    // what the engine does from the NEXT event, so granting it at create time
+    // starts a rep collecting assignments before anyone has decided their book.
+    // The drawer's Attributable toggle stays the deliberate act it was built as.
+    repFlags: { is_field_rep: true },
   },
 ];
 
@@ -189,6 +207,40 @@ function AddMemberModal({ creatorTier, onClose, onSuccess }) {
         // Still show success for member creation — they exist, just need manual permission edit
         setDone({ email: data.email, inviteSent: data.invite_sent });
         return;
+      }
+
+      // ── STEP 3: THE PRESET'S REP FLAGS (C/DL-3c Phase 2b, Ruling A(ii)) ─────
+      // POST /:id/promote is the SOLE writer of the three rep flags, so a preset
+      // that promises rep-ness has to come here — the general PATCH refuses them
+      // outright (422), deliberately.
+      //
+      // ⚠ THREE SEQUENTIAL CALLS MEANS THREE PARTIAL STATES, AND THIS ONE HAS A
+      // FAILURE MODE THE OTHER TWO DO NOT. promote requires `rep_promotion`,
+      // which team.manage DELIBERATELY does not confer — so an Admin who may
+      // invite but may not promote reaches exactly here, with a created member
+      // who is not a rep. That member lands on the admin panel with nothing
+      // granted, which is the dead end Ruling A(i)'s empty state catches. Both
+      // halves of Ruling A ship because of this branch.
+      //
+      // ⚠ THE MESSAGE NAMES WHICH HALF DID NOT HAPPEN AND WHO CAN FINISH IT. A
+      // generic failure here is worse than useless: the member DOES exist, so an
+      // admin who reads "failed" and retries creates a duplicate email collision.
+      if (selectedPreset.repFlags) {
+        const repRes = await fetch(`${BACKEND_URL}/api/admin/team/${data.id}/promote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(selectedPreset.repFlags),
+        });
+        if (!repRes.ok) {
+          setErr(
+            `${email.trim()} was created and invited, but was not marked as a field rep. `
+            + 'Marking someone a field rep needs the rep-promotion permission — ask an Owner '
+            + 'to finish it from the roster. Until then they will see an empty admin panel.'
+          );
+          setSaving(false);
+          setDone({ email: data.email, inviteSent: data.invite_sent });
+          return;
+        }
       }
 
       setDone({ email: data.email, inviteSent: data.invite_sent });

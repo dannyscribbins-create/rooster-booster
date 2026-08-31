@@ -92,6 +92,19 @@ function installFetch({ session }) {
         success: true, role: 'team', token: 'team-token', tier: 'owner', is_field_rep: false,
       }) };
     }
+    // ⚠ THIS BRANCH DID NOT EXIST BEFORE C/DL-3c PHASE 2b, AND ITS ABSENCE WAS
+    // INVISIBLE. Every /api/admin/me call fell through to the catch-all below,
+    // so the panel was driven by a response this fixture never modelled — and it
+    // passed anyway, because the old panel rendered whatever permissions said.
+    // Ruling A(i)'s arrival marker is what surfaced it: an unmodelled `{}` reads
+    // as `tier: undefined`, which means "no answer yet", and the panel correctly
+    // waits forever. A fixture answering a call it never modelled looks like
+    // coverage and is not. Second instance this phase — see roleRouting.test.jsx.
+    if (u.includes('/api/admin/me')) {
+      return { ok: true, status: 200, json: async () => ({
+        tier: 'owner', permissions: { dashboard: true },
+      }) };
+    }
     if (u.includes('/api/admin/stats')) {
       return { ok: true, status: 200, json: async () => ADMIN_STATS_ZEROS };
     }

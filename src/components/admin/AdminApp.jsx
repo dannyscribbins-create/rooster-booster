@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
-import useAdminPermissions, { AdminPermissionsContext } from '../../hooks/useAdminPermissions';
+import useAdminPermissions, { AdminPermissionsContext, adminPanelAccess } from '../../hooks/useAdminPermissions';
 import BrandingProvider from '../shared/BrandingProvider';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import { AdminShell } from './AdminComponents';
@@ -13,6 +13,7 @@ import AdminEngagement from './AdminEngagement';
 import AdminReferralReview from './AdminReferralReview';
 import AdminCampaigns from './AdminCampaigns';
 import AdminInboxSidebar from './AdminInboxSidebar';
+import AdminNoAccessScreen from './AdminNoAccessScreen';
 import { getAdminToken } from '../../utils/authStorage';
 
 function useAdminFonts() {
@@ -67,7 +68,13 @@ function useAdminFonts() {
 // renders outside ThemeProvider and must not acquire the referrer palette.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function AdminPanel({ onLogout }) {
+// ⚠ `renderSwitcher` IS A FUNCTION, NOT A NODE, AND THAT IS NOT INDIRECTION FOR
+// ITS OWN SAKE. The panel mounts the surface switcher in TWO places with two
+// different grounds — the empty state's white card and the DARK sidebar — so a
+// single pre-rendered node would have to be wrong on one of them. App.jsx owns
+// eligibility and hands down a factory; this file names the surface it is
+// painting on. Null when the member is not a field rep.
+export default function AdminPanel({ onLogout, renderSwitcher = null }) {
   const [page, setPage]                           = useState('dashboard');
   const [pendingCount, setPendingCount]           = useState(0);
   const [flaggedUnresolved, setFlaggedUnresolved] = useState(0);
@@ -120,7 +127,23 @@ export default function AdminPanel({ onLogout }) {
 
   useAdminFonts();
 
+  // ── MAY THIS MEMBER SEE X — ONE ANSWER, USED BY EVERY PRIMING FETCH ────────
+  // Mirrors server/middleware/permissions.js exactly: Owner short-circuits before
+  // the JSONB is consulted, then `=== true` and never truthiness, because the
+  // column is nullable and untyped. ⚠ IT IS NOT AN AUTHORISATION DECISION and
+  // must never become one — the server re-reads on every request. All it decides
+  // is whether to spend a round trip that would certainly be refused.
+  const can = (flag) => permState.tier === 'owner' || permState.permissions?.[flag] === true;
+
   useEffect(() => {
+    // ⚠ SAME GATE AS primeBadgeCounts BELOW, AND FOR THE SAME REASON. GET
+    // /api/admin/messages requires 'referral_review'; GET /api/admin/notifications
+    // is session-only and deliberately ungated (it is on adminRouteCoverage's
+    // PUBLIC_ADMIN_ROUTES allowlist as cross-section chrome), so it fires for
+    // anyone who has a panel at all — but not before the answer arrives, and not
+    // for someone who has no panel.
+    if (adminPanelAccess(permState) !== 'granted') return;
+    if (!can('referral_review')) { setInboxUnreadCount(0); return; }
     safeAsync(async () => {
       const token = getAdminToken();
       const r = await fetch(`${BACKEND_URL}/api/admin/messages`, {
@@ -151,12 +174,49 @@ export default function AdminPanel({ onLogout }) {
     const headers = { 'Authorization': `Bearer ${token}` };
     (async () => {
       const fetchJson = async (url) => { const r = await fetch(url, { headers }); return r.json(); };
+      // ── EACH FETCH CARRIES THE FLAG ITS ROUTE REQUIRES (Phase 2b) ──────────
+      // The flags are the ones on the server handlers, read from them rather
+      // than guessed: cashouts.js requires 'cashouts'; the three referral-review
+      // routes and /messages require 'referral_review'; flagged-assignments
+      // requires 'rep_assignment'.
+      //
+      // ⚠ A SKIP REJECTS. IT MUST NOT RESOLVE TO null, AND THIS COMMENT SAID THE
+      // OPPOSITE UNTIL THE FULL SUITE CAUGHT IT — SIX UNHANDLED REJECTIONS.
+      //
+      // Omitting an entry would shift every position in the destructure, so a
+      // skip has to produce a settlement. The first attempt was
+      // `Promise.resolve(null)`, on the reasoning that the guards below already
+      // reject junk. THEY DO NOT, and the reasoning was wrong in a specific way
+      // worth keeping: two of them read `.value.pending` and `.value.flags`
+      // BEFORE testing Array.isArray, so a FULFILLED null dereferences null and
+      // throws. Only the cashouts guard tests the value itself, and only the
+      // flagged one uses `?.`.
+      //
+      // A REJECTION travels the path those guards WERE built for: every one of
+      // them opens with `status === 'fulfilled'`, which short-circuits before
+      // `.value` is touched. That is why this needs no guard changes and null
+      // did. It is also the honest description — for this member the value did
+      // not arrive.
+      //
+      // ⚠ AND THE THROW WOULD HAVE BEEN SILENT IN PRODUCTION. This IIFE has no
+      // safeAsync wrapper — the one `.claude/rules/frontend.md` names as the live
+      // example of an unwrapped async IIFE reaching no log and no console. The
+      // suite surfaced it as an unhandled rejection and a NON-ZERO EXIT while
+      // every test still reported passing, which is exactly why the exit code is
+      // read and not the pass count.
+      //
+      // The accepted cost recorded on the flagged guard — an unresolvable count
+      // contributes ZERO — is unchanged, and now also covers "not permitted",
+      // which is the honest reading for a member who cannot see that section.
+      const gated = (flag, url) => (
+        can(flag) ? fetchJson(url) : Promise.reject(new Error(`skipped: no ${flag}`))
+      );
       const [cashoutsRes, flaggedRes, pendingRes, missingRes, teamFlagsRes] = await Promise.allSettled([
-        fetchJson(`${BACKEND_URL}/api/admin/cashouts`),
-        fetchJson(`${BACKEND_URL}/api/admin/flagged-referrals/summary`),
-        fetchJson(`${BACKEND_URL}/api/admin/pending-referrals`),
-        fetchJson(`${BACKEND_URL}/api/admin/missing-referrals`),
-        fetchJson(`${BACKEND_URL}/api/admin/team/flagged-assignments?status=open`),
+        gated('cashouts',        `${BACKEND_URL}/api/admin/cashouts`),
+        gated('referral_review', `${BACKEND_URL}/api/admin/flagged-referrals/summary`),
+        gated('referral_review', `${BACKEND_URL}/api/admin/pending-referrals`),
+        gated('referral_review', `${BACKEND_URL}/api/admin/missing-referrals`),
+        gated('rep_assignment',  `${BACKEND_URL}/api/admin/team/flagged-assignments?status=open`),
       ]);
       if (cashoutsRes.status === 'fulfilled' && Array.isArray(cashoutsRes.value)) {
         setPendingCount(cashoutsRes.value.filter(c => c.status === 'pending').length);
@@ -216,8 +276,30 @@ export default function AdminPanel({ onLogout }) {
     })();
   }
 
+  // ── PRIMING WAITS FOR /api/admin/me, AND THAT IS THE 403 FIX (Phase 2b) ────
+  // This ran on `[]` — on mount, BEFORE the panel knew which sections the member
+  // could see — so a non-Owner with an empty JSONB fired eight guaranteed 403s on
+  // every boot. ⚠ A DATA DEPENDENCY, NOT A ROUTING PROBLEM: the requests were
+  // correctly refused; they should never have been sent.
+  //
+  // Three states, matching the render below. 'resolving' waits. 'none' primes
+  // NOTHING — a member with no sections has no badges to count. 'granted' primes
+  // only what they may read.
+  //
+  // ⚠ THE REF IS WHAT KEEPS "ONCE" TRUE. permState changes identity when the
+  // fetch lands, so a bare dependency on it would prime again on every future
+  // change to that object. Priming is a boot action, not a subscription.
+  const primedRef = useRef(false);
+  useEffect(() => {
+    if (adminPanelAccess(permState) !== 'granted') return;
+    if (primedRef.current) return;
+    primedRef.current = true;
+    primeBadgeCounts();
+  // primeBadgeCounts is redeclared every render, so listing it would re-prime on
+  // every permState change — which the ref already prevents, making the entry
+  // noise that hides the one dependency that matters.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { primeBadgeCounts(); }, []);
+  }, [permState]);
 
   // ── THE 401 SEAM ────────────────────────────────────────────────────────────
   // Every page below takes `setLoggedIn` and calls it with `false` when a request
@@ -233,7 +315,7 @@ export default function AdminPanel({ onLogout }) {
   const handleSessionExpired = () => { onLogout?.(); };
 
   const pages = {
-    dashboard:        <AdminDashboard       setLoggedIn={handleSessionExpired} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} onFlaggedBannerClick={() => { setReferralReviewTab('flagged'); setPage('missing-referrals'); }} />,
+    dashboard:        <AdminDashboard       setLoggedIn={handleSessionExpired} setPage={setPage} refreshKey={dashboardRefreshKey} onStats={d => setDashboardCachedAt(d.cachedAt)} onSettingsClick={() => setShowSettings(true)} onFlaggedBannerClick={() => { setReferralReviewTab('flagged'); setPage('missing-referrals'); }} flaggedUnresolvedCount={flaggedUnresolved} />,
     campaigns:        <AdminCampaigns       setLoggedIn={handleSessionExpired} />,
     referrers:        <AdminReferrers       setLoggedIn={handleSessionExpired} />,
     payouts:          <AdminCashOuts        setLoggedIn={handleSessionExpired} />,
@@ -293,10 +375,59 @@ export default function AdminPanel({ onLogout }) {
   // style. Naming it here failed that sweep on the first run of step 4.
   // Say "its navy" and let shared/LockedSection.jsx, which the walk does not
   // reach, be the one place the value is written.
+  // ── RULING A(i) — THREE STATES, AND THE MIDDLE ONE IS THE POINT ────────────
+  //
+  // A non-Owner whose JSONB grants nothing used to receive the whole shell with
+  // eleven scrimmed sections. RBAC's requirement is the same one the rep surface
+  // gets: no admin panel AT ALL, not a locked one.
+  //
+  // ⚠ 'resolving' RENDERS NEITHER, AND IT IS A REAL STATE RATHER THAN A
+  // CONVENIENCE. `EMPTY.permissions` is `{}` — the identical value a genuinely
+  // unpermissioned member has — so a check written on permissions would show the
+  // empty state on the FIRST FRAME OF EVERY ADMIN'S BOOT and then retract it.
+  // adminPanelAccess() reads `tier` instead, which is null until /api/admin/me
+  // lands. See its JSDoc; it agrees with PermissionGate's `loading || !tier`
+  // rather than inventing a second rule.
+  //
+  // ⚠ THIS ALSO REMOVES A PRE-EXISTING FLASH, WHICH IS A DELIBERATE BEHAVIOUR
+  // CHANGE AND NOT A SIDE EFFECT. Until now the shell rendered immediately with
+  // every section scrimmed by PermissionGate's fail-closed branch, then
+  // unscrimmed when the fetch landed. Every permission-holding admin saw that.
+  // They now see a quiet resolving state instead of a wall of locks.
+  const access = adminPanelAccess(permState);
+
+  if (access === 'resolving') {
+    return (
+      <div
+        data-admin-resolving=""
+        style={{
+          minHeight: '100vh', background: AD.bgSurface,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: AD.fontSans, fontSize: 14, color: AD.textTertiary,
+        }}
+      >
+        Loading…
+      </div>
+    );
+  }
+
+  if (access === 'none') {
+    // ⚠ WRAPPED IN BrandingProvider BECAUSE THE SCREEN NAMES THE CONTRACTOR, and
+    // useAdminBranding() THROWS rather than defaulting (D-H) — so an unwrapped
+    // mount is loud rather than silently showing the platform's name in place of
+    // an employer's. Same supplied-mode instance the full panel gets, so there is
+    // still exactly one resolution on this surface.
+    return (
+      <BrandingProvider supplied={suppliedBranding}>
+        <AdminNoAccessScreen onLogout={onLogout} switcher={renderSwitcher && renderSwitcher('admin')} />
+      </BrandingProvider>
+    );
+  }
+
   return (
     <AdminPermissionsContext.Provider value={permState}>
       <BrandingProvider supplied={suppliedBranding}>
-        <AdminShell page={page} setPage={handleNavClick} onLogout={onLogout} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsNotifNavRequest={notifNavRequest} onSettingsNotifNavConsumed={() => setNotifNavRequest(null)} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
+        <AdminShell surfaceSwitcher={renderSwitcher && renderSwitcher('adminSidebar')} page={page} setPage={handleNavClick} onLogout={onLogout} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved + missingOpenCount} pendingReferralCount={pendingReferralCount} onSettingsClick={() => setShowSettings(s => !s)} settingsActive={showSettings} dashboardCachedAt={dashboardCachedAt} onRefreshDashboard={() => setDashboardRefreshKey(k => k + 1)} onInboxOpen={() => setInboxOpen(true)} inboxUnreadCount={inboxUnreadCount + notificationsUnread} settingsTeamNavRequest={teamNavRequest} settingsNotifNavRequest={notifNavRequest} onSettingsNotifNavConsumed={() => setNotifNavRequest(null)} settingsTeamOpenFlagCount={teamFlagsOpenCount}>
           {pages[page]}
         </AdminShell>
         <AdminInboxSidebar

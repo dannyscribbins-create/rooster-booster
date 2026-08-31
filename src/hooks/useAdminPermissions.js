@@ -32,7 +32,68 @@ const EMPTY = Object.freeze({
   // "no answer arrived yet", never "the answer was no". The seam that reads them
   // relies on that distinction to tell an unresolved boot from a real denial.
   title_id: null, is_field_rep: null, is_attributable: null, rep_revenue_visibility: null,
+  // ⚠ A FAILED READ IS NOT AN UNRESOLVED ONE, AND COLLAPSING THEM SHIPPED A HANG
+  // (C/DL-3c Phase 2b). EMPTY is the state BEFORE the fetch and also the state
+  // AFTER it fails, so `tier === null` cannot tell them apart — and a predicate
+  // reading tier alone left a member whose /api/admin/me 500'd on a permanent
+  // "Loading…". Found by the full React suite, not by the targeted runs.
+  failed: false,
 });
+
+/**
+ * Does this member get a panel, no panel, or is the answer not in yet?
+ *
+ * ── ⚠ THREE-VALUED, AND A BOOLEAN HERE WOULD SHIP A DEFECT EITHER WAY ──────
+ * 'resolving' | 'none' | 'granted'. A boolean has to fold 'resolving' into one
+ * of the other two: fold it into 'none' and the empty state flashes on EVERY
+ * admin's boot; fold it into 'granted' and the eleven scrims come back for the
+ * frame they were removed from. Making it a state the caller must handle is
+ * what stops either happening by accident.
+ *
+ * ── ⚠ THE ARRIVAL MARKER IS `tier`, NOT `permissions`, AND THAT IS THE WHOLE
+ * TRAP. EMPTY.permissions above is `{}` — THE IDENTICAL VALUE a genuinely
+ * unpermissioned member's JSONB has. "No flags" and "no answer yet" are
+ * therefore indistinguishable by permissions alone. `tier` is null in EMPTY and
+ * a string once /api/admin/me lands, so it is the only field that separates
+ * them. Vacuity shape #10's mechanism — a default that makes an unresolved
+ * state look like a real one — arriving in a third place.
+ * ⚠ It is also exactly what PermissionGate already tests (`loading || !tier`),
+ * so this predicate AGREES with the gate rather than inventing a second rule.
+ * If one ever changes, change both: they are one decision in two files.
+ *
+ * ── ⚠ AN OWNER WITH AN EMPTY JSONB IS FULLY PRIVILEGED ─────────────────────
+ * server/middleware/permissions.js short-circuits on tier === 'owner' BEFORE
+ * the JSONB is consulted, and there is no owner preset in the invite modal
+ * because Owners are seeded rather than created — so `{}` is the NORMAL state
+ * for one. A predicate written on permissions alone would lock the panel's
+ * appearance for the most privileged person in the tenant.
+ *
+ * `=== true` and not truthiness: the JSONB is nullable and untyped, so a
+ * stored `"yes"` must not read as a grant. Same rule the server applies.
+ *
+ * @param {{tier: string|null|undefined, permissions: object|null|undefined}} state
+ * @returns {'resolving'|'none'|'granted'}
+ */
+export function adminPanelAccess({ tier, permissions, failed } = {}) {
+  // ── ⚠ A FAILED /api/admin/me RENDERS THE PANEL, AND THAT IS NOT LAZINESS ───
+  // It is the pre-2b behaviour, preserved deliberately, because BOTH other
+  // answers are wrong and one of them overturns a standing ruling:
+  //   · 'resolving' hangs on "Loading…" forever — the defect this field exists
+  //     to fix.
+  //   · 'none' asserts "your Owner has granted you nothing", WHICH WE DO NOT
+  //     KNOW. Saying it to a full Owner because their network blipped is worse
+  //     than showing them a panel.
+  // Nothing is exposed by rendering: PermissionGate independently fails closed
+  // on `loading || !tier`, so every section is still scrimmed, and every route
+  // is still enforced server-side. It also keeps D-H's fail-soft rule true —
+  // a /me failure must not take the panel down — which
+  // src/components/admin/adminBrandingSeam.test.jsx fences.
+  if (failed) return 'granted';
+
+  if (tier === null || tier === undefined) return 'resolving';
+  if (tier === 'owner') return 'granted';
+  return Object.values(permissions || {}).some(v => v === true) ? 'granted' : 'none';
+}
 
 // ─── useAdminPermissions ──────────────────────────────────────────────────────
 // Called once in AdminApp. Fires a live /api/admin/me fetch whenever `authed`
@@ -77,7 +138,7 @@ export default function useAdminPermissions(authed) {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!r.ok) {
-          setState(EMPTY);
+          setState({ ...EMPTY, failed: true });
           return;
         }
         const data = await r.json();
@@ -106,7 +167,7 @@ export default function useAdminPermissions(authed) {
           rep_revenue_visibility: data.rep_revenue_visibility ?? null,
         });
       } catch {
-        setState(EMPTY);
+        setState({ ...EMPTY, failed: true });
       }
     })();
   }, [authed]);

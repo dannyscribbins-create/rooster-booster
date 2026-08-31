@@ -16,6 +16,7 @@ import SuperAdminShell from './components/superAdmin/SuperAdminShell';
 import AdminSetPasswordScreen from './components/admin/AdminSetPasswordScreen';
 import ThemeProvider from './components/shared/ThemeProvider';
 import RepSurface from './components/rep/RepSurface';
+import SurfaceSwitcher from './components/shared/SurfaceSwitcher';
 import useAdminPermissions, {
   RepCapabilitiesContext, useRepCapabilitiesValue,
 } from './hooks/useAdminPermissions';
@@ -52,11 +53,72 @@ import LoadingIndicator from './components/shared/LoadingIndicator';
 //
 // THE RULE IS WRITTEN TO BE RELAXED, NOT REVERSED, when 3c's switcher lands: an
 // owner-rep gains a second destination rather than changing their first one.
-function surfaceFor(session) {
+//
+// ⚠ THAT SWITCHER HAS LANDED (C/DL-3c Phase 2b), AND THE SENTENCE ABOVE IS KEPT
+// BECAUSE IT WAS A PROMISE THAT WAS HONOURED. It is the second parameter below.
+// The relaxation was proved mechanically rather than asserted: the signature
+// changed FIRST, with `chosen` null at every call site, and the two GUARD cases
+// were re-run before a line of switcher code existed. They passed untouched.
+// ── ELIGIBILITY IS A SEPARATE PREDICATE FROM ROUTING (C/DL-3c Phase 2b) ──────
+// Who may hold a switcher at all. Deliberately NOT "who has two useful
+// destinations": a general-tier rep's admin side is an empty state, and that is
+// still a destination and still honest — it says, correctly, that their Owner
+// has granted them nothing. What 3b forbade was a panel of ELEVEN SCRIMMED
+// SECTIONS; Ruling A(i) is what makes this direction defensible, and without
+// A(i) shipping alongside it would not be.
+//
+// READ FROM THE SESSION DESCRIPTOR, which carries is_field_rep for routing and
+// is documented at its source as never being an authorisation input. Nothing
+// here authorises anything: it decides whether a control is drawn.
+export function canSwitchSurface(session) {
+  return !!(session && session.role === 'team' && session.is_field_rep);
+}
+
+export function surfaceFor(session, chosen = null) {
   if (!session) return 'login';
   if (session.role === 'referrer') return 'referrer';
   if (session.role !== 'team') return 'login';
-  return (session.is_field_rep && session.tier === 'general') ? 'rep' : 'admin';
+
+  // THE RULE 3b WROTE, UNCHANGED AND STILL FIRST. Only a general-tier field rep
+  // is routed away from the panel by DEFAULT.
+  const byIdentity = (session.is_field_rep && session.tier === 'general') ? 'rep' : 'admin';
+
+  // ── RELAXED, NEVER REVERSED (C/DL-3c Phase 2b) ─────────────────────────────
+  // ⚠ `chosen = null` REPRODUCES THE PRE-2b BEHAVIOUR EXACTLY, and that is not a
+  // convenience — it is the mechanical proof this is a relaxation. The two GUARD
+  // cases in src/components/auth/roleRouting.test.jsx (general + NO rep flag →
+  // admin; owner + rep flag → admin) were run against this signature BEFORE any
+  // switcher code existed and passed untouched. A rule that had been reversed
+  // could not have done that.
+  //
+  // ── ⚠ THE ELIGIBILITY RE-CHECK IS DEFENCE IN DEPTH AND IS UNREACHABLE TODAY.
+  // SAYING SO IS THE POINT — AN EARLIER DRAFT OF THIS COMMENT CLAIMED IT CAUGHT
+  // MID-SESSION REVOCATION, AND A GUARD-PROOF SHOWED IT CATCHES NOTHING YET.
+  //
+  // `session` is written once per mount, by boot rehydration or by login, and is
+  // never refreshed while the app is running. `chosen` is only ever set by
+  // pressing a control that is drawn only when canSwitchSurface(session) is
+  // already true. So "chosen is set AND the person no longer qualifies" cannot
+  // occur in this architecture: the two conditions read the same unchanging
+  // object.
+  //
+  // ⚠ IT STAYS, AND NOT OUT OF CAUTION FOR ITS OWN SAKE. The moment ANYTHING
+  // refreshes `session` mid-mount — a polled re-verify, a websocket, a second
+  // login without a reload — this line is the difference between a demoted
+  // member falling back and a demoted member sitting on a surface they no longer
+  // qualify for with no control to leave it. It is one condition, it is free,
+  // and the failure it prevents is a one-way door.
+  //
+  // ⚠ WHAT ACTUALLY PROTECTS PEOPLE TODAY IS THAT `chosen` IS NOT PERSISTED: the
+  // next boot starts at null and routes by identity. That property is what the
+  // integration case in surfaceSwitcher.test.jsx pins. THIS branch is pinned by
+  // a direct unit case in the same file, because an integration test cannot
+  // reach a state the architecture cannot produce — and one that appeared to was
+  // passing for a different reason entirely.
+  if (chosen && (chosen === 'rep' || chosen === 'admin') && canSwitchSurface(session)) {
+    return chosen;
+  }
+  return byIdentity;
 }
 
 // The boot gate's spinner. Hoisted out of the chain because Phase 5 moved the
@@ -141,6 +203,12 @@ export default function App() {
   // until something authenticates. This replaces `?admin=true` as the input to
   // routing: the query string is no longer consulted anywhere in this file.
   const [session, setSession] = useState(null);
+
+  // ── THE SURFACE CHOICE (C/DL-3c Phase 2b) ──────────────────────────────────
+  // null = "routed by identity", which is every session until someone presses
+  // the switcher. ⚠ DELIBERATELY NOT PERSISTED — see the record beside the
+  // switcher factory below.
+  const [chosenSurface, setChosenSurface] = useState(null);
 
   const [signupSlug, setSignupSlug]       = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -321,8 +389,31 @@ export default function App() {
   // Every OTHER /api/admin/* route carries requirePermission() and would 403 —
   // src/components/auth/roleRouting.test.jsx fences that this is the only one
   // this surface calls.
-  const repPermissionState = useAdminPermissions(surfaceFor(session) === 'rep');
+  const repPermissionState = useAdminPermissions(surfaceFor(session, chosenSurface) === 'rep');
   const repCapabilities = useRepCapabilitiesValue(repPermissionState);
+
+  // ── THE SURFACE SWITCHER (C/DL-3c Phase 2b) ────────────────────────────────
+  //
+  // ⚠ A FACTORY, BECAUSE THE CONTROL IS PAINTED BY THREE DIFFERENT GROUNDS — the
+  // admin empty state's white card, the dark sidebar, and the rep surface's
+  // --rm-* canvas. Eligibility is decided HERE, once, and the caller names the
+  // surface it is drawing on.
+  //
+  // ⚠ ELIGIBILITY IS EVALUATED ON EVERY RENDER, not captured when the control
+  // was first drawn. A member whose rep flag is revoked mid-session stops being
+  // offered the control AND stops being routed by `chosenSurface` — see
+  // surfaceFor(), which re-checks the same predicate. The control disappearing
+  // and the routing falling back are the same decision read twice, deliberately:
+  // if they could disagree, one of them would strand somebody.
+  const renderSwitcher = (variant) => (canSwitchSurface(session)
+    ? (
+      <SurfaceSwitcher
+        current={surfaceFor(session, chosenSurface)}
+        onSwitch={setChosenSurface}
+        variant={variant}
+      />
+    )
+    : null);
 
   // ── THE ONE PLACE AUTHENTICATION LANDS (C/DL-3b Phase 5) ────────────────────
   // Called by the unified door with whatever POST /api/login or
@@ -358,6 +449,11 @@ export default function App() {
   // client-only logout by accident — the defect D6 exists to close.
   async function handleLogout() {
     const wasTeam = session?.role === 'team';
+    // ⚠ THE CHOICE DIES WITH THE SESSION. It is not persisted anywhere, but it
+    // does live in state that survives a logout on the same page load — and the
+    // next person to sign in on a shared machine must not inherit a surface
+    // choice they did not make.
+    setChosenSurface(null);
     setSession(null);
     setLoggedIn(false);
     setPipeline([]);
@@ -521,7 +617,7 @@ export default function App() {
       <BootSpinner />
     </ThemeProvider>
   );
-  if (surfaceFor(session) === 'admin') return <AdminPanel onLogout={handleLogout} />;
+  if (surfaceFor(session, chosenSurface) === 'admin') return <AdminPanel onLogout={handleLogout} renderSwitcher={renderSwitcher} />;
 
   // ── EVERYTHING BELOW RENDERS INSIDE THE PROVIDER ────────────────────────────
   // The login screen and the whole referrer/rep tree.
@@ -624,9 +720,9 @@ export default function App() {
     // PLACE. If RepSurface mounted its own provider there would be no "outside
     // the provider" state left to throw in, and App's wiring — which is the
     // thing that can actually break — would not be under test at all.
-    if (surfaceFor(session) === 'rep') return (
+    if (surfaceFor(session, chosenSurface) === 'rep') return (
       <RepCapabilitiesContext.Provider value={repCapabilities}>
-        <RepSurface onLogout={handleLogout} />
+        <RepSurface onLogout={handleLogout} switcher={renderSwitcher('rep')} />
       </RepCapabilitiesContext.Provider>
     );
 

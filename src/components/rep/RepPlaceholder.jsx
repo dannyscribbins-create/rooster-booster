@@ -30,7 +30,7 @@ import useEntrance from '../../hooks/useEntrance';
 // here would strip an owner of cash-out approval and team management with no way
 // back until 3c ships a surface switcher. That is recorded in the spec as a 3c
 // requirement, not left as an accident of this file.
-export default function RepPlaceholder({ onLogout }) {
+export default function RepPlaceholder({ onLogout, switcher = null }) {
   const { branding } = useContext(ThemeContext);
   const cardVisible = useEntrance(80);
 
@@ -84,6 +84,13 @@ export default function RepPlaceholder({ onLogout }) {
         }}>
           We&apos;ll let you know the moment they land.
         </p>
+
+        {/* THE SURFACE SWITCHER (C/DL-3c Phase 2b), for a rep who is ALSO an
+            owner or admin. Above Sign out, matching where the admin sidebar puts
+            it: both are ways out of this surface, and they belong together
+            rather than one in the chrome and one in the copy. Null for a
+            general-tier rep, who has only this destination. */}
+        {switcher && <div style={{ paddingTop: 22 }}>{switcher}</div>}
 
         {onLogout && (
           <button

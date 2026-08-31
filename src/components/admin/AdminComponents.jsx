@@ -24,7 +24,7 @@ export const ADMIN_NAV = [
   { id: 'activity',         icon: 'ph-clock-clockwise',  label: 'Activity'         },
 ];
 
-export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onLogout }) {
+export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onLogout, surfaceSwitcher = null }) {
   const { full_name, email, tier } = usePermissions();
   const { branding } = useAdminBranding();
   const initials    = getInitials(full_name, email);
@@ -212,6 +212,15 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
             Placed under the identity block deliberately: sign-out belongs beside
             "who am I", not in the nav, where it would sit one slip away from
             Activity. */}
+        {/* THE SURFACE SWITCHER (C/DL-3c Phase 2b) sits directly ABOVE Sign out,
+            for the reason recorded on that button: this block is "who am I and how
+            do I leave", and both controls are ways out of this surface. It is
+            NEVER wrapped in a PermissionGate — an admin-tier field rep with an
+            empty permissions JSONB is exactly who needs it, and gating it would
+            put the escape hatch behind the wall it escapes. Rendered by the
+            caller so eligibility stays in App.jsx and is re-checked every render. */}
+        {surfaceSwitcher && <div style={{ marginTop: 14 }}>{surfaceSwitcher}</div>}
+
         {onLogout && (
           <button
             onClick={onLogout}
@@ -240,7 +249,7 @@ export function AdminSidebar({ page, setPage, pendingCount, flaggedUnresolved, p
   );
 }
 
-export function AdminShell({ children, page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onLogout, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard, onInboxOpen, inboxUnreadCount = 0, settingsTeamNavRequest, settingsNotifNavRequest, onSettingsNotifNavConsumed, settingsTeamOpenFlagCount = 0 }) {
+export function AdminShell({ children, page, setPage, pendingCount, flaggedUnresolved, pendingReferralCount, onLogout, onSettingsClick, settingsActive, dashboardCachedAt, onRefreshDashboard, onInboxOpen, inboxUnreadCount = 0, settingsTeamNavRequest, settingsNotifNavRequest, onSettingsNotifNavConsumed, settingsTeamOpenFlagCount = 0, surfaceSwitcher = null }) {
   const cachedAgoText = dashboardCachedAt
     ? `Cached ${Math.round((Date.now() - new Date(dashboardCachedAt).getTime()) / 60000)}m ago`
     : null;
@@ -263,7 +272,7 @@ export function AdminShell({ children, page, setPage, pendingCount, flaggedUnres
     // header (the one dark fill with no `color` of its own) is safe only because every
     // child sets its own; that is a property of those children, not of this root.
     <div style={{ display: 'flex', minHeight: '100vh', background: AD.bgPage, fontFamily: AD.fontSans, color: AD.textPrimary }}>
-      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved} pendingReferralCount={pendingReferralCount} onLogout={onLogout} />
+      <AdminSidebar page={page} setPage={setPage} pendingCount={pendingCount} flaggedUnresolved={flaggedUnresolved} pendingReferralCount={pendingReferralCount} onLogout={onLogout} surfaceSwitcher={surfaceSwitcher} />
       <div style={{ marginLeft: 230, flex: 1, position: 'relative', minHeight: '100vh', maxWidth: 'calc(100vw - 230px)' }}>
 
         {/* ── Persistent top bar (floats over content) ── */}

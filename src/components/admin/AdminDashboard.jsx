@@ -35,14 +35,26 @@ function money(val) {
   return Number.isFinite(val) ? `$${val.toLocaleString()}` : STAT_ABSENT;
 }
 
-export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats, onSettingsClick, onFlaggedBannerClick }) {
+export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onStats, onSettingsClick, onFlaggedBannerClick, flaggedUnresolvedCount = 0 }) {
   const { full_name } = usePermissions();
   const { branding } = useAdminBranding();
   const [stats, setStats]               = useState(null);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
   const [crmNotConnected, setCrmNotConnected] = useState(false);
-  const [flaggedUnresolved, setFlaggedUnresolved] = useState(0);
+  // ── SUPPLIED, NOT RE-FETCHED (C/DL-3c Phase 2b) ───────────────────────────
+  // This component owned a second copy of AdminApp's flagged-referrals summary
+  // and fetched it independently on mount, so GET
+  // /api/admin/flagged-referrals/summary fired TWICE on every admin panel boot,
+  // for every member including Owners — one endpoint, two components, two
+  // pieces of state that could disagree.
+  //
+  // ⚠ AND THE SECOND COPY WAS UNGATED, which is why folding it in belongs to
+  // this phase rather than to a tidy-up. AdminApp's fetch now carries the
+  // 'referral_review' flag its route requires; a private copy here would have
+  // gone on producing a guaranteed 403 for every member without that flag,
+  // undoing half the fix while the other half looked done.
+  const flaggedUnresolved = flaggedUnresolvedCount;
 
   async function loadStats(forceRefresh = false) {
     setLoading(true); setError(''); setCrmNotConnected(false);
@@ -63,22 +75,6 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadStats(); }, [refreshKey]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch(`${BACKEND_URL}/api/admin/flagged-referrals/summary`, {
-          headers: { 'Authorization': `Bearer ${getAdminToken()}` },
-        });
-        if (!r.ok) return;
-        const d = await r.json();
-        if (d && d.unresolved_count != null) setFlaggedUnresolved(d.unresolved_count);
-      } catch {
-        // swallow
-      }
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const pipelineTotal = stats ? stats.totalLeads + stats.totalInspections + stats.totalSold + stats.totalNotSold : 0;
   // ⚠ GUARDS BOTH ITS ARGUMENT AND THE pipelineTotal IT CLOSES OVER — and the

@@ -122,7 +122,7 @@ server/
     ├── themeTokens.js
     └── userPreferences.js
 ```
-<!-- generated 2026-08-31 · HEAD 5bdae0b · 78 files, 15 dirs · npm run architecture -- --check -->
+<!-- generated 2026-08-31 · HEAD 1be1263 · 78 files, 15 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: backend -->
 
 > ⚠ **THIS PARAGRAPH EXISTS TWICE — once under each generated block — AND THE TWO COPIES
@@ -130,14 +130,14 @@ server/
 > the test figure was stale by **21**, in both copies. It is hand-maintained prose sitting
 > directly beneath a block that PRINTS the true number on every run: `npm run architecture
 > -- --check` reports `EXCLUDED — test files N` per block (2026-08-31: backend 103 +
-> frontend 36). Nothing updates this sentence when a test file is added, so it drifts by
+> frontend 39). Nothing updates this sentence when a test file is added, so it drifts by
 > one every time anyone writes a test and by nothing at all when they do not. **Read the
 > check's output; correct this from it rather than from memory** — and prefer teaching
 > `scripts/architecture.js` to emit these two numbers into the block over correcting them
 > here again.
 >
 > **Scope of the two blocks above and below.** Code files only: `.js`, `.jsx`, `.mjs`,
-> `.css`, `.md`. **Excluded** — 139 test files (`*.test.*` and everything under
+> `.css`, `.md`. **Excluded** — 142 test files (`*.test.*` and everything under
 > `server/test/`) and 10 asset/binary files (`.png`, `.woff2`, `.txt`). ⚠ `src/index.css`
 > is **not** an asset; it is listed. **Directories holding zero listed files are
 > suppressed**, because an empty-looking directory cannot be told apart from a genuinely
@@ -192,6 +192,7 @@ src/
 │   │   ├── AdminFlaggedAssignmentsQueue.jsx
 │   │   ├── AdminFlaggedReferrals.jsx
 │   │   ├── AdminInboxSidebar.jsx
+│   │   ├── AdminNoAccessScreen.jsx  ← Ruling A(i) empty state; hosts the switcher for a member with no sections
 │   │   ├── AdminPendingReferrals.jsx
 │   │   ├── AdminReferralReview.jsx ← umbrella: Pending + Missing + Flagged tabs
 │   │   ├── AdminReferrers.jsx
@@ -254,6 +255,7 @@ src/
 │   │   ├── StateCard.jsx           ← shared card shell for the UI-state primitives
 │   │   ├── StatusBadge.jsx
 │   │   ├── SuccessState.jsx
+│   │   ├── SurfaceSwitcher.jsx     ← owner/admin-rep's second destination; three variants for three grounds
 │   │   └── ThemeProvider.jsx       ← ⚠ mounts the 11 --rm-* vars on its OWN wrapper (Ruling 5); exports useBranding()
 │   └── superAdmin/
 │       ├── SuperAdminLoginScreen.jsx ← ⚠ GATED OFF by VITE_ENABLE_RM_CONTROL (D-K). Working form, placeholder shell.
@@ -282,7 +284,7 @@ src/
     ├── safeStorage.js              ← safeLocalStorage()/safeSessionStorage() — throw-proof storage access
     └── themeTokens.mjs             ← deriveThemeTokens() + themeCssVariables() + RENDER_TOKEN_KEYS
 ```
-<!-- generated 2026-08-31 · HEAD 5bdae0b · 102 files, 14 dirs · npm run architecture -- --check -->
+<!-- generated 2026-08-31 · HEAD 1be1263 · 104 files, 14 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: frontend -->
 
 > ⚠ **THIS PARAGRAPH EXISTS TWICE — once under each generated block — AND THE TWO COPIES
@@ -290,14 +292,14 @@ src/
 > the test figure was stale by **21**, in both copies. It is hand-maintained prose sitting
 > directly beneath a block that PRINTS the true number on every run: `npm run architecture
 > -- --check` reports `EXCLUDED — test files N` per block (2026-08-31: backend 103 +
-> frontend 36). Nothing updates this sentence when a test file is added, so it drifts by
+> frontend 39). Nothing updates this sentence when a test file is added, so it drifts by
 > one every time anyone writes a test and by nothing at all when they do not. **Read the
 > check's output; correct this from it rather than from memory** — and prefer teaching
 > `scripts/architecture.js` to emit these two numbers into the block over correcting them
 > here again.
 >
 > **Scope of the two blocks above and below.** Code files only: `.js`, `.jsx`, `.mjs`,
-> `.css`, `.md`. **Excluded** — 139 test files (`*.test.*` and everything under
+> `.css`, `.md`. **Excluded** — 142 test files (`*.test.*` and everything under
 > `server/test/`) and 10 asset/binary files (`.png`, `.woff2`, `.txt`). ⚠ `src/index.css`
 > is **not** an asset; it is listed. **Directories holding zero listed files are
 > suppressed**, because an empty-looking directory cannot be told apart from a genuinely

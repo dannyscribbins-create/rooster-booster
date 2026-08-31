@@ -2720,6 +2720,23 @@ root cause, and patching them separately produces six unrelated special cases)
       `CLAUDE_REGISTRY.md` 3 · `CLAUDE.md` 2 · `CDL_3a_BUILD_SPEC.md` 2 ·
       `MEMBER_RANK_ECONOMY_SPEC.md` 1. **= 88.**
       **Prefer re-citing by ROLE over re-deriving a number** wherever the subject has a name.
+
+      ⚠ **PHASE 2b ADDED 68 MORE, AND THE TWO FIGURES DO NOT ADD UP — DO NOT TRY.**
+      *(`--changed-files`, 2026-08-31 at HEAD `1be1263`: **68 likely rotted · 1 content changed ·
+      42 target touched**, across 17 changed files. By citing document:
+      `PRE_LAUNCH_CHECKLIST.md` 20 · `CDL_3c_PHASE0_REPORT.md` 13 · `CDL_3c_PHASE05_RULINGS.md` 9 ·
+      `docs/GROUND_TRUTH_2026-08-21.md` 8 · `CDL_3b_BUILD_SPEC.md` 6 ·
+      `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` 6 · `CLAUDE.md` 2 · four others 1 each.)*
+      Same cause, same two files: comment blocks inserted high in `src/App.jsx` and
+      `src/components/admin/AdminApp.jsx`.
+      **The 88 and the 68 are measurements against DIFFERENT HEADs of overlapping sets.**
+      2a's rot is now committed, so `--changed-files` cannot re-flag it; 2b's is measured
+      against a tree that already contains it. **Adding them would double-count the overlap and
+      undercount nothing — the number would simply be wrong.** The only figure that means
+      anything is a full audit of every citation into these files, which is what this entry
+      asks for. ⚠ **Whoever does it should do it ONCE, after the arc, rather than per phase** —
+      each phase's comment blocks move the same lines again, and repairing between them is
+      work that the next phase undoes.
       ⚠ **THE 30 IN `CDL_3c_PHASE0_REPORT.md` ARE PROBABLY NOT WORTH REPAIRING AT ALL, AND THAT
       IS A DECISION SOMEONE SHOULD MAKE RATHER THAN INHERIT.** It is a dated Phase 0
       investigation record, like `GROUND_TRUTH` — but unlike `GROUND_TRUTH` it is also the
@@ -2777,11 +2794,29 @@ root cause, and patching them separately produces six unrelated special cases)
       filed under the C/DL-3c Phase 2 block above. **(i) fixes what the person SEES; that entry
       fixes what the browser DOES.** Doing either alone leaves the other visible.
 
-      - [ ] **(i) The admin panel renders an honest empty state for `permissions = {}`** — *"Your
-            Owner hasn't given you access to any sections yet"* — instead of eleven scrimmed
-            sections and eight refused requests. **Fixes everyone already in that state.**
-      - [ ] **(ii) The invite flow refuses to create a member with no permissions AND no rep
-            flag.** **Stops new ones.**
+      - [x] ~~**(i) The admin panel renders an honest empty state for `permissions = {}`**~~
+            ✅ **SHIPPED — C/DL-3c Phase 2b.** `adminPanelAccess()` is THREE-valued
+            (`resolving` | `none` | `granted`) because a boolean has to fold the middle state
+            into one of the others and both foldings ship a defect. ⚠ **The arrival marker is
+            `tier`, not `permissions`** — `EMPTY.permissions` is `{}`, the identical value a
+            genuinely unpermissioned member has, so a check on permissions would flash the
+            empty state at every admin on every boot. Guard-proofed: folding `resolving` into
+            `granted` reddens 7 cases; dropping the Owner short-circuit reddens 4 including a
+            real Owner-with-`{}` integration case; truthiness instead of `=== true` reddens
+            exactly 1. **Also removed a pre-existing flash** — the panel used to render every
+            section scrimmed until `/api/admin/me` landed.
+      - [x] ~~**(ii) The invite flow refuses to create a member with no permissions AND no rep
+            flag.**~~ ✅ **SHIPPED AS REFRAMED — the `field_rep` preset now sets
+            `is_field_rep`** via a declarative `repFlags` on the preset, and its blurb was
+            corrected: it promised *"rep tracking and attribution"* and delivered neither.
+            ⚠ **`is_attributable` is deliberately NOT granted** — `promote` carries its own
+            `rep_promotion` permission precisely because attribution drives payouts, and AT-1
+            makes it act from the next event. ⚠ **BOTH HALVES SHIPPED because neither replaces
+            the other:** `promote` needs `rep_promotion`, which `team.manage` does not confer,
+            so an Admin who may invite but not promote still creates a member with neither —
+            and (i)'s message is what catches them. That path has its own case.
+            ⚠ **There was NO create-flow coverage at all before this**; the two-call create
+            sequence had been shipping untested since it was written.
 
 **The branding chain**
 - [ ] **R2 — login does not write the hint from the session.** Requires a **slug** in the auth
@@ -2855,6 +2890,29 @@ root cause, and patching them separately produces six unrelated special cases)
       rather than reversing it. → §10
 - [ ] `useAdminPermissions` still drops `is_attributable` and `rep_revenue_visibility`.
       Phase 5 surfaced `is_field_rep` only, deliberately. → §10
+- [x] ~~**The owner→rep surface switcher.**~~ ✅ **SHIPPED — C/DL-3c Phase 2b.**
+      `surfaceFor(session, chosen)`, `chosen` as React state in `src/App.jsx`.
+      ⚠ **RELAXED, NOT REVERSED, AND PROVED MECHANICALLY RATHER THAN ASSERTED:** the signature
+      changed FIRST with `chosen` null at every call site, and all twelve cases in
+      `roleRouting.test.jsx` — including both GUARDs against the rejected rules — passed
+      **untouched** before a line of switcher code existed.
+      **Placement:** the admin sidebar, the rep card, and **inside A(i)'s empty state** — the
+      last because an admin-rep with an empty JSONB is exactly who needs it, and a
+      sidebar-only mount would be invisible to them. Never behind a `PermissionGate`.
+      **NOT PERSISTED**, ruled. Recorded so it is not re-litigated: a persisted surface must be
+      read *before* `surfaceFor()` can answer, or it reintroduces the flash the boot gate
+      exists to prevent; and a stored routing input needing re-validation every boot is
+      structurally *"a stored token is not a session"*. ⚠ **A third reason emerged in the
+      build and is the strongest: not persisting is what makes the switcher STRUCTURALLY
+      INCAPABLE of creating a one-way door** — the failure mode the whole routing rule was
+      shaped around. Every boot starts at the identity surface.
+      ⚠ **THE ELIGIBILITY RE-CHECK INSIDE `surfaceFor()` IS UNREACHABLE TODAY AND SAYS SO.**
+      `session` is written once per mount and never refreshed, so "chosen is set AND the person
+      no longer qualifies" cannot occur. A guard-proof found an integration case that CLAIMED
+      to cover it and did not — deleting the re-check left it green, because it rendered a
+      fresh `<App />` where `chosen` is already null. It was re-testing "not persisted" under a
+      name that promised something else. The branch stays as defence in depth against the day
+      anything refreshes the session mid-mount, and is now pinned by a DIRECT unit case.
 - [ ] **Router decision D10** — revisit deliberately when the bottom nav lands, not by accident.
 - [ ] Theme toggle UI in Profile (D8). 3b wired the read; 3c builds the switch.
 - [ ] Revenue: **own revenue only** (3a D4, binding).
@@ -2865,6 +2923,35 @@ root cause, and patching them separately produces six unrelated special cases)
       3b — misrouted.)*
 - [ ] `linkGeneratorSweep` cannot distinguish colocated React tests from production `src/`, so
       a test file mentioning a URL trips it. Narrow the sweep or exclude `*.test.*`.
+
+---
+
+## Governing documents this repo cannot see
+
+- [ ] **🟠 `RoofMiles_Team_RBAC_RepAssignment_Spec.docx` GOVERNS §4 AND §7 AND HAS NEVER BEEN
+      IN THIS REPO.** *(Established C/DL-3c Phase 2a.)*
+      `DECISION_C_DL_BUILD_SPEC.md`'s **Authority boundary** names it as one of three sources
+      for every assignment rule; `CDL_3b_BUILD_SPEC.md` and `DECISION_C_DL_BUILD_SPEC.md` quote
+      **§7.3** (*"a field rep receives no admin panel at all"*) and cite **§4** for Decision C's
+      links and QR design.
+      **IT DID EXIST.** `RoofMiles_Handoff_Wave0_CloseOut.docx` cites it by full filename, with
+      extension, in a READ-FIRST list — contemporaneous evidence, not a forward reference.
+      **WHERE IT IS NOT:** `git log --all` has never contained any path matching `RBAC` or
+      `RepAssign`; it is not among the eight root `.docx`; a Drive search by title and by
+      full-text returns nothing.
+      ⚠ **HALF OF IT IS ALREADY RESCUED, AND NO GOVERNING DOCUMENT SAYS SO.**
+      `docs/ASSIGNMENT_RULES_LOCKED.md` opens by naming this exact problem — *"extracted from
+      the governing RBAC/RepAssignment spec + Prep Note (project documents maintained outside
+      this repo) … so no future session has to re-derive them from a document this repo can't
+      see"* — and transcribed the **assignment rules** in July 2026. **§4 and §7 were never
+      transcribed**, and §7 is the surface architecture 3d/3e build on.
+      **THE WORK:** do for §4 and §7 what the FA session did for the assignment rules, before
+      3d. ⚠ **Until then, treat a citation to §4 or §7 as UNVERIFIED** — three specs cite it
+      and none can be checked.
+      ⚠ **AND IT IS A CLASS, NOT ONE FILE.** The same handoff's READ-FIRST list also names
+      `RoofMiles_Handoff_ABR_Phase5-1.docx` and `RoofMiles_Handoff_ABR_6B_6A.docx`, neither of
+      which exists locally either. **Enumerate the cited-but-absent set rather than chasing
+      them one at a time.**
 
 ---
 

@@ -446,6 +446,16 @@ placement was forced by a *correctness* constraint — the three tables are `CRE
 `team_members`, so an inline `REFERENCES` would kill a fresh-database boot — and the citation
 benefit was a side effect. **Correctness first, then this.**
 
+⚠ **AND DO NOT READ A CHANGE IN THE ROTTED COUNT AS PROGRESS — IT MOVES WHEN THE MEASURED SET
+MOVES, NOT ONLY WHEN THE CODE DOES.** Measured in C/DL-3c Phase 2a: trimming twelve lines out
+of a comment block in `server/routes/admin/team.js` cut that file's delta from `+31` to `+19`,
+and the run's total went **UP, from 87 to 88.** Nothing regressed. Editing two more documents
+in the same commit made *those* files changed files, so citations pointing INTO them began
+counting. **`--changed-files` reports citations into the files you touched, so touching more
+files raises it independently of anything you fixed.** Compare like with like, or do not
+compare: a figure taken mid-session is about a different set from the one taken at the end, and
+the mid-session number in that phase was stale by the time it was committed.
+
 ⚠ **AND SOME CITATIONS MUST NOT BE SHIFTED AT ALL.** `docs/GROUND_TRUTH_2026-08-21.md` is a
 **dated snapshot that quotes verbatim what it cites**. Its line numbers are part of a record
 of a past state, not pointers into today's file; renumbering them would make the document
@@ -720,6 +730,24 @@ recorded**, not updated with a new value. **Prefer asserting what a site DOES sa
 negative assertion is genuinely the only way to see a mechanism, say so in the comment —
 otherwise the next reader deletes it as redundant, which is the regression it exists to catch.
 
+⚠ **AND THERE IS A SECOND, SHARPER SHAPE: A NEGATIVE ASSERTION WHOSE NEEDLE IS A LITERAL OWNED
+BY A DIFFERENT FILE. IT GOES VACUOUS SILENTLY, AND NEITHER FILE SHOWS THE COUPLING.**
+
+The rule above is about a value inside one file, where a reader can at least see both halves.
+This is worse. `src/components/admin/AdminTeamSettings.test.jsx` asserted
+`queryByText(/no longer writable here/)` is null, against a fixture mirroring the wording of a
+**server** 422. C/DL-3c Phase 2a reworded that server message to *"is not writable here"* — and
+the assertion became **true forever, watching nothing.** Nothing failed. Nothing could: a
+needle that can never match makes a negative assertion permanently satisfied.
+
+⚠ **IT WAS CAUGHT ONLY BY GREPPING THE OLD STRING BEFORE COMMITTING**, which is not a mechanism.
+`citecheck` cannot see it — there is no citation, only a sentence that two files happen to
+share. **Before rewording ANY user-visible or API-visible string, grep the old wording
+repo-wide.** And prefer anchoring such assertions on something structural — a status code, an
+absent element, a data attribute — over a sentence someone will reasonably improve later.
+**Where a test must mirror a server string, say so at BOTH sites and name the other one by
+role**, so the pair is discoverable from either end.
+
 ### When a fix makes new DATA possible, enumerate every consumer before calling it contained
 
 A change that alters **which rows** a query returns is usually contained. A change that makes a
@@ -912,6 +940,15 @@ CR. It read the parse OUTPUT against an independent invariant rather than re-rea
 parse. That is what independence means here.
 
 ### A shell harness lies plausibly, and never with an error
+
+⚠ **AND IT IS NOT ALWAYS A SHELL. `npm ls <pkg>` PRINTS A VERSION THAT IS NOT THE INSTALLED
+ONE.** Measured 2026-08-31 in C/DL-3c Phase 2a, chasing a HIGH `npm audit` finding:
+`npm ls nanoid` printed **`nanoid@3.3.18`** — the FIXED version — while `package-lock.json`
+and `node_modules/nanoid/package.json` both held **`3.3.17`**, which is the vulnerable one.
+The advisory reads `<3.3.18`. **Trusting that output would have closed a live HIGH as already
+fixed.** `npm ls` prints the tree it resolves, which is not a statement about what is on disk.
+**Read `package-lock.json` and the installed package's own `package.json`. Never `npm ls`.**
+Same family as everything below — a plausible wrong answer, no error, no way to tell by looking.
 
 **Tools in this project have silently returned a wrong answer through a shell, and not one of
 them raised anything.** They are not related by tool; they are related by *shape* — something

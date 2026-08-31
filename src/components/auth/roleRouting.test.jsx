@@ -105,7 +105,24 @@ function installFetch(session) {
       return { ok: true, status: 200, json: async () => ({ pipeline: [], balance: 0, paidCount: 0 }) };
     }
     if (u.includes('/api/admin/me')) {
-      return { ok: true, status: 200, json: async () => ({ tier: session?.tier ?? null, permissions: {} }) };
+      // ⚠ `permissions` GAINED A GRANTED FLAG IN C/DL-3c PHASE 2b, AND THAT IS A
+      // DELIBERATE FIXTURE CHANGE RECORDED RATHER THAN QUIETLY MADE.
+      //
+      // It was `{}`. Ruling A(i) made an empty JSONB on a non-Owner render the
+      // honest empty state instead of the panel, so three cases here went red —
+      // correctly. THIS FILE'S SUBJECT IS ROUTING: which surface an identity
+      // receives. It was never about what an unpermissioned member sees once
+      // they get there, and it only ever passed on `{}` because the old panel
+      // rendered regardless.
+      //
+      // ⚠ THE ALTERNATIVE WOULD HAVE BEEN TO WEAKEN A(i) TO KEEP THESE GREEN,
+      // which is production code bent to satisfy a test. The flag is the honest
+      // fix: it restores the precondition these cases always assumed.
+      // adminPanelAccess()'s own behaviour is covered in
+      // src/components/admin/adminPanelAccess.test.jsx, including the empty case.
+      return { ok: true, status: 200, json: async () => ({
+        tier: session?.tier ?? null, permissions: { dashboard: true },
+      }) };
     }
     if (u.includes('/api/admin/stats')) {
       return { ok: true, status: 200, json: async () => ADMIN_STATS_ZEROS };
@@ -335,6 +352,26 @@ function installFetchByToken(sessionsByToken) {
     }
     if (u.includes('/api/pipeline')) {
       return { ok: true, status: 200, json: async () => ({ pipeline: [], balance: 0, paidCount: 0 }) };
+    }
+    // ⚠ THIS BRANCH DID NOT EXIST BEFORE C/DL-3c PHASE 2b, AND ITS ABSENCE WAS
+    // INVISIBLE — WHICH IS THE INTERESTING PART.
+    //
+    // Every /api/admin/me call fell through to the catch-all `{}` below, so the
+    // panel was driven by a response this fixture never modelled. It passed
+    // anyway, because the old panel rendered whatever permissions said. Ruling
+    // A(i)'s arrival marker is what surfaced it: `tier: undefined` reads as
+    // "no answer yet", the resolving state renders neither surface, and the
+    // assertion finally had something to fail against.
+    //
+    // A fixture that answers a call it never modelled is the same family as a
+    // FIXTURE NOTHING CONSUMES — it looks like coverage and is not. Recorded
+    // here rather than silently filled in.
+    if (u.includes('/api/admin/me')) {
+      const bearer = (init?.headers?.Authorization || '').replace('Bearer ', '');
+      const session = sessionsByToken[bearer];
+      return { ok: true, status: 200, json: async () => ({
+        tier: session?.tier ?? 'owner', permissions: { dashboard: true },
+      }) };
     }
     if (u.includes('/api/admin/stats')) {
       return { ok: true, status: 200, json: async () => ADMIN_STATS_ZEROS };

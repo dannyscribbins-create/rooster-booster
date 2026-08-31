@@ -162,7 +162,13 @@ const ARROW_NEEDLE = /[←→↔↚↠⇐⇒⇦⇨⟵⟶⬅⮕➜]|(?:^|\s)<-{1,
 // src/components/rep/RepSurface.jsx — the rep tree's new root and the first
 // consumer of RepCapabilitiesContext. Deliberate, and the reason the guard fired
 // is the reason it exists: it noticed. Nothing was removed; backend is untouched.
-const ANNOTATION_BASELINE = { backend: 54, frontend: 51 }; // 105 total
+//
+// frontend 51 → 53 on 2026-08-31 (C/DL-3c Phase 2b): TWO annotations added, on
+// src/components/admin/AdminNoAccessScreen.jsx (Ruling A(i)'s empty state) and
+// src/components/shared/SurfaceSwitcher.jsx (the owner/admin-rep's second
+// destination). Deliberate; nothing removed; backend untouched. Second time this
+// guard has fired on a real addition and second time it was right to.
+const ANNOTATION_BASELINE = { backend: 54, frontend: 53 }; // 107 total
 
 // ─── block definitions ───────────────────────────────────────────────────────
 // TWO blocks, TWO marker pairs, deliberately never merged. The backend and
