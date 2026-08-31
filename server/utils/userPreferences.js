@@ -73,7 +73,10 @@ async function getPreference({ subjectType, subjectId, contractorId, key }) {
 
 // Writes one preference value, creating it or overwriting the existing one.
 // Inputs: subjectType ('user' | 'team_member'), subjectId, contractorId, key, value.
-// Returns: nothing.
+// Returns: the number of rows written — 1 on success, 0 when the tenancy
+// predicate refused. ⚠ THIS USED TO RETURN NOTHING; it was given a return value
+// in C/DL-3c Phase 1b, when the function acquired its first production caller.
+// See the note at the query for why a caller must check it.
 //
 // RE-THROWS on failure (unlike getPreference). A silently-swallowed write would let
 // a user save a setting, see no error, and find it reverted later — so callers must
@@ -91,7 +94,7 @@ async function setPreference({ subjectType, subjectId, contractorId, key, value 
     // with a mismatched contractorId would overwrite the existing row AND rewrite its
     // tenant. With it, a mis-tenanted write hits zero rows instead — the same
     // defense-in-depth shape as the cashout approve/deny UPDATE in admin/cashouts.js.
-    await pool.query(
+    const result = await pool.query(
       `INSERT INTO user_preferences (${column}, contractor_id, pref_key, pref_value)
        VALUES ($1, $2, $3, $4::jsonb)
        ON CONFLICT (${column}, pref_key) WHERE ${column} IS NOT NULL
@@ -99,6 +102,18 @@ async function setPreference({ subjectType, subjectId, contractorId, key, value 
         WHERE user_preferences.contractor_id = $2`,
       [subjectId, contractorId, key, JSON.stringify(value)]
     );
+
+    // ⚠ THE ROW COUNT IS THE RETURN VALUE, AND IT IS LOAD-BEARING (C/DL-3c
+    // Phase 1b). When the DO UPDATE's tenancy predicate matches nothing,
+    // Postgres RAISES NOTHING — the statement succeeds having changed no rows.
+    // A caller that ignored this would report a saved preference to someone
+    // whose preference was not saved, which is the same silent shape as the
+    // ON CONFLICT DO NOTHING first-writer-wins race on the pre-launch checklist.
+    //
+    // 1 on an insert or a permitted update; 0 when the predicate blocked it.
+    // ⚠ CALLERS MUST CHECK IT. The route that does is the only one there is —
+    // PUT /api/preferences/theme-mode — and it answers 409 rather than 200.
+    return result.rowCount;
   } catch (err) {
     await logError({ req: null, error: err, source: 'setPreference' });
     throw err;

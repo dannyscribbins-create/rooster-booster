@@ -3,7 +3,7 @@ import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS, RENDER_TOKEN_V
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
 import BrandingProvider, { NEUTRAL_BRANDING, useAdminBranding } from './BrandingProvider';
 import { BACKEND_URL } from '../../config/contractor';
-import { getReferrerToken } from '../../utils/authStorage';
+import { getReferrerToken, getAdminToken } from '../../utils/authStorage';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE THEME PROVIDER — C/DL-3b Phase 1, spec D8
@@ -133,7 +133,8 @@ export function themeVariables(brand, mode) {
 // the caller falls back to DEFAULT_THEME_MODE, which is the same answer the
 // endpoint gives for an unset preference.
 //
-// READS THE REFERRER TOKEN THROUGH THE authStorage SEAM (C/DL-3b Phase 4). This
+// READS EITHER TOKEN THROUGH THE authStorage SEAM (C/DL-3b Phase 4; widened to
+// the admin key in C/DL-3c Phase 1b — see the note in the function). This
 // comment used to warn that the token lived in sessionStorage and that D7 would
 // move it; that move has happened, and this file no longer knows or cares which
 // store backs it. getReferrerToken() never throws, but the try/catch stays as a
@@ -141,7 +142,19 @@ export function themeVariables(brand, mode) {
 async function fetchThemeModeFromApi() {
   let token = null;
   try {
-    token = getReferrerToken() ?? null;
+    // ⚠ EITHER TOKEN (C/DL-3c Phase 1b). This read getReferrerToken() alone
+    // until now, which meant A FIELD REP'S STORED MODE COULD NEVER LOAD: a rep
+    // authenticates as a team member, so their token is written to the ADMIN
+    // key (src/App.jsx, setAdminToken), and this returned null before making a
+    // request. The endpoint answers both subjects now — one store, both apps,
+    // which is CD-21 — so the client has to be able to present both.
+    //
+    // REFERRER FIRST, and the order is not arbitrary: a person who is both a
+    // homeowner and a team member holds two tokens, and the surface they are
+    // looking at when this runs is the referrer app unless they were routed to
+    // a rep surface. If that ever stops being true the tie-break belongs to
+    // whatever decides the surface, not here.
+    token = getReferrerToken() ?? getAdminToken() ?? null;
   } catch {
     return null;
   }

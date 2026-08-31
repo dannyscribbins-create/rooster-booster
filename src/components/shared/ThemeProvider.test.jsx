@@ -600,3 +600,75 @@ describe('ThemeProvider — the page background (Ruling 4)', () => {
     expect(source).not.toMatch(/R\.bgPage/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C/DL-3c PHASE 1b — THE MODE READ PRESENTS EITHER TOKEN
+//
+// THE DEFECT THIS CLOSES. fetchThemeModeFromApi() read getReferrerToken() alone,
+// so A FIELD REP'S STORED MODE COULD NEVER LOAD: a rep authenticates as a team
+// member and their token is written to the ADMIN key, so the function returned
+// null before making a request. The endpoint answers both subjects as of 1b —
+// one store, both apps, CD-21 — and the client has to present both.
+//
+// ⚠ ASSERTED ON THE REQUEST, NOT ON THE RENDER. The real seam is which token
+// leaves the browser; a test that only checked the resulting mode would pass
+// against a provider that asked with the wrong credential and got null.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('ThemeProvider — the stored-mode read presents either token', () => {
+  const REFERRER_KEY = 'rb_token';
+  const ADMIN_KEY = 'rb_admin_token';
+
+  let seen;
+  let realFetch;
+
+  beforeEach(() => {
+    seen = [];
+    localStorage.clear();
+    realFetch = global.fetch;
+    global.fetch = async (url, init) => {
+      if (String(url).includes('/api/preferences/theme-mode')) {
+        seen.push(init?.headers?.Authorization ?? null);
+        return { ok: true, json: async () => ({ mode: 'dark' }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+  });
+
+  afterEach(() => { global.fetch = realFetch; localStorage.clear(); });
+
+  async function boot() {
+    render(<ThemeProvider context={makeContext()}><p>child</p></ThemeProvider>);
+    await screen.findByText('child');
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0));
+  }
+
+  it('presents the ADMIN token when only a team member is signed in', async () => {
+    // THE REP CASE, and the one that was broken.
+    localStorage.setItem(ADMIN_KEY, 'rep-token');
+    await boot();
+    expect(seen[0]).toBe('Bearer rep-token');
+  });
+
+  it('presents the REFERRER token when only a referrer is signed in', async () => {
+    localStorage.setItem(REFERRER_KEY, 'homeowner-token');
+    await boot();
+    expect(seen[0]).toBe('Bearer homeowner-token');
+  });
+
+  it('prefers the referrer token when a person holds both', async () => {
+    // Dual identity is a designed condition in this codebase, not an anomaly —
+    // the same email can exist in `users` and `team_members`. The tie-break is
+    // stated in the function; this pins it so it cannot drift silently.
+    localStorage.setItem(REFERRER_KEY, 'homeowner-token');
+    localStorage.setItem(ADMIN_KEY, 'rep-token');
+    await boot();
+    expect(seen[0]).toBe('Bearer homeowner-token');
+  });
+
+  it('makes NO request at all when nobody is signed in', async () => {
+    // The login screen is the common case and must not cost a round trip.
+    render(<ThemeProvider context={makeContext()}><p>child</p></ThemeProvider>);
+    await screen.findByText('child');
+    expect(seen).toEqual([]);
+  });
+});

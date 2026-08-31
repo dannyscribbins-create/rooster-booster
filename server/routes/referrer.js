@@ -19,7 +19,7 @@ const { resendShouldRetry } = require('../utils/retryHelpers');
 const { sendAdminNotification, resolveNotificationRecipient } = require('../utils/notificationEmail');
 const { isEmailSuppressed } = require('../utils/emailSuppression');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
-const { verifyReferrerSession } = require('../middleware/auth');
+const { verifyReferrerSession, verifyAnySession } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
 const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
 // recordScanEvent is NOT imported here any more — the only caller was the landing
@@ -40,7 +40,7 @@ const { resolveLanding, loadContractorBranding } = require('../utils/landingReso
 // C/DL-3b Phase 1 — the theme provider's stored light/dark read. This is
 // user_preferences' FIRST PRODUCTION CALLER; the store shipped in C/DL-3a with
 // none. Read only — the toggle that writes it is 3c (spec D8).
-const { getPreference, THEME_MODE_PREF_KEY } = require('../utils/userPreferences');
+const { getPreference, setPreference, THEME_MODE_PREF_KEY } = require('../utils/userPreferences');
 // C/DL-3b Phase 2B — timing parity on a login miss. Shared rather than a third
 // copy of the constant; see that file's header.
 const { DUMMY_BCRYPT_HASH } = require('../utils/dummyHash');
@@ -3315,14 +3315,33 @@ router.get('/api/referrer/conversions', async (req, res) => {
 // deriveThemeTokens THROWS on an unknown mode rather than defaulting, precisely
 // so a bad mode cannot silently paint a dark-mode user a white surface. Without
 // this gate one junk row would turn into a blank app for that user.
+// ── THE SUBJECT IS CHOSEN BY ROLE (C/DL-3c Phase 1b) ────────────────────────
+// Both apps read one store — that is CD-21, and it is the whole reason the
+// table carries two nullable subject columns rather than one. verifyAnySession
+// is the role-agnostic verifier and exists for exactly this shape: a client
+// holding a stored token does not know which surface the token belongs to, and
+// ThemeProvider is that client.
+//
+// ⚠ A super_admin has NO SUBJECT. `user_preferences` has no third column and
+// must not grow one for a role that renders outside the provider entirely
+// (Ruling 5). It reads as unset rather than erroring — the same answer an
+// unconfigured referrer gets, which is what the provider already handles.
+function preferenceSubjectFor(session) {
+  if (session.role === 'referrer') return { subjectType: 'user', subjectId: session.user.id };
+  if (session.role === 'team') return { subjectType: 'team_member', subjectId: session.member.id };
+  return null;
+}
+
 router.get('/api/preferences/theme-mode', async (req, res) => {
-  const session = await verifyReferrerSession(req, res);
+  const session = await verifyAnySession(req, res);
   if (!session) return;
+
+  const subject = preferenceSubjectFor(session);
+  if (!subject) return res.json({ mode: null });
 
   try {
     const stored = await getPreference({
-      subjectType: 'user',
-      subjectId: session.userId,
+      ...subject,
       contractorId: session.contractorId,
       key: THEME_MODE_PREF_KEY,
     });
@@ -3333,6 +3352,87 @@ router.get('/api/preferences/theme-mode', async (req, res) => {
     res.json({ mode });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/preferences/theme-mode' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── THE WRITER — user_preferences' FIRST EVER (C/DL-3c Phase 1b, CD-6/CD-21) ─
+//
+// setPreference() shipped in C/DL-3a and has had ZERO production callers since.
+// This is the first, which means the tenancy predicate inside it executes in
+// production for the first time here.
+//
+// ⚠ REP-ONLY, AND THE STORE IS STILL SHARED. CD-21 makes the preference
+// user-level and shared by design; what is gated is who may SET it. A referrer
+// flipping this would get a half-dark app — the referrer surface reads no
+// --rm-* at all (793 R.* references, zero --rm-*), so only the shared Skeleton
+// would go dark, on a light canvas. Referrer dark belongs to CD-21's deferred
+// design pass and the R/AD migration.
+//
+// ⚠ THE FLAG IS RE-READ HERE RATHER THAN TAKEN FROM THE SESSION, AND THAT IS
+// DELIBERATE. verifyAnySession's descriptor carries is_field_rep, but that
+// field is documented at its source (server/middleware/auth.js, the admin
+// branch) as being "for ROUTING on boot rehydration … never for authorisation".
+// Honouring that means an authorisation decision does its own read, which also
+// makes it CURRENT: a member demoted a minute ago cannot still write. This is
+// the same shape as requirePermission(), which queries rather than trusting a
+// token's payload.
+//
+// ⚠ WHEN THE SECOND REP-GATED ROUTE ARRIVES (3c builds rep surfaces), this
+// becomes shared middleware. It is inline while there is exactly one caller,
+// because an abstraction with one consumer is a guess about the second.
+router.put('/api/preferences/theme-mode', async (req, res) => {
+  const session = await verifyAnySession(req, res);
+  if (!session) return;
+
+  try {
+    let isFieldRep = false;
+    if (session.role === 'team') {
+      const { rows } = await pool.query(
+        'SELECT is_field_rep FROM team_members WHERE id = $1 AND contractor_id = $2 AND active = true',
+        [session.member.id, session.contractorId]
+      );
+      isFieldRep = rows[0]?.is_field_rep === true;
+    }
+    if (!isFieldRep) return res.status(403).json({ error: 'Not authorized' });
+
+    // Strict equality against the two known modes. pref_value is JSONB with no
+    // CHECK, so this endpoint is the only thing standing between a typo and a
+    // column that will hold anything — and deriveThemeTokens THROWS on an
+    // unknown mode rather than defaulting, so one junk row is a blank app for
+    // that rep rather than a cosmetic slip.
+    const mode = req.body?.mode;
+    if (mode !== 'light' && mode !== 'dark') {
+      return res.status(400).json({ error: 'Invalid mode' });
+    }
+
+    // ⚠ THE SUBJECT COMES FROM THE VERIFIED SESSION, NEVER FROM THE BODY.
+    const written = await setPreference({
+      subjectType: 'team_member',
+      subjectId: session.member.id,
+      contractorId: session.contractorId,
+      key: THEME_MODE_PREF_KEY,
+      value: mode,
+    });
+
+    // ⚠ ZERO ROWS IS NOT SUCCESS. The DO UPDATE carries a contractor_id
+    // predicate; when it matches nothing the statement still succeeds. Answering
+    // 200 here would show a rep their toggle moving over a preference that was
+    // never stored. It means a row exists for this subject under a different
+    // tenant, which is a data-integrity anomaly rather than a client mistake —
+    // so it is logged, and the body says nothing about why.
+    if (written === 0) {
+      await logError({
+        req,
+        error: new Error('theme-mode write affected zero rows — subject row exists under another tenant'),
+        source: 'PUT /api/preferences/theme-mode',
+      });
+      return res.status(409).json({ error: 'Preference could not be saved' });
+    }
+
+    res.json({ mode });
+  } catch (err) {
+    await logError({ req, error: err, source: 'PUT /api/preferences/theme-mode' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -152,13 +152,30 @@ describe('C/DL-3b Phase 1 Step 4 — GET /api/preferences/theme-mode', () => {
     assert.equal(res.status, 401);
   });
 
-  it('[RED] rejects an ADMIN token — this is a referrer-session endpoint', async () => {
+  it('rejects an admin token carrying no team_member_id', async () => {
+    // ⚠ THIS TEST WAS CALLED "rejects an ADMIN token — this is a referrer-session
+    // endpoint" AND THAT NAME IS NOW INVERTED, not merely stale. C/DL-3c Phase 1b
+    // gave this endpoint a `team_member` subject: an admin token belonging to a
+    // real team member is ACCEPTED now, and reads that member's own preference.
+    // The old name instructed the next reader that the route is referrer-only,
+    // which would argue against the change that had already been made.
+    //
+    // ⚠ AND IT KEPT PASSING THROUGH THAT CHANGE, WHICH IS WHY IT NEEDED READING
+    // RATHER THAN TRUSTING. seedSession() leaves team_member_id NULL, so this
+    // session is denied by verifyAnySession's "a legacy admin session with no
+    // team_member_id cannot be described" branch — a different rejection from
+    // the one the name claimed, arriving at the same 401. A negative test that
+    // goes green for a reason it does not name is the trap CLAUDE.md records as
+    // "a plausible-looking rejection is not the rejection you are testing for."
+    //
+    // What it pins NOW is that branch, which is worth keeping: a session row with
+    // no subject must not resolve to some default subject.
     const adminToken = crypto.randomBytes(32).toString('hex');
     await seedSession(pool, { userId: null, token: adminToken, role: 'admin', contractorId: TENANT_A });
 
     const res = await httpGet(port, '/api/preferences/theme-mode', { token: adminToken });
     assert.equal(res.status, 401,
-      'role is part of the session predicate — an admin token must not satisfy a referrer route');
+      'a session with no subject resolved to one anyway');
   });
 
   // ── TENANCY ────────────────────────────────────────────────────────────────
