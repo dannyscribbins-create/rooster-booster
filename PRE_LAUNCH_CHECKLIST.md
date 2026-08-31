@@ -2472,6 +2472,46 @@ root cause, and patching them separately produces six unrelated special cases)
       place the foreground for a primary-filled control is chosen, for every brand at once.
       When the palette question is ruled, that function is the only site that changes.
 
+**⬜ PHASE 3 MOUNTS THE THEME CONTROL IN PROFILE. 1b SHIPPED THE MECHANISM WITH NO CALLER.**
+- [ ] **What Phase 3 renders:** a light/dark switch on the rep Profile screen, reading `mode`
+      from `useContext(ThemeContext)` and calling `PUT /api/preferences/theme-mode` with the
+      rep's admin-key token.
+      ⚠ **`ThemeContext` PUBLISHES `mode` BUT NO SETTER.** Its value is
+      `{ mode, branding, source }`, frozen in a `useMemo`, and `mode` is computed inside
+      `ThemeLayer`. Phase 3 must add `setMode` to that value — a one-line change beside the
+      `storedMode` state that already exists — or reload after the write. **Budget for it; do
+      not discover it.**
+      ⚠ **THE SHAPE THIS IS AT RISK OF, AND IT HAS HAPPENED THREE TIMES HERE.**
+      `user_preferences` shipped in 3a with zero production callers and sat that way through
+      3b; `logoutAdmin()` shipped *"exported, tested, and deliberately without a caller"*;
+      SH-10's TOTP toggle has storage ✓ editor ✓ validator ✓ **delivery ✗**. **Each time,
+      "we'll mount it next phase" is what was said.** The only difference here is that Phase 3
+      is the next phase — which is why this is written down rather than intended.
+      **WHAT CLOSES IT:** the Phase 3 build, when a rep can flip the switch in Profile and the
+      mode survives a reload. **Whoever closes Phase 3 deletes this entry in the same commit**,
+      not at a later doc pass. Until then the writer has no production caller and this entry is
+      the record of that.
+
+**🟠 A DARK LOGIN SCREEN SURVIVES A LOGOUT — REACHABLE IN PRODUCTION TODAY**
+- [ ] **THE MECHANISM.** `src/App.jsx:513` wraps the entire routed tree in ONE
+      `ThemeProvider`, and `handleLogout()` clears React state **without reloading the page**.
+      The provider never remounts, so its `storedMode` survives. **A rep in dark mode who logs
+      out lands on the login screen still in dark.**
+- [ ] **WHAT IT VIOLATES.** Spec D8 — *"Light on the login screen and on first entry, for every
+      role."* A narrow reading survives, because post-logout is not first entry — ⚠ **but that
+      reading makes D8 a rule about a STATE when the surface is the point.** The login door is
+      shared by three populations, and a homeowner arriving on a shared machine after a rep
+      logs out sees a dark door with a contractor's brand on it.
+- [ ] **TWO CANDIDATE FIXES, neither taken in 1b** — it is a ruled-decision question on a
+      shared surface and not the toggle's job. **(a)** reset the mode to `DEFAULT_THEME_MODE`
+      on logout, or **(b)** narrow D8 explicitly to first-entry and accept this, recording that
+      the login screen inherits the previous session's mode.
+      ⚠ **Found C/DL-3c Phase 1b while answering how 1c would reach dark mode at all** — it is
+      also what makes 1c's walkthrough possible without a debug affordance, so a fix must not
+      land before 1c has used it.
+      **Recommended owner: Wave 4's SH-10/SH-13 login-path hardening session**, which already
+      owns the shared door.
+
 **The theme toggle — the switch is REP-ONLY, and the store is shared (ruled Phase 1a)**
 - [ ] **CD-21 already ruled this and it must be built deliberately, not discovered.** The
       preference is **user-level and shared BY DESIGN** — one store, both apps. **What is
@@ -2492,6 +2532,17 @@ root cause, and patching them separately produces six unrelated special cases)
       respond.** Referrer dark belongs to the R/AD migration and to CD-21's deferred design
       pass. ⚠ **1c must not report coverage of it** — a check reporting health it cannot
       observe is this project's own recurring false-health shape.
+- [ ] **HOW 1c REACHES DARK MODE: the production path, and NO new mechanism** (ruled Phase 1b).
+      Set a rep's `theme_mode` via `PUT /api/preferences/theme-mode` with a rep token, then log
+      in — the rep app renders dark. Then **log out without reloading** and the login screen is
+      dark too, because one provider spans the tree and its mode survives (see the D8 entry).
+      ⚠ **A `?mode=` query param was rejected DELIBERATELY: it would prove the CSS and prove
+      nothing about the store**, and a debug affordance with no expiry is how `?admin=true`
+      survived as an inert parameter with producers and no reader.
+      ⚠ **`ResetPinScreen` and the boot spinner CANNOT be reached in dark by any route** —
+      each carries its **own** `ThemeProvider` instance (`App.jsx:463`, `:494`) and renders
+      with no session, so both are permanently light. `ResetPinScreen`'s logo plate is proven
+      by test and cannot be verified by eye.
 
 **🔴 THE R/AD → CSS-VARIABLE MIGRATION — UNOWNED UNTIL 2026-08-30, AND LAUNCH-GATING**
 - [ ] **THE MEASURED STATE.** `src/components/referrer/*` plus `src/components/shared/Screen.jsx`

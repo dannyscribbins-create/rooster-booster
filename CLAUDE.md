@@ -939,10 +939,14 @@ answer was read through.
   **The checks in this repo whose summary prints LAST, verified by running each:**
   `citecheck` · `tablecheck` · `sizing` · `architecture` (both the bare form and `--check`) ·
   `node --test` (the `tests/suites/pass/fail/cancelled/skipped/todo` block) · `vitest run`.
-  ⚠ **`npm test` IS THE WORST OF THEM AND THE ONE MOST LIKELY TO BE TAILED.** It chains three
-  tools with `&&`, so the last summary in the stream is **Vitest's**. When the run is green, a
-  `tail` shows the React numbers and **cannot show the server numbers at all** — and the server
-  suite is where the count tripwire lives. Grep the four `ℹ` lines by name instead.
+  ⚠ **`npm test` IS THE WORST OF THEM AND THE ONE MOST LIKELY TO BE TAILED, SO IT IS NAMED
+  HERE AND NOT ONLY IN THE LIST ABOVE.** It chains three tools with `&&`, so the last summary
+  in the stream is **Vitest's**. When the run is green, a `tail` shows the React numbers and
+  **CANNOT SHOW THE SERVER NUMBERS AT ALL** — and the server suite is where the count tripwire
+  lives, so the one number a tail can never reach is the one the tripwire was built to protect.
+  ⚠ **A green `npm test` read through a tail is therefore evidence about the React suite and
+  about nothing else.** Grep the `ℹ tests / suites / pass / fail / cancelled / skipped / todo`
+  lines by name, every time.
 
 **Every one produced a PLAUSIBLE WRONG ANSWER rather than an error**, which is why none was
 caught by looking and why the rule cannot be "be careful with quoting."
@@ -1048,7 +1052,45 @@ will bump the number rather than delete it. **Name the section for what it conta
 ⚠ **Do not replace this enumeration with a running total.** A total is the thing that goes stale,
 which is the failure the whole section is about.
 
+⚠ **AND THE FAILURE HAS AN OPPOSITE THAT IS EASIER TO REACH ONCE THE LIST ABOVE IS LONG.**
+C/DL-3c Phase 1b nearly added a sixth entry that was not one. `CDL_3c_PHASE05_RULINGS.md` says
+*"the five `CLAUDE.md:502` citations **in `PRE_LAUNCH_CHECKLIST.md`**"*; a repo-wide grep
+returns **seven**, and the write-up had already begun. The sentence is exactly right — that
+file holds exactly five — and the needle counted every file while the claim scoped to one.
+
+**THE SHAPE: after a run of confirmed miscounts, "the stated number is low" becomes the
+expectation — and an expectation is precisely what this section exists to replace.** Verifying
+a count means knowing what the needle excludes **AND what the claim excludes**. Read the whole
+sentence before counting: a scope clause four words later changes the answer.
+
 ---
+
+### A name-based search cannot find a name that is never written down
+
+**Wave 1.1 ruled: count `exactly_one_subject` constraints BY NAME, never by number,**
+because a `COUNT(*) = 3` check would have looked right. **That rule is correct and it finds
+ONE OF FOUR.**
+
+Measured in C/DL-3c Phase 1b. `grep "exactly_one_subject" server/db.js` returns
+`user_preferences_exactly_one_subject` and nothing else that is a name. The other three —
+`pin_reset_tokens_`, `verification_codes_`, `email_verifications_` — **exist nowhere in the
+source as literals.** They are assembled at run time:
+
+```js
+const DUAL_SUBJECT_TABLES = ['pin_reset_tokens', 'verification_codes', 'email_verifications'];
+const constraintName = `${tbl}_exactly_one_subject`;
+```
+
+⚠ **THIS IS NOT THE SUBSTRING TRAP BELOW, AND THE DIFFERENCE DECIDES WHAT TO DO.** There, the
+needle matched **the wrong thing** and the fix is a better needle. Here the needle **cannot
+exist**, and no amount of anchoring produces one. A grep over a loop that builds names finds
+the loop or it finds nothing.
+
+**THE RULE, amending Wave 1.1's rather than replacing it: count by name, and then read the
+code that GENERATES names.** A constraint, a route, a permission key or a cron id assembled
+from a template is invisible to every search for the thing it becomes. **When a count matters,
+grep for the SUFFIX and the TEMPLATE too** — `_exactly_one_subject` finds the interpolation
+site that `pin_reset_tokens_exactly_one_subject` never will.
 
 ### A needle that is a substring of a longer real name passes against the wrong line
 
