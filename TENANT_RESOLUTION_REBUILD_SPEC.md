@@ -183,6 +183,7 @@ await pool.query(
   [token, expiresAt, 'admin', teamMember.contractor_id, teamMember.id]
 );
 ```
+<!-- citecheck:record -->
 ⚠ **THE BLOCK BELOW IS A PRE-D7 RECORD. It is left verbatim and marked, not rewritten**
 (R7: a record describes the state it was written against). What it shows was accurate when
 written; three things have since moved, and a reader copying it today would be copying a
@@ -210,6 +211,7 @@ async function verifyAdminSession(req, res) {
   return { contractorId: result.rows[0].contractor_id, teamMemberId: result.rows[0].team_member_id };
 }
 ```
+<!-- /citecheck:record -->
 The key property: `contractor_id` is stamped from the **verified DB row** (`teamMember.contractor_id`, read from `team_members` by a query that already required a correct password match) — never from anything the client sent directly. `verifyAdminSession()` then just reads it back off the session row on every subsequent request. This is the exact shape to replicate for referrers.
 
 ### 3.2 Referrer login change

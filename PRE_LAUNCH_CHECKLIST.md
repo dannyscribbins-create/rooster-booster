@@ -752,7 +752,9 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       double-paying**, so these are one change, not two. → with the Connect ruling above
 
 - [ ] **🟠 A CLUSTER OF `referrer.js` CITATIONS IS STALE BY HUNDREDS OF LINES, AND
-      `citecheck` REPORTS THEM OK.** *(Found Wave 1.1-c, 2026-08-28, while auditing this session's
+      `citecheck` REPORTS THEM OK.**
+      <!-- citecheck:record -->
+      *(Found Wave 1.1-c, 2026-08-28, while auditing this session's
       own line drift.)* Every one resolves to real code, which is the silent variety — the number
       is plausible, the file exists, the line exists, and it describes something else.
       **Measured at `f0b2116`:**
@@ -819,6 +821,7 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       ⚠ **AND THEY ARE THE ARGUMENT FOR CITING BY ROLE.** This session converted its own test file's
       references from line numbers to handler and route names for exactly this reason; a handler
       name does not drift. → §10
+      <!-- /citecheck:record -->
 
 - [ ] **🟠 THE BANKING SETTINGS CARD CANNOT TELL A FAILED FETCH FROM "NOT CONNECTED".**
       *(Wave 1.1-c Phase 0, 2026-08-28.)* `src/components/admin/BankingSettings.jsx` does
@@ -931,7 +934,9 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       weakness, because its token identifies the invitee.)*
 
 - [ ] **🟠 ELEVEN CITATIONS INTO THIS FILE ARE ROTTED, AND THEY WERE ALREADY ROTTED BEFORE
-      THE COMMIT THAT SURFACED THEM.** *(Found Wave 1.1-d2 by `npm run citecheck --
+      THE COMMIT THAT SURFACED THEM.**
+      <!-- citecheck:record -->
+      *(Found Wave 1.1-d2 by `npm run citecheck --
       --changed-files` on its own first real run, 2026-08-29.)* Five in
       `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` (citing lines 70, 76, 80, 88, 114) and six in
       `docs/GROUND_TRUTH_2026-08-21.md` (citing lines 38, 47, 57, 293, 600, 617). **A twelfth
@@ -955,6 +960,7 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       say *"as of 2026-08-21"* beside the citations, or drop the numbers and keep the quotes.
       **Its six are therefore a different job from the spec's five, and should not be swept
       together.**
+      <!-- /citecheck:record -->
 
 - [ ] **🟠 THE ROUTE COLLECTOR'S PREFIX FILTER IS MOUNT-RELATIVE, AND A THIRD PREFIX WOULD
       PASS VACUOUSLY.** *(Found Wave 1.1-d2, 2026-08-29, while parameterising the collector.)*
@@ -2228,6 +2234,46 @@ check — which is why this is a named build rather than a checklist line.
       citing sentences — which is its own pass, not a footnote to a feature phase.
       **When it is done, convert to role-based citations rather than new numbers**, which is
       the only repair that does not come back. → §10
+      ⚠ **SIZED PROPERLY IN THE ENTRY DIRECTLY BELOW. The 177 above is `--changed-files` output
+      for ONE commit, not the population** — read that one before scoping any of this.
+
+- [ ] **🟠 THE CITATION REPAIR — SIZED, DEFERRED, AND NOW ENFORCEABLE WITHOUT BEING DONE.**
+      *(Measured C/DL-3c citation-repair Phase 0, 2026-08-31. The tripwire shipped the same day;
+      not one citation was repaired, deliberately.)*
+      **THE SIZE.** **785 line citations across the tracked markdown** outside record blocks —
+      503 of them in the build specs and the two 3c working records. ⚠ **Both are GREP COUNTS
+      AND LOWER BOUNDS**: the needle cannot see section pointers, prose with no number, a line
+      reference written as words, or a file outside `citecheck`'s extension allow-list.
+      **THE WRONGNESS RATE.** A deterministic every-17th sample of 24, each read against the
+      sentence citing it: **12 correct · 10 wrong · 2 unresolvable — about 42%.**
+      ⚠ **MATERIALLY BETTER THAN THE 8-IN-10 ABOVE, AND THAT IS THE POINT: the 8-in-10 was drawn
+      only from files that phase had touched and could not be generalised.** It was right not to.
+      **THE NEVER-REPAIR CLASS.** ~95 by the prose heuristic in the spec set, **itself a lower
+      bound — the heuristic missed a record in its own sample**, which is why the machine-readable
+      marker exists at all. **119 are now inside a marker. ~36 more are flagged by the heuristic
+      and NOT marked: those are the landmines**, and a bulk repair would destroy them.
+      **THE TWO THAT COULD NOT BE RE-DERIVED**, named so nobody re-derives them by guessing:
+      `CDL_3b_BUILD_SPEC.md`'s citation of `AdminAnnouncementSettings.jsx` — **FILE_MISSING**, no
+      such tracked file; renamed or deleted, and which component inherited the claim is not
+      determinable from the sentence. And `SECURITY_HARDENING_SPEC.md`'s citation of a bare
+      `jobber.js` for the webhook signature check — **AMBIGUOUS**, matching both the CRM adapter
+      and the webhook route. Context points at the webhook one, **and guessing is exactly what
+      the never-repair rule forbids.**
+      ⚠ **THE WORST SINGLE DOCUMENT IS NOT A BUILD SPEC. `CDL_3c_PHASE0_REPORT.md` carries 147**
+      — more than any spec — **and it is a REPORT: written once, never revised, so every citation
+      in it froze at its authoring commit and has rotted monotonically since.** That is an
+      argument about **what reports are for**, not about that file: a report that cites by line is
+      a document guaranteed to be wrong later, because nothing will ever edit it.
+      ⚠ **CORRECTION TO THAT PHASE 0 REPORT, MADE THE SAME DAY.** It stated that
+      `docs/superpowers/` — 26 archived plans — *"has ZERO"* line citations and that the older
+      documents already cite by role. **Both are false. It has 34, across seven files.** The claim
+      came from a `git ls-files` glob quoted with single quotes inside `execSync`, which spawns
+      **cmd.exe**, where single quotes are not quote characters: git received the quotes as part
+      of the pattern, matched nothing, and the empty result was read as a measured zero. **Same
+      family as the `^` case — a shell harness returning a plausible wrong answer with no error.**
+      **THE REPAIR IS NOW OPTIONAL AND INCREMENTAL**, which is the whole reason the tripwire went
+      first. Highest value first: the documents a fresh session reads **before** building.
+      → `scripts/citecheck.js`, `ROLE_ONLY_BASELINE`
 - [ ] **🔴 Locally redefined `escapeHtml` — SEVEN definitions, not three. LAUNCH-GATING
       SECURITY, not a consolidation.** Measured 2026-08-21 (ground truth §C5). One canonical
       plus **six local redefinitions**:

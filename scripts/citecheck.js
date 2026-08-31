@@ -36,6 +36,15 @@
 //                                                tree vs HEAD; takes an
 //                                                optional <rev> ("what did that
 //                                                commit rot?") or <revA>..<revB>.
+//         npm run citecheck -- --role-only       every line citation in tracked
+//                                                *.md, counted against
+//                                                ROLE_ONLY_BASELINE. Asks
+//                                                "should this have been a line
+//                                                number at all?" rather than
+//                                                "does it still resolve?".
+//                                                Citations inside a
+//                                                <!-- citecheck:record --> block
+//                                                are excluded.
 // Zero dependencies; Node core only.
 //
 // ─── ⚠ --changed-files EXISTS BECAUSE THE FULL REPORT ANSWERS THE WRONG ──────
@@ -226,6 +235,10 @@ const GREP = grepIdx !== -1 ? argv[grepIdx + 1] : null;
 // '-' is the next flag, not this one's argument.
 // CHANGED_FILES is null when the flag is absent and '' when it is present with
 // no value; those are different states and `|| null` would collapse them.
+// --role-only: count line citations in the declared set against
+// ROLE_ONLY_BASELINE. Additive — it changes no verdict and no existing output.
+const ROLE_ONLY = argv.includes('--role-only');
+
 const changedIdx = argv.indexOf('--changed-files');
 const CHANGED_FILES =
   changedIdx === -1
@@ -273,6 +286,110 @@ function readLines(abs) {
   if (parts.length && parts[parts.length - 1] === '') parts.pop();
   return parts;
 }
+
+// ─── THE RECORD MARKER ───────────────────────────────────────────────────────
+//
+//     <!-- citecheck:record -->   … citations in here are a RECORD …   <!-- /citecheck:record -->
+//
+// ⚠ WHY THIS IS A MARKER AND NOT A HEURISTIC, WHICH IS THE WHOLE POINT.
+// Some citations in this repo are not pointers into today's code — they are
+// RECORDS of a past state, and a repair pass that "fixed" them would destroy
+// evidence while claiming to remove rot. The two are indistinguishable from
+// the outside: both are a path and a number that no longer describe the code.
+//
+// A prose heuristic was tried and MEASURED, and it failed on its own sample.
+// Scanning for words like "verbatim", "PRE-", "has rotted" classified
+// CDL_3c_PHASE05_RULINGS.md's citation of server/permissions/registry.js as a
+// repair CANDIDATE — inside a sentence whose entire subject is that the range
+// lands on the adjacent block. It read as a rot because it IS a rot; the
+// sentence around it is what makes it a record, and no needle reaches that.
+//
+// So a record is whatever a human WROTE DOWN as a record, and nothing else.
+// The marker is not documentation of the classification; it IS the
+// classification.
+//
+// SEMANTICS, deliberately boring:
+//   · Both markers must be alone on their own line (leading whitespace is fine).
+//   · The open line and the close line are themselves inside the block, so a
+//     citation on the same line as a marker counts as record.
+//   · No nesting. A second open before a close is an ERROR, not a deeper level.
+//   · An unclosed open at EOF is an ERROR — and it is the dangerous one,
+//     because it silently excludes every citation below it. Reported loudly.
+//   · Markers are recognised inside ``` fences too. A fenced block quoting
+//     source with its line as a header comment is exactly a record, and making
+//     fences opaque would put the most obvious case out of reach.
+const RECORD_OPEN = /^\s*<!--\s*citecheck:record\s*-->\s*$/;
+const RECORD_CLOSE = /^\s*<!--\s*\/citecheck:record\s*-->\s*$/;
+
+// Collected across all documents and printed by --role-only. Module-scope
+// because the scan is a loop over documents and the report runs after it.
+const markerErrors = [];
+
+// Returns a Set of 1-based line numbers inside a record block, and pushes any
+// structural problem onto markerErrors. Inputs: the document's lines, its
+// repo-relative path (for the error text). Output: Set<number>.
+function recordRanges(lines, relDoc) {
+  const inside = new Set();
+  let openAt = null;
+  lines.forEach((line, idx) => {
+    const n = idx + 1;
+    if (RECORD_OPEN.test(line)) {
+      if (openAt !== null) {
+        markerErrors.push(`${relDoc}:${n}  second <!-- citecheck:record --> with no close (first at :${openAt}) — markers do not nest`);
+        return;
+      }
+      openAt = n;
+      inside.add(n);
+      return;
+    }
+    if (RECORD_CLOSE.test(line)) {
+      if (openAt === null) {
+        markerErrors.push(`${relDoc}:${n}  <!-- /citecheck:record --> with no matching open`);
+        return;
+      }
+      for (let k = openAt; k <= n; k++) inside.add(k);
+      openAt = null;
+      return;
+    }
+  });
+  if (openAt !== null) {
+    // ⚠ THE SILENT-EXCLUSION CASE. Everything from openAt to EOF was already
+    // NOT added to `inside` (the loop only fills a range on a successful
+    // close), so an unclosed marker excludes NOTHING rather than everything.
+    // That is the deliberate direction: this mechanism must fail toward
+    // over-counting, never toward a quietly shrinking baseline.
+    markerErrors.push(`${relDoc}:${openAt}  <!-- citecheck:record --> is never closed — its block is COUNTED, not excluded`);
+  }
+  return inside;
+}
+
+// ─── ROLE_ONLY_BASELINE — a TRIPWIRE, not the mechanism ──────────────────────
+//
+// The number of line citations in tracked *.md that are NOT inside a record
+// marker. Asserted by --role-only against this constant, so the question
+// "did someone add a new line citation?" has a mechanical answer.
+//
+// ⚠ UPDATE THIS ONLY IN THE SAME COMMIT THAT DELIBERATELY CHANGES THE COUNT,
+// AND SAY SO IN THE COMMIT MESSAGE. Raising it to make a run go green is the
+// rubber-stamp failure this guard exists to prevent — the same contract
+// EXPECTED_ADMIN_ROUTE_COUNT and ANNOTATION_BASELINE carry.
+//
+// ⚠ AND IT IS A GREP COUNT, WHICH MAKES IT A LOWER BOUND, NOT A CENSUS.
+// It counts what CITE_RE can see: `path.ext:NNN`, ranges, and comma-lists, for
+// the 14 extensions in CITED_EXTS. It CANNOT see, and never will:
+//   · section pointers — `→ CDL_3b_BUILD_SPEC.md §10`. By design: they do not rot.
+//   · prose with no number — "the deactivate handler's transaction".
+//   · a line reference written as words — "line 554 of team.js".
+//   · any file whose extension is outside CITED_EXTS.
+// So a run that matches the baseline proves no NEW MATCHABLE citation was
+// added. It does not prove none was added. Read it as a tripwire for growth,
+// never as a census of the problem.
+// ⚠ MEASURED, NOT ESTIMATED, and measured AFTER the record markers and after
+// the same commit's own document edits — so it is the number this mode prints
+// at the commit that introduced it, not a figure taken mid-pass. (A count taken
+// before the last edit is about a different set; that mistake is recorded in
+// CLAUDE.md against the --changed-files rotted count.)
+const ROLE_ONLY_BASELINE = 785; // measured 2026-08-31, HEAD 255f1b3 + this commit
 
 // ─── git plumbing ────────────────────────────────────────────────────────────
 function git(cmd, fallback = '') {
@@ -454,6 +571,13 @@ for (const absDoc of docs) {
   let lines;
   try { lines = readLines(absDoc); } catch { continue; }
 
+  // Record-marked line numbers for THIS document, computed once per file.
+  // Stamped onto every finding as `inRecord` so both reports read the same
+  // parse rather than each deciding for itself — CLAUDE.md's "guards agreeing
+  // is not evidence when they share an input" cuts the other way here: there is
+  // exactly one thing to be right about, so there must be exactly one parse.
+  const recordLines = recordRanges(lines, relDoc);
+
   lines.forEach((rawLine, i) => {
     const line = maskUrls(rawLine);
     CITE_RE.lastIndex = 0;
@@ -467,6 +591,13 @@ for (const absDoc of docs) {
         doc: relDoc, docLine: i + 1, cited: citedPath, lineSpec,
         raw: full, target: res.matches[0] || null, mode: res.mode,
         matches: res.matches,
+        // ⚠ inRecord CHANGES NOTHING IN THE FIVE VERDICTS ABOVE. A record's
+        // citation still resolves, is still in range, and is still reported
+        // exactly as before. It only stops the citation COUNTING toward
+        // --role-only, and marks it as never a repair candidate. Making it
+        // suppress verdicts would hide a genuinely FILE_MISSING path inside a
+        // record, which is still worth seeing.
+        inRecord: recordLines.has(i + 1),
       };
 
       if (res.mode === 'missing')   { findings.push({ ...rec, verdict: 'FILE_MISSING' }); continue; }
@@ -673,6 +804,79 @@ if (CHANGED_FILES !== null) {
   }
 }
 
+// ─── --role-only: is anyone still WRITING line citations into the records? ───
+// The rest of this file asks whether existing citations still resolve. This
+// asks a different and earlier question: should the citation have been a line
+// number at all?
+//
+// It exists because repairing 503 rotted citations and changing nothing
+// structural buys about a year. The count is the tripwire: the baseline is
+// what is there today, and the assertion is that it must not GROW. That makes
+// the rule enforceable WITHOUT repairing anything first, which is why this
+// shipped before any repair and why the repair is now optional and
+// incremental.
+//
+// ⚠ IT PRINTS, like everything else here. See the note at --strict below.
+let roleOnlyBreach = false;
+if (ROLE_ONLY) {
+  const counted = findings.filter((f) => !f.inRecord);
+  const excluded = findings.length - counted.length;
+
+  const byDoc = new Map();
+  for (const f of counted) byDoc.set(f.doc, (byDoc.get(f.doc) || 0) + 1);
+  const rows = [...byDoc.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+  console.log('\n' + '='.repeat(76));
+  console.log('ROLE-ONLY — line citations that should have been role citations');
+  console.log('='.repeat(76));
+  console.log(`Declared set: every tracked *.md — ${docs.length} document(s).`);
+  console.log('⚠ NOT a hand-maintained list. It is citecheck\'s existing default document');
+  console.log('  set, so a new .md is in scope the day it is committed. A typed list is the');
+  console.log('  defect recorded against the brand sweep: new files invisible until someone');
+  console.log('  remembered them, with nothing announcing the omission.');
+
+  if (markerErrors.length) {
+    console.log('\n' + '-'.repeat(76));
+    console.log(`MARKER ERRORS — ${markerErrors.length}`);
+    console.log('  ⚠ AN UNCLOSED OPEN MARKER EXCLUDES EVERY CITATION BELOW IT, SILENTLY.');
+    console.log('  That is the one way this mechanism can under-report and look healthy.');
+    console.log('-'.repeat(76));
+    for (const e of markerErrors) console.log(`  ${e}`);
+  }
+
+  console.log('\n' + '-'.repeat(76));
+  console.log(`COUNTED — ${counted.length}   (excluded as records: ${excluded})`);
+  console.log('-'.repeat(76));
+  const w = rows.reduce((m, r) => Math.max(m, r[0].length), 0);
+  for (const [d, n] of rows) console.log(`  ${d.padEnd(w)}  ${String(n).padStart(4)}`);
+  if (!rows.length) console.log('  (none)');
+
+  console.log('\n' + '-'.repeat(76));
+  if (counted.length === ROLE_ONLY_BASELINE) {
+    console.log(`BASELINE — ${counted.length} matches ROLE_ONLY_BASELINE (${ROLE_ONLY_BASELINE}). No new line citations.`);
+  } else {
+    roleOnlyBreach = true;
+    const delta = counted.length - ROLE_ONLY_BASELINE;
+    console.log(`⚠ BASELINE BREACH — counted ${counted.length}, ROLE_ONLY_BASELINE is ${ROLE_ONLY_BASELINE} (${delta > 0 ? '+' : ''}${delta}).`);
+    if (delta > 0) {
+      console.log('  A line citation was ADDED to a tracked .md. Cite by ROLE instead — a');
+      console.log('  handler name, a function name, a section — and the number cannot rot.');
+      console.log('  If the new citation is part of a RECORD of a past state, wrap it in');
+      console.log('  <!-- citecheck:record --> … <!-- /citecheck:record --> and it stops');
+      console.log('  counting. Do NOT raise the baseline to make this line go away.');
+    } else {
+      console.log('  Citations were REMOVED or newly marked as records. That is the direction');
+      console.log('  this wants to move. LOWER the constant, in the same commit, and say so.');
+    }
+  }
+  console.log('-'.repeat(76));
+
+  console.log('\n⚠ THE COUNT IS A GREP COUNT AND A LOWER BOUND — read the constant\'s comment.');
+  console.log('⚠ AND A FALLING COUNT IS NOT AUTOMATICALLY PROGRESS: wrapping a live citation');
+  console.log('  in a record marker lowers it exactly as repairing one does. The marker is');
+  console.log('  for records of a PAST state, never for a citation you did not want to fix.');
+}
+
 console.log('\n' + '='.repeat(76));
 console.log(`TOTALS — OK ${ok.length} · STALE ${stale.length} · AMBIGUOUS ${ambiguous.length} · PAST_EOF ${pastEof.length} · FILE_MISSING ${missing.length}`);
 console.log(`END CITE-CHECK — ${today}, HEAD ${head}`);
@@ -683,4 +887,10 @@ console.log('='.repeat(76));
 // add it to a gate, a hook, or npm test: the correct real-repo output has a
 // large STALE count and a nonzero AMBIGUOUS count, so a gate on this would be
 // permanently red and would be silenced within a week.
-if (STRICT && (missing.length || pastEof.length || ambiguous.length)) process.exit(1);
+// ⚠ roleOnlyBreach IS INCLUDED HERE AND NOWHERE ELSE. --role-only PRINTS, like
+// everything above it; --strict is the fixture-proof escape hatch that lets a
+// deliberate injection be observed mechanically rather than by reading output.
+// Adding --role-only --strict to a gate would make the gate permanently red at
+// a nonzero baseline, which is the failure this file's header spends a
+// paragraph on.
+if (STRICT && (missing.length || pastEof.length || ambiguous.length || roleOnlyBreach)) process.exit(1);

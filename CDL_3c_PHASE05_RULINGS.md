@@ -829,6 +829,7 @@ one copy was born wrong recorded at the site so nobody "repairs" it arithmetical
 
 **C3b — A5's FIVE-vs-six:** proposed above (B10). ⚠ Both occurrences in the one sentence.
 
+<!-- citecheck:record -->
 **C3c — ⚠ A CORRECTION TO MY OWN PHASE 0 REPORT, WHICH IS NOW A REPO FILE.**
 `CDL_3c_PHASE0_REPORT.md` cites `server/db.js:70-74` for `activity_log`'s CREATE TABLE. **The
 correct location is `server/db.js:33-37`;** lines 69-74 are `announcement_settings`. **Fix before
@@ -863,6 +864,7 @@ rotted citations is the version of this mistake that is hardest to live down.
 
 **C3d — `CDL_3b_BUILD_SPEC.md:631`'s inverted line** on team password reset (see A3). Say
 **inverted**, not out of date, and say what is true now.
+<!-- /citecheck:record -->
 
 ---
 

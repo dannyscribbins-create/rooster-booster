@@ -5,6 +5,20 @@
 **Nature:** read-only verification pass. No source file, test, config or other document was
 modified. This file is the only thing this session created.
 
+⚠ **EVERY LINE CITATION BELOW IS PART OF THE RECORD, NOT A POINTER INTO TODAY'S CODE.** This
+document quotes what it cites, verbatim, as measured at `d0fb3aa` on 2026-08-21. Renumbering
+any of them to match today would make the document claim its quotes come from lines that now
+hold something else — the same distinction as `CLAUDE.md`'s RED-narrative rule: a record is not
+a claim about today.
+
+That exclusion was already stated in `scripts/citecheck.js`'s header, where **no tool could act
+on it.** The marker below is the machine-readable form, added 2026-08-31 with
+`npm run citecheck -- --role-only`. It changes nothing about this document's content and no
+line number in it moves.
+
+<!-- citecheck:record -->
+
+
 **What this is.** A roadmap reconciliation produced a sequencing plan from documents alone.
 Several records contradicted each other and the ordering depended on which side was true.
 Every check below states an EXPECTED value taken from those records, the ACTUAL value measured
@@ -881,3 +895,5 @@ the three counts it covers; for the rest, the technique itself is the limitation
 4. The `backend` source label carries 48 distinct errors with no attribution.
    `logError({ source: 'METHOD /path' })` is the convention; most callers omit it, so 72% of
    error volume lands in an ungroupable bin.
+
+<!-- /citecheck:record -->

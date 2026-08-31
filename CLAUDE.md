@@ -348,6 +348,32 @@ fact into a comment, ask whether a NAME would do.** Same-file, cite by role; cro
 by name. **Never cross-file by line number** — ABR 6B step 4 corrected four citations that had
 gone stale, one of which the correcting commit itself falsified.
 
+⚠ **AND ITS SCOPE IS EVERY TRACKED `.md`, NOT ONLY CODE COMMENTS. STATED HERE BECAUSE THE
+AMBIGUITY WAS COSTING 785 CITATIONS.** This paragraph opens *"before duplicating a fact into a
+COMMENT"*, so the rule read as being about code, and the governing documents were left to their
+own devices. **Measured 2026-08-31: 785 line citations across the tracked markdown, outside record
+blocks** — under a rule that appears to forbid them. **A rule whose reach is ambiguous is not
+being violated; it is being read differently**, and every one of those was written by someone who
+had read this file.
+
+**So: a document cites CODE by role — a handler, a function, a constraint, a route — exactly as a
+comment does.** *"`POST /api/login`'s frozen branch"*, never a line number into `referrer.js`. A
+line number is correct on the day it is written, and nothing ever tells you the day it stops
+being — which is the entire failure mode, and the reason this sentence carries no example of the
+wrong form.
+
+⚠ **TWO NARROW EXEMPTIONS, AND BOTH ARE ABOUT RECORDS RATHER THAN CONVENIENCE.** A **dated
+snapshot** that quotes what it cites, and a sentence **whose subject is that a citation is wrong**.
+Both are marked with `<!-- citecheck:record -->` … `<!-- /citecheck:record -->` and excluded from
+the count. **Marking a live citation to get it out of the count is the rubber-stamp failure** —
+the marker is for a record of a past state, never for a citation you did not want to fix.
+
+**`npm run citecheck -- --role-only` is what makes this enforceable rather than aspirational.** It
+counts what is there against `ROLE_ONLY_BASELINE` and reports growth. ⚠ **It PRINTS — it is in no
+gate, and it must not be added to one.** ⚠ **And it does NOT require the 785 to be repaired
+first**: the baseline is today's number and the assertion is that it must not grow, so the rule
+binds new writing immediately while the repair stays incremental and optional.
+
 ⚠ **A MEASURED INSTANCE, AND THE WAY THE LAST COPY SURFACED IS THE LESSON.** C/DL-3c Phase 1a
 found one claim — *"the theme engine exists, so only the toggle is missing"* — repeated across
 governing documents, engine-true and surface-false in every copy. A deliberate enumeration
@@ -434,6 +460,38 @@ at any point in their history. **That is the argument against arithmetic repair 
 form: the two numbers were never the same fact.** Both now cite by role.
 → *When the artifact under repair is a SET of citations* below, which is what finding these
 required.
+
+⚠ **AND THE EXEMPTION HAS A HOLE IN IT: A RECORD-OF-A-ROT WRITTEN AS A LINE NUMBER ROTS TOO.**
+*"Never repair a record"* is the standing exemption — a dated snapshot, or a sentence whose
+subject is that a citation is wrong, must not be renumbered, because renumbering destroys the
+evidence. **That is right and it is only half the rule.**
+
+<!-- citecheck:record -->
+**The worked example, and it is deliberately left unrepaired so it stays checkable:**
+`TENANT_RESOLUTION_REBUILD_SPEC.md`'s PRE-D7 record block records its own rot **and writes the
+CORRECTIONS as line numbers** — *"`admin/index.js:66-67` is now `:103-106`; `auth.js:11-32` is now
+`:45-70`. Verified 2026-08-27 at `8884a97`."* Both corrected targets are hot files. **The
+correction is now itself a citation that nobody is allowed to touch, into code that has moved
+underneath it.** Protecting that block preserves an answer that is already going wrong, and the
+protection is what stops anyone noticing.
+
+⚠ **SO THE CLASS NEEDS ROLE-BASED CORRECTIONS, NOT PROTECTION.** When you record that a citation
+rotted, quote the wrong number — that is the evidence — and give the correction **by role**: the
+function, the handler, the constraint. *"`auth.js:11-32` — now `verifyAdminSession()`"* is a
+record that stays true. *"now `:45-70`"* is a second citation with the same lifespan as the first.
+<!-- /citecheck:record -->
+*(The two paragraphs above are inside a record marker, and that is not decoration: they QUOTE
+rotted citations as evidence. Without it this file's own rule would count them as violations of
+itself — which is how the mechanism gets switched off within a month.)*
+
+⚠ **AND DO NOT FIX THE EXAMPLE ABOVE AS PART OF WRITING THIS DOWN.** Repairing the worked example
+inside the entry that describes it is the shape this project keeps getting wrong — the correcting
+commit falsifying the thing it corrects. It is filed on `PRE_LAUNCH_CHECKLIST.md` as its own job.
+
+**Machine-readable since 2026-08-31:** a record block is marked with
+`<!-- citecheck:record -->` … `<!-- /citecheck:record -->`, and `npm run citecheck -- --role-only`
+excludes what is inside one. ⚠ **The marker says "this is a record." It does NOT say "this is
+correct."** A record's citations are exempt from repair and are not exempt from being wrong.
 
 **And the cheapest mitigation is WHERE you insert, which costs nothing to get right.**
 Append new `server/db.js` migrations near the **END** of the file. The highest citation
