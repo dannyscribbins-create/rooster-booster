@@ -298,7 +298,7 @@ No migration in this phase. Visual review of Skeleton across a referrer screen a
 
 ## 9. Explicitly out of scope for 3a
 
-The Field Rep app shell and any rep screen · the unified login rebuild · 2FA · set/forgot password · the branding **resolution chain** (sources 1–5, CD-24) · the `qr_link` writer (3d) · the rep-token mint path (3d) · the network graph (3e) · migrating `R`/`AD` to CSS variables · replacing every inline spinner caller · the revenue *display* surface · leaderboards.
+The Field Rep app shell and any rep screen · the unified login rebuild · 2FA · set/forgot password · the branding **resolution chain** (sources 1–5, CD-24) · the `qr_link` writer (3d) · the rep-token mint path (3d) · the network graph (3e) · migrating `R`/`AD` to CSS variables (⚠ **correctly excluded here, and then owned by NOTHING for the whole arc — this out-of-scope list was the only place it existed as work until C/DL-3c Phase 1a gave it a named row. See `PRE_LAUNCH_CHECKLIST.md` → *The R/AD → CSS-variable migration*.**) · replacing every inline spinner caller · the revenue *display* surface · leaderboards.
 
 ---
 

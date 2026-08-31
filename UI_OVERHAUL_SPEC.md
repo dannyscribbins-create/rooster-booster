@@ -283,7 +283,16 @@ Deliberately placed, all optional, none gated:
 - Contrast checked against **every** contractor theme, not just the pilot's.
 
 ### 11.3 Theme
-- Dark mode for referrers: **UX-2 RESOLVED 2026-08-21 — the engine and the preference store both already exist; only the toggle UI is missing.** It reuses the shared user-level theme preference store already locked for reps (CD-21) — do not build a second mechanism. ⚠ This line read *"deferred pending decision (§12)"* until UX-2 resolved; corrected here in the same edit, because a second copy of a decision goes stale the moment the first one moves.
+- Dark mode for referrers: **UX-2 RESOLVED 2026-08-21 — the engine and the preference store both already exist; only the toggle UI is missing.**
+  ⚠ **THAT SENTENCE IS ENGINE-TRUE AND SURFACE-FALSE, corrected C/DL-3c Phase 1a.** The
+  engine does produce both modes and the store does exist. **But THIS SPEC'S OWN SCOPE —
+  `src/components/referrer/*` — has never been migrated to the theme system: 793 `R.*`
+  references across 16 files, and `--rm-*` appears ZERO times.** "Only the toggle UI is
+  missing" is correct for the rep and auth surfaces and wrong here. **Referrer dark mode
+  needs the R/AD migration first**, which is what CD-21's deferred design pass has to cover
+  — the two are filed as one item. → `PRE_LAUNCH_CHECKLIST.md` → *The R/AD → CSS-variable
+  migration*. ⚠ **UX-2 stays RESOLVED as a DECISION; what changed is the size of the work
+  it resolved to.** It reuses the shared user-level theme preference store already locked for reps (CD-21) — do not build a second mechanism. ⚠ This line read *"deferred pending decision (§12)"* until UX-2 resolved; corrected here in the same edit, because a second copy of a decision goes stale the moment the first one moves.
 - Every new color introduced by this spec is a token. Zero new hex literals in component files.
 
 ### 11.4 Engineering discipline (house rules, unchanged)

@@ -2413,19 +2413,118 @@ root cause, and patching them separately produces six unrelated special cases)
 > checkboxes.** Fifth hand-maintained count found below its true value in this arc, and the second
 > inside the document set that records *"a number in a governing document needs a source."*
 
-- [ ] `on-primary` render token — white on the platform default is **3.06:1**, below AA, in
-      both modes. Currently worked around locally in two files.
-- [ ] Light mode has **no contrast floor on `primary` at all** — `BRAND_ON_DARK_MIN_CONTRAST`
-      governs dark only.
-- [ ] Dark-mode logo collision — **option (B) recommended**: a light plate behind the logo in
-      dark mode. One rule, every contractor, no new data.
-- [ ] Hardcoded body background (`useReferrerFonts` sets `R.bgPage`) — wrong in dark mode,
-      and `body` sits outside the provider so `var(--rm-bg)` will not resolve there.
+- [x] **`on-primary` render token — DONE, C/DL-3c Phase 1a (Ruling 1).** `onPrimary` is the
+      sixth key in `RENDER_TOKEN_KEYS`, derived per brand and per mode, mounted as
+      `--rm-on-primary`. The two local workarounds are retired.
+      ⚠ **THE WORKAROUND WAS ITSELF BELOW AA AND NOBODY KNEW.** Both copies chose between
+      white and `#111111`; that pair bottoms out at **4.345:1** and misses 4.5:1 on ~3.4% of
+      colours, the failures being blues — `#0073FF` is an ordinary brand primary. The token
+      uses pure white/black, whose worst case is **4.583:1**, so it clears AA for any fill
+      with no nudge loop. The defect was live for a class of contractor nobody has onboarded.
+- [x] **Light-mode contrast floor on `primary` — DONE, C/DL-3c Phase 1a (Ruling 2).**
+      `BRAND_ON_LIGHT_MIN_CONTRAST = 3`, WCAG SC 1.4.11 non-text contrast, because `primary`
+      is a FILL; the TEXT floor belongs to `onPrimary`. **Two numbers, two pairs.**
+      ⚠ **DO NOT "TIGHTEN" IT TO 4.5.** Measured: at 4.5 the loop repaints the platform's own
+      `#F26A1B` to `#C54F0B` — a visibly browner orange, everywhere in light mode, applied
+      silently by a derivation function. That is a rebrand, not a contrast fix. At 3 no real
+      palette moves at all. A test pins the number and says why.
+- [x] **Dark-mode logo collision — DONE, C/DL-3c Phase 1a (Ruling 3).** `<BrandLogo>`
+      (`src/components/shared/`), option (B), plating on the LIGHT surface colour.
+      ⚠ **FOUR SITES, NOT SIX.** `SignupScreen` and `EmailVerifyScreen` also render a logo and
+      were **correctly excluded** — both paint entirely from `R` and have no dark mode to
+      collide in. See the R/AD migration entry below, which owns them.
+      ⚠ **THE SAFETY ARGUMENT HAS AN EXPIRY CONDITION, STATED IN THE COMPONENT AND PINNED BY A
+      TEST:** it holds while there is ONE logo slot. A dark-artwork upload field makes white
+      artwork reachable, and the plate would then hide it in the mode it was uploaded for.
+- [~] **Hardcoded body background — PARTIALLY CLOSED, C/DL-3c Phase 1a (Ruling 4).**
+      ✅ The write is out of `useReferrerFonts()` (a font loader owned the page ground) and
+      into `ThemeLayer`, keyed on the derived `bg` token, restoring on unmount.
+      ⬜ **`Screen.jsx`'s own hardcoded page colour is UNTOUCHED** — referrer-tree-only, and
+      it belongs to the R/AD migration entry below.
+      ⚠ **THIS ENTRY USED TO BILL THE ITEM AS "wrong in dark mode … the first thing anyone
+      sees." THAT WAS FALSE, and it was repeated into two build prompts.** Every themed
+      surface — `LoginScreen`, `ChoiceScreen`, `FrozenAccountScreen`, `ResetPinScreen`,
+      `RepPlaceholder` — paints its own `minHeight:100vh` canvas from `var(--rm-bg)`, so body
+      is covered on all five. The only place it shows through is the referrer app's desktop
+      gutters, and the referrer app is held in light mode.
+      ⚠ **SO: WHAT WILL A USER SEE WRONG AFTER THIS FIX? NOTHING — AND THAT IS THE FINDING,
+      NOT A REASSURANCE.** The fix is correct, worth making, and invisible today. It is
+      recorded as half-closed precisely so nobody reads it as having closed a visible defect.
+      ⚠ One measured side effect while the referrer canvas stays on `R`: body now paints the
+      contractor's real background while the 430px column still paints `R`'s page colour — a
+      **faint desktop seam, 1.124:1** for the platform palette, light mode only. It closes
+      when the migration lands, and it is the visible edge of the unmigrated surface.
 - [ ] Cold-start branding flash — first `?brand=` visit paints neutral for ~¼ second.
+      ⚠ **DEFERRED TO C/DL-3c PHASE 1c, AND IT MAY NOT BE A DEFECT.**
+      `BrandingProvider.jsx` states paint-neutral-immediately as CORRECT, citing D-I; this
+      entry calls it a defect. Both cannot be true. 1c reads D-I and rules: either confirm it
+      and reclassify this line as *known consequence, accepted* — closing it so it stops
+      being re-flagged — or reopen D-I deliberately. **Do not silently "fix" a ruled decision
+      inside a theme pass.**
 - [ ] **Sign In button reads as a warning, not a primary action.** Near-black on orange is
       legible and correct by the contrast rule, but the *palette* question is open — this is
       a design decision, not a bug. **NEW, from the Phase 5 visual check; not previously
       recorded.**
+      ⚠ **OUT OF C/DL-3c (ruled Phase 1a). It belongs to the UI Overhaul arc, where palette
+      judgements belong.** 6.16:1 passes, so there is no accessibility defect to fix here.
+      ⚠ **RULING 1 GAVE THIS DECISION A SINGLE HOME:** `readableForegroundOn()` in
+      `server/utils/themeTokens.js` (mirrored in `src/utils/themeTokens.mjs`) is now the one
+      place the foreground for a primary-filled control is chosen, for every brand at once.
+      When the palette question is ruled, that function is the only site that changes.
+
+**The theme toggle — the switch is REP-ONLY, and the store is shared (ruled Phase 1a)**
+- [ ] **CD-21 already ruled this and it must be built deliberately, not discovered.** The
+      preference is **user-level and shared BY DESIGN** — one store, both apps. **What is
+      gated is who may SET it.** The switch ships on the rep surface only.
+      **The reason, measured:** a referrer flipping it gets a **half-dark app** — the only
+      shared primitive the referrer tree imports that reads `--rm-*` is `Skeleton`, so a dark
+      `Skeleton` would sit on a light `R` canvas, in the surface with the most users.
+      CD-21: *"Not in this arc: client-app dark variants, which need their own design pass."*
+
+**⚠ THE C/DL-3c PHASE 1c REAL-BROWSER CHECK — WHAT IT COVERS, AND WHAT IT CANNOT**
+- [ ] **1c covers the AUTH and REP surfaces in both modes. It does NOT cover the referrer
+      app, and that is CORRECT BY CONSTRUCTION rather than pending.**
+      **Covered:** `LoginScreen`, `ChoiceScreen`, `FrozenAccountScreen`, `ResetPinScreen`,
+      `RepPlaceholder`, and the shared primitives — every one paints from `--rm-*`.
+      **Not covered:** the five referrer tabs. They render from `R` (**793 `R.*` references
+      across 16 files; `--rm-*` appears zero times**), so flipping the mode changes nothing
+      on them. **A dark-mode walkthrough there would be checking a surface that cannot
+      respond.** Referrer dark belongs to the R/AD migration and to CD-21's deferred design
+      pass. ⚠ **1c must not report coverage of it** — a check reporting health it cannot
+      observe is this project's own recurring false-health shape.
+
+**🔴 THE R/AD → CSS-VARIABLE MIGRATION — UNOWNED UNTIL 2026-08-30, AND LAUNCH-GATING**
+- [ ] **THE MEASURED STATE.** `src/components/referrer/*` plus `src/components/shared/Screen.jsx`
+      carry **793 `R.*` references across 16 files and ZERO `--rm-*`**. The referrer app has
+      never been migrated to the theme system. Add `src/components/auth/SignupScreen.jsx` (26
+      `R.*`, 448 lines) and `EmailVerifyScreen.jsx` (34 `R.*`, 367 lines) — two AUTH surfaces
+      that are also wholly off the theme system and sit outside `referrer/`, so a migration
+      scoped by folder would orphan them exactly as this item was orphaned.
+- [ ] **WHAT IT BLOCKS.** Referrer dark mode · CD-21's deferred client-app design pass ·
+      `UI_OVERHAUL_SPEC.md` UX-2's real completion · `Screen.jsx`'s hardcoded page colour and
+      the desktop seam recorded under the body-background item above.
+- [ ] ⚠ **WHY THREE DOCUMENTS SAID IT WAS DONE, WHICH IS THE PART TO INTERNALISE.**
+      `EXECUTION_SEQUENCE.md` row 1.3 (*"only the switch is missing"*), that file's Wave 3
+      *UI Overhaul arc* row (*"UX-2 is a QA pass, not a build"*) and `UI_OVERHAUL_SPEC.md`
+      UX-2 (*"the engine and the preference store both already exist"*) are all
+      **ENGINE-TRUE AND SURFACE-FALSE.** The engine does produce both modes; the surface
+      cannot express either. Every one of those sentences is accurate about the half it
+      names and silent about the half that blocks launch. **All four copies are corrected in
+      the same commit as this entry.**
+- [ ] ⚠ **IT EXISTED AS WORK IN EXACTLY ONE PLACE AND IT WAS AN OUT-OF-SCOPE LIST** —
+      `CDL_3a_BUILD_SPEC.md` §9, *"migrating `R`/`AD` to CSS variables"*. Correctly excluded
+      from 3a; never picked up by anything. **Membership in an arc is how it became
+      invisible, which is why it has a named row now and not a bullet inside one.**
+- [ ] **SIZE — mostly mechanical, with a judgement-heavy core.** ~850 token sites across 18
+      files. The bulk is a one-for-one substitution (`R.textPrimary` → `var(--rm-text, …)`).
+      **The judgement is in the values `R` has and the render tokens do not** — `bgPage` vs
+      `bgCard` vs `bgSurface` is a three-level elevation the five-token set expresses with two
+      (`bg`, `surface`), so the arc must either add a token or rule the collapse. That is a
+      design decision, not a sweep, and it is the reason this cannot be done by find-replace.
+- [ ] **OWNER: Wave 3, inside the UI Overhaul arc** — which already owns
+      `UI_OVERHAUL_SPEC.md`, whose scope is `src/components/referrer/*`: the same 16 files.
+      **Filed with CD-21's deferred design pass as ONE item**, because you cannot design
+      referrer dark variants against a surface that cannot express a variant.
 
 **The branding chain**
 - [ ] **R2 — login does not write the hint from the session.** Requires a **slug** in the auth

@@ -748,8 +748,14 @@ colour. (Also recorded in memory: `project_jsdom_css_limits`.)
 | `FrozenAccountScreen` | ✓ | ✓ | shipped 3b |
 | `ResetPinScreen` | ✓ | ✓ | shipped 3b; carries its **own** provider instance — verify branding actually paints |
 | `RepPlaceholder` / the rep shell | ✓ | ✓ | dark logo collision confirmed here already |
-| `ReferrerApp` (all five tabs) | ✓ | ✓ | **dark is unreachable until 3c's toggle ships — so this is genuinely first-run** |
+| `ReferrerApp` (all five tabs) | n/a | n/a | ⚠ **CORRECTED C/DL-3c Phase 1a — NOT first-run, UNREACHABLE BY CONSTRUCTION.** The tabs do not read `--rm-*` at all (793 `R.*` across 16 files, zero `--rm-*`), so no mode change reaches them. The two ✓s here budgeted for findings on a surface that cannot respond. |
 | The admin panel | ✓ | n/a | outside the provider by Ruling 5; verify the `#012854` scrim did not turn white |
+
+⚠ **CORRECTED C/DL-3c Phase 1a: the sentence below is true and its implication is not.** Dark
+mode has never been rendered on a referrer surface, and it still cannot be — the referrer tabs
+paint from `R`, not `--rm-*`. **Expect findings on the AUTH and REP surfaces; expect nothing
+on the referrer tabs**, and see `PRE_LAUNCH_CHECKLIST.md` → *The R/AD → CSS-variable
+migration*. The original text follows.
 
 ⚠ **Dark mode has never been rendered by a human on any referrer surface**, because the toggle
 does not exist. **Expect findings.** The body-background item (8c #4) is *latent today and visible
