@@ -168,7 +168,15 @@ const ARROW_NEEDLE = /[←→↔↚↠⇐⇒⇦⇨⟵⟶⬅⮕➜]|(?:^|\s)<-{1,
 // src/components/shared/SurfaceSwitcher.jsx (the owner/admin-rep's second
 // destination). Deliberate; nothing removed; backend untouched. Second time this
 // guard has fired on a real addition and second time it was right to.
-const ANNOTATION_BASELINE = { backend: 54, frontend: 53 }; // 107 total
+// frontend 53 → 54 on 2026-08-31 (C/DL-3c Phase 2c): ONE annotation added, on
+// src/components/auth/TeamAccessRevokedScreen.jsx — Ruling B's screen. The
+// annotation says it is a SIBLING of FrozenAccountScreen rather than a variant,
+// which is the one thing about that file a listing can usefully carry: the two
+// screens are adjacent in the tree, look alike, and merging them would tell a
+// person who just signed in that they cannot get in. Deliberate; nothing
+// removed; backend untouched. THIRD consecutive phase this guard has fired on a
+// real addition and third time it was right to.
+const ANNOTATION_BASELINE = { backend: 54, frontend: 54 }; // 108 total
 
 // ─── block definitions ───────────────────────────────────────────────────────
 // TWO blocks, TWO marker pairs, deliberately never merged. The backend and

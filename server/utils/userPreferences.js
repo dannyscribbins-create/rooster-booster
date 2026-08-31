@@ -29,6 +29,22 @@ const SUBJECT_COLUMNS = {
 // which must use this same constant.
 const THEME_MODE_PREF_KEY = 'theme_mode';
 
+// team_access_revoked_seen holds `true` once a deactivated team member has been
+// SHOWN the Ruling B notice at login (C/DL-3c Phase 2c). Subject is always
+// 'team_member' — the frozen row — never the homeowner `users` row the session
+// is actually minted for, which in the general case belongs to a different
+// contractor entirely.
+//
+// ⚠ ITS WRITER AND ITS ERASER LIVE IN DIFFERENT FILES, WHICH IS THE WHOLE REASON
+// IT IS NAMED HERE. POST /api/login writes it (server/routes/referrer.js); the
+// reactivation transaction clears it (PATCH /api/admin/team/:id/reactivate in
+// server/routes/admin/team.js). pref_key is a bare TEXT column with no
+// constraint, so a writer and an eraser that disagree by one character produce
+// NO ERROR ANYWHERE — the clear silently matches nothing, the flag survives
+// reactivation, and a SECOND freeze is never announced. That is precisely the
+// defect Ruling B exists to fix, reintroduced by a typo.
+const TEAM_ACCESS_REVOKED_SEEN_PREF_KEY = 'team_access_revoked_seen';
+
 // Resolves a subjectType to its column, or throws. Fail-closed by design —
 // there is no sensible default subject type.
 function resolveSubjectColumn(subjectType) {
@@ -120,4 +136,46 @@ async function setPreference({ subjectType, subjectId, contractorId, key, value 
   }
 }
 
-module.exports = { getPreference, setPreference, THEME_MODE_PREF_KEY };
+// Deletes one preference, so the next read is indistinguishable from never
+// having been written. Returns the number of rows removed — 0 when there was
+// nothing to clear, which is an ordinary state and not an error.
+//
+// ⚠ IT TAKES A `db`, AND THAT IS THE ENTIRE REASON THIS FUNCTION EXISTS RATHER
+// THAN A DELETE AT THE CALL SITE. Its one caller is the reactivation handler,
+// which must clear the key INSIDE the same transaction that sets
+// `active = true` — so the statement has to run on that checked-out client, not
+// on the pool. `getPreference`/`setPreference` are hardcoded to the pool and
+// therefore cannot join a transaction; passing them a client was rejected as a
+// wider change than this phase needs. If either ever acquires a transactional
+// caller, give it the same parameter rather than duplicating the SQL.
+//
+// ⚠ AND IT RE-THROWS, UNLIKE getPreference. A swallowed failure here would let
+// the transaction COMMIT with `active = true` and a stale seen key still
+// present: reactivation would look successful and the member's NEXT freeze would
+// be silent, which is the exact defect Ruling B exists to fix. The caller's
+// ROLLBACK depends on this throw reaching it.
+//
+// The default of `pool` keeps every non-transactional caller unchanged; the
+// tenancy predicate is the same defense-in-depth shape setPreference carries.
+async function clearPreference({ db = pool, subjectType, subjectId, contractorId, key }) {
+  try {
+    const column = resolveSubjectColumn(subjectType);
+    const result = await db.query(
+      `DELETE FROM user_preferences
+        WHERE ${column} = $1 AND contractor_id = $2 AND pref_key = $3`,
+      [subjectId, contractorId, key]
+    );
+    return result.rowCount;
+  } catch (err) {
+    await logError({ req: null, error: err, source: 'clearPreference' });
+    throw err;
+  }
+}
+
+module.exports = {
+  getPreference,
+  setPreference,
+  clearPreference,
+  THEME_MODE_PREF_KEY,
+  TEAM_ACCESS_REVOKED_SEEN_PREF_KEY,
+};

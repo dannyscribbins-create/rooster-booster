@@ -1555,6 +1555,9 @@ export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChang
   const [showAdd, setShowAdd]               = useState(false);
   const [confirm, setConfirm]               = useState(null);   // memberId awaiting deactivation confirm
   const [deactivating, setDeactivating]     = useState(false);
+  // memberId mid-flight, not a boolean: reactivation has no confirm step, so more
+  // than one row can be clicked in a burst and only the clicked row may spin.
+  const [reactivating, setReactivating]     = useState(null);
   const [resending, setResending]           = useState(null);   // memberId being resent
   const [resendMsg, setResendMsg]           = useState(null);   // { id, text, warn }
   const [selectedMember, setSelectedMember] = useState(null);   // Sub-piece 2: edit drawer
@@ -1630,6 +1633,30 @@ export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChang
     } finally {
       setDeactivating(false);
       setConfirm(null);
+    }
+  }
+
+  // Decision E-min (C/DL-3c Phase 2c). The undo for handleDeactivate above.
+  //
+  // ⚠ IT DOES NOT RESTORE SESSIONS AND THE SERVER DOES NOT PRETEND TO. Deactivation
+  // DELETEs the member's session rows; those tokens are gone. The member signs in
+  // again, normally — see the route's own comment for why a "restored" session would
+  // be a bearer credential nobody asked for.
+  async function handleReactivate(memberId) {
+    setReactivating(memberId);
+    setErr(null);
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/admin/team/${memberId}/reactivate`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${getAdminToken()}` },
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Reactivation failed');
+      await fetchMembers();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setReactivating(null);
     }
   }
 
@@ -1926,6 +1953,37 @@ export default function AdminTeamSettings({ teamNavRequest, onOpenFlagCountChang
                                   }}
                                 >
                                   <i className="ph ph-user-minus" style={{ fontSize: 14 }} />
+                                </button>
+                              )}
+                              {/* Reactivate — the undo for the button above (Decision
+                                  E-min, C/DL-3c Phase 2c). Until this shipped, every
+                                  write to team_members.active in the codebase set it
+                                  FALSE, so deactivating the wrong person was a one-way
+                                  door recoverable only by a direct database edit.
+
+                                  ⚠ NO CONFIRM STEP, DELIBERATELY, AND IT IS NOT AN
+                                  OVERSIGHT. Its sibling asks because deactivation
+                                  destroys sessions and locks someone out; this one
+                                  restores access and IS the undo. Guarding an undo
+                                  behind a confirmation is what makes people stop
+                                  reading confirmations. */}
+                              {!m.active && (
+                                <button
+                                  onClick={() => handleReactivate(m.id)}
+                                  disabled={reactivating === m.id}
+                                  title="Reactivate member"
+                                  style={{
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    width: 30, height: 30, borderRadius: AD.radiusMd,
+                                    cursor: reactivating === m.id ? 'default' : 'pointer',
+                                    background: 'transparent', border: `1px solid ${AD.border}`,
+                                    color: AD.greenText, transition: 'all 0.12s',
+                                  }}
+                                >
+                                  <i
+                                    className={reactivating === m.id ? 'ph ph-circle-notch' : 'ph ph-user-plus'}
+                                    style={{ fontSize: 14 }}
+                                  />
                                 </button>
                               )}
                             </div>

@@ -347,11 +347,15 @@ all cite 1.3 / 1.4 / 1.7 by number. Every existing citation stays true.
       and changes what `gatherLoginCandidates()` returns for that address.
       **Delete pairs deliberately, decide each side, and check the OWNER pair last** — that one
       is a live Owner on Accent's roster. → the full table is in the Wave 1.1 section
-      ⚠ **AND THERE IS STILL NO REACTIVATION ROUTE, WHICH MAKES ANY MISTAKE HERE ONE-WAY.**
-      Every write to `team_members.active` in the codebase is `SET active = false` inside the
-      deactivate handler in `server/routes/admin/team.js`; `PATCH /api/admin/team/:id` builds
-      its `UPDATE` from a four-field allowlist that `active` cannot reach. **Deactivation is
-      irreversible without a direct DB edit until E-min lands in Wave 1.3.**
+      ⚠ **THIS WARNING IS RETIRED AS OF 2026-08-31 (C/DL-3c Phase 2c), AND IT IS LEFT HERE
+      RATHER THAN DELETED BECAUSE IT CHANGES WHAT THIS TASK COSTS.** It read *"AND THERE IS
+      STILL NO REACTIVATION ROUTE, WHICH MAKES ANY MISTAKE HERE ONE-WAY … irreversible without
+      a direct DB edit until E-min lands in Wave 1.3."* E-min has landed:
+      `PATCH /api/admin/team/:id/reactivate` and a Reactivate control in the Team panel.
+      ⚠ **DEACTIVATION IS NOW REVERSIBLE. DELETION IS NOT, AND THAT IS WHAT THIS ENTRY IS
+      ABOUT.** The pairs above are to be DELETED, and `sessions.user_id` is
+      `ON DELETE CASCADE`. **Do not read "there is an undo now" as covering this task** — there
+      is an undo for the wrong button, not for this one.
 - [ ] **Retire `ADMIN_PASSWORD`** — superseded by per-member team credentials. Still required
       at boot (`server.js` crashes without it, intentionally) so retiring it is a code change,
       not just an env deletion. → `CLAUDE.md`, `SECURITY_HARDENING_SPEC.md`
@@ -1243,7 +1247,13 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       instead of reporting what it actually knows — one layer up, in the frontend.
       → Stripe architecture phase.
 
-- [ ] **🔴 NO REACTIVATION PATH — DEACTIVATION IS A ONE-WAY DOOR.**
+- [x] **✅ CLOSED 2026-08-31 (C/DL-3c Phase 2c) — the one-way door is closed.**
+      `PATCH /api/admin/team/:id/reactivate` plus a Reactivate control in the Team panel. Full
+      detail on the entry in **Decision E — rep lifecycle / offboarding** below; not repeated
+      here, because two copies of one closure are two things that can disagree later.
+      *The original entry follows unedited:*
+
+      **🔴 NO REACTIVATION PATH — DEACTIVATION IS A ONE-WAY DOOR.**
       Every write to `team_members.active` in the entire codebase is `SET active = false` at
       `admin/team.js:555`. `PATCH /api/admin/team/:id` builds its `UPDATE` from a four-field
       allowlist (`:294-297`, applied at `:303`) — `full_name`, `title_id`, `tier`,
@@ -2152,8 +2162,72 @@ check — which is why this is a named build rather than a checklist line.
       value undefined inside the invoice-paid webhook's invite branch; the handler threw and
       **swallowed it**, so a homeowner never received their invite and nothing reported it.
       Sweep `catch {}` on paths that SEND or WRITE. → §10
-- [ ] **Non-transactional paired writes** — deactivate (`team.js:554-555`), promote,
-      permission-save. Fix together. → §10
+- [ ] **Non-transactional paired writes** — promote and permission-save. Fix together. → §10
+      ⚠ **DEACTIVATE WAS REMOVED FROM THIS LIST 2026-08-31, AND IT HAD BEEN FIXED SINCE
+      WAVE 1.1-b.** This entry read *"deactivate (`team.js:554-555`), promote,
+      permission-save"*; the deactivate handler has carried an explicit `BEGIN`/`COMMIT`/
+      `ROLLBACK` with the client released in `finally` since that wave, and the line number
+      had drifted twice on top of being wrong about the subject. **A closed item left on an
+      open list is the "a list that can only grow" failure in miniature** — anyone sizing this
+      work would have budgeted for three handlers and found two.
+      ⚠ **CITED BY ROLE, NOT BY LINE.** `POST /api/admin/team/:id/promote` writes the rep-flag
+      `UPDATE` and its `activity_log` INSERT as two statements; the permission-save handler
+      does the same with its `UPDATE` and its audit row. Both are in
+      `server/routes/admin/team.js`. **The reactivation handler added in Phase 2c deliberately
+      copied the deactivate shape, not this one.**
+
+- [ ] **🟠 NEITHER DEACTIVATION NOR REACTIVATION WRITES AN `activity_log` ROW.** Opened by
+      C/DL-3c Phase 2c. The promote and permission-save handlers beside them both write one —
+      promote even records before→after values — but **the two handlers that revoke and
+      restore a person's entire access to the admin panel record nothing anywhere.** There is
+      no way to answer "who turned this member off, and when" from inside the product.
+      **Phase 2c did not add one to reactivate**, deliberately: the instruction specified the
+      transaction's contents, and adding an audit row to one side of a symmetric pair while
+      leaving the other silent makes the record *look* complete when it covers half the
+      lifecycle. **Fix both together, in one pass, with the same detail shape promote uses.**
+      → Decision E / §10
+
+- [ ] **🟡 `registryReconciliation.test.js`'s SANITY COMMENT NAMES FLAGS AS "ROUTE-LESS" THAT
+      HAVE ROUTES.** Found by C/DL-3c Phase 2c. Its floor comment reads *"Confirmed route-less
+      active flags = 6: billing, billing.manage, **team**, **team.manage**, rep_assignment,
+      cashouts.manage"*. Measured at HEAD: `requirePermission('team.manage')` gates **nine**
+      routes and `requirePermission('team')` gates two.
+      ⚠ **NO ASSERTION DEPENDS ON IT — THE FLOOR IS `>= 15` AND THE COMMENT IS ARITHMETIC
+      SHOWN TO JUSTIFY IT.** That is exactly what makes it worth a line: a wrong derivation
+      sitting under a correct-looking threshold is how the next person to adjust the floor
+      derives a wrong number from a document that has "always been there". **Correct the
+      comment, or delete the arithmetic and source the floor some other way — do not raise the
+      floor from it.** → §10
+
+- [ ] **🟠 THE BUILD SPECS' LINE CITATIONS INTO `referrer.js`, `team.js` AND
+      `AdminTeamSettings.jsx` ARE ROTTED AT SCALE, AND THIS IS A MEASUREMENT, NOT AN
+      IMPRESSION.** Opened by C/DL-3c Phase 2c. That phase's commit made
+      `npm run citecheck -- --changed-files` report **177 LIKELY ROTTED**. ⚠ **THAT NUMBER IS
+      NOT A STATEMENT ABOUT THIS PHASE** — the mode flags citations pointing INTO files you
+      touched, and 2c touched two of the most-cited files in the repository.
+      **TEN WERE SAMPLED AND READ AT THE OLD LINE IN THE OLD REVISION (`git show HEAD:…`), the
+      procedure CLAUDE.md prescribes. EIGHT WERE ALREADY WRONG BEFORE THE PHASE BEGAN:**
+      - `CDL_3b_BUILD_SPEC.md:53` cites `referrer.js:1053` for the `referrerLoginLimiter`
+        mount — HEAD holds `} catch (cacheErr) {`; the limiter is mounted ~300 lines below.
+      - `CDL_3b_BUILD_SPEC.md:447` cites `team.js:554-555` for deactivate's paired writes —
+        HEAD holds `);`. **And the claim is stale too: that handler has been transactional
+        since Wave 1.1-b.**
+      - `CDL_3b_BUILD_SPEC.md:446` cites `referrer.js:49` for the local `escapeHtml` — HEAD
+        holds a comment; the definition is at `:57`. Off by eight.
+      - `CDL_3b_BUILD_SPEC.md:445` cites `referrer.js:1158` — HEAD holds a bare `try {`.
+      - `CDL_3b_BUILD_SPEC.md:577` cites `AdminTeamSettings.jsx:1833` — HEAD holds a style
+        line.
+      - `CDL_3a_BUILD_SPEC.md:295` cites `team.js:764` — HEAD holds an unrelated `action ===
+        'assign'` guard.
+      **The two that WERE right and were displaced by this phase:** `team.js:32` and
+      `team.js:292` (`CDL_3a_BUILD_SPEC.md:156` and `:154`), plus `referrer.js:552`
+      (`CDL_3b_BUILD_SPEC.md:449`, the `?admin=true` link sweep).
+      ⚠ **DELIBERATELY NOT REPAIRED IN 2c, AND NOT BY ADDING THE DELTA EVER.** Adding this
+      commit's offset would have moved the three correct ones and certified the eight wrong
+      ones as fixed. **The unit of verification is the SET** — all 177 read against their own
+      citing sentences — which is its own pass, not a footnote to a feature phase.
+      **When it is done, convert to role-based citations rather than new numbers**, which is
+      the only repair that does not come back. → §10
 - [ ] **🔴 Locally redefined `escapeHtml` — SEVEN definitions, not three. LAUNCH-GATING
       SECURITY, not a consolidation.** Measured 2026-08-21 (ground truth §C5). One canonical
       plus **six local redefinitions**:
@@ -2957,7 +3031,23 @@ root cause, and patching them separately produces six unrelated special cases)
 
 ## Decision E — rep lifecycle / offboarding
 
-- [ ] **🔴 NO REACTIVATION PATH EXISTS.** The `UPDATE team_members SET active = false` inside
+- [x] **✅ CLOSED 2026-08-31 (C/DL-3c Phase 2c) — DECISION E-min, THE REACTIVATION PATH.**
+      `PATCH /api/admin/team/:id/reactivate` ships, gated on `team.manage` exactly like its
+      deactivate sibling, with the same tenancy 404 (never 403) and the same Owner-edits-Admin
+      wall. Transactional: `active = true` and Ruling B's seen-key clear commit together or
+      neither does. A Reactivate control sits beside Deactivate in `AdminTeamSettings.jsx` —
+      **the route alone would have left the door one-way for anyone not holding a terminal.**
+      **What it deliberately does NOT do, each written at the route:** it does not restore
+      sessions (deactivation deleted them; the member signs in again) · it has no self-guard
+      (an inactive member holds no session that could call it) · it has no last-owner-style
+      invariant (reactivation only ever ADDS an active member).
+      **`EXPECTED_ADMIN_ROUTE_COUNT` 137 → 138**, deliberately, in
+      `server/test/adminRouteCoverage.test.js`, with the reason in the constant's own comment.
+      **Owner parity and registry reconciliation needed no change** — both key on the FLAG,
+      and `team.manage` was already covered by four other routes.
+      *The original entry follows unedited:*
+
+      **🔴 NO REACTIVATION PATH EXISTS.** The `UPDATE team_members SET active = false` inside
       `PATCH /api/admin/team/:id/deactivate`'s transaction is the **only** post-creation write
       to that column and it writes `false` unconditionally; `PATCH /api/admin/team/:id` does not
       whitelist `active`. **No route in the codebase can set it true.** An Owner who deactivates
@@ -2966,9 +3056,27 @@ root cause, and patching them separately produces six unrelated special cases)
       `:576` and is now further down again** — Wave 1.1-b's transaction comment moved it once
       and Phase 2a's guard moved it again. A handler name does not drift.
 
-- [ ] **🔴 RULING B — A FROZEN REP WHO ALSO HOLDS A HOMEOWNER ACCOUNT IS TOLD, ONCE, THEN
-      CONTINUES.** *(Ruled by Danny 2026-08-31, replacing "still has a working door — correct
-      behaviour, but E must rule on it deliberately rather than inherit it.")*
+- [x] **✅ CLOSED 2026-08-31 (C/DL-3c Phase 2c) — RULING B — A FROZEN REP WHO ALSO HOLDS A
+      HOMEOWNER ACCOUNT IS TOLD, ONCE, THEN CONTINUES.** *(Ruled by Danny 2026-08-31,
+      replacing "still has a working door — correct behaviour, but E must rule on it
+      deliberately rather than inherit it.")*
+      **WHAT SHIPPED.** A fourth outcome in `POST /api/login`: on one live match with a frozen
+      `team_members` candidate beside it, the session is minted as normal and the body carries
+      `team_access_revoked: { contractor_name }`. `TeamAccessRevokedScreen.jsx` — **a new
+      component, as this entry ruled**, not a `FrozenAccountScreen` variant — shows it and
+      continues into the referrer app with the held session.
+      **The name comes from the frozen row's contractor**, resolved through the same COALESCE
+      chain the choice screen uses; the multi-tenant assertion is fenced with two DIFFERENT
+      company names on both sides (server group B, React R6) so a screen reading the session's
+      contractor cannot pass.
+      **The reversal is recorded at the branch**: a frozen identity is now VISIBLE and still
+      not SELECTABLE — the notice carries a display name and no token, id or selection index.
+      ⚠ **ONE PART WAS NOT BUILT AND IT HAS ITS OWN ENTRY** — the two-live-homeowner case,
+      filed above rather than left in a handoff.
+      *The original entry follows unedited, as the record of what was ruled:*
+
+      **🔴 RULING B — A FROZEN REP WHO ALSO HOLDS A HOMEOWNER ACCOUNT IS TOLD, ONCE, THEN
+      CONTINUES.**
       **THE MECHANISM, written down for the first time.** `gatherLoginCandidates` deliberately
       does not filter on `active` and builds a candidate per matching row from **both** tables.
       After the compare the handler partitions into `live` and `frozen`
@@ -2998,7 +3106,36 @@ root cause, and patching them separately produces six unrelated special cases)
       takes `onBack`; this one is *acknowledged-then-continue* with a session already in hand.
       Reusing it would conflate "you cannot get in" with "you got in, but something changed."
 
-- [ ] **🟠 RULING B's "ONCE" NEEDS A STORE, AND THE RESET IS COUPLED TO REACTIVATION.**
+- [ ] **🟠 RULING B IS BOUNDED TO ONE LIVE MATCH — A FROZEN REP WITH *TWO* HOMEOWNER
+      ACCOUNTS IS STILL NEVER TOLD.** Opened by C/DL-3c Phase 2c, deliberately, as the part of
+      Ruling B that was not built. The fourth outcome fires on `live.length === 1 &&
+      frozen.length > 0`; a person holding a frozen `team_members` row **and two or more live
+      `users` rows** falls into D2's choice branch instead and reaches their dashboard with
+      nothing said — the same silence Ruling B exists to end, one candidate further along.
+      **Why it was not built:** `login_choice_tokens` stores only `live` by D2's design, so
+      carrying the notice through a choice would mean putting frozen state into that token and
+      deciding what the choice screen does with it. That is a design question, not an
+      omission. **The bound is written at the branch in `server/routes/referrer.js` so it is
+      discoverable from the code, not only from here.** → Decision E
+- [x] **✅ CLOSED 2026-08-31 (C/DL-3c Phase 2c) — RULING B's "ONCE" STORE AND ITS RESET.**
+      Shipped as ruled: `user_preferences`, subject `team_member`, key
+      `team_access_revoked_seen` (named in `server/utils/userPreferences.js` — its writer and
+      its eraser live in different files, which is why the key is a constant rather than two
+      literals). No schema change, no new route. Written by `POST /api/login`; cleared inside
+      the reactivation transaction alongside `active = true`, via a new `clearPreference()`
+      that takes a `db` so it can join that transaction.
+      ⚠ **THE FOUR-STATE TEST IS THE PROOF, AND THE FOURTH IS THE ONE THAT MATTERS:** first
+      login shows it · second does not · reactivation clears it · **reactivate-then-refreeze
+      shows it AGAIN**. Without that last case "cleared" and "never written" are
+      indistinguishable. `server/test/freezeNoticeAndReactivation.test.js`, group C.
+      ⚠ **"ONCE OFFERED, NOT ONCE READ" SHIPPED AS RULED AND IS WRITTEN AT THE SITE.** Someone
+      who closes the tab before reading is never told again. **That is the decision, not a
+      defect — do not "fix" it.**
+      *The original entry follows, unedited, because it is the reasoning the build followed —
+      not because anything in it is still open. **Its checkbox was removed so it cannot be
+      read as outstanding work.***
+
+      **🟠 RULING B's "ONCE" NEEDS A STORE, AND THE RESET IS COUPLED TO REACTIVATION.**
       **Recommended: `user_preferences`, written SERVER-SIDE from the login handler.**
       `getPreference`/`setPreference` (`server/utils/userPreferences.js`) are plain utils taking
       `{subjectType, subjectId, contractorId, key, value}` and **require no session at all**, and

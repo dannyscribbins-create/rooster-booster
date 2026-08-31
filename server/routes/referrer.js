@@ -40,7 +40,9 @@ const { resolveLanding, loadContractorBranding } = require('../utils/landingReso
 // C/DL-3b Phase 1 — the theme provider's stored light/dark read. This is
 // user_preferences' FIRST PRODUCTION CALLER; the store shipped in C/DL-3a with
 // none. Read only — the toggle that writes it is 3c (spec D8).
-const { getPreference, setPreference, THEME_MODE_PREF_KEY } = require('../utils/userPreferences');
+const {
+  getPreference, setPreference, THEME_MODE_PREF_KEY, TEAM_ACCESS_REVOKED_SEEN_PREF_KEY,
+} = require('../utils/userPreferences');
 // C/DL-3b Phase 2B — timing parity on a login miss. Shared rather than a third
 // copy of the constant; see that file's header.
 const { DUMMY_BCRYPT_HASH } = require('../utils/dummyHash');
@@ -1178,6 +1180,89 @@ async function loadContractorDisplayNames(contractorIds) {
   return new Map(rows.map(r => [r.id, r.display_name]));
 }
 
+// ── RULING B — THE NOTICE A FROZEN TEAM MEMBER GETS, ONCE ────────────────────
+// C/DL-3c Phase 2c. Returns { contractor_name } the first time a deactivated
+// team member signs in through a surviving homeowner account, and null every
+// time after that. Called from POST /api/login's fourth outcome only.
+//
+// @param req      for logError attribution only — no identity is read from it.
+// @param frozen   the handler's `frozen` partition (matched, not active).
+// @returns {Promise<{contractor_name: string}|null>}
+//
+// ⚠ THE NAME COMES FROM THE FROZEN ROW'S CONTRACTOR, NEVER THE SESSION'S. The
+// session being minted is a REFERRER session for a `users` row, and
+// `users` is UNIQUE(contractor_id, email) while `team_members.email` is globally
+// unique — so one person legitimately holds both under two different tenants.
+// Reading the session's contractor here names the wrong company on the screen,
+// silently and plausibly, in exactly the case this notice exists to serve.
+//
+// ⚠ "ONCE" MEANS ONCE OFFERED, NOT ONCE READ, AND THAT WAS RULED DELIBERATELY
+// (Danny, 2026-08-31). The key is written when the notice is BUILT, so someone
+// who closes the tab before reading it is never told again. Making it once-READ
+// needs an acknowledgement round trip, and the endpoint could not take its
+// subject from the request — identity from the request is forbidden — so it
+// would have to re-derive the frozen row by email. That was judged more
+// machinery than the problem is worth. This is not a defect; do not "fix" it.
+//
+// ⚠ IT NEVER THROWS. A preference store that is briefly unavailable must not be
+// able to fail a login that has already succeeded. The failure mode on error is
+// "not told this time" — and because nothing was written, the next login tells
+// them, which is the right direction to fail in.
+async function buildRevokedTeamAccessNotice(req, frozen) {
+  try {
+    // At most one in practice: `team_members.email` is globally unique, so a
+    // single address cannot open two employee rows. `.find` rather than [0]
+    // anyway, so a future per-tenant employee table cannot quietly hand this a
+    // `users` row — which has no `active` column and can never be frozen.
+    const revoked = frozen.find(candidate => candidate.source === 'team_members');
+    if (!revoked) return null;
+
+    const subject = {
+      subjectType: 'team_member',
+      subjectId: revoked.id,
+      contractorId: revoked.contractorId,
+      key: TEAM_ACCESS_REVOKED_SEEN_PREF_KEY,
+    };
+
+    // ⚠ `=== true`, NOT `!= null`. getPreference FAILS SOFT — a DB error, a JSON
+    // null and "no row" are all null to a caller — so anything that is not the
+    // literal sentinel is treated as "not yet told" and the person is told. That
+    // errs toward telling them twice rather than never, which is the only
+    // direction this can safely fail in.
+    const alreadyTold = await getPreference(subject);
+    if (alreadyTold === true) return null;
+
+    // Same COALESCE chain the choice screen's display names use — the white-label
+    // company name, then the contractor's own, then the platform default. No
+    // second resolution path, and no hardcoded contractor anywhere.
+    const displayNames = await loadContractorDisplayNames([revoked.contractorId]);
+    const contractorName = displayNames.get(revoked.contractorId) || ROOFMILES_DEFAULTS.companyName;
+
+    // The row count is load-bearing (see setPreference). It cannot legitimately
+    // be 0 here — the contractorId came off the subject row itself — so a 0 means
+    // the tenancy predicate refused a write it should have allowed, and that is
+    // worth a log rather than a silent pass.
+    const written = await setPreference({ ...subject, value: true });
+    if (written === 0) {
+      await logError({
+        req,
+        error: new Error(
+          `team_access_revoked_seen write matched no row for team_member ${revoked.id} `
+          + `under contractor ${revoked.contractorId} — the notice will repeat every login`
+        ),
+        source: 'POST /api/login (Ruling B seen key)',
+      });
+    }
+
+    // NAME ONLY. Not an id, not a token, not a selection index — see the fourth
+    // outcome's comment on why visible must not become selectable.
+    return { contractor_name: contractorName };
+  } catch (err) {
+    await logError({ req, error: err, source: 'POST /api/login (Ruling B notice)' });
+    return null;
+  }
+}
+
 // Re-reads one identity by primary key. Used by choice redemption rather than
 // trusting the blob stored two minutes earlier, so a row that was deleted or
 // deactivated inside the choice window can no longer mint a session.
@@ -1426,6 +1511,43 @@ router.post('/api/login', referrerLoginLimiter, async (req, res) => {
       // half-privileged state — the screen this feeds needs no authenticated
       // data. Tenancy for the branding comes from the AUTHENTICATED ROW.
       return res.status(403).json(await buildFrozenAccountBody(pool, frozen[0].contractorId));
+    }
+
+    // ── A FOURTH OUTCOME: ONE LIVE IDENTITY, BUT SOMETHING TO SAY FIRST ─────
+    // C/DL-3c Phase 2c, Ruling B. Until this branch existed there were three
+    // outcomes — no match → 401, one → session, several → choice — and a
+    // deactivated team member who ALSO holds a homeowner account fell into the
+    // second one with nothing said. Their `users` row is the single live
+    // candidate (a homeowner cannot be frozen), so the 403 above is
+    // STRUCTURALLY UNREACHABLE for them: it requires live.length === 0. They
+    // were placed in the referrer app and never told their team access was gone.
+    //
+    // ⚠ THIS IS A NEW SHAPE IN THE AUTH RESPONSE, NOT A NEW REFUSAL. The session
+    // is minted and complete; `team_access_revoked` rides alongside it and the
+    // screen it feeds PRECEDES the destination rather than replacing it. That is
+    // what separates it from the frozen 403, which mints nothing.
+    //
+    // ⚠ AND IT DELIBERATELY REVERSES THE POSTURE STATED TWENTY LINES ABOVE.
+    // The choice screen is built from `live`, not `matched`, because "a frozen
+    // identity is not a destination". This makes a frozen identity VISIBLE —
+    // on purpose, because being told is not the same as being offered. It does
+    // NOT make one SELECTABLE: the notice carries a display name and nothing
+    // else, no token, no id, no selection index. That distinction is what keeps
+    // D2's rejected shape rejected, and it is the reason this is a sibling
+    // branch rather than a widening of the choice list.
+    //
+    // ⚠ BOUNDED, DELIBERATELY, TO ONE LIVE MATCH. A person holding a frozen team
+    // row AND TWO live homeowner accounts reaches the choice screen below and is
+    // not told. Telling them would mean carrying frozen state through
+    // login_choice_tokens, which stores only `live` by D2's design — a larger
+    // change than this ruling asked for. Recorded rather than silently accepted.
+    if (live.length === 1 && frozen.length > 0) {
+      // MINT FIRST. The notice is an addition to a completed login, so nothing
+      // about it may be able to cost someone their session — same rule the
+      // last_login_at stamp follows in issueSessionFor.
+      const body = await issueSessionFor(req, live[0]);
+      const notice = await buildRevokedTeamAccessNotice(req, frozen);
+      return res.json(notice ? { ...body, team_access_revoked: notice } : body);
     }
 
     if (live.length === 1) return res.json(await issueSessionFor(req, live[0]));

@@ -122,7 +122,7 @@ server/
     ├── themeTokens.js
     └── userPreferences.js
 ```
-<!-- generated 2026-08-31 · HEAD 1be1263 · 78 files, 15 dirs · npm run architecture -- --check -->
+<!-- generated 2026-08-31 · HEAD 0d32189 · 78 files, 15 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: backend -->
 
 > ⚠ **THIS PARAGRAPH EXISTS TWICE — once under each generated block — AND THE TWO COPIES
@@ -192,7 +192,7 @@ src/
 │   │   ├── AdminFlaggedAssignmentsQueue.jsx
 │   │   ├── AdminFlaggedReferrals.jsx
 │   │   ├── AdminInboxSidebar.jsx
-│   │   ├── AdminNoAccessScreen.jsx  ← Ruling A(i) empty state; hosts the switcher for a member with no sections
+│   │   ├── AdminNoAccessScreen.jsx ← Ruling A(i) empty state; hosts the switcher for a member with no sections
 │   │   ├── AdminPendingReferrals.jsx
 │   │   ├── AdminReferralReview.jsx ← umbrella: Pending + Missing + Flagged tabs
 │   │   ├── AdminReferrers.jsx
@@ -219,7 +219,8 @@ src/
 │   │   ├── FrozenAccountScreen.jsx ← D3 — rendered from the 403 body, with branding, no session
 │   │   ├── LoginScreen.jsx         ← the ONE unified door — every role, no ?admin=true
 │   │   ├── ResetPinScreen.jsx
-│   │   └── SignupScreen.jsx
+│   │   ├── SignupScreen.jsx
+│   │   └── TeamAccessRevokedScreen.jsx ← Ruling B — told once, then continues; a SIBLING of FrozenAccountScreen, with a session
 │   ├── referrer/
 │   │   ├── AnnouncementPopup.jsx
 │   │   ├── BadgeCelebrationPopup.jsx
@@ -284,7 +285,7 @@ src/
     ├── safeStorage.js              ← safeLocalStorage()/safeSessionStorage() — throw-proof storage access
     └── themeTokens.mjs             ← deriveThemeTokens() + themeCssVariables() + RENDER_TOKEN_KEYS
 ```
-<!-- generated 2026-08-31 · HEAD 1be1263 · 104 files, 14 dirs · npm run architecture -- --check -->
+<!-- generated 2026-08-31 · HEAD 0d32189 · 105 files, 14 dirs · npm run architecture -- --check -->
 <!-- END GENERATED STRUCTURE: frontend -->
 
 > ⚠ **THIS PARAGRAPH EXISTS TWICE — once under each generated block — AND THE TWO COPIES

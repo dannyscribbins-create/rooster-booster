@@ -15,6 +15,7 @@ const { refreshTokenIfNeeded } = require('../../crm/jobber');
 const axios = require('axios');
 const bcrypt = require('bcrypt');
 const { body, validationResult } = require('express-validator');
+const { clearPreference, TEAM_ACCESS_REVOKED_SEEN_PREF_KEY } = require('../../utils/userPreferences');
 
 // Finance flags — only Owners may grant these to General-tier members (Decision A §5.3).
 // cashout_approve carries an additional stricter wall (§5.4): it may NEVER be saved onto
@@ -604,6 +605,120 @@ router.patch('/api/admin/team/:id/deactivate', requirePermission('team.manage'),
     res.json({ success: true });
   } catch (err) {
     await logError({ req, error: err, source: 'PATCH /api/admin/team/:id/deactivate' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PATCH /api/admin/team/:id/reactivate ─────────────────────────────────────
+// DECISION E-min (C/DL-3c Phase 2c). The undo for the handler directly above.
+//
+// THE STARTING TRUTH. Until this route existed, `SET active = false` inside the
+// deactivate handler was the ONLY post-creation write to that column anywhere in
+// the codebase, and `PATCH /api/admin/team/:id` builds its UPDATE from a
+// four-field allowlist — full_name, title_id, tier, jobber_user_id — that
+// `active` cannot reach. An Owner who deactivated the wrong person on a Friday
+// could not undo it without a direct database edit.
+//
+// ── WHAT IT DOES NOT DO, AND SAYING SO HERE IS THE POINT ────────────────────
+// ⚠ IT DOES NOT RESTORE SESSIONS, AND IT MUST NOT TRY. Deactivation DELETEs the
+// member's session rows; those tokens are gone and un-recreatable — a "restored"
+// session would be a new bearer credential nobody asked for, handed out on an
+// admin's behalf. The member signs in again, normally. This paragraph exists so
+// that "reactivation didn't restore my session" is read as the design rather
+// than filed as a bug.
+//
+// ⚠ THERE IS NO SELF-GUARD, AND ITS ABSENCE IS DELIBERATE. Its sibling refuses
+// `targetId === teamMemberId` because deactivating yourself is a coherent
+// request with an incoherent result. Reactivating yourself is not reachable at
+// all: verifyAdminSession, requirePermission and GET /api/admin/me each read
+// `active = true` independently (R4, closed in 9ad52f2), so an inactive member
+// holds no session that could call this.
+//
+// ⚠ AND THERE IS NO LAST-OWNER-EQUIVALENT INVARIANT. Its sibling refuses to
+// remove the last active Owner because that state is unrecoverable. Reactivation
+// only ever ADDS an active member, so there is no equivalent floor to defend and
+// nothing here should be built to look like one.
+//
+// ── WHAT IT DOES SHARE WITH ITS SIBLING ─────────────────────────────────────
+// The same tenancy 404 (never 403 — a 403 confirms the id exists), and the same
+// Owner-edits-Admin wall the PATCH and the promote handler carry. Without that
+// wall an Admin could reactivate an Admin-tier row they were never permitted to
+// edit in the first place.
+//
+// ── REACTIVATION TAKES EFFECT IMMEDIATELY, WITH NOTHING TO INVALIDATE ───────
+// All three readers of `active` query it live per request, so there is no cache,
+// no session rebuild and no propagation delay. The member logs in and is in.
+router.patch('/api/admin/team/:id/reactivate', requirePermission('team.manage'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId, teamMemberId } = adminSession;
+  const targetId = parseInt(req.params.id, 10);
+
+  try {
+    const [requesterResult, targetResult] = await Promise.all([
+      pool.query('SELECT tier FROM team_members WHERE id = $1 AND active = true', [teamMemberId]),
+      // ⚠ NO `AND active = true` ON THE TARGET, unlike the deactivate handler's
+      // lookup. An inactive row is the only kind this route has any business
+      // reading; inheriting that predicate would make the route 404 on precisely
+      // the members it exists to serve.
+      pool.query('SELECT tier, contractor_id, active FROM team_members WHERE id = $1', [targetId]),
+    ]);
+
+    if (!requesterResult.rows.length) return res.status(403).json({ error: 'Access denied' });
+    if (!targetResult.rows.length) return res.status(404).json({ error: 'Member not found' });
+
+    const requesterTier = requesterResult.rows[0].tier;
+    const target = targetResult.rows[0];
+
+    // Tenancy — 404, never 403, so a cross-tenant probe cannot confirm an id exists.
+    if (target.contractor_id !== contractorId) return res.status(404).json({ error: 'Member not found' });
+
+    // Only Owner may edit Admin-tier rows (mirrors the PATCH and promote walls).
+    if (target.tier === 'admin' && requesterTier !== 'owner') {
+      return res.status(403).json({ error: 'Only Owners may edit Admin-tier members' });
+    }
+
+    // ── BOTH HALVES COMMIT OR NEITHER DOES ───────────────────────────────────
+    // Same shape as the deactivate handler above, and for a sharper reason than
+    // symmetry. The second statement clears Ruling B's `team_access_revoked_seen`
+    // key, which is what makes a member's NEXT freeze announceable. A
+    // half-applied pair — `active = true` committed with the stale key surviving
+    // — produces a member who is back in AND whose second deactivation would be
+    // completely silent, which is the exact defect Ruling B exists to fix,
+    // manufactured by an error. Nothing would report it.
+    //
+    // The clear is unconditional and matching zero rows is an ordinary outcome:
+    // most reactivated members never saw the notice, because most were never
+    // deactivated while holding a homeowner account.
+    //
+    // ⚠ THE UPDATE REPEATS contractor_id (defense-in-depth, ST money-path
+    // pattern) even though tenancy was already checked above — a mis-routed id
+    // from any future refactor hits zero rows rather than another tenant's row.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE team_members SET active = true WHERE id = $1 AND contractor_id = $2`,
+        [targetId, contractorId]
+      );
+      await clearPreference({
+        db: client,
+        subjectType: 'team_member',
+        subjectId: targetId,
+        contractorId,
+        key: TEAM_ACCESS_REVOKED_SEEN_PREF_KEY,
+      });
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    await logError({ req, error: err, source: 'PATCH /api/admin/team/:id/reactivate' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

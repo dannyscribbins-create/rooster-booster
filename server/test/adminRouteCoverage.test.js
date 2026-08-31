@@ -133,7 +133,12 @@ describe('admin route enforcement coverage', () => {
   // no source. An EXACT match against a recorded constant is falsifiable in
   // BOTH directions and forces a deliberate decision on every change, which
   // is the architecture.js --check pattern.
-  const EXPECTED_ADMIN_ROUTE_COUNT = 137; // measured 2026-08-28, HEAD bcc289c
+  // ⚠ 137 → 138 IN C/DL-3c PHASE 2c, DELIBERATELY. One route was ADDED:
+  // PATCH /api/admin/team/:id/reactivate (Decision E-min), gated on team.manage
+  // exactly like its deactivate sibling. This is the one case the message below
+  // says is correct — and it is also the reflex this constant exists to prevent,
+  // so: the number moved because a route was added, not because a walk broke.
+  const EXPECTED_ADMIN_ROUTE_COUNT = 138; // measured 2026-08-31, C/DL-3c Phase 2c
   it('router walk: /api/admin/* route count matches the recorded number exactly', () => {
     assert.equal(
       adminRoutes.length,

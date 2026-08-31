@@ -6,6 +6,7 @@ import BrandLogo from '../shared/BrandLogo';
 import ContactModal from '../shared/ContactModal';
 import FrozenAccountScreen from './FrozenAccountScreen';
 import ChoiceScreen from './ChoiceScreen';
+import TeamAccessRevokedScreen from './TeamAccessRevokedScreen';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,6 +124,13 @@ export default function LoginScreen({ onAuthenticated }) {
   const [choice, setChoice] = useState(null);
   const [choiceError, setChoiceError] = useState(null);
 
+  // Ruling B (C/DL-3c Phase 2c). Holds { contractorName, session } when the
+  // login SUCCEEDED and the same credential also opened a deactivated team
+  // membership. Unlike `frozenAccount`, this state carries a REAL SESSION — the
+  // person is signed in and the screen is an acknowledgement on the way through,
+  // not a refusal. Null on every other login, which is what keeps it unseen.
+  const [revokedTeamAccess, setRevokedTeamAccess] = useState(null);
+
   const companyName = branding?.companyName || 'RoofMiles';
   const logoSrc = branding?.logoUrl || roofMilesLogo;
 
@@ -170,6 +178,19 @@ export default function LoginScreen({ onAuthenticated }) {
         setChoice({ token: data.choice_token, identities: data.identities ?? [] });
       } else if (data.error) {
         setError(data.error);
+      } else if (data.team_access_revoked) {
+        // RULING B'S FOURTH OUTCOME. A COMPLETE SESSION that arrives carrying
+        // something the person should know first — checked AFTER the error
+        // branches (a 200 has no `error`) and BEFORE the plain success, because
+        // the plain success is what it is a special case of.
+        //
+        // ⚠ onAuthenticated IS NOT CALLED HERE. Calling it and rendering the
+        // notice would navigate straight past the screen — the session is held
+        // in state and handed over when the person continues.
+        setRevokedTeamAccess({
+          contractorName: data.team_access_revoked.contractor_name ?? null,
+          session: data,
+        });
       } else {
         onAuthenticated(data);
       }
@@ -239,6 +260,25 @@ export default function LoginScreen({ onAuthenticated }) {
       <FrozenAccountScreen
         branding={frozenAccount.branding}
         onBack={() => { setFrozenAccount(null); setPassword(''); }}
+      />
+    );
+  }
+
+  // RULING B (C/DL-3c Phase 2c). The session is ALREADY MINTED and sitting in
+  // this state; the screen precedes the destination rather than replacing it.
+  // Continuing hands the whole body to onAuthenticated untouched — the parent
+  // decides what to store, and trimming a key here would be this screen editing
+  // someone else's payload.
+  //
+  // ⚠ ORDERED AFTER the frozen screen and BEFORE the choice screen for the same
+  // reason they are ordered at all: these three are mutually exclusive by
+  // construction, and reading them top to bottom is how the four login outcomes
+  // stay legible from the client side.
+  if (revokedTeamAccess) {
+    return (
+      <TeamAccessRevokedScreen
+        contractorName={revokedTeamAccess.contractorName}
+        onContinue={() => onAuthenticated(revokedTeamAccess.session)}
       />
     );
   }
