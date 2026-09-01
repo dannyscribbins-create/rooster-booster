@@ -735,40 +735,88 @@ export default function BrandingProfileSettings() {
 
           {/* Assignment instruction.
               TEXT bucket — 11px helper copy, the least prominent level, so textTertiary.
-              Was AD.blueLight (#D4DDEB, 1.37:1 on white). */}
+              Was AD.blueLight (#D4DDEB, 1.37:1 on white).
+              ⚠ THE COPY NAMES EACH SLOT'S ROLE (B-2, 2026-09-01), AND THIS FLOW IS
+              THE MOST LIKELY ORIGIN OF THE ONE MISFILED PALETTE IN PRODUCTION. It
+              read "Now click Primary, Secondary, or Accent to apply" — three
+              unexplained words beside a row of colours sampled off a logo, at the
+              exact moment the decision is made. Someone picked sensibly and
+              wrongly, and the stored tone was a shade DARKER than that company's
+              published brand colour — the fingerprint of a swatch lifted from a
+              logo's shaded pixels rather than a value typed in.
+              ⚠ THE HEXES THAT USED TO BE IN THIS PARAGRAPH ARE GONE, AND THE BRAND
+              SWEEP IN adminBranding.test.jsx IS WHY. It fired on this comment the
+              first time it was written, correctly: a retired contractor literal in
+              prose is how one gets pasted back into code. The guard was reworded
+              around, never exempted.
+              The role belongs HERE rather than only under the fields below,
+              because this is where the assignment happens. */}
           {selectedSwatchIdx !== null && (
             <p style={{ margin: '10px 0 0', fontSize: 11, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-              Now click Primary, Secondary, or Accent to apply
+              Click a swatch, then choose where it goes: Primary (your main dark colour),
+              Secondary (buttons), or Accent (soft fills).
             </p>
           )}
         </div>
         {/* ── End Color Detection Section ── */}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <ColorRow
-            label="Primary Color"
-            value={formData.primary_color}
-            onChange={v => handleChange('primary_color', v)}
-            placeholder="#1C2D4D"
-            pendingColor={pendingHex}
-            onAssign={hex => handleSwatchAssign('primary_color', hex)}
-          />
-          <ColorRow
-            label="Secondary Color"
-            value={formData.secondary_color}
-            onChange={v => handleChange('secondary_color', v)}
-            placeholder="#F26A1B"
-            pendingColor={pendingHex}
-            onAssign={hex => handleSwatchAssign('secondary_color', hex)}
-          />
-          <ColorRow
-            label="Accent Color"
-            value={formData.accent_color}
-            onChange={v => handleChange('accent_color', v)}
-            placeholder="#FDF0E7"
-            pendingColor={pendingHex}
-            onAssign={hex => handleSwatchAssign('accent_color', hex)}
-          />
+          {/* ── ⚠ EVERY COLOUR FIELD SAYS WHAT IT PAINTS (B-2, 2026-09-01) ────────
+              Three of these four carried no explanation at all, and the only one
+              that did was the one that matters least. The one contractor palette
+              in production was entered coherently from a wrong premise — "Primary"
+              read as the main DARK brand colour rather than as the button colour —
+              and nothing on this form could have told them otherwise. It produced a
+              live burgundy page with a blue button.
+              ⚠ B-1 RULED THAT PREMISE CORRECT AND SWAPPED THE ROUTING TO MATCH, so
+              this copy describes the CURRENT behaviour, not the old. Each line
+              names the surfaces the value actually reaches, and each agrees with
+              its own placeholder — a placeholder and a description disagreeing
+              would be worse than neither. */}
+          <div>
+            <ColorRow
+              label="Primary Color"
+              value={formData.primary_color}
+              onChange={v => handleChange('primary_color', v)}
+              placeholder="#1C2D4D"
+              pendingColor={pendingHex}
+              onAssign={hex => handleSwatchAssign('primary_color', hex)}
+            />
+            <HelperText>Your main brand colour, usually the darker one. Sets the page background in dark mode and your body text in light mode.</HelperText>
+          </div>
+          <div>
+            <ColorRow
+              label="Secondary Color"
+              value={formData.secondary_color}
+              onChange={v => handleChange('secondary_color', v)}
+              placeholder="#F26A1B"
+              pendingColor={pendingHex}
+              onAssign={hex => handleSwatchAssign('secondary_color', hex)}
+            />
+            <HelperText>Your action colour. Buttons, links and anything you want tapped.</HelperText>
+          </div>
+          {/* ⚠ THE ACCENT PLACEHOLDER IS A TINT OF THE NEUTRAL SINCE B-2, AND IT
+              IS DERIVED RATHER THAN PICKED. It was #FDF0E7, a pale tint of the
+              ORANGE — which B-1 moved to secondary_color, so the placeholder was
+              demonstrating the OPPOSITE of the rule printed directly beneath it.
+              ⚠ Restating the rule against Secondary was the rejected fix: accent
+              is a soft wash that sits near the NEUTRAL, not near the button.
+              Derived with themeTokens' own hslToRgb from the relationship the old
+              pair embodied — keep the hue, scale saturation by 0.9485, lift
+              lightness to 0.949 — applied to #1C2D4D. Result #ECF0F8: hue 220.0
+              against the navy's 219.2, luminance 0.869 against the old
+              placeholder's 0.890, so it is a comparably pale wash. */}
+          <div>
+            <ColorRow
+              label="Accent Color"
+              value={formData.accent_color}
+              onChange={v => handleChange('accent_color', v)}
+              placeholder="#ECF0F8"
+              pendingColor={pendingHex}
+              onAssign={hex => handleSwatchAssign('accent_color', hex)}
+            />
+            <HelperText>Soft background washes: progress bars, avatars, section fills. Works best as a pale tint of your Primary colour.</HelperText>
+          </div>
           {/* C/DL-2 Phase 3c. The column shipped in ff2a871 and the public landing
               page has read it since Phase 2a, but neither GET nor PUT mentioned it
               until Phase 3b and no admin could set it until now. */}
