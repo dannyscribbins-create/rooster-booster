@@ -2581,6 +2581,16 @@ root cause, and patching them separately produces six unrelated special cases)
       and reclassify this line as *known consequence, accepted* — closing it so it stops
       being re-flagged — or reopen D-I deliberately. **Do not silently "fix" a ruled decision
       inside a theme pass.**
+      ⚠ **ITS NAMED CLOSER HAS ALREADY SHIPPED AND THIS BOX IS STILL UNTICKED — A CLOSURE-HALF
+      FAILURE, FOUND 2026-09-01 BY C/DL-3c PHASE 3 PHASE 0.** C/DL-3c Phase 1c shipped, and
+      either it performed the D-I read and never recorded the ruling, or it did not perform it.
+      **Both possibilities leave the same artefact: an open box naming a phase that is over.**
+      ⚠ **DO NOT LET PHASE 3 INHERIT THIS SILENTLY** — an item whose owner has shipped has no
+      owner, and this arc has caught that shape repeatedly.
+      **RE-ASSIGNED: the D-I read is owed by whoever next opens `BrandingProvider.jsx`'s
+      resolution path**, and it is a *ruling*, not a fix — confirm paint-neutral-immediately and
+      reclassify this line as known-consequence-accepted, or reopen D-I deliberately. It is
+      **not** Phase 3's, which touches painting rather than resolution.
 - [ ] **Sign In button reads as a warning, not a primary action.** Near-black on orange is
       legible and correct by the contrast rule, but the *palette* question is open — this is
       a design decision, not a bug. **NEW, from the Phase 5 visual check; not previously
@@ -3048,6 +3058,23 @@ root cause, and patching them separately produces six unrelated special cases)
       not access itself.**
       `AdminApp.jsx` and `roleRouting.test.jsx` carry the same wording and are **accurate as
       written** — recorded here so nobody re-opens the question. **They need no edit.**
+- [ ] ⚠ **`LockedSection` PAGE MODE WILL FAIL OPEN IN THE REP TREE, AND ITS OWN COMMENT SAYS
+      WHY.** The scrim paints `var(--rm-bg, #012854)` at 75% opacity, and that file records the
+      fallback resolving *"every time, on the only surface that renders this component today"* —
+      the admin tree, which sits **outside** `ThemeProvider` by Ruling 5 and mounts no `--rm-*`.
+      ⚠ **PHASE 3 MOUNTS IT INSIDE `ThemeProvider`, WHERE `--rm-bg` DOES RESOLVE.** In light
+      mode that is the contractor's own background — **white by default** — turning a navy veil
+      over blurred, permission-gated content into a **white one**. **A scrim that fails open is
+      the single failure mode `LockedSection` exists to prevent.** It is Ruling 5's own argument
+      arriving from the opposite direction: Ruling 5 kept the variables OFF the admin tree, and
+      nobody re-derived the choice for a surface that HAS them.
+      ⚠ **SCOPED — `mode="page"` ONLY.** CD-7's detail-view treatment is `mode="element"`, which
+      dims and blocks pointer events and paints **no scrim**. The element path is unaffected, so
+      the revenue gate is not at risk; a whole-section lock is.
+      ⚠ **DISTINCT FROM THE CLOSED `#012854` LITERAL ENTRY** (*"`LockedSection`'s permission
+      scrim — D-G's deferral RE-AFFIRMED"*), which asks **which colour the fallback names**.
+      This asks whether **the fallback is reached at all** — and on the rep tree it is not.
+      **OWNER: C/DL-3c Phase 3, before page mode is used anywhere in the rep tree.**
 
 **Verification owed**
 - [ ] **Real-browser theme check on the rep surfaces**, light and dark. Owed since 3a Phase 3;
@@ -3064,6 +3091,36 @@ root cause, and patching them separately produces six unrelated special cases)
       Railway console or an authenticated `/api/admin/me`. Danny performs this read.**
       ⚠ Small, and it gates a **verification claim** rather than a feature — which is exactly
       the kind of item that gets dropped for being small.
+- [ ] ⚠ **`StateCard`'s BORDER AND SHADOW VANISH IN DARK, AND NO REACT TEST IN THIS REPO CAN
+      SEE IT.** Its background themes correctly through `var(--rm-surface, …)`, but its
+      **border and box-shadow are raw `R.*` values** — black-alpha, both. On a near-black dark
+      surface they do not darken, they **disappear**, so the card loses its edge entirely rather
+      than gaining a dark one. **`EmptyState`, `ErrorState` and `SuccessState` all build on
+      `StateCard` and inherit it** — three of the four 4A primitives Phase 3 mounts.
+      ⚠ **THE MOCKUP CONTRADICTS IT.** Every dark card in the FieldRepApp set draws a visible
+      lighter border, so the design expects an edge the shipped primitive cannot produce.
+      → `docs/mockups/FIELDREPAPP_MOCKUP_INVENTORY.md` §g.
+      ⚠ **`jsdom` NEVER RESOLVES `var()`, so every automated assertion about this is
+      declaration-level and stays green either way.** This is not a gap more tests would close;
+      it is the class of thing only a person looking at a screen can settle.
+      **OWNER: C/DL-3c Phase 3's real-browser dark verification — and this is the specific thing
+      to look for**, rather than "check that it looks right".
+- [ ] ⚠ **THE THREE UNOBSERVED 2c READS — DECLINED FOR PHASE 3 AND RE-ASSIGNED, NOT DROPPED.**
+      `CDL_3c_LIVE_VERIFICATION.md` records three reads as NOT OBSERVED: `TeamAccessRevokedScreen`
+      in **light** mode · whether the employer name resolves and the chrome reads on `--rm-*` in
+      both modes · the Reactivate control's icon, colour, spinner, and the row flipping to Active
+      on refetch.
+      ⚠ **THEY ARE NOT PHASE 3's, AND THE REASON IS STRUCTURAL:** all three live on
+      `TeamAccessRevokedScreen` and the Team panel's Reactivate control — **admin-surface
+      components a rep-shell phase has no reason to open.** Bundling them into Phase 3 is how
+      they get skipped a third time, under cover of a phase that shipped.
+      **OWNER: the next session that opens the admin Team panel, or a dedicated verification
+      pass.** Whoever takes it re-runs all three. The notice-returns-after-re-deactivation read
+      is the load-bearing one: it is the only thing distinguishing *"the flag reset"* from
+      *"the flag was never written."*
+      ⚠ **RECORDING IS NOT SCHEDULING.** `CDL_3c_LIVE_VERIFICATION.md` exists precisely because
+      *"recorded, therefore handled"* is the reading it was written to prevent. **This line is
+      the schedule; that file is the record.**
 
 ---
 

@@ -311,9 +311,9 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1118 server tests across 177 suites, and 483 React tests across 34 files** (measured 2026-08-30 at HEAD `7252cc5`, Wave 1.1 close-out, by running the gate). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD STAYS `7252cc5` DELIBERATELY — DO NOT "UPDATE" IT TO THE WAVE'S CLOSING SHA.** Wave 1.1 closed at `d16bc31`, which is docs-only; the gate was re-run there on 2026-08-30 and returned the identical four numbers. **`7252cc5` is where the measurement was actually taken, and that is what makes the figure re-checkable.** Rewriting it to a HEAD the measurement was not taken at would make the citation *less* true while looking tidier. **Second time a tripwire in this file has attracted a well-meaning edit** — the first set it 171 tests below its own floor.
-  ⚠ **THIS TRIPWIRE HAD GONE STALE BY 171 SERVER TESTS AND WAS RE-ARMED HERE.** It read *"947 server tests and 459 React tests across 31 files (measured 2026-08-21, HEAD `d0fb3aa`)"* — the figure `docs/GROUND_TRUTH_2026-08-21.md` established, correct on the day and never moved since. At 947 it could not fire until someone deleted a fifth of the server suite. **That is the second time this exact tripwire has been found below its own floor**, and it is the worked example in *A mechanism that reports health it cannot observe* below. The failure mode is structural: a hand-maintained number in a document nobody edits when the thing it measures grows. **When you find it stale, re-arm it with the figure you MEASURED and the HEAD you measured it at** — never an estimate, and never a number carried from a prior session's report. ⚠ Check the EXIT CODE, not the pass count — a suite can report passing while exiting 1. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count that jumps far above 31 means the include glob has been widened and is picking up the server suite — see the warning above.)
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1160 server tests across 183 suites, and 557 React tests across 40 files** (measured 2026-09-01 at HEAD `a5dd574`, C/DL-3c Phase 3 Phase 0, by running the gate; `npm test` exited 0). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD STAYS `a5dd574` DELIBERATELY — DO NOT "UPDATE" IT TO A LATER DOCS-ONLY SHA.** That is where this measurement was actually taken, and it is what makes the figure re-checkable; rewriting it to a HEAD the measurement was not taken at makes the citation *less* true while looking tidier. **The figure this line carried before was 1118 / 177 / 483 / 34, measured 2026-08-30 at `7252cc5` (Wave 1.1 close-out) — kept here as the record of what it said, not as a live number.** ⚠ **A tripwire in this file has attracted a well-meaning edit twice**; one of them set it 171 tests below its own floor.
+  ⚠ **THIS TRIPWIRE HAS NOW BEEN FOUND BELOW ITS OWN FLOOR THREE TIMES, AND THE FAILURE IS STRUCTURAL RATHER THAN CARELESS.** It read *"947 server tests and 459 React tests across 31 files (measured 2026-08-21, HEAD `d0fb3aa`)"* — the figure `docs/GROUND_TRUTH_2026-08-21.md` established, correct on the day and never moved since; then 1118 / 177 / 483 / 34, likewise correct on its day. At 947 it could not fire until a fifth of the server suite was deleted; at 1118 it could not fire until 42 server tests were. **Each figure was true when written and went stale because a hand-maintained number sits in a document nobody edits when the thing it measures grows** — which is the worked example in *A mechanism that reports health it cannot observe* below. **When you find it stale, re-arm it with the figure you MEASURED and the HEAD you measured it at** — never an estimate, and never a number carried from a prior session's report. ⚠ Check the EXIT CODE, not the pass count — a suite can report passing while exiting 1. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count far above 40 means the include glob has been widened and is picking up the server suite — see the warning above.)
 - Characterization rule: a failing or surprising test result means STOP and report — never adjust production code to satisfy a test, and never silently adjust a test to satisfy the code. Deliberate behavior changes update the relevant test openly and are documented in the session handoff.
 - Migration idempotency proofs must include a reproduction seeded with production's actual pre-existing row shapes, not only fresh-schema runs — a test DB rebuilt from scratch every run can never exercise "a real pre-existing row already in some legacy state," which is exactly what breaks in production and never breaks locally. See `CLAUDE_REGISTRY.md` (ST session, Architecture Notes) for the incident that established this.
 
@@ -1232,12 +1232,27 @@ as the default when nothing else speaks to a question.
 **Palette STRUCTURE, not palette VALUES.** The four-variant set is a
 deliberate proof that theming is token-driven rather than hardcoded per
 brand, and that structure carries over — the five swatch roles (Primary,
-Secondary, BG, Surface, Text) are intended to map onto the `--rm-*`
-tokens. ⚠ That mapping is INCOMPLETE: amendment A20 records that the
-shipped resolver emits a different set and that `surface` and `text` have
-no token today. Two of the five roles have nothing to map onto, and the
-gap is unresolved. Specific colours read off a PNG are approximations,
-never authority.
+Secondary, BG, Surface, Text) map onto `--rm-primary`, `--rm-secondary`,
+`--rm-bg`, `--rm-surface` and `--rm-text`, and a sixth DERIVED token,
+`--rm-on-primary`, has no swatch at all.
+⚠ **TWO OF THE FIVE ARE DERIVED, NOT STORED, AND THAT IS THE REAL
+CONSTRAINT.** The branding resolver stores four colours; `surface` and
+`text` are computed from them under a WCAG contrast floor. **So a
+contractor cannot set either, and a value read off a PNG for either can
+never be reproduced** — the engine computes its own and nudges it until it
+passes. Specific colours read off a PNG are approximations, never
+authority.
+⚠ **THIS PARAGRAPH CLAIMED THE OPPOSITE FOR ONE DAY, AND IT IS LEFT
+RECORDED RATHER THAN QUIETLY REPAIRED.** It read *"`surface` and `text`
+have no token today. Two of the five roles have nothing to map onto"*,
+citing amendment A20 — and that was **false at HEAD when written**:
+`RENDER_TOKEN_KEYS` in `src/utils/themeTokens.mjs` has carried both since
+before this section existed, and `ThemeProvider` mounts one property per
+key. **A20's real subject is the RESOLVER's stored set, not the mounted
+token set**, and the two were conflated. Corrected 2026-09-01 by C/DL-3c
+Phase 3 Phase 0, which read the token file rather than the amendment.
+**A governing file that silently self-corrects teaches nobody**, and this
+one was wrong in the commit that created it.
 
 **Brand assets in the mockup are PLACEHOLDERS.** Lovable did not have the
 real contractor assets, so the Accent variants render a recoloured RoofMiles
