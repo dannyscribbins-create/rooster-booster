@@ -2567,6 +2567,53 @@ WINDOW UNTIL NOW.**
       *(The horizon is also recorded at the site, in `BrandingPreview`'s dashboard comment, so
       the next person editing that file does not read the placeholder as permanent.)*
 
+- [ ] ⚠ **THE LANDING PAGE CANNOT BE PREVIEWED IN THE BRANDING PROFILE, AND UNLIKE THE REFERRER
+      DASHBOARD IT IS NOT WAITING ON THE R/AD MIGRATION.** *(Investigated and filed by B-4,
+      2026-09-01, from source rather than from assumption. B-4 shipped Login and `RepShell` and
+      left this one out.)*
+      **⚠ THE MOST IMPORTANT FACT FIRST, BECAUSE IT SURVIVES EVERY OTHER FIX BELOW: THE SURFACE
+      HAS NO DARK MODE.** `server/routes/landing.js` is 1412 lines and contains **zero**
+      `prefers-color-scheme`, no mode parameter, and no second palette. `themeStyle()` writes the
+      four **stored** hexes into `:root` as `--brand-*` and never calls `deriveThemeTokens`, so
+      the page does not participate in the render-token engine at all. **It can therefore never
+      be a target of B-4's mode toggle** — a one-mode surface under a two-mode control is
+      precisely the "inaccurate AND unresponsive" failure that keeps the referrer dashboard out
+      of that switcher. Whoever builds this decides what the toggle does while it is selected;
+      **disabled with the reason on screen is the form B-4 already ruled for the illustration.**
+      **WHY IT IS NOT REACHABLE TODAY — four findings, each read from source:**
+      **(1) The renderer is module-private.** `landing.js` exports `module.exports = router` plus
+      an additive `safeWebsiteUrl` for test. `renderLandingPage`, `renderDocument`, `themeStyle`
+      and `PAGE_CSS` are all unexported.
+      **(2) Framing the live page is blocked twice.** `createApp()`'s global `helmet()` sets
+      `X-Frame-Options: SAMEORIGIN` and `frame-ancestors 'self'`, and the landing router's own
+      scoped CSP re-applies helmet's defaults with `useDefaults: true`, which keeps
+      `frame-ancestors`. The admin panel is served from Vercel and this router from Railway, and
+      `vercel.json` carries no API proxy rewrite — so any frame is cross-origin and refused.
+      **(3) It would show SAVED values anyway.** `serveLanding` resolves from the database by
+      hostname and slug; there is no draft path. That is the B-3b defect — a preview that does
+      not follow the draft — arriving by a different route.
+      **(4) It is HTML from a template literal, not a React tree**, so none of the arc's
+      client-side plumbing reaches it.
+      **⚠ THE ROUTE, AND IT IS A SERVER ONE:** an **admin-gated endpoint that calls the same
+      `renderLandingPage` against a draft theme object** and returns the HTML string, which the
+      client writes into the existing same-origin preview frame. **One renderer, no second
+      implementation.** ⚠ **DO NOT REIMPLEMENT THE PAGE IN REACT TO GET IT INTO THE SWITCHER** —
+      that is the parallel-implementation defect the B-3 arc spent five commits removing, and
+      `BrandingPreview`'s `PREVIEW_VIEWS` block says so at the site.
+      **THREE CAVEATS THAT MUST BE SETTLED BY WHOEVER BUILDS IT, NOT DISCOVERED:**
+      · **Asset base URL.** `PAGE_CSS`'s `@font-face` blocks and `renderBrandMark`'s platform
+        image are root-relative to the **backend** origin (`/static/fonts/...`,
+        `/static/roofmiles-logo.png`). Written into a frame whose base URL is the Vercel origin
+        they 404 — the preview renders in fallback faces with a broken mark, which is exactly the
+        infidelity B-3a's font-link copying was added to prevent. Needs a `<base>` or absolutised
+        URLs.
+      · **CSP nonce.** `pageScript()` is served under a per-request nonce. A `srcdoc` frame
+        inherits the **parent's** CSP rather than the served page's headers, so the nonce means
+        nothing there. The script drives the multi-state signup flow a non-interactive preview
+        does not need — but that has to be a decision, not an accident.
+      · **Admin auth.** It is a new endpoint wrapping a public-facing renderer and must be
+        session-gated like any other admin route.
+
 
 **The theme-engine pass — SIX items, ONE design pass** (§10 has the full entry; they share a
 root cause, and patching them separately produces six unrelated special cases)

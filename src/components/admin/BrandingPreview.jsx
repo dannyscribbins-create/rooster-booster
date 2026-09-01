@@ -5,9 +5,12 @@ import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 import { deriveThemeTokens } from '../../utils/themeTokens.mjs';
 import ThemeProvider from '../shared/ThemeProvider';
 import LoginScreen from '../auth/LoginScreen';
+import RepShell from '../rep/RepShell';
 
 // ─── BrandingPreview ──────────────────────────────────────────────────────────
-// Phone mockup showing Login + Dashboard screens using live formData values.
+// Phone casing with a view switcher and a light/dark toggle, showing the login
+// door, the rep app and a dashboard illustration from live formData values.
+// See THE VIEWS below for what each one is and which two surfaces are absent.
 // Fonts are already injected into <head> by BrandingProfileSettings's useEffect.
 //
 // ── RESOLVES THROUGH THE SHARED MIRROR (C/DL-2 Phase 3c) ─────────────────────
@@ -51,6 +54,52 @@ import LoginScreen from '../auth/LoginScreen';
 const FRAME_W = 390;
 const FRAME_H = 750;
 const FRAME_SCALE = 2 / 3;
+
+// ─── THE VIEWS — B-4 ─────────────────────────────────────────────────────────
+//
+// THREE, AND THE COUNT IS NOT THE INTERESTING PART — WHICH SURFACES ARE, AND WHY
+// TWO MORE ARE ABSENT.
+//
+//   login     the unified door. A real component, --rm-* throughout.
+//   rep       RepShell. A real component, and the only surface in the product
+//             where dark mode genuinely exists today.
+//   dashboard the hand-painted illustration. NOT a render, says so on screen.
+//
+// ⚠ THE REFERRER DASHBOARD IS ABSENT ON PURPOSE AND ARRIVES HERE AS A FOURTH
+// ENTRY, NOT AS NEW PLUMBING. It paints entirely from the R palette and reads no
+// --rm-* at all, so a faithful render would sit unchanged while a contractor
+// edited every colour — inaccurate AND unresponsive, which is worse than the
+// illustration standing in for it. The moment the R/AD migration lands it can be
+// added to this array and given a branch below. Filed as launch-gating in
+// PRE_LAUNCH_CHECKLIST.md under the R/AD entry.
+//
+// ⚠ THE LANDING PAGE IS ABSENT FOR A DIFFERENT AND STRONGER REASON, AND IT IS
+// NOT WAITING ON A MIGRATION. It is server-rendered HTML built from a template
+// literal in server/routes/landing.js — the renderer is module-private, it emits
+// its own --brand-* rather than the render tokens, the live page refuses
+// cross-origin framing, and IT HAS NO DARK MODE ANYWHERE IN IT. A surface with
+// one mode can never sit under the toggle beside these buttons. The route to
+// previewing it faithfully — a server endpoint reusing that renderer — is filed
+// with its caveats in PRE_LAUNCH_CHECKLIST.md. ⚠ DO NOT REIMPLEMENT IT IN REACT
+// TO GET IT INTO THIS ARRAY: that is the parallel-implementation defect this arc
+// spent five commits removing.
+const PREVIEW_VIEWS = Object.freeze([
+  { id: 'login',     label: 'Login' },
+  { id: 'rep',       label: 'Rep app' },
+  { id: 'dashboard', label: 'Dashboard' },
+]);
+
+// The disabled toggle's aria-describedby target, so the control and the sentence
+// explaining it cannot drift apart by one of them being renamed.
+const ILLUSTRATION_NOTE_ID = 'branding-preview-illustration-note';
+
+// Hoisted so the props they feed are stable across renders. NO_STORED_MODE is
+// what keeps the preview from reading anybody's stored preference: the pin
+// already skips that read, and this makes the refusal true even if the pin
+// were ever dropped. NOOP stands in for the two real callbacks the previewed
+// surfaces expect — nothing in the casing is operable, so neither can fire.
+const NOOP = () => {};
+const NO_STORED_MODE = async () => null;
 
 function PreviewFrame({ children }) {
   const [doc, setDoc] = useState(null);
@@ -105,8 +154,24 @@ function PreviewFrame({ children }) {
   );
 }
 
-export default function BrandingPreview({ formData, mode = 'light' }) {
+// ⚠ THE `mode` PROP NOW SEEDS A CONTROL RATHER THAN PINNING THE PREVIEW, AND THE
+// NAME IS KEPT DELIBERATELY. B-3 added it as a way for a test to force one mode;
+// B-4 wires a control to that same pin instead of building a second mechanism,
+// which is why the prop still exists and still defaults to 'light'. Renaming it
+// would have been tidier and would have rewritten twelve passing B-3 cases for
+// no behavioural gain.
+// ⚠ A LATER CHANGE TO THE PROP DOES NOT MOVE THE PREVIEW — it is an initial
+// value, as useState always is. Nothing passes it in production (the panel mounts
+// <BrandingPreview formData={...} /> and nothing else), and no test rerenders
+// with a different one; if a caller ever needs to drive the mode from outside,
+// that is a lifted-state change and not a prop rename.
+export default function BrandingPreview({ formData, mode: initialMode = 'light' }) {
   const [screen, setScreen] = useState('login');
+  const [mode, setMode]     = useState(initialMode);
+
+  // The illustration has no mode, so the control that changes the mode is dead
+  // on it. See the toggle's own block for why disabled rather than hidden.
+  const modeDisabled = screen === 'dashboard';
 
   const theme     = resolveBrandingTheme(formData);
 
@@ -202,20 +267,43 @@ export default function BrandingPreview({ formData, mode = 'light' }) {
           a fourth entry in B-4's view switcher rather than a rewrite. The user
           does not need the roadmap; the next person editing this file does. */}
       {screen === 'dashboard' && (
-        <p style={{
-          margin: '-6px 0 14px', fontSize: 11, lineHeight: 1.4,
-          color: AD.textTertiary, fontFamily: AD.fontSans, textAlign: 'center',
-        }}>
-          Illustration of your palette — not a render of the live screen.
+        <p
+          id={ILLUSTRATION_NOTE_ID}
+          data-preview-illustration-note=""
+          style={{
+            margin: '-6px 0 14px', fontSize: 11, lineHeight: 1.4,
+            color: AD.textTertiary, fontFamily: AD.fontSans, textAlign: 'center',
+          }}
+        >
+          {/* ⚠ THE SECOND CLAUSE IS B-4's, AND IT IS ALSO THE DISABLED TOGGLE'S
+              STATED REASON — aria-describedby on that control points here. The
+              first clause was written before a mode control existed, so it was
+              honest about FIDELITY and silent about MODE; a disabled button with
+              no visible reason is just a dead button. */}
+          Illustration of your palette — not a render of the live screen, and it
+          does not change between light and dark.
         </p>
       )}
 
-      {/* Screen toggle */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, justifyContent: 'center' }}>
-        {[
-          { id: 'login', label: 'Login' },
-          { id: 'dashboard', label: 'Dashboard' },
-        ].map(({ id, label }) => (
+      {/* ⚠ THE VIEW BUTTONS AND THE MODE TOGGLE ARE TWO INDEPENDENT CONTROLS
+          AND MUST NOT CLOBBER EACH OTHER. Each writes its own piece of state and
+          neither resets the other; both directions are pinned in the test file,
+          because the obvious wrong implementation — remounting the surface with
+          a fresh mode default on every view change — silently returns a
+          contractor to light mode by the act of comparing two screens.
+
+          ⚠ THE ACTIVE PILL PAINTS FROM THE RAW STORED primaryColor, NOT FROM A
+          DERIVED TOKEN, AND THAT IS PRE-EXISTING RATHER THAN A B-4 CHOICE. It
+          predates the derivation work and it is admin chrome outside the casing,
+          so it is left exactly as it was; changing it here would be an unrelated
+          repaint inside a commit about controls. Noted so the next reader does
+          not take it as the pattern to copy — everything INSIDE the frame paints
+          from --rm-*. */}
+      <div style={{
+        display: 'flex', gap: 8, marginBottom: 20,
+        justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap',
+      }}>
+        {PREVIEW_VIEWS.map(({ id, label }) => (
           <button
             key={id}
             onClick={() => setScreen(id)}
@@ -231,6 +319,74 @@ export default function BrandingPreview({ formData, mode = 'light' }) {
             {label}
           </button>
         ))}
+
+        <span aria-hidden="true" style={{ width: 1, height: 18, background: AD.border, margin: '0 2px' }} />
+
+        {/* ── THE MODE TOGGLE ────────────────────────────────────────────────
+            ⚠ IT WRITES NOTHING. It moves this component's own state, which is
+            handed to ThemeProvider as its `mode` prop — the pin that already
+            existed and defaulted to 'light'. It is a PREVIEW control: it changes
+            what the contractor is LOOKING AT. It is not the rep app's theme
+            setting, which is RepThemeToggleRow and which does a real PUT.
+            ⚠ SO IT NEVER CALLS setMode() ON THE CONTEXT. The provider is pinned,
+            and ThemeLayer's setMode refuses a write under a pin and warns; going
+            through it would produce a console warning on every click and change
+            nothing. Passing the pin IS the mechanism.
+
+            ⚠ DISABLED ON THE DASHBOARD VIEW, WITH THE REASON ON SCREEN BESIDE
+            IT. DashboardPreview is a hand-painted illustration that reads no
+            token and no mode, so it renders identically either way. A live
+            control over a surface that ignores it teaches a contractor that
+            their palette does nothing — the same "inaccurate AND unresponsive"
+            failure that keeps the referrer dashboard out of this switcher.
+            ⚠ DISABLED RATHER THAN HIDDEN, AND RepBottomNav's ABSENT FAB IS NOT
+            THE COUNTER-EXAMPLE. That control does not exist yet in its phase, so
+            absence is a decision. This one exists and works on the other two
+            views, so hiding it would make it appear and disappear as views
+            change, which reads as a glitch. A disabled control with a stated
+            reason is the honest form when the capability exists and this one
+            surface cannot use it. */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={mode === 'dark'}
+          aria-label="Dark mode"
+          aria-describedby={modeDisabled ? ILLUSTRATION_NOTE_ID : undefined}
+          disabled={modeDisabled}
+          data-preview-mode-toggle=""
+          onClick={() => setMode(m => (m === 'dark' ? 'light' : 'dark'))}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            padding: '4px 10px 4px 6px', borderRadius: 999,
+            border: `1.5px solid ${AD.border}`, background: 'transparent',
+            color: AD.textSecondary,
+            fontSize: 12, fontWeight: 600, fontFamily: AD.fontSans,
+            cursor: modeDisabled ? 'default' : 'pointer',
+            opacity: modeDisabled ? 0.45 : 1,
+            transition: 'opacity 0.15s',
+          }}
+        >
+          {/* The track. AD tokens throughout — this is admin chrome outside the
+              casing, so it must not move when a contractor edits a colour. */}
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'relative', display: 'inline-block',
+              width: 30, height: 18, borderRadius: 999,
+              border: `1.5px solid ${AD.border}`,
+              background: mode === 'dark' ? AD.textPrimary : 'transparent',
+              transition: 'background 0.15s',
+            }}
+          >
+            <span style={{
+              position: 'absolute', top: 2, left: mode === 'dark' ? 14 : 2,
+              width: 11, height: 11, borderRadius: '50%',
+              background: mode === 'dark' ? '#fff' : AD.textTertiary,
+              transition: 'left 0.15s, background 0.15s',
+            }} />
+          </span>
+          Dark
+        </button>
       </div>
 
       {/* Phone shell */}
@@ -263,18 +419,46 @@ export default function BrandingPreview({ formData, mode = 'light' }) {
               outside this phone casing acquires them and LockedSection's scrim
               elsewhere in the panel still reaches its fallback unchanged.
               ⚠ LoginScreen MAKES NO REQUEST ON MOUNT — its three fetches all sit
-              inside submit handlers — so nothing here dials the network. */}
-          {screen === 'login' ? (
-            <PreviewFrame>
-              <ThemeProvider supplied={supplied} fetchStoredMode={async () => null} mode={mode}>
-                <LoginScreen onAuthenticated={() => {}} />
-              </ThemeProvider>
-            </PreviewFrame>
-          ) : (
+              inside submit handlers — so nothing here dials the network.
+              ⚠ AND RepShell DOES NOT EITHER, BUT IT IS NOT THE SAME SENTENCE —
+              B-4 ADDED A COMPONENT THAT CAN WRITE. The shell itself contains no
+              fetch, but RepThemeToggleRow on its Profile screen calls
+              saveThemeMode(), a real PUT presenting the ADMIN token — which is
+              the token the person reading this panel is holding. Two things keep
+              it unreachable: the entry screen is Home, and the nav that would
+              reach Profile is under the pointer-events block above. Both are
+              fenced in BrandingPreview.test.jsx, and the second is guard-proofed
+              by removing the block and watching the frame become clickable.
+
+              ⚠ ONE FRAME FOR BOTH REAL SURFACES, AND THE PROVIDER IS ABOVE THE
+              SWAP RATHER THAN INSIDE IT. That is what makes "switching views
+              preserves the mode" structural instead of incidental: the same
+              ThemeProvider element stays mounted across a view change, so there
+              is no second mode state that could disagree with the first. Put the
+              provider inside each branch and the two surfaces would each own a
+              mode, and the toggle would appear to reset on every view change.
+
+              ⚠ switcher={null} — A PREVIEW OF A CONTRACTOR'S REP APP MUST NOT
+              INVENT AN ADMIN SWITCHER. In production RepSurface passes one only
+              for a rep who is also an owner or admin; a general-tier rep has one
+              destination and sees nothing. Drawing chrome here that a contractor
+              may never have is the same class of lie as painting a colour they
+              did not choose. onLogout is a no-op rather than null because the
+              Sign out row IS part of the real Profile screen — omitting it would
+              trim the surface being previewed. */}
+          {screen === 'dashboard' ? (
             <DashboardPreview
               primary={primary} secondary={secondary} accent={accent}
               fontH={fontH} fontB={fontB} reviewBtn={reviewBtn}
             />
+          ) : (
+            <PreviewFrame>
+              <ThemeProvider supplied={supplied} fetchStoredMode={NO_STORED_MODE} mode={mode}>
+                {screen === 'rep'
+                  ? <RepShell onLogout={NOOP} switcher={null} />
+                  : <LoginScreen onAuthenticated={NOOP} />}
+              </ThemeProvider>
+            </PreviewFrame>
           )}
         </div>
 

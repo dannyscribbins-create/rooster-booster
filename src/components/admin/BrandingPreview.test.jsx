@@ -58,6 +58,17 @@ import { BRANDING_THEME_DEFAULTS, resolveBrandingTheme } from '../../utils/brand
 // B-3 reads the engine's own answer rather than restating one, so an expectation
 // here cannot drift from what the app derives.
 import { deriveThemeTokens } from '../../utils/themeTokens.mjs';
+// ⚠ userEvent IS USED IN EXACTLY ONE PLACE — B-4's fetch fence — FOR SOMETHING
+// fireEvent STRUCTURALLY CANNOT DO. fireEvent dispatches an event at a node and
+// performs NO hit testing, so it will happily "click" an element under
+// `pointer-events: none`; a fence built on it would pass identically against a
+// fully operable preview, which is the vacuity that fence exists to prevent.
+// userEvent's hasPointerEvents() walks the ancestor chain in the element's OWN
+// document and refuses, which is what makes the refusal observable at all.
+// Pinned at v13 — no setup(), click() is synchronous and THROWS. Every other
+// interaction in this file stays on fireEvent, matching the repo convention
+// recorded in src/components/auth/unifiedLogin.test.jsx.
+import userEvent from '@testing-library/user-event';
 
 // The RoofMiles fallback tokens. Written as HAND-CHECKED LITERALS, deliberately
 // not imported, so these expectations cannot be satisfied by the module under
@@ -829,5 +840,533 @@ describe('B-3b — the preview follows the draft as it is edited', () => {
       themeRoot(),
       'the provider subtree was torn down and rebuilt — the entrance animation would replay on every keystroke'
     ).toBe(nodeBefore);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-4 — RED SUITE — THE PREVIEW SURFACES AND THE MODE TOGGLE
+//
+// B-3 through B-3c made ONE surface faithful. B-4 adds the controls: a view
+// button per surface, and a light/dark toggle beside them that swaps what is
+// mounted INSIDE the casing.
+//
+// ── THE THREE SURFACES, AND WHY THE THIRD IS NOT HERE ───────────────────────
+// The unified login door and RepShell are real components painting from --rm-*,
+// so both can be mounted and both answer a mode change. THE LANDING PAGE CANNOT
+// BE PREVIEWED AT ALL TODAY and is filed rather than built — it is a
+// server-rendered HTML string whose renderer is module-private, it emits
+// --brand-* rather than the render tokens, the live page refuses cross-origin
+// framing, and it HAS NO DARK MODE ANYWHERE IN IT. See PRE_LAUNCH_CHECKLIST.md's
+// landing-preview entry for the route and its caveats. A surface with one mode
+// sitting under a two-mode control is the defect this suite's disabled-toggle
+// cases exist to prevent, one surface along.
+//
+// ── ⚠ WHY EVERY MODE CASE BELOW READS A DERIVED TOKEN IN DARK ───────────────
+// The same argument B-3's header makes, and it is the whole reason a mode
+// control is testable at all. In LIGHT mode a compliant brand fill is passed
+// through unchanged, so the typed hex and the derived token are the same string
+// — an assertion that the toggle "changed the colour" would pass identically
+// against a control wired to nothing but a label. In dark the engine lightens
+// the fill and darkens the ground, so light and dark produce DIFFERENT strings
+// and the assertion can fail. Every case below computes both from the real
+// engine and asserts they diverge BEFORE comparing anything the component
+// painted.
+//
+// ⚠ AND THE OBSERVATION POINT IS THE MOUNTED CUSTOM PROPERTY, NOT A PIXEL.
+// jsdom resolves no var(). What is readable is the property set ThemeProvider
+// mounts on [data-rm-theme] inside the frame — the same handle B-3 uses.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The preview's own mode control. A data attribute rather than a role query:
+// RepShell's Profile screen carries its OWN role="switch" (RepThemeToggleRow),
+// and although that one lives in the frame's document rather than in `screen`,
+// pinning this to a handle the preview owns means the two can never be confused
+// if either moves.
+function modeToggle() {
+  return document.querySelector('[data-preview-mode-toggle]');
+}
+
+// A draft that names a logo and a company, for the merge case. The URL is a
+// .invalid host, matching adminBrandingSeam.test.jsx — nothing here may resolve.
+const REP_DRAFT = {
+  ...DEEP_ACTION_DRAFT,
+  company_name: 'Fourth Fixture Roofing',
+  logo_url: 'https://cdn.test.invalid/fourth/mark.png',
+};
+
+describe('B-4 — the view switcher mounts each surface, and the mode toggle swaps it', () => {
+
+  // ── 1. EACH VIEW BUTTON MOUNTS ITS OWN SURFACE ─────────────────────────────
+
+  it('[RED] a Rep app view button mounts the REAL RepShell, not a drawing of one', async () => {
+    // ⚠ THE STRUCTURAL HALF, AND IT IS THE SAME ARGUMENT B-3 MADE FOR LOGIN.
+    // Every colour assertion below is satisfied by a component that mounts a
+    // provider and paints its own picture underneath it. This asserts the actual
+    // shell is present, by two handles only the real components render:
+    // data-rep-shell is RepShell's root, data-rep-nav is RepBottomNav.
+    render(<BrandingPreview formData={REP_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+
+    await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+    expect(
+      insideFrame('[data-rep-nav]'),
+      'the bottom nav is absent — a stub was mounted rather than the shell'
+    ).toBeTruthy();
+  });
+
+  it('[RED] the shell renders INSIDE the frame, where its fixed nav and 100vh mean the casing', async () => {
+    // ⚠ NOT A DUPLICATE OF THE CASE ABOVE — IT PINS WHERE, AND RepShell NEEDS
+    // THE FRAME FOR A SECOND REASON LoginScreen DOES NOT HAVE. Its root is
+    // minHeight:100vh (B-3a's argument), AND RepBottomNav is
+    // position:fixed with bottom:0 and width:min(430px,100vw). Mounted in the
+    // parent document that nav pins to the BROWSER viewport at 430px wide — a
+    // bar floating across the admin panel, outside the phone entirely.
+    render(<BrandingPreview formData={REP_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+    await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+
+    expect(
+      document.querySelector('[data-rep-shell]'),
+      'the shell rendered in the PARENT document — its fixed nav would escape the casing'
+    ).toBeNull();
+  });
+
+  it('[RED] the two real surfaces are DISTINCT — each button mounts its own, not one of them twice', async () => {
+    // ⚠ THE SIBLING PROOF, AND IT IS WHY THE LOGIN HALF IS ASSERTED HERE RATHER
+    // THAN LEFT TO B-3. A switcher wired so that every button mounts the SAME
+    // surface satisfies case 1 whenever that surface happens to be the shell.
+    // Each state is pinned by what is present AND by what is absent.
+    render(<BrandingPreview formData={REP_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    // Login is the entry view and is already the arc's proven surface.
+    await waitFor(() => expect(frameText()).toContain('Welcome back'));
+    expect(insideFrame('[data-rep-shell]')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+    await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+    expect(
+      frameText(),
+      'the login screen is still mounted alongside the shell — the views are not exclusive'
+    ).not.toContain('Welcome back');
+  });
+
+  // ── 2. THE MODE TOGGLE CHANGES WHAT IS MOUNTED ─────────────────────────────
+
+  it('[RED] DARK: the toggle moves the DERIVED action token, not a label', async () => {
+    const brand = resolveBrandingTheme(DEEP_ACTION_DRAFT);
+    const light = deriveThemeTokens(brand, 'light');
+    const dark  = deriveThemeTokens(brand, 'dark');
+
+    // NON-VACUITY, FIRST. If this fixture derived the same action token in both
+    // modes, "the token moved" could never fail and this case would be pinning
+    // the fixture rather than the control.
+    expect(
+      light.primary.toUpperCase(),
+      'the fixture derives the SAME action token in both modes — this case could not fail'
+    ).not.toBe(dark.primary.toUpperCase());
+
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+    expect(mountedToken('--rm-primary').toUpperCase()).toBe(light.primary.toUpperCase());
+
+    fireEvent.click(modeToggle());
+
+    await waitFor(
+      () => expect(mountedToken('--rm-primary').toUpperCase()).toBe(dark.primary.toUpperCase()),
+      { timeout: 2000 }
+    );
+    // ⚠ AND IT IS STILL DERIVED. A toggle that flipped the surface to dark by
+    // painting the typed hex would satisfy the line above on some palettes and
+    // undo the whole of B-3. Asserted in dark, where the two diverge.
+    expect(
+      mountedToken('--rm-primary').toUpperCase(),
+      'the dark value IS the typed hex — the toggle is painting raw values'
+    ).not.toBe(DEEP_ACTION_DRAFT.secondary_color.toUpperCase());
+  });
+
+  it('[RED] the page ground moves too, not only the action colour', async () => {
+    // Both routed columns, for the same reason B-3b asserts both: a control
+    // wired to one and not the other passes the case above and is half built.
+    // The ground is also the single most visible thing a mode change does.
+    const brand = resolveBrandingTheme(DEEP_ACTION_DRAFT);
+    const light = deriveThemeTokens(brand, 'light');
+    const dark  = deriveThemeTokens(brand, 'dark');
+    expect(light.bg.toUpperCase()).not.toBe(dark.bg.toUpperCase());
+    expect(light.text.toUpperCase()).not.toBe(dark.text.toUpperCase());
+
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+    expect(mountedToken('--rm-bg').toUpperCase()).toBe(light.bg.toUpperCase());
+
+    fireEvent.click(modeToggle());
+
+    await waitFor(
+      () => expect(mountedToken('--rm-bg').toUpperCase()).toBe(dark.bg.toUpperCase()),
+      { timeout: 2000 }
+    );
+    expect(mountedToken('--rm-text').toUpperCase()).toBe(dark.text.toUpperCase());
+  });
+
+  it('[RED] the toggle reports the mode it produced — the provider and the control agree', async () => {
+    // ⚠ THE CONTROL'S OWN STATE IS A SECOND SOURCE OF TRUTH AND MUST NOT DRIFT
+    // FROM THE PROVIDER'S. data-rm-theme is what ThemeLayer publishes;
+    // aria-checked is what a screen reader is told. A control that swapped the
+    // tokens while still announcing "off" is a defect no colour assertion sees.
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+    expect(themeRoot().getAttribute('data-rm-theme')).toBe('light');
+    expect(modeToggle().getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(modeToggle());
+
+    await waitFor(() => expect(themeRoot().getAttribute('data-rm-theme')).toBe('dark'));
+    expect(modeToggle().getAttribute('aria-checked')).toBe('true');
+  });
+
+  // ── 3. TWO INDEPENDENT CONTROLS THAT MUST NOT CLOBBER EACH OTHER ───────────
+
+  it('[RED] switching VIEWS preserves the MODE', async () => {
+    // The obvious wrong implementation remounts the surface with a fresh mode
+    // default on every view change, so a contractor comparing two screens in
+    // dark is silently returned to light by the act of comparing them.
+    const dark = deriveThemeTokens(resolveBrandingTheme(REP_DRAFT), 'dark');
+
+    render(<BrandingPreview formData={REP_DRAFT} />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+    fireEvent.click(modeToggle());
+    await waitFor(() => expect(themeRoot().getAttribute('data-rm-theme')).toBe('dark'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+    await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+
+    expect(
+      themeRoot().getAttribute('data-rm-theme'),
+      'the view change reset the mode'
+    ).toBe('dark');
+    // ⚠ THE ATTRIBUTE ALONE IS NOT THE PROOF. A surface that reported dark while
+    // mounting light tokens would satisfy the line above. The derived ground is
+    // what the contractor actually sees.
+    expect(mountedToken('--rm-bg').toUpperCase()).toBe(dark.bg.toUpperCase());
+    expect(modeToggle().getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('[RED] switching MODES preserves the VIEW', async () => {
+    // The mirror of the case above, and the failure is the same shape: a
+    // contractor inspecting the rep app in dark should not be returned to the
+    // login screen by the toggle.
+    render(<BrandingPreview formData={REP_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+    await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+
+    fireEvent.click(modeToggle());
+    await waitFor(() => expect(themeRoot().getAttribute('data-rm-theme')).toBe('dark'));
+
+    expect(
+      insideFrame('[data-rep-shell]'),
+      'the mode change sent the preview back to another surface'
+    ).toBeTruthy();
+    expect(frameText()).not.toContain('Welcome back');
+  });
+
+  // ── 4. THE TOGGLE IS DISABLED ON THE DASHBOARD ILLUSTRATION ────────────────
+
+  it('[RED] the toggle is DISABLED on Dashboard and RE-ENABLED on leaving it', async () => {
+    // ⚠ BOTH DIRECTIONS, IN ONE MOUNT, AND THE ENABLED STATE IS ASSERTED FIRST.
+    // "It is disabled here" is satisfied by a control that is disabled
+    // everywhere — including by one wired to nothing at all. The enabled
+    // bookends are what make the middle assertion mean something.
+    //
+    // WHY IT IS DISABLED: DashboardPreview is a hand-painted illustration that
+    // reads no token and no mode, so it renders identically in both. A live
+    // control over a surface that ignores it teaches a contractor their palette
+    // does nothing — the same "inaccurate AND unresponsive" failure that keeps
+    // the referrer dashboard out of this switcher entirely.
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    expect(modeToggle().disabled, 'the toggle is dead on the login view').toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+    await waitFor(() => expect(modeToggle().disabled).toBe(true));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+    await waitFor(() => expect(modeToggle().disabled).toBe(false));
+  });
+
+  it('[RED] the illustration says it does not follow the mode, not only that it is an illustration', async () => {
+    // ⚠ THE LABEL WAS WRITTEN BEFORE A MODE CONTROL EXISTED. "Illustration of
+    // your palette — not a render of the live screen" is honest about FIDELITY
+    // and silent about MODE, and a disabled control with no stated reason is a
+    // dead button. The sentence is the visible reason.
+    //
+    // ⚠ ANCHORED ON THE ILLUSTRATION'S OWN ELEMENT, NOT ON A DOCUMENT-WIDE TEXT
+    // SEARCH. A needle matched anywhere on the panel would go green against the
+    // word appearing in a button label.
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+
+    const note = await waitFor(() => {
+      const el = document.querySelector('[data-preview-illustration-note]');
+      if (!el) throw new Error('the illustration carries no note element');
+      return el;
+    });
+
+    expect(note.textContent).toMatch(/illustration/i);
+    expect(
+      note.textContent,
+      'the note does not mention the mode — the disabled toggle has no stated reason'
+    ).toMatch(/light|dark/i);
+  });
+
+  // ── 5. THE B-3c MERGE REACHES THE NEW SURFACE ──────────────────────────────
+
+  it('[RED] the draft logo and company name reach RepShell — no fallback to the platform mark', async () => {
+    // ⚠ THE FALLBACK IS THE PRIMARY CASE, NOT THE INCIDENTAL ONE. RepShell reads
+    // the branding logoUrl or falls back to the platform mark, and the branding
+    // companyName or falls back to the platform name — so a surface the merge
+    // never reaches renders the PLATFORM's mark and the PLATFORM's name and
+    // looks entirely plausible. That is exactly the defect B-3c fixed on the
+    // login screen — the preview showing one brand while the live screen shows
+    // another — arriving one surface later.
+    //
+    // ⚠ BOTH FIELDS, AND THE LOGO IS THE LOAD-BEARING ONE. companyName is
+    // DEFAULTED by the resolver; logoUrl resolves to null when unset, so it is
+    // the field that can actually distinguish "the merge arrived" from "the
+    // fallback fired". Asserting the name alone is the defaulted-field trap.
+    render(<BrandingPreview formData={REP_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+    await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+
+    const mark = insideFrame('[data-rep-shell] img');
+    expect(mark, 'the shell rendered no mark at all').toBeTruthy();
+    expect(mark.getAttribute('src')).toBe(REP_DRAFT.logo_url);
+    expect(
+      mark.getAttribute('src'),
+      'the shell fell back to the PLATFORM mark — the draft never reached it'
+    ).not.toMatch(/roofmiles/i);
+    expect(mark.getAttribute('alt')).toBe(REP_DRAFT.company_name);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-4 — THE FETCH FENCE
+//
+// ⚠ THIS IS A NEW RISK B-4 CREATES, NOT AN OLD ONE IT INHERITS. Until now the
+// only surface in the casing was LoginScreen, whose three fetches all sit inside
+// submit handlers. RepShell brings RepThemeToggleRow, and that row calls
+// saveThemeMode() — a real PUT to /api/preferences/theme-mode presenting the
+// ADMIN token, which is the token the person looking at this panel is holding.
+// ⚠ SO A CLICKABLE PREVIEW WOULD LET AN ADMIN CHANGE A THEME PREFERENCE BY
+// LOOKING AT THEIR OWN BRANDING PAGE. Not hypothetical: B-3a found the login
+// screen inside this casing accepting typing, submitting, and opening real
+// browser tabs, which is why the pointer-events block exists at all.
+//
+// TWO FENCES, AND THEY ARE DIFFERENT CLAIMS:
+//   (A) B-4's OWN control writes nothing. It is a preview control, not the rep
+//       app's theme setting.
+//   (B) NOTHING INSIDE THE FRAME IS OPERABLE, so the rep app's own writer cannot
+//       be reached in the first place.
+// (A) alone would leave the real writer one click away; (B) alone would not say
+// what B-4's control does.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('B-4 — the preview writes nothing, and nothing in the casing is operable', () => {
+
+  it('[RED] B-4 toggle writes NOTHING — it moves the mode and fires no request, on every view', async () => {
+    // ⚠ THE "IT WORKED" ASSERTIONS ARE THE NON-VACUITY CONTROL, AND WITHOUT THEM
+    // THIS CASE IS WORTHLESS. "No request fired" is satisfied by a toggle wired
+    // to nothing at all — by a dead button, by a missing button, by a component
+    // that renders nothing. Each click below is proved to have MOVED THE MODE
+    // before the fetch count is read, so what is pinned is "it works and it is
+    // silent" rather than "nothing happened".
+    //
+    // The stub RESOLVES rather than rejecting: a rejected promise nothing caught
+    // would surface as an unhandled rejection and bury the assertion message
+    // that actually says what went wrong.
+    const calls = [];
+    const realFetch = global.fetch;
+    global.fetch = (...args) => {
+      calls.push(args);
+      return Promise.resolve({ ok: false, status: 0, json: async () => ({}) });
+    };
+
+    try {
+      render(<BrandingPreview formData={REP_DRAFT} />);
+      await screen.findByText('Live Preview');
+      await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+      fireEvent.click(modeToggle());
+      await waitFor(() => expect(themeRoot().getAttribute('data-rm-theme')).toBe('dark'));
+      expect(calls, 'the toggle fired a request from the login view').toHaveLength(0);
+
+      // The other real surface — the one that brought the writer into the casing.
+      fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+      await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+      expect(calls, 'mounting the rep shell fired a request').toHaveLength(0);
+
+      fireEvent.click(modeToggle());
+      await waitFor(() => expect(themeRoot().getAttribute('data-rm-theme')).toBe('light'));
+      expect(calls, 'the toggle fired a request from the rep view').toHaveLength(0);
+    } finally {
+      global.fetch = realFetch;
+    }
+  });
+
+  it('[RED] nothing inside the frame is operable — the rep app own theme writer is unreachable', async () => {
+    // ⚠ TWO LAYERS, ASSERTED SEPARATELY, BECAUSE EITHER ALONE IS A DIFFERENT
+    // CLAIM. Layer one: a real click on anything in the frame is REFUSED. Layer
+    // two: the writer is not even rendered, because RepShell enters on Home and
+    // RepThemeToggleRow lives on Profile, which is reached only through the nav
+    // that layer one just proved unreachable.
+    render(<BrandingPreview formData={REP_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+    await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+
+    // ⚠ THE POSITIVE CONTROL, AND IT COMES FIRST. userEvent refusing a click is
+    // only evidence about the frame if userEvent will accept one elsewhere. B-4's
+    // own toggle sits in the parent document and must click cleanly; without this
+    // line, "userEvent threw" is equally explained by a broken harness.
+    expect(
+      () => userEvent.click(modeToggle()),
+      'userEvent refused a click in the PARENT document — the refusal below proves nothing about the frame'
+    ).not.toThrow();
+
+    const tab = insideFrame('[data-rep-tab="profile"]');
+    expect(tab, 'the rep nav rendered no Profile tab — nothing below is meaningful').toBeTruthy();
+
+    expect(
+      () => userEvent.click(tab),
+      'a real click reached the rep app nav — the preview is operable and the theme writer is one tab away'
+    ).toThrow(/pointer-events/);
+
+    // Layer two. The writer is not on the entry screen and cannot be navigated to.
+    expect(
+      insideFrame('[data-rep-theme-switch]'),
+      'the rep app own theme switch is rendered in the preview'
+    ).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-4 — THE ARC'S ESTABLISHED PROPERTIES, RE-ASSERTED ON THE SURFACE B-4 ADDED
+//
+// ⚠ THIS EXISTS BECAUSE OF A RULE THIS CODEBASE PAID FOR: "a rule applied once
+// to a surface does not stay applied when the surface moves." B-3b's four
+// live-update cases are all green and every one of them drives the LOGIN view.
+// None of them says anything about the rep view, and "the provider sits above
+// the swap so it must follow the draft there too" is a structural argument, not
+// a measurement. The structural argument happens to be right; that is not the
+// same as it having been checked.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('B-4 — the arc properties still hold on the newly added surface', () => {
+
+  it('[RED] the REP view follows the draft live too — no save, no remount', async () => {
+    // Same shape as B-3b's load-bearing case, driven on the other surface, and
+    // in dark for the same reason: in light the typed and derived values
+    // coincide, so the assertion could not fail against raw painting.
+    const first = { ...REP_DRAFT };
+    const edited = { ...REP_DRAFT, secondary_color: '#2E6B2E' };
+
+    const before = deriveThemeTokens(resolveBrandingTheme(first), 'dark');
+    const after  = deriveThemeTokens(resolveBrandingTheme(edited), 'dark');
+    expect(
+      before.primary.toUpperCase(),
+      'the two drafts derive to the same token — this case could not fail'
+    ).not.toBe(after.primary.toUpperCase());
+
+    const view = render(<BrandingPreview formData={first} mode="dark" />);
+    await screen.findByText('Live Preview');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+    await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+    expect(mountedToken('--rm-primary').toUpperCase()).toBe(before.primary.toUpperCase());
+
+    const nodeBefore = themeRoot();
+
+    // The keystroke. Same element, new props — no unmount, no save.
+    view.rerender(<BrandingPreview formData={edited} mode="dark" />);
+
+    await waitFor(
+      () => expect(mountedToken('--rm-primary').toUpperCase()).toBe(after.primary.toUpperCase()),
+      { timeout: 2000 }
+    );
+    // ⚠ AND THE VIEW SURVIVED THE EDIT. A repaint that tore the frame down and
+    // rebuilt it would satisfy the line above and dump the contractor back on
+    // the login screen every time they typed a character.
+    expect(insideFrame('[data-rep-shell]'), 'the edit reset the view').toBeTruthy();
+    expect(
+      themeRoot(),
+      'the provider subtree was torn down and rebuilt on a keystroke'
+    ).toBe(nodeBefore);
+  });
+
+  it('[RED] the frame is the SAME element across a view change — one frame, not one per surface', async () => {
+    // ⚠ THE STRUCTURAL CLAIM BEHIND "switching views preserves the mode".
+    // That case asserts the OUTCOME; this asserts that the outcome comes from
+    // one document and one provider rather than from two that happen to agree —
+    // no remount, no second document, no entrance animation replaying on a view
+    // change.
+    //
+    // ⚠ WHAT THIS CASE CANNOT SEE, MEASURED RATHER THAN ASSUMED, BECAUSE IT WAS
+    // WRITTEN AFTER THE COMPONENT AND HAD TO EARN ITS PLACE. Guard-proofed twice:
+    //   · Rewriting the source as `screen === 'rep' ? <PreviewFrame>…rep…' :
+    //     <PreviewFrame>…login…` — a literal frame per surface — DID NOT MAKE IT
+    //     FAIL. React reconciles two elements of the same type at the same
+    //     position, so the DOM node and the provider are the same either way.
+    //     That is not a hole: the two source shapes are behaviourally identical,
+    //     and this case pins the behaviour rather than the spelling.
+    //   · Giving those frames distinct `key`s — which DOES force a remount — made
+    //     it RED with "the view change built a second frame". So the assertion
+    //     can fail, and the failure it catches is the one that matters.
+    // ⚠ RECORDED BECAUSE A GUARD-PROOF THAT DID NOT FIRE IS EVIDENCE ABOUT THE
+    // GUARD, and a later reader repeating the first attempt would otherwise
+    // conclude the case is vacuous and delete it.
+    //
+    // The LENGTH assertion is the independent half: an implementation that keeps
+    // both surfaces mounted and hides one — the obvious "make switching instant"
+    // shortcut — is invisible to the identity assertions and fails this one.
+    render(<BrandingPreview formData={REP_DRAFT} />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+    const frameBefore = document.querySelector('iframe[data-preview-frame]');
+    const providerBefore = themeRoot();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
+    await waitFor(() => expect(insideFrame('[data-rep-shell]')).toBeTruthy());
+
+    expect(
+      document.querySelectorAll('iframe[data-preview-frame]'),
+      'more than one frame is mounted'
+    ).toHaveLength(1);
+    expect(
+      document.querySelector('iframe[data-preview-frame]'),
+      'the view change built a second frame'
+    ).toBe(frameBefore);
+    expect(
+      themeRoot(),
+      'the view change built a second provider — the mode is preserved by luck, not by structure'
+    ).toBe(providerBefore);
   });
 });
