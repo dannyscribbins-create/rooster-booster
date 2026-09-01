@@ -6,7 +6,7 @@ import { LIGHT_SURFACE_HEX } from '../../utils/themeTokens.mjs';
 //
 // C/DL-3c Phase 1a, Ruling 3. ONE TREATMENT, NOT FOUR EDITS. Four surfaces
 // rendered a bare <img> on var(--rm-surface) — LoginScreen, ResetPinScreen,
-// FrozenAccountScreen and RepPlaceholder. Four sites carrying the same defect
+// FrozenAccountScreen and RepShell. Four sites carrying the same defect
 // are four sites that drift, so the treatment lives here and they call it.
 //
 // ── THE DEFECT ───────────────────────────────────────────────────────────────

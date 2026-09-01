@@ -2609,26 +2609,6 @@ root cause, and patching them separately produces six unrelated special cases)
       colour that is already correct in one of the two modes, and `readableForegroundOn()`
       makes both calls at once. Still the UI Overhaul arc's, still not 3c's.
 
-**⬜ PHASE 3 MOUNTS THE THEME CONTROL IN PROFILE. 1b SHIPPED THE MECHANISM WITH NO CALLER.**
-- [ ] **What Phase 3 renders:** a light/dark switch on the rep Profile screen, reading `mode`
-      from `useContext(ThemeContext)` and calling `PUT /api/preferences/theme-mode` with the
-      rep's admin-key token.
-      ⚠ **`ThemeContext` PUBLISHES `mode` BUT NO SETTER.** Its value is
-      `{ mode, branding, source }`, frozen in a `useMemo`, and `mode` is computed inside
-      `ThemeLayer`. Phase 3 must add `setMode` to that value — a one-line change beside the
-      `storedMode` state that already exists — or reload after the write. **Budget for it; do
-      not discover it.**
-      ⚠ **THE SHAPE THIS IS AT RISK OF, AND IT HAS HAPPENED THREE TIMES HERE.**
-      `user_preferences` shipped in 3a with zero production callers and sat that way through
-      3b; `logoutAdmin()` shipped *"exported, tested, and deliberately without a caller"*;
-      SH-10's TOTP toggle has storage ✓ editor ✓ validator ✓ **delivery ✗**. **Each time,
-      "we'll mount it next phase" is what was said.** The only difference here is that Phase 3
-      is the next phase — which is why this is written down rather than intended.
-      **WHAT CLOSES IT:** the Phase 3 build, when a rep can flip the switch in Profile and the
-      mode survives a reload. **Whoever closes Phase 3 deletes this entry in the same commit**,
-      not at a later doc pass. Until then the writer has no production caller and this entry is
-      the record of that.
-
 **🟠 A DARK LOGIN SCREEN SURVIVES A LOGOUT — REACHABLE IN PRODUCTION TODAY**
 - [ ] **THE MECHANISM.** `src/App.jsx:513` wraps the entire routed tree in ONE
       `ThemeProvider`, and `handleLogout()` clears React state **without reloading the page**.
@@ -2800,6 +2780,17 @@ root cause, and patching them separately produces six unrelated special cases)
       `/api/admin/me` deliberately — it is session-only and on `adminRouteCoverage`'s
       `PUBLIC_ADMIN_ROUTES` allowlist, and Phase 2a feeds the rep capabilities context from it.
       Guard-proofed: wiring two gated fetches onto the rep branch makes it RED and names them.
+      ⚠ **DATED NOTE, 2026-09-01 (C/DL-3c Phase 3-A) — THE TREE ABOVE NAMES A COMPONENT THAT
+      NO LONGER EXISTS, AND THE FINDING'S OWN TEXT IS DELIBERATELY LEFT ALONE.** Phase 3-A
+      deleted `RepPlaceholder` and replaced it with `RepShell`, so the mounted tree now ends
+      `... RepSurface -> RepShell`. **Nothing about the finding changed** — the shell contains
+      no `fetch` either, `AdminApp` still never mounts on this branch, and a gated admin request
+      is still structurally unreachable. **The fence is unchanged and still passing**, re-anchored
+      from a copy needle onto `RepShell`'s `data-rep-shell` attribute, and re-guard-proofed in
+      3-A by wiring a gated fetch onto the rep branch and watching it go RED with the endpoint
+      named. ⚠ **The paragraph above is a RECORD of what was measured in Phase 2a and is not
+      rewritten** — a record repaired in place stops being evidence. This line exists because a
+      record that reads as current gets inherited as current.
 
 - [ ] **🟠 THE REAL VERSION OF THE ABOVE — THE ADMIN PANEL FIRES 8 GUARANTEED 403s ON EVERY BOOT
       FOR ANY NON-OWNER WITH AN EMPTY `permissions` JSONB.** *(Enumerated from source, C/DL-3c
@@ -3044,8 +3035,47 @@ root cause, and patching them separately produces six unrelated special cases)
       name that promised something else. The branch stays as defence in depth against the day
       anything refreshes the session mid-mount, and is now pinned by a DIRECT unit case.
 - [ ] **Router decision D10** — revisit deliberately when the bottom nav lands, not by accident.
-- [ ] Theme toggle UI in Profile (D8). 3b wired the read; 3c builds the switch.
+      ⚠ **THE CONDITION HAS FIRED. THE BOTTOM NAV LANDED IN C/DL-3c PHASE 3-A, 2026-09-01,
+      AND THIS ENTRY STAYS OPEN.** Recorded because *"revisit when X lands"* is a tripwire with
+      nothing to fire it — X lands, nobody is holding this line, and the revisit is exactly the
+      *"by accident"* the bullet forbids.
+      **The revisit is still owed and is still 3e's** (A24.6). What 3-A actually built is the
+      thing D10 predicted: `RepShell` holds ONE parameterised screen state, so the migration
+      rewires one variable's source rather than untangling five screens. **Nothing about the
+      deferral changed; only its trigger has now occurred.**
+- [x] ~~Theme toggle UI in Profile (D8). 3b wired the read; 3c builds the switch.~~
+      ✅ **BUILT — C/DL-3c Phase 3-A, 2026-09-01.** The switch is a row on the rep Profile
+      screen directly above Sign out (A30), and `saveThemeMode()` is the first client ever to
+      call `PUT /api/preferences/theme-mode`, which shipped a caller-less mechanism in 1b.
+      ⚠ **TICKED RATHER THAN DELETED, AND IT IS A SECOND ENTRY ON THE SAME WORK.** The long
+      *"PHASE 3 MOUNTS THE THEME CONTROL"* block was DELETED in that commit, because its own
+      closer instructed that. This line is in the arc's SCOPE list, where the record of what
+      3c covered is worth keeping — a scope list that loses its rows stops describing the arc.
+      ⚠ **D8 ITSELF IS NOT CLOSED BY THIS.** The dark-login-survives-logout entry is still
+      open with two live options, and 3-A reduced one of its symptoms rather than answering it.
 - [ ] Revenue: **own revenue only** (3a D4, binding).
+- [ ] **THE CONTRACTOR-LOGO FALLBACK WANTS RE-DERIVING NOW THAT THE DARK-MODE PLATE HAS
+      LANDED.** *(Raised by C/DL-3c Phase 3 Phase 0; re-filed here 2026-09-01 by Phase 3-A,
+      because Phase 0 recorded it against `RepPlaceholder`, which 3-A deleted.)*
+      The rep surface resolves its mark as `branding?.logoUrl || roofMilesLogo` — the
+      contractor's logo, falling back to the platform PNG. That expression now lives in
+      **`RepShell`'s header**, and `LoginScreen`, `ResetPinScreen` and `FrozenAccountScreen`
+      each carry their own copy of the same shape.
+      ⚠ **THE PREMISE IT WAS WRITTEN UNDER HAS CHANGED, WHICH IS THE WHOLE POINT.** Phase 0
+      flagged that its option (B) interacts with this fallback and said *"re-derive it when the
+      plate lands rather than inheriting it."* **The plate landed in C/DL-3c Phase 1a** —
+      `BrandLogo` now paints a light plate behind the mark in dark mode — so the condition
+      Phase 0 named has been met and nobody re-ran the choice. That is the *"a rule applied
+      once to a surface does not stay applied when the surface moves"* shape, with the surface
+      already moved.
+      **What is owed:** decide whether the platform mark on a plate is still the right answer
+      for a contractor who has uploaded no logo, on a dark rep surface — and whether the four
+      copies of the fallback should resolve through one place. ⚠ **This is a RULING, not a
+      bug**, and nothing is known to be broken today.
+      ⚠ **DO NOT REPAIR `CDL_3c_PHASE0_REPORT.md`'s citation to make `citecheck` quieter.** It
+      is a dated record, its `RepPlaceholder.jsx` reference is now `FILE_MISSING`, and that is
+      CORRECT — the file it measured is gone. A record repaired in place stops being evidence.
+      This entry is the live home; that one is the provenance.
 - [ ] **Four source comments attribute the no-admin-panel requirement to RBAC generically — and
       two of them are now self-contradictory.** None cites §7.3, and what they describe — never
       handing a rep the admin shell with its sections scrimmed — is **what actually ships**, so

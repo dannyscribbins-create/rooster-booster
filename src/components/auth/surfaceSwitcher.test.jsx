@@ -26,7 +26,10 @@ import { ADMIN_TOKEN_KEY } from '../../utils/authStorage';
 import { ADMIN_STATS_ZEROS, FLAGGED_SUMMARY_ZERO } from '../../__fixtures__/adminStats';
 
 const adminPanel = () => screen.queryByText(/Missing Referrals/i);
-const repSurface = () => screen.queryByText(/field rep tools/i);
+// ⚠ STRUCTURAL HANDLE, NOT COPY (C/DL-3c Phase 3-A). Was
+// queryByText(/field rep tools/i), a string owned by the deleted
+// RepPlaceholder. See roleRouting.test.jsx, which anchors the same way.
+const repSurface = () => document.querySelector('[data-rep-shell]');
 const emptyState = () => screen.queryByText(/has not given you access to any sections/i);
 const switchToRep   = () => document.querySelector('[data-surface-switcher="rep"]');
 const switchToAdmin = () => document.querySelector('[data-surface-switcher="admin"]');

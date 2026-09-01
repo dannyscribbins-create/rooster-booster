@@ -179,7 +179,9 @@ describe('C/DL-3c Phase 2a — the rep capabilities context reaches the rep tree
 
     render(<App />);
 
-    await waitFor(() => expect(screen.queryByText(/field rep tools/i)).toBeTruthy());
+    // ⚠ STRUCTURAL HANDLE, NOT COPY (C/DL-3c Phase 3-A) — RepShell's own
+    // data-rep-shell, replacing a sentence owned by the deleted RepPlaceholder.
+    await waitFor(() => expect(document.querySelector('[data-rep-shell]')).toBeTruthy());
     expect(screen.queryByText(/Missing Referrals/i)).toBeNull();
     expect(screen.queryByText(/Available Balance/i)).toBeNull();
   });

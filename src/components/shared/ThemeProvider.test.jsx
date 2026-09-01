@@ -30,7 +30,7 @@
 // STATUS_VARS has six).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { RENDER_TOKEN_KEYS, RENDER_TOKEN_VARS, deriveThemeTokens, contrastRatio, TEXT_CONTRAST_MIN } from '../../utils/themeTokens.mjs';
@@ -518,7 +518,7 @@ describe('C/DL-3c Phase 1a — the onPrimary pair is legible as mounted', () => 
 // ⚠ WHAT THIS FIX IS AND IS NOT, RECORDED BECAUSE THE ENTRY IT CLOSES OVERSTATED
 // IT. The pre-launch item bills this as "latent today and the first thing anyone
 // sees the moment the toggle lands." That is FALSE. Every themed surface —
-// LoginScreen, ChoiceScreen, FrozenAccountScreen, ResetPinScreen, RepPlaceholder
+// LoginScreen, ChoiceScreen, FrozenAccountScreen, ResetPinScreen, RepShell
 // — paints its own minHeight:100vh canvas from var(--rm-bg), so body is covered
 // on all five. The only place it shows through is the referrer app's desktop
 // gutters beside the 430px column, and the referrer app is held in light mode
@@ -670,5 +670,261 @@ describe('ThemeProvider — the stored-mode read presents either token', () => {
     render(<ThemeProvider context={makeContext()}><p>child</p></ThemeProvider>);
     await screen.findByText('child');
     expect(seen).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C/DL-3c PHASE 3-A STEP 2 — RED SUITE — setMode ON ThemeContext
+//
+// THE GAP. ThemeContext publishes `{ mode, branding, source }` and NO SETTER, so
+// `mode` is readable and nothing in the product can move it. The Profile toggle
+// (A30) needs to, and PRE_LAUNCH_CHECKLIST.md's theme-control entry names this
+// exact shape — add setMode to that value, "budget for it; do not discover it".
+// This suite is that budget.
+//
+// ── ⚠ THE REFUSAL IS THE LOAD-BEARING HALF, AND IT IS NOT ABOUT SAFETY ──────
+// `mode` resolves as `pinnedMode ?? storedMode ?? DEFAULT_THEME_MODE`, so with a
+// pin present NOTHING setMode writes can ever surface. Danny ruled the setter
+// REFUSES LOUDLY rather than no-opping, on the finding that pinning is TEST-ONLY:
+// three production ThemeProvider mounts, all bare; eight pinning sites, all in
+// this file and BrandLogo.test.jsx. So the refusal path is UNREACHABLE IN
+// PRODUCTION BY CONSTRUCTION — its whole audience is a developer whose test pins
+// the mode and then simulates a toggle.
+//
+// ⚠ WHICH IS EXACTLY WHY "IT DID NOT MOVE" IS NOT A SUFFICIENT ASSERTION. A
+// silent no-op and a loud refusal are INDISTINGUISHABLE from the outside: both
+// leave the mode where it was. The distinction IS the ruling, so the warning is
+// asserted directly. Assert only the held mode and this suite would go green
+// against a setter that quietly threw the call away — CLAUDE.md's "a plausible-
+// looking rejection is not the rejection you are testing for", in a costume.
+//
+// ⚠ AND THE PAIRED POSITIVE CONTROL IS ORDERED FIRST, DELIBERATELY. "Pinned →
+// refuses" is satisfied by a setMode that never works at all. The unpinned case
+// on the SAME probe is the proof that the setter does something when it is
+// allowed to — vacuity shape #10's repair, applied to a refusal instead of a
+// flag.
+//
+// EXPECTED RED TODAY: the useMemo in ThemeLayer publishes three keys and
+// `value.setMode` is undefined, so every case below fails on the setter's
+// absence rather than on its behaviour.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('ThemeProvider — setMode (C/DL-3c Phase 3-A)', () => {
+  let warn;
+
+  beforeEach(() => {
+    // Captured rather than silenced-and-forgotten: the pinned case asserts on it.
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => { warn.mockRestore(); });
+
+  // ONE probe for every case, so the positive control and the refusal are driven
+  // through identical wiring. A refusal test with its own bespoke harness can
+  // differ from the positive in some way nobody notices, which is how the pair
+  // stops being a pair.
+  //
+  // `seen` collects the context value on every render — that is what makes the
+  // identity-stability case observable without reaching into React internals.
+  function Probe({ seen, next = 'dark' }) {
+    const value = useContext(ThemeContext);
+    seen.push(value);
+    return (
+      <>
+        <button onClick={() => value.setMode(next)}>toggle</button>
+        <span data-testid="probe-mode">{value.mode}</span>
+      </>
+    );
+  }
+
+  it('[RED] POSITIVE CONTROL — setMode moves the rendered mode when nothing is pinned', async () => {
+    // ORDERED FIRST. Every other case below is satisfiable by a setter that does
+    // nothing at all; this is the one that is not.
+    const seen = [];
+    render(
+      <ThemeProvider context={makeContext()} fetchStoredMode={async () => null}>
+        <Probe seen={seen} next="dark" />
+      </ThemeProvider>
+    );
+    await screen.findByTestId('probe-mode');
+    expect(themeRoot().dataset.rmTheme).toBe('light');
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle' }));
+
+    // BOTH ENDS OF THE WIRE: the published `mode` and the mounted variables. The
+    // context value could update while the wrapper's data attribute and its
+    // status vars did not, and the surface is what a person sees.
+    await waitFor(() => expect(themeRoot().dataset.rmTheme).toBe('dark'));
+    expect(screen.getByTestId('probe-mode').textContent).toBe('dark');
+    for (const [role, property] of Object.entries(STATUS_VARS)) {
+      expect(themeRoot().style.getPropertyValue(property), `${property} after a dark setMode`)
+        .toBe(STATUS_DARK[role]);
+    }
+  });
+
+  it('[RED] ⚠ THE RULING — with mode PINNED, setMode refuses and SAYS SO', async () => {
+    // THE LOAD-BEARING CASE. Two assertions, and neither is redundant:
+    //   (1) the mode did not move — the refusal actually refused;
+    //   (2) console.warn fired — it refused LOUDLY rather than silently.
+    // Drop (2) and this passes against a setter that swallows the call, which is
+    // the failure the ruling exists to prevent.
+    const seen = [];
+    const fetchStoredMode = vi.fn(async () => 'dark');
+    render(
+      <ThemeProvider context={makeContext()} fetchStoredMode={fetchStoredMode} mode="light">
+        <Probe seen={seen} next="dark" />
+      </ThemeProvider>
+    );
+    await screen.findByTestId('probe-mode');
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle' }));
+
+    expect(themeRoot().dataset.rmTheme, 'a pinned provider must not follow setMode').toBe('light');
+    expect(screen.getByTestId('probe-mode').textContent).toBe('light');
+
+    // THE PIN PATH IS PROVEN, not assumed: a pinned provider skips the
+    // preference read entirely, so a zero call count here is what says the mode
+    // under test is the PIN rather than a stored value that happened to be light.
+    expect(fetchStoredMode).not.toHaveBeenCalled();
+
+    expect(warn, 'setMode refused silently — a silent no-op is the defect this ruling names')
+      .toHaveBeenCalled();
+    const said = warn.mock.calls.map(c => c.join(' ')).join('\n');
+    // ANCHORED ON THE SURROUNDING PHRASE, NOT A BARE TOKEN. A needle of 'mode'
+    // matches almost any message this provider could emit.
+    expect(said).toMatch(/setMode/);
+    expect(said, 'the warning must name the PIN as the cause, or it explains nothing')
+      .toMatch(/pinn?ed/i);
+  });
+
+  it('[RED] the context value still exposes mode, branding and source unchanged', async () => {
+    const seen = [];
+    render(
+      <ThemeProvider context={makeContext()} fetchStoredMode={async () => null}>
+        <Probe seen={seen} />
+      </ThemeProvider>
+    );
+    await screen.findByTestId('probe-mode');
+
+    const value = seen[seen.length - 1];
+    // EXACT KEY SET, not a containment check. This is the assertion that catches
+    // a fourth key arriving that nobody meant to publish, as well as the three
+    // existing ones going missing.
+    expect(Object.keys(value).sort()).toEqual(['branding', 'mode', 'setMode', 'source']);
+    expect(value.mode).toBe('light');
+    expect(value.branding).toBeTruthy();
+    expect(value.branding.companyName).toBe(NEUTRAL.companyName);
+    expect(value).toHaveProperty('source');
+  });
+
+  it('[RED] setMode is IDENTITY-STABLE across a re-render that changes nothing', async () => {
+    // ⚠ THE GUARD ON THE FIRST ASSERTION IS NOT DECORATION — WITHOUT IT THIS CASE
+    // IS VACUOUS TODAY. `setMode` is undefined at HEAD, and Object.is(undefined,
+    // undefined) is true, so the identity assertion alone would go GREEN against
+    // a provider that publishes no setter at all. It has to be proven to be a
+    // function before its identity means anything.
+    //
+    // WHY IT MATTERS: useBranding() reads this same context and has six-plus
+    // referrer consumers. An unstable setter re-renders every one of them on
+    // every ThemeLayer render.
+    // ⚠ A FRESH ELEMENT EACH TIME, AND THE SAME PROP OBJECTS INSIDE IT. This
+    // harness was wrong on its first draft and went red for a reason that had
+    // nothing to do with setMode, which is worth recording because the wrong
+    // version LOOKS more correct: passing one `tree` element to both render()
+    // and rerender() makes React bail out on element identity, so nothing
+    // re-rendered at all and `seen` never grew. A re-render test that does not
+    // re-render is the "mechanism reporting health it cannot observe" shape.
+    //
+    // `context` and `fetchStoredMode` are hoisted so the PROPS are identical
+    // across the two renders — otherwise BrandingProvider would re-resolve and
+    // `branding` would change identity, which would move `value` legitimately
+    // and prove nothing about the setter.
+    const seen = [];
+    const context = makeContext();
+    const fetchStoredMode = async () => null;
+    const tree = () => (
+      <ThemeProvider context={context} fetchStoredMode={fetchStoredMode}>
+        <Probe seen={seen} />
+      </ThemeProvider>
+    );
+    const { rerender } = render(tree());
+    await screen.findByTestId('probe-mode');
+
+    const before = seen[seen.length - 1];
+    expect(typeof before.setMode, 'setMode is not a function — the identity check below would be vacuous')
+      .toBe('function');
+
+    const countBefore = seen.length;
+    rerender(tree());
+    await waitFor(() => expect(seen.length).toBeGreaterThan(countBefore));
+
+    const after = seen[seen.length - 1];
+    expect(after.mode).toBe(before.mode);
+    expect(Object.is(after.setMode, before.setMode), 'setMode changed identity on a no-op re-render')
+      .toBe(true);
+    // THE WHOLE VALUE, NOT ONLY THE SETTER. If setMode were rebuilt per render
+    // it would rebuild `value` with it — this is the same fact observed one
+    // level up, and it is what the six-plus useBranding() consumers actually
+    // depend on.
+    expect(Object.is(after, before), 'the context value changed identity on a no-op re-render')
+      .toBe(true);
+  });
+
+  it('[RED] setMode REFUSES a mode that is not light or dark, and says so', async () => {
+    // NOT IN THE STEP BRIEF — added here with its reason, because this setter is
+    // a new way to blank the app and shipping it unguarded would be introducing
+    // the hazard in the same commit as the feature.
+    //
+    // themeVariables THROWS on an unknown mode by design, precisely so a bad mode
+    // cannot silently paint a dark-mode user a white surface. So an unknown mode
+    // would not degrade — it would take the whole tree to the ErrorBoundary. The
+    // GET path already filters to the two known modes and the PUT endpoint
+    // validates strictly; this is the third gate on the same value, on the one
+    // path that had none.
+    const seen = [];
+    render(
+      <ThemeProvider context={makeContext()} fetchStoredMode={async () => null}>
+        <Probe seen={seen} next="sideways" />
+      </ThemeProvider>
+    );
+    await screen.findByTestId('probe-mode');
+
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'toggle' })))
+      .not.toThrow();
+
+    expect(themeRoot().dataset.rmTheme).toBe('light');
+    expect(warn, 'an unknown mode was accepted or dropped silently').toHaveBeenCalled();
+    expect(warn.mock.calls.map(c => c.join(' ')).join('\n')).toMatch(/setMode/);
+  });
+
+  it('the CONTEXT DEFAULT publishes a setMode that complains instead of no-opping', async () => {
+    // ⚠ NOT IN THE STEP BRIEF EITHER, AND IT IS THE OTHER HALF OF THE SAME
+    // DECISION. Adding a key to a context that HAS a default is a choice about
+    // the default whichever way it goes, and an untested one would be a code
+    // path published in the same commit that created it.
+    //
+    // ThemeContext keeps a default deliberately (useBranding()'s totality
+    // contract). Omitting setMode there would leave it undefined outside the
+    // provider, so a toggle would render and then throw inside an onClick.
+    // A SILENT default would be vacuity shape #10; this one talks, which is
+    // what makes a missing provider visible rather than safe-looking.
+    //
+    // MOUNTED WITH NO PROVIDER ANYWHERE — that is the state under test, and it
+    // is the same shape BrandingProvider.test.jsx uses for its Ruling 5 sibling.
+    const seen = [];
+    render(<Probe seen={seen} next="dark" />);
+    await screen.findByTestId('probe-mode');
+
+    expect(typeof seen[seen.length - 1].setMode).toBe('function');
+    expect(screen.getByTestId('probe-mode').textContent).toBe(DEFAULT_THEME_MODE);
+
+    fireEvent.click(screen.getByRole('button', { name: 'toggle' }));
+
+    expect(warn, 'the default setMode swallowed the call').toHaveBeenCalled();
+    const said = warn.mock.calls.map(c => c.join(' ')).join('\n');
+    expect(said).toMatch(/setMode/);
+    expect(said, 'the warning must name the missing provider as the cause')
+      .toMatch(/outside a themeprovider/i);
+    // Nothing to change and nothing changed: the default holds its own mode.
+    expect(screen.getByTestId('probe-mode').textContent).toBe(DEFAULT_THEME_MODE);
   });
 });

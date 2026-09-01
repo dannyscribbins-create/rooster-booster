@@ -55,7 +55,15 @@ import { ADMIN_STATS_ZEROS, FLAGGED_SUMMARY_ZERO } from '../../__fixtures__/admi
 // test id so the test breaks if the surface stops being recognisable to a person.
 const referrerApp   = () => screen.queryByText(/Available Balance/i);
 const adminPanel    = () => screen.queryByText(/Missing Referrals/i);
-const repPlaceholder = () => screen.queryByText(/field rep tools/i);
+// ⚠ ANCHORED ON A STRUCTURAL HANDLE, NOT ON COPY (C/DL-3c Phase 3-A). This read
+// queryByText(/field rep tools/i) — a sentence owned by RepPlaceholder, a file
+// that no longer exists. A needle owned by another file goes vacuous silently
+// when that file is reworded, and nothing at either site shows the coupling.
+// data-rep-shell is RepShell's own handle and is the thing this suite actually
+// means by "the rep surface". ⚠ NOT the bottom nav, which 3-A is itself
+// building — anchoring a routing test to the component under construction
+// makes the test circular.
+const repSurface = () => document.querySelector('[data-rep-shell]');
 
 // THE UNIFIED DOOR, and it must be told apart from the OLD inline admin form
 // rather than merely "a form with an email box in it". The first version of this
@@ -162,7 +170,7 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
 
     render(<App />);
 
-    await waitFor(() => expect(repPlaceholder()).toBeTruthy());
+    await waitFor(() => expect(repSurface()).toBeTruthy());
     // THE REQUIREMENT IS ABSENCE, NOT A LOCKED PRESENCE. A panel whose sections
     // are all scrimmed by PermissionGate would satisfy "they cannot use it" and
     // still fail this.
@@ -176,9 +184,17 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
   // LOAD" from a console read during the 1c walkthrough. ⚠ THAT ATTRIBUTION WAS
   // WRONG AND THIS TEST IS WHERE IT WAS DISPROVED. On the rep branch the mounted
   // tree is App → ThemeProvider → BrandingProvider → ThemeLayer → RepSurface →
-  // RepPlaceholder. AdminPanel returns at App.jsx:498, FIVE early returns above
-  // the rep branch, so AdminApp — the only thing that primes badge counts — never
-  // mounts at all. The endpoints in that entry (/api/admin/stats, .../cashouts,
+  // RepShell. AdminPanel returns from App's own `surfaceFor(...) === 'admin'`
+  // branch, several early returns above the rep branch, so AdminApp — the only
+  // thing that primes badge counts — never mounts at all.
+  //
+  // ⚠ THAT CITATION USED TO READ "App.jsx:498" AND WAS ALREADY WRONG AT HEAD,
+  // BEFORE 3-A TOUCHED ANYTHING — it resolved into a comment block about
+  // LockedSection's scrim, over a hundred lines above the branch it named.
+  // Re-derived and re-cited BY ROLE rather than repaired by adding this commit's
+  // delta, which is what would have certified a wrong number as fixed. The
+  // quoted checklist title above is left verbatim: it is a record of what was
+  // filed, not a claim about today. The endpoints in that entry (/api/admin/stats, .../cashouts,
   // .../team, .../settings) are exactly AdminApp's and AdminSettings' mount sets,
   // seen in the same walkthrough on a console that was not cleared between
   // navigations.
@@ -201,7 +217,7 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
 
     render(<App />);
 
-    await waitFor(() => expect(repPlaceholder()).toBeTruthy());
+    await waitFor(() => expect(repSurface()).toBeTruthy());
 
     const adminCalls = global.fetch.mock.calls
       .map(c => String(c[0]))
@@ -238,7 +254,7 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
     render(<App />);
 
     await waitFor(() => expect(adminPanel()).toBeTruthy());
-    expect(repPlaceholder()).toBeNull();
+    expect(repSurface()).toBeNull();
   });
 
   it('[RED] GUARD — an OWNER who is also a field rep keeps the admin panel', async () => {
@@ -252,7 +268,7 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
     render(<App />);
 
     await waitFor(() => expect(adminPanel()).toBeTruthy());
-    expect(repPlaceholder()).toBeNull();
+    expect(repSurface()).toBeNull();
   });
 
   it('[RED] an ADMIN who is also a field rep keeps the admin panel', async () => {
@@ -262,7 +278,7 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
     render(<App />);
 
     await waitFor(() => expect(adminPanel()).toBeTruthy());
-    expect(repPlaceholder()).toBeNull();
+    expect(repSurface()).toBeNull();
   });
 
   it('[RED] a referrer lands on the referrer app', async () => {
@@ -273,7 +289,7 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
 
     await waitFor(() => expect(referrerApp()).toBeTruthy());
     expect(adminPanel()).toBeNull();
-    expect(repPlaceholder()).toBeNull();
+    expect(repSurface()).toBeNull();
   });
 
   it('[RED] GUARD — ?admin=true does NOT produce an admin panel for a referrer', async () => {
@@ -304,7 +320,7 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
     // string; CD-4 replaces it with one door for everybody.
     expect(legacyAdminForm()).toBeNull();
     expect(adminPanel()).toBeNull();
-    expect(repPlaceholder()).toBeNull();
+    expect(repSurface()).toBeNull();
   });
 });
 

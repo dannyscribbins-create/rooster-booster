@@ -1,25 +1,33 @@
 import { useRepCapabilities } from '../../hooks/useAdminPermissions';
-import RepPlaceholder from './RepPlaceholder';
+import RepShell from './RepShell';
 
 // ─── THE REP SURFACE ROOT — C/DL-3c PHASE 2a ─────────────────────────────────
 //
 // The single component src/App.jsx's rep branch renders, and the first consumer
-// of RepCapabilitiesContext. Today it wraps RepPlaceholder and nothing else.
+// of RepCapabilitiesContext. It wraps RepShell, which is the rep app's chrome.
 //
-// ⚠ IT IS THE SHELL PHASE 3 FILLS IN, NOT A WRAPPER INVENTED FOR A TEST. Phase 3
-// puts the bottom nav (Home · Clients · Network · Profile) and the parameterised
-// screen state here — `{ screen: 'clientDetail', clientId: 482 }`, never a bare
-// string, which is A24.6's BINDING condition for deferring the router to 3e. That
-// state belongs at the shell level so the eventual migration rewires ONE
-// variable's source instead of untangling five screens. This file is that level.
+// ⚠ THIS BLOCK USED TO SAY "Phase 3 puts the bottom nav and the parameterised
+// screen state HERE … this file is that level", AND THAT IS NOW INVERTED RATHER
+// THAN MERELY STALE. It was correct when RepSurface wrapped a placeholder and
+// nothing else. Phase 3-A built RepShell, and the nav and the screen state live
+// THERE. Corrected rather than deleted because a sentence that tells the next
+// reader to put the nav in this file would send them to undo the split.
 //
-// ── ⚠ WHY THE CONSUMER IS HERE AND NOT IN RepPlaceholder ───────────────────
-// RepPlaceholder is rendered BARE by src/components/shared/BrandLogo.test.jsx's
+// THE DIVISION AS BUILT: this file owns CAPABILITIES — it is the context
+// consumer and the seam below. RepShell owns CHROME — the header, the
+// parameterised screen state (A26) and the bottom nav (A29). A24.6's binding
+// condition is satisfied at the shell level, which is where a router migration
+// would rewire one variable's source instead of untangling five screens.
+//
+// ── ⚠ WHY THE CONSUMER IS HERE AND NOT IN RepShell ─────────────────────────
+// RepShell is rendered BARE by src/components/shared/BrandLogo.test.jsx's
 // four-site table, inside a ThemeProvider and nothing else. Making it call a
 // THROWING hook would break that table for three screens that have no business
 // knowing about rep capabilities. Keeping the consumer one level up leaves
-// RepPlaceholder a leaf, and gives the throw a component whose bare render is
-// meaningful to assert on.
+// RepShell a leaf, and gives the throw a component whose bare render is
+// meaningful to assert on. ⚠ RepShell's own header states the same constraint
+// from its side, so the pair is discoverable from either end. A screen that
+// needs a capability receives it as a PROP from here.
 //
 // ── ⚠ THE data-rep-* ATTRIBUTES ARE A WIRING SEAM AND THEY ARE TEMPORARY ────
 // They render nothing a person sees and exist for one reason: there is no
@@ -45,7 +53,7 @@ import RepPlaceholder from './RepPlaceholder';
 // src/components/rep/repCapabilitiesSeam.test.jsx says the same at its own site.
 //
 // display:contents so the wrapper carries attributes without generating a layout
-// box — the same reason ThemeProvider's variable-bearing div uses it. RepPlaceholder
+// box — the same reason ThemeProvider's variable-bearing div uses it. RepShell
 // paints its own minHeight:100vh canvas and must not acquire an ancestor box.
 export default function RepSurface({ onLogout, switcher = null }) {
   // THROWS outside its provider, deliberately. See useRepCapabilities().
@@ -63,7 +71,7 @@ export default function RepSurface({ onLogout, switcher = null }) {
       data-rep-attributable={String(caps.is_attributable === true)}
       data-rep-revenue-visible={String(caps.rep_revenue_visibility === true)}
     >
-      <RepPlaceholder onLogout={onLogout} switcher={switcher} />
+      <RepShell onLogout={onLogout} switcher={switcher} />
     </div>
   );
 }

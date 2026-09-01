@@ -3,7 +3,8 @@
 //
 // THE DEFECT. Four surfaces render a contractor's logo as a bare <img> on
 // var(--rm-surface): LoginScreen, ResetPinScreen, FrozenAccountScreen and
-// RepPlaceholder. In light mode that surface is #FFFFFF and any ordinary logo
+// RepShell (RepPlaceholder until C/DL-3c Phase 3-A replaced it). In light mode
+// that surface is #FFFFFF and any ordinary logo
 // reads. In dark mode it derives to a near-black (#121B31 for the platform
 // palette, #112032 for a navy brand) and a dark-inked logo disappears into it.
 //
@@ -158,7 +159,15 @@ describe('BrandLogo — the four sites that render on var(--rm-surface)', () => 
     ['ResetPinScreen',      () => import('../auth/ResetPinScreen'), { token: 'tok' }],
     ['FrozenAccountScreen', () => import('../auth/FrozenAccountScreen'),
       { branding: { companyName: 'Frozen Co', logoUrl: 'https://cdn.example.com/frozen.png' }, onBack: () => {} }],
-    ['RepPlaceholder',      () => import('../rep/RepPlaceholder'), { onLogout: () => {} }],
+    // ⚠ RE-POINTED IN C/DL-3c PHASE 3-A, NOT DROPPED. RepPlaceholder was deleted
+    // and RepShell took its place as the rep surface's logo site — the mark moved
+    // from the centre of a card into the shell's header bar, and it is still a
+    // BrandLogo on var(--rm-surface), which is the whole subject of this table.
+    // ⚠ RepShell IS MOUNTED BARE HERE, WHICH IS WHY IT MUST NOT CALL
+    // useRepCapabilities(). That hook throws outside its provider by design;
+    // RepSurface calls it one level up so this table can keep mounting the shell
+    // with a ThemeProvider and nothing else. Both files say so at their own site.
+    ['RepShell',            () => import('../rep/RepShell'), { onLogout: () => {} }],
   ];
 
   beforeEach(() => {

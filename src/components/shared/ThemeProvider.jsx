@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS, RENDER_TOKEN_VARS } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
 import BrandingProvider, { NEUTRAL_BRANDING, useAdminBranding } from './BrandingProvider';
@@ -172,6 +172,55 @@ async function fetchThemeModeFromApi() {
   }
 }
 
+// ─── THE WRITER — the client half, C/DL-3c Phase 3-A (CD-6, CD-21) ──────────
+//
+// PUT /api/preferences/theme-mode shipped in C/DL-3c Phase 1b WITH NO CALLER.
+// This is it. Placed beside the reader deliberately: the two halves of one
+// round trip drift when they live in different files, and the token choice
+// below is exactly the kind of thing that drifts.
+//
+// ⚠ IT PRESENTS THE ADMIN TOKEN, AND THAT IS NOT THE CHOICE THE READER MAKES.
+// fetchThemeModeFromApi prefers the REFERRER token, because a person holding
+// both is usually looking at the referrer app when a preference is read. The
+// WRITE is rep-only (CD-21) and a rep authenticates as a TEAM MEMBER, so their
+// token is on the admin key. Presenting the referrer token for a dual-identity
+// person — an employee who is also a homeowner, which is the ordinary case for
+// a contractor's own staff — would 403 a control that should work.
+//
+// ⚠ IT DOES NOT DECIDE WHETHER THE CALLER MAY WRITE. The endpoint re-reads
+// is_field_rep from team_members, scoped by contractor_id and active = true, on
+// every call, so a member demoted a minute ago cannot still write. A client-side
+// copy of that decision would be a second source of truth with no way to stay
+// current — and the caller renders only on the rep surface anyway.
+//
+// RETURNS A RESULT RATHER THAN THROWING, so the caller can tell 403 from 409
+// from "the network is gone" and say something true about each. A throw here
+// would collapse all three into one catch and the UI would have to guess.
+//
+// @param {'light'|'dark'} mode
+// @returns {Promise<{ok: boolean, status: number|null}>} status is null when the
+//          request never reached the server.
+export async function saveThemeMode(mode) {
+  let token = null;
+  try {
+    token = getAdminToken() ?? null;
+  } catch {
+    return { ok: false, status: null };
+  }
+  if (!token) return { ok: false, status: null };
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/preferences/theme-mode`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ mode }),
+    });
+    return { ok: res.ok, status: res.status };
+  } catch {
+    return { ok: false, status: null };
+  }
+}
+
 /**
  * The theme context. THE SECOND createContext IN src/ — the first is
  * useAdminPermissions.js, which is admin-only and therefore lives outside this
@@ -191,6 +240,25 @@ export const ThemeContext = createContext({
   mode: DEFAULT_THEME_MODE,
   branding: NEUTRAL_BRANDING,
   source: null,
+  // ⚠ THE DEFAULT CARRIES A setMode SO THE SHAPE IS THE SAME IN AND OUT OF THE
+  // PROVIDER, AND IT COMPLAINS RATHER THAN NO-OPPING. Leaving it off would make
+  // `setMode` undefined outside the provider, so a toggle would render fine and
+  // then throw a TypeError inside an onClick — a delayed failure that surfaces
+  // as a blank ErrorBoundary rather than as "you forgot a provider".
+  //
+  // ⚠ THIS IS NOT VACUITY SHAPE #10, AND THE DIFFERENCE IS THE WARNING. That
+  // shape is a default that makes a missing provider INDISTINGUISHABLE from a
+  // correctly closed gate — it fails safe and silently, so nobody looks. This
+  // default fails safe and LOUDLY: the one thing it does is say the provider is
+  // missing. A no-op default here would be the defect; a talking one is the
+  // opposite of it.
+  setMode: (next) => {
+    console.warn(
+      `ThemeProvider: setMode(${JSON.stringify(next)}) was called OUTSIDE a ThemeProvider — ` +
+      'nothing changed. The context default has no mode state to write to. Mount the calling ' +
+      'component inside ThemeProvider.'
+    );
+  },
 });
 
 /**
@@ -317,7 +385,77 @@ function ThemeLayer({ children, fetchStoredMode, mode: pinnedMode }) {
     return () => { document.body.style.background = previous; };
   }, [vars]);
 
-  const value = useMemo(() => ({ mode, branding, source }), [mode, branding, source]);
+  // ── THE SETTER (C/DL-3c Phase 3-A, CD-6 / A30) ─────────────────────────────
+  //
+  // The context published `mode` and no way to move it, so the read shipped in
+  // 3b had no counterpart and the Profile toggle had nothing to call. This is
+  // that counterpart, and it writes to `storedMode` — the same state the
+  // preference read fills — so a toggle and a stored preference are the same
+  // mechanism rather than two sources racing each other.
+  //
+  // ⚠ IT REFUSES WHEN THE MODE IS PINNED, AND IT SAYS SO OUT LOUD. `mode`
+  // resolves as `pinnedMode ?? storedMode ?? DEFAULT_THEME_MODE`, so with a pin
+  // present nothing written here can ever surface. A silent no-op would leave a
+  // developer watching a toggle do nothing with no way to find out why, so the
+  // refusal is announced rather than swallowed — that is the ruled behaviour,
+  // not an implementation detail.
+  //
+  // ⚠ AND THE REFUSAL IS UNREACHABLE IN PRODUCTION BY CONSTRUCTION, WHICH IS THE
+  // FINDING THE RULING WAS MADE ON. Pinning is TEST-ONLY: every ThemeProvider
+  // mount in src/App.jsx is bare, and every caller that passes `mode` is a test
+  // file. So no user can meet a dead toggle. ⚠ IF A PRODUCTION MOUNT EVER PASSES
+  // A PIN, THAT PREMISE IS GONE and this refusal becomes a user-facing dead
+  // control — re-derive the ruling before adding one, rather than working around
+  // this warning.
+  //
+  // ⚠ console.warn, NOT console.error AND NOT A THROW, EACH FOR ITS OWN REASON.
+  // A throw would turn any suite that pins the mode and simulates a toggle red
+  // for a reason unrelated to what it is testing — BrandLogo.test.jsx mounts four
+  // screens under a pinned provider and has no business knowing about this.
+  // console.error is this codebase's channel for genuine runtime faults inside
+  // catch blocks; nothing has failed here, a developer has wired something that
+  // cannot work. This is not the console.log the code-quality rule bans: it
+  // carries no data, fires on no production path, and its whole audience is the
+  // person who wrote the calling test.
+  //
+  // IDENTITY-STABLE ACROSS RE-RENDERS. useBranding() reads this same context and
+  // has six-plus referrer consumers; a setter rebuilt on every render would
+  // rebuild `value` and re-render all of them every time ThemeLayer renders.
+  // `pinnedMode` is the only dependency — setStoredMode is a useState setter and
+  // is stable for the life of the component.
+  const setMode = useCallback((next) => {
+    if (pinnedMode) {
+      console.warn(
+        `ThemeProvider: setMode(${JSON.stringify(next)}) was IGNORED — this provider has its ` +
+        `'mode' prop pinned to ${JSON.stringify(pinnedMode)}. A pinned provider skips the stored-` +
+        'preference read entirely and publishes the pin, so nothing setMode writes can surface. ' +
+        "Drop the 'mode' prop to make setMode live. Pinning is test-only; no production mount uses it."
+      );
+      return;
+    }
+
+    // ⚠ THE THIRD GATE ON THIS VALUE, AND THE ONLY PATH THAT HAD NONE. The read
+    // endpoint filters to the two known modes and the write endpoint validates
+    // strictly; setMode is reachable from any consumer of this context and was
+    // the one way in with no check. themeVariables THROWS on an unknown mode
+    // deliberately — so an unvalidated value here is not a cosmetic slip, it is
+    // the whole tree landing in ErrorBoundary.
+    if (next !== 'light' && next !== 'dark') {
+      console.warn(
+        `ThemeProvider: setMode(${JSON.stringify(next)}) was IGNORED — the only modes are ` +
+        "'light' and 'dark'. themeVariables throws on anything else by design, so accepting " +
+        'this would blank the tree rather than degrade.'
+      );
+      return;
+    }
+
+    setStoredMode(next);
+  }, [pinnedMode]);
+
+  const value = useMemo(
+    () => ({ mode, branding, source, setMode }),
+    [mode, branding, source, setMode]
+  );
 
   return (
     <ThemeContext.Provider value={value}>
