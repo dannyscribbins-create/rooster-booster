@@ -3089,6 +3089,17 @@ root cause, and patching them separately produces six unrelated special cases)
       ⚠ **EVIDENTIARY LIMIT, STATED RATHER THAN GLOSSED:** an earlier copy at repo root
       overwritten at 23:02 cannot be excluded. The `.docx`'s own internal ZIP timestamps read
       **2026-08-31 20:02**, so it was generated that evening, which argues against one.
+      ⚠ **AND THOSE SAME TIMESTAMPS ARE WHY THE FILE CANNOT VOUCH FOR ITSELF: THEY DATE THE
+      EXPORT, NOT THE CONTENT.** Nothing inside the document distinguishes the spec this repo
+      has always cited from a later reconstruction of it.
+      **`RoofMiles_Handoff_Wave0_CloseOut.docx` cites it by full filename, with extension, in a
+      READ-FIRST list — contemporaneous evidence, not a forward reference.** That citation is
+      **the only independent thing dating this document to the era it claims**, and it carries
+      that weight alone.
+      ⚠ **THE DISTINCTION, BECAUSE IT IS WHY THIS SENTENCE NEARLY DID NOT SURVIVE THE
+      CORRECTION: holding a document supersedes an inference that one EXISTED. It does not
+      supersede an inference about WHICH document it is.** Cut on the first reasoning, restored
+      on the second.
       ⚠ **THE CLASS FINDING SURVIVES AND IS STRENGTHENED BY THIS, NOT WEAKENED. A NEGATIVE
       FINDING IS ONLY AS WIDE AS THE PLACES SEARCHED, AND THE SEARCHED SET WAS NEVER RECORDED.**
       The searches covered git and Drive and **never checked the Claude project knowledge**,
