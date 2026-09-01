@@ -3036,6 +3036,18 @@ root cause, and patching them separately produces six unrelated special cases)
 - [ ] **Router decision D10** — revisit deliberately when the bottom nav lands, not by accident.
 - [ ] Theme toggle UI in Profile (D8). 3b wired the read; 3c builds the switch.
 - [ ] Revenue: **own revenue only** (3a D4, binding).
+- [ ] **Four source comments attribute the no-admin-panel requirement to RBAC generically — and
+      two of them are now self-contradictory.** None cites §7.3, and what they describe — never
+      handing a rep the admin shell with its sections scrimmed — is **what actually ships**, so
+      none of them is wrong. **But `RepPlaceholder.jsx` says a field rep receives no admin panel
+      at all IN THE FILE THAT HOSTS THE SWITCHER TO IT**, and `AdminNoAccessScreen.jsx` says the
+      same thing a few lines above its own note that it hosts that switcher.
+      **Scoped out of A25 deliberately — A25 corrects specs, not source.**
+      **Fix during C/DL-3c Phase 3**, which replaces `RepPlaceholder` with the real shell and is
+      in both files anyway. ⚠ **Reword to what ships: the forbidden thing is the scrimmed shell,
+      not access itself.**
+      `AdminApp.jsx` and `roleRouting.test.jsx` carry the same wording and are **accurate as
+      written** — recorded here so nobody re-opens the question. **They need no edit.**
 
 **Verification owed**
 - [ ] **Real-browser theme check on the rep surfaces**, light and dark. Owed since 3a Phase 3;
@@ -3043,35 +3055,71 @@ root cause, and patching them separately produces six unrelated special cases)
       3b — misrouted.)*
 - [ ] `linkGeneratorSweep` cannot distinguish colocated React tests from production `src/`, so
       a test file mentioning a URL trips it. Narrow the sweep or exclude `*.test.*`.
+- [ ] **`team_members` id 5 (Danny Bobanny) — TIER UNESTABLISHED.** `canSwitchSurface()` omits a
+      tier check, so the sidebar mount recorded in `CDL_3c_LIVE_VERIFICATION.md` proves the
+      switcher renders **either way** — but **not** whether that read demonstrates the
+      general-tier path or only the multi-role one.
+      **Not reachable from the build environment:** `postgres.railway.internal` does not resolve
+      outside Railway's private network and no public URL is configured. **Settle from the
+      Railway console or an authenticated `/api/admin/me`. Danny performs this read.**
+      ⚠ Small, and it gates a **verification claim** rather than a feature — which is exactly
+      the kind of item that gets dropped for being small.
 
 ---
 
 ## Governing documents this repo cannot see
 
-- [ ] **🟠 `RoofMiles_Team_RBAC_RepAssignment_Spec.docx` GOVERNS §4 AND §7 AND HAS NEVER BEEN
-      IN THIS REPO.** *(Established C/DL-3c Phase 2a.)*
+- [ ] **🟠 `RoofMiles_Team_RBAC_RepAssignment_Spec.docx` GOVERNS §4 AND §7. RECOVERED
+      2026-09-01 — IT IS UNTRACKED AT REPO ROOT.** *(Established C/DL-3c Phase 2a; **corrected
+      2026-09-01**, C/DL-3c citation repair.)*
       `DECISION_C_DL_BUILD_SPEC.md`'s **Authority boundary** names it as one of three sources
-      for every assignment rule; `CDL_3b_BUILD_SPEC.md` and `DECISION_C_DL_BUILD_SPEC.md` quote
-      **§7.3** (*"a field rep receives no admin panel at all"*) and cite **§4** for Decision C's
-      links and QR design.
-      **IT DID EXIST.** `RoofMiles_Handoff_Wave0_CloseOut.docx` cites it by full filename, with
-      extension, in a READ-FIRST list — contemporaneous evidence, not a forward reference.
-      **WHERE IT IS NOT:** `git log --all` has never contained any path matching `RBAC` or
-      `RepAssign`; it is not among the eight root `.docx`; a Drive search by title and by
-      full-text returns nothing.
-      ⚠ **HALF OF IT IS ALREADY RESCUED, AND NO GOVERNING DOCUMENT SAYS SO.**
+      for every assignment rule, and it is cited for **§4**'s links and QR design.
+      ⚠ **THIS ENTRY WAS TRUE WHEN WRITTEN AND EXPIRED WITHIN A DAY — except §7.3, which was
+      never true.** The *"eight root `.docx`"* clause was committed **2026-08-31 08:30**; the
+      spec arrived at repo root **2026-08-31 23:02**, roughly **14.5 hours later**. Recorded so
+      this entry is self-checkable rather than asserting a verdict.
+      **Each clause, and they did not fail the same way:**
+      · *"HAS NEVER BEEN IN THIS REPO"* — **still literally true of git.** The file is untracked
+      and a fresh clone does not have it, so every citation to it remains uncheckable by CI.
+      **Misleading now**, because the working tree does have it.
+      · *"a Drive search by title and by full-text returns nothing"* — true of Drive.
+      · *"not among the eight root `.docx`"* — **true when written**, superseded the same night.
+      **There are nine now**, and the ninth is the spec.
+      · *"§7.3 … UNVERIFIED"* — **genuinely wrong**; established as phantom, corrected by A25.
+      ⚠ **EVIDENTIARY LIMIT, STATED RATHER THAN GLOSSED:** an earlier copy at repo root
+      overwritten at 23:02 cannot be excluded. The `.docx`'s own internal ZIP timestamps read
+      **2026-08-31 20:02**, so it was generated that evening, which argues against one.
+      ⚠ **THE CLASS FINDING SURVIVES AND IS STRENGTHENED BY THIS, NOT WEAKENED. A NEGATIVE
+      FINDING IS ONLY AS WIDE AS THE PLACES SEARCHED, AND THE SEARCHED SET WAS NEVER RECORDED.**
+      The searches covered git and Drive and **never checked the Claude project knowledge**,
+      which is where the document had been the whole time. **Even a CORRECT negative finding
+      needs its search set and its date written down, precisely because it can expire in
+      hours — this one did, overnight.** Any *"this artefact does not exist"* statement must
+      name the locations checked **and the date checked**. Same shape as the FieldRepApp
+      mockups, which lived only in a Lovable project until 2026-09-01.
+      **§4 AND §7 REMAIN UNTRANSCRIBED, AND RECOVERY DOES NOT DISCHARGE THAT.**
       `docs/ASSIGNMENT_RULES_LOCKED.md` opens by naming this exact problem — *"extracted from
       the governing RBAC/RepAssignment spec + Prep Note (project documents maintained outside
       this repo) … so no future session has to re-derive them from a document this repo can't
       see"* — and transcribed the **assignment rules** in July 2026. **§4 and §7 were never
-      transcribed**, and §7 is the surface architecture 3d/3e build on.
-      **THE WORK:** do for §4 and §7 what the FA session did for the assignment rules, before
-      3d. ⚠ **Until then, treat a citation to §4 or §7 as UNVERIFIED** — three specs cite it
-      and none can be checked.
-      ⚠ **AND IT IS A CLASS, NOT ONE FILE.** The same handoff's READ-FIRST list also names
-      `RoofMiles_Handoff_ABR_Phase5-1.docx` and `RoofMiles_Handoff_ABR_6B_6A.docx`, neither of
-      which exists locally either. **Enumerate the cited-but-absent set rather than chasing
-      them one at a time.**
+      included**, and §7 is the surface architecture 3d/3e build on.
+      **THE WORK:** do for §4 and §7 what the FA session did for the assignment rules, **before
+      3d**. ⚠ **Until then, treat a citation to §4 or §7 as UNVERIFIED.**
+      ⚠ **§7.3 IS PHANTOM, NOT MERELY UNVERIFIED — AND THAT IS A DIFFERENT STATUS.** The spec
+      numbers **top-level sections only (0–12)**; §7 has **no numbered subsections**, and the
+      sentence *"a field rep receives no admin panel at all"* appears **nowhere** in the
+      document. Both citing specs are corrected: `DECISION_C_DL_BUILD_SPEC.md` §18,
+      **amendment A25**, with `CDL_3b_BUILD_SPEC.md` pointing at it rather than carrying a
+      second copy. **The two were never independent sources — one unverified citation inherited
+      twice.** ⚠ **This is what an unverified citation looks like once somebody checks it: not
+      stale, never true.**
+      ⚠ **AND IT IS A CLASS, NOT ONE FILE.** The same READ-FIRST list names
+      `RoofMiles_Handoff_ABR_Phase5-1.docx` and `RoofMiles_Handoff_ABR_6B_6A.docx`, both
+      declared absent under the **same unrecorded search set** and **never re-checked against
+      project knowledge**. ⚠ **`RoofMiles_Handoff_ABR_Phase5.docx` exists untracked at repo
+      root** — possibly the first of those under a drifted name, **unconfirmed; nobody has
+      opened it to check.** **Enumerate the cited-but-absent set AND name the locations
+      searched, rather than chasing them one at a time.**
 
 ---
 
