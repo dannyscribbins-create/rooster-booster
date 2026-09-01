@@ -159,8 +159,13 @@ const GOOGLE_WRITE_REVIEW_BASE = 'https://search.google.com/local/writereview?pl
 // contractor. That is the line: does the value say WHO, or does it say WHAT.
 const BRANDING_THEME_DEFAULTS = Object.freeze({
   companyName:      'RoofMiles',
-  primaryColor:     '#F26A1B',
-  secondaryColor:   '#1C2D4D',
+  // ⚠ SWAPPED BY B-1 (2026-09-01) AND THE PAIR MUST MOVE TOGETHER. primaryColor
+  // is the DARK NEUTRAL (ground + body text); secondaryColor is the ACTION colour
+  // (buttons). The routing swap fixes a contractor's stored palette and INVERTS
+  // the platform's unless these move with it — an unbranded contractor would get
+  // an orange page ground carrying navy buttons.
+  primaryColor:     '#1C2D4D',
+  secondaryColor:   '#F26A1B',
   accentColor:      '#FDF0E7',
   backgroundColor:  '#FFFFFF',
   reviewButtonText: 'Leave a Review',

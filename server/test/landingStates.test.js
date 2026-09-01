@@ -115,8 +115,12 @@ const BRAND_B = {
 // expectation from the code under test passes whatever that code does.
 const RM = {
   companyName: 'RoofMiles',
-  primary: '#F26A1B',
-  secondary: '#1C2D4D',
+  // ⚠ SWAPPED WITH THE PLATFORM DEFAULTS IN B-1. These are the COLUMN values:
+  // primary_color is the navy dark neutral, secondary_color the orange action
+  // colour. Which CSS VARIABLE each one lands in is asserted below and is the
+  // opposite pairing — --brand-primary carries the CTA.
+  primary: '#1C2D4D',
+  secondary: '#F26A1B',
   accent: '#FDF0E7',
   bg: '#FFFFFF',
 };
@@ -509,7 +513,7 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
       text.includes(COPY.invalidBodyBranded(BRAND_A.companyName)),
       `the branded body must name the contractor: "${COPY.invalidBodyBranded(BRAND_A.companyName)}"`
     );
-    assertCssVar(res.raw, 'brand-primary', BRAND_A.primary, 'a resolved-slug State 0 must carry the contractor theme');
+    assertCssVar(res.raw, 'brand-primary', BRAND_A.secondary, 'a resolved-slug State 0 must carry the contractor theme');
   });
 
   it('[RED] a token↔subdomain MISMATCH renders neutral branding and names neither side', async () => {
@@ -530,7 +534,7 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
     assert.equal(res.status, 200, `precondition: State 0 must render (got ${res.status})`);
     const text = renderedText(res.raw);
     assert.ok(text.includes(COPY.invalidHeadlineNeutral), 'precondition: this must be the NEUTRAL State 0 page');
-    assertCssVar(res.raw, 'brand-secondary', RM.secondary, 'a mismatch must render the NEUTRAL RoofMiles theme');
+    assertCssVar(res.raw, 'brand-secondary', RM.primary, 'a mismatch must render the NEUTRAL RoofMiles theme');
 
     assert.equal(
       text.includes(BRAND_A.companyName), false,
@@ -842,10 +846,20 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
     assert.ok(text.includes(COPY.poweredBy), `LP §2 footer copy is locked: "${COPY.poweredBy} RoofMiles"`);
     assert.ok(text.includes(RM.companyName), 'the RoofMiles mark must appear in the footer');
 
+    // ⚠ A LITERAL, NOT RM.primary, SINCE B-1 (2026-09-01) — AND THE COUPLING IT
+    // REPLACES IS THE INTERESTING PART. This read `RM.primary`, which happened to
+    // equal the wordmark orange only because the platform's primary_color WAS
+    // #F26A1B. The route swap made primary_color navy and this assertion started
+    // demanding a navy RoofMiles mark — a test failing because a value it was
+    // borrowing moved out from under it, not because anything it guards changed.
+    // The mark is a BRAND ASSET hardcoded in landing.js's `.powered b` rule; it
+    // is not a token and must not track one. Naming it here as its own constant
+    // is what stops the next palette decision reaching it.
+    const ROOFMILES_WORDMARK = '#F26A1B';
     assert.ok(
-      res.raw.includes(RM.primary),
-      `the RoofMiles mark must be hardcoded ${RM.primary} in every theme — not var(--brand-primary), ` +
-      `which on this fixture would paint it ${BRAND_A.primary}`
+      res.raw.includes(ROOFMILES_WORDMARK),
+      `the RoofMiles mark must be hardcoded ${ROOFMILES_WORDMARK} in every theme — not ` +
+      `var(--brand-primary), which on this fixture would paint it ${BRAND_A.secondary}`
     );
   });
 
@@ -911,9 +925,9 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
     const textB = renderedText(resB.raw);
 
     assert.ok(textA.includes(BRAND_A.companyName), "precondition: A's page must name A");
-    assertCssVar(resA.raw, 'brand-primary', BRAND_A.primary, "A's page must carry A's palette");
+    assertCssVar(resA.raw, 'brand-primary', BRAND_A.secondary, "A's page must carry A's palette");
     assert.ok(textB.includes(BRAND_B.companyName), "precondition: B's page must name B");
-    assertCssVar(resB.raw, 'brand-primary', BRAND_B.primary, "B's page must carry B's palette");
+    assertCssVar(resB.raw, 'brand-primary', BRAND_B.secondary, "B's page must carry B's palette");
 
     assert.equal(textA.includes(BRAND_B.companyName), false, "A's page named B");
     assert.equal(resA.raw.includes(BRAND_B.primary), false, "A's page carried B's palette");
@@ -1203,10 +1217,38 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
 
     assert.equal(res.status, 200, `precondition: State 1 must render (got ${res.status})`);
 
-    assertCssVar(res.raw, 'brand-primary', BRAND_A.primary, 'primary must be server-injected');
-    assertCssVar(res.raw, 'brand-secondary', BRAND_A.secondary, 'secondary must be server-injected');
+    assertCssVar(res.raw, 'brand-primary', BRAND_A.secondary, 'primary must be server-injected');
+    assertCssVar(res.raw, 'brand-secondary', BRAND_A.primary, 'secondary must be server-injected');
     assertCssVar(res.raw, 'brand-accent', BRAND_A.accent, 'accent must be server-injected');
     assertCssVar(res.raw, 'brand-bg', BRAND_A.bg, 'background must be server-injected');
+  });
+
+  it('[RED] B-1 — --brand-primary carries the CTA colour, which is secondary_color', async () => {
+    // ⚠ THE PUBLIC HOMEOWNER-FACING FACE OF THE ROUTE SWAP, AND THE ONE THE APP
+    // TESTS CANNOT REACH. The landing page does not use the render tokens — it
+    // emits its own --brand-* variables straight from the resolver, so swapping
+    // the derivations alone would fix every app surface and leave THIS page
+    // inverted, where strangers see it.
+    //
+    // WHAT THE CSS ACTUALLY DOES WITH THEM, read from the stylesheet rather than
+    // assumed: --brand-primary paints `.submit`, `.step-num`, link colour and the
+    // focus ring; --brand-secondary paints `body{color:...}`, i.e. the body text.
+    // That is the same split the render tokens use, so after the ruling the CTA
+    // variable must be fed by secondary_color and the text variable by
+    // primary_color.
+    //
+    // ⚠ ASSERTED AGAINST THE OTHER COLUMN, NOT AGAINST A HEX. BRAND_A's two
+    // colours are #AA1111 and #AA2222 — close enough that a hex assertion reads
+    // as arbitrary. Naming which COLUMN each variable must carry is the contract.
+    const res = await getState1();
+    assert.equal(res.status, 200, `precondition: State 1 must render (got ${res.status})`);
+
+    assertCssVar(res.raw, 'brand-primary', BRAND_A.secondary,
+      'after the B-1 route swap --brand-primary is the CALL-TO-ACTION colour, which is stored ' +
+      'in secondary_color. It still paints .submit and .step-num; only its source moves.');
+    assertCssVar(res.raw, 'brand-secondary', BRAND_A.primary,
+      'after the B-1 route swap --brand-secondary is the DARK NEUTRAL, which is stored in ' +
+      'primary_color. It paints body text, and body text must be the darker of the two.');
   });
 
   it('[GREEN-by-design] NULL branding columns render the RoofMiles defaults', async () => {
@@ -1221,8 +1263,8 @@ describe('C/DL-2 Phase 3d-2 — LP §2 States 0-3, server-rendered', () => {
 
     assert.equal(res.status, 200, `precondition: State 1 must render (got ${res.status})`);
 
-    assertCssVar(res.raw, 'brand-primary', RM.primary, 'NULL primary_color must fall back to RoofMiles');
-    assertCssVar(res.raw, 'brand-secondary', RM.secondary, 'NULL secondary_color must fall back to RoofMiles');
+    assertCssVar(res.raw, 'brand-primary', RM.secondary, 'NULL primary_color must fall back to RoofMiles');
+    assertCssVar(res.raw, 'brand-secondary', RM.primary, 'NULL secondary_color must fall back to RoofMiles');
     assertCssVar(res.raw, 'brand-accent', RM.accent, 'NULL accent_color must fall back to RoofMiles');
     assertCssVar(res.raw, 'brand-bg', RM.bg, 'NULL landing_bg_color must fall back to RoofMiles');
   });

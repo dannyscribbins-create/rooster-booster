@@ -749,7 +749,7 @@ export default function BrandingProfileSettings() {
             label="Primary Color"
             value={formData.primary_color}
             onChange={v => handleChange('primary_color', v)}
-            placeholder="#F26A1B"
+            placeholder="#1C2D4D"
             pendingColor={pendingHex}
             onAssign={hex => handleSwatchAssign('primary_color', hex)}
           />
@@ -757,7 +757,7 @@ export default function BrandingProfileSettings() {
             label="Secondary Color"
             value={formData.secondary_color}
             onChange={v => handleChange('secondary_color', v)}
-            placeholder="#1C2D4D"
+            placeholder="#F26A1B"
             pendingColor={pendingHex}
             onAssign={hex => handleSwatchAssign('secondary_color', hex)}
           />

@@ -250,8 +250,14 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
     const { deriveThemeTokens } = tt();
     for (const [label, brand] of BRANDS) {
       const tokens = deriveThemeTokens(brand, 'light');
-      assert.equal(tokens.primary,   brand.primaryColor,    `${label}: light primary was not a passthrough`);
-      assert.equal(tokens.secondary, brand.secondaryColor,  `${label}: light secondary was not a passthrough`);
+      // ⚠ THE SOURCES SWAPPED IN B-1; THE PASSTHROUGH PROPERTY DID NOT. What this
+      // test pins is that light mode does not REPAINT a brand colour that already
+      // clears its floor — unchanged. Which stored column each token passes
+      // through from is what the route swap moved: the `primary` TOKEN is the
+      // button and now comes from secondary_color, the `secondary` token is the
+      // dark neutral and comes from primary_color.
+      assert.equal(tokens.primary,   brand.secondaryColor,  `${label}: light primary was not a passthrough`);
+      assert.equal(tokens.secondary, brand.primaryColor,    `${label}: light secondary was not a passthrough`);
       assert.equal(tokens.bg,        brand.backgroundColor, `${label}: light bg was not a passthrough`);
     }
 
@@ -866,15 +872,21 @@ describe('C/DL-3c Phase 1a — onPrimary and the light-mode fill floor', () => {
       'BRAND_ON_LIGHT_MIN_CONTRAST is not exported — the light-mode fill floor does not exist'
     );
 
+    // ⚠ THE WITNESS IS secondary_color SINCE B-1, AND THE FENCE IS UNCHANGED. The
+    // `primary` TOKEN is still the button fill and this still pins that a fill
+    // clearing the floor is not repainted. Only the column feeding it moved.
+    // #F26A1B is still that witness — it is the platform's ACTION colour now, and
+    // it still clears the fill floor by 0.064, the tightest real case in the
+    // product.
     for (const [label, brand] of BRANDS) {
-      const ratio = contrastRatio(brand.primaryColor, '#FFFFFF');
+      const ratio = contrastRatio(brand.secondaryColor, '#FFFFFF');
       assert.ok(
         ratio >= BRAND_ON_LIGHT_MIN_CONTRAST,
         `${label} no longer clears the floor on its own, so it cannot witness passthrough`
       );
       assert.equal(
-        deriveThemeTokens(brand, 'light').primary, brand.primaryColor,
-        `${label}: light primary was repainted from ${brand.primaryColor} even though it ` +
+        deriveThemeTokens(brand, 'light').primary, brand.secondaryColor,
+        `${label}: light primary was repainted from ${brand.secondaryColor} even though it ` +
         `already measured ${ratio.toFixed(3)}:1 — the floor is catching good input`
       );
     }
@@ -883,5 +895,224 @@ describe('C/DL-3c Phase 1a — onPrimary and the light-mode fill floor', () => {
       deriveThemeTokens(ROOFMILES, 'light').primary, '#F26A1B',
       'the platform brand orange has been repainted in light mode'
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BRANDING RUN B-1 — RED SUITE — THE ROUTE SWAP (Danny's ruling, 2026-09-01)
+//
+// WHAT CHANGES, AND IT IS ONLY THE INPUTS. The two stored brand colours swap
+// which render tokens they feed:
+//
+//   primary_color   -> the DARK NEUTRAL: dark-mode `bg` and `surface`, and the
+//                      light-mode body `text`.
+//   secondary_color -> BUTTONS AND CALLS TO ACTION: the `primary` render token.
+//
+// ⚠ NO RENDER TOKEN CHANGES MEANING, WHICH IS THE WHOLE POINT OF THIS SHAPE.
+// `--rm-primary` is still the button fill everywhere in the app, so not one
+// component moves and `onPrimary` — which is computed from the DERIVED primary
+// token, never from brand.primaryColor — stays correct with no edit. Under the
+// other candidate shape (renaming resolver keys so the `primary` TOKEN became
+// the ground) every `var(--rm-primary)` button in the product would have
+// inverted and onPrimary would compute against the page. That shape was
+// rejected; case 3 below is what would catch a slip back toward it.
+//
+// ⚠ AND THE DARK `bg` DERIVATION ITSELF IS UNTOUCHED. Deriving the page ground
+// from a dark brand colour is correct, and it is what EXPOSED the bad data:
+// Accent's stored navy sat in `secondary_color`, so the ground came from their
+// red and painted a burgundy page with a blue button. The mechanism was right;
+// the input was wrong. Only the input moves.
+//
+// WHY THE STORED DATA IS SAFE. contractor_settings holds exactly one row
+// (verified 2026-09-01): slug `accent`, primary #012854 navy, secondary #8c0000
+// red. Under the swap those values become correct AS THEY STAND — navy is the
+// ground and the text, red is the buttons. No contractor data changes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A brand whose two inputs are UNAMBIGUOUSLY ordered: a near-black primary and a
+// vivid secondary. Every assertion below reads the routing off this pair, so a
+// derivation that swapped them back could not accidentally pass.
+//
+// ⚠ SHAPED AS THE RULING INTENDS, WHICH IS THE OPPOSITE OF ACCENT_LIKE ABOVE.
+// That older fixture predates the ruling and stores its dark tone in `secondary`,
+// which was the correct shape under the old routing. Both are kept: ACCENT_LIKE
+// exercises the derivation's contrast machinery, ROUTED exercises the routing.
+const ROUTED = Object.freeze(resolveBrandingTheme({
+  company_name:     'Routed Roofing',
+  primary_color:    '#101828',   // the dark neutral  -> ground + body text
+  secondary_color:  '#E8452C',   // the action colour -> buttons
+  accent_color:     '#FBE4E0',
+  landing_bg_color: '#FFFFFF',
+}));
+
+// ⚠ THE MODULE'S OWN relativeLuminance, NOT A LOCAL REIMPLEMENTATION. A private
+// copy here would be a second definition of the thing under test, and the two
+// could agree on a wrong answer — the parallel-implementation failure this run
+// is already cleaning up in BrandingPreview. Read at call time so the file still
+// fails per-case rather than at load.
+function luminance(hex) {
+  return tt().relativeLuminance(hex);
+}
+
+// ⚠ HUE, NOT CONTRAST, AND THE FIRST DRAFT OF THIS SUITE GOT IT WRONG — RECORDED
+// BECAUSE THE MISTAKE IS THE INSTRUCTIVE PART. "Which input did this token come
+// from" was first asked with contrastRatio, and contrast measures LIGHTNESS
+// distance. Two dark colours of completely different hues have a LOW ratio, so
+// "the dark ground is close to the dark input" was TRUE whichever input it
+// actually came from: the DARK case PASSED against the unswapped code and proved
+// nothing. Hue is what survives the derivation — atLightness and
+// nudgeLightnessUntil both move lightness and saturation and preserve hue — so
+// hue is what identifies the source.
+function hueOf(hex) {
+  const { hexToRgb, rgbToHsl } = tt();
+  return rgbToHsl(hexToRgb(hex)).h;
+}
+
+// Shortest distance around the 360-degree wheel.
+function hueGap(a, b) {
+  const d = Math.abs(hueOf(a) - hueOf(b)) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+// Which of the two stored brand colours a derived token came from, by hue.
+function derivedFrom(token, brand) {
+  return hueGap(token, brand.primaryColor) <= hueGap(token, brand.secondaryColor)
+    ? 'primary_color'
+    : 'secondary_color';
+}
+
+
+describe('B-1 — the route swap: which stored colour feeds which token', () => {
+  it('[RED] LIGHT: body text derives from primary_color, the button from secondary_color', () => {
+    const { deriveThemeTokens } = tt();
+    const t = deriveThemeTokens(ROUTED, 'light');
+
+    // BY HUE, not by an exact hex: `text` is nudged until it clears the floor, so
+    // pinning its output would pin the nudge loop instead of the routing.
+    assert.equal(
+      derivedFrom(t.text, ROUTED), 'primary_color',
+      `light text (${t.text}) derives from secondary_color. Body text must come from the DARK ` +
+      'NEUTRAL, which is primary_color after the ruling.'
+    );
+    assert.equal(
+      derivedFrom(t.primary, ROUTED), 'secondary_color',
+      `the light primary TOKEN (${t.primary}) derives from primary_color. That token is the ` +
+      'button fill and must come from secondary_color, the action colour.'
+    );
+  });
+
+  it('[RED] DARK: the page ground derives from primary_color, the button from secondary_color', () => {
+    const { deriveThemeTokens } = tt();
+    const t = deriveThemeTokens(ROUTED, 'dark');
+
+    assert.equal(
+      derivedFrom(t.bg, ROUTED), 'primary_color',
+      `dark bg (${t.bg}) derives from secondary_color. This is the exact defect seen live: ` +
+      'Accent stored navy in primary and red in secondary, so the ground came from the RED and ' +
+      'painted a burgundy page. The ground must come from primary_color.'
+    );
+    assert.equal(
+      derivedFrom(t.surface, ROUTED), 'primary_color',
+      `dark surface (${t.surface}) derives from secondary_color — surface is lifted from bg and ` +
+      'must follow it.'
+    );
+    assert.equal(
+      derivedFrom(t.primary, ROUTED), 'secondary_color',
+      `the dark primary TOKEN (${t.primary}) derives from primary_color. The button must come ` +
+      'from secondary_color.'
+    );
+  });
+
+  it('[RED] THE INVARIANT — the large-area token carries the hue of the DARKER input, both modes', () => {
+    // ⚠ THE ONE TO INSIST ON, AND NOTHING IN THIS REPO ASSERTS ANY RELATIONSHIP
+    // BETWEEN THE TWO STORED COLOURS TODAY. Every existing invariant checks a
+    // token against a THRESHOLD; none checks the two inputs against EACH OTHER.
+    // That gap is exactly what let a vivid red become the page ground.
+    //
+    // ⚠ AND ITS FIRST DRAFT WAS VACUOUS IN DARK MODE — recorded because the
+    // mistake is worth more than the fix. It asserted luminance(bg) <
+    // luminance(primary), which is STRUCTURALLY TRUE for every brand: bg is
+    // produced by atLightness at a fixed dark target and the primary token is
+    // brightened until it clears a floor ABOVE the surface. The assertion could
+    // not fail, in either direction, for any input. Comparing HUE against the
+    // darker INPUT is what makes it discriminate.
+    const { deriveThemeTokens } = tt();
+
+    for (const brand of [ROUTED, ROOFMILES]) {
+      const darker = luminance(brand.primaryColor) <= luminance(brand.secondaryColor)
+        ? 'primary_color' : 'secondary_color';
+
+      const dark = deriveThemeTokens(brand, 'dark');
+      assert.equal(
+        derivedFrom(dark.bg, brand), darker,
+        `${brand.companyName} dark: the page ground (${dark.bg}) does not carry the hue of the ` +
+        `DARKER stored colour (${darker}). The colour covering the most pixels must be the ` +
+        'darker of the two — "burgundy page, blue button" is this ordering inverted.'
+      );
+
+      const light = deriveThemeTokens(brand, 'light');
+      assert.equal(
+        derivedFrom(light.text, brand), darker,
+        `${brand.companyName} light: body text (${light.text}) does not carry the hue of the ` +
+        `DARKER stored colour (${darker}). A page of vivid body text is the light-mode face of ` +
+        'the same inversion.'
+      );
+    }
+  });
+
+  it('[GREEN-by-design] onPrimary tracks the BUTTON TOKEN, not the ground — the shape-(a) guard', () => {
+    // ⚠ GREEN TODAY, DELIBERATELY, AND LABELLED SO RATHER THAN CLAIMED AS RED.
+    // onPrimary already derives from the `primary` RENDER TOKEN rather than from
+    // brand.primaryColor, which is precisely why shape (a) needs no change here.
+    // This case exists to FAIL LATER: under the rejected shape — where the token
+    // itself became the dark neutral — every button label would be answering
+    // about a colour it does not sit on. Guard-proofed below by making the token
+    // the ground and watching it fire.
+    const { deriveThemeTokens, contrastRatio, TEXT_CONTRAST_MIN } = tt();
+
+    for (const brand of [ROUTED, ROOFMILES, ACCENT_LIKE, PATHOLOGICAL]) {
+      for (const mode of MODES) {
+        const t = deriveThemeTokens(brand, mode);
+        assert.ok(
+          contrastRatio(t.onPrimary, t.primary) >= TEXT_CONTRAST_MIN,
+          `${brand.companyName} ${mode}: onPrimary (${t.onPrimary}) fails ${TEXT_CONTRAST_MIN}:1 ` +
+          `against the primary TOKEN (${t.primary}). onPrimary must track the button fill.`
+        );
+        // AND IT MUST NOT BE ANSWERING ABOUT THE GROUND. In dark mode the two are
+        // different colours; a foreground chosen for the ground could still pass
+        // the ratio above by luck, so the pairing is asserted directly.
+        if (mode === 'dark') {
+          assert.notEqual(
+            t.primary, t.bg,
+            `${brand.companyName}: the primary token equals the page ground — the button has ` +
+            'become the neutral, which is the shape this run rejected.'
+          );
+        }
+      }
+    }
+  });
+
+  it('[RED] the PLATFORM DEFAULTS swap with the routing', () => {
+    // ⚠ THE SWAP FIXES ACCENT AND BREAKS ROOFMILES UNLESS BOTH MOVE TOGETHER.
+    // Routing swapped with the defaults left alone gives an unbranded contractor
+    // an ORANGE page ground and NAVY buttons — the platform inverted, on every
+    // surface that has no stored palette.
+    assert.equal(
+      BRANDING_THEME_DEFAULTS.primaryColor, '#1C2D4D',
+      'the platform default primary_color must be the NAVY dark neutral after the ruling'
+    );
+    assert.equal(
+      BRANDING_THEME_DEFAULTS.secondaryColor, '#F26A1B',
+      'the platform default secondary_color must be the ORANGE action colour after the ruling'
+    );
+
+    // AND THE RENDERED RESULT, which is what a person actually sees: a navy
+    // ground carrying orange buttons.
+    const { deriveThemeTokens } = tt();
+    const dark = deriveThemeTokens(ROOFMILES, 'dark');
+    assert.equal(derivedFrom(dark.bg, ROOFMILES), 'primary_color',
+      `the platform dark ground (${dark.bg}) is not derived from the navy`);
+    assert.equal(derivedFrom(dark.primary, ROOFMILES), 'secondary_color',
+      `the platform dark button (${dark.primary}) is not derived from the orange`);
   });
 });

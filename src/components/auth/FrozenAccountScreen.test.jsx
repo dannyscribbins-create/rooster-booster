@@ -119,9 +119,16 @@ describe('C/DL-3b Phase 3 — FrozenAccountScreen', () => {
     expect(logo.getAttribute('src')).toBe(CONTRACTOR_BRANDING.logoUrl);
   });
 
-  it("[RED] paints with the contractor's primary colour, not the platform's", async () => {
+  it("[RED] paints with the contractor's action colour, not the platform's", async () => {
+    // ⚠ secondaryColor SINCE B-1 (2026-09-01), AND THE PROPERTY IS UNCHANGED. What
+    // this pins is that the card's top rule carries THIS CONTRACTOR's colour and
+    // not the platform's. The rule is decorative brand, so it wants the action
+    // colour; after the route swap that lives in secondary_color, and the
+    // component was changed to read it. primaryColor is now the dark neutral —
+    // painting the rule with it would make it the same tone as the body text and
+    // it would read as a divider rather than as brand.
     const { container } = render(<FrozenAccountScreen branding={CONTRACTOR_BRANDING} />);
-    expect(paintedColours(container)).toContain(rgbOf(CONTRACTOR_BRANDING.primaryColor));
+    expect(paintedColours(container)).toContain(rgbOf(CONTRACTOR_BRANDING.secondaryColor));
   });
 
   it('[RED] falls back to the platform brand when no payload arrived', async () => {

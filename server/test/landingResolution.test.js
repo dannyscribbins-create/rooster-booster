@@ -101,8 +101,12 @@ const BRAND_B = {
 
 // RoofMiles fallback tokens (LP §5). Any NULL branding column resolves to these so
 // a brand-new contractor has a decent page before uploading anything.
-const FALLBACK_PRIMARY = '#F26A1B';
-const FALLBACK_SECONDARY = '#1C2D4D';
+// ⚠ SWAPPED WITH THE PLATFORM DEFAULTS IN B-1 (2026-09-01). These name the
+// primary_color / secondary_color COLUMN defaults, and the ruling made
+// primary_color the navy dark neutral and secondary_color the orange action
+// colour. The assertions that use them are unchanged.
+const FALLBACK_PRIMARY = '#1C2D4D';
+const FALLBACK_SECONDARY = '#F26A1B';
 const FALLBACK_BG = '#FFFFFF';
 
 // Distinctive owner surnames. Chosen so "the full last name never reaches the page"

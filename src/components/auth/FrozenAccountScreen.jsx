@@ -64,7 +64,14 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
   // The accent rule at the top of the card. Null when the payload carried no
   // colour, and the render then falls through to the theme's own --rm-primary —
   // so the card is never edgeless, and never borrows another contractor's colour.
-  const accentColor = branding?.primaryColor || null;
+  // ⚠ secondaryColor, NOT primaryColor, SINCE B-1 (2026-09-01). This is a
+  // decorative ACCENT RULE, so it wants the contractor's action colour; after the
+  // route swap that is secondary_color. Reading primaryColor here would paint the
+  // rule in the dark neutral — the same colour as the text — and the rule would
+  // stop reading as brand and start reading as a divider. It falls through to
+  // --rm-primary when null, and --rm-primary is fed by secondaryColor too, so the
+  // set value and the fallback now agree; before this they did not.
+  const accentColor = branding?.secondaryColor || null;
 
   return (
     <div style={{

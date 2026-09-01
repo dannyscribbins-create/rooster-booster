@@ -174,7 +174,10 @@ describe('themeVariables — every mounted custom property', () => {
   it('falls back to the platform palette for an unusable brand rather than throwing', () => {
     // normalizeBrand's documented contract: a throw here is an unstyled surface.
     const vars = themeVariables(null, 'light');
-    expect(vars['--rm-primary']).toBe(BRANDING_THEME_DEFAULTS.primaryColor);
+    // ⚠ secondaryColor, NOT primaryColor, SINCE B-1 (2026-09-01). --rm-primary is
+    // the BUTTON FILL and its meaning did not change; the route swap moved which
+    // stored column feeds it. secondary_color is the action colour now.
+    expect(vars['--rm-primary']).toBe(BRANDING_THEME_DEFAULTS.secondaryColor);
   });
 });
 
@@ -343,8 +346,8 @@ describe('ThemeProvider — branding resolution', () => {
     await screen.findByText('child');
 
     await waitFor(() =>
-      expect(themeRoot().style.getPropertyValue('--rm-primary')).toBe(BRAND_A.primaryColor));
-    expect(themeRoot().style.getPropertyValue('--rm-primary')).not.toBe(BRANDING_THEME_DEFAULTS.primaryColor);
+      expect(themeRoot().style.getPropertyValue('--rm-primary')).toBe(BRAND_A.secondaryColor));
+    expect(themeRoot().style.getPropertyValue('--rm-primary')).not.toBe(BRANDING_THEME_DEFAULTS.secondaryColor);
   });
 
   it('falls back to the neutral palette when nothing resolves', async () => {
@@ -354,7 +357,7 @@ describe('ThemeProvider — branding resolution', () => {
     await screen.findByText('child');
 
     await waitFor(() =>
-      expect(themeRoot().style.getPropertyValue('--rm-primary')).toBe(BRANDING_THEME_DEFAULTS.primaryColor));
+      expect(themeRoot().style.getPropertyValue('--rm-primary')).toBe(BRANDING_THEME_DEFAULTS.secondaryColor));
   });
 
   it('renders styled immediately rather than blocking on the chain', () => {
@@ -387,7 +390,7 @@ describe('ThemeProvider — branding resolution', () => {
     </ThemeProvider>);
 
     expect(await screen.findByText('child')).toBeTruthy();
-    expect(themeRoot().style.getPropertyValue('--rm-primary')).toBe(BRANDING_THEME_DEFAULTS.primaryColor);
+    expect(themeRoot().style.getPropertyValue('--rm-primary')).toBe(BRANDING_THEME_DEFAULTS.secondaryColor);
   });
 });
 
@@ -495,11 +498,21 @@ describe('C/DL-3c Phase 1a — the onPrimary pair is legible as mounted', () => 
     // fills, so a hardcoded token would look correct here and be wrong on the
     // first brand whose primary is dark. These two palettes disagree, and the
     // disagreement is the proof the value is computed per brand.
+    // ⚠ THE DISTINGUISHING COLOURS MOVED INTO secondaryColor IN B-1, AND THE TEST
+    // WOULD HAVE GONE VACUOUS WITHOUT IT. onPrimary answers about the BUTTON, and
+    // after the route swap the button is fed by secondary_color. Left as they
+    // were, both fixtures' buttons derived from their secondary tones — #1C2D4D
+    // and #333333, both dark — so both answered #FFFFFF and the two brands no
+    // longer disagreed about anything. The assertion would still have been TRUE
+    // for the first case and simply wrong for the second; the property it exists
+    // to prove — that the value is computed per brand — would have been gone.
+    // Verified after the move: near-black button -> #FFFFFF, pale-yellow button
+    // (floored to #9F8F00) -> #000000. They still disagree.
     const dark = themeVariables(
-      { primaryColor: '#101820', secondaryColor: '#1C2D4D', backgroundColor: '#FFFFFF' }, 'light'
+      { primaryColor: '#1C2D4D', secondaryColor: '#101820', backgroundColor: '#FFFFFF' }, 'light'
     );
     const light = themeVariables(
-      { primaryColor: '#FFF176', secondaryColor: '#333333', backgroundColor: '#FFFFFF' }, 'light'
+      { primaryColor: '#333333', secondaryColor: '#FFF176', backgroundColor: '#FFFFFF' }, 'light'
     );
 
     expect(dark[RENDER_TOKEN_VARS.onPrimary]).toBe('#FFFFFF');

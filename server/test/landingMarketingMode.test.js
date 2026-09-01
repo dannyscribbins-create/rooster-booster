@@ -449,7 +449,11 @@ describe('C/DL-2 Phase 3d-3 — marketing mode (A17/A18): the bare subdomain as 
       'token rather than asking the endpoint to trust the hostname'
     );
 
-    assertCssVar(res.raw, 'brand-primary', BRAND_A.primary, 'the marketing page must carry the contractor theme');
+        // ⚠ THE COLUMN EACH CSS VARIABLE CARRIES SWAPPED IN B-1 (2026-09-01), AND THE
+    // VARIABLE NAMES DID NOT. --brand-primary paints .submit / .step-num / links —
+    // the CALL TO ACTION, now stored in secondary_color. --brand-secondary paints
+    // body text — the dark neutral, now stored in primary_color.
+    assertCssVar(res.raw, 'brand-primary', BRAND_A.secondary, 'the marketing page must carry the contractor theme');
     assertCssVar(res.raw, 'brand-bg', BRAND_A.bg, 'the marketing page must carry the contractor theme');
     assert.ok(
       text.includes(BRAND_A.phone) && text.includes(BRAND_A.email),

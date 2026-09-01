@@ -72,8 +72,12 @@ const hostFor = slug => `${slug}.${APEX}`;
 // The RoofMiles fallback tokens (LP §5). Written as literals, hand-checked
 // against server/utils/brandingTheme.js, NOT imported — an expectation imported
 // from the module under test passes whatever that module does.
-const FALLBACK_PRIMARY   = '#F26A1B';
-const FALLBACK_SECONDARY = '#1C2D4D';
+// ⚠ SWAPPED WITH THE PLATFORM DEFAULTS IN B-1 (2026-09-01). These name the
+// primary_color / secondary_color COLUMN defaults, and the ruling made
+// primary_color the navy dark neutral and secondary_color the orange action
+// colour. The assertions that use them are unchanged.
+const FALLBACK_PRIMARY   = '#1C2D4D';
+const FALLBACK_SECONDARY = '#F26A1B';
 const FALLBACK_BG        = '#FFFFFF';
 
 // Every one of these is TRUTHY, which is the entire point: `||` passes all four

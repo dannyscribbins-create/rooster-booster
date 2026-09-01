@@ -306,8 +306,19 @@ function safeWebsiteUrl(value) {
 function themeStyle(theme) {
   return [
     ':root{',
-    `--brand-primary:${theme.primaryColor};`,
-    `--brand-secondary:${theme.secondaryColor};`,
+    // ⚠ ROUTED BY B-1 (2026-09-01), AND THE ASSIGNMENT LOOKS CROSSED ON PURPOSE.
+    // This page does not use the render tokens; it emits its own --brand-*
+    // variables straight from the resolver. Read the stylesheet below for what
+    // each one paints: --brand-primary is `.submit`, `.step-num`, links and the
+    // focus ring — the CALL TO ACTION, which after the ruling is stored in
+    // secondary_color. --brand-secondary is `body{color:...}` — the BODY TEXT,
+    // which is the dark neutral, stored in primary_color.
+    // ⚠ SWAPPING ONLY THE APP'S DERIVATIONS WOULD HAVE LEFT THIS PAGE INVERTED,
+    // and it is the public homeowner-facing surface — navy buttons and red body
+    // text, where strangers see it. The variable NAMES are unchanged so the whole
+    // stylesheet below is untouched.
+    `--brand-primary:${theme.secondaryColor};`,
+    `--brand-secondary:${theme.primaryColor};`,
     `--brand-accent:${theme.accentColor};`,
     `--brand-bg:${theme.backgroundColor};`,
     '}',

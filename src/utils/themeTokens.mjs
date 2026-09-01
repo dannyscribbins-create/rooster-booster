@@ -415,24 +415,39 @@ function readableForegroundOn(fill) {
 function deriveLightTokens(brand) {
   const surface = LIGHT_SURFACE_HEX;
 
+  // ⚠ THE TWO BRAND INPUTS ARE ROUTED BY B-1's RULING (2026-09-01), AND THE
+  // NAMES READ BACKWARDS UNTIL YOU KNOW WHY.
+  //   brand.primaryColor   is the DARK NEUTRAL  -> the ground, and the body text
+  //   brand.secondaryColor is the ACTION COLOUR -> the `primary` RENDER TOKEN
+  // "Primary" names the contractor's PRIMARY BRAND COLOUR — usually the dark one
+  // a roofing company puts on its trucks — not the primary ACTION colour. That is
+  // the reading every contractor already had, and the mismatch is what produced a
+  // live burgundy page with a blue button: Accent stored navy in primary and red
+  // in secondary, and the ground came from the red.
+  // ⚠ THE RENDER TOKENS DID NOT MOVE. `primary` is still the button fill for
+  // every consumer of --rm-primary, which is why no component changed and why
+  // onPrimary — computed from the token below, never from brand.primaryColor —
+  // is correct without an edit. ⚠ DO NOT "TIDY" THIS BY SWAPPING THE TOKEN NAMES
+  // BACK; that inverts every button in the product.
+
   // DARKENS, unlike the dark theme's brightening, because the surface it has to
   // survive is white. The predicate is BRAND_ON_LIGHT_MIN_CONTRAST and not
   // TEXT_CONTRAST_MIN on purpose — see that constant for why the two numbers
   // differ and why this one must not be raised to match its sibling.
   const primary = nudgeLightnessUntil(
-    brand.primaryColor, -1,
+    brand.secondaryColor, -1,
     (candidate) => contrastRatio(candidate, surface) >= BRAND_ON_LIGHT_MIN_CONTRAST
   );
 
   return {
     primary,
-    secondary: brand.secondaryColor,
+    secondary: brand.primaryColor,
     bg:        brand.backgroundColor,
     surface,
     // Text starts at the brand's own dark tone and DARKENS until it clears the
     // floor against the card it sits on.
     text: nudgeLightnessUntil(
-      brand.secondaryColor, -1,
+      brand.primaryColor, -1,
       (candidate) => contrastRatio(candidate, surface) >= TEXT_CONTRAST_MIN
     ),
     // Against the FLOORED primary, for the same reason dark computes it against
@@ -443,7 +458,8 @@ function deriveLightTokens(brand) {
 }
 
 // DARK THEME. The canvas and the card are derived from the brand's dark tone
-// (secondaryColor) so the dark theme still reads as this contractor's, then the
+// (primaryColor after B-1; it was secondaryColor before the route swap) so the
+// dark theme still reads as this contractor's, then the
 // brand tones are brightened until they survive on it.
 //
 // secondary IS A BRAND TONE HERE, BRIGHTENED — deliberately not the mockup's
@@ -451,16 +467,30 @@ function deriveLightTokens(brand) {
 // panel tone and would make secondary a near-duplicate of surface, leaving four
 // usable tokens instead of five. Ruled C/DL-3a Phase 3.
 function deriveDarkTokens(brand) {
-  const bg = atLightness(brand.secondaryColor, DARK_BG_TARGET_L, DARK_BG_MAX_SATURATION);
+  // ⚠ THE TWO BRAND INPUTS ARE ROUTED BY B-1's RULING (2026-09-01), AND THE
+  // NAMES READ BACKWARDS UNTIL YOU KNOW WHY.
+  //   brand.primaryColor   is the DARK NEUTRAL  -> the ground, and the body text
+  //   brand.secondaryColor is the ACTION COLOUR -> the `primary` RENDER TOKEN
+  // "Primary" names the contractor's PRIMARY BRAND COLOUR — usually the dark one
+  // a roofing company puts on its trucks — not the primary ACTION colour. That is
+  // the reading every contractor already had, and the mismatch is what produced a
+  // live burgundy page with a blue button: Accent stored navy in primary and red
+  // in secondary, and the ground came from the red.
+  // ⚠ THE RENDER TOKENS DID NOT MOVE. `primary` is still the button fill for
+  // every consumer of --rm-primary, which is why no component changed and why
+  // onPrimary — computed from the token below, never from brand.primaryColor —
+  // is correct without an edit. ⚠ DO NOT "TIDY" THIS BY SWAPPING THE TOKEN NAMES
+  // BACK; that inverts every button in the product.
+  const bg = atLightness(brand.primaryColor, DARK_BG_TARGET_L, DARK_BG_MAX_SATURATION);
   const surface = atLightness(bg, DARK_BG_TARGET_L + DARK_SURFACE_LIFT_L, DARK_BG_MAX_SATURATION);
 
   const readableOnSurface = (candidate) => contrastRatio(candidate, surface) >= BRAND_ON_DARK_MIN_CONTRAST;
 
-  const primary = nudgeLightnessUntil(brand.primaryColor, 1, readableOnSurface);
+  const primary = nudgeLightnessUntil(brand.secondaryColor, 1, readableOnSurface);
 
   return {
     primary,
-    secondary: nudgeLightnessUntil(brand.secondaryColor, 1, readableOnSurface),
+    secondary: nudgeLightnessUntil(brand.primaryColor, 1, readableOnSurface),
     bg,
     surface,
     // COMPUTED FROM THE BRIGHTENED primary, not from brand.primaryColor. In
@@ -472,7 +502,7 @@ function deriveDarkTokens(brand) {
     // until it clears the floor. The starting point is already legible for any
     // ordinary palette; the loop is what covers the ones that are not.
     text: nudgeLightnessUntil(
-      atLightness(brand.secondaryColor, DARK_TEXT_TARGET_L), 1,
+      atLightness(brand.primaryColor, DARK_TEXT_TARGET_L), 1,
       (candidate) => contrastRatio(candidate, surface) >= TEXT_CONTRAST_MIN
     ),
   };

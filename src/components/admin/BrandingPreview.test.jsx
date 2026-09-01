@@ -61,8 +61,22 @@ import { BRANDING_THEME_DEFAULTS } from '../../utils/brandingTheme.mjs';
 // test agreeing with itself. The one assertion that DOES read
 // BRANDING_THEME_DEFAULTS is the drift guard at the bottom, where reading it is
 // the entire point.
-const ROOFMILES_PRIMARY   = '#F26A1B';
-const ROOFMILES_SECONDARY = '#1C2D4D';
+// ⚠ SWAPPED WITH THE PLATFORM DEFAULTS IN B-1 (2026-09-01), AND NOTHING ABOUT
+// THE PREVIEW ITSELF WAS TOUCHED. These name the primary_color / secondary_color
+// COLUMN defaults, which the route swap moved: primary_color is the navy dark
+// neutral, secondary_color the orange action colour. The component still paints
+// `theme.primaryColor` raw, so its output followed the constants.
+// ⚠ AND THAT IS THE PROBLEM B-3 OWNS, RESTATED HERE BECAUSE THIS FILE IS WHERE
+// SOMEONE WILL MEET IT. BrandingPreview never calls deriveThemeTokens — it paints
+// the stored hexes directly — so it does not show what the engine actually
+// renders, and after this swap its login gradient starts from the DARK NEUTRAL
+// where the real screen's button is the action colour. Updating these two
+// constants keeps the suite honest about what the component does; it does not
+// make the component correct. Do not "fix" the mapping here — the engine and the
+// preview are kept separable on purpose, so a wrong engine and a wrong preview
+// cannot cancel out and look right.
+const ROOFMILES_PRIMARY   = '#1C2D4D';
+const ROOFMILES_SECONDARY = '#F26A1B';
 
 // The three values the component hardcodes today. Named exhaustively rather than
 // checking one representative, because a partial fix — dropping the navy but

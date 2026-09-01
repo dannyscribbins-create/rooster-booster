@@ -260,9 +260,14 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
       ['empty',     { primary_color: '',        secondary_color: '',        landing_bg_color: '' }],
     ];
     for (const [label, input] of cases) {
+      // ⚠ THE PLATFORM DEFAULTS SWAPPED IN B-1 (2026-09-01), AND THE VALUES BELOW
+      // MOVED WITH THE RULING RATHER THAN TO SATISFY A FAILING TEST. primaryColor
+      // is now the NAVY dark neutral (page ground, body text) and secondaryColor
+      // the ORANGE action colour (buttons). The routing swap fixes a contractor's
+      // stored palette and would have INVERTED the platform's if these had stayed.
       const theme = resolveBrandingTheme(input);
-      assert.equal(theme.primaryColor,    '#F26A1B', `${label}: wrong primary default`);
-      assert.equal(theme.secondaryColor,  '#1C2D4D', `${label}: wrong secondary default`);
+      assert.equal(theme.primaryColor,    '#1C2D4D', `${label}: wrong primary default`);
+      assert.equal(theme.secondaryColor,  '#F26A1B', `${label}: wrong secondary default`);
       assert.equal(theme.backgroundColor, '#FFFFFF', `${label}: wrong background default`);
     }
   });
@@ -700,8 +705,8 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
       const theme = resolveBrandingTheme({
         primary_color: bad, secondary_color: bad, landing_bg_color: bad,
       });
-      assert.equal(theme.primaryColor,    '#F26A1B', `primary accepted malformed input ${JSON.stringify(bad)}`);
-      assert.equal(theme.secondaryColor,  '#1C2D4D', `secondary accepted malformed input ${JSON.stringify(bad)}`);
+      assert.equal(theme.primaryColor,    '#1C2D4D', `primary accepted malformed input ${JSON.stringify(bad)}`);
+      assert.equal(theme.secondaryColor,  '#F26A1B', `secondary accepted malformed input ${JSON.stringify(bad)}`);
       assert.equal(theme.backgroundColor, '#FFFFFF', `background accepted malformed input ${JSON.stringify(bad)}`);
     }
   });
@@ -721,12 +726,12 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
     // blank landing page.
     for (const input of [null, undefined, {}]) {
       const theme = resolveBrandingTheme(input);
-      assert.equal(theme.primaryColor, '#F26A1B', `input ${String(input)} did not resolve to defaults`);
+      assert.equal(theme.primaryColor, '#1C2D4D', `input ${String(input)} did not resolve to defaults`);
     }
     // Non-string scalars in colour slots are the shape a mis-wired form sends.
     const theme = resolveBrandingTheme({ primary_color: 0xF26A1B, secondary_color: true, landing_bg_color: [] });
-    assert.equal(theme.primaryColor,    '#F26A1B');
-    assert.equal(theme.secondaryColor,  '#1C2D4D');
+    assert.equal(theme.primaryColor,    '#1C2D4D');
+    assert.equal(theme.secondaryColor,  '#F26A1B');
     assert.equal(theme.backgroundColor, '#FFFFFF');
   });
 
