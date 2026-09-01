@@ -2759,6 +2759,55 @@ root cause, and patching them separately produces six unrelated special cases)
       `UI_OVERHAUL_SPEC.md`, whose scope is `src/components/referrer/*`: the same 16 files.
       **Filed with CD-21's deferred design pass as ONE item**, because you cannot design
       referrer dark variants against a surface that cannot express a variant.
+- [ ] ⚠ **AMENDED 2026-09-01 BY THE BRANDING RUN'S PHASE 0 — FOUR ADDITIONS, AND THE SECOND
+      CHANGES WHY THIS IS LAUNCH-GATING.** *(Every figure below re-measured against HEAD
+      `7b04908` rather than carried from this entry: 793 `R.*` across 16 non-test files
+      confirmed, `Screen.jsx`'s five importers confirmed.)* ⚠ **THIS ENTRY WAS ALREADY HERE
+      AND ALREADY 🔴** — the branding run was about to file it a second time and the grep
+      caught it. **Recorded because a duplicate would have split the owner between two rows.**
+
+      **(1) THE FRAMING THIS ENTRY HAS, RESTATED IN THE TERMS THE PRODUCT IS SOLD IN.** The
+      measurement is 793 references; the *consequence* is that **every contractor's homeowners
+      see the same palette regardless of what that contractor sets.** Branding is read on the
+      referrer tree for `companyName`, `reviewUrl`, `reviewMessage` and `reviewButtonText` —
+      **not one colour.** This is the white-label surface the product is sold on and the app
+      most homeowners actually see.
+
+      **(2) ⚠ THE ONBOARDING BASELINE, WHICH IS NOT ANYWHERE IN THIS ENTRY AND IS THE HALF
+      THAT GATES LAUNCH.** Migrating to `--rm-*` is only the first of two things owed. The
+      second: **the RoofMiles defaults must act as a coherent baseline until a contractor has
+      finished onboarding and chosen a palette.** A contractor who signs up has homeowners in
+      the app **from the first minute**, before any colour is set — so the fallback has to be
+      a deliberate, complete palette rather than an absence.
+      ⚠ **THIS IS A D1 CONCERN, NOT A COSMETIC ONE.** D1 requires contractor #2 to onboard
+      with no RoofMiles involvement. If the unset state is incoherent, that is a self-serve
+      onboarding defect, not a theming gap — and it is invisible to every existing measure
+      here, all of which describe the *migrated* end state rather than the *unset* one.
+
+      **(3) SEQUENCE — ⚠ THIS LANDS AFTER THE BRANDING RUN, AND DOING IT FIRST IS DOING IT
+      TWICE.** The branding run swaps which stored column feeds which render token:
+      `primary_color` becomes the dark neutral (dark-mode ground, light-mode body text) and
+      `secondary_color` becomes buttons and calls to action. **Migrating 793 sites onto tokens
+      whose meanings are about to move would require re-deciding every one of them.** Wait.
+
+      **(4) SCOPE — THREE SHARED PRIMITIVES, AND ONLY ONE OF THEM IS NAMED ABOVE.** This entry
+      already owns `Screen.jsx` (3 raw `R.*`, five importers — every referrer tab). It does
+      **not** name **`AvatarCircle`** (3 raw `R.*`, including the retired Accent red and navy)
+      or **`ContactModal`** (14 raw `R.*`). Both are in `shared/` and both are
+      referrer-tree-only today, so a migration scoped to `referrer/` orphans them **exactly as
+      this entry records `SignupScreen` and `EmailVerifyScreen` being orphaned** — the same
+      failure, one folder along.
+      ⚠ **AND THE TWO ARCS INTERACT: C/DL-3-C MAY WANT THESE SAME PRIMITIVES** for the rep
+      screens, which is the reason the R/AD boundary was drawn in the first place. A rep screen
+      importing a raw-`R` primitive would paint light-only inside a surface that has dark mode.
+      **Whichever arc reaches them first decides for both.**
+
+      **CONSEQUENCE FOR THE BRANDING RUN, RECORDED SO IT IS NOT REDISCOVERED:** the referrer
+      dashboard **cannot be previewed in the branding profile until this lands.** A faithful
+      render would not move when the contractor edits any colour — ⚠ **which is worse than an
+      inaccurate preview, because it is inaccurate AND unresponsive**, and it would teach a
+      contractor that their palette does nothing. **The branding run ships its preview surfaces
+      without the referrer dashboard and adds it after this migration.**
 
 **⚠ FOR C/DL-3c PHASE 2 — FOUND LIVE DURING THE 1c WALKTHROUGH, FILED NOT BUILT**
 
@@ -3145,6 +3194,19 @@ none of them. **3-D's real-browser pass is owed IN FULL and this sighting does n
       not access itself.**
       `AdminApp.jsx` and `roleRouting.test.jsx` carry the same wording and are **accurate as
       written** — recorded here so nobody re-opens the question. **They need no edit.**
+      ⚠ **DATED NOTE, 2026-09-01 — HALF DISCHARGED BY C/DL-3c PHASE 3-A. THE ENTRY ABOVE IS
+      NOT REWRITTEN, DELIBERATELY.** Phase 3-A deleted `RepPlaceholder.jsx`, so the copy of the
+      claim that lived there is gone and `RepShell` states what actually ships instead — a field
+      rep is never handed the admin shell with its sections scrimmed. **`AdminNoAccessScreen.jsx`
+      is untouched and still carries the sentence.**
+      ⚠ **THE ORIGINAL TEXT STAYS BECAUSE REWRITING IT WOULD ERASE THAT THIS ONCE COVERED TWO
+      FILES**, and because its instruction — *"fix during C/DL-3c Phase 3, which replaces
+      `RepPlaceholder` with the real shell"* — is now **history rather than a live pointer**. A
+      record repaired in place stops being evidence; a record left standing without a note gets
+      inherited as current. This line is the second half of that pair.
+      **RE-ASSIGNED: the surviving half is owed by whoever next opens `AdminNoAccessScreen.jsx`**,
+      which is admin-surface and was correctly out of 3-A's scope. ⚠ **An item whose named owner
+      has shipped has no owner** — this arc has caught that shape repeatedly.
 - [ ] ⚠ **`LockedSection` PAGE MODE WILL FAIL OPEN IN THE REP TREE, AND ITS OWN COMMENT SAYS
       WHY.** The scrim paints `var(--rm-bg, #012854)` at 75% opacity, and that file records the
       fallback resolving *"every time, on the only surface that renders this component today"* —
