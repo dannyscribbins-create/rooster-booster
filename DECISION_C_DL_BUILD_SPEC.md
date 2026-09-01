@@ -831,7 +831,11 @@ design reference for a control it must ship.
 
 **Ruled from the mockup's own row rhythm:**
 
-- **Its own row on `6-profile-settings`, directly BELOW the Security row.**
+- **Its own row on `6-profile-settings`, directly ABOVE Sign out** — which is directly below
+  Security whenever Security ships. **Sign out is the anchor because it is the one row in that
+  list nothing can defer.** *(This bullet led with "below Security" when A30 landed earlier the
+  same day. Corrected to lead with the durable anchor; the RULING is unchanged — both phrasings
+  name the same slot, and only this one survives Security's absence.)*
 - **Label left, control right**, matching Title, Attribution type, Fallback link and Security,
   which all read label-left / value-right.
 - **Sign out stays last.**
