@@ -1198,6 +1198,84 @@ trap in a different costume — the assertion's edge lands exactly where the amb
 
 ---
 
+## Mockup precedence — FieldRepApp
+
+`docs/mockups/fieldrepapp/` holds 72 PNGs from a Lovable mockup dated
+2026-06-26: 18 screens × 4 brand/mode variants (RoofMiles and Accent, each
+light and dark). These mockups are the original foundation the FieldRepApp
+planning was built on. They are guidance and inspiration — reference
+material, not a specification — and the distinction is load-bearing.
+
+**Sequencing and scope — the plan wins, absolutely.** `EXECUTION_SEQUENCE.md`
+and `DECISION_C_DL_BUILD_SPEC.md` decide which phase builds what. An element
+appearing in a mockup says nothing about when it is built. The mockup set
+includes Add Client and the network constellation, which belong to later
+phases; their presence in a PNG is not a licence to build them early.
+
+**Behaviour and rules — the dated rulings win.** Where a mockup contradicts
+a ruling recorded in `DECISION_C_DL_BUILD_SPEC.md` or
+`EXECUTION_SEQUENCE.md`, the ruling governs, regardless of which came
+first. This includes at least: CD-4, superseding the mockup's splash-to-
+login flow; CD-7, requiring the server to omit the revenue value rather
+than the client to hide it; CD-8, voiding the mockup's example link
+format; and D14, which vacated Wave 1.2's row and consolidated the rank
+economy into a single arc after Wave 1.4 — the rank economy is DEFERRED,
+not cancelled, and RANK-2, RANK-9 and RANK-17 remain live and move with
+the arc. No rank renders in 3c.
+
+**Layout and usability — the mockup is the strongest reference.** Screen
+composition, element order, navigation structure, information hierarchy,
+spacing relationships, the empty / loading / error treatment, and copy
+strings are what the mockup was built to settle. Start from it, and treat it
+as the default when nothing else speaks to a question.
+
+**Palette STRUCTURE, not palette VALUES.** The four-variant set is a
+deliberate proof that theming is token-driven rather than hardcoded per
+brand, and that structure carries over — the five swatch roles (Primary,
+Secondary, BG, Surface, Text) are intended to map onto the `--rm-*`
+tokens. ⚠ That mapping is INCOMPLETE: amendment A20 records that the
+shipped resolver emits a different set and that `surface` and `text` have
+no token today. Two of the five roles have nothing to map onto, and the
+gap is unresolved. Specific colours read off a PNG are approximations,
+never authority.
+
+**Brand assets in the mockup are PLACEHOLDERS.** Lovable did not have the
+real contractor assets, so the Accent variants render a recoloured RoofMiles
+chevron. No logo, mark, or icon in any non-RoofMiles variant represents
+design intent, and none should be reproduced. White-label brand assets come
+from the contractor's own asset set, never from a mockup PNG. Treat any
+mockup element Lovable would have had to invent for want of a real asset the
+same way.
+
+**The mockup does not override judgment during the build.** It is inspiration
+against which common-sense rulings get made as the interface is really
+built. Where it shows something wrong, impractical, or since superseded, rule
+against it and record the ruling. Deferring to a PNG over a considered
+decision is the failure this section exists to prevent.
+
+**A feature shown in a mockup that no spec claims is an open question, not a
+dropped one.** Flag it and leave it unbuilt. Absence from the specs is at
+least as likely to be an omission as a decision.
+
+**No code from the Lovable project enters this repository** — see CD-18,
+which is the resident ruling; this is a pointer to it, not a second copy.
+The mockup's stated design target is React Native, but the prototype
+Lovable generated around it is a web stack: TypeScript, TanStack Router,
+shadcn and Tailwind. This repo uses none of those, and its router choice
+is still deferred. Importing that code would settle a deferred
+architectural decision as a side effect of copying a component. Read it
+for reference; port nothing.
+
+**Provenance is not fully reconciled.** `DECISION_C_DL_BUILD_SPEC.md`
+records the FieldRepApp mockup as a 19-page PDF delivered 2026-07-24; what
+is committed here is 72 PNGs across 18 screens, exported 2026-06-26 per the
+Lovable Files panel's own timestamps. Whether these are one artifact at two
+export dates or two versions is unresolved. The CD-* rulings postdate both,
+so nothing inverts — but do not treat either date as a cutoff, and reconcile
+this before citing the mockup as a dated authority.
+
+---
+
 ## Session Safety Protocol — Run Before Any Code Changes
 
 1. Read this entire CLAUDE.md file
