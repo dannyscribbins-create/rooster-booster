@@ -329,7 +329,7 @@ Sliding expiry itself needs no new column; it bumps `expires_at`.
 
 ### 7.2 RED tests first
 
-- Each role lands on its own surface; **a field rep receives no admin panel at all** — not a locked one (RBAC §7.3).
+- Each role lands on its own surface; **a field rep is not handed the admin shell with its sections scrimmed**. ⚠ **CORRECTED BY `DECISION_C_DL_BUILD_SPEC.md` §18, AMENDMENT A25 — this spec has no amendment log, so A25 is the single recorded home rather than a second drifting copy.** This read *"a field rep receives no admin panel at all — not a locked one (RBAC §7.3)"*. **§7.3 does not exist** in the RBAC spec (untracked at repo root) and the quoted sentence appears nowhere in it; post-2b a general-tier field rep is switcher-eligible and reaches an empty admin surface by design. Default routing is unchanged.
 - A multi-role person routes correctly after choosing.
 - Choice screen renders **only** on multi-match; single-match never sees it.
 - Password policy: 8 characters enforced on set, reset, and signup; a 14-character alphanumeric round-trips through all three.

@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v1.6 — amended 2026-08-30, the session decomposition superseded (§17, amendment A24). Previously v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
+**Status:** LOCKED v1.7 — amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25). Previously v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -166,7 +166,7 @@ Settled in the planning session of 2026-07-24 unless noted.
 8. Confirm what feeds Today's Focus is queryable from `client_rep_assignments` joined to existing pipeline data.
 
 **Test plan**
-- **Routing:** each role lands on its own surface; a field rep receives no admin panel at all (not a locked one — RBAC §7.3); a multi-role person routes correctly.
+- **Routing:** each role lands on its own surface; a field rep is not handed the admin shell with its sections scrimmed; a multi-role person routes correctly. ⚠ **AMENDED BY A25 (§18).** This read *"a field rep receives no admin panel at all (not a locked one — RBAC §7.3)"*. **RBAC §7.3 does not exist and the quoted sentence is nowhere in that document**; post-2b a general-tier field rep is switcher-eligible and reaches an empty admin surface by design. Default routing is unchanged.
 - **Tenancy:** a rep sees only their own contractor's clients, and only their own book of business; guard-proof the predicate.
 - **Permissions:** every new endpoint joins the Decision A enforcement net (coverage test, registry reconciliation, Owner parity) — not a separate track.
 - **Revenue gate:** flag off → stat card absent from grid, detail field renders hidden-state primitive; flag on → both render. Both directions tested.
@@ -692,3 +692,39 @@ design, not two.** ⚠ **Not 3c**, which is a read shell.
 and step-up — not 2FA — is the control D7's 30-day session was explicitly traded against. **3c
 widens exactly that population.** Both belong in the Wave 4 login-path session; **if only one is
 scheduled, step-up is the one.**
+
+---
+
+## 18. Amendments — v1.7, 2026-09-01 (a citation to a section that does not exist)
+
+**A25 — "RBAC §7.3" DOES NOT EXIST, AND THE SENTENCE ATTRIBUTED TO IT APPEARS NOWHERE IN THAT
+DOCUMENT.**
+
+**Corrects:** the claim that a field rep receives no admin panel at all, attributed to RBAC §7.3.
+It stood in this spec's §4 test plan and in `CDL_3b_BUILD_SPEC.md`'s Phase 5 RED-test list. Both
+are corrected in place in the same commit as this amendment; this section is the authority and
+3b points here rather than carrying a second copy.
+
+**Why:** §7.3 does not exist. `RoofMiles_Team_RBAC_RepAssignment_Spec` numbers **top-level
+sections only (0–12)**; §7 — *Field Rep View in the Codebase & Multi-Login Architecture* — has no
+numbered subsections, and its subject is codebase placement and multi-login, not screen
+permissions. The quoted sentence appears nowhere in that document. `CDL_3b_BUILD_SPEC.md` carries
+the same quote; **the two are one unverified citation inherited twice, not two sources.**
+
+**What is true instead:** `canSwitchSurface()` gates on team role plus the field-rep flag with
+**no tier check**, so a general-tier field rep IS switcher-eligible and reaches an empty admin
+surface — deliberately. The rationale is recorded in the switcher's own comment, naming C/DL-3c
+Phase 2b and Ruling A(i). What 3b forbade was a panel of **eleven scrimmed sections**, not access
+itself. The recovered RBAC spec's §1 agrees: every role is available on both surfaces, and a
+general user may use their permitted slice of the admin panel.
+
+⚠ **WHAT IS NOT AMENDED, STATED BECAUSE THE CORRECTION INVITES THE WRONG READING: DEFAULT ROUTING
+IS UNCHANGED.** `surfaceFor()` still sends `is_field_rep` + `tier = 'general'` to the rep surface.
+The switcher **relaxes** that rule and never reverses it. The correction is to the WORDING and its
+ATTRIBUTION, not to where anyone lands.
+
+**Status of the source:** the RBAC spec has been **recovered** and sits **UNTRACKED at repo root**
+— a genuine `.docx`, verified by two independent parses. **§4 and §7 remain untranscribed, so every
+citation to them is still unverified.** → `PRE_LAUNCH_CHECKLIST.md` → *Governing documents this
+repo cannot see*. ⚠ **That entry is now stale in its own right**: it states the spec *"HAS NEVER
+BEEN IN THIS REPO"* and that a Drive search returns nothing. Recovery has not been written into it.
