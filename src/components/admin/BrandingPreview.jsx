@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AD } from '../../constants/adminTheme';
 import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 import { deriveThemeTokens } from '../../utils/themeTokens.mjs';
@@ -27,6 +28,72 @@ import LoginScreen from '../auth/LoginScreen';
 // formData IS ALREADY THE RESOLVER'S INPUT SHAPE — it is the GET /api/admin/settings
 // response object, whose column names are exactly the snake_case keys
 // resolveBrandingTheme reads. Extra keys are ignored, so it is passed straight in.
+
+// ─── THE PREVIEW'S OWN VIEWPORT — B-3a ───────────────────────────────────────
+//
+// ⚠ AN IFRAME, AND NOTHING ELSE WOULD HAVE WORKED. LoginScreen's root is
+// `minHeight: 100vh` with its card centred, and 100vh resolves against the
+// BROWSER viewport — not against a 500px box, not under a transform, and not
+// inside a containing block. Mounted directly in the casing on a tall window the
+// root was a thousand pixels high and the card centred below the crop: the
+// preview showed a logo and a heading and nothing else.
+//
+// ⚠ THE ALTERNATIVES ALL REQUIRED EDITING LoginScreen — overriding its inline
+// minHeight, switching it to container-query units, or changing 100vh to 100%
+// and giving it an ancestor height it does not have on a real page. The mirror
+// does not reshape the surface it mirrors, so none of them was taken. A nested
+// document makes 100vh CORRECT rather than tolerated: inside this frame the
+// viewport genuinely is the phone.
+//
+// 390x750 SCALED BY 2/3 IS EXACTLY 260x500, which is the casing. Both axes agree,
+// so nothing is cropped and the proportions are the real screen's rather than a
+// squeeze. The numbers are derived from the casing rather than chosen.
+const FRAME_W = 390;
+const FRAME_H = 750;
+const FRAME_SCALE = 2 / 3;
+
+function PreviewFrame({ children }) {
+  const [doc, setDoc] = useState(null);
+
+  // ⚠ THE FONT LINKS ARE COPIED IN, AND WITHOUT THIS THE FIX WOULD HAVE TRADED
+  // ONE INFIDELITY FOR ANOTHER. The typeface pair is part of what a contractor is
+  // choosing, and the stylesheet links live in the PARENT head — a nested document
+  // inherits none of them, so the preview would have rendered every heading and
+  // every label in a fallback face while claiming to show the real screen.
+  useEffect(() => {
+    if (!doc) return;
+    doc.body.style.margin = '0';
+    for (const link of document.head.querySelectorAll('link[rel="stylesheet"]')) {
+      if (doc.getElementById(link.id || '_')) continue;
+      doc.head.appendChild(link.cloneNode(true));
+    }
+  });
+
+  return (
+    <iframe
+      data-preview-frame=""
+      title="Branding preview"
+      width={FRAME_W}
+      height={FRAME_H}
+      // The ref fires with the element; contentDocument is readable because the
+      // frame is same-origin and empty. Storing it in STATE is what triggers the
+      // re-render that portals the children in — a ref alone would not, because
+      // nothing would tell React the target document had appeared.
+      ref={(el) => { if (el && el.contentDocument !== doc) setDoc(el.contentDocument); }}
+      style={{
+        border: 0, display: 'block',
+        transform: `scale(${FRAME_SCALE})`,
+        transformOrigin: 'top left',
+      }}
+    >
+      {/* ⚠ THE CHILDREN GO THROUGH A PORTAL, NOT HERE. JSX children of an iframe
+          are discarded by the browser; the tree has to be rendered into the
+          frame's own document body, which is what makes its viewport the one the
+          component is laid out against. */}
+      {doc && createPortal(children, doc.body)}
+    </iframe>
+  );
+}
 
 export default function BrandingPreview({ formData, mode = 'light' }) {
   const [screen, setScreen] = useState('login');
@@ -188,9 +255,11 @@ export default function BrandingPreview({ formData, mode = 'light' }) {
               ⚠ LoginScreen MAKES NO REQUEST ON MOUNT — its three fetches all sit
               inside submit handlers — so nothing here dials the network. */}
           {screen === 'login' ? (
-            <ThemeProvider context={previewContext} fetchStoredMode={async () => null} mode={mode}>
-              <LoginScreen onAuthenticated={() => {}} />
-            </ThemeProvider>
+            <PreviewFrame>
+              <ThemeProvider context={previewContext} fetchStoredMode={async () => null} mode={mode}>
+                <LoginScreen onAuthenticated={() => {}} />
+              </ThemeProvider>
+            </PreviewFrame>
           ) : (
             <DashboardPreview
               primary={primary} secondary={secondary} accent={accent}

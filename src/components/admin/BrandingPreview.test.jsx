@@ -52,7 +52,7 @@
 //   dashboard lone '$' span color    -> secondary
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import BrandingPreview from './BrandingPreview';
 import { BRANDING_THEME_DEFAULTS, resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 // B-3 reads the engine's own answer rather than restating one, so an expectation
@@ -316,12 +316,14 @@ describe('C/DL-2 Phase 3c — BrandingPreview resolves through src/utils/brandin
     const withName = render(<BrandingPreview formData={{ company_name: 'Alpha Roofing Co' }} />);
     // NON-VACUITY: the populated case must work before the absence case means
     // anything — a preview that rendered no name at all would satisfy the sweep.
-    expect((await screen.findAllByText(/Alpha Roofing Co/)).length).toBeGreaterThan(0);
+    // ⚠ READ FROM THE FRAME'S DOCUMENT SINCE B-3a, and awaited because the
+    // injected chain is asynchronous in production too.
+    await waitFor(() => expect(frameText()).toContain('Alpha Roofing Co'));
     withName.unmount();
 
-    const { container } = render(<BrandingPreview formData={{}} />);
-    expect(container.textContent).toContain('Welcome back');   // the login screen did render
-    expect(container.textContent).not.toContain('Rooster Booster');
+    render(<BrandingPreview formData={{}} />);
+    await waitFor(() => expect(frameText()).toContain('Welcome back'));  // it did render
+    expect(frameText()).not.toContain('Rooster Booster');
   });
 });
 
@@ -365,14 +367,31 @@ describe('C/DL-2 Phase 3c — BrandingPreview resolves through src/utils/brandin
 // ─────────────────────────────────────────────────────────────────────────────
 
 // The provider's wrapper — the one element carrying the --rm-* properties.
+// ⚠ SEARCHED INSIDE THE PREVIEW FRAME SINCE B-3a, NOT IN THE PARENT DOCUMENT.
+// The login screen no longer renders here: it is portalled into an iframe so that
+// its `minHeight: 100vh` root is laid out against a phone-sized viewport instead
+// of the browser's. Looking in the parent would find nothing and report it as a
+// missing provider, which is a different defect from the one it would be hiding.
 function themeRoot() {
-  return document.querySelector('[data-rm-theme]');
+  const frame = document.querySelector('iframe[data-preview-frame]');
+  return frame?.contentDocument?.querySelector('[data-rm-theme]') ?? null;
 }
 
 function mountedToken(name) {
   const root = themeRoot();
   if (!root) throw new Error('the preview mounted no ThemeProvider — nothing below is meaningful');
   return root.style.getPropertyValue(name);
+}
+
+// The login screen's own DOM, which lives in the frame's document after B-3a.
+function insideFrame(selector) {
+  const frame = document.querySelector('iframe[data-preview-frame]');
+  return frame?.contentDocument?.querySelector(selector) ?? null;
+}
+
+function frameText() {
+  const frame = document.querySelector('iframe[data-preview-frame]');
+  return frame?.contentDocument?.body?.textContent ?? '';
 }
 
 // A draft whose action colour is dark enough that dark mode MUST lighten it.
@@ -495,6 +514,172 @@ describe('B-3 — the preview renders the DERIVED tokens, not the typed hexes', 
     render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
     await screen.findByText('Live Preview');
 
-    expect(screen.getByRole('button', { name: /sign in/i })).toBeTruthy();
+    // ⚠ READ THROUGH THE FRAME SINCE B-3a. The screen is portalled into a nested
+    // document, so a parent-scoped query finds nothing — and would report "the
+    // real screen is missing" when what actually changed is where it lives.
+    await waitFor(() => expect(frameText()).toContain('Welcome back'));
+    const buttons = Array.from(
+      document.querySelector('iframe[data-preview-frame]').contentDocument.querySelectorAll('button')
+    );
+    expect(buttons.some(b => /sign in/i.test(b.textContent))).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-3a — RED SUITE — THE PREVIEW NEEDS ITS OWN VIEWPORT
+//
+// THE DEFECT, SEEN LIVE. The casing showed only the top of the login screen —
+// logo and heading — with the form and the sign-in button below the crop.
+// LoginScreen's root is `minHeight: 100vh` with `justifyContent: center`, and
+// ⚠ 100vh RESOLVES AGAINST THE BROWSER VIEWPORT, NOT AGAINST A 500px BOX. On a
+// tall window the root is a thousand pixels inside a five-hundred pixel casing
+// and the card centres below the fold. The entrance animation was a red herring:
+// it ran correctly on something already out of frame.
+//
+// ⚠ AND NEITHER A CONTAINING BLOCK NOR A TRANSFORM CHANGES WHAT vh MEANS. That
+// is the whole reason this needs an iframe rather than a wrapper: a transform
+// scales the rendered output while the element is still laid out against the
+// viewport, and an overflow box crops it without shrinking it. ONLY A NEW
+// VIEWPORT redefines vh, and in a browser that means a nested document.
+//
+// ⚠⚠ WHAT THIS SUITE CANNOT PROVE, STATED FIRST SO NOTHING BELOW IS READ AS
+// MORE THAN IT IS. jsdom RUNS NO LAYOUT ENGINE. Measured directly: an element
+// with an explicit height of 500px reports getBoundingClientRect() all zeros and
+// offsetHeight 0. So `100vh` is never resolved to anything here, and setting
+// window.innerHeight changes a number that nothing consults.
+//
+// THEREFORE NO TEST IN THIS FILE CAN ASSERT THAT THE CARD IS VISIBLE INSIDE THE
+// CASING, at a tall viewport or any other. A case written that way would pass
+// identically before and after the fix — the exact shape this arc has rejected
+// three times. What these cases prove is the MECHANISM that makes the crop
+// impossible: that a real nested document exists, that the screen renders inside
+// it rather than in the parent, and that the derived custom properties are
+// mounted in that document where the component can read them. The pixel outcome
+// is a real-browser check and is owed separately.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The preview's nested viewport. Everything below reads through it, because
+// after B-3a the login screen is no longer in the parent document at all.
+function previewFrame() {
+  return document.querySelector('iframe[data-preview-frame]');
+}
+
+function frameDoc() {
+  const frame = previewFrame();
+  if (!frame) throw new Error('the preview rendered no iframe — it has no viewport of its own');
+  const doc = frame.contentDocument;
+  if (!doc) throw new Error('the preview iframe exposed no document');
+  return doc;
+}
+
+// The provider's wrapper, INSIDE the frame. If this is found in the parent
+// document instead, the provider did not follow the portal and the component is
+// painting from fallbacks.
+function frameThemeRoot() {
+  return frameDoc().querySelector('[data-rm-theme]');
+}
+
+describe('B-3a — the preview gets its own viewport, so 100vh means the casing', () => {
+
+  it('[RED] renders into an iframe — the only thing that redefines vh', async () => {
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    const frame = previewFrame();
+    expect(
+      frame,
+      'no iframe. A wrapper cannot fix this: neither a containing block nor a ' +
+      'transform changes what 100vh resolves against, so the card would still be ' +
+      'laid out against the browser and still fall below the casing.'
+    ).toBeTruthy();
+  });
+
+  it('[RED] the login screen renders INSIDE the frame, not in the parent document', async () => {
+    // ⚠ THE PORTAL, ASSERTED FROM BOTH SIDES. Present inside the frame AND absent
+    // outside it — an iframe that exists while the screen still renders in the
+    // parent would satisfy the case above and fix nothing.
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    const inside = frameDoc().querySelector('button');
+    expect(inside, 'the frame is empty — nothing was portalled into it').toBeTruthy();
+
+    expect(
+      screen.queryByRole('button', { name: /sign in/i }),
+      'the login screen is still in the PARENT document, so it is still laid out ' +
+      'against the browser viewport and the crop is unchanged'
+    ).toBeNull();
+  });
+
+  it('[RED] ⚠ the --rm-* are mounted INSIDE the frame, carrying DERIVED values', async () => {
+    // ⚠ THE LOAD-BEARING CASE, AND IT CARRIES B-3'S ACCEPTANCE CONDITION THROUGH
+    // THE FIX. A frame whose document has no custom properties leaves the real
+    // component painting from its var() fallbacks — which is a preview that lies,
+    // the defect B-3 existed to end, reintroduced by the fix for the crop.
+    // Asserted in DARK because that is the only mode where the typed value and
+    // the derived value differ; in light they coincide and this would pass
+    // against no derivation at all.
+    const expected = deriveThemeTokens(resolveBrandingTheme(DEEP_ACTION_DRAFT), 'dark');
+
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} mode="dark" />);
+    await screen.findByText('Live Preview');
+
+    const root = frameThemeRoot();
+    expect(root, 'no provider wrapper inside the frame — the tokens did not follow the portal').toBeTruthy();
+
+    const painted = root.style.getPropertyValue('--rm-primary');
+    expect(painted.toUpperCase()).toBe(expected.primary.toUpperCase());
+    expect(painted.toUpperCase()).not.toBe(DEEP_ACTION_DRAFT.secondary_color.toUpperCase());
+    expect(root.style.getPropertyValue('--rm-bg').toUpperCase()).toBe(expected.bg.toUpperCase());
+  });
+
+  it('[RED] the frame is a phone-sized viewport, scaled to the casing', async () => {
+    // The numbers are the point: a 390x750 document scaled by 2/3 is exactly
+    // 260x500, which is the casing. Both axes agree, so nothing is cropped and
+    // the proportions are the real screen's rather than a squeeze.
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    const frame = previewFrame();
+    expect(frame.getAttribute('width')).toBe('390');
+    expect(frame.getAttribute('height')).toBe('750');
+    expect(frame.style.transform).toContain('scale');
+  });
+
+  it('B-3a — WHERE THE body BACKGROUND WRITE LANDS, recorded rather than assumed', async () => {
+    // ⚠ NOT A REQUIREMENT — A MEASUREMENT, AND IT IS PINNED SO THE ANSWER CANNOT
+    // CHANGE SILENTLY. ThemeLayer writes document.body.style.background on mount
+    // and restores it on unmount. The open question B-3a had to settle is which
+    // document that is now: the portal moves the RENDER TREE into the frame, but
+    // the component's module-level `document` still refers to the realm the module
+    // was loaded in. If the write reaches the parent, opening this panel repaints
+    // the admin page's body with a contractor's brand colour.
+    // ⚠ ThemeLayer IS NOT PATCHED EITHER WAY. It is a shared provider and a
+    // preview must not reshape it; whatever this records is filed, not fixed.
+    const before = document.body.style.background;
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} mode="dark" />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+    const frame = document.querySelector('iframe[data-preview-frame]');
+    const parentAfter = document.body.style.background;
+    const frameAfter = frame.contentDocument.body.style.background;
+
+    // ⚠ THE MEASURED ANSWER: THE WRITE STILL REACHES THE PARENT. Observed
+    // 2026-09-01 — the admin page's body took the derived dark ground while the
+    // frame's own body stayed unset. The portal moves the render tree, not the
+    // module's idea of `document`, so the iframe did NOT scope this and was never
+    // going to.
+    // ⚠ PINNED AS A FACT, NOT AS A REQUIREMENT. Nobody wants this behaviour; what
+    // this assertion buys is that it cannot change silently in either direction.
+    // If a later change scopes the write, this fails and someone reads why rather
+    // than discovering a preview that stopped repainting the panel. The fix is
+    // filed in PRE_LAUNCH_CHECKLIST.md against the branding preview; it is not
+    // taken here because ThemeLayer is a shared provider and a preview must not
+    // reshape one.
+    expect(parentAfter, 'the parent body was not repainted — the recorded behaviour changed')
+      .not.toBe(before);
+    expect(frameAfter, 'the frame body was repainted — the write is no longer where it was recorded')
+      .toBe('');
   });
 });

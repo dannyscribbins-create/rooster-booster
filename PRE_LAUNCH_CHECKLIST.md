@@ -2522,6 +2522,27 @@ check — which is why this is a named build rather than a checklist line.
 
 ## C/DL-3c — the rep app
 
+
+- [ ] ⚠ **THE BRANDING PREVIEW REPAINTS THE ADMIN PAGE'S `body`, AND THE IFRAME DID NOT SCOPE IT.**
+      *(Introduced by B-3, measured by B-3a, 2026-09-01.)* `ThemeLayer` writes
+      `document.body.style.background` on mount and restores it on unmount — correct on a
+      referrer or rep surface, where the provider owns the page. The preview now mounts a real
+      provider inside the admin panel, so **opening Branding paints the admin page's body with the
+      contractor's derived background**, and leaving the panel puts it back.
+      ⚠ **B-3a's iframe was expected to scope this and DOES NOT.** Measured: the parent body took
+      the derived ground while the frame's own body stayed unset. The portal moves the render
+      TREE; it does not move the module's `document`, which still refers to the realm the module
+      was loaded in. **Recorded because "the iframe probably fixes it" is the plausible wrong
+      answer** and the probe was written to settle it rather than assume.
+      **Almost certainly invisible today** — `AdminApp` paints `minHeight: 100vh` over the body —
+      so this is filed as correctness, not as a visible defect.
+      ⚠ **NOT FIXED IN `ThemeLayer`, DELIBERATELY.** It is a shared provider on every white-label
+      surface, and a preview must not reshape one to suit itself. **The fix belongs on the
+      preview side** — the candidate is a provider that takes its paint target as a parameter,
+      which is a change to the provider's contract and wants its own ruling.
+      **Pinned meanwhile** by a case in `BrandingPreview.test.jsx` that asserts the measured
+      behaviour in both directions, so it cannot change silently either way.
+
 **⬜ BUILD ORDER FOR THE REST OF THIS ARC — RULED 2026-09-01, AND IT EXISTED ONLY IN A CHAT
 WINDOW UNTIL NOW.**
 
