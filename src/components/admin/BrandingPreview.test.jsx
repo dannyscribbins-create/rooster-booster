@@ -54,7 +54,10 @@
 
 import { render, screen, fireEvent } from '@testing-library/react';
 import BrandingPreview from './BrandingPreview';
-import { BRANDING_THEME_DEFAULTS } from '../../utils/brandingTheme.mjs';
+import { BRANDING_THEME_DEFAULTS, resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
+// B-3 reads the engine's own answer rather than restating one, so an expectation
+// here cannot drift from what the app derives.
+import { deriveThemeTokens } from '../../utils/themeTokens.mjs';
 
 // The RoofMiles fallback tokens. Written as HAND-CHECKED LITERALS, deliberately
 // not imported, so these expectations cannot be satisfied by the module under
@@ -280,7 +283,7 @@ describe('C/DL-2 Phase 3c — BrandingPreview resolves through src/utils/brandin
     t.unmount();
   });
 
-  it('[RED] the resolver actually drives the app name and tagline, not just the colours', () => {
+  it('[RED] the resolver actually drives the company name, not just the colours', async () => {
     // PROVES THE WHOLE COMPONENT MOVED ONTO THE MIRROR, not only its three colour
     // lines. The cheapest way to satisfy every colour assertion above is to swap
     // three literals for three imported constants and leave the rest of the
@@ -294,14 +297,204 @@ describe('C/DL-2 Phase 3c — BrandingPreview resolves through src/utils/brandin
     //
     // The preview must show the contractor's own program name when it has one, and
     // must not invent the platform's when it does not.
-    const withName = render(<BrandingPreview formData={{ app_display_name: 'Alpha Rewards' }} />);
+    // ⚠ RE-POINTED FROM THE PROGRAM NAME TO THE COMPANY NAME IN B-3, AND THE
+    // SUBJECT IS UNCHANGED. This rendered a hand-painted login view that printed
+    // `programName || companyName`; the view is now the REAL login screen, which
+    // has never shown a program name and shows the COMPANY name instead. Asserting
+    // a program name here would be pinning a surface that does not exist.
+    // The discriminator survives intact, because the real screen renders the
+    // company name through the same resolver output — so a resolver that started
+    // defaulting the platform codename would still be caught below.
+    // ⚠ AWAITED, BECAUSE THE BRANDING CHAIN IS ASYNCHRONOUS — and it is in
+    // production too. The preview context's fetchBranding returns a promise, so
+    // the first paint is the neutral palette and the draft arrives a tick later.
+    // A synchronous query here would read the pre-resolution frame and fail for a
+    // reason that has nothing to do with what is being asserted.
+    // findAllByText, not findByText: the real screen renders the company name
+    // TWICE — once in the subtitle and once in the footer — so the singular query
+    // throws on multiple matches rather than reporting what it found.
+    const withName = render(<BrandingPreview formData={{ company_name: 'Alpha Roofing Co' }} />);
     // NON-VACUITY: the populated case must work before the absence case means
     // anything — a preview that rendered no name at all would satisfy the sweep.
-    expect(screen.getByText('Alpha Rewards')).toBeInTheDocument();
+    expect((await screen.findAllByText(/Alpha Roofing Co/)).length).toBeGreaterThan(0);
     withName.unmount();
 
     const { container } = render(<BrandingPreview formData={{}} />);
     expect(container.textContent).toContain('Welcome back');   // the login screen did render
     expect(container.textContent).not.toContain('Rooster Booster');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BRANDING RUN B-3 — RED SUITE — THE PREVIEW SHOWS THE DERIVED RESULT
+//
+// THE DEFECT. This component never called deriveThemeTokens. It read the four
+// stored hexes and hand-painted a picture from them, so it showed the values a
+// contractor TYPED rather than the values the engine PAINTS. Five separate
+// mismatches against the real login screen, and none of its colours was
+// contrast-nudged. That is why an inverted palette looked plausible on save: the
+// preview was never showing the real thing, it was drawing something that
+// resembled it.
+//
+// ⚠ AND B-1 MADE IT WORSE RATHER THAN BETTER. After the route swap the preview's
+// login gradient started from the dark neutral where the real screen's button is
+// the action colour, so the panel disagreed with itself.
+//
+// THE FIX UNDER TEST. A preview-only branding context — createBrandingContext
+// with an injected fetchBranding — mounts a REAL ThemeProvider over the draft
+// values, and the REAL login screen paints from the --rm-* it puts on the page.
+// ⚠ NOTHING WAS ADDED TO ThemeProvider. The injectable `context` prop already
+// existed and the D4 chain already calls ctx.fetchBranding, so the override lives
+// entirely in a preview-only object and no future reader has to ask whether that
+// path can fire in production.
+//
+// ── ⚠ WHY EVERY DERIVATION CASE BELOW IS IN DARK MODE ───────────────────────
+// In LIGHT mode a brand red that already clears the fill floor is passed through
+// unchanged, so the typed value and the derived value are THE SAME STRING. A
+// light-mode assertion therefore passes identically against a component that
+// derives nothing at all — the exact vacuity this suite exists to prevent. In
+// dark mode the engine lightens that fill until it reads on a dark ground, so
+// the two values differ and the assertion can actually fail.
+//
+// ⚠ THE OBSERVATION POINT IS THE MOUNTED CUSTOM PROPERTY, NOT A PAINTED PIXEL.
+// jsdom never resolves var(), so no test here can read what the login screen
+// renders. What IS readable is the property set the provider mounts on its own
+// wrapper — [data-rm-theme] — which is the same handle ThemeProvider.test.jsx
+// uses. If the right value is mounted there, the real component is painting from
+// it, because that is the only thing it reads.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The provider's wrapper — the one element carrying the --rm-* properties.
+function themeRoot() {
+  return document.querySelector('[data-rm-theme]');
+}
+
+function mountedToken(name) {
+  const root = themeRoot();
+  if (!root) throw new Error('the preview mounted no ThemeProvider — nothing below is meaningful');
+  return root.style.getPropertyValue(name);
+}
+
+// A draft whose action colour is dark enough that dark mode MUST lighten it.
+// Deliberately not any contractor's stored value: this file sits inside a
+// brand-literal fence.
+const DEEP_ACTION_DRAFT = {
+  company_name:     'Preview Fixture Co',
+  primary_color:    '#123A5F',
+  secondary_color:  '#7A1020',
+  accent_color:     '#DCE7F2',
+  landing_bg_color: '#FFFFFF',
+};
+
+// A second draft that still DIVERGES after derivation, not merely before it.
+// ⚠ CHOSEN BY COMPUTATION, NOT BY EYE. B-1 found a non-vacuity guard that went
+// vacuous when both of its fixtures started answering the same thing once the
+// routing moved; two inputs differing is not the same as two OUTPUTS differing.
+const OTHER_DRAFT = {
+  company_name:     'Second Fixture Co',
+  primary_color:    '#1F5133',
+  secondary_color:  '#6B3FA0',
+  accent_color:     '#E4DCF2',
+  landing_bg_color: '#FFFFFF',
+};
+
+describe('B-3 — the preview renders the DERIVED tokens, not the typed hexes', () => {
+
+  it('[RED] DARK: the mounted action token is the DERIVED value, not the typed hex', async () => {
+    // ⚠ THE LOAD-BEARING CASE. Two assertions and both are needed: the mounted
+    // value must EQUAL what the engine derives, and must NOT equal what was
+    // typed. The second is what fails against a component that passes raw values
+    // through — which is the whole defect.
+    const brand = resolveBrandingTheme(DEEP_ACTION_DRAFT);
+    const expected = deriveThemeTokens(brand, 'dark');
+
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} mode="dark" />);
+    await screen.findByText('Live Preview');
+
+    const painted = mountedToken('--rm-primary');
+
+    expect(painted.toUpperCase()).toBe(expected.primary.toUpperCase());
+    expect(painted.toUpperCase()).not.toBe(DEEP_ACTION_DRAFT.secondary_color.toUpperCase());
+  });
+
+  it('[RED] DARK: the page ground is derived from the draft too, not left at a default', async () => {
+    // The ground is the other half of the acceptance condition. A component that
+    // mounted a provider but fed it nothing would still satisfy the case above
+    // by accident on some palettes; it cannot satisfy this one.
+    const brand = resolveBrandingTheme(DEEP_ACTION_DRAFT);
+    const expected = deriveThemeTokens(brand, 'dark');
+
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} mode="dark" />);
+    await screen.findByText('Live Preview');
+
+    expect(mountedToken('--rm-bg').toUpperCase()).toBe(expected.bg.toUpperCase());
+    expect(mountedToken('--rm-text').toUpperCase()).toBe(expected.text.toUpperCase());
+  });
+
+  it('[RED] the derivation tracks the DRAFT, not saved state', async () => {
+    // The form hands this component unsaved values on every keystroke. A preview
+    // reading anything else — a fetch, a cached response, the last save — would
+    // show the contractor a page they are not currently editing.
+    const edited = { ...DEEP_ACTION_DRAFT, secondary_color: '#2E6B2E' };
+    const expected = deriveThemeTokens(resolveBrandingTheme(edited), 'dark');
+
+    render(<BrandingPreview formData={edited} mode="dark" />);
+    await screen.findByText('Live Preview');
+
+    expect(mountedToken('--rm-primary').toUpperCase()).toBe(expected.primary.toUpperCase());
+  });
+
+  it('[RED] NON-VACUITY — two drafts that differ AFTER derivation preview differently', async () => {
+    // ⚠ THE FIXTURES ARE PROVEN TO DIVERGE BEFORE THEY ARE COMPARED. Asserting
+    // "two previews differ" is worthless if the two inputs happen to derive to
+    // the same token, and it is worthless in the other direction if the pair is
+    // never checked — the assertion would be pinning the fixtures rather than
+    // the component. This computes the expectation from the real engine first.
+    const a = deriveThemeTokens(resolveBrandingTheme(DEEP_ACTION_DRAFT), 'dark');
+    const b = deriveThemeTokens(resolveBrandingTheme(OTHER_DRAFT), 'dark');
+    expect(
+      a.primary.toUpperCase(),
+      'the two fixtures derive to the SAME action token — this guard would be vacuous'
+    ).not.toBe(b.primary.toUpperCase());
+
+    const first = render(<BrandingPreview formData={DEEP_ACTION_DRAFT} mode="dark" />);
+    await screen.findByText('Live Preview');
+    const paintedA = mountedToken('--rm-primary');
+    first.unmount();
+
+    render(<BrandingPreview formData={OTHER_DRAFT} mode="dark" />);
+    await screen.findByText('Live Preview');
+    const paintedB = mountedToken('--rm-primary');
+
+    expect(paintedA.toUpperCase()).not.toBe(paintedB.toUpperCase());
+    expect(paintedA.toUpperCase()).toBe(a.primary.toUpperCase());
+    expect(paintedB.toUpperCase()).toBe(b.primary.toUpperCase());
+  });
+
+  it('[RED] a NEUTRAL draft still reaches the provider — the chain-path guard', async () => {
+    // ⚠ THE INJECTION TRAVELS A DIFFERENT ROUTE FOR A NEUTRAL DRAFT, AND THAT IS
+    // WHY THIS EXISTS. brandingForSlug() treats a payload equal to the platform
+    // defaults as "no contractor identified" and declines, so the chain falls
+    // through to its neutral source instead of the injected one. The OUTPUT is
+    // identical today, which is exactly what makes the difference invisible — and
+    // a future change to isNeutralBranding() could stop the injection working
+    // with nothing failing. This pins the observable end state either way.
+    render(<BrandingPreview formData={{}} mode="dark" />);
+    await screen.findByText('Live Preview');
+
+    const expected = deriveThemeTokens(resolveBrandingTheme({}), 'dark');
+    expect(mountedToken('--rm-primary').toUpperCase()).toBe(expected.primary.toUpperCase());
+    expect(mountedToken('--rm-bg').toUpperCase()).toBe(expected.bg.toUpperCase());
+  });
+
+  it('[RED] the REAL login screen is mounted, not a hand-painted lookalike', async () => {
+    // ⚠ THE STRUCTURAL HALF. Every case above is satisfied by a component that
+    // mounts a provider and then paints its own picture underneath it — the old
+    // defect with better scaffolding. This asserts the actual screen is present,
+    // by a control only the real component renders.
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeTruthy();
   });
 });

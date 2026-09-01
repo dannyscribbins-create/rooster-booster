@@ -2522,6 +2522,31 @@ check — which is why this is a named build rather than a checklist line.
 
 ## C/DL-3c — the rep app
 
+**⬜ BUILD ORDER FOR THE REST OF THIS ARC — RULED 2026-09-01, AND IT EXISTED ONLY IN A CHAT
+WINDOW UNTIL NOW.**
+
+> **B-3 → B-4 → the R/AD migration → 3-B → 3-C → 3-D.**
+
+- [ ] ⚠ **3-B — THE REP API ROUTES AND GUARDS — PRECEDES 3-C AND 3-D**, which build the screens
+      those routes feed. **Screens before their API means building against an imagined response
+      shape**, and the shape that gets imagined is the one the screen finds convenient rather
+      than the one the data supports. Every disagreement then surfaces as a rewrite of the
+      screen, at the point where it is most expensive to change.
+- [ ] ⚠ **THE R/AD MIGRATION PRECEDES 3-C**, so the rep screens inherit shared primitives that
+      are already token-painted. Taken in the other order, 3-C builds against raw-`R` primitives
+      and someone retrofits around them afterwards — and the retrofit is invisible to every test
+      in this repo, because `jsdom` resolves no `var()`.
+- [ ] ⚠ **THE REFERRER DASHBOARD PREVIEW IS ADDED IMMEDIATELY AFTER THE MIGRATION, NOT DEFERRED
+      TO WAVE 3.** B-3 left that surface a hand-painted illustration, labelled as one on screen,
+      because the referrer tree reads no `--rm-*` and a faithful render would sit unchanged while
+      a contractor edited every colour. **The moment the migration lands it can render for real**,
+      and by then B-4's view switcher exists — so it is one more entry in a switcher that is
+      already built, not new plumbing. **Deferring it to Wave 3 strands a finished capability**
+      behind a queue, which is how the R/AD entry itself became invisible for months.
+      *(The horizon is also recorded at the site, in `BrandingPreview`'s dashboard comment, so
+      the next person editing that file does not read the placeholder as permanent.)*
+
+
 **The theme-engine pass — SIX items, ONE design pass** (§10 has the full entry; they share a
 root cause, and patching them separately produces six unrelated special cases)
 

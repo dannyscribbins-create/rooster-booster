@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
+import { deriveThemeTokens } from '../../utils/themeTokens.mjs';
+import ThemeProvider from '../shared/ThemeProvider';
+import LoginScreen from '../auth/LoginScreen';
 
 // ─── BrandingPreview ──────────────────────────────────────────────────────────
 // Phone mockup showing Login + Dashboard screens using live formData values.
@@ -25,10 +28,56 @@ import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 // response object, whose column names are exactly the snake_case keys
 // resolveBrandingTheme reads. Extra keys are ignored, so it is passed straight in.
 
-export default function BrandingPreview({ formData }) {
+export default function BrandingPreview({ formData, mode = 'light' }) {
   const [screen, setScreen] = useState('login');
 
   const theme     = resolveBrandingTheme(formData);
+
+  // ── ⚠ THE DERIVED TOKENS, AND THIS COMPONENT USED TO HAVE NONE ─────────────
+  // It read the four stored hexes and hand-painted a picture from them, so it
+  // showed what a contractor TYPED rather than what the engine PAINTS. Nothing in
+  // it was contrast-nudged. That is why a misfiled palette looked plausible on
+  // save: the preview was never showing the real thing, it was drawing something
+  // that resembled it.
+  // ⚠ deriveThemeTokens IS CALLED, NEVER REIMPLEMENTED. A preview that recomputed
+  // tokens itself would be the same parallel-implementation defect wearing a new
+  // costume — two engines that can disagree, with the wrong one on the screen the
+  // contractor is reading. If you are about to write colour maths in this file,
+  // that is the signal to stop.
+  const tokens = useMemo(() => deriveThemeTokens(theme, mode), [theme, mode]);
+
+  // ── ⚠ A PREVIEW-ONLY BRANDING CONTEXT — NOTHING WAS ADDED TO ThemeProvider ──
+  // The provider already accepts an injectable `context`, and the D4 chain
+  // already calls ctx.fetchBranding(slug), so the draft can be fed in through the
+  // seam that exists rather than through a new override prop.
+  // ⚠ THAT CHOICE IS THE POINT, NOT A CONVENIENCE. An override inside the
+  // provider would mean every future reader of the branding chain has to reason
+  // about whether that path can fire on a live surface — the same question the
+  // `mode` pin already forces, and the reason setMode has to refuse when one is
+  // active. This keeps the question from existing: the override lives entirely in
+  // an object built here, and the provider is the ordinary one.
+  //
+  // hostname declines at the host source, so the URL-hint source answers and
+  // calls fetchBranding below. storage is null and the chain reads it through
+  // optional chaining, so nothing is written to the admin's browser.
+  const previewContext = useMemo(() => ({
+    hostname: 'preview.invalid',
+    search:   '?brand=preview',
+    storage:  null,
+    fetchBranding: async () => resolveBrandingTheme(formData),
+    session:  null,
+  }), [formData]);
+
+  // ⚠ THE DASHBOARD VIEW STILL RECEIVES THE RAW STORED VALUES, DELIBERATELY, AND
+  // IT IS LABELLED ON SCREEN AS AN ILLUSTRATION RATHER THAN A RENDER. The
+  // referrer dashboard cannot be previewed faithfully by anyone: it paints
+  // entirely from the R palette and reads no --rm-* at all, so a REAL render of
+  // it would not move when a contractor changes a colour. That is filed as the
+  // launch-gating R/AD migration.
+  // ⚠ AND FEEDING THIS ILLUSTRATION DERIVED TOKENS WAS TRIED AND REJECTED. It
+  // would make an invented layout look authoritative without making it any more
+  // true — confidence manufactured rather than error exposed, which is the exact
+  // failure this whole run exists to end. An honest label is the smaller claim.
   const primary   = theme.primaryColor;
   const secondary = theme.secondaryColor;
   const accent    = theme.accentColor;
@@ -39,8 +88,12 @@ export default function BrandingPreview({ formData }) {
   // and it is exactly as wrong on a white-labeled surface as another contractor's
   // colour would be. A contractor who has not named their program shows their own
   // company name instead.
-  const appName   = theme.programName || theme.companyName;
-  const tagline   = formData.tagline          || 'Refer your neighbors. Earn cash rewards.';
+  // ⚠ appName AND tagline ARE GONE WITH THE HAND-PAINTED LOGIN VIEW, AND THE
+  // PROGRAM NAME IS NO LONGER PREVIEWED ANYWHERE. That is honest rather than a
+  // loss: the real login screen shows the COMPANY name and has never shown a
+  // program name, so a preview that displayed one was inventing a surface. The
+  // resolver's refusal to default a program name is still pinned — by the
+  // company-name path, which this screen does render.
   const reviewBtn = formData.review_button_text || 'Leave a Review';
 
   return (
@@ -53,6 +106,32 @@ export default function BrandingPreview({ formData }) {
       }}>
         Live Preview
       </p>
+
+      {/* ⚠ THE DASHBOARD VIEW SAYS WHAT IT IS, ON SCREEN, AND THAT SENTENCE IS THE
+          POINT OF IT. The login view is the real component painting from the real
+          tokens. This one is not, and cannot be until the referrer app reads
+          --rm-* at all — it paints from the R palette today, so a faithful render
+          would sit there unchanged while a contractor edited every colour. An
+          illustration that admits it is an illustration is a smaller claim than a
+          picture that quietly implies it is a render, and it was a picture quietly
+          implying that which let a misfiled palette look plausible on save.
+          ⚠ AND IT HAS A HORIZON, WHICH THE ON-SCREEN LINE DELIBERATELY DOES NOT
+          CARRY. A placeholder with no end condition reads as a permanent design
+          decision to whoever finds it next, and this one is not: it stays an
+          illustration only until the referrer tree is migrated from the R palette
+          onto the --rm-* tokens. That migration is filed as launch-gating in
+          PRE_LAUNCH_CHECKLIST.md under the R/AD entry. The moment it lands, this
+          surface can render for real the way the login view does — and it becomes
+          a fourth entry in B-4's view switcher rather than a rewrite. The user
+          does not need the roadmap; the next person editing this file does. */}
+      {screen === 'dashboard' && (
+        <p style={{
+          margin: '-6px 0 14px', fontSize: 11, lineHeight: 1.4,
+          color: AD.textTertiary, fontFamily: AD.fontSans, textAlign: 'center',
+        }}>
+          Illustration of your palette — not a render of the live screen.
+        </p>
+      )}
 
       {/* Screen toggle */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, justifyContent: 'center' }}>
@@ -98,12 +177,20 @@ export default function BrandingPreview({ formData }) {
             background: '#1c2333', zIndex: 10,
           }} />
 
+          {/* ⚠ THE REAL LOGIN SCREEN, NOT A DRAWING OF ONE. This is the whole of
+              B-3. The provider below is an ordinary ThemeProvider handed the
+              preview context; it mounts --rm-* on its own wrapper (Ruling 5), and
+              LoginScreen paints from those exactly as it does in production.
+              ⚠ SCOPED TO THIS SUBTREE, WHICH IS WHY IT IS SAFE INSIDE THE ADMIN
+              PANEL. Ruling 5 keeps the custom properties off :root, so nothing
+              outside this phone casing acquires them and LockedSection's scrim
+              elsewhere in the panel still reaches its fallback unchanged.
+              ⚠ LoginScreen MAKES NO REQUEST ON MOUNT — its three fetches all sit
+              inside submit handlers — so nothing here dials the network. */}
           {screen === 'login' ? (
-            <LoginPreview
-              primary={primary} secondary={secondary} accent={accent}
-              fontH={fontH} fontB={fontB} appName={appName} tagline={tagline}
-              companyName={theme.companyName}
-            />
+            <ThemeProvider context={previewContext} fetchStoredMode={async () => null} mode={mode}>
+              <LoginScreen onAuthenticated={() => {}} />
+            </ThemeProvider>
           ) : (
             <DashboardPreview
               primary={primary} secondary={secondary} accent={accent}
@@ -123,132 +210,11 @@ export default function BrandingPreview({ formData }) {
   );
 }
 
-// ─── Login Screen Preview ─────────────────────────────────────────────────────
-
-function LoginPreview({ primary, secondary, accent, fontH, fontB, appName, tagline, companyName }) {
-  return (
-    <div style={{
-      width: '100%', height: '100%',
-      background: `linear-gradient(160deg, ${primary} 0%, ${accent} 100%)`,
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'flex-end',
-      padding: '0 16px 18px', boxSizing: 'border-box',
-      position: 'relative',
-    }}>
-      {/* App identity — sits in upper half above card */}
-      <div style={{
-        position: 'absolute', top: 44, left: 0, right: 0,
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', gap: 5, padding: '0 24px',
-      }}>
-        {/* Logo placeholder */}
-        <div style={{
-          width: 64, height: 22, borderRadius: 5,
-          background: 'rgba(255,255,255,0.22)',
-          marginBottom: 4,
-        }} />
-        <p style={{
-          margin: 0, fontSize: 14, fontWeight: 800, color: '#fff',
-          fontFamily: `'${fontH}', sans-serif`,
-          textAlign: 'center', letterSpacing: '-0.02em',
-        }}>
-          {appName}
-        </p>
-        <p style={{
-          margin: 0, fontSize: 9,
-          color: 'rgba(255,255,255,0.65)',
-          fontFamily: `'${fontB}', sans-serif`,
-          textAlign: 'center', lineHeight: 1.4,
-          maxWidth: 160,
-        }}>
-          {tagline}
-        </p>
-      </div>
-
-      {/* Login card */}
-      <div style={{
-        width: '100%', background: '#fff',
-        borderRadius: 16, padding: '14px 14px 12px',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
-      }}>
-        {/* Contractor logo placeholder */}
-        <div style={{
-          width: 60, height: 16, borderRadius: 3,
-          background: '#EEF2F7', margin: '0 auto 10px',
-        }} />
-
-        <p style={{
-          margin: '0 0 2px', fontSize: 11, fontWeight: 700,
-          color: primary, fontFamily: `'${fontH}', sans-serif`,
-        }}>
-          Welcome back
-        </p>
-        <p style={{
-          margin: '0 0 10px', fontSize: 8,
-          color: '#6B6B6B', fontFamily: `'${fontB}', sans-serif`,
-        }}>
-          Sign in to view your referral rewards
-        </p>
-
-        {/* Email mock input */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          background: '#EEF2F7', borderRadius: 7,
-          padding: '7px 9px', marginBottom: 7,
-        }}>
-          <i className="ph ph-envelope" style={{ fontSize: 10, color: '#A0A0A0', flexShrink: 0 }} />
-          <div style={{ height: 5, width: '65%', background: '#D0D5DD', borderRadius: 3 }} />
-        </div>
-
-        {/* PIN mock input */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          background: '#EEF2F7', borderRadius: 7,
-          padding: '7px 9px', marginBottom: 11,
-        }}>
-          <i className="ph ph-lock" style={{ fontSize: 10, color: '#A0A0A0', flexShrink: 0 }} />
-          <div style={{ display: 'flex', gap: 5 }}>
-            {[0, 1, 2, 3].map(i => (
-              <div key={i} style={{
-                width: 5, height: 5, borderRadius: '50%', background: '#D0D5DD',
-              }} />
-            ))}
-          </div>
-        </div>
-
-        {/* Sign In button */}
-        <div style={{
-          background: `linear-gradient(135deg, ${secondary} 0%, ${secondary}bb 100%)`,
-          borderRadius: 7, padding: '8px 0',
-          textAlign: 'center', color: '#fff',
-          fontSize: 10, fontWeight: 700,
-          fontFamily: `'${fontH}', sans-serif`,
-        }}>
-          Sign In
-        </div>
-      </div>
-
-      {/* Footer — the contractor's own name, never a hardcoded one.
-          Until C/DL-2 Phase 3c this was a fixed caption naming THE FIRST TENANT
-          and a fabricated founding year ('· EST. 1989'), shown to every other
-          contractor previewing their own brand. The year is gone rather than
-          made configurable — no column holds it and inventing one for a preview
-          caption is not worth a migration. */}
-      <p style={{
-        margin: '7px 0 0', fontSize: 7,
-        color: 'rgba(255,255,255,0.35)',
-        fontFamily: "'Roboto Mono', monospace",
-        letterSpacing: '0.06em', textAlign: 'center',
-        textTransform: 'uppercase',
-      }}>
-        {companyName}
-      </p>
-    </div>
-  );
-}
-
-// ─── Dashboard Screen Preview ─────────────────────────────────────────────────
-
+// ⚠ RESTORED AFTER B-3'S DEAD-CODE DELETION TOOK IT BY MISTAKE. Removing the
+// hand-painted login view, this constant sat between that function and the one
+// below it and was swept up with it — a live value deleted while removing dead
+// code beside it. Caught by DashboardPreview throwing a ReferenceError on render,
+// which is the only reason it was not shipped.
 const MOCK_REFERRALS = [
   { initials: 'JD', name: 'John Davis',   statusLabel: 'Sold ✓',     statusColor: '#15803d', statusBg: '#dcfce7' },
   { initials: 'SM', name: 'Sara Miller',  statusLabel: 'Inspection', statusColor: '#1d4ed8', statusBg: '#dbeafe' },
