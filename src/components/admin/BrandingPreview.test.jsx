@@ -683,3 +683,151 @@ describe('B-3a — the preview gets its own viewport, so 100vh means the casing'
       .toBe('');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-3b — RED SUITE — THE PREVIEW UPDATES AS THE DRAFT CHANGES
+//
+// THE REGRESSION B-3 INTRODUCED. Before B-3 the preview repainted as the admin
+// typed. After it, a colour change did nothing until the panel was saved,
+// navigated away from and navigated back to.
+//
+// ⚠ THE TELL WAS THAT THE VIEW BUTTONS ABOVE THE CASING RECOLOURED IMMEDIATELY
+// while the phone did not. Those read form state directly; the phone reads it
+// through a provider.
+//
+// THE MECHANISM, confirmed at the source rather than inferred: BrandingProvider
+// resolves the D4 chain in an effect with an EMPTY dependency array, and its own
+// comment says why — re-running on a changed `context` identity would re-resolve
+// on every parent render, because the default context builder produces a fresh
+// object each time. B-3 fed the draft in through that chain via an injected
+// fetchBranding, so the draft is read exactly once, on mount, and every later
+// keystroke produces a new context object that nothing consults.
+//
+// ⚠ THESE CASES ARE AGNOSTIC ABOUT THE FIX. They assert the observable property
+// — the mounted token follows the draft, without a save and without the panel
+// being torn down and rebuilt — so whichever mechanism is chosen has to deliver
+// that rather than merely look plausible.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('B-3b — the preview follows the draft as it is edited', () => {
+
+  it('[RED] editing a colour repaints the mounted token, with no save and no remount', async () => {
+    // ⚠ THE LOAD-BEARING CASE. rerender() on the SAME element instance is what
+    // makes this a live update rather than a remount: React reconciles in place,
+    // exactly as it does when the form's state changes under a typing admin. A
+    // fix that only works by tearing the tree down would fail here, which is the
+    // point — that is the behaviour being restored, not a repaint at any cost.
+    const first = { ...DEEP_ACTION_DRAFT };
+    const edited = { ...DEEP_ACTION_DRAFT, secondary_color: '#2E6B2E' };
+
+    const before = deriveThemeTokens(resolveBrandingTheme(first), 'dark');
+    const after = deriveThemeTokens(resolveBrandingTheme(edited), 'dark');
+    // NON-VACUITY: the two drafts must actually derive to different tokens, or
+    // "the token changed" is unprovable and "it did not" is meaningless.
+    expect(
+      before.primary.toUpperCase(),
+      'the two drafts derive to the same token — this case could not fail'
+    ).not.toBe(after.primary.toUpperCase());
+
+    const view = render(<BrandingPreview formData={first} mode="dark" />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+    expect(mountedToken('--rm-primary').toUpperCase()).toBe(before.primary.toUpperCase());
+
+    // The keystroke. Same component, new props — no unmount, no save.
+    view.rerender(<BrandingPreview formData={edited} mode="dark" />);
+
+    await waitFor(
+      () => expect(mountedToken('--rm-primary').toUpperCase()).toBe(after.primary.toUpperCase()),
+      { timeout: 2000 }
+    );
+  });
+
+  it('[RED] the repainted value is still DERIVED, not the typed hex', async () => {
+    // ⚠ THE FIX MUST NOT TRADE THIS DEFECT FOR THE ONE B-3 REMOVED. A preview
+    // that updated live by painting raw values would satisfy the case above and
+    // undo the whole of B-3. Asserted in DARK, where the typed and derived values
+    // diverge; in light they coincide and this would pass against raw painting.
+    // ⚠ THE EDITED VALUE MUST DIFFER FROM THE BASE DRAFT, AND THE FIRST DRAFT OF
+    // THIS CASE DID NOT — it re-typed the fixture's own secondary_color, so
+    // `first` and `edited` were identical, nothing changed, and the case passed
+    // against the unfixed component. Caught by reading the RED count (two of
+    // three) rather than assuming all three had failed.
+    const first = { ...DEEP_ACTION_DRAFT };
+    const edited = { ...DEEP_ACTION_DRAFT, secondary_color: '#5C1030' };
+    expect(edited.secondary_color).not.toBe(first.secondary_color);
+    const after = deriveThemeTokens(resolveBrandingTheme(edited), 'dark');
+    expect(
+      after.primary.toUpperCase(),
+      'the edit does not move the derived token — this case could not fail'
+    ).not.toBe(deriveThemeTokens(resolveBrandingTheme(first), 'dark').primary.toUpperCase());
+
+    const view = render(<BrandingPreview formData={first} mode="dark" />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+    view.rerender(<BrandingPreview formData={edited} mode="dark" />);
+
+    await waitFor(
+      () => expect(mountedToken('--rm-primary').toUpperCase()).toBe(after.primary.toUpperCase()),
+      { timeout: 2000 }
+    );
+    expect(mountedToken('--rm-primary').toUpperCase()).not.toBe('#5C1030');
+  });
+
+  it('[RED] the ground follows an edit to the neutral too, not only the action colour', async () => {
+    // Both routed columns, because a fix that rewired one and not the other would
+    // pass the two cases above and still be half broken.
+    const first = { ...DEEP_ACTION_DRAFT };
+    const edited = { ...DEEP_ACTION_DRAFT, primary_color: '#3A1F5F' };
+    const after = deriveThemeTokens(resolveBrandingTheme(edited), 'dark');
+
+    const view = render(<BrandingPreview formData={first} mode="dark" />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+    view.rerender(<BrandingPreview formData={edited} mode="dark" />);
+
+    await waitFor(
+      () => expect(mountedToken('--rm-bg').toUpperCase()).toBe(after.bg.toUpperCase()),
+      { timeout: 2000 }
+    );
+  });
+
+  it('B-3b — the update is SYNCHRONOUS and the screen is not remounted', async () => {
+    // ⚠ TWO CLAIMS THE RULING ASKED TO BE CONFIRMED RATHER THAN ASSUMED, and they
+    // are the reason (a) needs no debounce.
+    //
+    // SYNCHRONOUS: supplied mode has no effect behind it, so a new object on a
+    // keystroke IS the update. Asserted with NO waitFor — the token must already
+    // be correct on the render that follows the prop change. Under the old
+    // resolving path this could not pass at any timeout, let alone none.
+    //
+    // NOT REMOUNTED: the card carries an entrance animation keyed on mount. If the
+    // provider tore its subtree down on every edit the animation would replay on
+    // every keystroke. Asserted by identity of the DOM node — a remount produces a
+    // different element; a reconciled update keeps the same one.
+    const first = { ...DEEP_ACTION_DRAFT };
+    const edited = { ...DEEP_ACTION_DRAFT, secondary_color: '#2E6B2E' };
+    const after = deriveThemeTokens(resolveBrandingTheme(edited), 'dark');
+
+    const view = render(<BrandingPreview formData={first} mode="dark" />);
+    await screen.findByText('Live Preview');
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+    const nodeBefore = themeRoot();
+
+    view.rerender(<BrandingPreview formData={edited} mode="dark" />);
+
+    // NO await, NO waitFor.
+    expect(
+      mountedToken('--rm-primary').toUpperCase(),
+      'the repaint was not synchronous — supplied mode should need no tick'
+    ).toBe(after.primary.toUpperCase());
+
+    expect(
+      themeRoot(),
+      'the provider subtree was torn down and rebuilt — the entrance animation would replay on every keystroke'
+    ).toBe(nodeBefore);
+  });
+});

@@ -63,6 +63,16 @@ function PreviewFrame({ children }) {
   useEffect(() => {
     if (!doc) return;
     doc.body.style.margin = '0';
+    // ⚠ IT IS A PREVIEW, NOT A SECOND LOGIN. Found live: the fields accepted
+    // typing, Sign In submitted, and the Privacy and Terms links opened real
+    // browser tabs out of an admin settings panel. Rendering the real component
+    // is what makes the preview honest and is also what made it operable.
+    // ⚠ pointer-events ON THE BODY, NOT AN OVERLAY, AND NOT A DIM. An overlay or
+    // an opacity change would alter the very thing the contractor is judging —
+    // the preview has to keep LOOKING live while ceasing to BE live. This turns
+    // off input without touching a single painted pixel.
+    doc.body.style.pointerEvents = 'none';
+    doc.body.style.userSelect = 'none';
     for (const link of document.head.querySelectorAll('link[rel="stylesheet"]')) {
       if (doc.getElementById(link.id || '_')) continue;
       doc.head.appendChild(link.cloneNode(true));
@@ -113,27 +123,27 @@ export default function BrandingPreview({ formData, mode = 'light' }) {
   // that is the signal to stop.
   const tokens = useMemo(() => deriveThemeTokens(theme, mode), [theme, mode]);
 
-  // ── ⚠ A PREVIEW-ONLY BRANDING CONTEXT — NOTHING WAS ADDED TO ThemeProvider ──
-  // The provider already accepts an injectable `context`, and the D4 chain
-  // already calls ctx.fetchBranding(slug), so the draft can be fed in through the
-  // seam that exists rather than through a new override prop.
-  // ⚠ THAT CHOICE IS THE POINT, NOT A CONVENIENCE. An override inside the
-  // provider would mean every future reader of the branding chain has to reason
-  // about whether that path can fire on a live surface — the same question the
-  // `mode` pin already forces, and the reason setMode has to refuse when one is
-  // active. This keeps the question from existing: the override lives entirely in
-  // an object built here, and the provider is the ordinary one.
+  // ── ⚠ SUPPLIED, NOT RESOLVED — AND THE DIFFERENCE IS THE WHOLE OF B-3b ────
+  // BrandingProvider has two modes. RESOLVING runs the D4 chain to work out which
+  // contractor this is from the hostname, the query string and a stored hint.
+  // SUPPLIED means "I already have the answer" — the chain never runs — and the
+  // admin panel uses it in production for exactly the reason that applies here:
+  // when the identity is already known, discovering it is the wrong operation.
   //
-  // hostname declines at the host source, so the URL-hint source answers and
-  // calls fetchBranding below. storage is null and the chain reads it through
-  // optional chaining, so nothing is written to the admin's browser.
-  const previewContext = useMemo(() => ({
-    hostname: 'preview.invalid',
-    search:   '?brand=preview',
-    storage:  null,
-    fetchBranding: async () => resolveBrandingTheme(formData),
-    session:  null,
-  }), [formData]);
+  // ⚠ THE PREVIEW'S DRAFT IS AN ALREADY-RESOLVED ANSWER. The admin is TYPING the
+  // colours. There is no identity to discover, and B-3's first attempt discovered
+  // one anyway — it invented a hostname and a `?brand=` search string and threaded
+  // a synthetic fetchBranding through the chain to arrive back at the object it
+  // started with. That worked once and then stopped: ⚠ THE CHAIN RESOLVES ON
+  // MOUNT ONLY, by design, because re-running it on a changed context identity
+  // would re-resolve on every parent render. So the draft was read once and every
+  // later keystroke produced a context nothing consulted, and the preview froze
+  // until the panel was navigated away from and back.
+  //
+  // ⚠ SUPPLIED IS SYNCHRONOUS AND HAS NO EFFECT BEHIND IT, which is why the fix
+  // needs no debounce and no remount: a new object on a keystroke IS the update,
+  // reconciled in place, so the entrance animation never replays.
+  const supplied = useMemo(() => ({ branding: theme, source: 'preview' }), [theme]);
 
   // ⚠ THE DASHBOARD VIEW STILL RECEIVES THE RAW STORED VALUES, DELIBERATELY, AND
   // IT IS LABELLED ON SCREEN AS AN ILLUSTRATION RATHER THAN A RENDER. The
@@ -256,7 +266,7 @@ export default function BrandingPreview({ formData, mode = 'light' }) {
               inside submit handlers — so nothing here dials the network. */}
           {screen === 'login' ? (
             <PreviewFrame>
-              <ThemeProvider context={previewContext} fetchStoredMode={async () => null} mode={mode}>
+              <ThemeProvider supplied={supplied} fetchStoredMode={async () => null} mode={mode}>
                 <LoginScreen onAuthenticated={() => {}} />
               </ThemeProvider>
             </PreviewFrame>

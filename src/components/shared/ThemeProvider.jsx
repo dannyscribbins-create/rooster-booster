@@ -291,6 +291,18 @@ export default function ThemeProvider({
   // tests so every source is exercised against known inputs rather than globals.
   // PASSED STRAIGHT THROUGH — resolution is BrandingProvider's job now.
   context,
+  // ── ⚠ FORWARDED, NOT INVENTED (B-3b) ──────────────────────────────────────
+  // BrandingProvider has had TWO MODES since Phase 2B — resolving and supplied —
+  // and this only widens the wrapper to reach the second. It is not a branding
+  // OVERRIDE: passing `supplied` means "I already have the answer", the chain
+  // never runs, and the admin panel does exactly this in production today.
+  // ⚠ SO THIS ADDS NO QUESTION A READER DID NOT ALREADY HAVE. "Can this path
+  // fire on a live surface?" is asked and answered at BrandingProvider's own mode
+  // note; forwarding it does not create a second, quieter way to ask.
+  // ⚠ AND THE PRESENCE OF THE PROP IS THE SWITCH, NOT ITS VALUE — so it is spread
+  // conditionally below rather than passed as undefined, which would silently
+  // mean "resolve" to BrandingProvider and is the one way to get this wrong.
+  supplied,
   // Injected by tests, and by 3c when the Profile toggle needs to control it.
   fetchStoredMode = fetchThemeModeFromApi,
   // Pins the mode and skips the preference read entirely. 3c's toggle lifts mode
@@ -301,7 +313,7 @@ export default function ThemeProvider({
   // BrandingProvider on its own (Phase 2B) and gets exactly the inner half of
   // this composition — the half with no variables in it.
   return (
-    <BrandingProvider context={context}>
+    <BrandingProvider context={context} {...(supplied !== undefined ? { supplied } : {})}>
       <ThemeLayer fetchStoredMode={fetchStoredMode} mode={pinnedMode}>
         {children}
       </ThemeLayer>
