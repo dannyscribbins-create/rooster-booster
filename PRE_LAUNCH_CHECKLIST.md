@@ -2564,7 +2564,7 @@ root cause, and patching them separately produces six unrelated special cases)
       ⚠ **THIS ENTRY USED TO BILL THE ITEM AS "wrong in dark mode … the first thing anyone
       sees." THAT WAS FALSE, and it was repeated into two build prompts.** Every themed
       surface — `LoginScreen`, `ChoiceScreen`, `FrozenAccountScreen`, `ResetPinScreen`,
-      `RepPlaceholder` — paints its own `minHeight:100vh` canvas from `var(--rm-bg)`, so body
+      `RepShell` — paints its own `minHeight:100vh` canvas from `var(--rm-bg)`, so body
       is covered on all five. The only place it shows through is the referrer app's desktop
       gutters, and the referrer app is held in light mode.
       ⚠ **SO: WHAT WILL A USER SEE WRONG AFTER THIS FIX? NOTHING — AND THAT IS THE FINDING,
@@ -3076,6 +3076,63 @@ root cause, and patching them separately produces six unrelated special cases)
       is a dated record, its `RepPlaceholder.jsx` reference is now `FILE_MISSING`, and that is
       CORRECT — the file it measured is gone. A record repaired in place stops being evidence.
       This entry is the live home; that one is the provenance.
+
+**⬜ THE 3-A SHELL'S CHROME AND ITS CONTENT COLUMN DO NOT AGREE ON WIDTH — TWO ENTRIES, ONE
+ROOT CAUSE, OPPOSITE CORRECTIONS.** *(Both observed live at `1b102d9`, 2026-09-01, on the
+first human sighting of the rep shell.)* ⚠ **THEY ARE FILED AS A PAIR AND MUST BE READ AS
+ONE:** `RepShell` gives its `main` a `min(430px, 100vw)` column, the nav its own
+`min(430px, 100vw)` bar, and the header the full page width — three independent decisions where
+there should be two rules. ⚠ **DO NOT APPLY ONE FIX TO BOTH. The nav must SPAN; the header must
+CONSTRAIN.** Anyone who reads only one of these entries will get the other backwards.
+
+- [ ] **The bottom nav does not reach the viewport edges.** On a real phone its left and right
+      corners sit inside the page rather than flush to the screen, so **anchored chrome reads as
+      a floating card.** The bar is `position: fixed` and centred at `min(430px, 100vw)`, which
+      is the column's width, not the device's.
+      **What it should be:** the bar SPANS the full viewport, with its tab row constrained to
+      the content column inside it — chrome edge-to-edge, contents aligned with the page.
+      ⚠ **THE LAYOUT RULE A29 ESTABLISHED MUST SURVIVE THE FIX.** Every tab carries `flex: 1`
+      and nothing carries a width, so the even quarters are emergent rather than typed, and 3d
+      turns the centre slot on without editing the layout. **A fix that reaches for percentages
+      or fixed widths would close this entry and silently reopen the one A29 exists to
+      prevent.** Constrain the inner row; leave the flex rule alone.
+      **Owner: the branding/shell polish run. Small.**
+
+- [ ] **The header spans full width while the body is a centred column** — ⚠ **THE OPPOSITE
+      CORRECTION TO THE ENTRY ABOVE, AND THE REASON THEY ARE FILED TOGETHER.** At desktop width
+      the contractor's mark sits hard left while every other element is centred, which reads as
+      a desktop site rather than a mobile-first app.
+      ⚠ **INVISIBLE ON A PHONE, AND THAT IS WHY IT IS EASY TO DISMISS.** Below ~430px the header
+      IS the column's width, so nothing looks wrong on the device most reps use. **It is a
+      wide-viewport artifact, not a mobile defect** — and constraining the header to the content
+      column would look **identical on a phone** while making the app read as one thing at any
+      width. **A fix here costs nothing on the surface that matters most.**
+      ⚠ **The header BAR may keep its full-width background** — it is the mark's alignment that
+      is wrong, not the surface behind it. Same shape as the nav: chrome spans, contents align.
+      **Owner: the branding/shell polish run. Small.**
+
+**✅ WHAT THE SAME SIGHTING CONFIRMED — recorded so it is not re-checked.**
+*(Live, 2026-09-01, at `1b102d9`.)*
+
+- [x] **The rep shell is reachable by DEFAULT**, which it was not before `1b102d9` for an account
+      whose email exists in both `team_members` and `users`. Four tabs, the header, and Profile
+      carrying the theme toggle directly above Sign out, per A30. Both modes rendered.
+- [x] ⚠ **THE THEME TOGGLE'S LIVE ROUND TRIP IS PROVEN — ON IN DARK, OFF IN LIGHT.**
+      `saveThemeMode()` presented the ADMIN token, the endpoint answered 2xx, and `setMode`
+      followed. **That path had only ever run against stubs**, and it is the first time any
+      client has called `PUT /api/preferences/theme-mode` in production — the writer shipped
+      caller-less in Phase 1b. ⚠ **This is the live half of the theme-control entry deleted in
+      `9662383`**, which is why that deletion is now fully discharged rather than merely
+      code-complete.
+- [x] **The dark-mode logo plate renders as Phase 1a designed it.**
+
+⚠ **WHAT THIS SIGHTING DID NOT CONFIRM, AND MUST NOT BE READ AS CONFIRMING.** Every colour in
+the shell was seen **through Accent's inverted palette** — a burgundy ground and a blue primary,
+which is the branding-data defect filed separately, not a shell fault. **So the nav's active-dot
+contrast, the hairlines and the switch knob were LOOKED AT but not JUDGED**, and the measured
+3.064:1 finding behind the dot/label split is still unverified by eye. ⚠ **The four 4A
+primitives, `Skeleton` and `LockedSection` were not rendered at all** — 3-A deliberately renders
+none of them. **3-D's real-browser pass is owed IN FULL and this sighting does not reduce it.**
 - [ ] **Four source comments attribute the no-admin-panel requirement to RBAC generically — and
       two of them are now self-contradictory.** None cites §7.3, and what they describe — never
       handing a rep the admin shell with its sections scrimmed — is **what actually ships**, so
