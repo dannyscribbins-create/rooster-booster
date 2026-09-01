@@ -982,7 +982,31 @@ export default function BrandingProfileSettings() {
 
       </div>
       <div style={{ flexShrink: 0, width: 320, position: 'sticky', top: 20 }}>
-        <BrandingPreview formData={formData} />
+        {/* ── ⚠ THE PREVIEW GETS THE WHOLE DRAFT, NOT JUST THE EDITED FIELDS ──
+            It used to receive `formData` alone, and `formData` carries eighteen
+            keys while the branding resolver reads sixteen inputs — of which it
+            supplied eight. So the preview could not see the contractor's logo or
+            their company name, and the login screen inside it fell back to the
+            platform mark and the platform name while the REAL screen, reading the
+            same keys from the same resolver, showed the contractor's.
+            ⚠ THE LOGO LOOKED LIKE A WRONG-FIELD READ AND WAS NOT. The form offers
+            two logo slots and the second was unset with a note saying the platform
+            mark stands in for it, so the preview appeared to be showing that one.
+            It was showing NEITHER: both logo URLs live in `logoData`, which never
+            reached it. Pointing the preview at the second column would have gone
+            permanently blank — no resolver key exposes it.
+            ⚠ THE SPREAD ORDER IS handleSave's ORDER, DELIBERATELY. Saved settings
+            first, the form's edits over them, so the preview shows what a save
+            would produce rather than a fourth combination that agrees with
+            nothing. `logoData` LAST because an upload updates it after the
+            snapshot was captured on mount — behind the edits it would show the old
+            mark until the admin saved and came back, which is the defect B-3b
+            removed arriving through a different key.
+            ⚠ AND IT MEANS SAVED VALUES SHOW FOR FIELDS THIS FORM DOES NOT EDIT —
+            the company name, the phone, the address. That is correct rather than
+            incidental: those are what the live screen renders, and a preview that
+            blanked them would be lying in the other direction. */}
+        <BrandingPreview formData={{ ...fullSettingsRef.current, ...formData, ...logoData }} />
       </div>
     </div>
   );

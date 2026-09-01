@@ -321,3 +321,117 @@ describe('C/DL-2 Phase 3c — admin Branding form: logo upload and landing backg
     expect(body.landing_bg_color).toBe('#0E0E0E');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-3c — RED SUITE — WHAT THE SETTINGS PAGE HANDS ITS PREVIEW
+//
+// THE DEFECT, SEEN LIVE. The real login screen rendered the contractor's
+// uploaded mark; the preview beside it rendered the platform placeholder. Same
+// component, same provider, different logo.
+//
+// ⚠ THE OBVIOUS READING WAS WRONG TWICE OVER, AND BOTH WRONG TURNS ARE WORTH
+// RECORDING BECAUSE EACH LEADS SOMEWHERE ELSE.
+//
+// FIRST: it looked like the preview was reading the OTHER logo field — the form
+// offers two, and the second was unset with a note saying the platform mark
+// stands in for it. It was reading NO field: the two logo URLs live in their own
+// state object and only `formData` reached the preview. Both surfaces showed the
+// platform mark for the same reason — it is the fallback — and that coincidence
+// disguised a cannot-see-it defect as a wrong-field one. Re-pointing at the other
+// column would have gone permanently blank, because no resolver key exposes it.
+//
+// SECOND, AND THIS FILE IS WHERE IT LANDED: the first RED cases for this were
+// written against BrandingPreview and went GREEN immediately. ⚠ BrandingPreview
+// WAS NEVER BROKEN. Handed an object containing a logo it renders the logo,
+// faithfully, which is what B-3 built it to do. The defect is HERE — in what this
+// page chooses to hand it. Testing the component that displayed the symptom
+// proved only that it was innocent.
+//
+// ⚠ AND THE LOGO WAS NOT ALONE. The resolver reads sixteen input keys; the object
+// this page passed supplied eight. `company_name` was falling back on the same
+// screen, in the subtitle and the footer, and nobody had reported it — a wrong
+// NAME is quieter than a wrong MARK, which is exactly why it survived.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The preview's nested viewport, reached from the settings page.
+function previewFrameDoc() {
+  const frame = document.querySelector('iframe[data-preview-frame]');
+  return frame?.contentDocument ?? null;
+}
+
+function previewText() {
+  return previewFrameDoc()?.body?.textContent ?? '';
+}
+
+function previewImageSources() {
+  return Array.from(previewFrameDoc()?.querySelectorAll('img') ?? [])
+    .map(img => img.getAttribute('src'));
+}
+
+describe('B-3c — the preview receives the branding the real screen receives', () => {
+
+  it('[RED] the preview renders the contractor mark, not the platform placeholder', async () => {
+    // ⚠ ASSERTED AS "IS THE SAVED URL", NOT "AN IMAGE EXISTS". The screen always
+    // renders an img — the fallback is an image too — so a presence check passes
+    // against the defect it is meant to catch.
+    await renderForm();
+
+    await waitFor(() => expect(previewImageSources().length).toBeGreaterThan(0));
+    const sources = previewImageSources();
+
+    expect(
+      sources.some(src => src === OLD_LOGO),
+      `the preview rendered ${JSON.stringify(sources)}. The contractor's saved logo_url ` +
+      'never reached it, so the login screen fell back to the platform mark — while the ' +
+      'real screen, reading the same key from the same resolver, shows the upload.'
+    ).toBe(true);
+  });
+
+  it('[RED] the preview renders the contractor name, not the platform fallback', async () => {
+    // The second defect, on the same screen, never reported.
+    await renderForm();
+
+    await waitFor(() => expect(previewText()).toContain('Alpha Roofing Co'));
+  });
+
+  it('[RED] an UPLOADED logo reaches the preview before any save', async () => {
+    // ⚠ THE REASON logoData IS SPREAD LAST. An upload updates that state after the
+    // saved-settings snapshot was captured on mount, so a merge that let the
+    // snapshot win would show the OLD mark until the admin saved and reloaded —
+    // which is the same "you must save and come back" defect B-3b removed,
+    // arriving through a different key.
+    await renderForm();
+    await uploadALogo();
+
+    await waitFor(() => expect(previewImageSources()).toContain(NEW_LOGO));
+    expect(previewImageSources()).not.toContain(OLD_LOGO);
+  });
+
+  it('[GREEN-by-design] PRECEDENCE — a colour edited in the form beats the saved payload', async () => {
+    // ⚠ GREEN BEFORE THE FIX AND LABELLED SO RATHER THAN CLAIMED AS RED. The
+    // colour fields were already in the object the preview received, so this
+    // passes today. It exists to FAIL LATER: it is the guard on the merge this
+    // change introduces, and it would fire the moment the spread order flipped or
+    // a later key shadowed an earlier one.
+    // ⚠ THE RISK THE MERGE INTRODUCES, PINNED BEFORE IT CAN BITE. The saved
+    // settings are spread first and the form's edits over them. Reverse that, or
+    // let a later key shadow an earlier one, and the preview shows SAVED state
+    // while the admin types — the regression B-3b just finished removing, from a
+    // different direction.
+    await renderForm();
+
+    const field = colorFieldMatching(/primary/i);
+    expect(field, 'no primary colour field — the precedence case cannot run').toBeTruthy();
+    fireEvent.change(field, { target: { value: '#2E6B2E' } });
+
+    // The theme root lives inside the preview frame; its mounted token is the
+    // observable end of the merge.
+    await waitFor(() => {
+      const root = previewFrameDoc()?.querySelector('[data-rm-theme]');
+      expect(root, 'no provider inside the preview frame').toBeTruthy();
+      // In light mode a fill that already clears the floor passes through, so the
+      // edited value is the token itself — no derivation ambiguity to reason about.
+      expect(root.style.getPropertyValue('--rm-secondary').toUpperCase()).toBe('#2E6B2E');
+    });
+  });
+});
