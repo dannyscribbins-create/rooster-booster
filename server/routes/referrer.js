@@ -1280,7 +1280,21 @@ async function buildRevokedTeamAccessNotice(req, frozen) {
 async function loadCandidateById(source, id) {
   if (source === 'team_members') {
     const { rows } = await pool.query(
-      `SELECT id, contractor_id, password_hash, tier, permissions, active
+      // ⚠ is_field_rep IS LOAD-BEARING HERE AND WAS MISSING UNTIL 2026-09-01.
+      // This re-read feeds issueSessionFor(), which reports `is_field_rep` on the
+      // response body. Without the column the property was `undefined`, and
+      // JSON.stringify DROPS an undefined value — so the key never reached the
+      // wire at all rather than arriving false. Client-side `undefined && …`
+      // short-circuits: a general-tier field rep who redeemed a choice token
+      // landed on the ADMIN surface, and canSwitchSurface() — the only other
+      // consumer — answered false, so there was no switcher out of it either.
+      // Refreshing the page fixed it, because GET /api/session selects the flag.
+      // Same member, same row, two different destinations. Nothing threw.
+      // ⚠ KEEP THIS LIST IN STEP WITH gatherLoginCandidates' team SELECT. Both
+      // feed the SAME payload builder, so a column present in one and absent
+      // from the other is a routing difference between two doors into one
+      // session. server/test/repRouting.test.js fences all three producers.
+      `SELECT id, contractor_id, password_hash, tier, permissions, active, is_field_rep
          FROM team_members WHERE id = $1`,
       [id]
     );

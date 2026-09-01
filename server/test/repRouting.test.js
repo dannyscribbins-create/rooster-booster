@@ -259,3 +259,219 @@ describe('C/DL-3b Phase 5 — is_field_rep travels on both auth payloads, and th
       'the referrer session descriptor must not carry a team_members flag');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C/DL-3c PHASE 3-A POST-DEPLOY — THE THIRD PRODUCER
+//
+// THE DEFECT THIS SUITE WAS EXTENDED FOR, FOUND LIVE AT 9662383. A general-tier
+// field rep signed in and landed on the ADMIN surface with no switcher out of
+// it; refreshing the page put them on the rep surface. Same account, same row,
+// two different destinations.
+//
+// THE MECHANISM: `loadCandidateById()` — the re-read POST /api/login/choice
+// performs before minting — omitted `is_field_rep` from its team SELECT. The
+// shared payload builder reads `member.is_field_rep`, which was `undefined`, and
+// ⚠ JSON.stringify DROPS AN UNDEFINED VALUE ENTIRELY, so the key never reached
+// the wire. Client-side `undefined && …` short-circuits, byIdentity answers
+// 'admin', and canSwitchSurface() — the only other consumer — answers false.
+// Both consumers of the flag fail together, which is why the symptom was "wrong
+// surface AND no way out". Nothing threw anywhere.
+//
+// ── ⚠ WHY THE EXISTING FENCE PASSED THROUGH ALL OF IT ───────────────────────
+// The three cases above compare POST /api/login against GET /api/session. Both
+// are correct and always were. THE PAYLOAD HAS THREE PRODUCERS, NOT TWO — the
+// third is choice redemption, and it sat outside the fence from the day it was
+// written. That is CLAUDE.md's "sweep from the shared UTILITY outward, not from
+// the entry point inward": the guard was built when two producers existed, a
+// third arrived, and nobody asked "who else builds this payload?"
+//
+// ── ⚠ SO THE FENCE IS BUILT ROUND THE PRODUCERS, NOT ROUND THE ENDPOINTS ────
+// PRODUCERS below is a list, every case iterates it, and the failure messages
+// name the producer that disagreed. A FOURTH producer is added by appending one
+// entry — and until someone does, `every producer agrees` is at least honest
+// about how many it knows of, rather than silently covering two of four.
+//
+// ⚠ IT ASSERTS KEY PRESENCE SEPARATELY FROM VALUE, AND THAT IS THE WHOLE POINT.
+// A missing key and a `false` value are DIFFERENT FAILURES that route
+// identically today. `assert.equal(x.is_field_rep, true)` fails on both, so it
+// cannot tell "this build reports non-rep" from "this build does not report
+// rep-ness at all" — and only the second is this defect. Object.hasOwn() is what
+// separates them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The routing contract, in one place. Every producer must carry every one of
+// these keys, and all producers must agree on their values for a given member.
+// ⚠ ADD A FIELD HERE, NOT TO A CASE — that is what keeps the three producers
+// from drifting one field at a time.
+const ROUTING_FIELDS = ['tier', 'is_field_rep'];
+
+// Seeds a `users` row sharing an email with a team member, so POST /api/login
+// finds TWO live candidates and answers with a choice token. That is the only
+// way to reach the third producer: choice redemption is unreachable for anyone
+// who holds a single identity.
+async function seedUserSharingEmail(email) {
+  const hash = await bcrypt.hash(PASSWORD, 10);
+  const { rows } = await pool.query(
+    `INSERT INTO users (full_name, email, pin, contractor_id, email_verified)
+     VALUES ($1, $2, $3, $4, true) RETURNING id`,
+    ['Dual Identity', email, hash, TENANT]
+  );
+  return rows[0].id;
+}
+
+// Drives all three producers for one member and returns their payloads keyed by
+// producer id. The choice leg picks the TEAM identity by its reported role — the
+// response deliberately carries no email and no contractor id, so `role` is the
+// only handle, and reading it here is what keeps this test honest about what the
+// client can actually see.
+async function allProducersFor(email) {
+  const login = await httpJson(port, {
+    method: 'POST', path: '/api/login', body: { email, password: PASSWORD },
+  });
+  assert.equal(login.status, 200, `login should succeed: ${login.raw}`);
+  assert.equal(login.body.choice_required, true,
+    `this member must have TWO live identities or the choice producer is unreachable: ${login.raw}`);
+
+  const team = (login.body.identities || []).find(i => i.role === 'team');
+  assert.ok(team, `no team identity offered on the choice screen: ${login.raw}`);
+
+  const choice = await httpJson(port, {
+    method: 'POST', path: '/api/login/choice',
+    body: { choice_token: login.body.choice_token, selection: team.selection },
+  });
+  assert.equal(choice.status, 200, `choice redemption should succeed: ${choice.raw}`);
+
+  // A SECOND, SINGLE-IDENTITY MEMBER drives the single-match producer, because
+  // one email cannot be both ambiguous and unambiguous. Same tier, same flag.
+  const soloEmail = `solo-${email}`;
+  const direct = await httpJson(port, {
+    method: 'POST', path: '/api/login', body: { email: soloEmail, password: PASSWORD },
+  });
+  assert.equal(direct.status, 200, `single-match login should succeed: ${direct.raw}`);
+
+  const session = await httpJson(port, {
+    method: 'GET', path: '/api/session', token: choice.body.token,
+  });
+  assert.equal(session.status, 200, `rehydration should succeed: ${session.raw}`);
+
+  return {
+    'POST /api/login (single match)': direct.body,
+    'POST /api/login/choice': choice.body,
+    'GET /api/session': session.body,
+  };
+}
+
+describe('the routing payload has THREE producers, and they must agree', () => {
+  before(async () => {
+    pool = await initTestDb();
+    ({ server, port } = await startTestServer(createApp()));
+    await seedContractor(pool, TENANT);
+  });
+
+  after(async () => {
+    await stopTestServer(server);
+  });
+
+  it('[RED] a FIELD REP redeeming a CHOICE token is reported as a field rep', async () => {
+    // THE DIRECT REPRODUCTION OF THE LIVE DEFECT, kept as its own case so the
+    // failure names the endpoint rather than arriving as one of N producers.
+    const email = 'dualrep@reprouting.test';
+    await seedTeamMember({ email, tier: 'general', isFieldRep: true });
+    await seedUserSharingEmail(email);
+
+    const login = await httpJson(port, {
+      method: 'POST', path: '/api/login', body: { email, password: PASSWORD },
+    });
+    assert.equal(login.body.choice_required, true, `expected a choice: ${login.raw}`);
+    const team = login.body.identities.find(i => i.role === 'team');
+
+    const choice = await httpJson(port, {
+      method: 'POST', path: '/api/login/choice',
+      body: { choice_token: login.body.choice_token, selection: team.selection },
+    });
+    assert.equal(choice.status, 200, `redemption should succeed: ${choice.raw}`);
+
+    // ⚠ PRESENCE FIRST, VALUE SECOND. The defect was an ABSENT key, and
+    // `assert.equal(undefined, true)` and `assert.equal(false, true)` are the
+    // same failure message for two different bugs. This one says which.
+    assert.ok(Object.hasOwn(choice.body, 'is_field_rep'),
+      'POST /api/login/choice OMITTED is_field_rep from its body. JSON.stringify drops an ' +
+      'undefined value, so the key never reaches the client, and `undefined && …` routes a ' +
+      'field rep to the admin panel with no switcher out of it. This is the live defect.');
+    assert.equal(choice.body.is_field_rep, true,
+      'choice redemption must report is_field_rep true for a general-tier field rep');
+    assert.equal(choice.body.tier, 'general', 'choice redemption must report the tier');
+  });
+
+  it('[RED] EVERY producer carries EVERY routing field, and none omits a key', async () => {
+    const email = 'dualrep2@reprouting.test';
+    await seedTeamMember({ email, tier: 'general', isFieldRep: true });
+    await seedUserSharingEmail(email);
+    await seedTeamMember({ email: `solo-${email}`, tier: 'general', isFieldRep: true });
+
+    const produced = await allProducersFor(email);
+
+    for (const [producer, body] of Object.entries(produced)) {
+      for (const field of ROUTING_FIELDS) {
+        assert.ok(Object.hasOwn(body, field),
+          `${producer} OMITTED '${field}'. An absent key is not the same failure as a wrong ` +
+          'value: it vanishes through JSON.stringify, arrives as undefined, and routes without ' +
+          'throwing. Add the column to that producer\'s SELECT.');
+      }
+    }
+  });
+
+  it('[RED] EVERY producer AGREES with every other on every routing field', async () => {
+    // ⚠ THE ASSERTION THAT SURVIVES A FOURTH PRODUCER. It compares producers
+    // pairwise from the map rather than naming endpoints, so adding one to
+    // allProducersFor() extends the fence with no new assertion — and a producer
+    // that disagrees is named in the message rather than being inferred from
+    // which literal check failed.
+    //
+    // A COMPARISON, NOT THREE LITERAL CHECKS, for the reason the two-producer
+    // version already recorded: a change that made every payload wrong in the
+    // SAME direction keeps routing self-consistent, and a person still lands
+    // where they landed a moment ago. It is DISAGREEMENT that strands people.
+    const email = 'dualrep3@reprouting.test';
+    await seedTeamMember({ email, tier: 'general', isFieldRep: true });
+    await seedUserSharingEmail(email);
+    await seedTeamMember({ email: `solo-${email}`, tier: 'general', isFieldRep: true });
+
+    const produced = await allProducersFor(email);
+    const names = Object.keys(produced);
+
+    for (const field of ROUTING_FIELDS) {
+      const [first, ...rest] = names;
+      for (const other of rest) {
+        assert.equal(produced[other][field], produced[first][field],
+          `PAYLOAD DISAGREEMENT on '${field}': ${other} reports ` +
+          `${JSON.stringify(produced[other][field])} while ${first} reports ` +
+          `${JSON.stringify(produced[first][field])} for the SAME member. The symptom is a ` +
+          'person landing on one surface when they sign in and a different one when they ' +
+          'refresh, with nothing failing anywhere.');
+      }
+    }
+  });
+
+  it('[RED] a NON-REP on the choice path reports false EXPLICITLY, not an absent key', async () => {
+    // The paired negative. Without it, "carries every key" is satisfied by a
+    // producer that hardcodes true, and `false` is the value that has to survive
+    // the same JSON.stringify hazard the true case cannot detect.
+    const email = 'dualoffice@reprouting.test';
+    await seedTeamMember({ email, tier: 'general', isFieldRep: false });
+    await seedUserSharingEmail(email);
+
+    const login = await httpJson(port, {
+      method: 'POST', path: '/api/login', body: { email, password: PASSWORD },
+    });
+    const team = login.body.identities.find(i => i.role === 'team');
+    const choice = await httpJson(port, {
+      method: 'POST', path: '/api/login/choice',
+      body: { choice_token: login.body.choice_token, selection: team.selection },
+    });
+
+    assert.ok(Object.hasOwn(choice.body, 'is_field_rep'),
+      'choice redemption omitted is_field_rep for a non-rep — false must be REPORTED, not absent');
+    assert.equal(choice.body.is_field_rep, false, 'a non-rep must be reported as false, explicitly');
+  });
+});
