@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v1.7 — amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25). Previously v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
+**Status:** LOCKED v1.8 — amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -728,3 +728,124 @@ ATTRIBUTION, not to where anyone lands.
 citation to them is still unverified.** → `PRE_LAUNCH_CHECKLIST.md` → *Governing documents this
 repo cannot see*. ⚠ **That entry is now stale in its own right**: it states the spec *"HAS NEVER
 BEEN IN THIS REPO"* and that a Drive search returns nothing. Recovery has not been written into it.
+
+---
+
+## 19. Amendments — v1.8, 2026-09-01 (five Phase 3 rulings from Phase 0)
+
+C/DL-3c Phase 3's Phase 0 read the FieldRepApp mockup against the plan and surfaced five questions
+the specs did not answer. **All five were ruled by Danny on 2026-09-01 and are recorded here
+before the build starts**, rather than being decided inside it. The inventory that raised them is
+`docs/mockups/FIELDREPAPP_MOCKUP_INVENTORY.md`.
+
+⚠ **THEY ARE NUMBERED A26–A30 AND DELIBERATELY NOT "RULING 1–5".** This codebase already has a
+**Ruling 5** (`ThemeProvider.jsx` — the variables mount on the provider's own wrapper, never on
+`:root`) and a **Ruling A** and **Ruling B** from C/DL-3c Phases 2b and 2c. A26 cites Ruling 5 by
+name, so a second "Ruling 5" in the same document would collide with the thing it points at.
+
+**A26 — SCREEN STATE RESETS ON A SURFACE SWITCH, AND THAT IS INTENTIONAL.**
+
+`RepSurface` mounts fresh on every surface switch, so a rep-admin who opens a client, switches to
+the admin panel and comes back lands on Home rather than on that client.
+
+**Ruled: intentional. Keep it.** The reset is what makes the two surfaces read as **distinct
+destinations** rather than as two tabs of one thing. **No state persists across a switch, and it
+must not be added later as a convenience without a new amendment.**
+
+⚠ **MECHANICAL CONSEQUENCE FOR 3-A, AND IT IS THE REASON THIS IS SAFE:** the shell's screen state
+must be initialised from a **`useState` literal, never read from storage**. That is precisely what
+guarantees there is no undefined-screen path for someone arriving by switcher rather than by cold
+boot — the same property that makes the switcher itself structurally incapable of creating a
+one-way door, since `chosen` is not persisted either.
+
+**A27 — THE THEME SPLIT IS ACCEPTABLE, AND IT IS STRUCTURAL RATHER THAN AN OMISSION.**
+
+A rep-admin who sets dark mode gets a **dark rep app and a light admin panel**.
+
+**Ruled: acceptable. No acknowledgement is owed on either surface.**
+
+⚠ **THE REASON MATTERS MORE THAN THE RULING, BECAUSE THE OBVIOUS READING IS WRONG.** This is **not**
+two toggles where someone forgot to flip the second. There is **one** toggle and **one** stored
+value — `user_preferences` at user level, written once, per CD-21's shared store. **The admin panel
+has no switch to leave unflipped.** It renders **outside `ThemeProvider`** by Ruling 5 and mounts no
+`--rm-*` custom properties at all, so it paints light regardless of what the rep stores.
+
+⚠ **RECORDED THIS WAY DELIBERATELY.** Written as "the admin panel stays light" alone, a future
+session goes looking for the admin toggle that was "never added" and finds an absence that looks
+like an oversight. **There is nothing missing. The panel is outside the painting tree by design.**
+
+**A28 — REP TITLES ARE CHOSEN FROM THE CONTRACTOR'S SEEDED LIST. NO FREE TEXT.**
+
+The mockup draws Title on the Profile screen as a dropdown reading *"Senior Roof Advisor"*, and the
+dashboard renders that title under the greeting. Nothing in any spec said whether a rep may type
+their own.
+
+**Ruled: the contractor creates the list; the field rep chooses from it. That is what the list is
+for.** The `titles` table is seeded per contractor with preset names, and Profile's title control
+is a **select scoped to that contractor's rows** — ⚠ **not an editable field, and with no free-text
+path of any kind.**
+
+⚠ **THE DECOUPLING IN THE SEEDING COMMENT STANDS AND IS RESTATED HERE BECAUSE A SELECT INVITES THE
+OPPOSITE READING: titles are DISPLAY LABELS AND CONFER ZERO PERMISSIONS.** A title never grants,
+implies or gates anything. The preset names mirror permission-preset labels for convenience only,
+and one of them is literally *"Field Rep"* — which is a label, not a role, and not `is_field_rep`.
+
+**Owner: Phase 3-C, when Profile is built.**
+
+**A29 — THE BOTTOM NAV SHIPS FAB-AWARE BUT CLOSED.**
+
+The mockup draws five slots — Home · Clients · **[ + ]** · Network · Profile — where the unlabelled
+centre is a raised FAB for Add Client. **Add Client is 3d's** (A24). Simply deleting the FAB leaves
+a four-tab bar with a gap in the middle that the mockup never draws.
+
+**Ruled: build the nav FAB-AWARE but CLOSED.**
+
+- **Phase 3 ships four tabs distributed evenly across the full width.** No gap, no placeholder,
+  nothing rendered in the centre. **It must look finished, because for this phase it is finished.**
+- **The tab layout is a FUNCTION of whether a centre slot is present**, not a hardcoded
+  four-across. 3d turns the slot on and the tabs re-split around it. ⚠ **3d must not have to
+  rewrite the layout in order to insert a child.**
+- **Rejected: holding a visible centre gap open.** That ships a bar with an unexplained hole, and
+  it is a worse artifact to hand to the real-browser dark verification than one that redistributes
+  later.
+
+⚠ **WHAT THIS DOES NOT PERMIT, NAMED BECAUSE IT IS THE READING MOST LIKELY TO RETURN.** The FAB
+must **NOT** render disabled, greyed, dimmed, tooltipped, or wired to a no-op. **Every one of those
+is Add Client existing in Phase 3**, which A24 places in 3d. **The centre slot renders NOTHING.**
+
+⚠ **AND THE REASON IS NOT TIDINESS: A DISABLED CONTROL READS AS AN OVERSIGHT, AND THE NEXT PERSON
+TO SEE IT ENABLES IT.** A control that is present but inert is an invitation; an absent control is
+a decision. This arc has already recorded the same shape in *a guard that would have to be removed
+later is aimed at a symptom* — a thing that must be deleted by someone who does not know why it
+exists is a thing that will be deleted wrongly.
+
+⚠ **ALSO RECORDED: THERE ARE TWO ADD CLIENT AFFORDANCES IN THE MOCKUP, NOT ONE.** Beside the FAB,
+screens `2a` and `2b` carry a full-width **"+ Add Client"** button in the page body. **Both are
+3d's. Phase 3 builds neither.**
+
+**A30 — THE THEME TOGGLE'S PLACEMENT ON THE PROFILE SCREEN.**
+
+Phase 0 found **no light/dark control anywhere in the 72 PNGs** — the only toggle-shaped object in
+the set is the device-chrome pill, which is the mockup's own variant switcher — so 3-A had no
+design reference for a control it must ship.
+
+**Ruled from the mockup's own row rhythm:**
+
+- **Its own row on `6-profile-settings`, directly BELOW the Security row.**
+- **Label left, control right**, matching Title, Attribution type, Fallback link and Security,
+  which all read label-left / value-right.
+- **Sign out stays last.**
+
+⚠ **TWO THINGS ABOUT THAT ROW LIST ARE FLAGGED HERE AND NOT RULED.**
+
+- The Security row reads *"2FA toggle · Change password"*. **2FA is Wave 4's** (SH-10/SH-13, with
+  step-up re-authentication). Whether that row ships reduced to Change password only, or waits
+  entirely, is **3-C's decision** — and **the toggle's placement below it does not depend on which
+  way that goes**.
+- The Fallback link row shows `roofmiles.link/danny-s`, **the exact string CD-8 voided**. The row
+  may still belong; **the value shown is dead and must not be reproduced.**
+
+⚠ **AND THE PLACEMENT DOES NOT DEPEND ON EITHER: IF SECURITY IS DEFERRED ENTIRELY, THE TOGGLE
+TAKES ITS SLOT.** The binding anchor is **directly ABOVE Sign out**, which ships regardless.
+*"Below Security"* and *"above Sign out"* name the **same position** whenever Security is present;
+only the latter survives Security's absence. **3-C rules on Security; A30 does not wait on it.**
