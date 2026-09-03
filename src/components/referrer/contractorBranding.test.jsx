@@ -32,6 +32,8 @@ import ReferAFriendTab from './ReferAFriendTab';
 import ExperiencePopup from './ExperiencePopup';
 import DashboardTab from './DashboardTab';
 import AnnouncementPopup from './AnnouncementPopup';
+import RankingsTab from './RankingsTab';
+import CashOutTab from './CashOutTab';
 
 // Full resolveBrandingTheme-shaped payloads, every value distinct between the two
 // so no assertion can pass by coincidence.
@@ -533,5 +535,98 @@ describe('C/DL-3b correction — no navigation target anywhere resolves to null/
       }
       unmount();
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('BR-1 Phase 2 (B.1) — the referrer tabs name the CONTRACTOR, not a retired codename', () => {
+
+  // ⚠ THIS IS A DIFFERENT CLASS FROM THE ABSENCE RULE ABOVE IT, AND MERGING THEM
+  // WOULD HIDE IT. The absence rule is about what renders when a value is MISSING.
+  // This is about a surface rendering a brand that belongs to NOBODY in the
+  // tenancy — the retired project codename "ROOSTER BOOSTER" — WHILE the correct
+  // value sits resolved and available in the same component. A missing logo is a
+  // gap; a wrong one is a white-label breach.
+  //
+  // ⚠ THREE TABS, NOT TWO. The defect was reported for ProfileTab and CashOutTab;
+  // re-measuring at HEAD found the identical eyebrow in RankingsTab as well. All
+  // three are homeowner-facing and all three shipped.
+  const TABS = [
+    'src/components/referrer/ProfileTab.jsx',
+    'src/components/referrer/CashOutTab.jsx',
+    'src/components/referrer/RankingsTab.jsx',
+  ];
+
+  // ⚠ A SOURCE GUARD, LABELLED AS ONE — the same call this file already makes and
+  // argues for at the REMOVE-site guard above. All three eyebrows sit inside
+  // headers gated behind fetches, tab state or a completed submit flow, so a
+  // render assertion would be almost entirely flow scaffolding. The behaviour the
+  // eyebrow depends on — reading resolved branding and falling back correctly — is
+  // rendered and asserted directly in BrandMark.test.jsx and in the pairs above.
+  it('[RED] T4 — no tab still hardcodes the retired platform codename', () => {
+    for (const f of TABS) {
+      const src = fs.readFileSync(path.resolve(process.cwd(), f), 'utf8');
+      // ⚠ CASE-INSENSITIVE AND SPACING-TOLERANT. The literal ships uppercase in
+      // JSX but is written in prose as "Rooster Booster", and a needle matching
+      // only the shipped casing would go green against a re-introduction typed
+      // the other way.
+      const rendered = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      expect(rendered, `${f} still renders the retired codename`).not.toMatch(/rooster\s*booster/i);
+    }
+  });
+
+  it('[RED] T4 — each tab READS the resolved branding for that line', () => {
+    // ⚠ SWEEP BY VALUE AND YOU MISS THE CLAIM. "The literal is gone" is satisfied
+    // by deleting the line entirely, or by replacing it with a different hardcoded
+    // string. This asserts the positive: the eyebrow is fed from useBranding().
+    for (const f of TABS) {
+      const src = fs.readFileSync(path.resolve(process.cwd(), f), 'utf8');
+      expect(src, `${f} does not read useBranding()`).toMatch(/useBranding\s*\(/);
+      expect(src, `${f} does not render a resolved program/company name`)
+        .toMatch(/programName|companyName/);
+    }
+  });
+
+  // ⚠ THIS RENDER TEST EXISTS BECAUSE THE SOURCE GUARDS ABOVE WENT GREEN AGAINST
+  // A COMPONENT THAT THREW ON EVERY RENDER. Wiring CashOutTab put its
+  // `programName` derivation one line ABOVE the `useBranding()` call it reads —
+  // a temporal dead zone, so the tab raised a ReferenceError and the whole
+  // referrer app fell into the ErrorBoundary. Both source guards passed: the
+  // literal WAS gone and the file DID reference useBranding. Only a browser
+  // found it.
+  //
+  // That is CLAUDE.md vacuity shape #6 verbatim — "a sweep proves a string is
+  // ABSENT; it proves NOTHING about whether the code still runs" — and the rule
+  // it states is that any file a sweep touches needs at least one render test,
+  // however trivial. This is that test for all three tabs.
+  it('[RED] T4 — each tab still RENDERS, and renders no codename', async () => {
+    // Trivial on purpose: mounting is the assertion. A throw anywhere in these
+    // components fails here and passes every source guard above.
+    for (const [name, Tab, props] of [
+      ['RankingsTab', RankingsTab, { token: 'test-token' }],
+      ['CashOutTab', CashOutTab, { pipeline: [], loading: false, userName: 'Dana', userEmail: 'd@x.invalid', bankStatus: null, setTab: () => {}, onOpenBankSetup: () => {}, token: 'test-token' }],
+    ]) {
+      const { unmount } = renderForBrand(BRAND_A, <Tab {...props} />);
+      expect(document.body.textContent, `${name} rendered nothing at all`).toBeTruthy();
+      expect(document.body.textContent, `${name} renders the retired codename`).not.toMatch(/rooster\s*booster/i);
+      unmount();
+    }
+  });
+
+  it('[RED] T4 — the codename is absent from what the popup surfaces RENDER', () => {
+    // The render half, at the one tab whose header mounts without flow
+    // scaffolding. Source and render fail for different reasons, so neither
+    // substitutes for the other — this file's own standing argument.
+    renderForBrand(BRAND_A, (
+      <AnnouncementPopup
+        announcement={{ id: 1, amount: '50.00', referred_name: 'Sam Homeowner' }}
+        referrerFirstName="Dana" onDismiss={() => {}}
+        settings={{ enabled: true, mode: 'preset_2', custom_message: null }}
+      />
+    ));
+    return waitFor(() => {
+      expect(document.body.textContent).toContain(BRAND_A.companyName);
+      expect(document.body.textContent).not.toMatch(/rooster\s*booster/i);
+    });
   });
 });

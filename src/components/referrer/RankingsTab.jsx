@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { R } from '../../constants/theme';
+import { useBranding } from '../shared/ThemeProvider';
 import { BACKEND_URL } from '../../config/contractor';
 import { SHOUT_BUCKETS } from '../../constants/shouts';
 import AnimCard from '../shared/AnimCard';
@@ -23,6 +24,13 @@ const MEDAL = {
 
 // ─── RankingsTab ──────────────────────────────────────────────────────────────
 export default function RankingsTab({ token }) {
+  const branding = useBranding();
+  // ⚠ THE SAME FALLBACK THE LANDING PAGE USES (renderState1's headlineSubject).
+  // `programName` is contractor_settings.app_display_name and is deliberately
+  // NOT platform-defaulted — the resolver leaves it null rather than inventing
+  // one — so the company name is the second rung. Both come from the resolved
+  // branding; neither is ever a literal.
+  const programName = branding?.programName || branding?.companyName || '';
   const [period, setPeriod]           = useState("yearly");
   const [data, setData]               = useState(null);
   const [loading, setLoading]         = useState(true);
@@ -132,7 +140,18 @@ export default function RankingsTab({ token }) {
       position: "relative", overflow: "hidden",
     }}>
       <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(211,227,240,0.08)" }} />
-      <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
+      {/* ⚠ THE CONTRACTOR'S PROGRAM NAME, NOT A CODENAME (BR-1 Phase 2, B.1).
+              This line was the hardcoded literal "ROOSTER BOOSTER" — the RETIRED
+              project codename, a brand belonging to neither RoofMiles nor the
+              contractor, on a homeowner-facing screen, while the resolved value
+              sat unused in the same component.
+              `programName || companyName` is the landing page's own precedent
+              (renderState1's headlineSubject): the contractor's App Display Name
+              when they have set one, their company name when they have not.
+              `app_display_name`'s helper text in the admin panel has always
+              promised this line — "replaces Rooster Booster throughout the
+              referrer app" — and nothing had ever consumed it. */}
+        <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <i className="ph ph-trophy-fill" style={{ fontSize: 24, color: "#fbbf24" }} />
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>Rankings</h1>

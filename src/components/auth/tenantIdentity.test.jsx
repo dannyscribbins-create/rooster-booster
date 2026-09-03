@@ -157,7 +157,19 @@ describe('C/DL-2 Phase 3c — SignupScreen carries the contractor, not Accent Ro
     expect(pageText().toUpperCase()).not.toContain(ACCENT_NAME);
   });
 
-  it('falls back to the ROOFMILES mark when the contractor has no logo, never to another brand', () => {
+  // ⚠ THIS TEST'S RULE WAS REVERSED BY BR-1 PHASE 2'S ABSENCE RULE (A2), AND IT
+  // IS REWRITTEN WITH THE REASON RATHER THAN DELETED. It read 'falls back to the ROOFMILES mark when the contractor has no logo, never to another brand'
+  // and asserted `src` contained the ROOFMILES mark.
+  //
+  // THAT WAS A FENCE AROUND THE DEFECT. Substituting the PLATFORM's mark when a
+  // resolved contractor has no logo tells a homeowner they are in the wrong
+  // company's product — a white-label breach in the opposite direction from the
+  // one this file was written to catch, and worse than showing no mark at all.
+  // A2 rules: contractor resolved + no logo -> the COMPANY NAME AS TEXT.
+  //
+  // ⚠ THE ACCENT HALF OF THE OLD ASSERTION IS KEPT, because it was never the
+  // part that inverted — no other contractor's asset may appear either way.
+  it('A2 — renders the COMPANY NAME as text when the contractor has no logo, and NO platform mark', () => {
     render(
       <SignupScreen
         inviteSlug={INVITE_SLUG}
@@ -166,16 +178,19 @@ describe('C/DL-2 Phase 3c — SignupScreen carries the contractor, not Accent Ro
         onSignupComplete={() => {}}
       />
     );
-    // NON-VACUITY: the slot exists and is drawing something.
+    // NON-VACUITY: the screen rendered at all. Without this, every assertion
+    // below is satisfied by a blank page.
     expect(screen.getByText('Create your account')).toBeInTheDocument();
-    const src = cardLogo().getAttribute('src');
-    expect(src).toBeTruthy();
 
-    expect(src).toContain(ROOFMILES_MARK);
-    expect(src).not.toContain(ACCENT_ASSET);
-    // The NAME still belongs to the contractor even when the mark does not — the
-    // homeowner must still be told whose program this is.
+    // POSITIVE: the contractor is named where the mark would have been.
     expect(pageText()).toContain(TENANT_A.companyName);
+    // NEGATIVE, BOTH DIRECTIONS: no platform mark, and no other contractor's.
+    expect(document.body.innerHTML).not.toContain(ROOFMILES_MARK);
+    expect(document.body.innerHTML).not.toContain(ACCENT_ASSET);
+    // ⚠ NOT cardLogo() — that helper THROWS when no <img> exists, which is the
+    // right behaviour for the tests that need one and the wrong instrument for
+    // asserting there is none. Query directly.
+    expect(document.querySelector('img'), 'no <img> may render at all when there is no logo').toBeNull();
   });
 });
 
@@ -216,15 +231,29 @@ describe('C/DL-2 Phase 3c — EmailVerifyScreen carries the contractor, not Acce
     expect(pageText().toUpperCase()).not.toContain(ACCENT_NAME);
   });
 
-  it('falls back to the ROOFMILES mark when the contractor has no logo', () => {
+  // ⚠ THIS TEST'S RULE WAS REVERSED BY BR-1 PHASE 2'S ABSENCE RULE (A2), AND IT
+  // IS REWRITTEN WITH THE REASON RATHER THAN DELETED. It read 'falls back to the ROOFMILES mark when the contractor has no logo'
+  // and asserted `src` contained the ROOFMILES mark.
+  //
+  // THAT WAS A FENCE AROUND THE DEFECT. Substituting the PLATFORM's mark when a
+  // resolved contractor has no logo tells a homeowner they are in the wrong
+  // company's product — a white-label breach in the opposite direction from the
+  // one this file was written to catch, and worse than showing no mark at all.
+  // A2 rules: contractor resolved + no logo -> the COMPANY NAME AS TEXT.
+  //
+  // ⚠ THE ACCENT HALF OF THE OLD ASSERTION IS KEPT, because it was never the
+  // part that inverted — no other contractor's asset may appear either way.
+  it('A2 — renders the COMPANY NAME as text when the contractor has no logo, and NO platform mark', () => {
     renderVerify(TENANT_A, { logoUrl: null });
     expect(screen.getByText('Check your email')).toBeInTheDocument();
 
-    const src = cardLogo().getAttribute('src');
-    expect(src).toBeTruthy();
-    expect(src).toContain(ROOFMILES_MARK);
-    expect(src).not.toContain(ACCENT_ASSET);
     expect(pageText()).toContain(TENANT_A.companyName);
+    expect(document.body.innerHTML).not.toContain(ROOFMILES_MARK);
+    expect(document.body.innerHTML).not.toContain(ACCENT_ASSET);
+    // ⚠ NOT cardLogo() — that helper THROWS when no <img> exists, which is the
+    // right behaviour for the tests that need one and the wrong instrument for
+    // asserting there is none. Query directly.
+    expect(document.querySelector('img'), 'no <img> may render at all when there is no logo').toBeNull();
   });
 
   it('degrades to the platform name when there is no branding block at all', () => {

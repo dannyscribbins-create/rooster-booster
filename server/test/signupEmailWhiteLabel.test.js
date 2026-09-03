@@ -79,6 +79,16 @@ const TENANT_AMPERSAND = 'test-tenant-ampersand';
 // for every tenant that has both. Identical values would make rung 1 untestable —
 // an implementation that read the wrong column would look correct.
 const ENTITY_A = 'Alpha Holdings LLC';
+// ⚠ BR-1 Phase 2 (B.3). Distinct per tenant, and deliberately NOT #012854 —
+// asserting "the retired navy is gone" is meaningless if the fixture's own
+// colour happens to be it.
+const PALETTE = {
+  'test-tenant-a': { primary: '#AA1111', secondary: '#AA2222' },
+  'test-tenant-b': { primary: '#BB1111', secondary: '#BB2222' },
+};
+// The retired Accent navy this phase removes from homeowner-facing email.
+const RETIRED_NAVY = '#012854';
+
 const COMPANY_A = 'Alpha Roofing Co';
 const ENTITY_B = 'Beta Holdings LLC';
 const COMPANY_B = 'Beta Roofing Co';
@@ -183,8 +193,9 @@ describe('C/DL-2 signup verification email — white-labeled, never the platform
       [contractorId, entityName]
     );
     await pool.query(
-      `INSERT INTO contractor_settings (contractor_id, company_name) VALUES ($1, $2)`,
-      [contractorId, companyName]
+      `INSERT INTO contractor_settings (contractor_id, company_name, primary_color, secondary_color)
+       VALUES ($1, $2, $3, $4)`,
+      [contractorId, companyName, PALETTE[contractorId]?.primary ?? null, PALETTE[contractorId]?.secondary ?? null]
     );
   }
 
@@ -355,4 +366,81 @@ describe('C/DL-2 signup verification email — white-labeled, never the platform
       'the raw, unescaped name must not appear in the HTML body'
     );
   });
+  // ── BR-1 PHASE 2 (B.3) — WRONG PRESENCE, NOT ABSENCE ──────────────────────
+  //
+  // ⚠ A DIFFERENT CLASS FROM EVERY TEST ABOVE, AND THE FILE SAYS SO RATHER THAN
+  // LETTING THEM BLUR. The tests above are about the contractor's NAME being
+  // absent or wrong. These are about a colour and a sender that belong to
+  // NOBODY in the tenancy: #012854 is ACCENT ROOFING'S retired navy — a
+  // documented sweep needle — and "Rooster Booster" is the retired project
+  // codename. Both shipped to homeowners' inboxes while the contractor's own
+  // palette sat already-loaded in the same handler, unused.
+  //
+  // SEVERITY, because a colour reads as cosmetic and this one is not: contractor
+  // #2's homeowner receives a welcome email painted in contractor #1's brand,
+  // from a company neither of them has heard of. That is the phishing-signal
+  // failure this file's header already describes, arriving through the palette
+  // instead of through the name.
+
+  it("[RED] B.3 — the verification email carries the CONTRACTOR's palette", async () => {
+    const sent = await signupAndCaptureEmail(TENANT_A);
+
+    assert.ok(
+      sent.html.includes(PALETTE[TENANT_A].primary),
+      `the email does not carry ${TENANT_A}'s primary colour. HTML: ${sent.html.slice(0, 400)}`
+    );
+  });
+
+  it('[RED] B.3 — the retired Accent navy appears nowhere in the email', async () => {
+    const sent = await signupAndCaptureEmail(TENANT_A);
+
+    assert.ok(
+      !sent.html.includes(RETIRED_NAVY),
+      `${RETIRED_NAVY} (Accent Roofing's retired navy) is still in the verification email`
+    );
+    // NOT VACUOUS: the fixture's own colour is not the needle, so "the needle is
+    // absent" cannot be satisfied by the fixture happening to match it.
+    assert.notEqual(PALETTE[TENANT_A].primary, RETIRED_NAVY);
+  });
+
+  it('[RED] B.3 — two tenants get two palettes, with no bleed', async () => {
+    // THE PREDICATE PROOF. A handler that swapped one hardcoded colour for
+    // another would pass both tests above and fail this one.
+    const sentA = await signupAndCaptureEmail(TENANT_A);
+    const sentB = await signupAndCaptureEmail(TENANT_B);
+
+    assert.ok(sentA.html.includes(PALETTE[TENANT_A].primary));
+    assert.ok(sentB.html.includes(PALETTE[TENANT_B].primary));
+    assert.ok(!sentA.html.includes(PALETTE[TENANT_B].primary), "B's colour leaked into A's email");
+    assert.ok(!sentB.html.includes(PALETTE[TENANT_A].primary), "A's colour leaked into B's email");
+  });
+
+  it('[RED] B.3 — the FROM name is the contractor, not the retired codename', async () => {
+    // ⚠ THE MOST VISIBLE HALF, AND IT WAS NOT IN THE REPORTED DEFECT. The colour
+    // is inside the message; the From line is what the homeowner reads in their
+    // inbox list before opening anything. It said "Rooster Booster".
+    const sent = await signupAndCaptureEmail(TENANT_A);
+
+    assert.ok(
+      !/rooster\s*booster/i.test(sent.from),
+      `the From line still carries the retired codename: ${sent.from}`
+    );
+    assert.ok(
+      sent.from.includes(COMPANY_A),
+      `the From line does not name the contractor: ${sent.from}`
+    );
+  });
+
+  it('[RED] A3 — with no logo set, the email names the company as TEXT', async () => {
+    // The absence rule's email prong. ⚠ BOTH DIRECTIONS: a template that rendered
+    // nothing at all would satisfy "no platform mark" while failing the rule.
+    const sent = await signupAndCaptureEmail(TENANT_A);
+
+    assert.ok(sent.html.includes(COMPANY_A), 'the company is not named in the body');
+    assert.ok(
+      !/roofmiles_logo|rb[ _%]?logo/i.test(sent.html),
+      "a platform mark reached a contractor's email"
+    );
+  });
+
 });

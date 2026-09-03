@@ -496,20 +496,50 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
     const signupCompanyName = signupBranding ? signupBranding.companyName : ROOFMILES_DEFAULTS.companyName;
     const signupCompanyNameHtml = escapeHtml(signupCompanyName);
 
+    // ── ⚠ THE PALETTE AND THE SENDER ARE THE CONTRACTOR'S (BR-1 Phase 2, B.3) ──
+    // These were hardcoded: `#012854` on the heading and the code, `#D3E3F0` on
+    // the code box, and a From line reading "Rooster Booster". None of the three
+    // belongs to anyone in the tenancy — #012854 and #D3E3F0 are ACCENT
+    // ROOFING'S retired palette (documented sweep needles in CLAUDE.md) and
+    // "Rooster Booster" is the retired project codename.
+    //
+    // ⚠ THIS IS WRONG PRESENCE, NOT ABSENCE, AND THE BRANDING WAS ALREADY HERE.
+    // `loadContractorBranding` is called four lines up for the company name and
+    // returns the full resolved theme; the colours sat in scope, unused. So
+    // contractor #2's homeowner opened a welcome email painted in contractor
+    // #1's brand, sent by a company neither had heard of — the same
+    // phishing-signal failure the name fix above this was made to prevent,
+    // arriving through the palette instead.
+    //
+    // SAFE TO INTERPOLATE UNESCAPED: every colour here comes back through
+    // resolveBrandingTheme's `resolveColor`, which validates the hex and falls
+    // back to a platform default.
+    //
+    // ⚠ WHICH TOKEN PAINTS WHAT, WRITTEN DOWN BECAUSE THE NAMES READ BACKWARDS.
+    // `primaryColor` defaults to #1C2D4D (the NAVY) and `secondaryColor` to
+    // #F26A1B (the ORANGE) — commit 815660d swapped which brand column feeds the
+    // ground and which feeds the buttons, and the field names did not move with
+    // it. So the heading and the box border take PRIMARY (the dark one, which is
+    // what #012854 used to be) and the code digits take SECONDARY (the bright
+    // one). Reading the names and guessing gives an orange heading on a cream box. `companyName` is escaped for the body and left
+    // raw for the From line and subject, exactly as the two forms note above
+    // requires — Resend renders the From line as text, not markup.
+    const signupTheme = signupBranding || ROOFMILES_DEFAULTS;
+
     await retryWithBackoff(
       () => resend.emails.send({
-        from: 'Rooster Booster <noreply@roofmiles.com>',
+        from: `${signupCompanyName} <noreply@roofmiles.com>`,
         to: email,
         subject: `Your ${signupCompanyName} rewards account — verify your email`,
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
-          <h2 style="color:#012854;margin:0 0 8px;">Welcome to ${signupCompanyNameHtml}'s rewards program!</h2>
+          <h2 style="color:${signupTheme.primaryColor};margin:0 0 8px;">Welcome to ${signupCompanyNameHtml}'s rewards program!</h2>
           <p style="color:#444;margin:0 0 24px;line-height:1.6;">
             You're almost in. Enter the verification code below to activate your account.
           </p>
-          <div style="background:#f5f8ff;border:2px solid #D3E3F0;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+          <div style="background:${signupTheme.accentColor};border:2px solid ${signupTheme.primaryColor};border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
             <p style="margin:0 0 8px;font-size:13px;color:#666;letter-spacing:0.05em;text-transform:uppercase;">Your verification code</p>
-            <p style="margin:0;font-size:40px;font-weight:700;color:#012854;letter-spacing:0.15em;font-family:monospace;">${code}</p>
+            <p style="margin:0;font-size:40px;font-weight:700;color:${signupTheme.secondaryColor};letter-spacing:0.15em;font-family:monospace;">${code}</p>
           </div>
           <p style="color:#888;font-size:13px;margin:0;">This code expires in 1 hour. If you didn't create this account, you can ignore this email.</p>
         </div>
@@ -822,20 +852,27 @@ router.post('/api/signup/resend-code', resendCodeLimiter, async (req, res) => {
         const companyName = branding ? branding.companyName : ROOFMILES_DEFAULTS.companyName;
         const companyNameHtml = escapeHtml(companyName);
 
+        // ⚠ THE SECOND COPY, AND IT GETS THE SAME TREATMENT (BR-1 Phase 2, B.3).
+        // The comment above already warns that every hardcoded-name bug removed
+        // from the first copy is one copy-paste away from reappearing here — and
+        // it had, in a form that warning did not cover: the PALETTE and the FROM
+        // line. See the signup send for the full reasoning.
+        const codeTheme = branding || ROOFMILES_DEFAULTS;
+
         await retryWithBackoff(
           () => resend.emails.send({
-            from: 'Rooster Booster <noreply@roofmiles.com>',
+            from: `${companyName} <noreply@roofmiles.com>`,
             to: user.email,
             subject: `Your ${companyName} rewards account — verify your email`,
             html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;">
-          <h2 style="color:#012854;margin:0 0 8px;">Here's your new code for ${companyNameHtml}'s rewards program</h2>
+          <h2 style="color:${codeTheme.primaryColor};margin:0 0 8px;">Here's your new code for ${companyNameHtml}'s rewards program</h2>
           <p style="color:#444;margin:0 0 24px;line-height:1.6;">
             Enter the verification code below to activate your account. Any earlier code you were sent no longer works.
           </p>
-          <div style="background:#f5f8ff;border:2px solid #D3E3F0;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+          <div style="background:${codeTheme.accentColor};border:2px solid ${codeTheme.primaryColor};border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
             <p style="margin:0 0 8px;font-size:13px;color:#666;letter-spacing:0.05em;text-transform:uppercase;">Your verification code</p>
-            <p style="margin:0;font-size:40px;font-weight:700;color:#012854;letter-spacing:0.15em;font-family:monospace;">${code}</p>
+            <p style="margin:0;font-size:40px;font-weight:700;color:${codeTheme.secondaryColor};letter-spacing:0.15em;font-family:monospace;">${code}</p>
           </div>
           <p style="color:#888;font-size:13px;margin:0;">This code expires in 1 hour. If you didn't request this, you can ignore this email.</p>
         </div>

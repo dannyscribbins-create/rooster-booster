@@ -96,7 +96,15 @@ async function sendPendingInviteEmail(pendingRecord, contractorId) {
 
     const logoHtml = logoUrl
       ? `<img src="${safeLogoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
-      : '';
+      // ⚠ A3 — THE COMPANY NAME AS TEXT, NOT AN EMPTY STRING (BR-1 Phase 2).
+      // This was `: ''`. The absence rule's email prong: a contractor with no
+      // logo is named rather than left unmarked, exactly as the landing page's
+      // renderBrandMark has always done and as BookingFormModal and
+      // ContractorAboutModal already do on the client.
+      // ⚠ AND NEVER THE PLATFORM'S MARK. Substituting the RoofMiles logo here
+      // would tell a homeowner they are dealing with a company they have never
+      // heard of — the same phishing signal the white-label name fix removed.
+      : `<p style="font-family:sans-serif;font-size:20px;font-weight:700;color:#1C2D4D;text-align:center;margin:0 auto 24px;">${companyName}</p>`;
 
     // TODO: Update CTA link to App Store URL after Capacitor build.
     await retryWithBackoff(
@@ -193,7 +201,15 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
 
     const logoHtml = logoUrl
       ? `<img src="${safeLogoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
-      : '';
+      // ⚠ A3 — THE COMPANY NAME AS TEXT, NOT AN EMPTY STRING (BR-1 Phase 2).
+      // This was `: ''`. The absence rule's email prong: a contractor with no
+      // logo is named rather than left unmarked, exactly as the landing page's
+      // renderBrandMark has always done and as BookingFormModal and
+      // ContractorAboutModal already do on the client.
+      // ⚠ AND NEVER THE PLATFORM'S MARK. Substituting the RoofMiles logo here
+      // would tell a homeowner they are dealing with a company they have never
+      // heard of — the same phishing signal the white-label name fix removed.
+      : `<p style="font-family:sans-serif;font-size:20px;font-weight:700;color:#1C2D4D;text-align:center;margin:0 auto 24px;">${companyName}</p>`;
 
     await retryWithBackoff(
       () => resend.emails.send({
@@ -747,7 +763,15 @@ async function sendPendingRewardEmail(pendingReferrerEmail, pendingReferrerName,
 
     const logoHtml = logoUrl
       ? `<img src="${safeLogoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
-      : '';
+      // ⚠ A3 — THE COMPANY NAME AS TEXT, NOT AN EMPTY STRING (BR-1 Phase 2).
+      // This was `: ''`. The absence rule's email prong: a contractor with no
+      // logo is named rather than left unmarked, exactly as the landing page's
+      // renderBrandMark has always done and as BookingFormModal and
+      // ContractorAboutModal already do on the client.
+      // ⚠ AND NEVER THE PLATFORM'S MARK. Substituting the RoofMiles logo here
+      // would tell a homeowner they are dealing with a company they have never
+      // heard of — the same phishing signal the white-label name fix removed.
+      : `<p style="font-family:sans-serif;font-size:20px;font-weight:700;color:#1C2D4D;text-align:center;margin:0 auto 24px;">${companyName}</p>`;
 
     await retryWithBackoff(
       () => resend.emails.send({

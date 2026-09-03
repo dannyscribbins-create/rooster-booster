@@ -1,7 +1,6 @@
 import { useContext, useState } from 'react';
 import { ThemeContext } from '../shared/ThemeProvider';
-import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
-import BrandLogo from '../shared/BrandLogo';
+import BrandMark from '../shared/BrandMark';
 import RepBottomNav, { REP_TABS } from './RepBottomNav';
 import RepThemeToggleRow from './RepThemeToggleRow';
 
@@ -84,7 +83,11 @@ export default function RepShell({ onLogout, switcher = null }) {
   // THE PLATFORM MARK IS THE ONLY FALLBACK, NEVER ANOTHER CONTRACTOR'S — the
   // same rule ResetPinScreen's header states, and the reason a logo is allowed
   // a default at all while a review link or a phone number is not.
-  const logoSrc = branding?.logoUrl || roofMilesLogo;
+  // ⚠ NO `logoSrc` HERE ANY MORE (BR-1 Phase 2). This read
+  // `branding?.logoUrl || roofMilesLogo`, which substituted the PLATFORM's mark
+  // whenever a contractor had no logo of their own — a white-label breach in the
+  // opposite direction from the one the chain was built to prevent. BrandMark
+  // makes that a BRANCH on whether a contractor resolved at all; see its header.
 
   const activeTab = tabForScreen(view.screen);
 
@@ -108,7 +111,7 @@ export default function RepShell({ onLogout, switcher = null }) {
         color: 'var(--rm-text, #1C2D4D)',
       }}
     >
-      <Header companyName={companyName} logoSrc={logoSrc} />
+      <Header />
 
       {/* ⚠ THE SWITCHER IS CHROME, NOT SCREEN CONTENT, AND THAT IS A CORRECTION
           MADE DURING THIS BUILD RATHER THAN A PREFERENCE. It was first placed on
@@ -156,10 +159,15 @@ export default function RepShell({ onLogout, switcher = null }) {
 }
 
 // The header bar: the contractor's mark on the surface colour, with a hairline
-// under it. BrandLogo rather than a bare <img> because this surface flips with
-// the mode and a dark-inked logo vanishes on the dark surface — that is the
-// whole reason that component exists (Ruling 3).
-function Header({ companyName, logoSrc }) {
+// under it. BrandMark rather than a bare <img> for two reasons now: it decides
+// WHICH mark this surface gets (BR-1 Phase 2's absence rule), and it delegates
+// to BrandLogo so the mark still gets the dark-mode plate — this surface flips
+// with the mode and a dark-inked logo vanishes on the dark surface (Ruling 3).
+//
+// ⚠ TAKES NO PROPS. It read `{ companyName, logoSrc }` and both are now
+// BrandMark's business, read from the context where the answer already lives.
+// Threading them through was how the platform mark reached six screens.
+function Header() {
   return (
     <header
       style={{
@@ -175,7 +183,7 @@ function Header({ companyName, logoSrc }) {
           for the four card surfaces it was built for; inside a shrink-to-fit
           box the auto margins have nothing to distribute and it sits left. */}
       <div style={{ width: 'fit-content' }}>
-        <BrandLogo src={logoSrc} alt={companyName} width={132} marginBottom={0} />
+        <BrandMark width={132} marginBottom={0} />
       </div>
       <div
         aria-hidden="true"

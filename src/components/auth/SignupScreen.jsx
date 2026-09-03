@@ -6,8 +6,8 @@ import { BACKEND_URL } from '../../config/contractor';
 // every homeowner of every other tenant (C/DL-2 Phase 3c).
 // Repointed from roofmiles_logo_svg.svg (removed 2026-08-02 — 640KB of base64
 // PNG wrapped in an <svg>). Same mark, icon + wordmark, 22KB.
-import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
 import useEntrance from '../../hooks/useEntrance';
+import BrandMark from '../shared/BrandMark';
 
 // ─── Signup Screen ─────────────────────────────────────────────────────────────
 //
@@ -33,7 +33,11 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
   // at another contractor. A borrowed logo or a borrowed name on a homeowner-facing
   // screen is a white-label breach, and reads as phishing to the person looking at it.
   const companyName = branding?.companyName || contractorName || 'RoofMiles';
-  const logoSrc     = branding?.logoUrl || roofMilesLogo;
+  // ⚠ NO `logoSrc` HERE ANY MORE (BR-1 Phase 2). This read
+  // `branding?.logoUrl || roofMilesLogo`, which substituted the PLATFORM's mark
+  // whenever a contractor had no logo of their own — a white-label breach in the
+  // opposite direction from the one the chain was built to prevent. BrandMark
+  // makes that a BRANCH on whether a contractor resolved at all; see its header.
 
   // ─── Validation ──────────────────────────────────────────────────────────────
   function validate() {
@@ -187,11 +191,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
         transform: cardVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
       }}>
-        <img
-          src={logoSrc}
-          alt={companyName}
-          style={{ width: 120, height: 'auto', display: 'block', margin: '0 auto 20px' }}
-        />
+        <BrandMark branding={branding} marginBottom={20} />
         <h2 style={{
           margin: '0 0 6px',
           fontSize: 22,

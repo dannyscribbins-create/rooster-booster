@@ -1,5 +1,4 @@
-import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
-import BrandLogo from '../shared/BrandLogo';
+import BrandMark from '../shared/BrandMark';
 import useEntrance from '../../hooks/useEntrance';
 
 // ⚠ REPAINTED ONTO --rm-* IN PHASE 5, and this is a SCOPE ADDITION to §7.1's
@@ -60,7 +59,11 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
   const cardVisible = useEntrance(80);
 
   const companyName = branding?.companyName || 'RoofMiles';
-  const logoSrc     = branding?.logoUrl || roofMilesLogo;
+  // ⚠ NO `logoSrc` HERE ANY MORE (BR-1 Phase 2). This read
+  // `branding?.logoUrl || roofMilesLogo`, which substituted the PLATFORM's mark
+  // whenever a contractor had no logo of their own — a white-label breach in the
+  // opposite direction from the one the chain was built to prevent. BrandMark
+  // makes that a BRANCH on whether a contractor resolved at all; see its header.
   // The accent rule at the top of the card. Null when the payload carried no
   // colour, and the render then falls through to the theme's own --rm-primary —
   // so the card is never edgeless, and never borrows another contractor's colour.
@@ -95,7 +98,7 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
         <div style={{ height: 4, backgroundColor: accentColor || 'var(--rm-primary, #F26A1B)' }} />
 
         <div style={{ padding: '32px 28px', textAlign: 'center' }}>
-          <BrandLogo src={logoSrc} alt={companyName} marginBottom={16} />
+          <BrandMark branding={branding} marginBottom={16} nameAlreadyShown />
 
           <div style={{
             fontSize: 13, fontWeight: 600, letterSpacing: '0.04em',

@@ -1,8 +1,7 @@
 import { useContext, useState } from 'react';
 import { BACKEND_URL } from '../../config/contractor';
 import { ThemeContext } from '../shared/ThemeProvider';
-import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
-import BrandLogo from '../shared/BrandLogo';
+import BrandMark from '../shared/BrandMark';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─── Set a New Password ───────────────────────────────────────────────────────
@@ -35,7 +34,11 @@ export default function ResetPinScreen({ token }) {
   const cardVisible = useEntrance(80);
 
   const companyName = branding?.companyName || 'RoofMiles';
-  const logoSrc = branding?.logoUrl || roofMilesLogo;
+  // ⚠ NO `logoSrc` HERE ANY MORE (BR-1 Phase 2). This read
+  // `branding?.logoUrl || roofMilesLogo`, which substituted the PLATFORM's mark
+  // whenever a contractor had no logo of their own — a white-label breach in the
+  // opposite direction from the one the chain was built to prevent. BrandMark
+  // makes that a BRANCH on whether a contractor resolved at all; see its header.
 
   // ⚠ THE LOCAL onPrimary COMPUTATION THAT USED TO SIT HERE IS GONE (C/DL-3c
   // Phase 1a, Ruling 1). It is now the `--rm-on-primary` render token, read
@@ -121,7 +124,7 @@ export default function ResetPinScreen({ token }) {
         transform: cardVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
       }}>
-        <BrandLogo src={logoSrc} alt={companyName} marginBottom={20} />
+        <BrandMark marginBottom={20} />
 
         <h2 style={{
           margin: '0 0 8px', fontSize: 22, fontWeight: 700,

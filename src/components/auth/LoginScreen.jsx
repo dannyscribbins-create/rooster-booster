@@ -1,8 +1,7 @@
 import { useContext, useState } from 'react';
 import { BACKEND_URL } from '../../config/contractor';
 import { ThemeContext } from '../shared/ThemeProvider';
-import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
-import BrandLogo from '../shared/BrandLogo';
+import BrandMark from '../shared/BrandMark';
 import ContactModal from '../shared/ContactModal';
 import FrozenAccountScreen from './FrozenAccountScreen';
 import ChoiceScreen from './ChoiceScreen';
@@ -132,7 +131,11 @@ export default function LoginScreen({ onAuthenticated }) {
   const [revokedTeamAccess, setRevokedTeamAccess] = useState(null);
 
   const companyName = branding?.companyName || 'RoofMiles';
-  const logoSrc = branding?.logoUrl || roofMilesLogo;
+  // ⚠ NO `logoSrc` HERE ANY MORE (BR-1 Phase 2). This read
+  // `branding?.logoUrl || roofMilesLogo`, which substituted the PLATFORM's mark
+  // whenever a contractor had no logo of their own — a white-label breach in the
+  // opposite direction from the one the chain was built to prevent. BrandMark
+  // makes that a BRANCH on whether a contractor resolved at all; see its header.
 
   // "Sign in to {companyName}", falling back to a role-neutral, brand-neutral line
   // when the chain has resolved nothing at all.
@@ -336,7 +339,7 @@ export default function LoginScreen({ onAuthenticated }) {
         transform: cardVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
       }}>
-        <BrandLogo src={logoSrc} alt={companyName} marginBottom={20} />
+        <BrandMark marginBottom={20} />
 
         <h2 style={{
           margin: '0 0 8px', fontSize: 22, fontWeight: 700,

@@ -26,6 +26,12 @@ const DETAIL_LABELS = {
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
 export default function CashOut({ pipeline, loading, userName, userEmail, bankStatus, setTab, onOpenBankSetup, token }) {
   const branding = useBranding();
+  const programName = branding?.programName || branding?.companyName || '';
+  // ⚠ THE SAME FALLBACK THE LANDING PAGE USES (renderState1's headlineSubject).
+  // `programName` is contractor_settings.app_display_name and is deliberately
+  // NOT platform-defaulted — the resolver leaves it null rather than inventing
+  // one — so the company name is the second rung. Both come from the resolved
+  // branding; neither is ever a literal.
   const [method, setMethod] = useState(null);
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState(1);
@@ -248,7 +254,18 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
         background: `linear-gradient(145deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
         padding: "52px 24px 24px",
       }}>
-        <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
+        {/* ⚠ THE CONTRACTOR'S PROGRAM NAME, NOT A CODENAME (BR-1 Phase 2, B.1).
+              This line was the hardcoded literal "ROOSTER BOOSTER" — the RETIRED
+              project codename, a brand belonging to neither RoofMiles nor the
+              contractor, on a homeowner-facing screen, while the resolved value
+              sat unused in the same component.
+              `programName || companyName` is the landing page's own precedent
+              (renderState1's headlineSubject): the contractor's App Display Name
+              when they have set one, their company name when they have not.
+              `app_display_name`'s helper text in the admin panel has always
+              promised this line — "replaces Rooster Booster throughout the
+              referrer app" — and nothing had ever consumed it. */}
+        <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>Cash Out</h1>
         <p style={{ margin: "4px 0 0", fontSize: 15, color: "rgba(255,255,255,0.6)" }}>
           ${balance.toLocaleString()} available

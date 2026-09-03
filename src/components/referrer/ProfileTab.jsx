@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { R, STATUS_CONFIG } from '../../constants/theme';
+import { useBranding } from '../shared/ThemeProvider';
 import { BACKEND_URL } from '../../config/contractor';
 import { getNextPayout } from '../../constants/boostSchedule';
 import { BADGES } from '../../constants/badges';
@@ -26,6 +27,13 @@ const CHANNEL_LABEL_MAP = {
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 export default function Profile({ onLogout, pipeline, loading, userName, userEmail, onNameUpdate, profilePhoto, setProfilePhoto, highlightReferrals, onResetHighlight, bankStatus, refreshBankStatus, openManageAccount, onResetOpenManageAccount }) {
+  const branding = useBranding();
+  // ⚠ THE SAME FALLBACK THE LANDING PAGE USES (renderState1's headlineSubject).
+  // `programName` is contractor_settings.app_display_name and is deliberately
+  // NOT platform-defaulted — the resolver leaves it null rather than inventing
+  // one — so the company name is the second rung. Both come from the resolved
+  // branding; neither is ever a literal.
+  const programName = branding?.programName || branding?.companyName || '';
   const soldCount  = pipeline.filter(p => p.status === "complete").length;
   const balance    = pipeline.filter(p => p.bonusEarned).reduce((sum, p) => sum + (p.conversion_bonus ?? p.payout ?? 0), 0);
   const nextPayout = getNextPayout(soldCount);
@@ -242,7 +250,18 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
         position: "relative", overflow: "hidden",
       }}>
         <div style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(211,227,240,0.08)" }} />
-        <p style={{ margin: "0 0 20px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>ROOSTER BOOSTER</p>
+        {/* ⚠ THE CONTRACTOR'S PROGRAM NAME, NOT A CODENAME (BR-1 Phase 2, B.1).
+              This line was the hardcoded literal "ROOSTER BOOSTER" — the RETIRED
+              project codename, a brand belonging to neither RoofMiles nor the
+              contractor, on a homeowner-facing screen, while the resolved value
+              sat unused in the same component.
+              `programName || companyName` is the landing page's own precedent
+              (renderState1's headlineSubject): the contractor's App Display Name
+              when they have set one, their company name when they have not.
+              `app_display_name`'s helper text in the admin panel has always
+              promised this line — "replaces Rooster Booster throughout the
+              referrer app" — and nothing had ever consumed it. */}
+        <p style={{ margin: "0 0 20px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
 
         {/* Avatar + name */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
