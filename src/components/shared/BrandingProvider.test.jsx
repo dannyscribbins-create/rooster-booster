@@ -74,7 +74,12 @@ function makeContext({ search = '', table = {} } = {}) {
     search,
     storage: makeStorage(),
     fetchBranding: vi.fn(async slug => (table[slug] ? { ...table[slug] } : { ...NEUTRAL })),
-    session: null,
+    // BR-1 Phase 1: source 1's inputs, replacing a dead `session: null` slot.
+    // SIGNED OUT BY DEFAULT — every test above this line was written against a
+    // pre-auth surface, and source 1 declining is what keeps them exercising the
+    // sources they name.
+    sessionToken: null,
+    fetchSessionBranding: vi.fn(async () => null),
   };
 }
 
@@ -258,5 +263,165 @@ describe('BrandingProvider — RULING 5 holds on the admin tree', () => {
     );
     expect(container.childNodes).toHaveLength(1);
     expect(container.firstChild).toBe(screen.getByTestId('only'));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('BrandingProvider — resolveKey, the re-resolution contract (BR-1 Phase 1)', () => {
+
+  // ⚠ THIS SUITE PINS A CONTRACT CHANGE, AND SAYS SO. The resolution effect's
+  // dependency list was `[]` and the rule was "resolution runs ONCE on mount".
+  // It is now once per `resolveKey`. BR Phase 0 §3.5 records the resolve-once
+  // property as load-bearing and names the defect (B-3b) that came of assuming
+  // otherwise, so the change is fenced from both sides here: the DEFAULT must
+  // still resolve exactly once, and a CHANGED key must resolve again.
+
+  function Probe() {
+    const { branding, source } = useAdminBranding();
+    return <span data-testid="probe">{`${branding.companyName}|${source}`}</span>;
+  }
+
+  // ── THE HALF THAT MUST NOT HAVE CHANGED ────────────────────────────────────
+  it('does NOT re-resolve when the parent re-renders with a fresh context object', async () => {
+    // ⚠ THIS IS B-3b's DEFECT RESTATED AS A FENCE. createBrandingContext() and
+    // the default props build a fresh object on every parent render; a
+    // dependency on `context` would re-resolve — network call and all — on every
+    // keystroke anywhere above. The key is held CONSTANT while the context
+    // identity changes, which is precisely the case that must resolve once.
+    const fetchBranding = vi.fn(async slug => (slug === SLUG ? { ...BRAND } : { ...NEUTRAL }));
+    const ctxFor = () => ({
+      hostname: APP_HOST, search: `?brand=${SLUG}`, storage: makeStorage(),
+      fetchBranding, sessionToken: null,
+      fetchSessionBranding: vi.fn(async () => null),
+    });
+
+    const { rerender } = render(
+      <BrandingProvider context={ctxFor()} resolveKey={7}><Probe /></BrandingProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('probe').textContent).toContain(BRAND.companyName));
+
+    for (let i = 0; i < 3; i += 1) {
+      rerender(<BrandingProvider context={ctxFor()} resolveKey={7}><Probe /></BrandingProvider>);
+    }
+
+    // ⚠ COUNTS THE CALLS FOR *THIS SLUG*, NOT THE TOTAL, AND THE DIFFERENCE
+    // IS NOT PEDANTRY. One walk of the chain makes TWO lookups here: source 2
+    // asks about the host label 'app' (reserved, so it declines) before source
+    // 2.5 asks about the brand parameter. A bare toHaveBeenCalledTimes(1) fails
+    // against correct code, and a bare (2) would pass against a provider that
+    // re-resolved once and skipped a source.
+    expect(fetchBranding.mock.calls.filter(c => c[0] === SLUG)).toHaveLength(1);
+  });
+
+  it('with resolveKey omitted entirely, resolution still runs exactly once', async () => {
+    // ⚠ THE COMPATIBILITY FENCE. Every caller that existed before BR-1 — the
+    // admin panel's supplied mode, ThemeProvider's own tests, ResetPinScreen's
+    // private instance — passes no key at all. The default must make them
+    // byte-for-byte unchanged, and a default that CHANGED would re-resolve on
+    // every render for all of them at once.
+    const fetchBranding = vi.fn(async slug => (slug === SLUG ? { ...BRAND } : { ...NEUTRAL }));
+    const ctxFor = () => ({
+      hostname: APP_HOST, search: `?brand=${SLUG}`, storage: makeStorage(),
+      fetchBranding, sessionToken: null,
+      fetchSessionBranding: vi.fn(async () => null),
+    });
+
+    const { rerender } = render(<BrandingProvider context={ctxFor()}><Probe /></BrandingProvider>);
+    await waitFor(() => expect(screen.getByTestId('probe').textContent).toContain(BRAND.companyName));
+    rerender(<BrandingProvider context={ctxFor()}><Probe /></BrandingProvider>);
+    rerender(<BrandingProvider context={ctxFor()}><Probe /></BrandingProvider>);
+
+    // Per-slug, for the reason given in the test above.
+    expect(fetchBranding.mock.calls.filter(c => c[0] === SLUG)).toHaveLength(1);
+  });
+
+  // ── THE HALF THAT IS NEW ───────────────────────────────────────────────────
+  it('re-resolves when resolveKey changes, and PUBLISHES the new answer', async () => {
+    // THE LOGIN TRANSITION, in the only shape jsdom can observe it. App.jsx
+    // returns <ThemeProvider> from every branch, so React reconciles the same
+    // element position across a login and this provider is never remounted —
+    // without the key, a user who signs in keeps the branding resolved before
+    // they had a session until they refresh.
+    //
+    // ⚠ THE ASSERTION IS ON THE PUBLISHED VALUE, NOT ON THE CALL COUNT. A
+    // provider that re-ran the chain and dropped the answer would satisfy
+    // "fetch was called twice" and change nothing a user can see.
+    let sessionToken = null;
+    const fetchSessionBranding = vi.fn(async () => ({ ...BRAND }));
+    const ctxFor = () => ({
+      hostname: APP_HOST, search: '', storage: makeStorage(),
+      fetchBranding: vi.fn(async () => ({ ...NEUTRAL })),
+      sessionToken,
+      fetchSessionBranding,
+    });
+
+    const { rerender } = render(
+      <BrandingProvider context={ctxFor()} resolveKey={0}><Probe /></BrandingProvider>
+    );
+    // Signed out: source 1 declines, nothing else can answer, neutral wins.
+    await waitFor(() =>
+      expect(screen.getByTestId('probe').textContent).toBe(`${NEUTRAL.companyName}|neutral`));
+    expect(fetchSessionBranding).not.toHaveBeenCalled();
+
+    // Sign in: the token is written, then the key is bumped — the order App.jsx
+    // uses, and the order that lets the re-resolution see the credential.
+    sessionToken = 'c'.repeat(64);
+    rerender(<BrandingProvider context={ctxFor()} resolveKey={1}><Probe /></BrandingProvider>);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('probe').textContent).toBe(`${BRAND.companyName}|session`));
+  });
+
+  it('a re-resolution that answers NEUTRAL replaces a contractor answer rather than sticking', async () => {
+    // THE LOGOUT DIRECTION, and it is not symmetrical with the one above. A
+    // provider that only ever ACCEPTED a non-neutral answer would pass the login
+    // test and leave the previous contractor's logo painted after sign-out —
+    // which on a shared device is the white-label breach this arc is about.
+    let sessionToken = 'd'.repeat(64);
+    const ctxFor = () => ({
+      hostname: APP_HOST, search: '', storage: makeStorage(),
+      fetchBranding: vi.fn(async () => ({ ...NEUTRAL })),
+      sessionToken,
+      fetchSessionBranding: vi.fn(async t => (t ? { ...BRAND } : null)),
+    });
+
+    const { rerender } = render(
+      <BrandingProvider context={ctxFor()} resolveKey={0}><Probe /></BrandingProvider>
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('probe').textContent).toBe(`${BRAND.companyName}|session`));
+
+    sessionToken = null;
+    rerender(<BrandingProvider context={ctxFor()} resolveKey={1}><Probe /></BrandingProvider>);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('probe').textContent).toBe(`${NEUTRAL.companyName}|neutral`));
+  });
+
+  it('supplied mode ignores resolveKey completely — the chain never runs', async () => {
+    // The admin panel's mode. A key that leaked past the supplied-mode guard
+    // would put the D4 chain on an authenticated admin surface, which is exactly
+    // what D-H routes AROUND.
+    const fetchBranding = vi.fn(async () => ({ ...BRAND }));
+    const fetchSessionBranding = vi.fn(async () => ({ ...BRAND }));
+    const ctx = {
+      hostname: APP_HOST, search: `?brand=${SLUG}`, storage: makeStorage(),
+      fetchBranding, sessionToken: 'e'.repeat(64), fetchSessionBranding,
+    };
+    const supplied = { branding: BRAND, source: 'admin-me' };
+
+    const { rerender } = render(
+      <BrandingProvider context={ctx} supplied={supplied} resolveKey={0}><Probe /></BrandingProvider>
+    );
+    rerender(
+      <BrandingProvider context={ctx} supplied={supplied} resolveKey={1}><Probe /></BrandingProvider>
+    );
+    rerender(
+      <BrandingProvider context={ctx} supplied={supplied} resolveKey={2}><Probe /></BrandingProvider>
+    );
+
+    expect(fetchBranding).not.toHaveBeenCalled();
+    expect(fetchSessionBranding).not.toHaveBeenCalled();
+    expect(screen.getByTestId('probe').textContent).toBe(`${BRAND.companyName}|admin-me`);
   });
 });

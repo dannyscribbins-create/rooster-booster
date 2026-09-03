@@ -3082,22 +3082,45 @@ root cause, and patching them separately produces six unrelated special cases)
             sequence had been shipping untested since it was written.
 
 **The branding chain**
-- [ ] **R2 — login does not write the hint from the session.** Requires a **slug** in the auth
-      payload (the hint stores a slug; the payloads carry `contractorId`, a different column).
-      → §10 for the full mechanism
-- [ ] **❓ OPEN SECURITY QUESTION, not a note to skim:** `GET /api/branding/:slug` was
-      deliberately built **non-enumerable** and explicitly refuses to echo the slug back.
-      Echoing one on an *authenticated* response is *probably* safe — but "probably safe" is
-      not the standard for partially reversing a stated security posture. **Reason about it
-      explicitly and record the answer.**
-      ⚠ **THE POSTURE IS WIDER THAN THIS ENTRY SAID, AND THAT CHANGES WHAT R2 REVERSES.**
-      *(Found C/DL-3c Phase 0.5.)* `GET /api/admin/me` performs **the same slug-dropping
-      destructure** — `const { slug: _slugNotReturned, ...theme } = resolved;` — on an
-      **already-authenticated** response, citing the same CD-24 reason as `branding.js`.
-      **So the rule is "no slug on ANY response," not "no slug on a public one."** R2 reverses a
-      **twice-applied** rule. ⚠ **Price the narrower option before ruling:** return the slug from
-      `GET /api/session` **only** — one endpoint, rehydration-time, already role-aware — and leave
-      `POST /api/login` and `GET /api/admin/me` untouched. One reversal instead of three.
+- [x] ~~**R2 — login does not write the hint from the session.**~~ ✅ **SHIPPED — BR-1 Phase 1.**
+      `resolveFromSession` was `return null` — the whole body — and now asks
+      `GET /api/session/branding`, which derives the contractor from `verifyAnySession()` and
+      reuses `loadContractorBranding`. Source 1 is first, so it wins outright.
+      ⚠ **DELIVERED WITHOUT A SLUG, WHICH IS WHY THE ENTRY ABOVE ITS OWN PRECONDITION COULD
+      CLOSE.** This entry said R2 *"requires a slug in the auth payload"*, and BR Phase 0 §3.7
+      measured that the slug was only ever needed by the WRITE-THROUGH, never by resolution —
+      `GET /api/admin/me` had already been resolving branding from a session's `contractor_id`
+      with no slug anywhere in the path. **So the `contractors.slug` mint path is NOT a
+      blocker for R2 and never was; the two were bundled.** It remains a blocker for the
+      credential-link entry below, which needs a slug for a genuinely different reason.
+      ⚠ **AND R2's REWRITE IS A REMOVAL, NOT A SUBSTITUTION.** The contractor a session names
+      has no slug to write, so an authenticated answer CLEARS the hint instead. That satisfies
+      R2's property — a stale or planted hint is corrected rather than persisting — and the day
+      a slug backfill lands it becomes a substitution with no code change.
+- [x] ~~**❓ OPEN SECURITY QUESTION**~~ ✅ **ANSWERED BY NOT REVERSING IT — BR-1 Phase 1.**
+      The question was whether echoing a slug on an *authenticated* response partially reverses
+      the non-enumerability posture that `GET /api/branding/:slug` and `GET /api/admin/me` both
+      apply. **It was not reversed. `GET /api/session/branding` performs the same slug-dropping
+      destructure as its two siblings**, so the rule "no slug on ANY response" now holds in
+      three places rather than two, and the narrower `GET /api/session` option this entry
+      priced was not needed either. ⚠ **The question is CLOSED for R2 and stays OPEN for the
+      credential-link entry below**, which still wants a slug in an email URL — a different
+      channel, and one this answer says nothing about.
+- [ ] **🟡 NEW, BR-1 Phase 1 — the signed-out login screen lost its branded first paint for
+      anyone who has signed in on that device.** Direct consequence of R2's removal above, and
+      recorded rather than fixed because BR-1's V3 ruled it observe-only.
+      **The mechanism:** the hint existed so a RETURNING visitor sees their contractor before
+      typing. An authenticated load now clears it, so after a logout source 3 has nothing and
+      the login screen answers source 5 — neutral RoofMiles. **Observed in a real browser
+      during BR-1's V3:** *"Sign in to RoofMiles"* and the platform wordmark, on a device that
+      had been signed in as a contractor's referrer moments earlier.
+      **This is a fail-CLOSED trade, deliberately.** The alternative — leaving a hint that
+      outlives the session — is the shared-device breach the same removal exists to close, and
+      showing contractor A's brand to contractor B's user is worse than showing neither.
+      **What would resolve it properly:** a slug backfill, after which the removal becomes a
+      substitution and the hint is rewritten to the CORRECT contractor instead of cleared.
+      🔴 **So this entry closes itself when the `contractors.slug` mint path lands** — do not
+      "fix" it by suppressing the clear, which reopens the security boundary.
 
 - [ ] **🔴 CREDENTIAL-LINK BRANDING — A TEAM MEMBER NEVER SEES THEIR OWN CONTRACTOR, AND IT IS
       STRUCTURAL RATHER THAN INTERMITTENT.** *(Ruled C/DL-3c Phase 0.5, 2026-08-30.)*

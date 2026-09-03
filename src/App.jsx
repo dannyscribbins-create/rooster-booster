@@ -204,6 +204,23 @@ export default function App() {
   // routing: the query string is no longer consulted anywhere in this file.
   const [session, setSession] = useState(null);
 
+  // ── THE BRANDING RE-RESOLUTION TRIGGER (BR-1 Phase 1) ──────────────────────
+  // A counter, bumped when a bearer token is WRITTEN or DROPPED during a single
+  // page lifetime. ThemeProvider forwards it to BrandingProvider, which re-runs
+  // the D4 chain when it changes — see the contract note on that effect.
+  //
+  // ⚠ A COUNTER, NOT `session` ITSELF, AND NOT A BOOLEAN. Deriving it from
+  // `session` would fire a second, identical resolution on every boot, because
+  // rehydration moves session from null to a value using a token that was
+  // ALREADY in storage when the chain first ran. A boolean would miss a
+  // contractor-to-contractor switch on a shared device, where a token is dropped
+  // and another written without the truthiness ever changing.
+  //
+  // ⚠ AND IT IS NOT TENANCY-BEARING. It is an integer that counts events. It
+  // names no contractor, carries no identity, and is never sent anywhere — CD-24
+  // R1 governs what reaches the server, and this reaches a useEffect.
+  const [authEpoch, setAuthEpoch] = useState(0);
+
   // ── THE SURFACE CHOICE (C/DL-3c Phase 2b) ──────────────────────────────────
   // null = "routed by identity", which is every session until someone presses
   // the switcher. ⚠ DELIBERATELY NOT PERSISTED — see the record beside the
@@ -424,16 +441,24 @@ export default function App() {
   // dropped. Two keys still exist because 29 files read `rb_admin_token`
   // directly; what this does is guarantee that from here on at most ONE of them
   // is live, so the boot-order tie-break above is a legacy concern only.
+  // ⚠ BOTH BRANCHES BUMP authEpoch, AND THE TEAM BRANCH'S EARLY `return` IS WHY
+  // THAT IS WORTH SAYING. A bump placed only at the foot of this function would
+  // cover the referrer and silently miss the field rep, whose surface renders
+  // inside ThemeProvider too and holds the other token key. The bump goes
+  // immediately after the token write in each branch, so the two can never
+  // separate.
   function handleAuthenticated(data) {
     if (data.role === 'team') {
       setAdminToken(data.token);
       clearReferrerToken();
+      setAuthEpoch(n => n + 1);
       setSession({ role: 'team', tier: data.tier, is_field_rep: data.is_field_rep });
       return;
     }
 
     setReferrerToken(data.token);
     clearAdminToken();
+    setAuthEpoch(n => n + 1);
     setUserName(data.fullName);
     setUserEmail(data.email);
     setShowReviewCard(data.showReviewCard ?? true);
@@ -460,6 +485,15 @@ export default function App() {
     setUserName('');
     setProfilePhoto(null);
     await (wasTeam ? logoutAdmin() : logoutReferrer());
+    // ⚠ BUMPED AFTER THE AWAIT, NOT BEFORE IT, AND THE ORDER IS THE POINT.
+    // The bump re-runs the D4 chain, and source 1 reads whatever token storage
+    // holds at that moment. Bumping first would re-resolve against a credential
+    // that is about to be destroyed — a request racing its own logout, whose
+    // answer is either the brand of a session that no longer exists or a 401,
+    // decided by timing. Bumping last means the chain sees no token, source 1
+    // declines cleanly, and resolution falls through exactly as it does for any
+    // signed-out visitor.
+    setAuthEpoch(n => n + 1);
   }
 
   function handleDismissReview() {
@@ -632,7 +666,13 @@ export default function App() {
   // function so the chain can stay a flat sequence of early returns rather than
   // becoming a nest of ternaries.
   const themedRoute = renderThemedRoute();
-  return <ThemeProvider>{themedRoute}</ThemeProvider>;
+  // ⚠ resolveKey IS ON THIS ONE PROVIDER AND NOT ON THE TWO ABOVE, DELIBERATELY.
+  // The boot spinner's and the reset screen's instances are reached before any
+  // login transition can occur, and `authEpoch` is 0 for the whole of both — so
+  // adding it there would change nothing except the number of places a reader has
+  // to check. The reset screen in particular is ruled permanently light and must
+  // not acquire behaviour it does not need.
+  return <ThemeProvider resolveKey={authEpoch}>{themedRoute}</ThemeProvider>;
 
   function renderThemedRoute() {
     // THE BOOT GATE MOVED UP AND OUT in Phase 5 — it now sits above the admin

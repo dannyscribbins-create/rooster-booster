@@ -303,6 +303,16 @@ export default function ThemeProvider({
   // conditionally below rather than passed as undefined, which would silently
   // mean "resolve" to BrandingProvider and is the one way to get this wrong.
   supplied,
+  // ── FORWARDED, NOT INTERPRETED (BR-1 Phase 1) ─────────────────────────────
+  // Changing it re-runs the D4 chain. This file neither reads it nor decides
+  // when it changes — App.jsx bumps it on login and logout, because that is the
+  // only place that knows a bearer token was just written or dropped. See the
+  // contract note on BrandingProvider's resolution effect.
+  // ⚠ NOT DEFAULTED HERE. BrandingProvider owns the default; a second one in
+  // this file would be the two-places-one-default shape that has already bitten
+  // this codebase, and `undefined` reaching a defaulted parameter is exactly the
+  // case that default handles.
+  resolveKey,
   // Injected by tests, and by 3c when the Profile toggle needs to control it.
   fetchStoredMode = fetchThemeModeFromApi,
   // Pins the mode and skips the preference read entirely. 3c's toggle lifts mode
@@ -313,7 +323,7 @@ export default function ThemeProvider({
   // BrandingProvider on its own (Phase 2B) and gets exactly the inner half of
   // this composition — the half with no variables in it.
   return (
-    <BrandingProvider context={context} {...(supplied !== undefined ? { supplied } : {})}>
+    <BrandingProvider context={context} resolveKey={resolveKey} {...(supplied !== undefined ? { supplied } : {})}>
       <ThemeLayer fetchStoredMode={fetchStoredMode} mode={pinnedMode}>
         {children}
       </ThemeLayer>

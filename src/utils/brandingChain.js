@@ -8,7 +8,7 @@
 // BRANDING_SOURCES below; the whole file exists so that "whose brand is this?"
 // has exactly one implementation with exactly one order.
 //
-//   1    session        the authenticated contractor_id      (null this phase)
+//   1    session        the authenticated contractor_id      (BR-1 Phase 1)
 //   2    host           <slug>.roofmiles.com                 (null on app.*)
 //   2.5  URL hint       ?brand=<slug>                        (new in 3b)
 //   3    stored hint    localStorage 'rm_brand_hint'
@@ -25,10 +25,17 @@
 //      identity fields in it at all — and guard-proofed adversarially in
 //      brandingChain.test.js.
 //
-// R2 — SESSION OVERRIDES AND REWRITES. Source 1 is first, so when it starts
-//      answering (Phase 5) it wins outright, and the generic write-through below
-//      rewrites the stored hint to the authenticated contractor. R2 therefore
-//      needs no special case; it falls out of the ordering.
+// R2 — SESSION OVERRIDES AND REWRITES. Source 1 is first, so it wins outright,
+//      and the write-through corrects the stored hint to the authenticated
+//      contractor.
+//      ⚠ THIS PARAGRAPH USED TO END "R2 therefore needs no special case; it
+//      falls out of the ordering", and that was the sentence that let the rule
+//      go unimplemented for the whole of C/DL-3b. It falls out of the ordering
+//      ONLY ONCE SOURCE 1 ANSWERS — which it did not, so the guarantee was never
+//      once available, and a hint planted by a link outlived every subsequent
+//      visit. R2 now has a special case (see the write-through), because the
+//      contractor a session names HAS NO SLUG to rewrite the hint TO, so the
+//      correction is a removal. Do not "simplify" it back into the ordering.
 //
 // R3 — LOGOUT PRESERVES THE HINT. Nothing in this file removes
 //      BRAND_HINT_STORAGE_KEY. The logout seam itself is Phase 4.
@@ -62,6 +69,10 @@ import { BACKEND_URL } from '../config/contractor';
 // Extracted to a shared helper in Phase 4 — authStorage.js needs the identical
 // guard now that the bearer token lives in localStorage too.
 import { safeLocalStorage } from './safeStorage';
+// BR-1 Phase 1. Source 1 needs the stored bearer token to ask the server whose
+// session this is. READ-ONLY: nothing here writes, clears or interprets a token —
+// it is handed to one fetcher as an Authorization header and never inspected.
+import { getAdminToken, getReferrerToken } from './authStorage';
 
 // ⚠ THE FIRST AND ONLY localStorage KEY IN THIS CODEBASE, AND THAT IS DELIBERATE
 // (spec D5). Everything else here uses sessionStorage, and this is not an
@@ -209,42 +220,74 @@ async function brandingForSlug(ctx, slug) {
 }
 
 // ── SOURCE 1 — SESSION ───────────────────────────────────────────────────────
-// Branding for the authenticated session. Returns null before anyone has logged
-// in, which on the login screen is always.
+// Branding for the authenticated session: the contractor the SERVER says this
+// token belongs to. Returns null before anyone has logged in, which on the login
+// screen is always.
 //
-// IT RETURNS null UNCONDITIONALLY THIS PHASE, AND THAT IS A REAL ANSWER RATHER
-// THAN A STUB. There is still no endpoint this source can ask, and there is no
-// referrer-session equivalent at all (verified, C/DL-3b Phase 1 Step 1).
+// ⚠ THIS FUNCTION WAS `return null` — THE WHOLE BODY — UNTIL BR-1 PHASE 1, AND
+// THE HEADER THAT USED TO SIT HERE ARGUED IT SHOULD STAY THAT WAY. It said
+// wiring this source needs the `contractors.slug` BACKFILL and its MINT PATH,
+// and that it reopens the deliberate non-enumerability of
+// GET /api/branding/:slug. Both claims were true of the design being imagined —
+// a source that resolves a SLUG and writes it through — and neither is forced.
+// BR Phase 0 §3.7 measured the alternative: GET /api/admin/me already resolves
+// branding from a session's contractor_id with NO SLUG ANYWHERE IN THE PATH, and
+// has shipped. The slug was only ever needed by the write-through, and an
+// answer that carries none simply skips it — which is what source 5 already
+// does. So the blockers belonged to a bundled design, not to this source.
 //
-// ⚠ ONE CLAUSE HERE WENT STALE AND IS CORRECTED (Admin Brand Retirement Phase
-// 2B). It used to read "GET /api/admin/me returns no branding and no
-// contractor_id". The first half is no longer true — /me now carries a branding
-// block, which is how the ADMIN PANEL learns its contractor (spec D-H).
+// ── WHAT ITS ABSENCE COST, because three symptoms had one cause ──────────────
+// Source 1 is FIRST. While it declined, an AUTHENTICATED user's branding was
+// decided by whatever their own browser supplied — a `?brand=` parameter, a
+// localStorage hint, or nothing:
+//   (a) a logged-in user on a device with no hint saw platform branding;
+//   (b) ContactModal rendered EMPTY, because `phone` and `email` are the only
+//       two fields with no platform default, so they vanished where the others
+//       merely painted the wrong thing;
+//   (c) a planted `?brand=` was PERMANENT — see the write-through in
+//       resolveBranding for why that is a security boundary and not a cosmetic
+//       annoyance.
 //
-// THAT DOES NOT MAKE IT A SOURCE FOR THIS CHAIN, and the reason is sharper than
-// the old one rather than weaker. Every source here returns { branding, slug },
-// because the slug is what the generic write-through below stores as the hint.
-// /me deliberately carries NO SLUG AND NO contractor_id (CD-24 R1) — tenancy is
-// proven by the session there, so an identifier in the reply would be a
-// disclosure with no capability behind it. A source built on /me could resolve
-// branding and would still have nothing to write through.
+// ── WHY THIS IS THE ONLY SOURCE THAT MAY NOT USE isNeutralBranding ───────────
+// The other three read a neutral-looking payload as "the endpoint declined",
+// because GET /api/branding/:slug refuses to say whether a slug resolved. This
+// route has no such ambiguity: it is authenticated, and a 200 with a branding
+// block IS the caller's own contractor. Applying that inference here would
+// silently discard the branding of every contractor who has customised nothing
+// and fall through to a hint — reading "this contractor set no colours" as "no
+// contractor was identified", which is precisely the false negative the
+// inference's own docblock warns is the general case.
 //
-// Wiring this source is C/DL-3c's (spec D-J): it needs the contractors.slug
-// BACKFILL AND ITS MINT PATH — nothing writes that column today, and validateSlug
-// and isSlugMutable have zero production callers — and it reopens the deliberate
-// non-enumerability of GET /api/branding/:slug, recorded under "The branding
-// chain" in PRE_LAUNCH_CHECKLIST.md as the open security question.
-// ⚠ CITED BY ROLE, NOT BY LINE, AND HERE IS WHY. This read
-// "PRE_LAUNCH_CHECKLIST.md:139-143". Its sibling copy in
-// ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md was CORRECT when written at ceae890 — and
-// was ALREADY FALSE when copied here at 923958b. The two were never right at the
-// same time, so no single arithmetic repair could ever have fixed both. Adding a
-// delta would have certified a number that was never right. When it lands, R2
-// falls out of the ordering with no further change here — source 1 is first, so
-// it wins and the write-through rewrites the stored hint.
-// eslint-disable-next-line no-unused-vars
+// ── NO NETWORK CALL WITHOUT A TOKEN ─────────────────────────────────────────
+// The signed-out path returns before the fetcher is reached. Every visitor to
+// the login screen is on that path, and a request that can only ever 401 is a
+// round-trip in front of the first paint for all of them.
 export async function resolveFromSession(ctx) {
-  return null;
+  const token = ctx.sessionToken;
+  if (typeof token !== 'string' || token.trim() === '') return null;
+
+  let theme = null;
+  try {
+    theme = await ctx.fetchSessionBranding(token);
+  } catch {
+    return null;   // a non-answer — the next source gets its turn
+  }
+
+  // THE GUARD MATCHES ITS OWN VALUE'S SHAPE, and it is deliberately not the
+  // isNeutralBranding() call its three siblings make — see above for why. What
+  // it must exclude is a non-answer wearing an object's clothes: `{}` from a
+  // super-admin session, `null` from a 401, and the string/number/undefined
+  // shapes a misbehaving fetcher produces. `companyName` is the field that
+  // cannot legitimately be absent — `contractors.name` is NOT NULL and the
+  // resolver falls back to it — so its presence is what separates a real theme
+  // from every one of those.
+  if (!theme || typeof theme !== 'object' || Array.isArray(theme)) return null;
+  if (typeof theme.companyName !== 'string' || theme.companyName === '') return null;
+
+  // NO SLUG, AND `authoritative` IS WHAT THAT NULL MEANS. The write-through
+  // reads the flag rather than the null so that source 5's identical-looking
+  // `slug: null` keeps its opposite meaning. See resolveBranding.
+  return { branding: theme, slug: null, authoritative: true };
 }
 
 // ── SOURCE 2 — HOST ──────────────────────────────────────────────────────────
@@ -361,6 +404,27 @@ function persistBrandHint(ctx, slug) {
   }
 }
 
+// Removes the source-3 hint. Called ONLY when an authoritative source answered
+// and had no slug to write in its place — see the write-through in
+// resolveBranding for why that is CD-24 R2 rather than a contradiction of D5.
+//
+// ⚠ REMOVE, NOT setItem(key, ''). An empty string is a value: source 3 would
+// read it, `if (!slug) return null` would treat it as absent this time, and the
+// key would sit there looking like a hint that had been set. Removing is the
+// only operation that leaves the store in the state it was in before any hint
+// was ever written.
+//
+// SWALLOWS ITS OWN FAILURE for the same reason persistBrandHint does. A hardened
+// profile that refuses the write must not cost this visit its surface — the
+// planted hint is then still there, which is the state we were already in.
+function clearBrandHint(ctx) {
+  try {
+    ctx.storage?.removeItem(BRAND_HINT_STORAGE_KEY);
+  } catch {
+    // ignored on purpose — see above
+  }
+}
+
 // Builds the default browser context. Split out from resolveBranding so every
 // source is testable against injected inputs rather than against globals.
 export function createBrandingContext(overrides = {}) {
@@ -369,8 +433,19 @@ export function createBrandingContext(overrides = {}) {
     search: window.location.search,
     storage: safeLocalStorage(),
     fetchBranding: fetchBrandingFromApi,
-    // Phase 5 supplies this once the login response carries branding.
-    session: null,
+    // ── SOURCE 1'S TWO INPUTS (BR-1 Phase 1) ─────────────────────────────────
+    // These replace a `session: null` slot whose comment read "Phase 5 supplies
+    // this once the login response carries branding." That design was abandoned:
+    // putting branding on the LOGIN response would answer only for the moment
+    // someone signs in, and leave every subsequent boot — the common case, and
+    // the one that produced the reported symptoms — with nothing to read.
+    //
+    // ⚠ READ AT CONTEXT-BUILD TIME, NOT AT MODULE LOAD. createBrandingContext()
+    // is called inside BrandingProvider's effect, so the token is whatever
+    // storage holds at the moment resolution runs. That is what lets a
+    // re-resolution after login see the credential login just wrote.
+    sessionToken: readSessionToken(),
+    fetchSessionBranding: fetchSessionBrandingFromApi,
     ...overrides,
   };
 }
@@ -388,6 +463,53 @@ async function fetchBrandingFromApi(slug) {
   } catch {
     return null;
   }
+}
+
+// Source 1's network call (BR-1 Phase 1). Never throws: a failed lookup is a
+// non-answer and the chain moves on, exactly as it does for a slug lookup.
+//
+// ⚠ THE TOKEN TRAVELS IN THE Authorization HEADER AND NOWHERE ELSE — not in the
+// path, not in a query parameter. A bearer credential in a URL is copied into
+// server logs, proxy logs and browser history by machinery nobody owns; the slug
+// fetcher above has the opposite constraint for the opposite reason (a slug is
+// public and belongs in the path).
+//
+// THE CONTRACTOR IS NOT NAMED IN THE REQUEST AT ALL. The server derives it from
+// the session row, which is what makes this source unspoofable in the way
+// sources 2, 2.5 and 3 are not — see R1 in this file's header.
+//
+// UNWRAPS THE ENVELOPE. The route answers `{ branding }` when the session has a
+// contractor and `{}` when it does not (a super admin), following the same D-I
+// convention as GET /api/admin/me: the key's ABSENCE says "resolution did not
+// happen", which is a different fact from "resolved to nothing". Returning
+// `?? null` collapses both into the non-answer the chain already understands.
+async function fetchSessionBrandingFromApi(token) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/session/branding`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const payload = await res.json();
+    return payload?.branding ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// The stored bearer token for whichever surface this browser last signed into,
+// or null.
+//
+// ⚠ THE TEAM TOKEN IS TRIED FIRST, AND THE ORDER MIRRORS App.jsx's BOOT
+// REHYDRATION DELIBERATELY. A device that used both surfaces before C/DL-3b
+// Phase 5 can still hold two stale-but-valid tokens, and boot resolves that
+// ambiguity in favour of the team session. If branding resolved the other way
+// round, a team member holding an old homeowner token would be routed to their
+// team surface while it painted the brand of whichever session the OTHER token
+// belonged to. Neither token is an escalation — both are credentials the person
+// legitimately holds — but the two answers must agree, and agreement here means
+// asking in the same order.
+function readSessionToken() {
+  return getAdminToken() || getReferrerToken() || null;
 }
 
 /**
@@ -410,7 +532,28 @@ export async function resolveBranding(ctx = createBrandingContext()) {
     // WRITE-THROUGH (D5). Whichever link answered, remember its slug so the next
     // visit can resolve at source 3. Source 5 carries no slug and so writes
     // nothing — see resolveNeutral.
+    //
+    // ── THE SECOND BRANCH IS CD-24 R2, AND IT IS A REMOVAL (BR-1 Phase 1) ─────
+    // R2: an authenticated answer OVERRIDES AND REWRITES the hint. Source 1 is
+    // the only authoritative link — its answer comes from the session's own
+    // contractor, server-side — and it carries NO SLUG, because
+    // `contractors.slug` has no backfill and no mint path and echoing one would
+    // reopen the endpoint's deliberate non-enumerability (BR Phase 0 §3.6/§3.7).
+    //
+    // ⚠ SO `slug: null` MEANS TWO DIFFERENT THINGS HERE AND THE FLAG IS WHAT
+    // SEPARATES THEM. Source 5's null means "there is no contractor to remember"
+    // and must leave a good hint alone; source 1's means "the contractor is
+    // known and has no slug", and the hint that MATCHES that contractor is no
+    // hint at all. Reading the null alone would make neutral wipe the hint on
+    // every signed-out visit — the opposite of D5.
+    //
+    // ⚠ WHY THIS IS THE SECURITY FIX RATHER THAN TIDINESS. A `?brand=` value is
+    // deliverable as a LINK, source 2.5 persists it, and nothing in this chain
+    // has ever removed it. Without this branch a planted hint survives every
+    // subsequent visit on that device, including signed-out ones. R2 promised
+    // the correction and could never deliver it while source 1 returned null.
     if (answer.slug) persistBrandHint(ctx, answer.slug);
+    else if (answer.authoritative) clearBrandHint(ctx);
 
     return { branding: answer.branding, source: source.id };
   }

@@ -121,8 +121,10 @@ export function useAdminBranding() {
  *        against known inputs rather than globals. Ignored in supplied mode.
  * @param {{branding: object, source: string|null}|null} [props.supplied] - an
  *        already-resolved answer. See the mode note above.
+ * @param {number|string} [props.resolveKey] - re-resolve when this CHANGES. See
+ *        the contract note on the effect below before using it.
  */
-export default function BrandingProvider({ children, context, supplied }) {
+export default function BrandingProvider({ children, context, supplied, resolveKey = 0 }) {
   // The prop KEY, read once, so the two modes cannot be confused by a null value
   // arriving mid-flight. See the JSDoc above.
   const isSupplied = supplied !== undefined;
@@ -151,12 +153,40 @@ export default function BrandingProvider({ children, context, supplied }) {
     })();
 
     return () => { cancelled = true; };
-  // Resolution runs ONCE on mount. Re-running on a changed `context` identity
-  // would re-resolve on every parent render, since createBrandingContext() and
-  // the default props build fresh objects each time. `isSupplied` is fixed for
-  // the lifetime of a given mount — a caller does not switch modes.
+  // ── ⚠ CONTRACT CHANGE, BR-1 PHASE 1: ONCE ON MOUNT *PER resolveKey* ────────
+  //
+  // THIS DEPENDENCY LIST WAS `[]` AND THE RULE WAS "resolution runs ONCE on
+  // mount". That is stated here as a change rather than left to be discovered,
+  // because BR Phase 0 §3.5 records the resolve-once property as load-bearing
+  // and names the defect that came of assuming otherwise.
+  //
+  // WHAT HAS NOT CHANGED, AND IS THE WHOLE REASON B-3b HAPPENED: this effect
+  // still never re-runs on a changed `context` IDENTITY. createBrandingContext()
+  // and the default props build a fresh object on every parent render, so
+  // depending on `context` would re-resolve — network call and all — on every
+  // keystroke anywhere above. `resolveKey` is a caller-declared PRIMITIVE that
+  // changes only when the caller says the answer could have changed.
+  //
+  // ⚠ AND IT DEFAULTS TO A CONSTANT, so every existing caller — the admin
+  // panel's supplied mode, ThemeProvider's own tests, ResetPinScreen's private
+  // instance — is byte-for-byte unchanged: 0 never differs from 0, and the
+  // effect fires exactly once for them, as it always did.
+  //
+  // WHY IT IS NEEDED AT ALL. Source 1 resolves from the STORED BEARER TOKEN.
+  // On a reload while signed in, the token is already there when this mounts and
+  // resolve-once is sufficient. The case it cannot reach is signing in DURING one
+  // page lifetime: App.jsx returns `<ThemeProvider>` from every branch, so React
+  // reconciles the same element position across the login transition and this
+  // provider is never remounted. Without a trigger, a user who logs in keeps the
+  // neutral branding resolved before they had a session until they refresh —
+  // which is symptom (a) surviving its own fix.
+  //
+  // ⚠ THE CALLER DECIDES, AND App.jsx BUMPS ONLY ON LOGIN AND LOGOUT. Boot
+  // rehydration deliberately does NOT bump: the token it validates was already in
+  // storage when this effect first ran, so re-resolving would repeat an identical
+  // request on every boot.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [resolveKey]);
 
   // RENDERS IMMEDIATELY, NEUTRAL, IN BOTH MODES. Resolution is async either way,
   // and withholding the tree until it finishes would put a blank frame in front
