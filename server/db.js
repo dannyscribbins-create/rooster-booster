@@ -2116,6 +2116,46 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     );
   }
 
+  // ── BR-2 PHASE 2 (A32(a)) — THE FIVE OVERRIDABLE LANDING STEP STRINGS ──────
+  // LP §2's how-it-works steps were hardcoded in renderState1 and shipped to
+  // every contractor. Two of the five are worse than generic: "We take care of
+  // them like family" is one contractor's VOICE on every contractor's page, and
+  // "They book a free inspection" is a FACTUAL CLAIM about a business — a
+  // contractor who does not offer free inspections shipped a page telling
+  // homeowners that they do.
+  //
+  // NAMED FOR THE SLOT THEY DRIVE, so the mapping is readable without opening
+  // renderState1: landing_step<N>_<title|body>. Step 1's body is deliberately
+  // absent — it is assembled from the company name and is not overridable.
+  //
+  // ⚠ ADDED NULL AND NEVER BACKFILLED, AND THAT IS THE WHOLE DESIGN. NULL means
+  // "use the frozen default"; a populated column means "this contractor chose
+  // this string." Backfilling the defaults would erase the difference and make
+  // every contractor look like they authored the platform's copy, after which
+  // nobody can tell which strings were ever reviewed. The defaults live in
+  // renderState1 as the `??` right-hand side, in exactly one place.
+  //
+  // ⚠ NO FAIL-CLOSED GUARD HERE, AND THAT IS A DECISION RATHER THAN AN OMISSION.
+  // The guard rule exists for migrations that BACKFILL — a guard fires while work
+  // remains and must be wrapped in a work-remaining check so it becomes a
+  // permanent no-op after, instead of re-crashing every boot once a second
+  // contractor exists. This migration adds nullable columns and backfills
+  // nothing, so there is no partial state to be caught halfway through and
+  // nothing for a guard to observe. Adding one would be a mechanism reporting
+  // health it cannot see, which is the defect the guard rule is itself part of
+  // preventing. **The backfill risk is real but lives in the FUTURE**, so it is
+  // fenced by a test rather than by a boot-time assertion — see
+  // server/test/landingStepCopy.test.js.
+  for (const col of [
+    'landing_step1_title',
+    'landing_step2_title',
+    'landing_step2_body',
+    'landing_step3_title',
+    'landing_step3_body',
+  ]) {
+    await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS ${col} TEXT`);
+  }
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed

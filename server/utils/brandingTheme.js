@@ -253,6 +253,28 @@ function resolveBrandingTheme(input) {
                        || (firstNonEmpty(src.google_place_id)
                             ? `${GOOGLE_WRITE_REVIEW_BASE}${encodeURIComponent(src.google_place_id.trim())}`
                             : null),
+    // ── THE OVERRIDABLE LANDING STEP COPY (BR-2 Phase 2, A32(a)) ───────────
+    // LP §2's how-it-works steps. NULL here means "use the frozen default",
+    // which lives in renderState1 as the `??` right-hand side — the one place
+    // the default text exists, so this resolver never invents copy.
+    //
+    // ⚠ ALWAYS-PRESENT NULLS, NOT OMITTED KEYS, and the difference from
+    // `socials`/`address`/`website` directly below is deliberate. Those are
+    // omitted because a CONSUMER draws a row by the key's presence. These are
+    // not drawn by presence — the step always renders, and the only question is
+    // WHOSE words. Keeping the key lets "the contractor chose this" stay
+    // readable as `!== null`, which is exactly what a future audit of who has
+    // actually reviewed their copy would ask, and what backfilling would erase.
+    //
+    // firstNonEmpty COLLAPSES null, undefined, '' AND whitespace to null, so a
+    // touched-then-cleared field returns the default rather than shipping a
+    // blank step. That is the realistic state — measured on the socials, where
+    // the production contractor has two of five stored as EMPTY STRING.
+    landingStep1Title: firstNonEmpty(src.landing_step1_title),
+    landingStep2Title: firstNonEmpty(src.landing_step2_title),
+    landingStep2Body:  firstNonEmpty(src.landing_step2_body),
+    landingStep3Title: firstNonEmpty(src.landing_step3_title),
+    landingStep3Body:  firstNonEmpty(src.landing_step3_body),
     reviewButtonText: firstNonEmpty(src.review_button_text) || BRANDING_THEME_DEFAULTS.reviewButtonText,
     reviewMessage:   firstNonEmpty(src.review_message)     || BRANDING_THEME_DEFAULTS.reviewMessage,
   };

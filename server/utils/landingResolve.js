@@ -99,6 +99,10 @@ async function loadContractorBranding(db, contractorId) {
             -- every branding consumer the socials without a second delivery path.
             s.social_facebook, s.social_instagram, s.social_google,
             s.social_nextdoor, s.social_website,
+            -- LP §2's overridable step copy (BR-2 Phase 2, A32(a)). NULL means
+            -- "use the frozen default"; renderState1 holds the defaults.
+            s.landing_step1_title, s.landing_step2_title, s.landing_step2_body,
+            s.landing_step3_title, s.landing_step3_body,
             -- ⚠ A THIRD TABLE, and the reason is the review-URL derivation.
             -- google_place_id lives on contractor_about (entered via Company
             -- Details → About Us) while review_url lives on contractor_settings

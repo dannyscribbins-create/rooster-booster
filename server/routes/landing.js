@@ -902,6 +902,36 @@ function renderState1(theme) {
   // unset one degrades to the company's own name rather than printing "null".
   const headlineSubject = theme.programName ? escapeHtml(theme.programName) : company;
 
+  // ── THE FROZEN STEP DEFAULTS, AND THE ONE PLACE THEY EXIST (A32(a)) ────────
+  // LP §2's copy is final as written; A32 makes it OVERRIDABLE without changing
+  // it. These five strings are what still renders for every contractor until one
+  // of them chooses otherwise, and they are NOT duplicated into the database —
+  // the columns are added NULL and never backfilled, so "this contractor chose
+  // this" stays distinguishable from "nobody has looked at it".
+  //
+  // ⚠ escapeHtml ON THE STORED HALF ONLY. The defaults are literals in this
+  // file and contain no markup; the overrides are free text an admin typed into
+  // a form and land inside <h3>/<p>, so they are escaped exactly as companyName
+  // already is. Escaping the literals too would be harmless but would hide which
+  // half is untrusted.
+  //
+  // ⚠ THE `??` READS A RESOLVER FIELD THAT IS ALREADY null FOR '' AND WHITESPACE
+  // — firstNonEmpty does that collapsing — so a cleared field returns the default
+  // rather than shipping a blank step. Do not "simplify" this to `||`: it would
+  // behave identically today and would silently start shipping blank steps the
+  // moment the resolver stopped collapsing empties.
+  //
+  // ⚠ STEP 1'S BODY IS NOT HERE AND IS NOT OVERRIDABLE. It is assembled from the
+  // company name. Neither are the headline or the subhead — see A32's "what
+  // remains frozen", and the subhead in particular is the only place the company
+  // name appears in the hero.
+  const step1Title = theme.landingStep1Title ? escapeHtml(theme.landingStep1Title) : 'Share your personal link';
+  const step2Title = theme.landingStep2Title ? escapeHtml(theme.landingStep2Title) : 'They book a free inspection';
+  const step2Body  = theme.landingStep2Body  ? escapeHtml(theme.landingStep2Body)  : 'We take care of them like family';
+  const step3Title = theme.landingStep3Title ? escapeHtml(theme.landingStep3Title) : 'You earn cash rewards';
+  const step3Body  = theme.landingStep3Body  ? escapeHtml(theme.landingStep3Body)  : 'Get paid when their job completes';
+
+
   return `<section class="state state-1 is-active" id="state-1">
   <div class="stagger">
     <div class="hero">
@@ -910,14 +940,14 @@ function renderState1(theme) {
     </div>
     <ol class="steps">
       <li class="step"><div class="step-num">1</div><div>
-        <h3>Share your personal link</h3>
+        <h3>${step1Title}</h3>
         <p>Tell friends and neighbors about ${company}</p></div></li>
       <li class="step"><div class="step-num">2</div><div>
-        <h3>They book a free inspection</h3>
-        <p>We take care of them like family</p></div></li>
+        <h3>${step2Title}</h3>
+        <p>${step2Body}</p></div></li>
       <li class="step"><div class="step-num">3</div><div>
-        <h3>You earn cash rewards</h3>
-        <p>Get paid when their job completes</p></div></li>
+        <h3>${step3Title}</h3>
+        <p>${step3Body}</p></div></li>
     </ol>
     <div class="card">
       <h2>Create your account</h2>
@@ -1472,4 +1502,4 @@ module.exports.safeWebsiteUrl = safeWebsiteUrl;
 // Exported under `__test__` rather than as a bare name so it reads as a seam
 // rather than as part of this module's interface — nothing in production calls
 // it from outside this file.
-module.exports.__test__ = { renderFooter };
+module.exports.__test__ = { renderFooter, renderState1 };

@@ -871,14 +871,18 @@ the search you used.**
 LP §2 marks its copy final and requires a spec amendment to change it. This is that amendment; it
 is written into `LANDING_PAGE_SPEC.md` §2 in place as well, so neither document is the sole record.
 
-⚠ **STATUS — (b) IS SHIPPED; (a) IS RULED AND NOT YET BUILT.** The social row landed with
-this amendment. The five overridable columns did **not**: adding them is a schema change, and the
-Backblaze backup that a DB-touching change owes could not be taken from the build environment —
-**the B2 credentials live only in Railway env vars**, so neither running nor verifying a backup is
-possible from there. The amendment is written first because that is the order this procedure
-requires, **not because the columns exist.** Until they do, all five strings render their frozen
-default and nothing in the product reads a stored value. **Do not cite (a) as evidence the columns
-are live.**
+✅ **STATUS — BOTH HALVES SHIPPED.** (b), the social row, landed with the amendment itself.
+(a), the five overridable columns, landed in the follow-up commit once the Backblaze backup was
+run and confirmed — it is a schema change and the backup could not be taken from the build
+environment, because the B2 credentials live only in Railway env vars.
+
+⚠ **THIS MARKER READ "(a) IS RULED AND NOT YET BUILT" AND IS FLIPPED DELIBERATELY RATHER THAN
+LEFT TO AGE.** A status marker that goes stale in the *shipped* direction is the same defect as one
+that goes stale in the *deferred* direction — it is a mechanism reporting a state it can no longer
+observe, and this repo has found that shape repeatedly (the Admin Brand Retirement entry that read
+"IN PROGRESS" for thirty commits after the arc closed). The columns are live: `landing_step1_title`,
+`landing_step2_title`, `landing_step2_body`, `landing_step3_title`, `landing_step3_body` on
+`contractor_settings`, all nullable TEXT, no column default, **never backfilled.**
 
 ### (a) The step copy becomes OVERRIDABLE — ⚠ THE COPY ITSELF DOES NOT CHANGE
 

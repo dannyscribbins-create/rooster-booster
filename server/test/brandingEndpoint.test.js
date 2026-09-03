@@ -292,6 +292,23 @@ describe('C/DL-3b Phase 1 Step 2 — GET /api/branding/:slug', () => {
       'primaryColor', 'secondaryColor', 'accentColor', 'backgroundColor',
       'logoUrl', 'phone', 'email', 'address', 'website',
       'reviewUrl', 'reviewButtonText', 'reviewMessage',
+      // ⚠ ADDED IN BR-2 PHASE 2 (A32(a)) — LP §2's overridable step copy. The
+      // sweep is UNWEAKENED: still an exact allowlist, still failing on any key
+      // nobody added deliberately. Five names were added to it.
+      //
+      // THEY BELONG ON THIS ENDPOINT because they are the copy rendered on the
+      // PUBLIC landing page for this very slug, by this very loader. Nothing
+      // here is newly disclosed: a visitor reads these strings on the page.
+      //
+      // ⚠ AND NOTE WHY THE SOCIALS DID NOT TRIP THIS FENCE IN PHASE 1 — it is
+      // not that they were exempt. `socials` is OMITTED when nothing is set, and
+      // these fixtures set none, so the key never appeared. These five are
+      // always-present nulls, so they surface immediately. A fence that only
+      // fires on always-present keys is weaker than it looks, and that is worth
+      // knowing before trusting it to catch the next addition.
+      'landingStep1Title', 'landingStep2Title', 'landingStep2Body',
+      'landingStep3Title', 'landingStep3Body',
+      'socials',
     ]);
 
     for (const slug of [SLUG_A, SLUG_B, SLUG_UNKNOWN, SLUG_RESERVED]) {

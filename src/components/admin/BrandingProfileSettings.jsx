@@ -219,6 +219,8 @@ const EMPTY_FORM = {
   review_url: '', review_button_text: '', review_message: '',
   font_heading: 'Montserrat', font_body: 'Roboto',
   app_display_name: '', tagline: '',
+  landing_step1_title: '', landing_step2_title: '', landing_step2_body: '',
+  landing_step3_title: '', landing_step3_body: '',
   email_sender_name: '', email_footer_text: '',
 };
 
@@ -307,6 +309,11 @@ export default function BrandingProfileSettings() {
           font_body:          settings.font_body          || 'Roboto',
           app_display_name:   settings.app_display_name   || '',
           tagline:            settings.tagline            || '',
+          landing_step1_title: settings.landing_step1_title || '',
+          landing_step2_title: settings.landing_step2_title || '',
+          landing_step2_body:  settings.landing_step2_body  || '',
+          landing_step3_title: settings.landing_step3_title || '',
+          landing_step3_body:  settings.landing_step3_body  || '',
           email_sender_name:  settings.email_sender_name  || '',
           email_footer_text:  settings.email_footer_text  || '',
         });
@@ -867,6 +874,31 @@ export default function BrandingProfileSettings() {
           <div>
             <SettingsInput label="Tagline" value={formData.tagline} onChange={v => handleChange('tagline', v)} placeholder="Refer your neighbors. Earn cash rewards." multiline rows={2} />
             <HelperText>Shown on the referrer login screen and dashboard</HelperText>
+          </div>
+
+          {/* ── LP §2's how-it-works steps (BR-2 Phase 2, A32(a)) ──────────────
+              ⚠ ADDED TO THE EXISTING CARD, NOT A NEW ONE. The rename and the
+              regrouping of this section are Phase 3; putting these five in their
+              own card now would be a redesign this phase did not rule.
+              ⚠ EACH PLACEHOLDER IS THE FROZEN DEFAULT, so a contractor sees what
+              they are replacing rather than an empty box with no clue what it
+              drives. Leaving a field blank keeps the default — the column stores
+              NULL, and NULL means "use the frozen default". */}
+          <div>
+            <SettingsInput label="Landing Step 1 — Title" value={formData.landing_step1_title} onChange={v => handleChange('landing_step1_title', v)} placeholder="Share your personal link" />
+          </div>
+          <div>
+            <SettingsInput label="Landing Step 2 — Title" value={formData.landing_step2_title} onChange={v => handleChange('landing_step2_title', v)} placeholder="They book a free inspection" />
+          </div>
+          <div>
+            <SettingsInput label="Landing Step 2 — Description" value={formData.landing_step2_body} onChange={v => handleChange('landing_step2_body', v)} placeholder="We take care of them like family" />
+          </div>
+          <div>
+            <SettingsInput label="Landing Step 3 — Title" value={formData.landing_step3_title} onChange={v => handleChange('landing_step3_title', v)} placeholder="You earn cash rewards" />
+          </div>
+          <div>
+            <SettingsInput label="Landing Step 3 — Description" value={formData.landing_step3_body} onChange={v => handleChange('landing_step3_body', v)} placeholder="Get paid when their job completes" />
+            <HelperText>The three how-it-works steps on your public landing page. Leave any field blank to keep the default shown in grey.</HelperText>
           </div>
         </div>
       </div>

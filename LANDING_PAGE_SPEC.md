@@ -93,9 +93,10 @@ Shown when: token unknown/expired/revoked, subdomain slug unrecognized, or token
   > there would let a contractor delete their own name from their own page.
   >
   >
-  > ⚠ **STATUS: RULED, NOT YET BUILT.** The backing columns are a schema change and the
-  > backup a DB-touching change owes could not be taken from the build environment. **Every
-  > string above still renders its frozen default and nothing reads a stored value yet.**
+  > ✅ **STATUS: SHIPPED.** The five backing columns are live on `contractor_settings` —
+  > nullable TEXT, no column default, never backfilled — and `renderState1` reads
+  > `stored ?? frozen default` per string. **Every string above is still what renders for a
+  > contractor who has set nothing**, which is all of them until one chooses otherwise.
   >
   > Recorded in full as `DECISION_C_DL_BUILD_SPEC.md` §21, A32.
 - Signup card "Create your account": First name · Last name · Email · Create a PIN (4-digit, numeric keypad, masked; helper text "4 digits, numbers only").

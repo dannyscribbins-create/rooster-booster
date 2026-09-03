@@ -157,6 +157,23 @@ const POPULATED_EXPECTED = Object.freeze({
   reviewUrl:        'https://g.page/r/alpha/review',
   reviewButtonText: 'Rate Alpha',
   reviewMessage:    'How did Alpha do?',
+  // ⚠ ADDED IN BR-2 PHASE 2 (A32(a)), on the same precedent and in the same
+  // order: the mirror drift guard and the per-string fallback tests
+  // (server/test/landingStepCopy.test.js, 20 cases) were written, run RED and
+  // guard-proofed BEFORE this fence was touched. Updating the fence first would
+  // have taught it the new shape and the proof would then have been run against
+  // a table edited to fit.
+  //
+  // ⚠ null, NOT THE FROZEN DEFAULT STRINGS, and that is the design rather than
+  // the fixture being lazy: POPULATED sets no landing_step_* column, and NULL is
+  // what "use the frozen default" means. If these ever resolve to the default
+  // TEXT, the resolver has started inventing copy and the chose-it/never-touched-it
+  // distinction is gone.
+  landingStep1Title: null,
+  landingStep2Title: null,
+  landingStep2Body:  null,
+  landingStep3Title: null,
+  landingStep3Body:  null,
 });
 
 describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {

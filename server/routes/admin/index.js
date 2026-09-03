@@ -664,6 +664,8 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
               social_facebook, social_instagram, social_google, social_nextdoor, social_website,
               review_url, review_button_text, review_message,
               font_heading, font_body, app_display_name, tagline,
+              landing_step1_title, landing_step2_title, landing_step2_body,
+              landing_step3_title, landing_step3_body,
               email_sender_name, email_footer_text, created_at, updated_at
        FROM contractor_settings WHERE contractor_id = $1 LIMIT 1`,
       [contractorId]
@@ -718,6 +720,13 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
         font_heading: 'Montserrat',
         font_body: 'Roboto',
         app_display_name: null,
+        // ⚠ NULL, NOT THE FROZEN DEFAULTS. This branch answers for a contractor
+        // with no settings row at all, and seeding the platform's copy here would
+        // be a backfill through the API — the admin form would load it, the
+        // contractor would save, and they would be recorded as having authored
+        // copy they never wrote.
+        landing_step1_title: null, landing_step2_title: null, landing_step2_body: null,
+        landing_step3_title: null, landing_step3_body: null,
         tagline: 'Refer your neighbors. Earn cash rewards.',
         email_sender_name: null,
         email_footer_text: null,
@@ -748,6 +757,11 @@ const SETTINGS_WRITABLE_COLUMNS = Object.freeze([
   'social_facebook', 'social_instagram', 'social_google', 'social_nextdoor', 'social_website',
   'review_url', 'review_button_text', 'review_message',
   'font_heading', 'font_body', 'app_display_name', 'tagline',
+  // LP §2's overridable step copy (BR-2 Phase 2, A32(a)). NULL/'' means
+  // "use the frozen default" — renderState1 holds the defaults, and these are
+  // never backfilled.
+  'landing_step1_title', 'landing_step2_title', 'landing_step2_body',
+  'landing_step3_title', 'landing_step3_body',
   'email_sender_name', 'email_footer_text',
   'landing_bg_color',
 ]);
