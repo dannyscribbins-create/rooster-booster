@@ -25,6 +25,8 @@ All brand-dependent values shown as `{tokens}` resolve from theme variables (§5
 > **AMENDED — A11.** "Copy is final as written" **no longer holds for State 1's signup field list**, which A11 replaces outright. It continues to hold for every other string in this section: headlines, subheads, how-it-works steps, the skip disclosure, and State 0/2/3 copy are all still final and still require an amendment to change.
 >
 > **AMENDED AGAIN — A21.** **State 0's copy is likewise replaced**, by the amendment written into that subsection below. The marker still holds for States 1/2/3 and for every other string here — and A21 is what it looks like when it is honoured rather than ignored.
+>
+> **AMENDED A THIRD TIME — A32.** **State 1's three how-it-works STEPS become OVERRIDABLE** by the amendment written into that subsection below. ⚠ **THE COPY ITSELF IS UNCHANGED AND IS NOT VOID.** Every string keeps its exact wording as the **frozen default**; what changes is that a contractor may replace it. A reader who sees a third amendment to this marker must not conclude the page has opened up: the marker still holds, unchanged and requiring an amendment, for **the headline, the subhead, Step 1's body, the signup card, the skip disclosure, and States 0/2/3 in full.**
 
 ### State 0 — Invalid (new; not in mockup)
 Shown when: token unknown/expired/revoked, subdomain slug unrecognized, or token↔subdomain mismatch (§6.4).
@@ -69,6 +71,33 @@ Shown when: token unknown/expired/revoked, subdomain slug unrecognized, or token
   1. **Share your personal link** — "Tell friends and neighbors about {Company Name}"
   2. **They book a free inspection** — "We take care of them like family"
   3. **You earn cash rewards** — "Get paid when their job completes"
+
+  > **AMENDED — A32. THE THREE STEPS ABOVE ARE NOT VOID — THEY ARE NOW DEFAULTS.** Five of the six
+  > strings become contractor-overridable through the Branding page; the sixth, Step 1's body, is
+  > already assembled from stored data and is untouched. **The wording above is what still renders
+  > for every contractor, verbatim, until one of them chooses otherwise.** Original text preserved
+  > and unstruck, deliberately: nothing here was retired.
+  >
+  > **Why, and two of the five are a different problem from the other three.** Three are merely
+  > generic. **"We take care of them like family" is one contractor's VOICE on every contractor's
+  > page**, and **"They book a free inspection" is a FACTUAL CLAIM about a business** — a contractor
+  > who does not offer free inspections ships a page telling homeowners that they do.
+  >
+  > **NULL means default.** The backing columns are added NULL and are never backfilled, so "the
+  > contractor chose this" stays distinguishable from "nobody has looked at it". **Empty string is
+  > ABSENT**, not a deliberate blank — a cleared field returns the default rather than shipping an
+  > empty step.
+  >
+  > ⚠ **THE SUBHEAD IS NOT IN THIS AMENDMENT AND IS NOT BECOMING OVERRIDABLE.** The `<h1>` uses the
+  > PROGRAM name, so the subhead is the only place the COMPANY name appears in the hero. Free text
+  > there would let a contractor delete their own name from their own page.
+  >
+  >
+  > ⚠ **STATUS: RULED, NOT YET BUILT.** The backing columns are a schema change and the
+  > backup a DB-touching change owes could not be taken from the build environment. **Every
+  > string above still renders its frozen default and nothing reads a stored value yet.**
+  >
+  > Recorded in full as `DECISION_C_DL_BUILD_SPEC.md` §21, A32.
 - Signup card "Create your account": First name · Last name · Email · Create a PIN (4-digit, numeric keypad, masked; helper text "4 digits, numbers only").
 
   > **AMENDED — A11. This field list is VOID.** The live `POST /api/signup` requires **phone** and rejects any credential under **6 characters**, so the list above would be refused at the door on every submission — a 4-digit PIN cannot be created through this endpoint.
@@ -79,6 +108,23 @@ Shown when: token unknown/expired/revoked, subdomain slug unrecognized, or token
 - Primary CTA: **"Create my account"** (full-width, `--brand-primary`).
 - Secondary link: **"Skip — just get the app"** with microcopy beneath: "We'll copy your referral code so the app can connect you automatically." (Exact DL-5 disclosure #1 wording — binding.)
 - Footer: contact card (§LP-1) · divider · "Powered by **RoofMiles**" — the word RoofMiles in `#F26A1B` in EVERY theme (hardcoded exception, deliberate) · Privacy · Terms links.
+
+  > **AMENDED — A32(b). A SOCIAL ICON ROW IS ADDED TO THE FOOTER.** This document has had **no
+  > opinion on social links** until now; this is the first, and it is **layout rather than copy**,
+  > so §2's copy freeze is not what governs it. The row sits beside the existing contact rows and
+  > is gated the same way they are: **each link only if its data resolves, and NO container, row or
+  > divider at all if none do** — the group-level form of the rule LP-1 already applies per field.
+  >
+  > **Five links, in a fixed order:** Facebook · Instagram · Google Business · Nextdoor · Website,
+  > from `contractor_settings.social_*`. Empty string, NULL and whitespace all count as absent —
+  > the realistic state of a touched-then-cleared field, measured on the production contractor in
+  > BR-2 Phase 1, where two of five are stored as EMPTY STRING.
+  >
+  > The predicate is **not restated here or in the renderer**: it is the collector the branding
+  > resolver gained in BR-2 Phase 1, so "which links are populated" has one answer across the
+  > landing page, the About Us popup and the campaign email footer.
+  >
+  > Recorded in full as `DECISION_C_DL_BUILD_SPEC.md` §21, A32.
 
 ### State 2 — Email Verification
 - Same header/branding (chip persists if present).

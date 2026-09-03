@@ -253,6 +253,22 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
                   Reviews help other homeowners make a confident decision — and they mean a lot to the team.
                 </div>
+                {/* ⚠ NO DESTINATION, NO BUTTON (BR-2 Phase 2, R2). This rendered
+                    unconditionally, and with no review URL `handleLeaveReview`
+                    took its else branch and silently advanced the slide — a
+                    button that looks like it does one thing and does another.
+                    ⚠ `reviewUrl` DERIVES (`review_url || built from
+                    google_place_id`), so this is only falsy for a contractor
+                    with NEITHER. A check against review_url alone would still
+                    hide the button from contractors who have a working Place ID.
+                    ⚠ THE SLIDE STILL RENDERS AND STILL ADVANCES — "Skip for now"
+                    below calls setSlide(3) directly, which is what makes hiding
+                    this safe. Confirmed before the change, because if this had
+                    been the only way forward, removing it would strand the user
+                    on a slide with no exit — worse than the dead end it fixes.
+                    MINIMAL BY RULING: the sequence is untouched and the full
+                    treatment belongs to the Referral Conversion Engine. */}
+                {branding.reviewUrl && (
                 <button
                   onClick={handleLeaveReview}
                   disabled={hasLeftForReview}
@@ -270,6 +286,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 >
                   {hasLeftForReview ? 'Waiting for your return…' : 'Leave a Google Review'}
                 </button>
+                )}
                 <div style={{ textAlign: 'center' }}>
                   <button
                     onClick={() => setSlide(3)}

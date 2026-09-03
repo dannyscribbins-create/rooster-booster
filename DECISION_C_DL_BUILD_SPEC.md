@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v1.8 — amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
+**Status:** LOCKED v2.0 — amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RESERVED by the RAD migration arc and is deliberately skipped here** — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -853,3 +853,83 @@ design reference for a control it must ship.
 TAKES ITS SLOT.** The binding anchor is **directly ABOVE Sign out**, which ships regardless.
 *"Below Security"* and *"above Sign out"* name the **same position** whenever Security is present;
 only the latter survives Security's absence. **3-C rules on Security; A30 does not wait on it.**
+
+---
+
+## 21. Amendments — v2.0, 2026-09-03 (BR-2 Phase 2: the step copy becomes overridable, and a social row)
+
+⚠ **NUMBERED A32, NOT A31, AND THE SKIP IS DELIBERATE.** `A31` / `§20` / `v1.9` is **reserved by
+the RAD migration arc** for its pin amendment (`RAD_MIGRATION_PHASE0_REPORT.md`). That report
+verified A31 free with `git grep` over **tracked** files — and the report is itself **untracked**,
+so a tracked-only search cannot see the reservation it makes. A32 was confirmed free by both a
+`git grep` and a working-tree grep; the only `git grep` hit was the hex colour `#A32D2D`, which is
+precisely why a bare substring search is not the check. **This is the A23 lesson applied twice: a
+number can be claimed by a forward reference, and the file making the claim may be invisible to
+the search you used.**
+
+**A32 — LP §2's STEP COPY BECOMES OVERRIDABLE, AND A SOCIAL ICON ROW IS ADDED TO THE FOOTER.**
+LP §2 marks its copy final and requires a spec amendment to change it. This is that amendment; it
+is written into `LANDING_PAGE_SPEC.md` §2 in place as well, so neither document is the sole record.
+
+⚠ **STATUS — (b) IS SHIPPED; (a) IS RULED AND NOT YET BUILT.** The social row landed with
+this amendment. The five overridable columns did **not**: adding them is a schema change, and the
+Backblaze backup that a DB-touching change owes could not be taken from the build environment —
+**the B2 credentials live only in Railway env vars**, so neither running nor verifying a backup is
+possible from there. The amendment is written first because that is the order this procedure
+requires, **not because the columns exist.** Until they do, all five strings render their frozen
+default and nothing in the product reads a stored value. **Do not cite (a) as evidence the columns
+are live.**
+
+### (a) The step copy becomes OVERRIDABLE — ⚠ THE COPY ITSELF DOES NOT CHANGE
+
+⚠ **NOTHING BELOW IS VOIDED, AND A READER WHO SEES "THE COPY FREEZE WAS AMENDED" MUST NOT
+CONCLUDE THE COPY WAS REWRITTEN.** Every string keeps its exact current wording as the **frozen
+default**, verbatim, and that is what renders for every contractor today and for every contractor
+who never touches the new fields. What this amendment changes is **who may replace it** — not what
+it says.
+
+**The five strings that become overridable:**
+
+| Slot | Frozen default (unchanged) |
+|---|---|
+| Step 1 title | "Share your personal link" |
+| Step 2 title | "They book a free inspection" |
+| Step 2 body | "We take care of them like family" |
+| Step 3 title | "You earn cash rewards" |
+| Step 3 body | "Get paid when their job completes" |
+
+**WHY, AND TWO OF THE FIVE ARE A DIFFERENT PROBLEM FROM THE OTHER THREE.** Three are merely
+generic. **"We take care of them like family" is one contractor's VOICE on every contractor's
+page**, and **"They book a free inspection" is a FACTUAL CLAIM ABOUT A BUSINESS** — a contractor
+who does not offer free inspections ships a landing page telling homeowners that they do. That is
+not a tone problem; it is the page asserting something untrue on the contractor's behalf.
+
+**NULL MEANS DEFAULT. The columns are added NULL and are NOT backfilled**, and the distinction is
+load-bearing: a NULL column means *"use the frozen default"*, a populated one means *"the
+contractor chose this."* Backfilling the defaults into rows would erase that difference and make
+every contractor look like they authored the platform's copy — after which nobody can tell which
+strings were ever reviewed. **Empty string is treated as ABSENT, not as a deliberate blank**: a
+cleared field returns the default rather than shipping an empty step, which is the state a
+touched-then-cleared field actually reaches (measured on the socials in BR-2 Phase 1).
+
+### (b) A social icon row is added to `renderFooter` — layout, not copy
+
+`LANDING_PAGE_SPEC.md` has **no opinion on social links today**; this is the first. The row renders
+beside the existing contact rows and is gated the same way they are — **each link only if its data
+resolves, and no container at all if none do.** It reuses the collector added to the branding
+resolver in BR-2 Phase 1 rather than restating the predicate, so "which links are populated" has
+one answer across the landing page, the About Us popup and the campaign email footer.
+
+### ⚠ WHAT REMAINS FROZEN, STATED SO THE AMENDMENT CANNOT BE READ AS OPENING THE PAGE
+
+- **The hero headline** — "Join the {Program Name} rewards program". Unchanged, not overridable.
+- **The subhead** — "Earn cash for referring friends and neighbors to {Company}". Unchanged, not
+  overridable, and **deliberately so**: the `<h1>` uses the PROGRAM name, so the subhead is the
+  only place the COMPANY name appears in the hero. Making it free text would let a contractor
+  delete their own name from their own landing page. Ruled: leave it.
+- **Step 1's body** — "Tell friends and neighbors about {Company}". Already assembled from stored
+  data, already correct, and not part of this change.
+- **Every other string in LP §2**, and States 0, 2 and 3 in full.
+
+**Three of the six step strings therefore stay frozen and two of the three hero strings do**; this
+amendment reaches five strings and one new row, and nothing else on the page.

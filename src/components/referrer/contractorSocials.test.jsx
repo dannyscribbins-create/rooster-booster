@@ -19,10 +19,11 @@
 // container's absence is asserted and not merely the links'.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 import { ThemeContext } from '../shared/ThemeProvider';
 import ContractorAboutModal from './ContractorAboutModal';
+import ExperiencePopup from './ExperiencePopup';
 
 // ⚠ THE FIXTURE MIXES EMPTY STRING, NULL AND WHITESPACE, deliberately. Three set
 // and two absent, matching production exactly.
@@ -145,5 +146,88 @@ describe('BR-2 S1 — the About Us popup carries the contractor\'s socials', () 
       expect(a.getAttribute('rel')).toMatch(/noreferrer/);
       expect(a.getAttribute('aria-label'), 'an icon-only link with no accessible name').toBeTruthy();
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('BR-2 Phase 2 (R2) — ExperiencePopup does not offer a review with nowhere to go', () => {
+
+  // THE DEFECT. Slide 1's positive path renders "Leave a Google Review"
+  // unconditionally. With no review destination the handler takes its else
+  // branch and silently advances — a button that looks like it does one thing
+  // and does another. BR-2 Phase 1 found it and left it for a ruling because
+  // hiding it looked like a flow change.
+  //
+  // ⚠ IT IS NOT A FLOW CHANGE, AND THAT WAS CONFIRMED BEFORE TOUCHING ANYTHING
+  // (D.3). The slide carries a SECOND affordance — "Skip for now", which calls
+  // setSlide(3) directly — so removing the review button leaves a way forward.
+  // Had it been the only one, hiding it would strand the user, which is worse
+  // than the dead end it replaces.
+  //
+  // ⚠ MINIMAL FIX ONLY: the button goes, the slide stays, the sequence is
+  // untouched. The full treatment belongs to the Referral Conversion Engine.
+  //
+  // ⚠ reviewUrl DERIVES — `review_url || built from google_place_id` — so
+  // "absent" means BOTH are absent. Phase 1 hit exactly this: a fixture clearing
+  // only review_url still resolves a URL for any contractor with a Place ID, and
+  // would drive the PRESENT branch while claiming to test the absent one.
+  const NO_DESTINATION = Object.freeze(resolveBrandingTheme({
+    contractor_name: 'Reviewless Roofing',
+    review_url: '',          // empty string, the production shape
+    google_place_id: null,   // and no derivation source either
+  }));
+
+  const HAS_DESTINATION = Object.freeze(resolveBrandingTheme({
+    contractor_name: 'Reviewless Roofing',
+    review_url: 'https://g.page/r/review-target',
+  }));
+
+  function mountPopup(branding) {
+    if (!branding || typeof branding !== 'object') {
+      throw new Error('mountPopup(): branding must be a resolveBrandingTheme payload');
+    }
+    return render(
+      <ThemeContext.Provider value={{ mode: 'light', branding, source: 'session', setMode: () => {} }}>
+        <ExperiencePopup prompt={{ id: 1, referred_name: 'Sam Homeowner' }} onDismiss={() => {}} />
+      </ThemeContext.Provider>
+    );
+  }
+
+  const reviewButton = () =>
+    [...document.querySelectorAll('button')].find(b => /Leave a Google Review/i.test(b.textContent));
+  const skipButton = () =>
+    [...document.querySelectorAll('button')].find(b => /Skip for now/i.test(b.textContent));
+
+  it('[RED] T7 — no review destination → the SLIDE renders, the BUTTON does not', () => {
+    expect(NO_DESTINATION.reviewUrl, 'fixture precondition: nothing to link to').toBeNull();
+    mountPopup(NO_DESTINATION);
+
+    // Reach slide 1's positive path the way a user does.
+    // ⚠ ANCHOR ON THE FULL LABEL, NOT /Great/i — the intro copy also contains
+    // "great work", so the loose needle matches two nodes and throws. The
+    // substring trap this repo records, in a query rather than an assertion.
+    fireEvent.click(screen.getByText('Great experience').closest('button'));
+
+    // POSITIVE: the slide is there — its copy still renders.
+    expect(screen.getByText(/Mind sharing your experience/i)).toBeTruthy();
+    // NEGATIVE: the button with nowhere to go is gone.
+    expect(reviewButton(), 'a review button rendered with no destination behind it').toBeUndefined();
+    // ⚠ AND THE WAY FORWARD SURVIVES (D.3). Without this, hiding the button
+    // would strand the user on a slide with no exit — worse than the dead end.
+    expect(skipButton(), 'the slide has no way forward').toBeTruthy();
+  });
+
+  it('[RED] T8 — a review destination present → the button renders', () => {
+    // The predicate proof: a popup that never rendered the button would satisfy
+    // T7 completely.
+    expect(HAS_DESTINATION.reviewUrl).toBe('https://g.page/r/review-target');
+    mountPopup(HAS_DESTINATION);
+    // ⚠ ANCHOR ON THE FULL LABEL, NOT /Great/i — the intro copy also contains
+    // "great work", so the loose needle matches two nodes and throws. The
+    // substring trap this repo records, in a query rather than an assertion.
+    fireEvent.click(screen.getByText('Great experience').closest('button'));
+
+    expect(screen.getByText(/Mind sharing your experience/i)).toBeTruthy();
+    expect(reviewButton(), 'the review button is missing where a destination exists').toBeTruthy();
   });
 });

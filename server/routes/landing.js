@@ -193,6 +193,19 @@ const ICON_PATHS = {
   envelope: 'M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48Zm-96,85.15L52.57,64H203.43ZM98.71,128,40,181.81V74.19Zm11.84,10.85,12,11.05a8,8,0,0,0,10.82,0l12-11.05,58,53.15H52.57ZM157.29,128,216,74.18V181.82Z',
   phone: 'M222.37,158.46l-47.11-21.11-.13-.06a16,16,0,0,0-15.17,1.4,8.12,8.12,0,0,0-.75.56L134.87,160c-15.42-7.49-31.34-23.29-38.83-38.51l20.78-24.71c.2-.25.39-.5.57-.77a16,16,0,0,0,1.32-15.06l0-.12L97.54,33.64a16,16,0,0,0-16.62-9.52A56.26,56.26,0,0,0,32,80c0,79.4,64.6,144,144,144a56.26,56.26,0,0,0,55.88-48.92A16,16,0,0,0,222.37,158.46ZM176,208A128.14,128.14,0,0,1,48,80,40.2,40.2,0,0,1,82.87,40a.61.61,0,0,0,0,.12l21,47L83.2,111.86a6.13,6.13,0,0,0-.57.77,16,16,0,0,0-1,15.7c9.06,18.53,27.73,37.06,46.46,46.11a16,16,0,0,0,15.75-1.14,8.44,8.44,0,0,0,.74-.56L168.89,152l47,21.05h0s.08,0,.11,0A40.21,40.21,0,0,1,176,208Z',
   mapPin: 'M128,64a40,40,0,1,0,40,40A40,40,0,0,0,128,64Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,128,128Zm0-112a88.1,88.1,0,0,0-88,88c0,31.4,14.51,64.68,42,96.25a254.19,254.19,0,0,0,41.45,38.3,8,8,0,0,0,9.18,0A254.19,254.19,0,0,0,174,200.25c27.45-31.57,42-64.85,42-96.25A88.1,88.1,0,0,0,128,16Zm0,206c-16.53-13-72-60.75-72-118a72,72,0,0,1,144,0C200,161.23,144.53,209,128,222Z',
+  // ── SOCIAL GLYPHS (BR-2 Phase 2, A32(b)) ─────────────────────────────────
+  // Lifted from the INSTALLED @phosphor-icons/react package's regular weight —
+  // the same source the React side renders, so the two surfaces cannot drift to
+  // different artwork. No new dependency, and no hand-drawn paths.
+  // ⚠ NEXTDOOR HAS NO PHOSPHOR GLYPH. `house` is the stand-in this codebase had
+  // ALREADY chosen — the admin editor labels that field with ph-house-line — so
+  // reusing it keeps one answer rather than inventing a second. It is a generic
+  // house, so the accessible name carries the word Nextdoor and the icon is
+  // never asked to say it alone.
+  facebook: 'M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm8,191.63V152h24a8,8,0,0,0,0-16H136V112a16,16,0,0,1,16-16h16a8,8,0,0,0,0-16H152a32,32,0,0,0-32,32v24H96a8,8,0,0,0,0,16h24v63.63a88,88,0,1,1,16,0Z',
+  instagram: 'M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160ZM176,24H80A56.06,56.06,0,0,0,24,80v96a56.06,56.06,0,0,0,56,56h96a56.06,56.06,0,0,0,56-56V80A56.06,56.06,0,0,0,176,24Zm40,152a40,40,0,0,1-40,40H80a40,40,0,0,1-40-40V80A40,40,0,0,1,80,40h96a40,40,0,0,1,40,40ZM192,76a12,12,0,1,1-12-12A12,12,0,0,1,192,76Z',
+  google: 'M224,128a96,96,0,1,1-21.95-61.09,8,8,0,1,1-12.33,10.18A80,80,0,1,0,207.6,136H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128Z',
+  house: 'M219.31,108.68l-80-80a16,16,0,0,0-22.62,0l-80,80A15.87,15.87,0,0,0,32,120v96a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V160h32v56a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V120A15.87,15.87,0,0,0,219.31,108.68ZM208,208H160V152a8,8,0,0,0-8-8H104a8,8,0,0,0-8,8v56H48V120l80-80,80,80Z',
   check: 'M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z',
   globe: 'M128,24h0A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm88,104a87.61,87.61,0,0,1-3.33,24H174.16a157.44,157.44,0,0,0,0-48h38.51A87.61,87.61,0,0,1,216,128ZM102,168H154a115.11,115.11,0,0,1-26,45A115.27,115.27,0,0,1,102,168Zm-3.9-16a140.84,140.84,0,0,1,0-48h59.88a140.84,140.84,0,0,1,0,48ZM40,128a87.61,87.61,0,0,1,3.33-24H81.84a157.44,157.44,0,0,0,0,48H43.33A87.61,87.61,0,0,1,40,128ZM154,88H102a115.11,115.11,0,0,1,26-45A115.27,115.27,0,0,1,154,88Zm52.33,0H170.71a135.28,135.28,0,0,0-22.3-45.6A88.29,88.29,0,0,1,206.37,88ZM107.59,42.4A135.28,135.28,0,0,0,85.29,88H49.63A88.29,88.29,0,0,1,107.59,42.4ZM49.63,168H85.29a135.28,135.28,0,0,0,22.3,45.6A88.29,88.29,0,0,1,49.63,168Zm98.78,45.6a135.28,135.28,0,0,0,22.3-45.6h35.66A88.29,88.29,0,0,1,148.41,213.6Z',
 };
@@ -200,6 +213,14 @@ const ICON_PATHS = {
 // Renders one icon. aria-hidden throughout: every icon on this page sits beside
 // the text it decorates, so announcing it would repeat that text to a screen
 // reader rather than add to it.
+// Which ICON_PATHS entry each social key draws. Keyed on the resolver's own
+// `key` values so a new social added there fails loudly here (falling through to
+// the globe) rather than silently rendering nothing.
+const SOCIAL_ICON = {
+  facebook: 'facebook', instagram: 'instagram', google: 'google',
+  nextdoor: 'house',    website: 'globe',
+};
+
 function icon(name, cls, size) {
   return `<svg class="${cls}" width="${size}" height="${size}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false"><path d="${ICON_PATHS[name]}"></path></svg>`;
 }
@@ -515,6 +536,12 @@ p{margin:0;}
   background:#000;color:#fff;font-size:14px;font-weight:600;letter-spacing:.01em;}
 .foot{margin-top:34px;text-align:center;font-size:13px;}
 .contact{display:grid;gap:8px;justify-content:center;margin-bottom:16px;}
+/* The social row (A32(b)). Sits between the contact rows and the divider, so
+   an absent row collapses its own gap rather than leaving a hole above the
+   rule. Icons inherit currentColor from .foot, matching the contact icons. */
+.socials{display:flex;justify-content:center;gap:18px;margin-bottom:16px;}
+.socials a{display:inline-flex;opacity:.72;transition:opacity .16s ease;}
+.socials a:hover{opacity:1;}
 .contact a,.contact span{display:flex;align-items:center;gap:7px;justify-content:center;
   color:inherit;text-decoration:none;opacity:.78;}
 .divider{height:1px;background:currentColor;opacity:.12;margin:0 auto 15px;max-width:180px;}
@@ -626,8 +653,37 @@ function renderFooter(theme, { contactRows = true } = {}) {
     rows.push(`<span>${icon('mapPin', 'ico', 15)}${escapeHtml(theme.address)}</span>`);
   }
 
+  // ── SOCIAL ROW (BR-2 Phase 2, A32(b)) ──────────────────────────────────────
+  // ⚠ THE PREDICATE IS NOT RESTATED HERE. `theme.socials` is the collector the
+  // branding resolver gained in BR-2 Phase 1: it treats empty string, null and
+  // whitespace alike and OMITS the key entirely when nothing is set. So "which
+  // links are populated" has one answer across this page, the About Us popup and
+  // the campaign email footer, and a second copy cannot drift from the first.
+  //
+  // ⚠ GATED ON THE KEY'S PRESENCE, not on a length check — the same LP-1 form
+  // the contact rows above use. With nothing set the container, its links and
+  // its spacing are all absent rather than an empty div with a divider over it.
+  //
+  // safeWebsiteUrl RATHER THAN A TRUTHINESS CHECK, for the reason its own header
+  // gives: these are unconstrained VARCHAR(500) columns an admin pasted into, so
+  // a value that cannot become a safe https link must draw NO icon rather than a
+  // broken one. escapeHtml alone is not sufficient — nothing in `javascript:`
+  // needs escaping, so an escaped hostile scheme lands in href intact.
+  const socialLinks = (theme.socials || [])
+    // ⚠ safeWebsiteUrl RETURNS AN OBJECT `{href, label}`, NOT A STRING — the
+    // href is normalised while the label stays as typed. Taking the return
+    // value directly renders `href=""`, which is a link to the current page
+    // rather than a visible failure.
+    .map(s => ({ ...s, href: safeWebsiteUrl(s.url)?.href || null }))
+    .filter(s => s.href)
+    .map(s => `<a href="${escapeHtml(s.href)}" target="_blank" rel="noopener noreferrer" ` +
+               `aria-label="${escapeHtml(theme.companyName)} on ${escapeHtml(s.label)}">` +
+               `${icon(SOCIAL_ICON[s.key] || 'globe', 'ico', 18)}</a>`)
+    .join('');
+
   return `<footer class="foot">
   ${rows.length ? `<div class="contact">${rows.join('')}</div>` : ''}
+  ${socialLinks ? `<div class="socials">${socialLinks}</div>` : ''}
   <div class="divider"></div>
   <p class="powered">Powered by <b>RoofMiles</b></p>
   <p class="legal"><a href="#privacy">Privacy</a> &middot; <a href="#terms">Terms</a></p>
@@ -1410,3 +1466,10 @@ module.exports = router;
 // from a row that simply did not render. server/test/landingWebsiteUrl.test.js
 // exercises it directly.
 module.exports.safeWebsiteUrl = safeWebsiteUrl;
+
+// ── TEST SEAM ────────────────────────────────────────────────────────────────
+// renderFooter is exercised directly by server/test/landingSocialFooter.test.js.
+// Exported under `__test__` rather than as a bare name so it reads as a seam
+// rather than as part of this module's interface — nothing in production calls
+// it from outside this file.
+module.exports.__test__ = { renderFooter };
