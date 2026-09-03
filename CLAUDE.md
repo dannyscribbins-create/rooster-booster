@@ -243,8 +243,41 @@ For UI/UX work, read:
 - `.claude/skills/ux-designer/`
 - `.claude/skills/ui-ux-pro-max/`
 
-⚠ **THE PLATFORM BRAND IS ROOFMILES.** `#F26A1B` primary, `#1C2D4D` secondary, `#FDF0E7`
-background, `#FFFFFF` surface — `src/utils/brandingTheme.mjs`. This line used to read *"Brand
+⚠ **THE PLATFORM BRAND IS ROOFMILES, AND EVERY VALUE BELOW IS STATED WITH ITS ROLE. A BARE
+LIST OF HEXES IS WHAT LET THE ROLES DRIFT SILENTLY, TWICE.** The four platform defaults live
+in `BRANDING_THEME_DEFAULTS` (`src/utils/brandingTheme.mjs`, mirrored from the canonical
+`server/utils/brandingTheme.js`):
+
+| Stored brand input | Platform default | What a contractor means by it |
+|---|---|---|
+| `primaryColor` (`primary_color`) | `#1C2D4D` | their **PRIMARY BRAND COLOUR — the dark neutral**, the one on the trucks |
+| `secondaryColor` (`secondary_color`) | `#F26A1B` | their **ACTION colour** — buttons, links, anything tapped |
+| `accentColor` (`accent_color`) | `#FDF0E7` | **soft background washes** — progress tracks, avatar fills. A pale tint of the primary, by ruling |
+| `backgroundColor` (`landing_bg_color`) | `#FFFFFF` | the **landing page's own canvas** |
+
+⚠ **THESE ARE THE STORED INPUTS. THEY ARE NOT THE RENDER TOKENS, THEY DO NOT SHARE NAMES WITH
+THEM, AND CONFLATING THE TWO SETS CARRIED A20 WRONG FOR WEEKS.** `deriveThemeTokens()`
+(`src/utils/themeTokens.mjs`) computes the six `RENDER_TOKEN_KEYS` — `primary`, `secondary`,
+`bg`, `surface`, `text`, `onPrimary` — which mount as `--rm-primary`, `--rm-secondary`,
+`--rm-bg`, `--rm-surface`, `--rm-text`, `--rm-on-primary`. **The routing crosses over**, by
+B-1's ruling (2026-09-01): the render token `primary` (the button fill) comes from the stored
+**`secondaryColor`**, and the render token `secondary` comes from the stored
+**`primaryColor`**. `surface`, `text` and `onPrimary` are **computed under contrast floors and
+cannot be stored at all** — a contractor cannot set them, and a colour read off a mockup for
+either can never be reproduced. **`accentColor` has no render token whatsoever**; the
+server-rendered landing page emits its own `--brand-*` set from the stored hexes and never
+calls the derivation.
+
+⚠ **DO NOT "TIDY" THE CROSSOVER BY SWAPPING THE TOKEN NAMES BACK.** *"Primary"* names the
+contractor's primary BRAND colour, not the primary ACTION colour, and that is the reading
+every contractor already had — the mismatch is what produced a live page with a burgundy
+ground and a blue button. The render tokens did not move in B-1; only the routing into them
+did, which is why no component changed.
+
+⚠ **THIS IS THE SECOND CORRECTION TO THIS LINE, AND THE FIRST ONE IS WHY THE TABLE EXISTS.**
+The ABR spec's D-B already corrected it once, when it recorded one contractor's palette as the
+platform's. It was then wrong again from B-1 until 2026-09-03 — right hexes, wrong roles,
+because the values were listed and the roles were not. This line used to read *"Brand
 files at `G:\My Drive\Accent Roofing Service\app builder\accent roofing brand kit`"*, which
 pointed every UI/UX session at **one tenant's** brand kit as the platform's source of truth.
 That was the single-tenant era's assumption surviving inside the section named *Brand
@@ -311,9 +344,10 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1182 server tests across 186 suites, and 628 React tests across 41 files** (measured 2026-09-03 by BR-1 Phase 1-B, by running the gate; `npm test` exited 0). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE BR-1 PHASE 1-B COMMIT ITSELF — the child of `5a365e1` on `main` — AND THAT IS STATED RATHER THAN GUESSED.** The gate was run against 1-B's working tree, and the counts INCLUDE 1-B's own new tests, so citing the parent SHA would name a revision at which this figure was never true. **Do not "correct" it to `5a365e1`, and do not rewrite it to a later docs-only SHA either** — the previous entry's own warning applies unchanged: rewriting a measurement's HEAD to one it was not taken at makes the citation less true while looking tidier.
-  **The figures this line carried before, kept as the record of what it said rather than as live numbers:** 1160 / 183 / 557 / 40, measured 2026-09-01 at `a5dd574` (C/DL-3c Phase 3 Phase 0); and before that 1118 / 177 / 483 / 34, measured 2026-08-30 at `7252cc5` (Wave 1.1 close-out). ⚠ **A tripwire in this file has attracted a well-meaning edit twice**; one of them set it 171 tests below its own floor.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1234 server tests across 191 suites, and 654 React tests across 43 files** (measured 2026-09-03 by the BR arc close-out, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS `f7dfeed`, THE PARENT OF THE COMMIT RE-ARMING IT, AND THE REASONING IS THE OPPOSITE OF THE ENTRY BELOW RATHER THAN A CONTRADICTION OF IT.** This pass changed **only markdown** — no test file, no source file — so the working tree it was measured against differs from `f7dfeed` in nothing the gate can see, and 1234 / 191 / 654 / 43 is exactly what `f7dfeed`'s own commit body reported. **The figure is therefore true AT `f7dfeed`**, which is the test the rule below actually states: name the revision at which the figure is true. A docs-only commit that adds no tests is the one case where the parent is the honest citation, and saying so here is what stops the next reader "correcting" it back.
+  ⚠ **THE PREVIOUS ENTRY, AND ITS WARNING, WHICH STILL GOVERN THE ORDINARY CASE.** It read **1182 / 186 / 628 / 41**, measured 2026-09-03 by BR-1 Phase 1-B, and said: *"THE HEAD FOR THIS FIGURE IS THE BR-1 PHASE 1-B COMMIT ITSELF — the child of `5a365e1` on `main`. The gate was run against 1-B's working tree, and the counts INCLUDE 1-B's own new tests, so citing the parent SHA would name a revision at which this figure was never true. Do not 'correct' it to `5a365e1`, and do not rewrite it to a later docs-only SHA either."* **That was right for that figure** — 1-B shipped tests, so only 1-B's own commit could carry it. ⚠ **It went stale in four commits anyway**, ending 52 server tests and 26 React tests below the truth, which is the fifth instance of the failure the paragraphs below enumerate.
+  **The figures this line carried before, kept as the record of what it said rather than as live numbers:** 1182 / 186 / 628 / 41, measured 2026-09-03 by BR-1 Phase 1-B; 1160 / 183 / 557 / 40, measured 2026-09-01 at `a5dd574` (C/DL-3c Phase 3 Phase 0); and before that 1118 / 177 / 483 / 34, measured 2026-08-30 at `7252cc5` (Wave 1.1 close-out). ⚠ **A tripwire in this file has attracted a well-meaning edit twice**; one of them set it 171 tests below its own floor.
   ⚠ **AND THE `a5dd574` FIGURE WAS TWO SESSIONS STALE WHEN 1-B FOUND IT, WHICH IS THE FOURTH INSTANCE OF THE SAME STRUCTURAL FAILURE.** BR-1 Phase 1 measured 1180 / 186 / 625 / 41 and deliberately did NOT re-arm, reasoning that the line is documented as a shrink detector rather than a hand-maintained target. That reasoning is in the paragraph below and is correct as far as it goes — **but "do not maintain it as a target" is not "do not re-arm it when you have measured it", and reading the first as the second is exactly how a floor drifts 22 tests below the truth without anyone deciding to lower it.** If you have just run the gate and read all four numbers, you are the session that should re-arm.
   ⚠ **THIS TRIPWIRE HAS NOW BEEN FOUND BELOW ITS OWN FLOOR THREE TIMES, AND THE FAILURE IS STRUCTURAL RATHER THAN CARELESS.** It read *"947 server tests and 459 React tests across 31 files (measured 2026-08-21, HEAD `d0fb3aa`)"* — the figure `docs/GROUND_TRUTH_2026-08-21.md` established, correct on the day and never moved since; then 1118 / 177 / 483 / 34, likewise correct on its day. At 947 it could not fire until a fifth of the server suite was deleted; at 1118 it could not fire until 42 server tests were. **Each figure was true when written and went stale because a hand-maintained number sits in a document nobody edits when the thing it measures grows** — which is the worked example in *A mechanism that reports health it cannot observe* below. **When you find it stale, re-arm it with the figure you MEASURED and the HEAD you measured it at** — never an estimate, and never a number carried from a prior session's report. ⚠ Check the EXIT CODE, not the pass count — a suite can report passing while exiting 1. (Treat the numbers as a tripwire for an unexpectedly SHRINKING suite, not as a target to keep updated by hand. A Vitest file count far above 40 means the include glob has been widened and is picking up the server suite — see the warning above.)
 - Characterization rule: a failing or surprising test result means STOP and report — never adjust production code to satisfy a test, and never silently adjust a test to satisfy the code. Deliberate behavior changes update the relevant test openly and are documented in the session handoff.
@@ -1018,6 +1052,38 @@ answer was read through.
 - **`grep -c $'\r'` returned full line counts on LF-only files.**
 - **`\d` in a shell-quoted pattern reached Node as `d`** — it matched the letter, not a digit.
   (Same family as the `'\s+'`-in-Postgres defect in `.claude/rules/backend.md`.)
+- ⚠ **A HEREDOC CAN CONSUME THE ESCAPE, AND THE SWEEP STILL RETURNS ORDERED,
+  FILE-ATTRIBUTED, ENTIRELY WRONG FINDINGS.** Measured in the R/AD Phase 0: `\.` written
+  inside a heredoc reached the script as `.`, so the needle `R\.` became *"R followed by any
+  character"* and returned **80** hits — plausible, sorted, each with a real file and a real
+  line. **The true count was 7.** `R.fer` came from the word *"Refer"*.
+  ⚠ **AND IT IS NOT ONLY THE QUOTED-HEREDOC FORM THAT IS SAFE OR UNSAFE BY RULE — CHECK THE
+  BYTES THAT ARRIVED.** A `<<'EOF'` heredoc in this session still lost one level of
+  backslash before the shell saw it, turning `.split('\\')` into an unterminated regex; that
+  one raised a `SyntaxError`, which is the lucky variant. **The unlucky variant is the one
+  above: no error, and a number.**
+  **THE RULE: a sweep returning far more or far fewer results than expected is a TOOL REPORT,
+  not a finding, until the pattern has been validated against a case whose answer is already
+  known.** Know the expected answer before you run it — the same discipline the `^` case
+  above was caught by.
+- ⚠ **`git grep` SEES TRACKED FILES ONLY, AND THIS REPO KEEPS ITS REPORTS UNTRACKED AT ROOT
+  AS A STANDING PATTERN.** The R/AD Phase 0 report claimed amendment `A31` free and said so
+  in terms — *"verified, not assumed"* — having verified it with `git grep`, **while being an
+  untracked file itself.** A tracked-only search structurally cannot see a reservation made
+  in an untracked file, including the one making the claim.
+  **THE RULE: if the thing you are checking for could live in an untracked file — a
+  reservation, a handoff, a Phase 0 report — `git grep` is not the check. Search the working
+  tree as well, and say which of the two you ran.**
+- ⚠ **A TEST DOUBLE THAT CAN RETURN A "NO ANSWER" SHAPE WILL SATISFY EVERY TEST ASSERTING AN
+  ABSENCE.** Not a shell, same family. In BR-1 Phase 1-B three fixtures returned a bare theme
+  where the code expected a `{ branding, slug }` envelope; the provider read the bare object
+  as a **non-answer**, published neutral branding, and nothing anywhere raised. The suite
+  stayed green because the assertions were about what should NOT be there.
+  **THE RULE: make a double THROW on a shape it does not recognise rather than returning
+  something plausible.** A double's job is to stand in for one contract; the moment it can
+  also stand in for "no contract", it is indistinguishable from the failure. **This caught
+  real defects three times in the BR arc**, which is why it is a rule and not an anecdote.
+  Same shape as `getStripeRow()`'s `|| { … not_connected }` under *Two rules about defaults*.
 - ⚠ **ANY GIT REV-SPEC CONTAINING `^` IS UNSAFE IN A NODE-SHELLED COMMAND ON WINDOWS. USE
   `~1`.** `execSync` spawns **cmd.exe**, where `^` is the **escape character**, so
   `git diff <sha>^ <sha>` reaches git as `git diff <sha> <sha>` — a *valid* command that
@@ -1197,6 +1263,26 @@ one. The check reported success against a line nobody was asking about. **Anchor
 verification on the full line, or on a token that cannot be a substring of a sibling**
 (here, the tree connector: `/(├|└)── Screen\.jsx/`). This is the `toContain`-on-a-bare-value
 trap in a different costume — the assertion's edge lands exactly where the ambiguity lives.
+
+⚠ **AND THE SAME TRAP DECIDES WHETHER AN IDENTIFIER IS FREE, WHICH IS A CLAIM PEOPLE ACT ON.**
+Measured in BR-2 Phase 2, checking that amendment number `A32` was unclaimed:
+`git grep "A32"` returned hits and **every one of them was the hex colour `#A32D2D`**.
+`\bA32\b` returned zero. A bare substring answers *"do these three characters occur?"*; the
+question asked was *"is this TOKEN taken?"*, and the two differ by exactly the case that makes
+the answer wrong. **When a search decides whether a name, a number or a slot is free, anchor on
+word boundaries** — and read the hits rather than the count, because a hex colour, a version
+string and a test fixture all look like a reservation from a distance.
+
+⚠ **AND IT IS NOT ONLY ASSERTIONS AND GREPS — IT IS TEST QUERIES.** Same phase, same shape, in
+`getByText`: `/Great/i` matched **two** nodes because the intro copy carried *"great work"*
+beside a *"Great experience"* button, and `getByText` throws on multiple matches, so the test
+fails for a reason that has nothing to do with the behaviour under test. It recurred in BR-2
+Phase 3 when two helper texts ended with the same sentence — **and one of the two was written
+in that same commit.**
+**THE RULE: anchor a query on the full string or on rendered structure (a role, a label, a test
+id), never on a distinctive-sounding fragment. And re-check the queries near copy you ADD**, not
+only near copy you change — adding a second match breaks a query that was correct, and the
+diff shows only the addition.
 
 ---
 

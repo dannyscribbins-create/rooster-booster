@@ -29,6 +29,22 @@ unrecorded through four subsequent commits. No test, no gate, and no review noti
 someone remembered." When you finish a session, add what you deferred **before** you write the
 handoff, not after.
 
+⚠ **AND THE STALENESS THAT CATCHES PEOPLE IS NOT THE OLD ENTRY — IT IS THE ENTRY THAT WAS
+TRUE WHEN IT WAS WRITTEN AND WENT FALSE WITHOUT BEING TOUCHED.** *(Added 2026-09-03; it bit
+twice inside the BR arc alone, and both times the sentence still read perfectly.)*
+- A build brief asserted that `app_display_name` *"reaches the landing headline, not the
+  referrer app"*. **True when written. False by the time it was executed** — an earlier phase
+  of the same arc had wired three referrer tab eyebrows to it, two commits before.
+- An audit's consumer list for a column being retired was stale **because the arc itself had
+  added a consumer two phases earlier.**
+
+**THE RULE: re-measure before acting on any inventory, however recently it was compiled — and
+be most suspicious of one compiled by the arc you are still inside**, because that is the
+inventory whose subject is actively moving and the one nobody thinks to doubt. ⚠ **A short
+interval is evidence of nothing.** Both cases above were days old, from the same arc, written
+by the same hand. **The trigger for re-measuring is that you are about to ACT on a list, not
+that the list looks old.**
+
 ⚠ **"WAVE 1" AND "WAVE 1.1" ARE TWO DIFFERENT NUMBERING AXES AND THEY DO NOT NEST.**
 `EXECUTION_SEQUENCE.md`'s **Waves 0–5** are the *product* sequence — Wave 0 is "make a referral
 convert", Wave 1 is "the field rep interface", Wave 4 is security hardening. The **Wave 1.1**
@@ -89,6 +105,21 @@ literal sweep · the Security G isolation test (never built) · OAuth state sign
 `team_members.email` uniqueness · `payout_announcements` tenancy · `crm/index.js` dispatch and
 token consolidation · `runFullSync` pacing (it runs on exactly first-time contractor
 onboarding) · `contractors.slug` backfill · `db.js:1532` non-determinism.
+
+⚠ **THREE MORE, ADDED 2026-09-03 BY THE BR ARC CLOSE-OUT. Named here because this paragraph is
+where a session looks to find out what "before contractor #2" means, and a gate recorded only
+in its own entry is a gate nobody counts.** Each has its own entry with the evidence and the
+trigger; these are the names, not the detail:
+- **`?brand=` is permanent on first click for a LOGGED-OUT visitor**, and its only remaining
+  gate is that there is one contractor row. **Trigger: contractor #2 existing** — *not* the
+  slug backfill, Accent's slug is already set. → *The branding chain*
+- **The retired-palette literals in server email templates** — 81 live sites across 10 files at
+  `f7dfeed`, nearly all inline styles in homeowner-facing HTML mail, plus the retired *name* in
+  From lines, subjects and body copy. **Trigger: before contractor #2 sends any email**, which
+  is their first referral. → the brand-literal sweep entry
+- **The landing step copy is overridable and nobody is asked to override it** — including
+  *"They book a free inspection"*, a factual claim about a business. **Trigger: contractor #2
+  onboarding**; the fix is the wizard, not code. → *The branding chain*
 
 **THREE THINGS WITH NO CODE become launch-gating:**
 - **Contractor onboarding wizard** (S6 design, never built)
@@ -2377,6 +2408,50 @@ check — which is why this is a named build rather than a checklist line.
       `superAdmin/` and `utils/`. **`shared/` is not a walk root, so no needle can reach it.**
       Its fallback is deliberate (D-G, re-affirmed — see Discharged below); this sweep owns
       retiring it. **Neither sweep may assume the other did it.** → §10, D-G, D-N
+
+      ⚠ **RE-ARMED 2026-09-03 AT HEAD `f7dfeed`, AND A SECOND AXIS ADDED THAT THE GENERATOR
+      DOES NOT COUNT.** *(Amendment filed by the BR arc close-out. The 2026-08-21 figures above
+      are left as the record of what was measured then, per this document's own practice — they
+      are not corrected in place.)*
+      **`npm run sizing`, pasted rather than hand-derived: 169 production sites** — `server/`
+      **hex 79 / rgb 0**, `src/` **hex 55 / rgb 35**. Excluded test files: server hex 16 / rgb 0,
+      src hex 56 / rgb 11. **The job has not shrunk** — 170 → 169 across thirteen days and two
+      arcs, so nothing here has been chipped away by ordinary work and it will not be.
+      ⚠ **THE GENERATOR'S NEEDLE SET IS FOUR HEXES. IT DOES NOT COUNT THE RETIRED *NAME*, AND
+      THE NAME IS THE HALF A HOMEOWNER CAN READ.** A separate tree walk on 2026-09-03 at the
+      same HEAD, over `server/**` and `src/**` (`.js|.jsx|.mjs|.cjs`, test files excluded,
+      needles `#012854` · `#CC0000` · `#D3E3F0` · `#041D3E` · `Rooster Booster`), and splitting
+      live code from comment prose because a retired literal quoted in a comment explaining its
+      retirement is **correct** and must not be swept:
+      · **`server/`, live code: 81 sites / 80 lines across 10 files** — `#012854` 57 ·
+        `Rooster Booster` **10** · `#D3E3F0` 9 · `#CC0000` 5 · `#041D3E` 0. Plus 14 sites in
+        comment prose, which are the record and stay.
+      · **`src/`, live code: 69 sites / 69 lines across 19 files** — `#012854` 32 ·
+        `Rooster Booster` **21** · `#CC0000` 10 · `#041D3E` 3 · `#D3E3F0` 3.
+      **THE TEN SERVER FILES, ENUMERATED so the next pass does not re-derive them:**
+      `crm/pipelineSync.js` · `cron/jobs/postJobSequence.js` · `routes/account.js` ·
+      `routes/admin/cashouts.js` · `routes/admin/index.js` · `routes/admin/team.js` ·
+      `routes/referrer.js` · `routes/resendWebhook.js` · `routes/webhooks/jobber.js` ·
+      **`utils/pendingReferral.js`**.
+      ⚠ **`pendingReferral.js`, `admin/index.js` AND `landing.js` WERE ABSENT FROM THE BRIEF
+      THAT FILED THIS**, which named eight files from BR-1 Phase 2's sweep. The tree walk found
+      them because it walks a **tree** and not a remembered list — the hand-maintained FILES
+      list failure, one more time. **Do not re-derive this from prose; re-run the walk.**
+      ⚠ **WHAT THESE SITES ACTUALLY ARE: HOMEOWNER-FACING EMAIL.** Nearly every server hit is
+      an inline `style=` inside an HTML email body — headings and CTA buttons in the pipeline
+      sequence, cash-out approval and denial, the reward-ready and first-job mails, the
+      pending-referral chase, the team invite. **`Rooster Booster` additionally appears in From
+      lines, in subject lines and in body copy** (`account.js` verification and deletion mail,
+      `referrer.js`' PIN-reset copy and cash-out subject, and a `webhooks/jobber.js` **runtime
+      fallback**: `brandRow.app_display_name || 'Rooster Booster'`).
+      ⚠ **TRIGGER: BEFORE CONTRACTOR #2 SENDS ANY EMAIL — which is their first referral, not
+      some later milestone.** Contractor #2's homeowners receive every one of these: another
+      company's retired palette, from a brand that belongs to nobody in the tenancy. This is
+      the same class as the two sites BR-1 Phase 2 fixed (signup and resend-code), and the rest
+      were left **deliberately** because they were outside that phase's stated scope.
+      ⚠ **`src/constants/theme.js` IS NOT PART OF THIS JOB.** It is Accent's palette wholesale
+      and it belongs to the **R/AD migration** entry below, which owns the 793 raw `R.*`
+      references. Sweeping it here would migrate one file out of a set that must move together.
 - [ ] **`console.error` without the `// diagnostic log — intentional` marker.** → §10
 - [ ] **Drift-guard case-table gap**, and the vacuity finding that sharpened it. These are the
       only drift guards in the codebase and they protect a white-labeling correctness
@@ -2402,6 +2477,68 @@ check — which is why this is a named build rather than a checklist line.
       `AdminDashboard.jsx:131` — a fetch resolving after its test tore the tree down. Isolated
       re-runs are clean, so it is load-dependent, and that it MOVED FILES is what argues flake
       over regression. Sibling of the webhook flake above: re-run before investigating.
+- [ ] **🔴 AN RBAC FENCE THAT CANNOT RELIABLY PROVE WHAT IT CLAIMS —
+      `roleRouting.test.jsx > FENCE — the rep surface calls NO gated admin endpoint`.**
+      *(Filed by the BR arc close-out, 2026-09-03. **Deliberately its own entry** — folded into
+      the flake entry directly above, the permissions angle is what gets lost.)*
+      **Observed:** it failed **once in three full-gate runs**, on **its own non-vacuity
+      assertion** (*"the rep surface made NO `/api/admin/me` call"*), and **never in
+      isolation**.
+      **Diagnosis:** the test `waitFor`s the **RENDER** and then reads `fetch.mock.calls`,
+      while `/api/admin/me` is fired from an effect. Source 1's fetch adds a promise hop, so
+      under load the render can be observed before the call is recorded.
+      ⚠ **WHY THIS IS NOT "ANOTHER FLAKY TEST", AND WHY IT IS 🔴 RATHER THAN 🟡.** The failure
+      is symmetric. **A fence that fails one run in three under load can equally PASS one run
+      in three when the boundary is actually broken** — it cannot distinguish *"no gated call
+      was made"* from *"the call has not been recorded yet."* Its own comment says it is
+      **KEPT PERMANENTLY** as the fence against anyone wiring a gated admin fetch above the
+      surface split. **A permissions fence in that state is the vacuity family arriving through
+      timing rather than through an assertion.**
+      **FIX SHAPE, RECORDED SO IT IS NOT RE-DERIVED: await the CALL, not the RENDER.** Wait on
+      `fetch.mock.calls` containing `/api/admin/me`, then sweep for gated endpoints. The render
+      assertion is a correlate of the condition; the call is the condition — structurally the
+      same repair as vacuity shape #9 in `CLAUDE.md`.
+      ⚠ **DO NOT "FIX" IT BY LOOSENING THE NON-VACUITY ASSERTION.** That assertion is the only
+      thing that caught this; deleting it converts an intermittently-honest fence into a
+      permanently-green one.
+- [ ] **A FENCE THAT ONLY FIRES ON ALWAYS-PRESENT KEYS IS WEAKER THAN IT LOOKS — the public
+      branding endpoint's key allowlist.** *(Filed by the BR arc close-out, 2026-09-03.)*
+      `brandingEndpoint.test.js`'s full-key sweep is an exact allowlist over
+      `GET /api/branding/:slug` and is the only one in the repo. **It did not catch `socials`
+      for a whole phase — not because socials was exempt, but because the resolver OMITS the
+      key when nothing is set and no fixture sets one.** A key that never appears cannot trip a
+      sweep over the keys that appear.
+      ⚠ **AND `socials` IS STILL IN THAT POSITION AT HEAD.** *(Measured 2026-09-03 at
+      `f7dfeed`: `BRAND_A` and `BRAND_B` set none of the five social columns, so the `socials`
+      name now sitting in the allowlist is never exercised by any case in the file.)*
+      ⚠ **CORRECTING THE BRIEF THAT FILED THIS: `address` and `website` are NOT in the same
+      position.** They are omitted-when-unset on the same LP-1 rule, but **`BRAND_A` populates
+      both**, so they do surface and the sweep does see them. The claim that all three were
+      uncovered was checked against the fixture and is wrong; only `socials` is.
+      **FIX SHAPE: widen the fixture so every omitted-when-unset key is populated in at least
+      one case** — today `socials`, and by construction anything added under the same rule
+      later. **The general form is what makes it worth an entry:** when a payload can omit a
+      key, an allowlist proves nothing about that key until some fixture makes it appear.
+- [x] **✅ RECORDED, NOT OPEN — A FENCE CAN ASSERT OVER DATA IT HAS ITSELF CLEANED.**
+      *(BR-2 Phase 2B; written up by the BR arc close-out, 2026-09-03.)*
+      The anti-backfill fence for the five landing step columns was first written as a **table
+      sweep**: select every `contractor_settings` row, fail if a stored value equals a frozen
+      default. **A backfill was then simulated directly in the database to demonstrate the
+      failing state, and the fence still PASSED.** In file order it swept rows the seeding test
+      immediately above had just reset to NULL — **it was asserting over data its own setup had
+      cleaned.**
+      **Rewritten as a predicate** (`backfilledColumns(row)`) asked about **both** a real row
+      (must be clean) **and** a synthetic backfilled row (must be rejected), so the failure
+      mode is demonstrated permanently inside the suite instead of by poking the database once
+      by hand.
+      **THE RULE, which is why this is recorded rather than merely fixed: a fence sharing a
+      database with its own setup must be proven against a state its setup did not create.**
+      A test file is an ordered mutation sequence, not a set of independent assertions, and a
+      sweep placed after a reset observes the reset. ⚠ **This is the health-reporting class in
+      its cheapest disguise** — the fence was green, correct-looking, and blind.
+      *(Same family as `CLAUDE.md`'s "a mechanism that reports health it cannot observe". If
+      that section is ever revised, this belongs in it — it is a rule, and it is filed here
+      only because this is where the arc's findings were routed.)*
 - [ ] **🔴 NO `List-Unsubscribe` HEADER ON CAMPAIGN EMAIL — zero hits across `server/`.**
       Mail-client one-click unsubscribe does not exist, so the footer link built at
       `admin/campaigns.js:305` is the **only** mechanism offered. ⚠ Independent of the
@@ -2865,6 +3002,16 @@ root cause, and patching them separately produces six unrelated special cases)
       referrer tree for `companyName`, `reviewUrl`, `reviewMessage` and `reviewButtonText` —
       **not one colour.** This is the white-label surface the product is sold on and the app
       most homeowners actually see.
+      ⚠ **THE FOUR-FIELD LIST ABOVE IS STALE AND THE CONCLUSION IS NOT — CORRECTED RATHER THAN
+      REWRITTEN, BECAUSE THE DISTINCTION IS THE POINT.** *(Re-measured 2026-09-03 at HEAD
+      `f7dfeed` by the BR arc close-out, over `src/components/referrer/` plus the two
+      `shared/` components that tree mounts.)* The BR arc widened it: the referrer tree now
+      reads **ten** branding fields — `companyName` · `logoUrl` · `programName` · `phone` ·
+      `email` · `website` · `socials` · `reviewUrl` · `reviewMessage` · `reviewButtonText` —
+      **and still reads ZERO colours**, which is the claim this entry rests on and it is
+      unchanged. **The list went stale because the arc that widened it did not come back to
+      the sentence describing it** — the same shape as an inventory compiled one phase and
+      acted on the next.
 
       **(2) ⚠ THE ONBOARDING BASELINE, WHICH IS NOT ANYWHERE IN THIS ENTRY AND IS THE HALF
       THAT GATES LAUNCH.** Migrating to `--rm-*` is only the first of two things owed. The
@@ -2901,6 +3048,30 @@ root cause, and patching them separately produces six unrelated special cases)
       inaccurate preview, because it is inaccurate AND unresponsive**, and it would teach a
       contractor that their palette does nothing. **The branding run ships its preview surfaces
       without the referrer dashboard and adds it after this migration.**
+
+- [ ] **AMENDMENT `A31` / `§20` / `v1.9` IS RESERVED FOR TEXT THAT WILL NEVER BE WRITTEN.
+      RELEASE IT OR RETIRE IT — AN AMBIGUOUS RESERVATION IS HOW THE NEXT SESSION REPEATS A2's
+      MISTAKE.** *(Filed by the BR arc close-out, 2026-09-03.)*
+      **The state, exactly.** `RAD_MIGRATION_PHASE0_REPORT.md` claims `A31`/`§20`/`v1.9` for a
+      *"pin the referrer tree light"* amendment and supplies a draft. **That approach was
+      ruled against** — the pin was replaced by a writer-side guard — so **A31's text was never
+      written and now has no subject.** BR-2 Phase 2 then took **`A32`/`§21`/`v2.0`**, skipping
+      `§20` and `v1.9` to honour the reservation, and recorded the skip in
+      `DECISION_C_DL_BUILD_SPEC.md`'s Status line and at §21's opening note.
+      ⚠ **SO THE SPEC NOW PERMANENTLY CARRIES A HOLE POINTING AT A DOCUMENT GIT HAS NEVER
+      SEEN.** The only description of what `A31` was for lives in an **untracked** root report.
+      **THE DECISION OWED IS ONE OF TWO, AND EITHER IS FINE — LEAVING IT IS NOT:**
+      · **RELEASE it** — the next amendment takes `A31`/`§20`/`v1.9`, and the skip note in
+        `DECISION_C_DL_BUILD_SPEC.md` is rewritten to say the reservation was vacated. The
+        version numbers then run non-monotonically against A32/v2.0, which must be stated.
+      · **RETIRE it** — `A31` is recorded in the spec as *deliberately never issued, because
+        the ruling it would have carried was reversed*, so the hole is documented in a tracked
+        file and nobody hunts for it.
+      ⚠ **AND THE WAY THIS RESERVATION WAS VERIFIED IS ITS OWN LESSON, RECORDED IN
+      `CLAUDE.md`:** the Phase 0 report verified `A31` free with `git grep` — over **tracked**
+      files, while being **untracked itself**. A tracked-only search cannot see the reservation
+      it is making.
+      → `DECISION_C_DL_BUILD_SPEC.md` Status line and §21 · A23, the precedent
 
 **⚠ FOR C/DL-3c PHASE 2 — FOUND LIVE DURING THE 1c WALKTHROUGH, FILED NOT BUILT**
 
@@ -3218,6 +3389,123 @@ root cause, and patching them separately produces six unrelated special cases)
 - [ ] Source 2 issues a wasted request on every boot (host resolution on `app.roofmiles.com`
       always returns null). **Only worth fixing if pre-paint latency measures.** *(Not
       previously recorded.)*
+
+- [x] **✅ WHAT THE BR ARC SHIPPED — recorded so the next session does not re-derive it.**
+      *(Written by the BR arc close-out, 2026-09-03. Seven commits, `5a365e1` → `f7dfeed`.)*
+      · **`resolveFromSession` was `return null` — the whole body**, not a stub with a
+        condition, and it is FIRST in the D4 chain. **One empty function produced three
+        symptoms that read as three unrelated bugs across two sessions:** the wrong logo, the
+        wrong company name, and an **EMPTY contact modal** — phone and email being the only
+        two branding fields with no platform default, so they vanished where every other
+        field had a default quietly painting something wrong.
+      · **Source 1 now answers and echoes the session's own slug**, so the hint is
+        **CORRECTED rather than erased** and is demoted to a pre-auth cache. Both branches —
+        substitute when the contractor has a slug, remove when `contractors.slug` is NULL —
+        carry their own test.
+      · **The absence rule is applied BY CONTEXT, in three prongs, and is written once in
+        `BrandMark` rather than six times longhand.** No contractor resolved → the RoofMiles
+        mark; contractor resolved, no logo → **the company name as text**; emails likewise.
+        ⚠ **THE REASONING, RECORDED SO NOBODY "SIMPLIFIES" IT INTO ONE RULE: putting the
+        PLATFORM's mark on a CONTRACTOR's surface is itself a white-label breach.** A
+        homeowner who sees RoofMiles inside their roofer's app has been told they are in the
+        wrong company's product — worse than seeing no mark at all. The discriminator is the
+        chain's `source`, **never the branding VALUES**: a contractor who has customised
+        nothing resolves to a payload equal to the platform defaults.
+      · **Wrong-brand renderings removed from `ProfileTab` and `CashOutTab`**; the signup and
+        new-code emails wired to the contractor's palette.
+      · **The socials reach the landing footer and the About Us popup**; address confirmed on
+        marketing email; the review card gated on a usable destination.
+      · **Five landing step strings became overridable WITHOUT CHANGING** — NULL means the
+        frozen default, and the served page with every column NULL is byte-identical to the
+        baseline.
+      · **`tagline` and `app_logo_url` dropped**, with their false panel copy corrected → the
+        tombstone under *Retired columns* above.
+
+- [ ] **🔴 CONTRACTOR #2 GATE — `?brand=` IS PERMANENT ON FIRST CLICK FOR A LOGGED-OUT
+      VISITOR, AND ITS ONLY REMAINING GATE IS THAT THERE IS ONE CONTRACTOR.** *(Filed by the
+      BR arc close-out, 2026-09-03.)*
+      **The mechanism:** `?brand=<slug>` is chain **source 2.5**, it is deliverable as an
+      ordinary link, it wins for any visitor with no session, and the write-through **persists
+      it to the stored hint** — so one click brands that browser until something overwrites it.
+      ⚠ **STATE WHAT 1-B ALREADY CLOSED, SO THE RESIDUAL IS NOT OVERSTATED.** Source 1 now
+      answers and rewrites the hint to the session contractor's own slug on **every**
+      authenticated load, so **a planted value dies at login** and the authenticated case is
+      fixed. **What remains is narrower and is still real: a LOGGED-OUT stranger, following a
+      crafted link, is shown another contractor's logo, company name, phone and email** — on a
+      page that looks like that company's door.
+      ⚠ **THE TRIGGER IS CONTRACTOR #2 EXISTING, AND NOT A SLUG BACKFILL. FILE IT AGAINST THE
+      FORMER.** It is unexploitable today only because a crafted slug can name nobody else:
+      there is one contractor row. **Accent's slug is already set**, so this does not wait on
+      the backfill — the earlier deferral in this same block was filed with exactly that
+      trigger and it could never have fired. **A gate that is a row count is not a control.**
+      **The fix is a ruling, not obviously code:** decide whether an unauthenticated `?brand=`
+      may persist at all, or only paint for the request. R1 already frames the parameter as
+      **cosmetic only** — it grants nothing — which is the argument that the residual is a
+      trust-and-phishing problem rather than an access one, and that is the thing to rule on.
+      → the D4 chain header in `src/utils/brandingChain.js` (R1, R2, R3) · CD-24
+
+- [ ] **🔴 CONTRACTOR #2 ONBOARDING GATE — THE LANDING STEP COPY IS OVERRIDABLE AND NOBODY IS
+      ASKED TO OVERRIDE IT. TWO OF THE FIVE STRINGS ARE WORSE THAN GENERIC.** *(Filed by the
+      BR arc close-out, 2026-09-03. BR-2 Phase 2 shipped the columns; this is the half that
+      shipping them did not close.)*
+      ⚠ **THIS IS NO LONGER A CODE GATE AND THAT IS EXACTLY WHY IT NEEDS AN ENTRY.** The field
+      exists, the resolver reads it, the admin card edits it, and **NULL means the frozen
+      default** — so a contractor who never opens that card ships the platform's copy, silently
+      and correctly, for as long as they never look.
+      · *"We take care of them like family"* is **one contractor's VOICE** on every
+        contractor's page.
+      · ⚠ *"They book a free inspection"* is **a FACTUAL CLAIM ABOUT A BUSINESS.** A
+        contractor who does not offer free inspections has a public page telling homeowners
+        that they do. **That is the one of the five that is not a taste question.**
+      **THE FIX IS ONBOARDING, NOT CODE: the wizard must surface these five fields**, alongside
+      the logo upload already ruled into it. ⚠ **A field nobody is walked to is a default
+      nobody chose** — the same closure-half failure this document records elsewhere, arriving
+      through a form instead of a checkbox.
+      ⚠ **AND DO NOT "FIX" IT BY BACKFILLING THE COLUMNS.** NULL means *"use the default"* and
+      a populated column means *"this contractor chose this"*; backfilling erases the
+      difference, after which nobody can tell which strings were ever reviewed — including
+      the free-inspection claim. A fence in `landingStepCopyMigration.test.js` guards this.
+      → the **Onboarding wizard** under *Launch Definition* (launch-gating, never built) ·
+      `DECISION_C_DL_BUILD_SPEC.md` §21, A32 · `LANDING_PAGE_SPEC.md` §2
+
+- [ ] **🔴 FOR THE REFERRAL CONVERSION ENGINE — `ExperiencePopup` SLIDE 1 HAS NO ANSWER FOR A
+      CONTRACTOR WITH NO REVIEW DESTINATION. THE MINIMAL FIX SHIPPED; THE TREATMENT DID NOT.**
+      *(Filed by the BR arc close-out, 2026-09-03.)*
+      **What shipped (BR-2 Phase 2, part D):** the review CTA rendered unconditionally and
+      **silently advanced the slide** when there was nothing to link to; it is now hidden when
+      `reviewUrl` resolves to nothing. ⚠ **Confirmed safe before changing it** — the slide
+      carries a second exit (*"Skip for now"*), so hiding the button strands nobody. Had it
+      been the only exit, hiding it would have been worse than the dead end.
+      **What is still owed:** the slide **still renders**, and for a contractor with no review
+      destination it is now a slide whose only affordance is to leave. **What that slide should
+      BE in that state is a design question, not a gating question**, and it belongs to whoever
+      builds the T+24h post-job sequence — the same build that owns whether the popup should
+      appear at all for such a contractor.
+      ⚠ **FILE IT AGAINST THAT BUILD, PRE-LAUNCH — NOT AS A GENERAL UI ITEM.** Answered
+      generically it becomes a cosmetic tidy of one slide; answered by the engine's owner it is
+      a decision about the sequence. ⚠ **`MEMBER_RANK_ECONOMY_SPEC.md` §2 hard-prohibits points
+      for reviews** (Google policy — it can penalise the *contractor's* listing), and whoever
+      touches the review→referral path must have read it.
+      → `EXECUTION_SEQUENCE.md`, the **Referral Conversion Engine** row (8 features, zero code)
+
+- [ ] **`company_country` DEFAULTS TO `'US'` WHILE EVERY OTHER ADDRESS FIELD RETURNS NULL, AND
+      COUNTRY IS CLOSER TO IDENTITY THAN TO GENERIC COPY.** *(Filed by the BR arc close-out,
+      2026-09-03.)*
+      `GET /api/admin/settings`' zero-row block returns `company_address`, `company_city`,
+      `company_state` and `company_zip` as **null** and `company_country` as **`'US'`**; the
+      column carries the same `DEFAULT 'US'` in `server/db.js`, and the PATCH path re-applies
+      it when the key is present. **It silently makes every new contractor American** — the
+      admin form loads `US`, the contractor saves, and they are recorded as having chosen it.
+      ⚠ **THE RULE IT SITS AGAINST IS `CLAUDE.md`'s OWN:** *identity-bearing values get no
+      defaults; generic copy may be defaulted freely; the line is whether the value says WHO or
+      says WHAT.* Country is not quite a logo and not quite button copy — **it is a ruling, not
+      a bug**, which is why this is filed rather than fixed.
+      **TWO OTHER ASYMMETRIC DEFAULTS RECORDED BESIDE IT, so the ruling is made once:**
+      · `review_button_text` and `review_message` **default** while `review_url` does **not** —
+        and that asymmetry is **deliberate and correct**, recorded in `brandingTheme.mjs`: the
+        copy names nobody, the URL says who. **Do not "make them consistent."**
+      · `font_heading` / `font_body` default to **Montserrat / Roboto** — generic by the same
+        test, and listed only so a future pass does not re-raise them as findings.
 
 **Routing / permissions**
 - [ ] **Owner-rep surface switcher.** An owner-rep or admin-rep gets the admin panel and **no
@@ -3733,6 +4021,41 @@ none of them. **3-D's real-browser pass is owed IN FULL and this sighting does n
       (§8.0 category (d)), and `google_place_id` was populated while the field the card read
       was empty (category (e)). **Both were invisible to a check built from schema + admin
       panel.** *(Danny asked for this; never scoped. Not previously recorded.)*
+- [ ] **🔴 SWEEP THE REMAINING SETTINGS CARDS FOR FALSE HELPER TEXT. FOUR WERE FALSE IN THE
+      ONE CARD THAT HAS BEEN SWEPT.** *(Filed by the BR arc close-out, 2026-09-03, from BR-2
+      Phase 3's measured result. Companion to the field audit directly above — that entry asks
+      "does the value ARRIVE?", this one asks "does the SENTENCE beside the field describe
+      where it arrives?")*
+      **What BR-2 Phase 3 found in `BrandingProfileSettings.jsx` alone**, each checked against
+      source rather than read for plausibility: **App Display Name** carried a false default
+      *(the real fallback is the company name)* **and** a false reach claim; **Email Sender
+      Name** said *"all emails sent to referrers"* when the two verification emails send from
+      the company name directly; **Email Footer Text** named *"verification and notification
+      emails"* — **the one class of email that does not read that column**; and the **Brand
+      Logos** note promised the RoofMiles mark as a placeholder, which BR-1 Phase 2's absence
+      rule had already falsified.
+      ⚠ **TWO OF THE FOUR WERE NAMED IN ADVANCE. TWO WERE FOUND ONLY BY SWEEPING, AND BOTH
+      SOUNDED ENTIRELY PLAUSIBLE** — which is the argument for a sweep rather than a
+      spot-check of the ones somebody already doubts.
+      **WHY IT MATTERS AT ALL, since a helper is "only copy":** a helper is a **claim about
+      code**, and it goes stale exactly as a comment does — except that a contractor acts on
+      it. Someone who fills in Email Footer Text expecting it on their verification emails,
+      sends a test, sees nothing, and concludes the product is broken. **This is the first
+      self-serve surface contractor #2 configures their brand through.**
+      ⚠ **AND THE SWEEP CANNOT BE DONE BY GREP, WHICH IS WHY IT NEEDS ITS OWN SESSION.**
+      `HelperText` is defined **locally inside `BrandingProfileSettings.jsx`** and has no
+      importers; every other settings card expresses helper copy as inline-styled text. **No
+      needle reaches them** — *"a name-based search cannot find a name that is never written
+      down"*, in `CLAUDE.md`. Walk the card components and read them:
+      `CompanyDetailsSettings` · `ReferralProgramSettings` · `AdminSettingsExperience` ·
+      `AdminSettingsNotifications` · `AdminSettingsMyProfile` · `AdminTeamSettings` ·
+      `BankingSettings` · `CRMSettings`.
+      ⚠ **A HELPER IS FALSIFIED BY READING THE CONSUMERS, NOT BY READING THE HELPER.** All
+      four above were found by grepping every reader of the column and asking what the sentence
+      claims about it. **Sounding right is the state all four were already in.**
+      **ONE FIX SHIPPED WITH THE FINDING and is not owed here:** the card was renamed *App
+      Identity & Landing Page*, with a divider and two group labels — without them the five
+      landing fields read as app settings.
 - [ ] **ADMIN STATS INTEGRITY — SIX ITEMS, ONE DESIGN CALL.** Grouped because the call is
       **how does the admin panel express "unknown"**, and answering it separately six times
       produces six inconsistent answers.
@@ -4312,6 +4635,41 @@ quadruples is evidence about the estimate, not about the wave:
 
 ## Developer setup
 
+- [ ] **🔴 COMMIT THE MULTI-CONTRACTOR LOCAL STACK. IT EXISTED, IT WAS THROWAWAY, AND IT IS
+      THE ENVIRONMENT THE SECURITY G ISOLATION TEST HAS BEEN BLOCKED ON.** *(Filed by the BR
+      arc close-out, 2026-09-03.)*
+      **Why this is not a convenience item.** The Launch Definition lists *"the Security G
+      isolation test (never built)"* as launch-gating, and `CLAUDE_REGISTRY.md` records the
+      same. **It has never been built because there was nowhere to run it** — the local
+      environment cannot reach Railway Postgres, and production holds exactly one contractor,
+      so *"log in as A, attempt to read all of B"* had no B. **BR-1 built a B.** A throwaway
+      local Postgres seeded with **three** contractors — Alpha, Beta and **Gamma with a NULL
+      slug and a NULL logo** — plus referrer, rep and owner accounts, was what verified the
+      source-1 / hint behaviour in a real browser across both BR-1 phases.
+      ⚠ **THE RECIPE WAS NOT COMMITTED, AND THAT IS THE FINDING RATHER THAN A FOOTNOTE.** What
+      survives is the *evidence that it ran* — the browser walkthroughs quoted in `5a365e1` and
+      `ca9a9d7` — not the steps. **This entry is a request to rebuild it as a committed seed
+      script, not a claim that a recipe exists to be followed.**
+      **WHAT IT MUST CONTAIN, which IS recoverable and is the part worth writing down:**
+      · **three** contractors, not two — Gamma exists to drive the **NULL-slug** and
+        **NULL-logo** branches, which are the two the absence rule and the hint write-through
+        each split on, and a two-tenant fixture cannot reach either;
+      · at least one contractor with a **populated `contractors.slug`** (source 3 and source
+        2.5 are unreachable without one) and one with it **NULL**;
+      · a **referrer**, a **field rep** (`tier='general'` + `is_field_rep`) and an **owner** per
+        tenant, because `surfaceFor()` routes on the session descriptor and each surface reads
+        a different part of it;
+      · **`ENCRYPTION_KEY`** set, or `server.js` does not boot (the entry directly below).
+      **Reuse, do not re-invent:** `server/test/helpers.js` already exports `seedContractor`,
+      `seedUser` and `seedSession`, and `server/test/brandingEndpoint.test.js`'s
+      `seedBrandedContractor` is a worked two-tenant seeder with a full branding row.
+      ⚠ **THIS MUST NOT POINT AT `roofmiles_test`.** `server/test/setup.js` wipes that schema
+      on every run, and `initTestDb` steps D/E have no concurrency guard (the entry below) — a
+      long-lived hand-seeded stack in the suite's own database is destroyed by the next
+      `npm test` and can wedge `pg_trgm` on the way out. **A separate scratch database, named
+      so nobody mistakes it for the test one.**
+      → the Security G line in the **Launch Definition** above · `CLAUDE_REGISTRY.md` (the
+      Multi-Contractor Security Session tracking)
 - [ ] **`ENCRYPTION_KEY` missing locally → `server.js` will not boot.** Document it in the
       local-setup notes; a new machine hits this immediately.
 - [ ] Local Postgres at `localhost:5432`, database `roofmiles_test`, credentials in `.env.test`
