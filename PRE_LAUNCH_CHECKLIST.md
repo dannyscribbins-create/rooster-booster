@@ -3081,6 +3081,35 @@ root cause, and patching them separately produces six unrelated special cases)
             ⚠ **There was NO create-flow coverage at all before this**; the two-call create
             sequence had been shipping untested since it was written.
 
+**Retired columns — the tombstones**
+
+- [x] ~~`contractor_settings.tagline`~~ · ~~`contractor_settings.app_logo_url`~~
+      ✅ **DROPPED — BR-2 Phase 3, 2026-09-03, against a confirmed Backblaze backup.**
+      ⚠ **RECORDED HERE BECAUSE A DROPPED COLUMN WITH NO TOMBSTONE IS HOW SOMEONE RE-ADDS IT IN
+      SIX MONTHS.** Both had a database column, an admin editor and a PATCH whitelist entry — the
+      shape that reads as "a feature someone forgot to finish" rather than as one that was
+      examined and rejected.
+      · **`tagline`** — read by NOTHING, ever. It never reached `resolveBrandingTheme`, so no
+        surface could see it even in principle. Its panel helper claimed it appeared on the
+        referrer login screen and the dashboard; it appeared on neither. **Do not re-add it as
+        "the login screen needs a tagline"** — that is a design decision about the login screen,
+        and it was never what this column did.
+      · **`app_logo_url`** — one consumer, three call sites, always the unreachable SECOND term of
+        `logo_url || app_logo_url || null`. NULL for every contractor, and **no writer anywhere in
+        the product**: `POST /api/admin/branding/logo` deliberately never pointed at it, and that
+        endpoint's comment said so. ⚠ **The panel's two logo rows mapped OPPOSITE to their
+        labels** — the generic-sounding "App Logo" was `logo_url`, which every surface reads,
+        while the specific-sounding "Referrer App Logo" was `app_logo_url`, read by nothing in the
+        referrer app. That open item is closed by the drop.
+      ⚠ **IF A SECOND LOGO SLOT IS EVER WANTED, IT IS A NEW DECISION AND NOT A RESTORATION.** The
+      real distinction a second column might serve — a wide wordmark for email and landing versus
+      a square mark for an app header — was never what this column held, and `BrandLogo`'s header
+      already records the expiry condition for the dark-mode case. Start from the requirement, not
+      from the column name.
+      **Where the reasoning lives in code:** `server/db.js`'s drop block (the ADD migrations are
+      left above it deliberately, as the tombstone), the corrected `COLUMN: logo_url` comment on
+      the logo upload endpoint, and `server/test/retiredColumnsDrop.test.js`.
+
 **The branding chain**
 - [x] ~~**R2 — login does not write the hint from the session.**~~ ✅ **SHIPPED — BR-1 Phase 1.**
       `resolveFromSession` was `return null` — the whole body — and now asks

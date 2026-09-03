@@ -13,7 +13,6 @@
 //   company_name        SET
 //   app_display_name    SET — and set to the retired platform codename
 //   logo_url            SET
-//   app_logo_url        NULL
 //   review_url          EMPTY STRING  (not null — a touched-then-cleared field)
 //   social_facebook     SET
 //   social_instagram    EMPTY STRING
@@ -98,10 +97,10 @@ describe('BR-2 Phase 2 — the landing copy migration, against a DIRTY pre-exist
     await pool.query('INSERT INTO contractors (id, name) VALUES ($1, $2)', [TENANT, 'Dirty Row Roofing']);
     await pool.query(
       `INSERT INTO contractor_settings
-         (contractor_id, company_name, app_display_name, logo_url, app_logo_url,
+         (contractor_id, company_name, app_display_name, logo_url,
           review_url, social_facebook, social_instagram, social_google,
           social_nextdoor, social_website)
-       VALUES ($1, $2, $3, $4, NULL, '', $5, '', $6, '', $7)`,
+       VALUES ($1, $2, $3, $4, '', $5, '', $6, '', $7)`,
       [TENANT, 'Dirty Row Roofing', 'Rooster Booster',
         'https://cdn.test.invalid/dirty-logo.png',
         'https://facebook.com/dirty', 'https://g.page/dirty', 'https://dirty.invalid']
@@ -128,7 +127,10 @@ describe('BR-2 Phase 2 — the landing copy migration, against a DIRTY pre-exist
     assert.equal(row.company_name, 'Dirty Row Roofing');
     assert.equal(row.app_display_name, 'Rooster Booster', 'a pre-existing value was rewritten');
     assert.equal(row.logo_url, 'https://cdn.test.invalid/dirty-logo.png');
-    assert.equal(row.app_logo_url, null, 'a NULL column was filled in');
+    // ⚠ THE app_logo_url ASSERTION WAS HERE AND IS GONE WITH THE COLUMN (BR-2
+    // Phase 3). It stood for "a NULL column was not filled in", and the row
+    // still carries that case — `review_url` below is the empty-string form and
+    // the landing columns above are the NULL form.
     assert.equal(row.review_url, '', 'an EMPTY STRING column was rewritten — it is not the same as NULL');
     assert.equal(row.social_instagram, '', 'an EMPTY STRING social was rewritten');
     assert.equal(row.social_nextdoor, '');

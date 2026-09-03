@@ -83,7 +83,7 @@ export default function CompanyDetailsSettings() {
   // The ENTIRE GET /api/admin/settings payload, captured on mount. formData below
   // holds only the 9 company fields this page displays; everything else the row
   // carries — the logo, the colours, the socials, the review block, the fonts, the
-  // app display name, the tagline, the email sender name and footer — lives here
+  // app display name, the landing copy, the email sender name and footer — lives here
   // and nowhere else in this component. handleSave merges the two so the request
   // is never a partial payload. Mirrors BrandingProfileSettings.jsx:287.
   const fullSettingsRef             = useRef({});
@@ -209,7 +209,7 @@ export default function CompanyDetailsSettings() {
     // Sending formData alone made every save of this page a partial payload, and
     // PUT /api/admin/settings used to be a full-row upsert that NULLed any column
     // its request body did not mention. One phone-number correction wiped the
-    // logo, all the colours, the socials, the review block, the fonts, the tagline
+    // logo, all the colours, the socials, the review block, the fonts, the landing copy
     // and the email footer.
     //
     // The server no longer does that — it is key-presence-driven as of

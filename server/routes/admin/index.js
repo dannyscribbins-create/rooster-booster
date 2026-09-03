@@ -659,11 +659,11 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
     const result = await pool.query(
       `SELECT contractor_id, company_name, company_phone, company_email, company_url,
               company_address, company_city, company_state, company_zip, company_country,
-              logo_url, app_logo_url, primary_color, secondary_color, accent_color,
+              logo_url, primary_color, secondary_color, accent_color,
               landing_bg_color,
               social_facebook, social_instagram, social_google, social_nextdoor, social_website,
               review_url, review_button_text, review_message,
-              font_heading, font_body, app_display_name, tagline,
+              font_heading, font_body, app_display_name,
               landing_step1_title, landing_step2_title, landing_step2_body,
               landing_step3_title, landing_step3_body,
               email_sender_name, email_footer_text, created_at, updated_at
@@ -705,7 +705,6 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
         // No default logo, deliberately: a placeholder borrowed from another
         // contractor is a white-label breach, not a fallback.
         logo_url: null,
-        app_logo_url: null,
         primary_color: null, secondary_color: null, accent_color: null,
         landing_bg_color: null,
         social_facebook: null, social_instagram: null, social_google: null,
@@ -727,7 +726,6 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
         // copy they never wrote.
         landing_step1_title: null, landing_step2_title: null, landing_step2_body: null,
         landing_step3_title: null, landing_step3_body: null,
-        tagline: 'Refer your neighbors. Earn cash rewards.',
         email_sender_name: null,
         email_footer_text: null,
         created_at: null, updated_at: null,
@@ -752,11 +750,11 @@ router.get('/api/admin/settings', requirePermission('branding'), async (req, res
 const SETTINGS_WRITABLE_COLUMNS = Object.freeze([
   'company_name', 'company_phone', 'company_email', 'company_url',
   'company_address', 'company_city', 'company_state', 'company_zip', 'company_country',
-  'logo_url', 'app_logo_url',
+  'logo_url',
   'primary_color', 'secondary_color', 'accent_color',
   'social_facebook', 'social_instagram', 'social_google', 'social_nextdoor', 'social_website',
   'review_url', 'review_button_text', 'review_message',
-  'font_heading', 'font_body', 'app_display_name', 'tagline',
+  'font_heading', 'font_body', 'app_display_name',
   // LP §2's overridable step copy (BR-2 Phase 2, A32(a)). NULL/'' means
   // "use the frozen default" — renderState1 holds the defaults, and these are
   // never backfilled.
@@ -779,8 +777,11 @@ router.put('/api/admin/settings', requirePermission('branding.manage'), async (r
   // the whole GET payload merged with their edits (BrandingProfileSettings.jsx),
   // and quietly destructive for any caller sending a subset. CompanyDetailsSettings
   // sends 9 keys; every save of that page NULLed the other 20 columns — the logo,
-  // all the colours, the socials, the review block, the fonts, the tagline and the
-  // email sender name and footer. Pinned by server/test/adminSettingsPartialSave.test.js.
+  // all the colours, the socials, the review block, the fonts, and the email
+  // sender name and footer. Pinned by server/test/adminSettingsPartialSave.test.js.
+  // (This list named `tagline` until BR-2 Phase 3 dropped that column; the
+  // sentence is a RECORD of a past defect, so the example was replaced rather
+  // than the sentence rewritten.)
   //
   // A column is now written ONLY IF ITS KEY IS PRESENT in the body. Absent columns
   // are omitted from the statement entirely: on UPDATE they keep their stored
@@ -788,7 +789,8 @@ router.put('/api/admin/settings', requirePermission('branding.manage'), async (r
   //
   // PRESENCE, NEVER NULLNESS, and that distinction is the whole design. A key
   // present with the value null MUST still write NULL — an admin who empties their
-  // tagline box and saves has to get an empty tagline. COALESCE, or skipping null
+  // Email Footer Text box and saves has to get an empty footer. COALESCE, or
+  // skipping null
   // values, would preserve data by making deliberate clearing impossible. It would
   // also break the stale-read characterisation in brandingSaveRoundTrip.test.js,
   // which sends a stale logo_url: null and correctly expects NULL to be written:
@@ -836,9 +838,17 @@ router.put('/api/admin/settings', requirePermission('branding.manage'), async (r
 // persists nothing. LP §5's "Admin upload (B2, same pipeline as email media)"
 // described work that did not exist.
 //
-// COLUMN: logo_url, reused. NOT app_logo_url — that column is the second term of
-// three email fallback chains, and redefining it would silently change what
-// those emails render.
+// COLUMN: logo_url.
+//
+// ⚠ THIS READ "logo_url, reused. NOT app_logo_url — that column is the second
+// term of three email fallback chains, and redefining it would silently change
+// what those emails render." THAT REASONING WAS SOUND AND ITS SUBJECT IS GONE:
+// `app_logo_url` was DROPPED in BR-2 Phase 3. It was NULL for every contractor,
+// had no writer anywhere in the product, and its only reads were the three
+// unreachable second terms this sentence was protecting. The comment is
+// corrected rather than deleted because a reader who finds an endpoint writing
+// "logo_url" with no note may reasonably wonder whether a second logo column was
+// meant — and the answer, recorded, is that there was one and it is retired.
 
 // The declared bound and whitelist. Exported (below, with the router) so the
 // suite reads them rather than hardcoding numbers that would break on any tune —
@@ -2218,11 +2228,8 @@ router.get('/api/admin/jobber-import-status', requirePermission('integrations'),
 router.LOGO_UPLOAD_LIMIT = LOGO_UPLOAD_LIMIT;
 
 module.exports = router;
-
-
-
-
-
-
-
-
+// Exported so tests read the real list rather than restating it — the convention
+// LOGO_UPLOAD_LIMIT and BRANDING_RESOLVE_LIMIT already follow. A test that
+// hardcoded the column names would still pass after someone re-added a retired
+// one to the whitelist.
+module.exports.SETTINGS_WRITABLE_COLUMNS = SETTINGS_WRITABLE_COLUMNS;

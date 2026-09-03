@@ -76,7 +76,7 @@ function settingsPayload(overrides = {}) {
     company_phone: '555-0100', company_email: 'hello@alpha.test.invalid', company_url: null,
     company_address: null, company_city: null, company_state: null,
     company_zip: null, company_country: 'US',
-    logo_url: OLD_LOGO, app_logo_url: null,
+    logo_url: OLD_LOGO,
     primary_color: '#123456', secondary_color: '#654321', accent_color: '#ABCDEF',
     landing_bg_color: null,
     social_facebook: null, social_instagram: null, social_google: null,
@@ -84,7 +84,7 @@ function settingsPayload(overrides = {}) {
     review_url: null, review_button_text: 'Leave a Review',
     review_message: 'Enjoying the rewards? Leave us a quick review!',
     font_heading: 'Montserrat', font_body: 'Roboto',
-    app_display_name: 'Alpha Rewards', tagline: 'Refer your neighbors. Earn cash rewards.',
+    app_display_name: 'Alpha Rewards',
     email_sender_name: null, email_footer_text: null,
     created_at: null, updated_at: null,
     ...overrides,
@@ -433,5 +433,74 @@ describe('B-3c — the preview receives the branding the real screen receives', 
       // edited value is the token itself — no derivation ambiguity to reason about.
       expect(root.style.getPropertyValue('--rm-secondary').toUpperCase()).toBe('#2E6B2E');
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('BR-2 Phase 3 — the card rename, the grouping, and the retired fields', () => {
+
+  // ⚠ EVERY TEST HERE ASSERTS THE SURROUNDING CARD RENDERED. A component that
+  // threw satisfies every "the retired field is gone" assertion below for
+  // entirely the wrong reason — the blank-render trap this repo keeps finding.
+  // Uses this file's own renderForm helper, which installs the fetch double and
+  // waits for a real section heading — the precondition every query needs.
+  const renderCard = () => renderForm();
+
+  it('[RED] T6 — Brand Logos renders ONE row, with no orphaned label or empty slot', async () => {
+    await renderCard();
+
+    // POSITIVE: the surviving row is there and is the uploadable one.
+    expect(screen.getByText('App Logo')).toBeInTheDocument();
+    // NEGATIVE: the retired display-only row is gone entirely — label included.
+    expect(screen.queryByText('Referrer App Logo')).toBeNull();
+    // ⚠ AND NO ORPHANED SLOT. The row's label and its content live in the same
+    // mapped element, so a half-removed member would leave one without the other.
+    // Asserting the section still has its heading proves the container survived
+    // the array going from two members to one.
+    expect(screen.getByText(/Brand Logos/i)).toBeInTheDocument();
+  });
+
+  it('[RED] the Tagline field is gone from the panel', async () => {
+    await renderCard();
+    expect(screen.queryByLabelText(/Tagline/i)).toBeNull();
+    expect(screen.queryByText(/Shown on the referrer login screen and dashboard/i)).toBeNull();
+  });
+
+  it('[RED] B.1/B.2 — the card is renamed and BOTH group labels render', async () => {
+    await renderCard();
+
+    // The rename: it names both halves of what it now holds.
+    expect(screen.getByText(/App Identity & Landing Page/i)).toBeInTheDocument();
+    // The grouping — ⚠ this is what makes the rename useful rather than merely
+    // accurate. Without it the five landing fields read as app settings.
+    expect(screen.getByText('Identity')).toBeInTheDocument();
+    expect(screen.getByText('Landing Page Copy')).toBeInTheDocument();
+  });
+
+  it('[RED] C.1/C.2 — the App Display Name copy no longer names the retired codename', async () => {
+    await renderCard();
+
+    // ⚠ THE PLACEHOLDER DESCRIBES RATHER THAN NAMES. "Rooster Booster" was
+    // generic placeholder text AND a false default claim — the real fallback is
+    // the company name, verified in renderState1 and the three referrer tabs.
+    const input = screen.getByPlaceholderText('Your program name');
+    expect(input).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Rooster Booster')).toBeNull();
+    // The helper names where the value ACTUALLY appears, and the real fallback.
+    // ⚠ ANCHORED ON THE FULL SENTENCE, NOT ON THE TRAILING CLAUSE. The Email
+    // Sender Name helper also ends 'Leave blank to use your company name...',
+    // so the short needle matches two nodes and throws — the substring trap,
+    // in a query rather than an assertion, for the second time this arc.
+    expect(screen.getByText(/The name of your rewards program\./i)).toBeInTheDocument();
+    expect(screen.getByText(/Appears in your landing page headline/i)).toBeInTheDocument();
+    expect(screen.queryByText(/replaces "Rooster Booster" throughout the referrer app/i)).toBeNull();
+  });
+
+  it('[RED] C.4 — the no-logo preview describes the SHIPPED behaviour, not the retired one', async () => {
+    await renderCard();
+    // The fixture has a logo set, so the no-logo branch is not on screen here —
+    // what is asserted is that the FALSE claim is gone from the component
+    // entirely, which is true on either branch.
+    expect(screen.queryByText(/the RoofMiles mark is shown as a placeholder/i)).toBeNull();
   });
 });

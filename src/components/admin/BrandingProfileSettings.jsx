@@ -75,6 +75,19 @@ function SectionHeading({ children }) {
   );
 }
 
+// ── A GROUP LABEL WITHIN A CARD (BR-2 Phase 3, B.2) ─────────────────────────
+// Deliberately NOT a second SectionHeading: a card has one heading, and two
+// would read as two cards that failed to separate. This is one step down —
+// same uppercase register, smaller, tighter — so the eye reads it as a division
+// INSIDE the card rather than as a new one.
+function GroupLabel({ children }) {
+  return (
+    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: AD.textSecondary, marginBottom: 14 }}>
+      {children}
+    </div>
+  );
+}
+
 function HelperText({ children }) {
   return <p style={{ margin: '6px 0 0', fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans, lineHeight: 1.4 }}>{children}</p>;
 }
@@ -218,7 +231,7 @@ const EMPTY_FORM = {
   social_nextdoor: '', social_website: '',
   review_url: '', review_button_text: '', review_message: '',
   font_heading: 'Montserrat', font_body: 'Roboto',
-  app_display_name: '', tagline: '',
+  app_display_name: '',
   landing_step1_title: '', landing_step2_title: '', landing_step2_body: '',
   landing_step3_title: '', landing_step3_body: '',
   email_sender_name: '', email_footer_text: '',
@@ -228,7 +241,7 @@ const EMPTY_FORM = {
 
 export default function BrandingProfileSettings() {
   const [formData, setFormData]           = useState(EMPTY_FORM);
-  const [logoData, setLogoData]           = useState({ logo_url: null, app_logo_url: null });
+  const [logoData, setLogoData]           = useState({ logo_url: null });
   const [loading, setLoading]             = useState(true);
   const [saving, setSaving]               = useState(false);
   const [saveStatus, setSaveStatus]       = useState(null);
@@ -290,7 +303,6 @@ export default function BrandingProfileSettings() {
         fullSettingsRef.current = settings;
         setLogoData({
           logo_url:     settings.logo_url     || null,
-          app_logo_url: settings.app_logo_url || null,
         });
         setFormData({
           primary_color:      settings.primary_color      || '',
@@ -308,7 +320,6 @@ export default function BrandingProfileSettings() {
           font_heading:       settings.font_heading       || 'Montserrat',
           font_body:          settings.font_body          || 'Roboto',
           app_display_name:   settings.app_display_name   || '',
-          tagline:            settings.tagline            || '',
           landing_step1_title: settings.landing_step1_title || '',
           landing_step2_title: settings.landing_step2_title || '',
           landing_step2_body:  settings.landing_step2_body  || '',
@@ -392,7 +403,7 @@ export default function BrandingProfileSettings() {
   // formData nor anywhere else the save reads — only in that ref, captured on
   // mount. PUT /api/admin/settings is a full-row upsert, so the ordinary session
   //
-  //     open Branding (no logo)  ->  upload a logo  ->  edit the tagline  ->  Save
+  //     open Branding (no logo)  ->  upload a logo  ->  edit a colour  ->  Save
   //
   // would write logo_url = NULL and destroy the logo that was just uploaded.
   // Shipping the uploader without this line would be strictly worse than shipping
@@ -524,12 +535,21 @@ export default function BrandingProfileSettings() {
       <div style={{ background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: AD.radiusLg, padding: 32, marginBottom: 20 }}>
         <SectionHeading>Brand Logos</SectionHeading>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* ⚠ ONE ROW NOW, AND IT IS STILL AN ARRAY DELIBERATELY (BR-2 Phase 3).
+              This rendered two: "App Logo" (logo_url, uploadable) and "Referrer
+              App Logo" (app_logo_url, display-only). The second column is DROPPED
+              — NULL for every contractor, no writer anywhere, its only reads three
+              unreachable email fallback terms — so its row goes with it.
+              ⚠ THE LABELS MAPPED OPPOSITE TO WHAT THEY SUGGESTED, which is the
+              open item this closes: the generic-sounding "App Logo" was the column
+              every surface reads, while the specific-sounding "Referrer App Logo"
+              was read by nothing in the referrer app.
+              The array shape is kept rather than inlined because the parent is a
+              flex column with `gap`, so one member lays out identically to two
+              with no orphaned label and no empty slot — a change from `.map` to a
+              bare div would be a layout edit this phase did not rule. */}
           {[
-            // Only logo_url is uploadable. app_logo_url is the second term of three
-            // email fallback chains, and pointing this endpoint at it would silently
-            // change what those emails render (ruling: Phase 0 for Phase 3).
             { label: 'App Logo', url: logoData.logo_url, uploadable: true },
-            { label: 'Referrer App Logo', url: logoData.app_logo_url, uploadable: false },
           ].map(({ label, url, uploadable }) => (
             <div key={label}>
               <div style={{ fontSize: 12, fontWeight: 500, color: AD.textSecondary, marginBottom: 8 }}>{label}</div>
@@ -539,17 +559,26 @@ export default function BrandingProfileSettings() {
                   <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: "'Roboto Mono', monospace", wordBreak: 'break-all' }}>{url}</span>
                 </div>
               ) : (
-                /* The platform default, shown so an admin can see what their
-                   surfaces actually render today rather than reading "No logo set"
-                   and having to guess. */
+                /* ⚠ THIS PREVIEW USED TO SHOW THE ROOFMILES MARK AND SAY IT WAS
+                   WHAT SHIPPED. BR-1 Phase 2's absence rule made that FALSE, and
+                   a preview that lies is worse than no preview: an admin decided
+                   whether to upload a logo based on it.
+                   WHAT ACTUALLY SHIPS NOW (BrandMark, A2): a resolved contractor
+                   with no logo gets their COMPANY NAME AS TEXT. The platform mark
+                   appears only where NO contractor resolved at all — the bare
+                   platform door — which is never this contractor's surface.
+                   So the preview shows the company name, because that is what a
+                   homeowner sees. */
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <img
-                    src={roofMilesLogo}
-                    alt="RoofMiles"
-                    style={{ height: 48, width: 'auto', borderRadius: 6, border: `1px solid ${AD.border}`, background: AD.bgCard, padding: 4, opacity: 0.75 }}
-                  />
+                  <span style={{
+                    fontFamily: "'Montserrat', sans-serif", fontSize: 18, fontWeight: 700,
+                    color: AD.textPrimary, border: `1px dashed ${AD.border}`,
+                    borderRadius: 6, padding: '10px 14px', background: AD.bgCard,
+                  }}>
+                    {formData.company_name || 'Your company name'}
+                  </span>
                   <span style={{ fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
-                    No logo set — the RoofMiles mark is shown as a placeholder
+                    No logo set — your company name is shown instead, as text
                   </span>
                 </div>
               )}
@@ -865,21 +894,41 @@ export default function BrandingProfileSettings() {
 
       {/* ── Section 5: App Identity ── */}
       <div style={{ background: AD.bgSurface, border: `1px solid ${AD.border}`, borderRadius: AD.radiusLg, padding: 32, marginBottom: 20 }}>
-        <SectionHeading>App Identity</SectionHeading>
+        {/* ⚠ RENAMED IN BR-2 PHASE 3 (B.1). It read "App Identity", which was
+            accurate when it held two fields. It now holds seven, five of them
+            landing-page copy, so the old name described the smaller half. */}
+        <SectionHeading>App Identity &amp; Landing Page</SectionHeading>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <GroupLabel>Identity</GroupLabel>
           <div>
-            <SettingsInput label="App Display Name" value={formData.app_display_name} onChange={v => handleChange('app_display_name', v)} placeholder="Rooster Booster" />
-            <HelperText>This name replaces "Rooster Booster" throughout the referrer app</HelperText>
-          </div>
-          <div>
-            <SettingsInput label="Tagline" value={formData.tagline} onChange={v => handleChange('tagline', v)} placeholder="Refer your neighbors. Earn cash rewards." multiline rows={2} />
-            <HelperText>Shown on the referrer login screen and dashboard</HelperText>
+            {/* ⚠ THE PLACEHOLDER DESCRIBES, IT DOES NOT NAME (ruled BR-2 Phase 3).
+                It read "Rooster Booster" — the RETIRED platform codename used as
+                generic placeholder text, which also asserted a false default:
+                an unset app_display_name does NOT fall back to that, or to
+                RoofMiles. It falls back to the COMPANY NAME, verified in source
+                at renderState1's `headlineSubject` and at the three referrer
+                tabs' `programName || companyName`.
+                ⚠ AND THE HELPER'S SURFACE LIST IS READ FROM SOURCE, NOT ASSUMED.
+                The old text said "throughout the referrer app", which was false
+                when written — the value reached only the landing headline. It is
+                now partly true and still not "throughout": BR-1 Phase 2 wired the
+                Profile, Cash Out and Rankings eyebrows to it. Four surfaces,
+                named. */}
+            <SettingsInput label="App Display Name" value={formData.app_display_name} onChange={v => handleChange('app_display_name', v)} placeholder="Your program name" />
+            <HelperText>The name of your rewards program. Appears in your landing page headline and above the Profile, Cash Out and Rankings screens. Leave blank to use your company name.</HelperText>
           </div>
 
+          {/* ── THE DIVIDER AND THE SECOND GROUP LABEL (BR-2 Phase 3, B.2) ────
+              ⚠ THIS IS WHAT MAKES THE RENAME USEFUL RATHER THAN MERELY ACCURATE.
+              Without it the five landing fields read as a continuation of app
+              settings, and an admin editing "Landing Step 2 — Description" has
+              no signal that they are editing their PUBLIC page.
+              A divider and two labels — not a redesign, not a second card, not a
+              collapsible section. */}
+          <div style={{ borderTop: `1px solid ${AD.border}`, margin: '8px 0 4px' }} />
+          <GroupLabel>Landing Page Copy</GroupLabel>
+
           {/* ── LP §2's how-it-works steps (BR-2 Phase 2, A32(a)) ──────────────
-              ⚠ ADDED TO THE EXISTING CARD, NOT A NEW ONE. The rename and the
-              regrouping of this section are Phase 3; putting these five in their
-              own card now would be a redesign this phase did not rule.
               ⚠ EACH PLACEHOLDER IS THE FROZEN DEFAULT, so a contractor sees what
               they are replacing rather than an empty box with no clue what it
               drives. Leaving a field blank keeps the default — the column stores
@@ -927,12 +976,24 @@ export default function BrandingProfileSettings() {
         <SectionHeading>Email Branding</SectionHeading>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
+            {/* ⚠ "ALL emails" WAS FALSE, FOUND BY READING THE SENDS RATHER THAN
+                TRUSTING THE HELPER. The campaign, cadence, post-job and pipeline
+                sends use this column; the signup and resend-code verification
+                emails send from the COMPANY NAME directly (BR-1 Phase 2, B.3).
+                So it governs most transactional and marketing mail and not the
+                two verification emails — which is what the text now says. */}
             <SettingsInput label="Email Sender Name" value={formData.email_sender_name} onChange={v => handleChange('email_sender_name', v)} placeholder="Your Company Name" />
-            <HelperText>The "From" name on all emails sent to referrers</HelperText>
+            <HelperText>The "From" name on your marketing and notification emails. Verification emails always send from your company name. Leave blank to use your company name everywhere.</HelperText>
           </div>
           <div>
+            {/* ⚠ "VERIFICATION AND NOTIFICATION EMAILS" WAS FALSE — and named the
+                one class of email that does NOT read this column. Verified by
+                grepping every reader: `server/cron/jobs/postJobSequence.js` and
+                the Jobber invoice-paid webhook. The verification emails carry no
+                footer text at all. Third false helper in this card, and all three
+                sounded plausible. */}
             <SettingsInput label="Email Footer Text" value={formData.email_footer_text} onChange={v => handleChange('email_footer_text', v)} placeholder="Your Company Name · Powered by RoofMiles" multiline rows={2} />
-            <HelperText>Appears at the bottom of verification and notification emails</HelperText>
+            <HelperText>Appears at the bottom of post-job follow-up emails and reward notifications</HelperText>
           </div>
         </div>
       </div>

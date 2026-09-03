@@ -15,7 +15,7 @@
 // save handler PUTs that 9-key formData verbatim (line 202). So every save of the
 // Company Details page NULLs the 20 branding columns listed in BRANDED below —
 // the logo, every colour including the landing background, all five socials, the
-// review block, both fonts, the app display name, the tagline, and the email
+// review block, both fonts, the app display name, and the email
 // sender name and footer. Blast radius: the public landing page, referrer app
 // theming, and outbound email.
 //
@@ -90,11 +90,10 @@ const EDITED_COMPANY = Object.freeze({
 
 // The 20 columns PUT /api/admin/settings writes that the Company Details payload
 // never mentions. Named exhaustively rather than sampling: a fix that rescues the
-// logo and the colours but drops the tagline and the email footer is still data
+// logo and the colours but drops the email footer is still data
 // loss, and a sampled test would call it green.
 const BRANDED = Object.freeze({
   logo_url:           'https://cdn.test.invalid/alpha/logo.png',
-  app_logo_url:       'https://cdn.test.invalid/alpha/app-logo.png',
   primary_color:      '#A1A1A1',
   secondary_color:    '#A2A2A2',
   accent_color:       '#A3A3A3',
@@ -110,7 +109,6 @@ const BRANDED = Object.freeze({
   font_heading:       'Alpha Display',
   font_body:          'Alpha Text',
   app_display_name:   'Alpha Rewards',
-  tagline:            'Refer a neighbour, earn with Alpha.',
   email_sender_name:  'Alpha Roofing Co',
   email_footer_text:  'Sent by Alpha Roofing Co.',
 });
@@ -294,22 +292,26 @@ describe('Company Details partial save — PUT /api/admin/settings', () => {
 
   it('[GUARD] a branding key present with an explicit null still clears that column', async () => {
     // THE LINE A FIX MUST NOT CROSS. Preservation must come from the key being
-    // ABSENT, never from the value being null — an admin who empties their tagline
-    // box and saves must get an empty tagline. A fix built on COALESCE, or on
+    // ABSENT, never from the value being null — an admin who empties their Email
+    // Footer Text box and saves must get an empty footer. A fix built on COALESCE, or on
     // "skip null values", would pass the RED test by making deliberate clearing
     // impossible, and this is the test that catches it.
     //
     // Two columns, not one, so the behaviour cannot be satisfied by special-casing
     // a single field. Both are also columns the RED test proves are otherwise
     // preserved, which is exactly the contrast being drawn.
+    // ⚠ THIS USED `tagline` AS THE FIRST OF THE TWO until BR-2 Phase 3 DROPPED that
+    // column. Repointed to email_footer_text rather than reduced to one column:
+    // the pair is the design, and a single-column version could be satisfied by
+    // special-casing exactly the field it tests.
     const token = await session();
     const before = await assertSeeded();
-    assert.ok(before.tagline,          'fixture error: tagline was already empty — clearing it proves nothing');
+    assert.ok(before.email_footer_text, 'fixture error: email_footer_text was already empty — clearing it proves nothing');
     assert.ok(before.landing_bg_color, 'fixture error: landing_bg_color was already empty — clearing it proves nothing');
 
     const put = await httpRequest(port, 'PUT', SETTINGS_PATH, token, {
       ...EDITED_COMPANY,
-      tagline: null,
+      email_footer_text: null,
       landing_bg_color: null,
     });
     assert.equal(put.status, 200, `PUT ${SETTINGS_PATH} failed: ${put.raw}`);
@@ -323,7 +325,7 @@ describe('Company Details partial save — PUT /api/admin/settings', () => {
       'the PUT did not persist the edited company phone — nothing was saved, so nothing is proven'
     );
 
-    assert.equal(row.tagline, null, 'an explicit tagline: null did not clear the column — deliberate clearing is broken');
+    assert.equal(row.email_footer_text, null, 'an explicit email_footer_text: null did not clear the column — deliberate clearing is broken');
     assert.equal(
       row.landing_bg_color, null,
       'an explicit landing_bg_color: null did not clear the column — deliberate clearing is broken'

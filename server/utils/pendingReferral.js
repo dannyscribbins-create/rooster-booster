@@ -83,13 +83,21 @@ function getTwilioClient() {
 async function sendPendingInviteEmail(pendingRecord, contractorId) {
   try {
     const settingsResult = await pool.query(
-      'SELECT company_name, company_phone, logo_url, app_logo_url FROM contractor_settings WHERE contractor_id = $1',
+      'SELECT company_name, company_phone, logo_url FROM contractor_settings WHERE contractor_id = $1',
       [contractorId]
     );
     const settings    = settingsResult.rows[0] || {};
     const companyName = escapeHtml(settings.company_name || 'Your contractor');
     const companyPhone = escapeHtml(settings.company_phone || '');
-    const logoUrl     = settings.logo_url || settings.app_logo_url || null;
+    // ⚠ SIMPLIFIED, NOT REMOVED (BR-2 Phase 3). This read
+    // `logo_url || app_logo_url || null`. `app_logo_url` is dropped: it was the
+    // unreachable second term of this chain and of two identical ones below,
+    // NULL for every contractor, with no writer anywhere in the product.
+    // ⚠ THE `|| null` STAYS AND IS NOT REDUNDANT. `settings` is `rows[0] || {}`,
+    // so with no settings row `settings.logo_url` is UNDEFINED — and `logoHtml`
+    // below branches on truthiness while `safeLogoUrl` interpolates. Normalising
+    // to null keeps one absent shape rather than two.
+    const logoUrl     = settings.logo_url || null;
     const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
     const safeLogoUrl = escapeHtml(logoUrl || '');
     const safeReferrerName = escapeHtml(pendingRecord.referred_by_name || '');
@@ -187,13 +195,15 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
     if (!referredRecord.referred_email) return;
 
     const settingsResult = await pool.query(
-      'SELECT company_name, company_phone, logo_url, app_logo_url FROM contractor_settings WHERE contractor_id=$1',
+      'SELECT company_name, company_phone, logo_url FROM contractor_settings WHERE contractor_id=$1',
       [contractorId]
     );
     const settings = settingsResult.rows[0] || {};
     const companyName = escapeHtml(settings.company_name || 'Your contractor');
     const companyPhone = escapeHtml(settings.company_phone || '');
-    const logoUrl = settings.logo_url || settings.app_logo_url || null;
+    // Simplified with the app_logo_url drop — see sendPendingInviteEmail above
+    // for why `|| null` is load-bearing rather than redundant.
+    const logoUrl = settings.logo_url || null;
     const safeLogoUrl = escapeHtml(logoUrl || '');
     const appUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
     const safeReferredName = escapeHtml(referredRecord.referred_name || '');
@@ -748,13 +758,15 @@ async function sendPendingRewardEmail(pendingReferrerEmail, pendingReferrerName,
     if (!pendingReferrerEmail) return;
 
     const settingsResult = await pool.query(
-      'SELECT email_sender_name, company_name, logo_url, app_logo_url FROM contractor_settings WHERE contractor_id = $1',
+      'SELECT email_sender_name, company_name, logo_url FROM contractor_settings WHERE contractor_id = $1',
       [contractorId]
     );
     const settings = settingsResult.rows[0] || {};
     const fromName = escapeHtml(settings.email_sender_name || settings.company_name || 'RoofMiles');
     const companyName = escapeHtml(settings.company_name || 'your contractor');
-    const logoUrl = settings.logo_url || settings.app_logo_url || null;
+    // Simplified with the app_logo_url drop — see sendPendingInviteEmail above
+    // for why `|| null` is load-bearing rather than redundant.
+    const logoUrl = settings.logo_url || null;
     const safeLogoUrl = escapeHtml(logoUrl || '');
     const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
     const safeReferrerName = escapeHtml(pendingReferrerName || '');

@@ -2156,6 +2156,47 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     await pool.query(`ALTER TABLE contractor_settings ADD COLUMN IF NOT EXISTS ${col} TEXT`);
   }
 
+  // ── BR-2 PHASE 3 — TWO RETIRED COLUMNS ARE DROPPED ─────────────────────────
+  // ⚠ IRREVERSIBLE. Run against a confirmed Backblaze backup (2026-09-03).
+  //
+  //   tagline       Read by NOTHING, ever. It never reached resolveBrandingTheme,
+  //                 so no surface could see it even in principle, and the panel
+  //                 helper that claimed it appeared on the referrer login screen
+  //                 and dashboard was false on both counts.
+  //   app_logo_url  One consumer, three call sites, always the unreachable SECOND
+  //                 term of `logo_url || app_logo_url || null`. NULL for every
+  //                 contractor, with no writer anywhere in the product — the
+  //                 upload endpoint deliberately never pointed at it.
+  //
+  // ⚠ THE ADD MIGRATIONS ABOVE ARE LEFT IN PLACE ON PURPOSE, and this is the
+  // detail that decides whether a fresh database boots. `ADD COLUMN IF NOT
+  // EXISTS` runs earlier in this same function, so on a brand-new database both
+  // columns are created and then dropped here, in one boot. Deleting the ADDs
+  // instead would be tidier to read and would leave this DROP referring to
+  // columns that never existed — harmless with IF EXISTS, but it also destroys
+  // the record of what was there. The pair reads as a tombstone: something was
+  // here, and it was removed deliberately.
+  //
+  // ⚠ IF EXISTS IS LOAD-BEARING, NOT DEFENSIVE DECORATION. Railway restarts run
+  // initDB() again on a schema where the drop has already happened; without it
+  // the second boot raises 42703 and the server never listens. That is the
+  // failure that bites on EVERY boot rather than once.
+  //
+  // ⚠ NO FAIL-CLOSED GUARD, AND THAT IS A DECISION RATHER THAN AN OMISSION. The
+  // guard rule governs migrations that BACKFILL: a guard fires while work
+  // remains, so it must be wrapped in a work-remaining check or it re-crashes
+  // every boot once a second contractor exists. A drop has no partial state —
+  // the column is present or it is not, and the statement is its own idempotency
+  // check — so there is nothing for a guard to observe and one here would be a
+  // mechanism reporting health it cannot see.
+  //
+  // Fenced by server/test/retiredColumnsDrop.test.js, which seeds production's
+  // actual row shape (tagline POPULATED with the platform boilerplate,
+  // app_logo_url NULL) before running this.
+  for (const col of ['tagline', 'app_logo_url']) {
+    await pool.query(`ALTER TABLE contractor_settings DROP COLUMN IF EXISTS ${col}`);
+  }
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed

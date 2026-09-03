@@ -5,7 +5,7 @@
 // copies NINE company_* fields out of the response into formData, and DISCARDS THE
 // REST. handleSave then PUTs that nine-key formData verbatim. So the request the
 // server sees never mentions the logo, the colours, the socials, the review block,
-// the fonts, the app display name, the tagline, or the email sender name and
+// the fonts, the app display name, or the email sender name and
 // footer.
 //
 // WHY THIS IS STILL WORTH FIXING NOW THAT THE SERVER IS SAFE. Phase 2 made
@@ -48,7 +48,6 @@ const ABOUT_URL        = '/api/admin/about';
 // them must survive the round trip through a form that has no field for it.
 const LOADED_LOGO     = 'https://cdn.test.invalid/alpha/logo.png';
 const LOADED_PRIMARY  = '#123456';
-const LOADED_TAGLINE  = 'Refer your neighbors. Earn cash rewards.';
 const LOADED_FOOTER   = 'Sent by Alpha Roofing Co.';
 
 // Mirrors the COMPLETE GET /api/admin/settings response shape (admin/index.js:572-579),
@@ -66,7 +65,7 @@ function settingsPayload(overrides = {}) {
     company_state: 'GA',
     company_zip: '30301',
     company_country: 'US',
-    logo_url: LOADED_LOGO, app_logo_url: null,
+    logo_url: LOADED_LOGO,
     primary_color: LOADED_PRIMARY, secondary_color: '#654321', accent_color: '#ABCDEF',
     landing_bg_color: '#0E0E0E',
     social_facebook: 'https://facebook.test.invalid/alpha', social_instagram: null,
@@ -76,7 +75,6 @@ function settingsPayload(overrides = {}) {
     review_message: 'Enjoying the rewards? Leave us a quick review!',
     font_heading: 'Montserrat', font_body: 'Roboto',
     app_display_name: 'Alpha Rewards',
-    tagline: LOADED_TAGLINE,
     email_sender_name: 'Alpha Roofing Co',
     email_footer_text: LOADED_FOOTER,
     created_at: null, updated_at: null,
@@ -186,7 +184,6 @@ describe('Company Details save — merged full settings payload', () => {
     // whole-object comparison so a failure says WHICH value was dropped.
     expect(body.logo_url).toBe(LOADED_LOGO);
     expect(body.primary_color).toBe(LOADED_PRIMARY);
-    expect(body.tagline).toBe(LOADED_TAGLINE);
     expect(body.email_footer_text).toBe(LOADED_FOOTER);
   });
 
