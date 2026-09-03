@@ -300,6 +300,12 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsu
     { url: cs.social_facebook,  label: 'Facebook' },
     { url: cs.social_instagram, label: 'Instagram' },
     { url: cs.social_google,    label: 'Google' },
+    // ⚠ NEXTDOOR WAS MISSING FROM THIS FOOTER (BR-2 Phase 1, S1). Five columns
+    // are collected by the admin editor and four were rendered — so a contractor
+    // who filled in Nextdoor got it stored, round-tripped and never shown. It is
+    // the one social with no Phosphor glyph, which is likely why it was skipped
+    // in a text footer that does not use icons at all.
+    { url: cs.social_nextdoor,  label: 'Nextdoor' },
     { url: cs.social_website,   label: 'Website' },
   ].filter(s => s.url && s.url.trim() !== '');
   const socialHtml = socialLinks.length > 0
@@ -387,7 +393,7 @@ async function executeBatchSend(campaignId, req, contractorId) {
             cs.font_heading, cs.font_body, cs.company_name, cs.email_sender_name,
             cs.company_address, cs.company_city, cs.company_state, cs.company_zip,
             cs.company_email, cs.logo_url, cs.social_facebook, cs.social_instagram,
-            cs.social_google, cs.social_website
+            cs.social_google, cs.social_nextdoor, cs.social_website
      FROM campaigns c
      LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
      LEFT JOIN contractor_settings cs ON cs.contractor_id = c.contractor_id
@@ -418,6 +424,7 @@ async function executeBatchSend(campaignId, req, contractorId) {
     social_facebook:   campaign.social_facebook,
     social_instagram:  campaign.social_instagram,
     social_google:     campaign.social_google,
+    social_nextdoor:   campaign.social_nextdoor,
     social_website:    campaign.social_website,
   };
 
@@ -2059,7 +2066,7 @@ router.post('/api/admin/campaigns/:id/retry-batch', requirePermission('campaigns
               cs.font_heading, cs.font_body, cs.company_name, cs.email_sender_name,
               cs.company_address, cs.company_city, cs.company_state, cs.company_zip,
               cs.company_email, cs.logo_url, cs.social_facebook, cs.social_instagram,
-              cs.social_google, cs.social_website
+              cs.social_google, cs.social_nextdoor, cs.social_website
        FROM campaigns c
        LEFT JOIN campaign_images ci ON ci.campaign_id = c.id
        LEFT JOIN contractor_settings cs ON cs.contractor_id = c.contractor_id
@@ -2084,6 +2091,7 @@ router.post('/api/admin/campaigns/:id/retry-batch', requirePermission('campaigns
       social_facebook:   campaign.social_facebook,
       social_instagram:  campaign.social_instagram,
       social_google:     campaign.social_google,
+      social_nextdoor:   campaign.social_nextdoor,
       social_website:    campaign.social_website,
     };
 

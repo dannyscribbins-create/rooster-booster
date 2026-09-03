@@ -93,6 +93,12 @@ async function loadContractorBranding(db, contractorId) {
             -- the ONE loader behind both the landing page and GET /api/branding/:slug,
             -- so the referrer app gets them without a second delivery path.
             s.review_url, s.review_button_text, s.review_message,
+            -- The five social columns (BR-2 Phase 1, S1). Selected here for the
+            -- same reason the review trio is: this is the ONE loader behind both
+            -- the landing page and GET /api/branding/:slug, so widening it gives
+            -- every branding consumer the socials without a second delivery path.
+            s.social_facebook, s.social_instagram, s.social_google,
+            s.social_nextdoor, s.social_website,
             -- ⚠ A THIRD TABLE, and the reason is the review-URL derivation.
             -- google_place_id lives on contractor_about (entered via Company
             -- Details → About Us) while review_url lives on contractor_settings

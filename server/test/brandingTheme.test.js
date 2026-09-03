@@ -746,4 +746,70 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
     assert.deepEqual(first, second);
     assert.deepEqual(input, POPULATED, 'resolveBrandingTheme mutated the object it was handed');
   });
+  // ── BR-2 PHASE 1 (S1) — THE SOCIALS, AND THE EMPTY-STRING BRANCH ──────────
+  //
+  // ⚠ WIDENING THE RESOLVER RATHER THAN ADDING A SECOND READ, and the precedent
+  // is the review trio directly above: "a second delivery path is a second shape
+  // that can drift from the first." Socials are public by construction — a
+  // contractor prints them on a truck — so nothing here changes
+  // GET /api/branding/:slug's disclosure posture.
+  //
+  // ⚠ EMPTY STRING AND NULL ARE BOTH ABSENT, AND THAT IS THE WHOLE TEST. The
+  // production contractor has three socials set and two stored as EMPTY STRING,
+  // not NULL. A fixture using only nulls exercises one branch and ships a row
+  // with two dead links in it.
+  it('[RED] S1 — collects only POPULATED socials, treating empty string and null alike', async () => {
+    const theme = resolveBrandingTheme({
+      social_facebook:  'https://facebook.com/alpha',
+      social_instagram: '',              // empty string — the production shape
+      social_google:    'https://g.page/alpha',
+      social_nextdoor:  null,            // null — the other absent shape
+      social_website:   '   ',           // whitespace only, also absent
+    });
+
+    assert.ok(Array.isArray(theme.socials), 'socials must be an array when any is set');
+    assert.equal(theme.socials.length, 2);
+    assert.deepEqual(theme.socials.map(s => s.key), ['facebook', 'google']);
+    assert.deepEqual(theme.socials.map(s => s.url),
+      ['https://facebook.com/alpha', 'https://g.page/alpha']);
+    // NOT VACUOUS: the absent three appear nowhere, at any depth.
+    const blob = JSON.stringify(theme);
+    assert.ok(!blob.includes('instagram'), 'an absent social leaked into the payload');
+    assert.ok(!blob.includes('nextdoor'));
+  });
+
+  it('[RED] S1 — every social absent OMITS the key entirely, like address and website', async () => {
+    // ⚠ OMITTED, NOT AN EMPTY ARRAY. The consumer draws the row by the key's
+    // presence — the same LP-1 rule `address` and `website` already follow — so
+    // an always-present [] would have every surface render an empty container
+    // and a divider with nothing under it. A3's group-level absence rule.
+    const theme = resolveBrandingTheme({ social_facebook: '', social_instagram: null, social_google: '' });
+
+    assert.ok(!('socials' in theme), 'the socials key must be ABSENT, not an empty array');
+  });
+
+  it('[RED] S1 — carries all five when all five are set, in a stable order', async () => {
+    // The predicate proof: a resolver that hardcoded two would pass the tests
+    // above. Order is asserted because the consumer renders a row and a shuffling
+    // row is a visual regression nobody would write a test for later.
+    const theme = resolveBrandingTheme({
+      social_facebook: 'https://f.invalid', social_instagram: 'https://i.invalid',
+      social_google: 'https://g.invalid',   social_nextdoor: 'https://n.invalid',
+      social_website: 'https://w.invalid',
+    });
+
+    assert.deepEqual(theme.socials.map(s => s.key),
+      ['facebook', 'instagram', 'google', 'nextdoor', 'website']);
+    for (const s of theme.socials) {
+      assert.ok(s.label, `social ${s.key} has no label for its accessible name`);
+    }
+  });
+
+  it('[RED] S1 — the neutral platform theme carries NO socials', async () => {
+    // isNeutralBranding() counts keys. A socials key on the neutral set would
+    // change that count and is also simply wrong: the platform has no contractor
+    // socials to offer.
+    assert.ok(!('socials' in resolveBrandingTheme(null)));
+  });
+
 });

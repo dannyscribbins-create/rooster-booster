@@ -257,6 +257,41 @@ function resolveBrandingTheme(input) {
     reviewMessage:   firstNonEmpty(src.review_message)     || BRANDING_THEME_DEFAULTS.reviewMessage,
   };
 
+  // ── THE SOCIAL LINKS (BR-2 Phase 1, S1) ─────────────────────────────────
+  // Five columns with an admin editor and a PATCH whitelist entry, read by ONE
+  // thing: the campaign email footer. No landing page, no referrer surface. The
+  // same shape the review trio was in before Phase 6A — settings a contractor
+  // can set that no homeowner ever sees.
+  //
+  // ⚠ WIDENED HERE RATHER THAN GIVEN A SECOND READ, following that trio's own
+  // reasoning: a second delivery path is a second shape that can drift from the
+  // first. Public by construction — these are links a contractor prints on a
+  // truck — so nothing here changes GET /api/branding/:slug's posture.
+  //
+  // ⚠ EMPTY STRING AND NULL ARE BOTH ABSENT, AND THE DISTINCTION IS NOT
+  // THEORETICAL. The production contractor has three set and two stored as
+  // EMPTY STRING. `firstNonEmpty` collapses null, undefined, '' and whitespace
+  // to the same answer, so a row of icons can never contain a dead one.
+  //
+  // ⚠ OMITTED, NOT AN EMPTY ARRAY, when nothing is set — the LP-1 rule `address`
+  // and `website` already follow directly below. The consumer draws the row by
+  // the key's presence, so an always-present [] makes every surface render an
+  // empty container and a divider with nothing under it. That is the absence
+  // rule applied to a GROUP rather than to a field.
+  //
+  // ORDER IS PART OF THE CONTRACT. The row renders in this sequence, and it
+  // matches the order the admin editor lists the fields in.
+  const socials = [
+    ['facebook',  'Facebook',        src.social_facebook],
+    ['instagram', 'Instagram',       src.social_instagram],
+    ['google',    'Google Business', src.social_google],
+    ['nextdoor',  'Nextdoor',        src.social_nextdoor],
+    ['website',   'Website',         src.social_website],
+  ]
+    .map(([key, label, raw]) => ({ key, label, url: firstNonEmpty(raw) }))
+    .filter(s => s.url);
+  if (socials.length) theme.socials = socials;
+
   // ADDRESS IS OMITTED, NOT NULLED (LP-1). The footer decides whether to draw
   // the contact row by the key's presence, so a null would render an empty row
   // where no row belongs.

@@ -24,7 +24,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
-import ThemeProvider from '../shared/ThemeProvider';
+import ThemeProvider, { ThemeContext } from '../shared/ThemeProvider';
 import ContactModal from '../shared/ContactModal';
 import ContractorAboutModal from './ContractorAboutModal';
 import BookingFormModal from './BookingFormModal';
@@ -34,6 +34,7 @@ import DashboardTab from './DashboardTab';
 import AnnouncementPopup from './AnnouncementPopup';
 import RankingsTab from './RankingsTab';
 import CashOutTab from './CashOutTab';
+import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 
 // Full resolveBrandingTheme-shaped payloads, every value distinct between the two
 // so no assertion can pass by coincidence.
@@ -628,5 +629,99 @@ describe('BR-1 Phase 2 (B.1) — the referrer tabs name the CONTRACTOR, not a re
       expect(document.body.textContent).toContain(BRAND_A.companyName);
       expect(document.body.textContent).not.toMatch(/rooster\s*booster/i);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('BR-2 Phase 1 (S3) — no review link, no review card', () => {
+
+  // ⚠ THIS RULE IS ALREADY IMPLEMENTED AND WAS NOT FENCED, WHICH IS WHY THIS
+  // SUITE EXISTS. DashboardTab gates its Google Review Banner on
+  // `showReviewCard && branding.reviewUrl`, with a comment recording the defect
+  // it fixed — a button whose window.open(null) resolved to the app's own origin
+  // plus a literal "null" path. Nothing asserted it, so the gate could be
+  // "simplified" back to `showReviewCard` alone and every existing test would
+  // stay green: the suite above supplies a reviewUrl, so it drives the card's
+  // PRESENT branch only.
+  //
+  // ⚠ AND reviewUrl DERIVES. It is `review_url || <built from google_place_id>`,
+  // so an empty review_url does NOT mean no card — a contractor with a Place ID
+  // still gets one. The absent case needs BOTH cleared, which is what the
+  // fixture below does and what makes this test about the rule rather than about
+  // one column.
+  const DASH_PROPS = {
+    setTab: () => {}, pipeline: [], loading: false,
+    pipelineRateLimited: false, pipelineStale: false, pipelineStaleSince: null,
+    pipelineUnavailable: false, userName: 'Dana Referrer', balance: 0, paidCount: 0,
+    profilePhoto: null, showReviewCard: true, onDismissReview: () => {},
+    sessionToken: 't', onViewAllReferrals: () => {}, bankStatus: null,
+    onOpenBankSetup: () => {},
+  };
+
+  const NO_REVIEW = Object.freeze(resolveBrandingTheme({
+    contractor_name: 'Reviewless Roofing',
+    review_url: '',          // empty string, the production shape
+    google_place_id: null,   // and no derivation source either
+  }));
+
+  const WITH_REVIEW = Object.freeze(resolveBrandingTheme({
+    contractor_name: 'Reviewless Roofing',
+    review_url: 'https://g.page/r/review-target',
+  }));
+
+  // ⚠ DIRECT CONTEXT INJECTION, NOT renderForBrand. That helper drives the D4
+  // chain, so branding arrives on a repaint — correct for the resolution tests
+  // above, and pure indirection for a test about a GATE. Injecting the resolved
+  // payload makes the branch under test the only variable.
+  function renderDash(branding) {
+    if (!branding || typeof branding !== 'object') {
+      throw new Error('renderDash(): branding must be a resolveBrandingTheme payload');
+    }
+    return render(
+      <ThemeContext.Provider value={{ mode: 'light', branding, source: 'session', setMode: () => {} }}>
+        <DashboardTab {...DASH_PROPS} />
+      </ThemeContext.Provider>
+    );
+  }
+
+  it('[RED] T6 — review_url absent → NO card, and the rest of the tab still renders', async () => {
+    // ⚠ BOTH DIRECTIONS. A test that only checks the card is gone passes when the
+    // whole tab crashed — CLAUDE.md's blank-render trap, and the reason the
+    // second half of this assertion is not optional.
+    renderDash(NO_REVIEW);
+    await waitFor(() => expect(document.body.textContent).toContain('Dana'));
+
+    expect(NO_REVIEW.reviewUrl, 'fixture precondition: nothing to link to').toBeNull();
+    expect(document.body.textContent).not.toContain(NO_REVIEW.reviewButtonText);
+    // NO DEAD TARGET ANYWHERE — the specific defect the gate was added for.
+    for (const el of document.querySelectorAll('a,button')) {
+      expect(el.getAttribute('href') || '').not.toMatch(/^(null|undefined)$/);
+    }
+    // THE OTHER DIRECTION: the tab is alive.
+    expect(document.body.textContent).toContain('Your Dashboard');
+  });
+
+  it('[RED] T7 — review_url set → the card renders with its link live', async () => {
+    // The predicate proof. Without it, a tab that rendered no card under ANY
+    // condition would satisfy T6 completely.
+    renderDash(WITH_REVIEW);
+    await waitFor(() => expect(document.body.textContent).toContain(WITH_REVIEW.reviewButtonText));
+
+    expect(WITH_REVIEW.reviewUrl).toBe('https://g.page/r/review-target');
+    expect(document.body.textContent).toContain(WITH_REVIEW.reviewMessage);
+  });
+
+  it('[RED] C.4 — the review COPY defaults, but the URL is never invented', async () => {
+    // What defaults exist today, asserted rather than described: the two copy
+    // fields fall back to generic platform strings (safe — generic copy may be
+    // defaulted freely), while reviewUrl stays null (identity-bearing values get
+    // no defaults). So a contractor with a URL and no copy gets a working card.
+    const urlOnly = resolveBrandingTheme({
+      contractor_name: 'Copyless Roofing',
+      review_url: 'https://g.page/r/x', review_button_text: '', review_message: '',
+    });
+    expect(urlOnly.reviewButtonText).toBeTruthy();
+    expect(urlOnly.reviewMessage).toBeTruthy();
+    expect(resolveBrandingTheme({ contractor_name: 'X' }).reviewUrl).toBeNull();
   });
 });

@@ -1,6 +1,26 @@
 import { R } from '../../constants/theme';
 import { useBranding } from '../shared/ThemeProvider';
-import { Clock, MapPin, Star } from '@phosphor-icons/react';
+import {
+  Clock, MapPin, Star,
+  FacebookLogo, InstagramLogo, GoogleLogo, House, Globe,
+} from '@phosphor-icons/react';
+
+// ── THE SOCIAL GLYPHS (BR-2 Phase 1, S1) ────────────────────────────────────
+// Phosphor, which is the project's only icon set and is already a dependency —
+// no new package. It ships real marks for four of the five.
+//
+// ⚠ NEXTDOOR HAS NO PHOSPHOR GLYPH, AND THE FALLBACK IS NOT INVENTED HERE. The
+// admin editor already labels that field with `ph-house-line`, so `House` is the
+// stand-in this codebase has ALREADY chosen for Nextdoor; reusing it keeps one
+// answer rather than adding a second. It is a generic house, so the accessible
+// name carries the word "Nextdoor" and the icon is not asked to say it alone.
+const SOCIAL_ICON = {
+  facebook:  FacebookLogo,
+  instagram: InstagramLogo,
+  google:    GoogleLogo,
+  nextdoor:  House,
+  website:   Globe,
+};
 
 const AWARD_LABELS = {
   gaf_master_elite:        'GAF Master Elite',
@@ -112,6 +132,50 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
                   </span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Social links (BR-2 Phase 1, S1) ──────────────────────────────
+              ⚠ THE WHOLE BLOCK IS GATED ON THE KEY'S PRESENCE, not on a length
+              check against an always-present array. The resolver OMITS `socials`
+              when every column is empty — the same LP-1 rule `address` and
+              `website` follow — so this container, its divider and its spacing
+              all disappear together. That is the absence rule applied to a GROUP:
+              an empty container with a divider above it is exactly what A3
+              forbids.
+              ⚠ AND ONLY POPULATED LINKS ARE IN THE ARRAY AT ALL. The resolver
+              treats empty string, null and whitespace alike, so a dead icon
+              cannot reach this row — the production contractor has two of five
+              stored as EMPTY STRING, which is the shape that would otherwise
+              render as a link to nowhere. */}
+          {branding.socials && (
+            <div
+              data-rm-socials=""
+              style={{
+                display: 'flex', justifyContent: 'center', gap: 18,
+                marginBottom: 24, paddingTop: 20,
+                borderTop: '1px solid rgba(255,255,255,0.12)',
+              }}
+            >
+              {branding.socials.map(({ key, label, url }) => {
+                const Icon = SOCIAL_ICON[key] || Globe;
+                return (
+                  <a
+                    key={key}
+                    href={url}
+                    target="_blank"
+                    // ⚠ noopener IS NOT COSMETIC on an admin-pasted URL: without
+                    // it the destination gets a handle on this window through
+                    // window.opener and can navigate it.
+                    rel="noopener noreferrer"
+                    aria-label={`${contractorName} on ${label}`}
+                    onClick={e => e.stopPropagation()}
+                    style={{ display: 'inline-flex', color: 'rgba(255,255,255,0.85)' }}
+                  >
+                    <Icon size={24} weight="fill" />
+                  </a>
+                );
+              })}
             </div>
           )}
 
