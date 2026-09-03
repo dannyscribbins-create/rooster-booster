@@ -33,9 +33,17 @@
 //      go unimplemented for the whole of C/DL-3b. It falls out of the ordering
 //      ONLY ONCE SOURCE 1 ANSWERS — which it did not, so the guarantee was never
 //      once available, and a hint planted by a link outlived every subsequent
-//      visit. R2 now has a special case (see the write-through), because the
-//      contractor a session names HAS NO SLUG to rewrite the hint TO, so the
-//      correction is a removal. Do not "simplify" it back into the ordering.
+//      visit. R2 now has a special case (see the write-through) and it is a
+//      TWO-BRANCH one: source 1 carries the session contractor's own slug, so
+//      the correction SUBSTITUTES the hint — and falls back to REMOVING it only
+//      for a contractor whose `contractors.slug` is NULL and which therefore
+//      cannot be named in the hint at all. Do not "simplify" either branch back
+//      into the ordering.
+//      ⚠ THIS READ "the contractor a session names HAS NO SLUG to rewrite the
+//      hint TO, so the correction is a removal" for one commit, and that
+//      removal-for-every-contractor was a REGRESSION: it erased the legitimate
+//      hint that gives a returning signed-out visitor their own contractor's
+//      login screen, not merely a planted one. Fixed in BR-1 Phase 1-B.
 //
 // R3 — LOGOUT PRESERVES THE HINT. Nothing in this file removes
 //      BRAND_HINT_STORAGE_KEY. The logout seam itself is Phase 4.
@@ -266,9 +274,9 @@ export async function resolveFromSession(ctx) {
   const token = ctx.sessionToken;
   if (typeof token !== 'string' || token.trim() === '') return null;
 
-  let theme = null;
+  let answer = null;
   try {
-    theme = await ctx.fetchSessionBranding(token);
+    answer = await ctx.fetchSessionBranding(token);
   } catch {
     return null;   // a non-answer — the next source gets its turn
   }
@@ -281,13 +289,34 @@ export async function resolveFromSession(ctx) {
   // cannot legitimately be absent — `contractors.name` is NOT NULL and the
   // resolver falls back to it — so its presence is what separates a real theme
   // from every one of those.
+  if (!answer || typeof answer !== 'object' || Array.isArray(answer)) return null;
+  const theme = answer.branding;
   if (!theme || typeof theme !== 'object' || Array.isArray(theme)) return null;
   if (typeof theme.companyName !== 'string' || theme.companyName === '') return null;
 
-  // NO SLUG, AND `authoritative` IS WHAT THAT NULL MEANS. The write-through
-  // reads the flag rather than the null so that source 5's identical-looking
-  // `slug: null` keeps its opposite meaning. See resolveBranding.
-  return { branding: theme, slug: null, authoritative: true };
+  // ── THE SLUG, AND BOTH BRANCHES IT FEEDS (BR-1 Phase 1-B) ─────────────────
+  // This line was `slug: null` unconditionally, with a note saying source 1 had
+  // no slug to offer. It has one now — the session's OWN contractor's, derived
+  // server-side — and the generic write-through in resolveBranding needed NO
+  // change to use it: a truthy slug REWRITES the hint (R3), a null one REMOVES
+  // it (R4).
+  //
+  // ⚠ RE-NORMALISED HERE RATHER THAN TRUSTED FROM THE FETCHER. The real fetcher
+  // already collapses absent/empty to null, but `ctx.fetchSessionBranding` is an
+  // injection point — a test double, a future native fetcher — and the two
+  // branches turn on truthiness. A `''` reaching the write-through would take
+  // neither branch correctly: falsy, so it clears rather than writes, while
+  // looking in the payload exactly like a slug that was supplied.
+  //
+  // `authoritative` STAYS, and it is not redundant with the slug. It is what
+  // distinguishes source 1's `slug: null` — "the contractor is known and has no
+  // slug", so REMOVE the hint — from source 5's identical-looking `slug: null`,
+  // which means "no contractor was identified" and must leave a good hint alone.
+  const slug = (typeof answer.slug === 'string' && answer.slug.trim() !== '')
+    ? answer.slug
+    : null;
+
+  return { branding: theme, slug, authoritative: true };
 }
 
 // ── SOURCE 2 — HOST ──────────────────────────────────────────────────────────
@@ -478,11 +507,25 @@ async function fetchBrandingFromApi(slug) {
 // the session row, which is what makes this source unspoofable in the way
 // sources 2, 2.5 and 3 are not — see R1 in this file's header.
 //
-// UNWRAPS THE ENVELOPE. The route answers `{ branding }` when the session has a
-// contractor and `{}` when it does not (a super admin), following the same D-I
-// convention as GET /api/admin/me: the key's ABSENCE says "resolution did not
-// happen", which is a different fact from "resolved to nothing". Returning
-// `?? null` collapses both into the non-answer the chain already understands.
+// NORMALISES THE ENVELOPE, and since BR-1 Phase 1-B it keeps BOTH halves. The
+// route answers `{ branding, slug }` for a contractor that has a slug,
+// `{ branding }` for one whose `contractors.slug` is NULL, and `{}` for a
+// session with no contractor at all (a super admin) — the same D-I convention
+// GET /api/admin/me follows, where a key's ABSENCE says "resolution did not
+// happen" rather than "resolved to nothing". A missing `branding` collapses to
+// the non-answer the chain already understands.
+//
+// ⚠ THIS RETURNED THE BARE THEME UNTIL 1-B, AND THE SLUG IS WHY IT CHANGED. The
+// hint stores a SLUG, so an authenticated answer could not REWRITE the hint
+// without one — CD-24 R2's correction degraded to a removal, which erased a
+// returning visitor's branded login screen along with any planted value. Source
+// 1 needs the slug for the write-through and for nothing else; it never reaches
+// the published branding object.
+//
+// THE SLUG IS NORMALISED TO null WHEN ABSENT OR EMPTY, so exactly one shape
+// reaches the write-through's truthiness test. A `''` arriving from a future
+// server change would otherwise be stored as a hint that exists and resolves to
+// nothing.
 async function fetchSessionBrandingFromApi(token) {
   try {
     const res = await fetch(`${BACKEND_URL}/api/session/branding`, {
@@ -490,7 +533,11 @@ async function fetchSessionBrandingFromApi(token) {
     });
     if (!res.ok) return null;
     const payload = await res.json();
-    return payload?.branding ?? null;
+    if (!payload || typeof payload !== 'object' || !payload.branding) return null;
+    const slug = typeof payload.slug === 'string' && payload.slug.trim() !== ''
+      ? payload.slug
+      : null;
+    return { branding: payload.branding, slug };
   } catch {
     return null;
   }
@@ -533,12 +580,26 @@ export async function resolveBranding(ctx = createBrandingContext()) {
     // visit can resolve at source 3. Source 5 carries no slug and so writes
     // nothing — see resolveNeutral.
     //
-    // ── THE SECOND BRANCH IS CD-24 R2, AND IT IS A REMOVAL (BR-1 Phase 1) ─────
+    // ── CD-24 R2 USES BOTH BRANCHES, AND WHICH ONE IS THE CONTRACTOR'S DOING ──
     // R2: an authenticated answer OVERRIDES AND REWRITES the hint. Source 1 is
     // the only authoritative link — its answer comes from the session's own
-    // contractor, server-side — and it carries NO SLUG, because
-    // `contractors.slug` has no backfill and no mint path and echoing one would
-    // reopen the endpoint's deliberate non-enumerability (BR Phase 0 §3.6/§3.7).
+    // contractor, server-side. It now carries that contractor's OWN SLUG when
+    // one exists, so R2 is a SUBSTITUTION on the first branch, and a REMOVAL on
+    // the second only when the contractor genuinely has no slug to name.
+    //
+    // ⚠ THIS BLOCK CLAIMED SOURCE 1 "CARRIES NO SLUG", CITING BR Phase 0
+    // §3.6/§3.7 — that resolution needs no slug and that echoing one would
+    // reopen the endpoint's non-enumerability. The first half is still true and
+    // is why §3.7 was right to unblock on it. The second was wrong in a way that
+    // COST A REGRESSION: the posture protects against discovering OTHER
+    // contractors' slugs, and an authenticated route returning the caller's own
+    // discloses nothing. Meanwhile removal-for-want-of-a-slug erased the
+    // legitimate hint that made a returning signed-out visitor see their own
+    // contractor, alongside any planted one. Fixed in BR-1 Phase 1-B.
+    // ⚠ AND THE PREMISE WAS FALSE TOO, NOT MERELY THE CONCLUSION: this said
+    // `contractors.slug` "has no backfill and no mint path", implying no slug
+    // existed to echo. The production contractor's slug was already set. A
+    // deferral written against a trigger that had already fired can never fire.
     //
     // ⚠ SO `slug: null` MEANS TWO DIFFERENT THINGS HERE AND THE FLAG IS WHAT
     // SEPARATES THEM. Source 5's null means "there is no contractor to remember"

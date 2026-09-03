@@ -86,15 +86,29 @@ function makeFetchBranding(table = {}, { fail = false } = {}) {
   });
 }
 
-// A stand-in for GET /api/session/branding (BR-1). `table` maps token -> theme;
-// anything absent gets `null`, exactly as the real fetcher does for a 401 or a
-// failed call. Returning the THEME rather than the `{branding}` envelope mirrors
-// fetchSessionBrandingFromApi, which unwraps the envelope before the source sees
-// it — so the source is exercised against the shape it actually receives.
+// A stand-in for GET /api/session/branding. `table` maps token ->
+// `{ branding, slug }`; anything absent gets `null`, exactly as the real fetcher
+// does for a 401 or a failed call.
+//
+// ⚠ THE ENTRY IS THE ENVELOPE, AND IT IS EXPLICIT RATHER THAN INFERRED (BR-1
+// Phase 1-B). This double returned a bare THEME until 1-B, because source 1 had
+// no slug to carry. It has one now, and the write-through branches on it —
+// substitute the hint when there is a slug, remove it when there is not — so
+// every fixture has to SAY which case it is. A double that defaulted a slug in
+// would make the removal branch unreachable; one that defaulted it out would
+// make the substitution branch unreachable. Neither would fail.
 function makeFetchSessionBranding(table = {}, { fail = false } = {}) {
   return vi.fn(async (token) => {
     if (fail) return null;
-    return table[token] ? { ...table[token] } : null;
+    const entry = table[token];
+    if (!entry) return null;
+    if (!entry.branding) {
+      throw new Error(
+        'makeFetchSessionBranding: entries are { branding, slug } envelopes, not bare themes. ' +
+        'Passing a theme silently produced a non-answer before this check existed.'
+      );
+    }
+    return { branding: { ...entry.branding }, slug: entry.slug ?? null };
   });
 }
 
@@ -686,11 +700,22 @@ describe('BR-1 Phase 1 — source 1 (session) answers', () => {
   const TOKEN_A = 'a'.repeat(64);
   const TOKEN_B = 'b'.repeat(64);
 
+  // The envelopes GET /api/session/branding returns, named so each fixture says
+  // out loud whether its contractor has a slug — the write-through branches on
+  // exactly that, and BR-1 Phase 1-B added the branch.
+  const SESSION_A = { branding: BRAND_A, slug: SLUG_A };
+  const SESSION_B = { branding: BRAND_B, slug: SLUG_B };
+  // ⚠ THE R4 FIXTURE. A real contractor, fully resolved, whose `contractors.slug`
+  // is NULL — the case that cannot be represented in the hint at all and must
+  // therefore still REMOVE it. Kept beside its sibling so the two branches are
+  // visibly a pair rather than one rule with an exception someone may prune.
+  const SESSION_A_NO_SLUG = { branding: BRAND_A, slug: null };
+
   // ── T1 ─────────────────────────────────────────────────────────────────────
   it('[RED] T1 — source 1 returns branding for an authenticated session', async () => {
     const ctx = makeContext({
       sessionToken: TOKEN_A,
-      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: BRAND_A }),
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A }),
     });
 
     const answer = await resolveFromSession(ctx);
@@ -707,7 +732,7 @@ describe('BR-1 Phase 1 — source 1 (session) answers', () => {
     // fetcher used by sources 2, 2.5 and 3; it must never be called.
     const ctx = makeContext({
       sessionToken: TOKEN_A,
-      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: BRAND_A }),
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A }),
       search: `?brand=${SLUG_B}`,
       storage: makeStorage({ [BRAND_HINT_STORAGE_KEY]: SLUG_B }),
       fetchBranding: makeFetchBranding({ [SLUG_B]: BRAND_B }),
@@ -770,7 +795,7 @@ describe('BR-1 Phase 1 — source 1 (session) answers', () => {
     // ⚠ THE CLIENT HALF. What the SERVER derived is asserted in
     // server/test/sessionBranding.test.js — this asserts that the client never
     // hands the server a channel to be misled through, and never prefers one.
-    const fetchSessionBranding = makeFetchSessionBranding({ [TOKEN_A]: BRAND_A });
+    const fetchSessionBranding = makeFetchSessionBranding({ [TOKEN_A]: SESSION_A });
     const ctx = makeContext({
       sessionToken: TOKEN_A,
       fetchSessionBranding,
@@ -801,7 +826,7 @@ describe('BR-1 Phase 1 — source 1 (session) answers', () => {
   it('[RED] T3 — two sessions on one fixture resolve to their OWN contractors', async () => {
     // THE PREDICATE PROOF. A source that ignored its token and returned "the
     // branding" would pass the test above and fail this one.
-    const fetchSessionBranding = makeFetchSessionBranding({ [TOKEN_A]: BRAND_A, [TOKEN_B]: BRAND_B });
+    const fetchSessionBranding = makeFetchSessionBranding({ [TOKEN_A]: SESSION_A, [TOKEN_B]: SESSION_B });
 
     const a = await resolveBranding(makeContext({ sessionToken: TOKEN_A, fetchSessionBranding }));
     const b = await resolveBranding(makeContext({ sessionToken: TOKEN_B, fetchSessionBranding }));
@@ -810,66 +835,119 @@ describe('BR-1 Phase 1 — source 1 (session) answers', () => {
     expect(b.branding.companyName).toBe(BRAND_B.companyName);
   });
 
-  // ── T4 — THE WRITE-THROUGH / CD-24 R2 ──────────────────────────────────────
-  it('[RED] T4 — a planted hint naming B does not survive an authenticated load as A', async () => {
-    // ⚠ THIS IS THE SECURITY FIX, AND IT IS DELIBERATELY ITS OWN TEST. T3 proves
-    // the planted value does not DECIDE the branding; this proves it does not
-    // PERSIST. Without it, every subsequent signed-out visit on this device still
-    // paints B, because nothing else in the chain ever removes the key.
-    //
-    // ⚠ "REWRITTEN TO MATCH" IS ACHIEVED BY REMOVAL, NOT SUBSTITUTION, AND THE
-    // REASON IS RECORDED RATHER THAN INFERRED. CD-24 R2 says an authenticated
-    // answer rewrites the hint to the authenticated contractor. Source 1 has no
-    // slug to write — `contractors.slug` has no backfill and no mint path (BR
-    // Phase 0 §3.6), and echoing one would reopen the endpoint's deliberate
-    // non-enumerability (§3.7). The hint that MATCHES a contractor with no slug
-    // is no hint, so the correction is a removal. The moment a slug backfill
-    // lands, this becomes a substitution with no change here.
+  // ── THE WRITE-THROUGH / CD-24 R2 — TWO BRANCHES, BOTH PINNED ───────────────
+  //
+  // ⚠ PHASE 1 HAD ONE BRANCH AND 1-B ADDED THE OTHER, WHICH IS WHY THEY ARE
+  // ADJACENT AND SAY SO. R2 requires an authenticated answer to REWRITE the
+  // hint. Phase 1's source 1 carried no slug, so "rewrite" degraded to REMOVE —
+  // correct for the planted value and destructive to the legitimate one, since
+  // the hint is the only thing that makes a returning signed-out visitor see
+  // their own contractor. 1-B echoes the session's own slug, so the rewrite is a
+  // SUBSTITUTION whenever the contractor has one. Removal survives, scoped to
+  // the case that genuinely cannot be represented.
+  it('[RED] T3 — a planted hint naming B is REPLACED by A\'s slug, not merely dropped', async () => {
+    // ⚠ THE SUBSTITUTION, AND IT IS THE HALF THAT REGRESSED. Asserting only that
+    // B is gone would pass against Phase 1's removal, which is exactly the
+    // behaviour this test exists to change — so the assertion is on the VALUE
+    // now stored, not on the absence of the old one.
     const storage = makeStorage({ [BRAND_HINT_STORAGE_KEY]: SLUG_B });
     const ctx = makeContext({
       sessionToken: TOKEN_A,
-      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: BRAND_A }),
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A }),
       storage,
       fetchBranding: makeFetchBranding({ [SLUG_B]: BRAND_B }),
     });
 
     await resolveBranding(ctx);
 
-    expect(storage._map.has(BRAND_HINT_STORAGE_KEY)).toBe(false);
-    expect(storage.getItem(BRAND_HINT_STORAGE_KEY)).toBeNull();
-    // The planted value must not have been re-written under any key.
-    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(storage.getItem(BRAND_HINT_STORAGE_KEY)).toBe(SLUG_A);
+    expect(storage.setItem).toHaveBeenCalledWith(BRAND_HINT_STORAGE_KEY, SLUG_A);
+    // AND THE PLANTED VALUE IS GONE — the security half, unchanged from Phase 1.
+    expect(storage._map.get(BRAND_HINT_STORAGE_KEY)).not.toBe(SLUG_B);
+    expect(storage.removeItem).not.toHaveBeenCalled();
   });
 
-  it('[RED] T4 — the planted value is gone on the NEXT load, not merely ignored on this one', async () => {
-    // ⚠ THE CONSEQUENCE, OBSERVED RATHER THAN ASSUMED. Asserting the key is
-    // absent proves the write happened; this proves the write MATTERED. The
-    // second walk is signed out — the shared-device case — and must no longer be
-    // able to reach B.
+  it('[RED] T5 — a signed-out load AFTER an authenticated one resolves A from the corrected hint', async () => {
+    // ⚠ THIS IS THE REGRESSION TEST, AND IT IS THE POINT OF 1-B. Phase 1's
+    // equivalent asserted the second walk answered NEUTRAL, which was the
+    // regression written down as an expectation: a returning visitor who had
+    // signed in lost their contractor's login screen. The second walk is signed
+    // out — no token — so the ONLY thing that can carry A across it is the hint
+    // the authenticated walk wrote.
     const storage = makeStorage({ [BRAND_HINT_STORAGE_KEY]: SLUG_B });
-    const fetchBranding = makeFetchBranding({ [SLUG_B]: BRAND_B });
+    const fetchBranding = makeFetchBranding({ [SLUG_A]: BRAND_A, [SLUG_B]: BRAND_B });
 
     await resolveBranding(makeContext({
       sessionToken: TOKEN_A,
-      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: BRAND_A }),
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A }),
       storage,
       fetchBranding,
     }));
 
     const after = await resolveBranding(makeContext({ sessionToken: null, storage, fetchBranding }));
 
-    expect(after.source).toBe('neutral');
-    expect(after.branding.companyName).toBe(BRANDING_THEME_DEFAULTS.companyName);
+    expect(after.source).toBe('stored');
+    expect(after.branding.companyName).toBe(BRAND_A.companyName);
+    // NOT VACUOUS IN THE DANGEROUS DIRECTION: B must not be what answered, and
+    // neutral must not be either — three distinguishable outcomes, not two.
+    expect(after.branding.companyName).not.toBe(BRAND_B.companyName);
+    expect(after.branding.companyName).not.toBe(BRANDING_THEME_DEFAULTS.companyName);
   });
 
-  it('[RED] T4 — a session answer does not clear a hint when there was none to clear', async () => {
-    // The removal must be a no-op on the ordinary case rather than a write of
-    // its own. A source that unconditionally called setItem(key, '') would pass
-    // the tests above and leave an empty string that source 3 then reads.
+  it('[RED] T4 — a session for a contractor with NO slug REMOVES a planted hint', async () => {
+    // ⚠ R4, AND IT NEEDS ITS OWN TEST PRECISELY BECAUSE T3 CANNOT SEE IT. A
+    // contractor whose `contractors.slug` is NULL cannot be named in the hint at
+    // all. Leaving B's value in place would be the white-label breach; writing
+    // null or '' would leave a key that exists and resolves to nothing. Removal
+    // is the only correct action, and it is the behaviour Phase 1 shipped for
+    // every contractor — 1-B narrows it rather than deleting it.
+    const storage = makeStorage({ [BRAND_HINT_STORAGE_KEY]: SLUG_B });
+    const ctx = makeContext({
+      sessionToken: TOKEN_A,
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A_NO_SLUG }),
+      storage,
+      fetchBranding: makeFetchBranding({ [SLUG_B]: BRAND_B }),
+    });
+
+    const { source, branding } = await resolveBranding(ctx);
+
+    // POSITIVE CONTROL: source 1 still ANSWERED. Without this, a source that had
+    // simply declined would also leave no hint written and satisfy every
+    // assertion below — the plausible-rejection trap.
+    expect(source).toBe('session');
+    expect(branding.companyName).toBe(BRAND_A.companyName);
+
+    expect(storage._map.has(BRAND_HINT_STORAGE_KEY)).toBe(false);
+    expect(storage.removeItem).toHaveBeenCalledWith(BRAND_HINT_STORAGE_KEY);
+    expect(storage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('[RED] T3 — a session answer WRITES the hint even when there was none before', async () => {
+    // The first authenticated visit on a fresh device. Phase 1 wrote nothing
+    // here (there was no slug to write) and this test asserted `setItem` was
+    // never called — the inverse of what it now asserts.
     const storage = makeStorage();
     await resolveBranding(makeContext({
       sessionToken: TOKEN_A,
-      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: BRAND_A }),
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A }),
+      storage,
+    }));
+
+    expect(storage.getItem(BRAND_HINT_STORAGE_KEY)).toBe(SLUG_A);
+    expect(storage.removeItem).not.toHaveBeenCalled();
+  });
+
+  it('[RED] T4 — a no-slug session does not INVENT a hint when there was none', async () => {
+    // The R4 branch on a clean store. The removal must be a no-op rather than a
+    // write of its own: a source that called setItem(key, '') would satisfy the
+    // R4 test above — the key would be present-but-empty, and `_map.has` would
+    // be true, so that one would catch it — but a source that wrote the
+    // COMPANY NAME, or the token, or 'null' as a string would not be caught
+    // anywhere else.
+    const storage = makeStorage();
+    await resolveBranding(makeContext({
+      sessionToken: TOKEN_A,
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A_NO_SLUG }),
       storage,
     }));
 
@@ -888,7 +966,7 @@ describe('BR-1 Phase 1 — source 1 (session) answers', () => {
     };
     const ctx = makeContext({
       sessionToken: TOKEN_A,
-      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: BRAND_A }),
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A }),
       storage: hostile,
     });
 
@@ -914,7 +992,7 @@ describe('BR-1 Phase 1 — source 1 (session) answers', () => {
     const BARE = Object.freeze(resolveBrandingTheme({ contractor_name: 'Unbranded Roofing Co' }));
     const ctx = makeContext({
       sessionToken: TOKEN_A,
-      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: BARE }),
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: { branding: BARE, slug: SLUG_A } }),
     });
 
     const { branding, source } = await resolveBranding(ctx);
@@ -937,7 +1015,7 @@ describe('BR-1 Phase 1 — source 1 (session) answers', () => {
     const ALL_DEFAULT = Object.freeze(resolveBrandingTheme(null));
     const ctx = makeContext({
       sessionToken: TOKEN_A,
-      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: ALL_DEFAULT }),
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: { branding: ALL_DEFAULT, slug: SLUG_A } }),
       storage: makeStorage({ [BRAND_HINT_STORAGE_KEY]: SLUG_B }),
       fetchBranding: makeFetchBranding({ [SLUG_B]: BRAND_B }),
     });
@@ -948,20 +1026,65 @@ describe('BR-1 Phase 1 — source 1 (session) answers', () => {
     expect(ctx.fetchBranding).not.toHaveBeenCalled();
   });
 
-  // ── R1 — SOURCE 1'S ANSWER IS STILL FREE OF IDENTITY ───────────────────────
-  it('[RED] the published answer carries no token, no slug and no contractor id', async () => {
+  // ── T1 — THE SLUG HALF FLIPPED; THE OTHER TWO HALVES DID NOT ───────────────
+  //
+  // ⚠ THIS TEST WAS 'the published answer carries no token, no slug and no
+  // contractor id'. The slug half is now its opposite AT THE SOURCE, and
+  // unchanged AT THE PUBLISHED VALUE — those are two different places, and
+  // collapsing them is the one way to get this wrong.
+  //
+  //   source 1's ANSWER        carries the slug — the write-through needs it
+  //   resolveBranding's RETURN does not — `answer.slug` is dropped, exactly as
+  //                            it already is for sources 2, 2.5 and 3
+  //
+  // So CD-24 R1 is untouched: nothing tenancy-bearing reaches the provider, and
+  // `AdminBrandingContext` still publishes a branding object with no identity
+  // field in it at all. The token and contractor-id halves are re-asserted below
+  // rather than dropped in the rewrite.
+  it('[RED] T1 — source 1\'s answer CARRIES the session slug; the published value still does not', async () => {
     const ctx = makeContext({
       sessionToken: TOKEN_A,
-      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: BRAND_A }),
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A }),
     });
 
-    const result = await resolveBranding(ctx);
+    // FLIPPED: at the source, the slug is present and it is A's.
+    const answer = await resolveFromSession(ctx);
+    expect(answer.slug).toBe(SLUG_A);
 
+    // UNCHANGED: at the published value, it is not.
+    const result = await resolveBranding(makeContext({
+      sessionToken: TOKEN_A,
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A }),
+    }));
     expect(Object.keys(result).sort()).toEqual(['branding', 'source']);
     const ALLOWED = new Set(Object.keys(NEUTRAL).concat(['address', 'website']));
     for (const key of Object.keys(result.branding)) {
       expect(ALLOWED.has(key), `source 1 published an unexpected key: ${key}`).toBe(true);
     }
+    // UNCHANGED: neither the token nor the slug reaches a consumer.
     expect(JSON.stringify(result).includes(TOKEN_A)).toBe(false);
+    expect(JSON.stringify(result).includes(SLUG_A)).toBe(false);
+  });
+
+  // ── T2 — THE SCOPE TEST, CLIENT SIDE ───────────────────────────────────────
+  it('[RED] T2 — the slug source 1 carries is A\'s, with a hint and a ?brand= both naming B', async () => {
+    // ⚠ THE SERVER HALF IS THE REAL ONE — server/test/sessionBranding.test.js
+    // asserts the SERVER never lets a client-supplied value choose the slug.
+    // This asserts the client never substitutes one either: source 1 must carry
+    // what the server said, not what the URL or the store happened to hold.
+    const ctx = makeContext({
+      sessionToken: TOKEN_A,
+      fetchSessionBranding: makeFetchSessionBranding({ [TOKEN_A]: SESSION_A }),
+      search: `?brand=${SLUG_B}`,
+      storage: makeStorage({ [BRAND_HINT_STORAGE_KEY]: SLUG_B }),
+      fetchBranding: makeFetchBranding({ [SLUG_B]: BRAND_B }),
+    });
+
+    const answer = await resolveFromSession(ctx);
+
+    expect(answer.slug).toBe(SLUG_A);
+    expect(answer.slug).not.toBe(SLUG_B);
+    // AND EXACTLY ONE SLUG — not an array, not a list of candidates.
+    expect(typeof answer.slug).toBe('string');
   });
 });

@@ -115,9 +115,10 @@ router.get('/api/session', async (req, res) => {
 // registration order — a silent dependency of exactly the kind this repo keeps
 // finding. A distinct prefix has no ordering hazard at all.
 //
-// ── WHAT IT RETURNS, AND WHY THE KEY IS OMITTED RATHER THAN NULLED ──────────
-//   { branding: <resolveBrandingTheme output> }   the session has a contractor
-//   {}                                            it does not (a super admin)
+// ── WHAT IT RETURNS, AND WHY EACH KEY IS OMITTED RATHER THAN NULLED ─────────
+//   { branding: <resolveBrandingTheme output>, slug }  contractor, with a slug
+//   { branding: <resolveBrandingTheme output> }        contractor, slug is NULL
+//   {}                                                 no contractor (super admin)
 //
 // The same D-I convention GET /api/admin/me follows: the key's ABSENCE says
 // "resolution did not happen", which is a different fact from "resolved to
@@ -125,11 +126,36 @@ router.get('/api/session', async (req, res) => {
 // that is neither an error nor a branding answer, and the chain reads the
 // missing key as a non-answer and walks on to source 2.
 //
-// NO SLUG, NO contractor_id, NO TOKEN ECHO. The payload is a company name, a
-// program name, four colours, a logo URL and the public contact details a
-// contractor already prints on a yard sign — the same slug-dropping destructure
-// GET /api/branding/:slug and GET /api/admin/me both perform, for the same
-// CD-24 R1 reason.
+// ── ⚠ THE SLUG IS RETURNED, AND THAT REVERSED IN BR-1 PHASE 1-B ────────────
+// This paragraph read "NO SLUG, NO contractor_id, NO TOKEN ECHO … the same
+// slug-dropping destructure GET /api/branding/:slug and GET /api/admin/me both
+// perform, for the same CD-24 R1 reason." The contractor_id and token halves
+// are unchanged and still binding. The slug half was wrong for THIS route, and
+// the cost of it was a regression rather than a theoretical one.
+//
+// WHY PHASE 1 DROPPED IT: BR Phase 0 §3.7 established that resolution needs no
+// slug, which is true, and Phase 1 concluded the response therefore should not
+// carry one. But CD-24 R2 also requires an authenticated answer to REWRITE the
+// stored hint — and THE HINT STORES A SLUG. With none in the payload the only
+// faithful action was to REMOVE the hint, which closed the planted-hint hole
+// and, in the same stroke, erased the legitimate value that made a returning
+// signed-out visitor see their own contractor. The logged-out branding path was
+// switched off as a side effect of fixing the logged-in one.
+//
+// WHY IT IS SAFE HERE AND STILL FORBIDDEN THERE. The non-enumerability posture
+// exists so that nobody can DISCOVER OTHER contractors' slugs — that is what
+// makes GET /api/branding/:slug refuse to say whether a slug resolved, and it is
+// the whole of the concern. This route is authenticated and returns EXACTLY ONE
+// slug: the caller's own, derived from the session row. It hands a signed-in
+// person the label of the contractor they already reached the product through.
+// Nothing is discoverable that was not already held.
+// ⚠ THE SAFETY ARGUMENT IS "THEIR OWN SLUG AND NO OTHER", SO IT IS PINNED BY A
+// TEST RATHER THAN LEFT AS REASONING — see the scope test in
+// server/test/sessionBranding.test.js. A future edit that let any client-supplied
+// value choose which slug comes back would keep this comment true-looking and
+// reverse the posture for real.
+//
+// STILL NO contractor_id AND NO TOKEN ECHO.
 //
 // loadContractorBranding IS REUSED RATHER THAN REIMPLEMENTED. It is the one
 // branding SELECT in the codebase; a second one here would be the drift that
@@ -157,13 +183,23 @@ router.get('/api/session/branding', async (req, res) => {
     const branding = await loadContractorBranding(pool, session.contractorId);
     if (!branding) return res.json({});
 
-    // SLUG DROPPED, DELIBERATELY — the same line GET /api/branding/:slug and
-    // GET /api/admin/me both perform. loadContractorBranding re-attaches it
-    // because its landing-page callers need it; this route must not return it.
-    // Destructured away rather than deleted so the omission is visible at the
-    // one line that performs it.
-    const { slug: _slugNotReturned, ...theme } = branding;
-    return res.json({ branding: theme });
+    // ⚠ THE SLUG IS RETURNED, AND THIS LINE REVERSED IN BR-1 PHASE 1-B. It read
+    // `const { slug: _slugNotReturned, ...theme } = branding;` with a note that
+    // this route "must not return it", citing GET /api/branding/:slug and
+    // GET /api/admin/me. See the header above for why that was wrong HERE and
+    // stays right THERE — and note the slug is a SIBLING of `branding`, never a
+    // field inside it: CD-24 R1 governs the branding object, and nothing about
+    // this change puts an identity value where a consumer could mistake it for
+    // a brand value.
+    //
+    // OMITTED WHEN THE CONTRACTOR HAS NO SLUG, never nulled and never ''. The
+    // client's write-through reads truthiness: a slug means REWRITE the hint to
+    // it, no slug means REMOVE the hint. An empty string would be written into
+    // the hint as a value, and source 3 would then read a key that exists and
+    // resolves to nothing — the one state neither branch intends.
+    const { slug, ...theme } = branding;
+    const hasSlug = typeof slug === 'string' && slug.trim() !== '';
+    return res.json({ branding: theme, ...(hasSlug ? { slug } : {}) });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/session/branding' });
     res.status(500).json({ error: 'Internal server error' });

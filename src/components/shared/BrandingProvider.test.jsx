@@ -79,6 +79,10 @@ function makeContext({ search = '', table = {} } = {}) {
     // pre-auth surface, and source 1 declining is what keeps them exercising the
     // sources they name.
     sessionToken: null,
+    // ⚠ THE ENVELOPE, NOT A BARE THEME (BR-1 Phase 1-B). `fetchSessionBranding`
+    // resolves `{ branding, slug }` — source 1 needs the slug for the hint
+    // write-through. A double returning a theme is read as a NON-ANSWER, which
+    // is silent: the chain simply walks on and the test sees neutral.
     fetchSessionBranding: vi.fn(async () => null),
   };
 }
@@ -347,7 +351,7 @@ describe('BrandingProvider — resolveKey, the re-resolution contract (BR-1 Phas
     // provider that re-ran the chain and dropped the answer would satisfy
     // "fetch was called twice" and change nothing a user can see.
     let sessionToken = null;
-    const fetchSessionBranding = vi.fn(async () => ({ ...BRAND }));
+    const fetchSessionBranding = vi.fn(async () => ({ branding: { ...BRAND }, slug: SLUG }));
     const ctxFor = () => ({
       hostname: APP_HOST, search: '', storage: makeStorage(),
       fetchBranding: vi.fn(async () => ({ ...NEUTRAL })),
@@ -382,7 +386,7 @@ describe('BrandingProvider — resolveKey, the re-resolution contract (BR-1 Phas
       hostname: APP_HOST, search: '', storage: makeStorage(),
       fetchBranding: vi.fn(async () => ({ ...NEUTRAL })),
       sessionToken,
-      fetchSessionBranding: vi.fn(async t => (t ? { ...BRAND } : null)),
+      fetchSessionBranding: vi.fn(async t => (t ? { branding: { ...BRAND }, slug: SLUG } : null)),
     });
 
     const { rerender } = render(
@@ -403,7 +407,7 @@ describe('BrandingProvider — resolveKey, the re-resolution contract (BR-1 Phas
     // would put the D4 chain on an authenticated admin surface, which is exactly
     // what D-H routes AROUND.
     const fetchBranding = vi.fn(async () => ({ ...BRAND }));
-    const fetchSessionBranding = vi.fn(async () => ({ ...BRAND }));
+    const fetchSessionBranding = vi.fn(async () => ({ branding: { ...BRAND }, slug: SLUG }));
     const ctx = {
       hostname: APP_HOST, search: `?brand=${SLUG}`, storage: makeStorage(),
       fetchBranding, sessionToken: 'e'.repeat(64), fetchSessionBranding,

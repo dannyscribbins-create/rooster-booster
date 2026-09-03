@@ -54,8 +54,19 @@ const ROUTE = '/api/session/branding';
 const TENANT_A = 'tnt-sbrand-a';
 const TENANT_B = 'tnt-sbrand-b';
 // A third tenant that has never touched the Branding page. Its settings row
-// exists (seedContractor creates one) and every brand column is NULL.
+// exists (seedContractor creates one), every brand column is NULL — and so is
+// `contractors.slug`, which is what makes it the R4 fixture as well as the
+// honest-nulls one.
 const TENANT_BARE = 'tnt-sbrand-bare';
+
+// ⚠ DELIBERATELY NOT THE CONTRACTOR IDS, AND NEITHER IS A SUBSTRING OF THE
+// OTHER (BR-1 Phase 1-B). Two separate traps this repo has already been bitten
+// by: a slug that equalled the id would make "the contractor id never appears
+// in the body" pass for free once the slug started being returned, and a
+// `toContain`-style sweep for one slug inside a body containing the other
+// matches a sibling if either is a substring.
+const SLUG_A = 'alpharoofing';
+const SLUG_B = 'betaroofing';
 
 const BRAND_A = {
   companyName: 'Alpha Roofing Co',
@@ -113,9 +124,10 @@ const newToken = () => crypto.randomBytes(32).toString('hex');
 
 let pool, server, port;
 
-async function seedBrandedContractor(contractorId, brand) {
+async function seedBrandedContractor(contractorId, brand, slug) {
   await seedContractor(pool, contractorId);
-  await pool.query('UPDATE contractors SET name = $2 WHERE id = $1', [contractorId, brand.companyName]);
+  await pool.query('UPDATE contractors SET name = $2, slug = $3 WHERE id = $1',
+    [contractorId, brand.companyName, slug]);
   await pool.query(
     `UPDATE contractor_settings SET
        company_name = $2, app_display_name = $3,
@@ -190,8 +202,10 @@ describe('BR-1 Phase 1 — GET /api/session/branding', () => {
     await pool.query('DELETE FROM sessions');
     await pool.query('DELETE FROM team_members');
     await pool.query('DELETE FROM users');
-    await seedBrandedContractor(TENANT_A, BRAND_A);
-    await seedBrandedContractor(TENANT_B, BRAND_B);
+    await seedBrandedContractor(TENANT_A, BRAND_A, SLUG_A);
+    await seedBrandedContractor(TENANT_B, BRAND_B, SLUG_B);
+    // No slug, deliberately — seedContractor leaves contractors.slug NULL, which
+    // is the R4 branch and is asserted as a precondition where it is used.
     await seedContractor(pool, TENANT_BARE);
   });
 
@@ -242,11 +256,11 @@ describe('BR-1 Phase 1 — GET /api/session/branding', () => {
 
     const res = await httpGet(
       port,
-      `${ROUTE}?brand=${TENANT_B}&slug=${TENANT_B}&contractorId=${TENANT_B}&contractor_id=${TENANT_B}`,
+      `${ROUTE}?brand=${SLUG_B}&slug=${SLUG_B}&contractorId=${TENANT_B}&contractor_id=${TENANT_B}`,
       {
         token: tokenA,
         headers: {
-          'X-Brand-Hint': TENANT_B,
+          'X-Brand-Hint': SLUG_B,
           'X-Contractor-Id': TENANT_B,
         },
       }
@@ -264,21 +278,100 @@ describe('BR-1 Phase 1 — GET /api/session/branding', () => {
     assert.ok(!res.raw.includes(BRAND_B.companyName), 'no B value may appear anywhere in the body');
   });
 
-  // ── R1 / CD-24 R1 — NO IDENTITY FIELD LEAVES THE ROUTE ─────────────────────
-  it('[RED] the payload carries no contractor_id, no slug and no token', async () => {
+  // ── T2 — THE SCOPE TEST, AND IT IS THE WHOLE SAFETY ARGUMENT FOR 1-B ───────
+  //
+  // ⚠ THE POSTURE THIS ROUTE PARTIALLY REVERSES IS ABOUT DISCOVERING **OTHER**
+  // CONTRACTORS' SLUGS. `GET /api/branding/:slug` refuses to say whether a slug
+  // resolved precisely so the slug space cannot be walked. Returning the
+  // caller's OWN slug on an authenticated request discloses nothing they did not
+  // already hold — but that is only true while the route returns THEIR slug AND
+  // NO OTHER, and "only true while" is exactly the kind of claim that stops
+  // being true in a later edit with the comment still sitting above it.
+  //
+  // ⚠ SO THIS ASSERTS ON THE SERVER'S OUTPUT, NOT ON WHAT RENDERED, and it names
+  // B's slug on every client-supplied channel at once: query, header, and the
+  // parameter names a well-meaning refactor would most plausibly reach for.
+  it('[RED] the slug is the SESSION\'S, never one named by a client-supplied value', async () => {
+    const tokenA = await seedReferrerSession(TENANT_A, { email: 'scope@alpha.invalid' });
+
+    const res = await httpGet(
+      port,
+      `${ROUTE}?brand=${SLUG_B}&slug=${SLUG_B}&hint=${SLUG_B}&contractorId=${TENANT_B}`,
+      {
+        token: tokenA,
+        headers: { 'X-Brand-Hint': SLUG_B, 'X-Contractor-Id': TENANT_B, 'X-Slug': SLUG_B },
+      }
+    );
+
+    assert.equal(res.status, 200);
+    // POSITIVE: A's own slug came back. Without this, a route that returned no
+    // slug at all would satisfy every negative below while doing nothing.
+    assert.equal(res.body.slug, SLUG_A);
+    // NEGATIVE: B's slug appears NOWHERE in the response, at any depth.
+    assert.ok(!res.raw.includes(SLUG_B), `B's slug leaked into the body: ${res.raw}`);
+    // AND EXACTLY ONE SLUG IS RETURNED — not a list, not a map, not an array.
+    assert.equal(typeof res.body.slug, 'string', 'the slug must be a single string');
+    assert.ok(!Array.isArray(res.body.slug));
+    // NOT VACUOUS: the two slugs must be distinguishable for the sweep to mean
+    // anything, and SLUG_B must not be a substring of SLUG_A (the substring trap).
+    assert.notEqual(SLUG_A, SLUG_B, 'fixture error: the two slugs must differ');
+    assert.ok(!SLUG_A.includes(SLUG_B), 'fixture error: B\'s slug must not be a substring of A\'s');
+  });
+
+  // ── T1 — THE SLUG HALF FLIPPED IN 1-B; THE OTHER TWO HALVES DID NOT ────────
+  //
+  // ⚠ THIS TEST WAS NAMED 'the payload carries no contractor_id, no slug and no
+  // token' AND ASSERTED `deepEqual(keys, ['branding'])`. The slug half is now
+  // its opposite. The contractor_id and token halves are UNCHANGED and are
+  // deliberately re-asserted below rather than left out of the rewrite — a
+  // security assertion weakened while editing the line beside it is how a
+  // posture erodes without anyone deciding to erode it.
+  it('[RED] the payload carries the session\'s OWN slug — and still no contractor_id, no token', async () => {
     const token = await seedReferrerSession(TENANT_A, { email: 'noid@alpha.invalid' });
 
     const res = await httpGet(port, ROUTE, { token });
 
     assert.equal(res.status, 200);
-    const keys = Object.keys(res.body);
-    assert.deepEqual(keys, ['branding'], `the response has exactly one key; got ${keys.join(', ')}`);
+    // FLIPPED: the slug is present, and it is A's.
+    assert.equal(res.body.slug, SLUG_A, 'the response must carry the session contractor\'s slug');
+    const keys = Object.keys(res.body).sort();
+    assert.deepEqual(keys, ['branding', 'slug'], `unexpected top-level keys: ${keys.join(', ')}`);
+
+    // UNCHANGED: the slug is a SIBLING of `branding`, never a field inside it.
+    // CD-24 R1 governs the branding object, and a slug appearing there is how a
+    // consumer ends up reading an identity value as a brand value.
     const brandKeys = Object.keys(res.body.branding);
     for (const forbidden of ['slug', 'contractorId', 'contractor_id', 'id', 'token']) {
       assert.ok(!brandKeys.includes(forbidden), `branding must not carry \`${forbidden}\``);
     }
+    // UNCHANGED: neither the contractor id nor the token may appear anywhere.
     assert.ok(!res.raw.includes(TENANT_A), 'the contractor id must not appear in the body at all');
     assert.ok(!res.raw.includes(token), 'the token must never be echoed');
+    // NOT VACUOUS: the id assertion above would be satisfied for free if the slug
+    // were simply the contractor id under another name. They are distinct values.
+    assert.notEqual(SLUG_A, TENANT_A, 'fixture error: the slug and the id must differ');
+  });
+
+  // ── R4 — THE NO-SLUG BRANCH, PINNED SEPARATELY ─────────────────────────────
+  //
+  // ⚠ ITS OWN TEST BECAUSE R3's TEST CANNOT SEE IT. A contractor whose
+  // `contractors.slug` is NULL cannot be represented in the hint at all, and the
+  // client's write-through reads TRUTHINESS to decide rewrite-vs-remove. An
+  // omitted key and a `slug: null` are the same to that branch; an EMPTY STRING
+  // is not — it is falsy in JS but a real value in JSON, and a route that grew
+  // one later would still satisfy "the key is absent or nullish" while shipping
+  // something a future `if (payload.slug !== undefined)` would happily store.
+  it('[RED] a contractor with a NULL slug gets the key OMITTED, never null and never an empty string', async () => {
+    const { rows } = await pool.query('SELECT slug FROM contractors WHERE id = $1', [TENANT_BARE]);
+    assert.equal(rows[0].slug, null, 'fixture precondition: this tenant must have no slug');
+
+    const token = await seedReferrerSession(TENANT_BARE, { email: 'noslug@bare.invalid' });
+    const res = await httpGet(port, ROUTE, { token });
+
+    assert.equal(res.status, 200);
+    assert.ok(res.body.branding, 'branding must still resolve for a contractor with no slug');
+    assert.ok(!('slug' in res.body), 'the slug key must be ABSENT, not present-and-empty');
+    assert.deepEqual(Object.keys(res.body), ['branding']);
   });
 
   // ── T5 — HONEST NULLS ──────────────────────────────────────────────────────
