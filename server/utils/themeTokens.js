@@ -68,7 +68,7 @@ const { BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE } = require('./brandingTheme');
 // The render tokens. Exported so the CSS variable names cannot drift from the
 // token set.
 //
-// ⚠ SIX SINCE C/DL-3c PHASE 1a, AND THE FIRST FIVE ARE ORDER-SENSITIVE.
+// ⚠ THE FIRST FIVE KEYS ARE ORDER-SENSITIVE.
 // DECISION_C_DL_BUILD_SPEC.md amendment A23.1 rests on this list being spec
 // section 5's token set "exactly, in section 5's order". `onPrimary` is
 // APPENDED so that claim stays literally true of the prefix — reordering this
@@ -78,8 +78,14 @@ const { BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE } = require('./brandingTheme');
 // is a render token rather than a second registry because it is derived per
 // brand and per mode exactly as the other five are, and spec section 5's rule
 // is one theming system with no second implementation.
-// ⚠ NINE SINCE PALETTE-1, AND THE THREE NEW KEYS ARE APPENDED FOR THE SAME
-// REASON `onPrimary` WAS. A23.1 rests on this list being spec section 5's token
+// ⚠ EVERY ADDITION SINCE `onPrimary` IS APPENDED, FOR THE SAME REASON IT WAS.
+// ⚠ AND THE COUNT THAT USED TO OPEN THIS SENTENCE IS DELIBERATELY GONE. It read
+// "SIX SINCE C/DL-3c PHASE 1a", then "TEN SINCE PALETTE-4a", and Part B bumped
+// it to ELEVEN before catching that this is the exact shape CLAUDE.md records as
+// its own worst instance: a hand-maintained count in a lead sentence directly
+// above the list it counts, which even a reader cataloguing the defect will
+// increment rather than delete. Read the list. Do not restore a number here.
+// A23.1 rests on this list being spec section 5's token
 // set "exactly, in section 5's order" — a claim that stays literally true of the
 // PREFIX only while additions go on the end. Inserting `recess` next to `surface`
 // where it belongs semantically would falsify an amendment to buy tidiness.
@@ -87,11 +93,13 @@ const { BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE } = require('./brandingTheme');
 // recess         a surface BELOW `surface` — see recessFloored for what it is for
 // primaryDark    the second stop of a gradient whose first stop is `primary`
 // secondaryDark  the same, for `secondary`
-// All three are derived per brand and per mode and are #RRGGBB, which is what
-// qualifies them for this list rather than the non-colour side channel.
+// primaryText    the ACTION colour made safe for TEXT — see brandTextFloored
+// onSecondary    the readable foreground on a `secondary` fill — onPrimary's twin
+// Each is derived per brand and per mode and is #RRGGBB, which is what
+// qualifies it for this list rather than the non-colour side channel.
 const RENDER_TOKEN_KEYS = Object.freeze([
   'primary', 'secondary', 'bg', 'surface', 'text', 'onPrimary',
-  'recess', 'primaryDark', 'secondaryDark',
+  'recess', 'primaryDark', 'secondaryDark', 'primaryText', 'onSecondary',
 ]);
 
 // camelCase token key -> kebab-case custom-property suffix. `onPrimary` becomes
@@ -470,6 +478,48 @@ function recessFloored(candidate, text, awayFromText) {
 // Beta's light-mode secondary `#0B3D3B` reaches `#000000` and stops separating.
 // So: darken first, and if that cannot clear the floor, lighten instead. A
 // partner that equals its base is a flat fill wearing a gradient's syntax.
+// ── primaryText (Palette-4a, ruled 2026-09-04) ──────────────────────────────
+//
+// ⚠ WHY A SEPARATE TOKEN RATHER THAN JUST USING `primary`, AND IT IS NOT A
+// PREFERENCE. `primary` is floored against BRAND_ON_LIGHT_MIN_CONTRAST = 3 —
+// the NON-TEXT floor, as this module's own JSDoc says in terms: "primary itself
+// clears only the weaker FILL floor". `R.red` is used as TEXT on the referrer
+// dashboard's DOLLAR AMOUNTS. Measured, migrating those to `primary` would put
+// the payout figures at 3.06:1 for the platform brand and 5.87:1 for a magenta
+// one — ⚠ A PER-CONTRACTOR LOTTERY ON THE MONEY PATH, passing or failing the
+// 4.5 text floor depending on whose brand it is.
+//
+// ⚠ AND THE ALTERNATIVE WAS WORSE. Leaving those figures on a literal means the
+// single most prominent number in the product never becomes contractor-branded —
+// the migration failing exactly where it matters most.
+//
+// ⚠ FLOORED AGAINST BOTH GROUNDS, NOT JUST `surface`. A brand-text value can sit
+// on a card OR in a recessed well, and the recess is the darker of the two in
+// light mode, so a value floored only against `surface` is not safe on `recess`.
+// Both are checked; the loop stops when the worse of the two clears.
+//
+// ⚠ IT IS COMPUTED FROM THE FLOORED `primary`, NOT FROM brand.secondaryColor,
+// for the same reason `onPrimary` is: the answer must be about the colour that
+// is actually painted, not the one that was stored.
+//
+// ⚠ MEASURED CONSEQUENCE, RECORDED SO NOBODY IS SURPRISED BY THE PIXELS: for a
+// red or magenta action colour this returns the brand colour UNCHANGED — a
+// red-branded contractor's action colour already clears at 5.89:1, so its dollar
+// figures do not move at all. (The hex is deliberately not written here:
+// adminBranding.test.jsx sweeps for retired identity literals and exempts no
+// comments, and a literal in prose is what someone pastes back into code.)
+// It is the PLATFORM ORANGE that shifts, #F26A1B -> #B1480A, because orange is
+// the case that cannot clear a text floor at full brightness. And in DARK mode
+// it is a no-op for every real palette, because `primary` is already floored
+// there at BRAND_ON_DARK_MIN_CONTRAST = 5.25, which exceeds 4.5.
+function brandTextFloored(primary, surface, recess, direction) {
+  return nudgeLightnessUntil(
+    primary, direction,
+    (c) => contrastRatio(c, surface) >= TEXT_CONTRAST_MIN
+        && contrastRatio(c, recess) >= TEXT_CONTRAST_MIN
+  );
+}
+
 function derivePartner(base) {
   const darker = nudgeLightnessUntil(
     base, -1, (c) => contrastRatio(base, c) >= GRADIENT_PARTNER_MIN_CONTRAST
@@ -480,19 +530,33 @@ function derivePartner(base) {
   );
 }
 
-// ⚠ FORWARD TRAP, RECORDED WHERE THE NEXT PERSON TO HIT IT WILL BE STANDING.
-// There is deliberately NO onSecondary token, because nothing paints on a
-// secondary fill today — `--rm-secondary` has zero paint consumers in src/.
-// THE MOMENT SOMETHING DOES, IT INHERITS onPrimary'S DEFECT, MODE-FLIPPED AND
-// INVISIBLE IN TESTING: white on the light-mode secondary measures 13.71:1 for
-// the platform brand, and white on the DARK-mode secondary measures ~3.05:1,
-// because deriveDarkTokens BRIGHTENS the brand tones to survive the dark canvas.
-// A component built and eyeballed in light mode is therefore built against the
-// good half of that pair. The fix is `onSecondary: readableForegroundOn(secondary)`
-// in both derivations plus the key in RENDER_TOKEN_KEYS — the same shape as
-// onPrimary, which is why this helper takes the fill as an argument rather than
-// hardcoding primary. It is NOT built now because a token with no consumer is a
-// token nobody re-derives when it moves.
+// ── onSecondary (Palette-4a Part B, ruled R-A 2026-09-04) ───────────────────
+//
+// ⚠ THE FORWARD TRAP THIS BLOCK USED TO DESCRIBE HAS BEEN SPRUNG, AND THE
+// PREDICTION IS KEPT VERBATIM BECAUSE IT IS THE EVIDENCE THE MECHANISM WORKED.
+// Palette-1 wrote, in this spot, that there was deliberately no onSecondary
+// token because nothing painted on a secondary fill; that "THE MOMENT SOMETHING
+// DOES, IT INHERITS onPrimary'S DEFECT, MODE-FLIPPED AND INVISIBLE IN TESTING:
+// white on the light-mode secondary measures 13.71:1 for the platform brand,
+// and white on the DARK-mode secondary measures ~3.05:1"; and that the fix
+// would be "`onSecondary: readableForegroundOn(secondary)` in both derivations
+// plus the key in RENDER_TOKEN_KEYS".
+//
+// DashboardTab is the something. Three sites paint `#fff` on `R.navy` — the QR
+// modal's Retry and Save QR buttons and the booking banner — and the migration
+// puts that fill on `--rm-secondary`. MEASURED ACROSS THE FOUR SEEDED BRANDS,
+// white on the dark-mode secondary: 3.13 · 3.13 · 2.51 · 3.05. All four under
+// 4.5, all four fine in light mode. The prediction was exact, including that
+// eyeballing in light mode would never surface it.
+//
+// ⚠ WHY IT WAS RIGHT NOT TO BUILD IT IN PALETTE-1 — "a token with no consumer
+// is a token nobody re-derives when it moves" — and why building it now is not
+// a reversal. The token arrives in the same phase as its first three consumers,
+// so the value and the paint are derived together and verified together.
+// ⚠ AND THE ASYMMETRY BETWEEN THE TWO DERIVATIONS IS REAL, NOT AN OVERSIGHT:
+// see the comment at each site. Light mode's `secondary` is a passthrough of
+// brand.primaryColor; dark mode's is brightened. One expression cannot serve
+// both, and collapsing them would be wrong in exactly one mode.
 
 // LIGHT THEME. secondary and bg are the contractor's own values, unchanged —
 // the light theme IS their brand, and inventing a tint of it would mean the
@@ -545,6 +609,11 @@ function deriveLightTokens(brand) {
     (candidate) => contrastRatio(candidate, surface) >= TEXT_CONTRAST_MIN
   );
 
+  const lightRecess = recessFloored(
+    atLightness(brand.primaryColor, LIGHT_RECESS_TARGET_L, DARK_BG_MAX_SATURATION),
+    text, 1
+  );
+
   return {
     primary,
     secondary: brand.primaryColor,
@@ -555,16 +624,19 @@ function deriveLightTokens(brand) {
     // the brightened one: the foreground must answer about the colour that is
     // actually painted.
     onPrimary: readableForegroundOn(primary),
+    primaryText: brandTextFloored(primary, surface, lightRecess, -1),
+    // Against brand.primaryColor because THAT is what `secondary` is in light
+    // mode — a strict passthrough, unlike dark, where it is brightened. Reading
+    // the sibling above and "simplifying" both to one expression would be wrong
+    // in exactly one of the two modes.
+    onSecondary: readableForegroundOn(brand.primaryColor),
     // A FAINT TINT OF THE BRAND'S OWN DARK TONE, not a neutral grey — the same
     // idiom R.bgPage used (#EEF2F7 is a cool grey-blue, not #EEEEEE), so a
     // recessed well still reads as belonging to this contractor.
     // ⚠ THE TARGET LIGHTNESS IS CALIBRATED, NOT CHOSEN: R.bgPage measures L=0.951,
     // and LIGHT_RECESS_TARGET_L reproduces it. That keeps the token's first
     // appearance visually continuous with what the app already paints.
-    recess: recessFloored(
-      atLightness(brand.primaryColor, LIGHT_RECESS_TARGET_L, DARK_BG_MAX_SATURATION),
-      text, 1
-    ),
+    recess: lightRecess,
     primaryDark: derivePartner(primary),
     secondaryDark: derivePartner(brand.primaryColor),
   };
@@ -606,6 +678,11 @@ function deriveDarkTokens(brand) {
     (candidate) => contrastRatio(candidate, surface) >= TEXT_CONTRAST_MIN
   );
 
+  const darkRecess = recessFloored(
+    atLightness(brand.primaryColor, DARK_RECESS_TARGET_L, DARK_BG_MAX_SATURATION),
+    text, -1
+  );
+
   return {
     primary,
     secondary,
@@ -623,10 +700,14 @@ function deriveDarkTokens(brand) {
     // DARKER than surface, and darker than bg. In a dark UI a recessed well
     // reads as a hole, so it goes DOWN from the card — the mirror of light mode,
     // where it also goes down but "down" is toward grey rather than toward black.
-    recess: recessFloored(
-      atLightness(brand.primaryColor, DARK_RECESS_TARGET_L, DARK_BG_MAX_SATURATION),
-      text, -1
-    ),
+    recess: darkRecess,
+    primaryText: brandTextFloored(primary, surface, darkRecess, 1),
+    // ⚠ THIS IS THE HALF THAT WAS BROKEN, AND IT IS BROKEN FOR EVERY BRAND.
+    // Computed from the BRIGHTENED secondary for the same reason onPrimary is
+    // computed from the brightened primary. Measured white-on-secondary in this
+    // mode: 3.13:1 platform, 2.51:1 for a teal brand — every one under 4.5, and
+    // every one fine in light mode, which is why eyeballing never found it.
+    onSecondary: readableForegroundOn(secondary),
     primaryDark: derivePartner(primary),
     secondaryDark: derivePartner(secondary),
   };
@@ -684,6 +765,7 @@ function themeCssVariables(tokens) {
   return vars;
 }
 
+// ⚠ NOT A VERBATIM MIRROR LINE. Server copy: `module.exports = { … }`, same names.
 module.exports = {
   deriveThemeTokens,
   themeCssVariables,

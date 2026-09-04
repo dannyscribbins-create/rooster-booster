@@ -212,8 +212,8 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
     // end rather than beside `surface` where it belongs semantically.
     assert.deepEqual(
       [...RENDER_TOKEN_KEYS].sort(),
-      ['bg', 'onPrimary', 'primary', 'primaryDark', 'recess',
-       'secondary', 'secondaryDark', 'surface', 'text'],
+      ['bg', 'onPrimary', 'onSecondary', 'primary', 'primaryDark', 'primaryText',
+       'recess', 'secondary', 'secondaryDark', 'surface', 'text'],
       'the exported token key list is not the render token set'
     );
 
@@ -468,8 +468,9 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
         // are render tokens rather than side-channel values.
         assert.deepEqual(
           Object.keys(vars).sort(),
-          ['--rm-bg', '--rm-on-primary', '--rm-primary', '--rm-primary-dark', '--rm-recess',
-           '--rm-secondary', '--rm-secondary-dark', '--rm-surface', '--rm-text'],
+          ['--rm-bg', '--rm-on-primary', '--rm-on-secondary', '--rm-primary',
+           '--rm-primary-dark', '--rm-primary-text', '--rm-recess', '--rm-secondary',
+           '--rm-secondary-dark', '--rm-surface', '--rm-text'],
           `${label}/${mode}: wrong CSS custom property names`
         );
         assert.equal(vars['--rm-primary'],    tokens.primary,   `${label}/${mode}: --rm-primary`);

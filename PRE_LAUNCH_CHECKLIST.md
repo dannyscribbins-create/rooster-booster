@@ -4872,6 +4872,77 @@ quadruples is evidence about the estimate, not about the wave:
       again on the next phase.
       → `9dc7570` · the R/AD migration entry's preview consequence · `RAD_MIGRATION_PHASE0B_REPORT.md` §6.4
 
+- [ ] **⚠ THE BOOST PROGRESS BAR'S FILL IS A CROSS-BRAND-COLOUR GRADIENT AND IS STILL ON
+      RETIRED LITERALS — THE ONE SITE IN `DashboardTab.jsx` PALETTE-4a DID NOT MIGRATE.**
+      *(Ruled R-D, 2026-09-04, by Danny: "LEAVE ON LITERALS AND REPORT IT … a DESIGN question,
+      not a substitution. Do not invent an answer inside a migration phase.")*
+      **It runs `R.red -> R.navy`** — the action colour into the dark neutral — where every other
+      gradient in the referrer tree is `X -> X-dark` on ONE colour and is covered by Palette-1's
+      derived partners. The mechanical substitution is `--rm-primary -> --rm-secondary`, and it is
+      **not obviously right**: on a brand whose two colours are close it collapses to a flat fill,
+      and the bright-to-dark direction of travel is an intent nobody has re-stated for the
+      multi-brand case.
+      ⚠ **MEASURED IN A BROWSER, ON THE SEEDED STACK, AND IT IS VISIBLY WRONG TODAY.** On the
+      teal/magenta contractor the bar renders **red into navy** on a page with no red and no navy
+      anywhere else — the only retired-tone leak left in that file, confirmed by a rendered-colour
+      scan across three contractors in both modes. It is *held*, not *unnoticed*.
+      ⚠ **THE HOLD IS FENCED BY EQUALITY, NOT BY TOLERANCE.**
+      `paletteDashboard.test.jsx` asserts the surviving `R.` colour reads are **exactly**
+      `['navy','red']` and that both sit on **one** line. A second held site turns the suite RED
+      and whoever adds it must say why — an exception list that can only grow stops being one.
+      → `paletteDashboard.test.jsx` T5 · the R-D ruling · Palette's remaining-tabs work
+
+- [ ] **⚠ THREE SMALL DESIGN CONSEQUENCES OF PALETTE-4a, EACH DELIBERATE, EACH UNRESOLVED.**
+      *(Filed 2026-09-04 by Palette-4a Part B. Recorded here rather than only in the commit body,
+      which is findable only by someone already reading that commit.)*
+      · **The Cash Out button's brand-tinted glow is gone.** It was the retired red at 30% alpha;
+      a coloured drop glow under a coloured button needs *"primary at 30% alpha"*, which **no
+      render token can express** — `themeCssVariables()` validates every token as `#RRGGBB`, and
+      that strictness is what makes an emitted `--rm-text: undefined` impossible. It now takes the
+      neutral `shadowMd`. A per-brand alpha channel is a **token design decision**, not a
+      migration one.
+      · **The Google Review card's dismiss chip lost its translucent white fill.** A white wash
+      reads as a chip only while the ground is dark; `--rm-secondary` is BRIGHTENED in dark mode,
+      where a white chip disappears into it. Expressing *"onSecondary at 12%"* needs a per-mode
+      alpha table or an extra layer, because `opacity` on the button would fade the glyph too. It
+      is a transparent hit area with a correctly-coloured glyph today.
+      · **The Google rating star is held on `#F5A623`.** Not a retired tone, not brand-owned, not
+      a status — it belongs to the third-party rating convention the row reproduces. Routing it to
+      `statusVar('warning')` would give a non-status thing a status colour; routing it to
+      `--rm-primary` would make someone else's rating look like our brand.
+      → the three commented sites in `DashboardTab.jsx` · the UI Overhaul arc
+
+- [ ] **⚠ A GRADIENT GROUND MUST BE FLOORED ON ITS DARKER STOP, AND THE ARITHMETIC THAT APPROVED
+      THE MUTED IDIOM DID NOT KNOW THAT. FOUND BY THE BROWSER HARNESS, NOT BY A TEST.**
+      *(Palette-4a Part B, 2026-09-04. Fixed in `DashboardTab.jsx`; recorded here because it
+      generalises to every surface Palette has left to migrate.)*
+      The dashboard hero's ground is `secondary -> secondaryDark`. The muted text idiom
+      (`--rm-on-secondary` at opacity 0.72) was approved against **`secondary`**, measuring
+      4.67–5.48 — the right number for the wrong ground. Against **`secondaryDark`** the real
+      figures are **3.54 · 3.54 · 4.14 · 3.74** in dark mode: **under the floor on every seeded
+      brand.** The hero sub-line now takes full `onSecondary` (worst case 4.61:1).
+      ⚠ **THE BOOKING BANNER'S SUB-LABEL KEEPS THE MUTED IDIOM AND THAT IS NOT AN INCONSISTENCY** —
+      its ground is a FLAT `secondary` fill with no second stop, worst case 4.67:1. Same idiom,
+      different ground, different answer.
+      ⚠ **THE RULE FOR THE REMAINING TABS: when text sits on a gradient, measure BOTH STOPS.** A
+      jsdom test cannot see this at all, and the arithmetic will agree with you if you hand it the
+      wrong ground. `paletteDashboard.test.jsx` now fences it, including the non-vacuity check
+      that the muted variant genuinely fails on a dark stop.
+      → `paletteDashboard.test.jsx` T5 · the same class as the bank banner's `warningText`, where
+      0.72 of a 5.02:1 tone measured 3.07:1 and the opacity was dropped
+
+- [ ] **⚠ `BottomNav` PAINTS THE RETIRED CONTRACTOR NAVY ON EVERY BRAND, MEASURED IN A BROWSER
+      RATHER THAN INFERRED. IT IS NOT IN ANY PALETTE PHASE YET.**
+      *(Surfaced 2026-09-04 by Palette-4a Part B's rendered-colour scan, which had to exclude
+      `nav` to see its own file's result.)*
+      On the teal/magenta seeded contractor, a scan of every rendered colour found **13 retired-tone
+      hits; ten were inside `<nav>`** — the five tab labels and their icons, plus the active-tab
+      indicator bar, all on the retired navy. **The referrer app's most persistent chrome is the
+      least branded thing on the screen**, and it sits under every migrated tab.
+      ⚠ **IT IS CHEAP AND IT IS NOT A TAB**, so it falls between the per-tab phases. Name it
+      explicitly in the remaining Palette sequencing rather than assuming a tab phase will sweep it up.
+      → the Palette phase list · `src/components/referrer/BottomNav.jsx`
+
 - [ ] **⚠ 42 LINE CITATIONS INTO `src/App.jsx` AND `src/components/shared/ThemeProvider.jsx` ARE
       ROTTED, AND MOST WERE ALREADY ROTTED BEFORE PALETTE-1 TOUCHED EITHER FILE.**
       *(Surfaced 2026-09-04 by Palette-1, which inserted 14 lines into `App.jsx` and 38 into
@@ -4892,6 +4963,23 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **THE THREE IN `docs/GROUND_TRUTH_2026-08-21.md` MUST NOT BE SHIFTED AT ALL** — it is a
       dated snapshot that QUOTES what it cites, so renumbering would make it claim its quotes come
       from lines that now hold something else.
+      ⚠ **PALETTE-4a PART B ADDS THREE MORE, AND THE SPLIT IS THE POINT.** Its edits made
+      `--changed-files` report **six**; all six were read at the OLD line in the OLD revision
+      before anything was touched, and they divided cleanly:
+      **TWO WERE CORRECT AND THIS PHASE MOVED THEM** — `CDL_3b_BUILD_SPEC.md`'s
+      `DashboardTab.jsx:586,610` (the Google Review card) and `CDL_3c_PHASE0_REPORT.md`'s
+      `statusTheme.js:88-95` (`STATUS_VARS`). **Both repaired, BY ROLE**, so they cannot rot again.
+      **THREE WERE ALREADY WRONG and are NOT repaired here** — `CDL_3b_BUILD_SPEC.md:136` cites
+      `statusTheme.js:124` for a sentence about `STATUS_VARS` and lands on a bare `//`;
+      `CDL_3c_PHASE0_REPORT.md:265` cites `themeTokens.mjs:345` for `deriveThemeTokens` and lands
+      on a comment about palettes; `CDL_3c_PHASE0_REPORT.md:694` cites `themeTokens.mjs:91` for the
+      dark-mode governor and lands on a `cssName` comment. Re-deriving where those subjects live is
+      the larger job `CLAUDE.md` says to record rather than improvise.
+      **THE SIXTH IS A PROTECTED RECORD AND WAS NOT TOUCHED** — `PRE_LAUNCH_CHECKLIST.md:4225`
+      quotes `statusTheme.js:140` in a sentence whose SUBJECT is that the number rotted.
+      ⚠ **THIS IS `CLAUDE.md`'S WORKED CASE REPRODUCED EXACTLY: adding this phase's delta to all
+      six would have moved the two correct ones, left the three wrong ones wrong, and falsified a
+      record.** Recorded because it is the second measured instance, not because it is new.
       **The real repair is re-deriving where each subject lives and citing BY ROLE**, which is a
       larger job than a phase should improvise mid-build. Filed rather than half-done.
 

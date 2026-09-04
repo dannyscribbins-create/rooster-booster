@@ -76,9 +76,31 @@ export const STATUS_DARK = Object.freeze({
 // composites against whatever surface it lands on — a pale pink on white, a dark
 // maroon on near-black. So these need no split and no CSS variable at all.
 // Same technique AD already uses for its own *Bg values.
+//
+// ⚠ THIS TABLE IS FOR THE 3:1 GRAPHIC USE ONLY — IT GROUNDS AN ICON BADGE. IT
+// MUST NEVER CARRY BODY TEXT, AND THE THIRD ENTRY IS THE PROOF RATHER THAN THE
+// EXCEPTION. Palette-1 measured successText on the success tint at 4.39:1,
+// short of the 4.5 floor by 0.11. Palette-4a Part B measured the warning entry
+// added below, for the same reason and with the same result:
+//
+//     warning tint over #FFFFFF -> #FAEFE1   warningText #B45309 on it = 4.42:1
+//
+// TWO OF THE THREE FAIL THE TEXT FLOOR. That is not a property of these two
+// hexes; it is what a 0.12 wash of a mid-tone does to the contrast range left
+// for text. Dropping the alpha to 0.08 reaches 4.61:1 and stops being a tint.
+// ⚠ SO THE BANNERS DO NOT USE THIS TABLE — see STATUS_BANNER below, which puts
+// the ground on `surface` and the status colour on the EDGE. Routing a banner
+// here instead would reproduce R-1's tint-is-not-a-fill inversion exactly, in
+// the arc that opened by fixing it.
 export const STATUS_TINT = Object.freeze({
   danger:  'rgba(220,38,38,0.12)',
   success: 'rgba(22,163,74,0.12)',
+  // Added Palette-4a Part B (ruled R-B). It completes the table for the icon-badge
+  // use its two siblings already serve; it has NO text consumer and must not gain
+  // one. Measured over #FFFFFF -> #FAEFE1 (4.42:1 under warningText, see above);
+  // over the dark surface #121B31 -> #2A262C (8.91:1 under STATUS_DARK.warningText,
+  // which passes — but a value that is only safe in one mode is not a text ground).
+  warning: 'rgba(217,119,6,0.12)',
 });
 
 // The custom-property names the provider will mount in 3b/3c. Named here rather
@@ -182,6 +204,19 @@ export const STATUS_BANNER = Object.freeze({
   success: Object.freeze({
     backgroundColor: 'var(--rm-surface, #FFFFFF)',
     border: `1px solid var(${STATUS_VARS.success}, ${STATUS_LIGHT.success})`,
+  }),
+  // Added Palette-4a Part B (ruled R-B), for DashboardTab's three warning-shaped
+  // banners: the bank-account prompt, the 429 rate-limit notice and the stale-cache
+  // notice. All three were hand-built from literals — two on #FFF8E1/#F5C518, one
+  // on a #1a0a00 dark block dropped into a light dashboard.
+  //
+  //     light   warningText #B45309 on surface #FFFFFF    5.02:1   (text, 4.5)
+  //             warning edge #D97706 on surface #FFFFFF   3.19:1   (graphic, 3)
+  //     dark    warningText #fbbf24 on surface #121B31   10.25:1
+  //             warning edge #D97706 on surface #121B31   5.37:1
+  warning: Object.freeze({
+    backgroundColor: 'var(--rm-surface, #FFFFFF)',
+    border: `1px solid var(${STATUS_VARS.warning}, ${STATUS_LIGHT.warning})`,
   }),
 });
 

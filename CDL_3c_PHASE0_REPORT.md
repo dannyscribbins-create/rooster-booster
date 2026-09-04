@@ -280,7 +280,7 @@ misclassification rather than by work*, so a future reader does not go looking f
 
 ⚠ **CORRECTION TO THE PROMPT (inherited from 3a §8, corrected in 3b Phase 1 Ruling 1):
 there are SIX status vars, not four** — `danger`, `dangerText`, `success`, `successText`,
-`warning`, `warningText` (`statusTheme.js:88-95`). **5 + 6 = 11 mounted.**
+`warning`, `warningText` (`STATUS_VARS` in `statusTheme.js`). **5 + 6 = 11 mounted.**
 
 **So the failure mode the prompt describes — "the 4A primitives stay on LIGHT status fallbacks in
 dark mode" — cannot occur.** `grep` confirms `ThemeProvider.jsx` is the **only** reader of

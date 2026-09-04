@@ -66,6 +66,23 @@
 export const ELEVATION_LIGHT = Object.freeze({
   border: 'rgba(0,0,0,0.12)',
   shadow: '0 1px 4px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)',
+  // ── shadowMd / shadowLg (Palette-4a Part B, ruled R-C) ────────────────────
+  // Palette-3 hit this gap and worked around it; DashboardTab hits it six times
+  // — three raised cards on shadowLg and three hover states on shadowMd — so it
+  // is cheaper to publish the roles than to route around them again.
+  //
+  // ⚠ shadowLg IS THE ONE THAT CHANGED VALUE, AND THE REASON IS A RETIRED TONE
+  // HIDING INSIDE A SHADOW. `R.shadowLg` carried the retired contractor navy as
+  // its shadow colour, written as three DECIMAL channels inside an rgba() rather
+  // than as a hex. That form is invisible to every `R.`-keyed needle and to every
+  // hex sweep in this repo, because it is neither. A brand tone in an occlusion is
+  // not a brand decision anyone made; it is a leftover. The value below is the
+  // same geometry with a neutral black, which is what a shadow is.
+  // ⚠ THE HEX IS NOT WRITTEN HERE ON PURPOSE. adminBranding.test.jsx sweeps this
+  // file for retired identity literals and does not exempt comments — correctly,
+  // since a literal in prose is exactly what someone pastes back into code.
+  shadowMd: '0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.05)',
+  shadowLg: '0 8px 32px rgba(0,0,0,0.13)',
 });
 
 // Mounted by the theme provider for dark mode.
@@ -77,6 +94,12 @@ export const ELEVATION_LIGHT = Object.freeze({
 export const ELEVATION_DARK = Object.freeze({
   border: 'rgba(255,255,255,0.18)',
   shadow: '0 1px 4px rgba(0,0,0,0.45), 0 1px 2px rgba(0,0,0,0.30)',
+  // Deepened on the same reasoning as `shadow` above: a faint black shadow on a
+  // near-black ground is doing nothing at all. The geometry is unchanged in both
+  // roles — only the alpha moves — so a card does not change size or softness
+  // between modes, it only stops disappearing.
+  shadowMd: '0 4px 16px rgba(0,0,0,0.55), 0 2px 4px rgba(0,0,0,0.35)',
+  shadowLg: '0 8px 32px rgba(0,0,0,0.60)',
 });
 
 // The custom-property names the provider mounts. Named here rather than spelled
@@ -86,6 +109,8 @@ export const ELEVATION_DARK = Object.freeze({
 export const ELEVATION_VARS = Object.freeze({
   border: '--rm-border',
   shadow: '--rm-shadow',
+  shadowMd: '--rm-shadow-md',
+  shadowLg: '--rm-shadow-lg',
 });
 
 // ── FONTS ───────────────────────────────────────────────────────────────────
@@ -125,7 +150,7 @@ export const FONT_VARS = Object.freeze({
  * Builds the CSS value a component declares for one elevation role: the custom
  * property, with the LIGHT value as its literal fallback.
  *
- * @param {'border'|'shadow'} role
+ * @param {'border'|'shadow'|'shadowMd'|'shadowLg'} role
  * @returns {string} e.g. 'var(--rm-border, rgba(0,0,0,0.12))'
  * @throws on an unknown role. A silent '' would render as no border at all —
  *         the same failure mode statusVar() refuses, and the same reason.

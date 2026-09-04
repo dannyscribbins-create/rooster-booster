@@ -101,6 +101,163 @@ describe('Palette-1 T1 — the recess token', () => {
   });
 });
 
+describe('Palette-4a Part B T1 — the onSecondary token', () => {
+  test('[RED] it is in the token set and mounts as --rm-on-secondary', () => {
+    assert.ok(RENDER_TOKEN_KEYS.includes('onSecondary'), 'onSecondary is not a render token');
+    assert.equal(RENDER_TOKEN_VARS.onSecondary, '--rm-on-secondary');
+    // Appended, like every addition since onPrimary — A23.1's claim is about the prefix.
+    assert.deepEqual(
+      RENDER_TOKEN_KEYS.slice(0, 6),
+      ['primary', 'secondary', 'bg', 'surface', 'text', 'onPrimary'],
+      'A23.1 rests on this prefix; an insertion rather than an append falsifies it'
+    );
+    assert.equal(
+      RENDER_TOKEN_KEYS[RENDER_TOKEN_KEYS.length - 1], 'onSecondary',
+      'onSecondary must be the last key — it was appended, not inserted'
+    );
+  });
+
+  test('[RED] it clears the TEXT floor on its own fill, every brand, every mode', () => {
+    for (const [label, src] of BRANDS) {
+      for (const mode of MODES) {
+        const t = deriveThemeTokens(resolveBrandingTheme(src), mode);
+        const ratio = contrastRatio(t.onSecondary, t.secondary);
+        assert.ok(
+          ratio >= TEXT_CONTRAST_MIN,
+          `${label}/${mode}: onSecondary ${t.onSecondary} on secondary ${t.secondary} is ${ratio.toFixed(2)}:1`
+        );
+      }
+    }
+  });
+
+  // ⚠ THE MONEY FENCE'S TWIN, AND IT IS THE SAME SHAPE: assert that the value
+  // the sites USED TO CARRY fails, so the token cannot be quietly reverted to it.
+  // Without this the case above passes against a hardcoded '#FFFFFF' in light
+  // mode and nothing would ever report the dark half.
+  test('[RED] a bare white FAILS on the dark-mode secondary — which is the defect', () => {
+    let sawFailure = false;
+    for (const [label, src] of BRANDS) {
+      const t = deriveThemeTokens(resolveBrandingTheme(src), 'dark');
+      const white = contrastRatio('#FFFFFF', t.secondary);
+      if (white < TEXT_CONTRAST_MIN) {
+        sawFailure = true;
+        assert.ok(
+          contrastRatio(t.onSecondary, t.secondary) >= TEXT_CONTRAST_MIN,
+          `${label}: white fails at ${white.toFixed(2)}:1 and onSecondary does not rescue it`
+        );
+      }
+    }
+    // ⚠ NON-VACUITY. If no brand ever failed under white, this test would pass
+    // by examining nothing and the token would have no demonstrated purpose.
+    assert.ok(
+      sawFailure,
+      'no seeded brand failed under a bare white — the premise for onSecondary is unproven'
+    );
+  });
+
+  test('[RED] light and dark derive it from DIFFERENT inputs, and that is not a bug', () => {
+    // Light-mode `secondary` is a strict passthrough of brand.primaryColor;
+    // dark-mode `secondary` is that colour BRIGHTENED. A single expression
+    // cannot serve both, so this pins that they are computed against their own
+    // mode's fill rather than against a shared one.
+    for (const [label, src] of BRANDS) {
+      for (const mode of MODES) {
+        const t = deriveThemeTokens(resolveBrandingTheme(src), mode);
+        const best = contrastRatio('#FFFFFF', t.secondary) >= contrastRatio('#000000', t.secondary)
+          ? '#FFFFFF' : '#000000';
+        assert.equal(
+          t.onSecondary, best,
+          `${label}/${mode}: onSecondary is not the better foreground for THIS mode's fill`
+        );
+      }
+    }
+  });
+
+  test('every onSecondary is a valid #RRGGBB — which is why it is a render token', () => {
+    for (const [, src] of BRANDS) {
+      for (const mode of MODES) {
+        const vars = themeCssVariables(deriveThemeTokens(resolveBrandingTheme(src), mode));
+        assert.match(vars['--rm-on-secondary'], /^#[0-9A-Fa-f]{6}$/);
+      }
+    }
+  });
+});
+
+describe('Palette-4a T1 — the brand-text token', () => {
+  test('[RED] it is in the token set and mounts as --rm-primary-text', () => {
+    assert.ok(RENDER_TOKEN_KEYS.includes('primaryText'), 'primaryText is not a render token');
+    assert.equal(RENDER_TOKEN_VARS.primaryText, '--rm-primary-text');
+    // Appended, like every addition since onPrimary — A23.1's claim is about the prefix.
+    assert.deepEqual(
+      RENDER_TOKEN_KEYS.slice(0, 6),
+      ['primary', 'secondary', 'bg', 'surface', 'text', 'onPrimary'],
+      'the A23.1 prefix moved'
+    );
+  });
+
+  test('[RED] it clears the TEXT floor against BOTH surface and recess, every brand, every mode', () => {
+    // ⚠ BOTH GROUNDS. A brand-text value can sit on a card or in a recessed well,
+    // and in light mode the recess is the darker of the two — a value floored only
+    // against `surface` is not guaranteed on `recess`.
+    for (const [label, src] of BRANDS) {
+      for (const mode of MODES) {
+        const t = deriveThemeTokens(resolveBrandingTheme(src), mode);
+        for (const [ground, value] of [['surface', t.surface], ['recess', t.recess]]) {
+          const ratio = contrastRatio(t.primaryText, value);
+          assert.ok(
+            ratio >= TEXT_CONTRAST_MIN,
+            `${label}/${mode}: primaryText ${t.primaryText} on ${ground} ${value} = ${ratio.toFixed(2)}:1, floor ${TEXT_CONTRAST_MIN}`
+          );
+        }
+      }
+    }
+  });
+
+  test('⚠ THE MONEY FENCE — --rm-primary CANNOT carry text, which is why this token exists', () => {
+    // ⚠ THIS ASSERTS THE DEFECT THE TOKEN PREVENTS. `primary` is floored against
+    // BRAND_ON_LIGHT_MIN_CONTRAST = 3, the NON-TEXT floor. For the platform brand
+    // it lands at 3.06:1 against surface — below 4.5 — while a magenta brand
+    // passes at 5.87:1. That per-contractor split on the dollar amounts is the
+    // whole reason Palette-4a exists.
+    const platform = deriveThemeTokens(resolveBrandingTheme(null), 'light');
+    assert.ok(
+      contrastRatio(platform.primary, platform.surface) < TEXT_CONTRAST_MIN,
+      'primary now clears the text floor for the platform brand — if the derivation ' +
+      'changed, re-derive whether primaryText is still needed rather than deleting it'
+    );
+    assert.ok(
+      contrastRatio(platform.primaryText, platform.surface) >= TEXT_CONTRAST_MIN,
+      'primaryText does not clear the text floor — the token is not doing its job'
+    );
+  });
+
+  test('it is a no-op wherever the brand colour already clears — measured, not assumed', () => {
+    // ⚠ RECORDED SO THE PIXELS ARE NOT A SURPRISE. A red or magenta action colour
+    // is returned UNCHANGED: an Accent-shaped #CC0000 clears at 5.89:1, so those
+    // dollar figures do not move at all. It is the platform ORANGE that shifts.
+    // And in DARK mode it is a no-op for every real palette, because `primary` is
+    // already floored there at BRAND_ON_DARK_MIN_CONTRAST = 5.25 > 4.5.
+    const accentShaped = deriveThemeTokens(
+      resolveBrandingTheme({ primary_color: '#012854', secondary_color: '#CC0000' }), 'light'
+    );
+    assert.equal(accentShaped.primaryText, accentShaped.primary,
+      'a brand colour that already clears the text floor must be returned unchanged');
+
+    const platformDark = deriveThemeTokens(resolveBrandingTheme(null), 'dark');
+    assert.equal(platformDark.primaryText, platformDark.primary,
+      'dark mode should be a no-op — primary is already floored above the text floor there');
+  });
+
+  test('every derived primaryText is a valid #RRGGBB — which is why it is a render token', () => {
+    for (const [, src] of BRANDS) {
+      for (const mode of MODES) {
+        const vars = themeCssVariables(deriveThemeTokens(resolveBrandingTheme(src), mode));
+        assert.match(vars['--rm-primary-text'], /^#[0-9A-Fa-f]{6}$/);
+      }
+    }
+  });
+});
+
 describe('Palette-1 T2 — the mirror drift guard', () => {
   test('[RED] both copies publish the same render token keys', () => {
     // The canonical copy is server/utils; src/ is the mirror. themeTokens.test.js
@@ -110,7 +267,11 @@ describe('Palette-1 T2 — the mirror drift guard', () => {
     const mirrorSrc = fs.readFileSync(
       path.resolve(__dirname, '..', '..', 'src', 'utils', 'themeTokens.mjs'), 'utf8'
     );
-    for (const key of ['recess', 'primaryDark', 'secondaryDark']) {
+    // ⚠ THE LIST GROWS WITH THE ARC. Palette-4a added `primaryText` and Part B
+    // added `onSecondary`; a new key not listed here is a key whose half-applied
+    // mirror fails only in the generic diff, which is the message that used to
+    // not say which copy had drifted.
+    for (const key of ['recess', 'primaryDark', 'secondaryDark', 'primaryText', 'onSecondary']) {
       assert.ok(RENDER_TOKEN_KEYS.includes(key), `canonical copy is missing ${key}`);
       assert.ok(
         new RegExp(`'${key}'`).test(mirrorSrc),

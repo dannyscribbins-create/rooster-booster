@@ -32,9 +32,19 @@ function over(rgba, hex) {
   return '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 
-describe('Palette-1 T3 — the side channel publishes all four roles', () => {
-  it('covers border, shadow, and both fonts', () => {
-    expect(Object.keys(ELEVATION_VARS).sort()).toEqual(['border', 'shadow']);
+// ⚠ THE COUNT IS OUT OF THIS HEADING DELIBERATELY. It read "all four roles" and
+// Palette-4a Part B made it six — a hand-maintained number in a heading directly
+// above the list it counts is the shape CLAUDE.md records as its own worst
+// instance. Read the list.
+describe('Palette-1 T3 — the side channel publishes its roles', () => {
+  it('covers the elevation roles and both fonts', () => {
+    // ⚠ HAND-WRITTEN ON PURPOSE — an INDEPENDENT statement of the role set. If
+    // this derived its expectation from ELEVATION_VARS it could not fail, which
+    // is the whole point: a role added to the map without a value in both tables
+    // is the silent gap the case below catches, and a role added to the map
+    // without anyone deciding to add it is what this one catches.
+    // shadowMd/shadowLg arrived in Palette-4a Part B under R-C.
+    expect(Object.keys(ELEVATION_VARS).sort()).toEqual(['border', 'shadow', 'shadowLg', 'shadowMd']);
     expect(Object.keys(FONT_VARS).sort()).toEqual(['body', 'heading']);
   });
 
