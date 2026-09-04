@@ -4850,6 +4850,28 @@ quadruples is evidence about the estimate, not about the wave:
       annotated with the correction; this entry did not move.**
       → the Security G line in the **Launch Definition** above · `CLAUDE_REGISTRY.md` (the
       Multi-Contractor Security Session tracking)
+- [ ] **⚠ THE BRANDING PREVIEW'S DASHBOARD ILLUSTRATION IS DRIFTING AWAY FROM THE APP, AND IT
+      GETS WORSE WITH EVERY PALETTE PHASE.** *(Filed 2026-09-04 by Palette-3. Recorded in
+      `9dc7570`'s commit body first, which is findable only by someone already reading that
+      commit — this is the entry.)*
+      **`BrandingPreview`'s third view renders `DashboardPreview`, a HAND-PAINTED ILLUSTRATION**,
+      not the real surface. It hardcodes **`#EEF2F7`** — the ground `Screen.jsx` painted *before*
+      Palette-2 — while the real app now derives its ground per contractor.
+      **Measured 2026-09-04:** Accent and the platform default diverge **1.02:1** (imperceptible);
+      a teal-branded contractor diverges **1.04:1** and, more to the point, in the wrong HUE — the
+      app shows a teal-tinted ground and the illustration stays blue-grey.
+      ⚠ **IT WAS ALREADY UNRESPONSIVE TO BRAND COLOUR; IT IS NOW ALSO SLIGHTLY WRONG.** The gap
+      widens as each Palette phase moves another surface onto derived tokens, because the
+      illustration cannot follow.
+      ⚠ **WHY IT MATTERS RATHER THAN BEING COSMETIC: the preview's entire job is showing a
+      contractor what they will get.** An inaccurate preview that does not move when they edit a
+      colour teaches them their palette does nothing — the exact failure the R/AD entry names.
+      **TRIGGER: Palette-4, when the dashboard preview becomes a REAL MOUNT.** That resolves it by
+      construction; nothing needs doing before then. ⚠ **But it must not be resolved by
+      "correcting" the illustration's hex** — that is a second copy of a derivation, and it drifts
+      again on the next phase.
+      → `9dc7570` · the R/AD migration entry's preview consequence · `RAD_MIGRATION_PHASE0B_REPORT.md` §6.4
+
 - [ ] **⚠ 42 LINE CITATIONS INTO `src/App.jsx` AND `src/components/shared/ThemeProvider.jsx` ARE
       ROTTED, AND MOST WERE ALREADY ROTTED BEFORE PALETTE-1 TOUCHED EITHER FILE.**
       *(Surfaced 2026-09-04 by Palette-1, which inserted 14 lines into `App.jsx` and 38 into

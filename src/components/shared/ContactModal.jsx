@@ -1,4 +1,5 @@
 import { R } from '../../constants/theme';
+import { elevationVar } from '../../constants/elevationTheme';
 import { useBranding } from './ThemeProvider';
 
 // Contact Modal
@@ -34,14 +35,14 @@ export default function ContactModal({ isOpen, onClose }) {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: "#FFFFFF", borderRadius: 20, padding: 28,
+          background: 'var(--rm-surface, #FFFFFF)', borderRadius: 20, padding: 28,
           width: "100%", maxWidth: 340,
           boxShadow: R.shadowLg,
         }}
       >
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <p style={{ margin: 0, fontSize: 22, fontWeight: 700, fontFamily: R.fontSans, color: R.navy }}>
+          <p style={{ margin: 0, fontSize: 22, fontWeight: 700, fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)' }}>
             Get in Touch
           </p>
           <button
@@ -52,21 +53,21 @@ export default function ContactModal({ isOpen, onClose }) {
               display: "inline-flex", alignItems: "center", justifyContent: "center",
             }}
           >
-            <i className="ph ph-x" style={{ fontSize: 22, color: R.textMuted }} />
+            <i className="ph ph-x" style={{ fontSize: 22, color: 'var(--rm-text, #1C2D4D)' }} />
           </button>
         </div>
 
         {/* Divider */}
-        <div style={{ borderTop: `1px solid ${R.border}`, marginBottom: 16 }} />
+        <div style={{ borderTop: `1px solid ${elevationVar('border')}`, marginBottom: 16 }} />
 
         {/* Phone — drawn only when there is one. An absent value must not leave a
             row with a dead `tel:null` behind it. */}
         {dialDigits && (
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <i className="ph ph-phone" style={{ fontSize: 22, color: R.navy, flexShrink: 0 }} />
+          <i className="ph ph-phone" style={{ fontSize: 22, color: 'var(--rm-text, #1C2D4D)', flexShrink: 0 }} />
           <a
             href={`tel:${dialDigits}`}
-            style={{ color: R.navy, fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
+            style={{ color: 'var(--rm-text, #1C2D4D)', fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
             onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
             onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
           >
@@ -78,10 +79,10 @@ export default function ContactModal({ isOpen, onClose }) {
         {/* Email — same rule as the phone row above. */}
         {branding.email && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
-          <i className="ph ph-envelope" style={{ fontSize: 22, color: R.navy, flexShrink: 0 }} />
+          <i className="ph ph-envelope" style={{ fontSize: 22, color: 'var(--rm-text, #1C2D4D)', flexShrink: 0 }} />
           <a
             href={`mailto:${branding.email}`}
-            style={{ color: R.navy, fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
+            style={{ color: 'var(--rm-text, #1C2D4D)', fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
             onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
             onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
           >
@@ -95,8 +96,8 @@ export default function ContactModal({ isOpen, onClose }) {
           onClick={onClose}
           style={{
             marginTop: 24, width: "100%", background: "none",
-            border: `1.5px solid ${R.border}`, borderRadius: 12,
-            padding: 12, color: R.textSecondary, fontSize: 15,
+            border: `1.5px solid ${elevationVar('border')}`, borderRadius: 12,
+            padding: 12, color: 'var(--rm-text, #1C2D4D)', opacity: 0.75, fontSize: 15,
             cursor: "pointer", fontFamily: R.fontBody,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}
