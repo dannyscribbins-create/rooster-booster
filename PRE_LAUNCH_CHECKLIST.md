@@ -4872,6 +4872,57 @@ quadruples is evidence about the estimate, not about the wave:
       again on the next phase.
       → `9dc7570` · the R/AD migration entry's preview consequence · `RAD_MIGRATION_PHASE0B_REPORT.md` §6.4
 
+- [ ] **⚠ A.2 — `tealText` / `emeraldText` AND THE GREEN EARNINGS FIGURES ARE UNRULED, AND TWO
+      OF THEM ARE LIVE CONTRAST DEFECTS. REPORTED BY INSTRUCTION, NOT RULED.**
+      *(Palette-4b, 2026-09-04. Unruled since the R/AD Phase 0-B; `ProfileTab.jsx` is where they
+      live. Six code sites are HELD and fenced by equality.)*
+      **THE FINDING: both keys ARE `STATUS_CONFIG`'s pipeline vocabulary, verified in source.**
+      `R.tealText` IS `STATUS_CONFIG.app_user.color` and `R.emeraldText` IS
+      `STATUS_CONFIG.complete.color` — the same seven-state vocabulary that kept `StatusBadge` on
+      the status system rather than the render set. On that argument alone they are status.
+      ⚠ **BUT TWO OF THE SIX PAINT DOLLAR AMOUNTS, WHICH PALETTE-4a RULED ONTO `--rm-primary-text`.**
+      Two shipped rulings point at the same sites. That collision is the actual question.
+      ⚠ **AND THE STATUS ANSWER DOES NOT MEASURE CLEAN, WHICH IS WHY THIS IS NOT A FORMALITY:**
+      · `R.green` "$X earned" on the card — **3.30:1, UNDER THE FLOOR TODAY.**
+      · `R.green` "+$X" on the recessed row — **2.93:1, UNDER THE FLOOR TODAY.**
+      · the obvious repair, `statusVar('successText')`, is 5.02:1 on `surface` but **4.46:1 on
+        `recess`** — also under, on the ground one of the two actually sits on.
+      · `R.tealText` 4.77:1 and `R.emeraldText` 6.83:1 — both fine; those two are a naming
+        question, not a defect.
+      · the reports pill — **`R.greenBg`/`R.amberBg` are currently CORRECT at 4.57:1 and 4.51:1,
+        and `STATUS_TINT` would make them WORSE at 4.39 and 4.42.** Third independent appearance
+        of "a 0.12 wash does not leave enough contrast range for text".
+      ⚠ **SO NEITHER SYSTEM ANSWERS CLEANLY AND THE PHASE DID NOT GUESS.** The one site that moved
+      is the icon tile — `STATUS_TINT.success` grounding a glyph is the 3:1 graphic use its own
+      header sanctions, and no text sits on it.
+      → `paletteProfile.test.jsx` T3 asserts the surviving reads are EXACTLY these six ·
+      the four in-source `⚠ A.2 — HELD` comments · Palette-4a's money ruling
+
+- [ ] **⚠ THE UPLOAD ERROR ON THE PROFILE HERO HAD NO CORRECT TOKEN, AND THE GROUND HAD TO MOVE
+      INSTEAD OF THE TEXT. THE GAP IS GENERAL: THERE IS NO "STATUS ON A BRAND FILL" PAIR.**
+      *(Palette-4b, 2026-09-04. Fixed in place; filed because the gap outlives the fix.)*
+      Measured, **both** obvious routes fail: holding the literal `#fca5a5` keeps 9.79:1 in light
+      and drops to **2.40:1 in dark**, because the gradient's darker stop brightens with the brand;
+      and `statusVar('dangerText')` mounts the LIGHT tone on that same dark navy at **2.87:1** —
+      worse, and worse in the mode that currently works.
+      The message now sits on `STATUS_BANNER.danger` (surface ground, danger edge), which measures
+      6.47:1 light and 6.19:1 dark. ⚠ **It is a visible change** — bare salmon text becomes a small
+      bordered notice on the hero.
+      ⚠ **THE GENERAL POINT: the status palette is defined against `surface`, and a brand fill is
+      not a surface.** Any future status message on a hero, a coloured card or a gradient hits this.
+      → the commented site in `ProfileTab.jsx` · `statusTheme.js`'s own honest-limitation note
+
+- [ ] **⚠ THE SIGN OUT BUTTON'S HOVER STATE WAS UNDER THE FLOOR AND NOBODY WAS LOOKING FOR IT.
+      FIXED IN PALETTE-4b; RECORDED BECAUSE OF HOW IT WAS FOUND.**
+      *(Palette-4b, 2026-09-04.)* `#dc2626` on the rest fill `#fff5f5` measured **4.51:1** — it
+      cleared by 0.01 — and on the HOVER fill `#fee2e2` it measured **3.95:1**. A destructive
+      control that became *less* readable the moment you pointed at it.
+      ⚠ **IT WAS NOT ON ANY DEFECT LIST. It surfaced only because the migration measured every
+      pair it touched rather than only the ones it suspected**, which is the argument for measuring
+      the whole file rather than the flagged sites. Now surface at rest and the danger tint on
+      hover: 6.47:1 and 5.37:1.
+      → `paletteProfile.test.jsx` T1
+
 - [ ] **⚠ THE BOOST PROGRESS BAR'S FILL IS A CROSS-BRAND-COLOUR GRADIENT AND IS STILL ON
       RETIRED LITERALS — THE ONE SITE IN `DashboardTab.jsx` PALETTE-4a DID NOT MIGRATE.**
       *(Ruled R-D, 2026-09-04, by Danny: "LEAVE ON LITERALS AND REPORT IT … a DESIGN question,
@@ -4980,6 +5031,18 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **THIS IS `CLAUDE.md`'S WORKED CASE REPRODUCED EXACTLY: adding this phase's delta to all
       six would have moved the two correct ones, left the three wrong ones wrong, and falsified a
       record.** Recorded because it is the second measured instance, not because it is new.
+      ⚠ **PALETTE-4b MAKES IT THREE, AND THE SPLIT HELD AGAIN — 50/50, ON TWO.** Its edits flagged
+      two citations into `ProfileTab.jsx`, both read at the OLD line in the OLD revision first:
+      **ONE WAS CORRECT AND THIS PHASE MOVED IT** — `CDL_3b_BUILD_SPEC.md:441` cited
+      `ProfileTab.jsx:808` for the sign-out control and landed exactly on the
+      `Contact Support + Sign Out` block. **Repaired BY ROLE.**
+      **ONE WAS ALREADY WRONG and is NOT repaired** — `MEMBER_RANK_ECONOMY_SPEC.md:507` cites
+      `ProfileTab.jsx:603-604` for where shout copy is bucketed by `rank1/rank2_3/rank4_7/rank8_10`,
+      and at HEAD those lines are the **badge tile** (`return (` / `<div key={badge.id}`), not the
+      bucket selection at all. ⚠ **The same sentence also cites `RankingsTab.jsx:91-92`, which this
+      phase did not touch and therefore did not verify** — an unflagged sibling in a list where one
+      member was flagged is exactly the shape `CLAUDE.md` calls the sharpest proof.
+      **Running total of already-rotted citations found by the Palette arc and left unrepaired: 4.**
       **The real repair is re-deriving where each subject lives and citing BY ROLE**, which is a
       larger job than a phase should improvise mid-build. Filed rather than half-done.
 
