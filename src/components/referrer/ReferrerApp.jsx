@@ -202,7 +202,13 @@ export default function ReferrerApp({
   };
 
   return (
-    <div style={{ background: R.bgPage, minHeight: "100vh" }}>
+    // ⚠ THE OTHER HALF OF PALETTE-2's SINGLE EDIT — see Screen.jsx's header for
+    // why this is `--rm-recess` and not `--rm-bg`, and why the two must never
+    // diverge. This wrapper is FULL WIDTH and covers the body ground that
+    // ThemeLayer paints from `--rm-bg`; the 430px column sits inside it. While
+    // both paint the same value the desktop gutters and the column are one
+    // colour and there is no seam to see.
+    <div style={{ background: 'var(--rm-recess, #ECF0F8)', minHeight: "100vh" }}>
       {pendingMatch && (
         <PendingMatchPopup
           match={pendingMatch}
