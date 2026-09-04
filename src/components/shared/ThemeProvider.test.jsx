@@ -35,6 +35,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { RENDER_TOKEN_KEYS, RENDER_TOKEN_VARS, deriveThemeTokens, contrastRatio, TEXT_CONTRAST_MIN } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
+import { ELEVATION_VARS, ELEVATION_LIGHT, ELEVATION_DARK, FONT_VARS, FONT_DEFAULTS } from '../../constants/elevationTheme';
 import { resolveBrandingTheme, BRANDING_THEME_DEFAULTS } from '../../utils/brandingTheme.mjs';
 import { BRAND_HINT_STORAGE_KEY } from '../../utils/brandingChain';
 import ThemeProvider, { ThemeContext, themeVariables, DEFAULT_THEME_MODE } from './ThemeProvider';
@@ -66,7 +67,15 @@ const NEUTRAL = Object.freeze(resolveBrandingTheme(null));
 // this grows with it.
 const EVERY_BRAND_VAR = Object.values(RENDER_TOKEN_VARS);
 const EVERY_STATUS_VAR = Object.values(STATUS_VARS);
-const EVERY_VAR = [...EVERY_BRAND_VAR, ...EVERY_STATUS_VAR];
+// ⚠ TWO MORE SOURCES SINCE PALETTE-1 (R-4), AND THEY ARE READ THE SAME WAY. The
+// non-colour side channel cannot go through themeCssVariables() — that validator
+// requires #RRGGBB and an alpha border, a multi-part shadow and a font stack are
+// none of them — so the provider mounts them in their own loops. Listing them
+// here rather than hardcoding keeps this assertion the independent-input check it
+// was written to be.
+const EVERY_ELEVATION_VAR = Object.values(ELEVATION_VARS);
+const EVERY_FONT_VAR = Object.values(FONT_VARS);
+const EVERY_VAR = [...EVERY_BRAND_VAR, ...EVERY_STATUS_VAR, ...EVERY_ELEVATION_VAR, ...EVERY_FONT_VAR];
 
 function makeStorage(initial = {}) {
   const map = new Map(Object.entries(initial));
@@ -114,7 +123,10 @@ describe('themeVariables — every mounted custom property', () => {
     const vars = themeVariables(BRAND_A, 'light');
 
     expect(Object.keys(vars).sort()).toEqual([...EVERY_VAR].sort());
-    expect(Object.keys(vars)).toHaveLength(RENDER_TOKEN_KEYS.length + Object.keys(STATUS_VARS).length);
+    expect(Object.keys(vars)).toHaveLength(
+      RENDER_TOKEN_KEYS.length + Object.keys(STATUS_VARS).length +
+      Object.keys(ELEVATION_VARS).length + Object.keys(FONT_VARS).length
+    );
   });
 
   it('the brand vars carry deriveThemeTokens\' output for that mode', () => {

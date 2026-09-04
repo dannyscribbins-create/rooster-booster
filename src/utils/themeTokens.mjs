@@ -70,7 +70,21 @@ import { BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE } from './brandingTheme.mjs';
 // is a render token rather than a second registry because it is derived per
 // brand and per mode exactly as the other five are, and spec section 5's rule
 // is one theming system with no second implementation.
-const RENDER_TOKEN_KEYS = Object.freeze(['primary', 'secondary', 'bg', 'surface', 'text', 'onPrimary']);
+// ⚠ NINE SINCE PALETTE-1, AND THE THREE NEW KEYS ARE APPENDED FOR THE SAME
+// REASON `onPrimary` WAS. A23.1 rests on this list being spec section 5's token
+// set "exactly, in section 5's order" — a claim that stays literally true of the
+// PREFIX only while additions go on the end. Inserting `recess` next to `surface`
+// where it belongs semantically would falsify an amendment to buy tidiness.
+//
+// recess         a surface BELOW `surface` — see recessFloored for what it is for
+// primaryDark    the second stop of a gradient whose first stop is `primary`
+// secondaryDark  the same, for `secondary`
+// All three are derived per brand and per mode and are #RRGGBB, which is what
+// qualifies them for this list rather than the non-colour side channel.
+const RENDER_TOKEN_KEYS = Object.freeze([
+  'primary', 'secondary', 'bg', 'surface', 'text', 'onPrimary',
+  'recess', 'primaryDark', 'secondaryDark',
+]);
 
 // camelCase token key -> kebab-case custom-property suffix. `onPrimary` becomes
 // `on-primary`; the five original keys are single lowercase words and pass
@@ -184,6 +198,26 @@ const DARK_TEXT_TARGET_L = 0.96;
 // canvas. Without it a vivid brand secondary produces a lurid coloured
 // near-black rather than a near-neutral one carrying a hint of the brand.
 const DARK_BG_MAX_SATURATION = 0.5;
+
+// ── Palette-1 constants (R-5, R-11) ─────────────────────────────────────────
+//
+// ⚠ 0.95 IS MEASURED, NOT PICKED. `R.bgPage` (#EEF2F7) — the value 22 recessed
+// sites already paint — has lightness 0.951. Reproducing it is what keeps the
+// recess token's first appearance continuous with the shipped app instead of a
+// simultaneous re-design.
+const LIGHT_RECESS_TARGET_L = 0.95;
+// Below DARK_BG_TARGET_L (0.08), so the well is darker than the canvas as well
+// as darker than the card. In a dark UI a recess reads as a hole, not a lift.
+const DARK_RECESS_TARGET_L = 0.04;
+
+// How far a gradient's second stop must sit from its first before the pair reads
+// as a gradient rather than a flat fill.
+// ⚠ CALIBRATED AGAINST WHAT SHIPS, which is the only defensible source for a
+// threshold like this: `R.navy`->`R.navyDark` measures 1.15:1 and
+// `R.red`->`R.redDark` measures 1.69:1. 1.35 sits between them — every derived
+// partner is therefore at least as legible as the weakest pair the app already
+// paints, and no stronger than its boldest.
+const GRADIENT_PARTNER_MIN_CONTRAST = 1.35;
 
 // Tunable, but bounded ON PURPOSE. The nudge loop walks lightness in
 // NUDGE_STEP_L increments and gives up after NUDGE_MAX_STEPS, so a pathological
@@ -381,6 +415,63 @@ function readableForegroundOn(fill) {
     : '#000000';
 }
 
+// ── recess (Palette-1, R-5) ─────────────────────────────────────────────────
+//
+// ⚠ WHAT THIS TOKEN IS FOR, BECAUSE ITS NAME IN `R` IS WHY IT WAS MISSED.
+// `R.bgPage` describes a POSITION IN A STACK, and 22 of its 24 uses are not the
+// page at all — they are RECESSED FILLS INSIDE CARDS: badge tiles, form inputs,
+// unselected chips, skeleton rows, list rows. Only `Screen.jsx` and
+// `ReferrerApp.jsx` use it as the page ground. So the render set was never
+// missing a "third elevation level"; it was missing a surface BELOW `surface`,
+// and one key was doing both jobs under the name of the rarer one.
+//
+// ⚠ THE FLOOR IT IS HELD TO IS THE TEXT FLOOR, NOT THE BOUNDARY FLOOR, AND THAT
+// IS A DELIBERATE ASYMMETRY. Two different questions get asked of a recess:
+//   · text sits ON it  -> TEXT_CONTRAST_MIN (4.5:1). ENFORCED HERE, by nudging.
+//   · it sits BESIDE surface -> the 3:1 non-text boundary floor. NOT enforced,
+//     and it CANNOT be: a fill that clears 3:1 against white is a mid-grey
+//     (~#767676), which is not a recess, it is a filled block. Measured, the
+//     recess/surface separation lands at 1.06–1.18:1 across the seeded brands —
+//     close to the 1.12:1 `R.bgPage`/`R.bgCard` already ships.
+// ⚠ SO A RECESS IS NOT A BOUNDARY ON ITS OWN, AND NOTHING HERE PRETENDS IT IS.
+// Where the recessed thing is a CONTROL, the 3:1 obligation belongs to its edge —
+// which is what `elevationVar('border')` is for, and what the two edgeless
+// adjacency pairs in ProfileTab actually need.
+function recessFloored(candidate, text, awayFromText) {
+  return nudgeLightnessUntil(
+    candidate, awayFromText,
+    (c) => contrastRatio(text, c) >= TEXT_CONTRAST_MIN
+  );
+}
+
+// ── gradient partners (Palette-1, R-11) ─────────────────────────────────────
+//
+// The second stop of a two-stop gradient. Twelve of the nineteen gradients in
+// the referrer tree are `X -> X-dark` on a brand colour — including the header
+// of every single tab — and `R` supplied the partner as a hand-picked literal
+// (`navyDark`, `redDark`) that no contractor can influence.
+//
+// ⚠ A PARTNER IS A DERIVED #RRGGBB, WHICH IS WHY IT BELONGS HERE AND NOT IN THE
+// NON-COLOUR SIDE CHANNEL. It is exactly `onPrimary`'s shape: a hex computed
+// from a brand colour, per mode, that the validator accepts unchanged. Routing
+// it through the side channel instead would make it a fixed pair and lose the
+// per-contractor response, which is the whole point.
+//
+// ⚠ DIRECTION IS CHOSEN, NOT ASSUMED, AND A FIXED DELTA IS WHY. Darkening by a
+// constant lightness step CLAMPS TO BLACK for an already-dark base — measured,
+// Beta's light-mode secondary `#0B3D3B` reaches `#000000` and stops separating.
+// So: darken first, and if that cannot clear the floor, lighten instead. A
+// partner that equals its base is a flat fill wearing a gradient's syntax.
+function derivePartner(base) {
+  const darker = nudgeLightnessUntil(
+    base, -1, (c) => contrastRatio(base, c) >= GRADIENT_PARTNER_MIN_CONTRAST
+  );
+  if (contrastRatio(base, darker) >= GRADIENT_PARTNER_MIN_CONTRAST) return darker;
+  return nudgeLightnessUntil(
+    base, 1, (c) => contrastRatio(base, c) >= GRADIENT_PARTNER_MIN_CONTRAST
+  );
+}
+
 // ⚠ FORWARD TRAP, RECORDED WHERE THE NEXT PERSON TO HIT IT WILL BE STANDING.
 // There is deliberately NO onSecondary token, because nothing paints on a
 // secondary fill today — `--rm-secondary` has zero paint consumers in src/.
@@ -439,21 +530,35 @@ function deriveLightTokens(brand) {
     (candidate) => contrastRatio(candidate, surface) >= BRAND_ON_LIGHT_MIN_CONTRAST
   );
 
+  // Text starts at the brand's own dark tone and DARKENS until it clears the
+  // floor against the card it sits on.
+  const text = nudgeLightnessUntil(
+    brand.primaryColor, -1,
+    (candidate) => contrastRatio(candidate, surface) >= TEXT_CONTRAST_MIN
+  );
+
   return {
     primary,
     secondary: brand.primaryColor,
     bg:        brand.backgroundColor,
     surface,
-    // Text starts at the brand's own dark tone and DARKENS until it clears the
-    // floor against the card it sits on.
-    text: nudgeLightnessUntil(
-      brand.primaryColor, -1,
-      (candidate) => contrastRatio(candidate, surface) >= TEXT_CONTRAST_MIN
-    ),
+    text,
     // Against the FLOORED primary, for the same reason dark computes it against
     // the brightened one: the foreground must answer about the colour that is
     // actually painted.
     onPrimary: readableForegroundOn(primary),
+    // A FAINT TINT OF THE BRAND'S OWN DARK TONE, not a neutral grey — the same
+    // idiom R.bgPage used (#EEF2F7 is a cool grey-blue, not #EEEEEE), so a
+    // recessed well still reads as belonging to this contractor.
+    // ⚠ THE TARGET LIGHTNESS IS CALIBRATED, NOT CHOSEN: R.bgPage measures L=0.951,
+    // and LIGHT_RECESS_TARGET_L reproduces it. That keeps the token's first
+    // appearance visually continuous with what the app already paints.
+    recess: recessFloored(
+      atLightness(brand.primaryColor, LIGHT_RECESS_TARGET_L, DARK_BG_MAX_SATURATION),
+      text, 1
+    ),
+    primaryDark: derivePartner(primary),
+    secondaryDark: derivePartner(brand.primaryColor),
   };
 }
 
@@ -487,10 +592,15 @@ function deriveDarkTokens(brand) {
   const readableOnSurface = (candidate) => contrastRatio(candidate, surface) >= BRAND_ON_DARK_MIN_CONTRAST;
 
   const primary = nudgeLightnessUntil(brand.secondaryColor, 1, readableOnSurface);
+  const secondary = nudgeLightnessUntil(brand.primaryColor, 1, readableOnSurface);
+  const text = nudgeLightnessUntil(
+    atLightness(brand.primaryColor, DARK_TEXT_TARGET_L), 1,
+    (candidate) => contrastRatio(candidate, surface) >= TEXT_CONTRAST_MIN
+  );
 
   return {
     primary,
-    secondary: nudgeLightnessUntil(brand.primaryColor, 1, readableOnSurface),
+    secondary,
     bg,
     surface,
     // COMPUTED FROM THE BRIGHTENED primary, not from brand.primaryColor. In
@@ -501,10 +611,16 @@ function deriveDarkTokens(brand) {
     // Text starts as a light foreground carrying the brand's hue, then LIGHTENS
     // until it clears the floor. The starting point is already legible for any
     // ordinary palette; the loop is what covers the ones that are not.
-    text: nudgeLightnessUntil(
-      atLightness(brand.primaryColor, DARK_TEXT_TARGET_L), 1,
-      (candidate) => contrastRatio(candidate, surface) >= TEXT_CONTRAST_MIN
+    text,
+    // DARKER than surface, and darker than bg. In a dark UI a recessed well
+    // reads as a hole, so it goes DOWN from the card — the mirror of light mode,
+    // where it also goes down but "down" is toward grey rather than toward black.
+    recess: recessFloored(
+      atLightness(brand.primaryColor, DARK_RECESS_TARGET_L, DARK_BG_MAX_SATURATION),
+      text, -1
     ),
+    primaryDark: derivePartner(primary),
+    secondaryDark: derivePartner(secondary),
   };
 }
 
@@ -580,6 +696,9 @@ export {
   DARK_SURFACE_LIFT_L,
   DARK_TEXT_TARGET_L,
   DARK_BG_MAX_SATURATION,
+  LIGHT_RECESS_TARGET_L,
+  DARK_RECESS_TARGET_L,
+  GRADIENT_PARTNER_MIN_CONTRAST,
   NUDGE_STEP_L,
   NUDGE_MAX_STEPS,
 };

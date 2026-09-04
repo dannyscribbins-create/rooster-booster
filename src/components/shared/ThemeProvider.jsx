@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS, RENDER_TOKEN_VARS } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
+import {
+  ELEVATION_VARS, ELEVATION_LIGHT, ELEVATION_DARK, FONT_VARS, FONT_DEFAULTS,
+} from '../../constants/elevationTheme';
 import BrandingProvider, { NEUTRAL_BRANDING, useAdminBranding } from './BrandingProvider';
 import { BACKEND_URL } from '../../config/contractor';
 import { getReferrerToken, getAdminToken } from '../../utils/authStorage';
@@ -116,6 +119,41 @@ export function themeVariables(brand, mode) {
       throw new Error(
         `ThemeProvider: status role '${role}' has no ${mode} value — ` +
         'STATUS_VARS and the status palettes in src/constants/statusTheme.js have drifted'
+      );
+    }
+    vars[property] = value;
+  }
+
+  // ── THE NON-COLOUR SIDE CHANNEL (Palette-1, R-4) ──────────────────────────
+  // Same loop, same drift check, same reason — these values CANNOT go through
+  // themeCssVariables() because it validates every token as #RRGGBB, and an
+  // alpha border, a multi-part shadow and a font stack are none of them.
+  // ⚠ MOUNTED HERE RATHER THAN IN themeCssVariables SO THAT VALIDATOR STAYS
+  // STRICT. That strictness is what makes an emitted `--rm-text: undefined`
+  // impossible, and it is worth more than the tidiness of one loop.
+  const elevation = mode === 'dark' ? ELEVATION_DARK : ELEVATION_LIGHT;
+  for (const [role, property] of Object.entries(ELEVATION_VARS)) {
+    const value = elevation[role];
+    if (typeof value !== 'string' || value === '') {
+      throw new Error(
+        `ThemeProvider: elevation role '${role}' has no ${mode} value — ` +
+        'ELEVATION_VARS and the elevation tables in src/constants/elevationTheme.js have drifted'
+      );
+    }
+    vars[property] = value;
+  }
+
+  // ⚠ FONTS TAKE NO MODE, DELIBERATELY. A typeface has no dark variant, so there
+  // is one table and no branch. See elevationTheme.js's divergence note.
+  // ⚠ AND THESE ARE THE PLATFORM DEFAULTS, NOT THE CONTRACTOR'S. The resolver
+  // does not emit font_heading/font_body yet — there is nothing to read. Wiring
+  // that, the loader in App.jsx, and the painters is Palette-2.
+  for (const [role, property] of Object.entries(FONT_VARS)) {
+    const value = FONT_DEFAULTS[role];
+    if (typeof value !== 'string' || value === '') {
+      throw new Error(
+        `ThemeProvider: font role '${role}' has no value — ` +
+        'FONT_VARS and FONT_DEFAULTS in src/constants/elevationTheme.js have drifted'
       );
     }
     vars[property] = value;

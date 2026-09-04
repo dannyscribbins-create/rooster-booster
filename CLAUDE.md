@@ -1459,7 +1459,28 @@ missing the standard trailers** — which is how you can spot the others, if the
 ### Frontend Rules
 - Screen.jsx overflow settings intentional — do not change.
 - All styling inline. Never add CSS files or CSS framework.
-- Design tokens in theme.js (R) and adminTheme.js (AD). Never hardcode colors/fonts/spacing outside these files.
+- **Design tokens, by surface. Never invent a colour, font or spacing value outside these.**
+  - **On a THEMED surface** (anything inside `ThemeProvider` — referrer, rep, auth): colour comes
+    from the **render tokens**, declared `var(--rm-X, <fallback>)`. Non-colour — borders, shadows,
+    fonts — comes from the **side channel**, `elevationVar()` / `fontVar()`
+    (`src/constants/elevationTheme.js`), because `themeCssVariables()` validates every render
+    token as `#RRGGBB` and an alpha border, a multi-part shadow and a font stack are none of them.
+    Status colour comes from `statusVar()`. ⚠ **The validator stays strict; that is the whole
+    reason the side channel exists rather than a looser contract.**
+  - **On the ADMIN tree** — `src/components/admin/**` and `superAdmin/**` — declare `AD` directly.
+    It renders **outside `ThemeProvider`** (Ruling 5), so no `--rm-*` is mounted and every
+    `var(--rm-*, …)` there would take its fallback forever. ⚠ **Explicitly excluded, and NOT
+    because it is correct**: `AdminSettingsNotifications.jsx` and `AdminReferrers.jsx` still reach
+    retired Accent values through `R`, which is a different job.
+  - **`R` and `AD` survive** for what neither set covers — `R`'s fonts, radii and the status
+    config, `AD`'s whole palette.
+- ⚠ **A `var()` FALLBACK MUST BE THE VALUE THAT ACTUALLY MOUNTS — A TINT IS NOT A FILL.** This is
+  a defect class, not a style note. `var(--rm-danger, #FEE2E2)` reads as a pale error tint,
+  measures 5.30:1, and painted **1.34:1** on the login screen's failed-login message for months,
+  because the provider mounts `--rm-danger` as the saturated FILL `#DC2626`. jsdom resolves no
+  `var()`, so no test saw it. **Write the fallback the mount will produce, never a plausible
+  alternative** — `src/constants/themeKeyIntegrity.test.js` enforces this and names the expected
+  value when it fires.
 - Icons: Phosphor Icons v2.1.1 only.
 - `WARMUP_ENTRIES_SERVER` must stay in sync with `WARMUP_ENTRIES` in shouts.js.
 - Never display referral bonus dollar amount at `sold` stage — bonus only shown at `complete`, from `referral_conversions.bonus_amount`.

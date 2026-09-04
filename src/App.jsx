@@ -17,6 +17,7 @@ import AdminSetPasswordScreen from './components/admin/AdminSetPasswordScreen';
 import ThemeProvider from './components/shared/ThemeProvider';
 import RepSurface from './components/rep/RepSurface';
 import SurfaceSwitcher from './components/shared/SurfaceSwitcher';
+import PaletteHarnessRoute from './components/dev/PaletteHarnessRoute';
 import useAdminPermissions, {
   RepCapabilitiesContext, useRepCapabilitiesValue,
 } from './hooks/useAdminPermissions';
@@ -265,6 +266,19 @@ export default function App() {
   // ?admin_invite= is a separate param from ?reset= — distinct keys, no ambiguity.
   // Checked before isAdmin so an invitee with no session always reaches the set-password screen.
   const adminInviteToken = new URLSearchParams(window.location.search).get('admin_invite');
+
+  // ⚠ DEV-ONLY, AND `import.meta.env.DEV` IS THE MECHANISM RATHER THAN A FLAG.
+  // Vite substitutes the literal `false` here in a production build, so Rollup
+  // folds this branch away and drops PaletteHarnessRoute — and its import edge —
+  // from the bundle entirely. The route is ABSENT from production, not merely
+  // unreachable in it, which is the difference between a guard that can be
+  // flipped and one that has nothing left to flip.
+  // ⚠ PROVEN, NOT ASSERTED: paletteHarnessRoute.test.js runs a real production
+  // build and greps the emitted assets for the marker.
+  // Why it exists: four shared/ primitives have zero production importers, so
+  // nothing renders them and the computed-style harness cannot reach them (R-7).
+  const paletteHarness = import.meta.env.DEV
+    && new URLSearchParams(window.location.search).get('palette_harness') === '1';
 
   useReferrerFonts();
 
@@ -616,6 +630,18 @@ export default function App() {
   // reintroduced through a side door. Invalidating sessions belongs on a
   // COMPLETED reset, server-side; it is filed against the 2FA build.
   // src/components/auth/resetSurfaceRoleBlind.test.jsx asserts the non-mutation.
+  // ⚠ THE HARNESS ROUTE IS CHECKED FIRST AND WRAPPED IN THE PROVIDER. Inside,
+  // because the whole purpose is reading MOUNTED --rm-* values off the four
+  // primitives — outside it they would take their fallbacks, and the harness
+  // would faithfully report the exact non-answer it exists to distinguish.
+  // In a production build `paletteHarness` is the constant `false` and this
+  // branch, the component and its import edge are all eliminated.
+  if (paletteHarness) return (
+    <ThemeProvider>
+      <PaletteHarnessRoute />
+    </ThemeProvider>
+  );
+
   if (resetToken) return (
     <ThemeProvider>
       <ResetPinScreen token={resetToken} />

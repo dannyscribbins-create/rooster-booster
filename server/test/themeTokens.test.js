@@ -207,9 +207,13 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
     // the first five AND their order — amendment A23.1 depends on that prefix,
     // so it is asserted where it can be read next to its reason rather than
     // being silently absorbed into this sorted list.
+    // ⚠ AND THE THREE PALETTE-1 KEYS WERE APPENDED, NOT INSERTED — same reason
+    // `onPrimary` was. A23.1's claim is about the PREFIX, so `recess` sits at the
+    // end rather than beside `surface` where it belongs semantically.
     assert.deepEqual(
       [...RENDER_TOKEN_KEYS].sort(),
-      ['bg', 'onPrimary', 'primary', 'secondary', 'surface', 'text'],
+      ['bg', 'onPrimary', 'primary', 'primaryDark', 'recess',
+       'secondary', 'secondaryDark', 'surface', 'text'],
       'the exported token key list is not the render token set'
     );
 
@@ -457,9 +461,15 @@ describe('C/DL-3a Phase 3 — theme token derivation', () => {
         const tokens = deriveThemeTokens(brand, mode);
         const vars = themeCssVariables(tokens);
 
+        // ⚠ UPDATED ON PURPOSE BY PALETTE-1, which is what the note above says
+        // this list is for. Three properties added: --rm-recess (a surface BELOW
+        // surface — R-5), and --rm-primary-dark / --rm-secondary-dark (gradient
+        // second stops — R-11). All three are derived #RRGGBB, which is why they
+        // are render tokens rather than side-channel values.
         assert.deepEqual(
           Object.keys(vars).sort(),
-          ['--rm-bg', '--rm-on-primary', '--rm-primary', '--rm-secondary', '--rm-surface', '--rm-text'],
+          ['--rm-bg', '--rm-on-primary', '--rm-primary', '--rm-primary-dark', '--rm-recess',
+           '--rm-secondary', '--rm-secondary-dark', '--rm-surface', '--rm-text'],
           `${label}/${mode}: wrong CSS custom property names`
         );
         assert.equal(vars['--rm-primary'],    tokens.primary,   `${label}/${mode}: --rm-primary`);

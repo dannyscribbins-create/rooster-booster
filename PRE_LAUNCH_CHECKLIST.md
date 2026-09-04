@@ -4850,6 +4850,29 @@ quadruples is evidence about the estimate, not about the wave:
       annotated with the correction; this entry did not move.**
       → the Security G line in the **Launch Definition** above · `CLAUDE_REGISTRY.md` (the
       Multi-Contractor Security Session tracking)
+- [ ] **⚠ 42 LINE CITATIONS INTO `src/App.jsx` AND `src/components/shared/ThemeProvider.jsx` ARE
+      ROTTED, AND MOST WERE ALREADY ROTTED BEFORE PALETTE-1 TOUCHED EITHER FILE.**
+      *(Surfaced 2026-09-04 by Palette-1, which inserted 14 lines into `App.jsx` and 38 into
+      `ThemeProvider.jsx` and made `citecheck --changed-files` report them.)*
+      **NOT REPAIRED, AND DELIBERATELY SO.** `CLAUDE.md` is explicit that a `LIKELY ROTTED`
+      finding means *your edit moved the target*, **not** that the citation was right before —
+      and that adding the delta certifies a wrong number as repaired. **Two were sampled at the
+      OLD line in the OLD revision and BOTH were already wrong:**
+      `App.jsx:368-370`, cited by `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` for *"they render outside
+      `ThemeProvider` deliberately"*, resolves to a **profile-photo fetch**; and
+      `ThemeProvider.jsx:149-153`, cited for *"`ThemeContext` was given a default value"*,
+      resolves to a **comment about referrer/team token order**. Same shape as `db209f3`, where
+      all eleven flagged citations turned out to have been wrong beforehand.
+      **Where they are:** `CDL_3c_PHASE0_REPORT.md` **20** · `PRE_LAUNCH_CHECKLIST.md` **6** ·
+      `CDL_3c_PHASE05_RULINGS.md` **6** · `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` **5** ·
+      `docs/GROUND_TRUTH_2026-08-21.md` **3** · `MEMBER_RANK_ECONOMY_SPEC.md` **1** ·
+      `CDL_3b_BUILD_SPEC.md` **1**.
+      ⚠ **THE THREE IN `docs/GROUND_TRUTH_2026-08-21.md` MUST NOT BE SHIFTED AT ALL** — it is a
+      dated snapshot that QUOTES what it cites, so renumbering would make it claim its quotes come
+      from lines that now hold something else.
+      **The real repair is re-deriving where each subject lives and citing BY ROLE**, which is a
+      larger job than a phase should improvise mid-build. Filed rather than half-done.
+
 - [ ] **`ENCRYPTION_KEY` missing locally → `server.js` will not boot.** Document it in the
       local-setup notes; a new machine hits this immediately.
 - [ ] Local Postgres at `localhost:5432`, database `roofmiles_test`, credentials in `.env.test`

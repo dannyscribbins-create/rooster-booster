@@ -35,7 +35,44 @@ Every `useEffect` with intentionally omitted dependencies must have `// eslint-d
 Under Vite, ESLint is **not** part of the build — `react-hooks/exhaustive-deps` is no longer a Vercel build error the way it was under CRA's `CI=true`. It is enforced instead by `npm run lint`, which `npm test` runs first, so a violation blocks the pre-push gate rather than the deploy. `eslint.config.mjs` sets `reportUnusedDisableDirectives: 'off'`: `eslint-plugin-react-hooks` v7 understands stable setState setters and refs that the CRA-era v4 flagged, so ~50 existing disable comments now look "unused". They are kept deliberately — they document intent and re-arm if a future plugin version changes its analysis. Do not strip them with `--fix`.
 
 ## Styling
-All styling inline. Never add CSS files. Design tokens: `src/constants/theme.js` (R) and `src/constants/adminTheme.js` (AD).
+All styling inline. Never add CSS files.
+
+⚠ **THE ENFORCEABLE VERSION OF THE RULE BELOW IS THE RESIDENT ONE IN `CLAUDE.md` → *Never Break →
+Frontend Rules*.** This is the elaboration; the prohibition lives there. **When deduplicating,
+never delete the resident copy in favour of this fuller one — that silently unscopes a
+non-negotiable.**
+
+**Four token sources, and which one you reach for is decided by the SURFACE, not by the value:**
+
+| Source | Covers | Reach for it when |
+|---|---|---|
+| **render tokens** — `var(--rm-X, <fallback>)` | `primary` `secondary` `bg` `surface` `text` `onPrimary` `recess` `primaryDark` `secondaryDark` | a **colour** on a themed surface |
+| **side channel** — `elevationVar()` / `fontVar()` (`src/constants/elevationTheme.js`) | `border` `shadow`, heading + body fonts | a **non-colour** on a themed surface |
+| **`statusVar()`** (`src/constants/statusTheme.js`) | danger / success / warning, fill and text | a **semantic status** colour |
+| **`R` / `AD`** | R's fonts, radii and `STATUS_CONFIG`; AD's whole palette | the admin tree, or anything the three above do not cover |
+
+⚠ **WHY A SIDE CHANNEL RATHER THAN MORE RENDER TOKENS (Palette-1, R-4).** `themeCssVariables()`
+throws on any token that is not `#RRGGBB`, in both the canonical `server/utils/themeTokens.js` and
+the `src/utils/themeTokens.mjs` mirror. `rgba(0,0,0,0.12)`, a multi-part `box-shadow` and
+`'Roboto', sans-serif` cannot pass it. **Loosening the validator would weaken the guarantee for
+COLOURS too** — it cannot tell "this token is allowed to be a font" from "this token is undefined",
+and that guarantee is what makes an emitted `--rm-text: undefined` impossible. `statusTheme.js` is
+the precedent and its argument transfers exactly.
+
+⚠ **A THEMED SURFACE IS ANYTHING INSIDE `ThemeProvider`.** The **admin tree renders outside it**
+(Ruling 5), so `var(--rm-*, …)` there resolves to its fallback forever and `AD` is declared
+directly. That exclusion is about where the variables mount, **not** an endorsement of the values —
+`AdminSettingsNotifications.jsx` and `AdminReferrers.jsx` still reach retired Accent tones through
+`R`, and repairing that is a separate job with `AD` tokens.
+
+⚠ **AND THE FALLBACK IS NOT A FREE CHOICE — A TINT IS NOT A FILL.** It must be the value the
+provider will actually mount. `var(--rm-danger, #FEE2E2)` reads as a pale error tint and measures
+5.30:1; `--rm-danger` mounts as the saturated fill `#DC2626`, so the login screen's failed-login
+message painted at **1.34:1**. jsdom resolves no `var()`, so 654 green tests never saw it.
+`src/constants/themeKeyIntegrity.test.js` now fails on any fallback that disagrees with the
+derivation, and names the expected value.
+
+Design tokens: `src/constants/theme.js` (R) and `src/constants/adminTheme.js` (AD).
 - Colors: **RoofMiles** primary `#F26A1B`, secondary `#1C2D4D`, background `#FDF0E7`, surface
   `#FFFFFF` (`src/utils/brandingTheme.mjs`). ⚠ Navy `#012854` / Red `#CC0000` / Light Blue
   `#D3E3F0` were **Accent Roofing's** and were retired from the admin chrome in ABR Phase 5 —
