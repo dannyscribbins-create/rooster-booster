@@ -1,12 +1,33 @@
 // ─── Brand Design Tokens ──────────────────────────────────────────────────────
+//
+// ⚠ FIVE KEYS WERE REMOVED HERE ON 2026-09-04 (Palette D-5, R-13). TOMBSTONED
+// RATHER THAN SILENTLY DELETED, because one of them is load-bearing EVIDENCE in
+// an open ruling and someone will otherwise go looking for it.
+//
+//     bgSurface   #FAFAF8      bgNavy    #012854      bgNavyDark  #041D3E
+//     textNavy    #012854      textOnDark #FFFFFF
+//
+// Each was referenced ZERO times as `R.<key>` anywhere in src/, server/ or
+// scripts/, and zero times in tracked markdown. themeKeyIntegrity.test.js now
+// asserts that no key here is unreferenced, so this class cannot re-accumulate.
+//
+// ⚠ `bgSurface` IS THE ONE THAT MATTERS, AND ITS ABSENCE IS THE POINT.
+// PRE_LAUNCH_CHECKLIST.md's R/AD entry frames the elevation problem as
+// "bgPage vs bgCard vs bgSurface is a three-level elevation the token set
+// expresses with two". THERE WERE ONLY EVER TWO LEVELS IN THE RENDERED PRODUCT:
+// bgSurface had no reader on the day that sentence was written. The real gap is
+// that the render set has no token BELOW `surface` — see the R-5 elevation
+// ruling, still open.
+//
+// ⚠ AND THE SWEEP THAT FOUND THEM HAD TO BE ANCHORED ON `R.<key>`, NOT THE BARE
+// WORD. `adminTheme.js` defines its own `bgSurface`, so an unanchored search
+// reports this key as live and it is not. The same trap decides whether a name
+// is free — a bare substring answers a different question than the one asked.
 export const R = {
   // Backgrounds
   bgPage:     "#EEF2F7",
-  bgSurface:  "#FAFAF8",
   bgCard:     "#FFFFFF",
   bgCardTint: "#F5F3EE",
-  bgNavy:     "#012854",
-  bgNavyDark: "#041D3E",
   bgBlueLight:"#D3E3F0",
 
   // Brand
@@ -20,8 +41,6 @@ export const R = {
   textPrimary:   "#1A1A1A",
   textSecondary: "#6B6B6B",
   textMuted:     "#A0A0A0",
-  textNavy:      "#012854",
-  textOnDark:    "#FFFFFF",
 
   // Status
   green:     "#16a34a",

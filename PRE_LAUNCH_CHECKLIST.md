@@ -3008,6 +3008,10 @@ root cause, and patching them separately produces six unrelated special cases)
       `shared/` components that tree mounts.)* The BR arc widened it: the referrer tree now
       reads **ten** branding fields — `companyName` · `logoUrl` · `programName` · `phone` ·
       `email` · `website` · `socials` · `reviewUrl` · `reviewMessage` · `reviewButtonText` —
+      *(⚠ **RE-COUNTED 2026-09-04: ten names, and the word is ten. This list is CORRECT and was
+      correct at `0fde840`.** `RAD_MIGRATION_PHASE0B_REPORT.md` §0.2 reported it as naming only
+      nine, having dropped `website` in transcription; Palette D-6 was raised on that basis and
+      is closed as no-change. **Do not "add" `website` — it is already here.**)*
       **and still reads ZERO colours**, which is the claim this entry rests on and it is
       unchanged. **The list went stale because the arc that widened it did not come back to
       the sentence describing it** — the same shape as an inventory compiled one phase and
@@ -3048,6 +3052,121 @@ root cause, and patching them separately produces six unrelated special cases)
       inaccurate preview, because it is inaccurate AND unresponsive**, and it would teach a
       contractor that their palette does nothing. **The branding run ships its preview surfaces
       without the referrer dashboard and adds it after this migration.**
+
+      ── **THE ARC IS NAMED `PALETTE`, AND SIX RULINGS ARE CLOSED (Danny, 2026-09-04)** ──
+
+      **R-15 — THIS ARC IS `Palette`. Phases are `Palette-1`, `Palette-2`, and so on.**
+      ⚠ **WHY, RECORDED SO IT IS NOT RE-OPENED:** `3-C` is a **PHASE** of session `C/DL-3c` and
+      `3c` is the **SESSION**. They differ by a hyphen and a case, the collision survived two
+      Phase 0 reports unresolved, and `UI_OVERHAUL_SPEC.md` §12 already carries a worked example
+      of the same collision biting (session UX-1 vs decision UX-1). Before this ruling **the arc
+      had no identifier at all** — it sat in the build order as the prose *"the R/AD migration"*.
+      ⚠ **`Palette` APPLIES FORWARD ONLY. Nothing already shipped is renamed** — `3-A`, `B-1`…`B-4`
+      and the `C/DL-3c` session labels stay exactly as written, because renaming committed history
+      is how a namespace acquires two answers instead of one.
+
+      **D-1 · R-2 — `TeamAccessRevokedScreen`'s `--rm-on-primary` fallback. RULED, SHIPPED.**
+      `#FFFFFF` → `#000000`. It was the only `--rm-on-primary` fallback in `src/` disagreeing with
+      the derivation; `readableForegroundOn('#F26A1B')` returns black, and the four other sites
+      already said so. **Measured: white 3.06:1, black 6.85:1**, floor 4.5 for that 15px/700 label.
+      ⚠ **A one-character fix with no fence is a one-character regression waiting**, so it ships
+      with a **class** fence rather than an instance one — see D-5's third check.
+
+      **D-2 · R-6 — THE FALLBACK PRECEDENT. RULED: CLOSED, AND CLOSED EXPLICITLY.**
+      ⚠ **RECORDED WITH ITS EVIDENCE BECAUSE PHASE 0 FILED IT AS BLOCKING**, and an item that
+      stops blocking without a written reason gets re-litigated by the next reader.
+      **The precedent is `var(--rm-X, <platform default hex>)` — precedent B.** Measured
+      whole-`src`: **102 production sites across 11 files use it; 7 sites across 5 files use the
+      `${R.key}` form.** ⚠ **And the distribution decides it more firmly than the ratio: every
+      one of those 5 files has ZERO or ONE production importer** — `EmptyState`, `ErrorState` and
+      `SuccessState` have none at all. **Precedent A exists only where no user can reach.**
+      `CLAUDE.md`'s canonical-default rule settles it in one line: *the one that reaches
+      production users is canonical; the other is a copy that drifted.*
+      **CONSEQUENCE: `R` does NOT survive as a fallback table**, so the *"no raw `R.` remains in a
+      migrated file"* sweep becomes specifiable, and **fonts do not evaporate as work** — which is
+      what removed the optimistic end of the old session estimate.
+
+      **D-3 · R-8 — ADMIN-TREE `R` READERS ARE OUT OF `Palette`. AN EXPLICIT NAMED LIST.**
+      ⚠ **A FOLDER GLOB IS NOT ACCEPTABLE HERE and the reason is mechanical: these files match
+      every needle the migration will use** (`import { R }`, `R.navy`, `R.red`), so a glob is a
+      rule the sweep cannot check itself against. **Named, with the count each carries:**
+      | File | What it reads | Raw `R.*` |
+      |---|---|---|
+      | `src/components/admin/AdminSettingsNotifications.jsx` | `import { R }` | **10** |
+      | `src/components/admin/AdminReferrers.jsx` | `import { STATUS_CONFIG }` — built entirely from `R`'s status values | **0** direct |
+      | `src/components/admin/adminBranding.test.jsx` | test — the walking brand sweep | 3 (test) |
+      **WHY THEY ARE OUT:** the admin tree renders **outside `ThemeProvider`** (Ruling 5 —
+      `App.jsx` returns `<AdminPanel>` before reaching `return <ThemeProvider>{themedRoute}</ThemeProvider>`).
+      **No `--rm-*` is mounted anywhere over it, so every `var(--rm-*, fallback)` there resolves
+      to its fallback, always.** Converting them buys indirection, zero behaviour change, and a
+      permanent lie in the source about where the value comes from.
+      ⚠ **EXPLICITLY NOT "FINE" — THEY ARE EXCLUDED BECAUSE THEY ARE A DIFFERENT JOB.**
+      `AdminSettingsNotifications` renders `R.navy` (`#012854`) and `R.red`/`R.redDark`
+      (`#CC0000`/`#8C0000`) on an admin surface **today** — both retired Accent values, a live
+      ABR-class defect. ⚠ **The ABR arc's literal sweeps structurally cannot see it**: the needle
+      is a hex and this file contains none, reaching both values through the needle-exempt
+      `theme.js`. **The right fix is AD tokens, and it belongs to whoever owns admin chrome.**
+
+      **D-4 · R-12 — THE REFERRER DASHBOARD PREVIEW LANDS *AFTER* THE FONT RULING.**
+      `PREVIEW_VIEWS` already has `dashboard` as its third entry, rendering a hand-painted
+      illustration — so this is confirmed *"not new plumbing"*, and it is **three entries, not
+      four**. ⚠ **But `fontH`/`fontB` are consumed ONLY by that illustration.** The two faithful
+      views mount real components which hardcode their font families, so **the only preview view
+      that responds to the font pickers is the fake one.** Replacing the illustration with a real
+      `DashboardTab` mount **deletes the branding panel's last font responsiveness** — a visible
+      regression shipped by a migration phase, and the *"inaccurate AND unresponsive"* failure
+      this entry already warns about, arriving through fonts instead of colours.
+
+      **D-5 · R-13 — DEAD KEYS, THE TYPO, AND THE SWEEP. ALL THREE RULED, ALL THREE SHIPPED.**
+      · **Five genuinely dead `R` keys removed** — `bgSurface`, `bgNavy`, `bgNavyDark`,
+        `textNavy`, `textOnDark` — each referenced **zero** times as `R.<key>` in `src/`,
+        `server/`, `scripts/` or tracked markdown. **Tombstoned in `theme.js` rather than
+        silently deleted**, because `bgSurface` is load-bearing evidence: see the elevation note
+        immediately below.
+      · **`statusTheme.js`'s contrast table said `R.emeraldTxt`** — right value, wrong name, for
+        a key that does not exist. Corrected to `emeraldText`. ⚠ **The sweep did NOT acquire a
+        comments-are-exempt carve-out**: a mistyped token name in prose is exactly what someone
+        copies into code. It fired on the new test file's own prose during this build, and **the
+        prose was reworded, not the guard weakened** — the second time that rule has been applied
+        in two commits.
+      · **The two-directional sweep now SHIPS as `src/constants/themeKeyIntegrity.test.js`**, in
+        the gate. Three checks: no source reads a key `R` does not define; `R` defines no key
+        nothing reads; and **every `var(--rm-*, #hex)` fallback equals the platform default for
+        that token** (which is D-1's fence, generalised). **Two documented exception lists, both
+        asserted by EQUALITY rather than subset, so an exception cannot outlive its defect.**
+      ⚠ **THE ELEVATION PREMISE THIS ENTRY STATES IS FALSE, AND THE REMOVAL IS THE PROOF.** This
+      entry frames the problem as *"`bgPage` vs `bgCard` vs `bgSurface` is a three-level elevation
+      the five-token set expresses with two"*. **`bgSurface` had no reader on the day that
+      sentence was written.** There were only ever TWO levels in the rendered product. **The real
+      gap is that the render set has no token BELOW `surface`** — and `bgPage` is only 2-of-24
+      page ground, the other 22 uses being recessed fills *inside* cards. **R-5 stays OPEN and its
+      question has changed shape.**
+
+      **D-6 · R-14 — ⚠ NO CHANGE NEEDED. THE LIST WAS ALREADY COMPLETE AND I WAS WRONG.**
+      This was ruled as *"add `website`; the count is right, the list omits it"*, on the strength
+      of `RAD_MIGRATION_PHASE0B_REPORT.md` §0.2. **Checked at `0fde840`, before any of this
+      session's commits: the list already reads `companyName · logoUrl · programName · phone ·
+      email · website · socials · reviewUrl · reviewMessage · reviewButtonText` — ten names under
+      the word ten.** §0.2 dropped `website` when transcribing, then reported the list as short.
+      **The entry never moved; the report was wrong and is annotated.** Recorded here so nobody
+      "fixes" a correct list from a stale report — the same loop that nearly rewrote the
+      multi-contractor-stack entry a day earlier.
+
+      **R-11's GRADIENT HALF — RULED: GRADIENT PARTNERS GET DERIVED COLOUR SIBLINGS IN THE
+      RENDER SET.** Not a helper, not a design change. ⚠ **AND IT REFRAMES R-4:**
+      · A border wants **one** derived value; a gradient wants a **RELATIONSHIP**.
+        `--rm-primary` has no darker sibling and the derivation publishes none.
+      · **A darker sibling is still `#RRGGBB`, so it is NOT blocked by `themeCssVariables()`'s
+        validator.** R-4's *"side channel vs loosen the validator"* question only ever applied to
+        **shadows** (`rgba`) and **fonts** (strings). **Those two halves of R-4 remain OPEN.**
+      · **12 of the 19 gradients are `X → X-dark` on the brand colours**, so one derivation rule
+        covers most of them.
+      · ⚠ **EVERY TAB HEADER IN THE APP IS ONE OF THESE.** Dashboard, Rankings, Profile and
+        CashOut all open with `navy → navyDark`. **The referrer app's visual identity is carried
+        by the one category that had no destination.**
+      ⚠ **RECORDED ONLY — THE DERIVATION IS NOT BUILT HERE.** The four one-offs (`red → navy`,
+      `green → #15803d`, the raw `#012854 → #001a3a` loading header) and the podium's rgba wash
+      are ruled individually when their phase lands.
 
 - [x] ~~**AMENDMENT `A31` / `§20` / `v1.9` IS RESERVED FOR TEXT THAT WILL NEVER BE WRITTEN.
       RELEASE IT OR RETIRE IT.**~~ ✅ **RULED — `A31` IS RETIRED, NOT RELEASED. THE NUMBER IS

@@ -16,7 +16,7 @@
 // surfaces (RoofMiles #121B31, a navy-brand contractor #112032):
 //
 //     R.greenText  #15803D   5.02:1 on white   |  3.41:1 on dark   FAIL
-//     R.emeraldTxt #065F46   7.68:1 on white   |  2.23:1 on dark   FAIL
+//     R.emeraldText #065F46  7.68:1 on white   |  2.23:1 on dark   FAIL
 //     AD.greenText #7DD3AA   1.78:1 on white   |  9.59:1 on dark
 //     AD.red2Text  #F87171   2.77:1 on white   |  6.19:1 on dark
 //

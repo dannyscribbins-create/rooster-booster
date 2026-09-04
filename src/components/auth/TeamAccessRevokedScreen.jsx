@@ -100,7 +100,16 @@ export default function TeamAccessRevokedScreen({ contractorName = null, onConti
             style={{
               width: '100%', marginTop: 24, padding: '15px 18px',
               backgroundColor: 'var(--rm-primary, #F26A1B)',
-              color: 'var(--rm-on-primary, #FFFFFF)',
+              // #000000, NOT #FFFFFF (Palette D-1, ruled 2026-09-04). This was the
+              // only --rm-on-primary fallback in src/ that disagreed with the
+              // derivation: readableForegroundOn(#F26A1B) returns BLACK, and the
+              // four other sites already declared it. Measured — white on the
+              // platform primary is 3.06:1, under the 4.5 floor for this 15px/700
+              // label; black is 6.85:1. Off the theme tree the fallback IS what
+              // paints, so the wrong one is not a cosmetic slip.
+              // themeKeyIntegrity.test.js now fences every fallback against the
+              // derivation, so this cannot drift back alone.
+              color: 'var(--rm-on-primary, #000000)',
               border: 'none', borderRadius: 12, cursor: 'pointer',
               fontSize: 15, fontWeight: 700,
               fontFamily: 'Montserrat, system-ui, sans-serif',
