@@ -56,6 +56,7 @@
     "sizing": "node scripts/sizing.js",
     "architecture": "node scripts/architecture.js",
     "citecheck": "node scripts/citecheck.js",
-    "tablecheck": "node scripts/tablecheck.js"
+    "tablecheck": "node scripts/tablecheck.js",
+    "seed:local": "node scripts/seedLocalStack.js"
   }
 }

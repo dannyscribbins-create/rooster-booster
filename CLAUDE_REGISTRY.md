@@ -438,7 +438,22 @@ Full spec: `SINGLETON_CASHOUT_TENANCY_SPEC.md`. Closes **F6** and the Session 50
 **Next:** the F2/F3/F4/F5 CRM Token Fix (TF) and ST were the last two blockers before contractor #2's Jobber connect is safe — booting with a second `contractors` row is now architecturally legal and simulation-proven (ST's contractor-#2 boot simulation). **Named true gates still required before a real contractor #2 onboards:**
 - **F8** — cross-tenant `users` matching in the invoice-paid webhook and `pipelineSync.js` referrer-account lookup ([[Known Issues — users matching in invoice-paid webhook and pipelineSync]]).
 - The "STILL OPEN" hardcoded-literal sweep ([[Known Issues 2a]]) — `stripe.js`, `oauth.js`, `account.js`, `errorLogger.js`, `notificationEmail.js`, `stripeTransfer.js`.
-- The Security G isolation test (per Danny's Multi-Contractor Security Session tracking — not yet built).
+- The Security G isolation test (per Danny's Multi-Contractor Security Session tracking — **still not built**).
+  ⚠ **STATUS CHANGED 2026-09-04 (Palette-0): BLOCKED-ON-ENVIRONMENT → READY.** It has been a launch
+  gate with nowhere to run since it was filed — the local environment cannot reach Railway, and
+  production holds one contractor, so *"log in as A, attempt to read all of B"* had no B.
+  **There is a B now.** `npm run seed:local` (`scripts/seedLocalStack.js`) builds three tenants —
+  `palette-alpha`, `palette-beta` and a deliberately sparse `palette-gamma` — with a referrer, a
+  field rep and an owner each, plus a dual-identity account.
+  **What a tester would run:** seed the stack, point a server at the scratch database, mint a
+  session for Alpha's referrer, and attempt every referrer-surface read against Beta's ids —
+  `/api/pipeline`, `/api/cashout`, the 15 `/api/account/*`, `/api/profile/photo`,
+  `/api/referral/pending/*`, `/api/session`. The referrer-surface guard covers 23 of ~48
+  session-bearing routes today, so **a clean run is evidence about the 23** and the rest need
+  naming individually.
+  ⚠ **DELIBERATELY NOT WRITTEN IN PALETTE-0.** Infrastructure and a security test are different
+  jobs, and a finding discovered at the tail end of infrastructure work gets the attention left
+  over rather than the attention it needs. It is its own session.
 
 **Small follow-ups queue (opportunistic, not blocking):**
 - `registryReconciliation.test.js` still uses the legacy `buildMirrorApp()` helper (green, harmless) — swap to `createApp()` opportunistically, same pattern already applied to `adminRouteCoverage.test.js`.

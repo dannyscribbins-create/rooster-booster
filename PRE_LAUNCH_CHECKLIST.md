@@ -101,7 +101,7 @@ WITHOUT anyone at RoofMiles touching anything.**
 
 ⚠ **CONSEQUENCE — contractor-#2 readiness is now the LAUNCH gate, not a post-launch gate.**
 Everything previously deferred to "before contractor #2" is launch-gating: F8 · the 166-site
-literal sweep · the Security G isolation test (never built) · OAuth state signing ·
+literal sweep · the Security G isolation test (**still never built; UNBLOCKED 2026-09-04 — Palette-0**) · OAuth state signing ·
 `team_members.email` uniqueness · `payout_announcements` tenancy · `crm/index.js` dispatch and
 token consolidation · `runFullSync` pacing (it runs on exactly first-time contractor
 onboarding) · `contractors.slug` backfill · `db.js:1532` non-determinism.
@@ -4767,8 +4767,40 @@ quadruples is evidence about the estimate, not about the wave:
 
 ## Developer setup
 
-- [ ] **🔴 COMMIT THE MULTI-CONTRACTOR LOCAL STACK. IT EXISTED, IT WAS THROWAWAY, AND IT IS
-      THE ENVIRONMENT THE SECURITY G ISOLATION TEST HAS BEEN BLOCKED ON.** *(Filed by the BR
+- [x] ~~**🔴 COMMIT THE MULTI-CONTRACTOR LOCAL STACK. IT EXISTED, IT WAS THROWAWAY, AND IT IS
+      THE ENVIRONMENT THE SECURITY G ISOLATION TEST HAS BEEN BLOCKED ON.**~~ ✅ **DONE —
+      Palette-0, 2026-09-04. `scripts/seedLocalStack.js`, `npm run seed:local`.**
+      **THE RECIPE IS COMMITTED, WHICH IS THE THING THAT WAS ASKED FOR** — the stack itself is
+      disposable and always was. `npm run seed:local` creates the scratch database, runs
+      `initDB()`, and seeds three contractors plus accounts; `-- --drop` starts from nothing. It
+      is idempotent (verified by re-running: counts stay 3 contractors / 4 users / 7 members).
+      **What it seeds:** **Alpha** (`alpha-roofing`, navy+orange) and **Beta** (`beta-exteriors`,
+      **teal + magenta, chosen to be unmistakable** so a cross-tenant leak is obvious rather than
+      subtle) both fully configured; **Gamma** deliberately sparse — **`slug` NULL, `logo_url`
+      NULL, `review_url` NULL, socials and phone EMPTY STRING**. ⚠ **NULL *and* `''`, mixed on
+      purpose**: `firstNonEmpty()` treats `''` as absent and a bare `|| null` does not, so a
+      fixture built from one kind exercises one branch and reads as complete. Plus a referrer, a
+      field rep and an owner per tenant, and **one dual-identity person** holding both a `users`
+      row and a `team_members` row — the class that reproduced `1b102d9`.
+      ⚠ **TWO FAIL-CLOSED INTERLOCKS, BOTH TESTED AND BOTH GUARD-PROOFED:** the host must be
+      `localhost`/`127.0.0.1`, **and** the database must not be `roofmiles_test` (which the suite
+      wipes on every run). Removing the host check makes the suite go red naming
+      `postgres.railway.internal` — verified, restored.
+      ⚠ **WHAT IT CANNOT DO, so nobody assumes coverage:** no real login (the pin/password hashes
+      are fixed placeholders — sessions are minted directly); no Backblaze (logo URLs point at
+      `example.invalid`, so every mark 404s — useful for the absence rule, useless for judging a
+      real logo); no Jobber, so no sync, pipeline or webhooks; no Stripe, so payout surfaces
+      render their not-connected branch only; no email or SMS; and **no referrals, conversions,
+      badges or announcements** — Palette's five contrived-data surfaces still need their own
+      rows, which is a separate job.
+      ⚠ **AND IT SURFACED A FILED GATE AS A CONCRETE FACT:** `team_members` carries
+      **`UNIQUE (email)` — globally, across every tenant** — while `users` carries
+      `UNIQUE (contractor_id, email)`. The two tables disagree about what identifies a person,
+      and the consequence is that **one email cannot be a team member at two contractors at
+      all.** → the `team_members.email` uniqueness item.
+      *(Original entry preserved below, because its reasoning is what the recipe had to satisfy.)*
+
+- [ ] **~~🔴~~ ✅ THE ORIGINAL FILING, KEPT FOR ITS REASONING.** *(Filed by the BR
       arc close-out, 2026-09-03.)*
       **Why this is not a convenience item.** The Launch Definition lists *"the Security G
       isolation test (never built)"* as launch-gating, and `CLAUDE_REGISTRY.md` records the
