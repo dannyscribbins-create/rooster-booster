@@ -16,7 +16,7 @@
 // browser harness's half. A green run here is evidence about declarations and
 // arithmetic, and about nothing that was painted.
 //
-// ⚠ EXPECTED COUNT: 23 cases in this file. Stated because a module that fails to
+// ⚠ EXPECTED COUNT: 33 cases in this file. Stated because a module that fails to
 // LOAD contributes zero while the runner still reports the run as passing.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -24,9 +24,9 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { deriveThemeTokens, contrastRatio } from '../../utils/themeTokens.mjs';
+import { deriveThemeTokens, contrastRatio, RENDER_TOKEN_KEYS } from '../../utils/themeTokens.mjs';
 import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
-import { STATUS_LIGHT, STATUS_TINT, STATUS_BANNER, STATUS_VARS } from '../../constants/statusTheme';
+import { STATUS_LIGHT, STATUS_DARK, STATUS_TINT, STATUS_BANNER, STATUS_VARS } from '../../constants/statusTheme';
 import { ELEVATION_LIGHT, ELEVATION_VARS, elevationVar } from '../../constants/elevationTheme';
 import ProfileTab from './ProfileTab';
 
@@ -184,14 +184,31 @@ describe('Palette-4b T1 — every site resolves to its ruled token', () => {
     expect(STATUS_BANNER.danger.border).toBe(`1px solid var(${STATUS_VARS.danger}, ${STATUS_LIGHT.danger})`);
   });
 
-  it('[RED] the ONE clean status move is the icon badge, which carries no text', () => {
+  it('[RED] the icon badge is the only thing grounded on the tint, and it is a GRAPHIC', () => {
     // STATUS_TINT grounding an icon tile is the 3:1 graphic use its own header
     // sanctions. Nothing else in this file was moved onto it.
     expect(CODE).toContain('background: STATUS_TINT.success');
-    expect(contrastRatio(STATUS_LIGHT.success, '#FFFFFF')).toBeGreaterThanOrEqual(GRAPHIC_FLOOR);
-    // ⚠ AND THE REASON NOTHING ELSE MOVED: the tint cannot carry text.
-    const tint = compositeRgba(STATUS_TINT.success, '#FFFFFF');
-    expect(contrastRatio(STATUS_LIGHT.successText, tint)).toBeLessThan(TEXT_FLOOR);
+
+    // ⚠ THIS CASE'S CLOSING ASSERTION WAS INVERTED BY PALETTE-4c, AND IT IS
+    // REWRITTEN RATHER THAN DELETED. It read:
+    //     expect(contrastRatio(STATUS_LIGHT.successText, tint)).toBeLessThan(TEXT_FLOOR)
+    // under the comment "the reason nothing else moved: the tint cannot carry
+    // text" — true at 4.39:1 when it was written, and FALSE at 5.00:1 now,
+    // because 4c darkened successText. Nothing about the tint changed.
+    // ⚠ A NEGATIVE ASSERTION WHOSE PURPOSE REVERSES IS THE FENCE CLAUDE.md WARNS
+    // ABOUT: still green, still true-looking, and now guarding nothing. The
+    // WARNING half is what still pins the rule, so that is what is asserted.
+    const warningTint = compositeRgba(STATUS_TINT.warning, '#FFFFFF');
+    expect(contrastRatio(STATUS_LIGHT.warningText, warningTint)).toBeLessThan(TEXT_FLOOR);
+
+    // And what the tile actually paints: the TEXT tone as the glyph, clearing
+    // the graphic floor with room, which is the Palette-4c repair.
+    eachBrandMode((label, mode, t) => {
+      if (mode !== 'light') return;
+      const tile = compositeRgba(STATUS_TINT.success, t.recess);
+      expect(contrastRatio(STATUS_LIGHT.successText, tile), label + ': icon on tile')
+        .toBeGreaterThanOrEqual(GRAPHIC_FLOOR);
+    });
   });
 });
 
@@ -277,16 +294,20 @@ describe('Palette-4b T3 — no R. colour, no retired tone in EITHER form', () =>
   });
 
   it('[RED] the surviving R. colour reads are EXACTLY the A.2 hold', () => {
-    // ⚠ ASSERTED BY EQUALITY, NOT "AT MOST". A.2 — tealText/emeraldText and the
-    // green/amber status pair — is REPORTED AND UNRULED by instruction. If a
-    // seventh read appears, this goes RED and whoever added it must say why.
+    // ⚠ ASSERTED BY EQUALITY, NOT "AT MOST". If a sixth read appears, this goes
+    // RED and whoever added it must say why.
     const R_COLOUR = /(^|[^A-Za-z0-9_.])R\.(red|redDark|navy|navyDark|blueLight|bgBlueLight|bgCard|bgPage|bgCardTint|textPrimary|textSecondary|textMuted|border|borderMed|shadow|shadowMd|shadowLg|green|greenBg|greenText|amber|amberBg|amberText|teal|tealBg|tealText|emerald|emeraldBg|emeraldText)\b/g;
     const hits = [];
     let m;
     R_COLOUR.lastIndex = 0;
     while ((m = R_COLOUR.exec(CODE)) !== null) { hits.push(m[2]); R_COLOUR.lastIndex = m.index + m[0].length; }
+    // ⚠ NARROWED IN PALETTE-4c, AND ONLY FOR SITES THAT ACTUALLY MOVED. The three
+    // money reads (green x2, emeraldText) are gone because they were migrated;
+    // tealText and the reports pill are STILL HELD and are STILL NAMED. A fence
+    // loosened to match the code stops being a fence -- the test of whether this
+    // edit was honest is that it got SHORTER by exactly the three that moved.
     expect(hits.sort()).toEqual(
-      ['amberBg', 'amberText', 'emeraldText', 'green', 'green', 'greenBg', 'greenText', 'tealText']
+      ['amberBg', 'amberText', 'greenBg', 'greenText', 'tealText']
     );
   });
 
@@ -426,5 +447,140 @@ describe('Palette-4b T7 — Palette-1\'s acknowledged shortfalls are not weakene
       expect(ratio, `${label}/${mode}: recess/surface now clears 3:1 — update the ruling`).toBeLessThan(GRAPHIC_FLOOR);
       expect(ratio, `${label}/${mode}: recess is indistinguishable from surface`).toBeGreaterThan(1.0);
     });
+  });
+});
+
+// -- PALETTE-4c -- MONEY IS SEMANTICALLY GREEN -------------------------------
+describe('Palette-4c T1/T2 - successText is a FIXED green, floored on both grounds', () => {
+  it('[RED] it clears 4.5:1 against surface AND recess, every brand, both modes', () => {
+    eachBrandMode((label, mode, t) => {
+      const tone = mode === 'dark' ? STATUS_DARK.successText : STATUS_LIGHT.successText;
+      const onSurface = contrastRatio(tone, t.surface);
+      const onRecess = contrastRatio(tone, t.recess);
+      expect(onSurface, label + '/' + mode + ': successText on surface is ' + onSurface.toFixed(2))
+        .toBeGreaterThanOrEqual(TEXT_FLOOR);
+      expect(onRecess, label + '/' + mode + ': successText on recess is ' + onRecess.toFixed(2))
+        .toBeGreaterThanOrEqual(TEXT_FLOOR);
+    });
+  });
+
+  // THE RULING'S OWN FENCE, AND ITS FIRST DRAFT WAS VACUOUS -- RECORDED BECAUSE
+  // THE BRIEF ASKED THE EXACT QUESTION THAT CAUGHT IT.
+  // It read: for each brand, add STATUS_LIGHT.successText to a Set, then assert
+  // the Set has one member. That reads ONE CONSTANT N TIMES. `seen.size` is 1 no
+  // matter what any brand does, so the assertion could not fail -- it asserted
+  // that a constant equals itself while appearing to assert brand-invariance.
+  // ⚠ THE FIX IS STRUCTURAL, NOT A BETTER ASSERTION ON THE SAME READING.
+  // "Brand-invariant" is not a fact about a value; it is a fact about WHERE the
+  // value comes from. A colour is brand-derivable if and only if it is a render
+  // token, because deriveThemeTokens is the only thing that takes a brand. So
+  // the falsifiable claim is: successText is NOT in the render set, and no
+  // brand's derivation produces it.
+  it('[RED] it is BRAND-INVARIANT BY CONSTRUCTION - it is not a render token', () => {
+    expect(RENDER_TOKEN_KEYS, 'successText is in the render set, so it CAN be brand-derived')
+      .not.toContain('successText');
+    for (const [label, src] of BRANDS) {
+      for (const mode of MODES) {
+        const t = deriveThemeTokens(resolveBrandingTheme(src), mode);
+        expect(Object.keys(t), label + '/' + mode + ': the derivation emits a successText')
+          .not.toContain('successText');
+      }
+    }
+    // And the money sites reach it through statusVar, which takes no brand.
+    expect(CODE).toContain("statusVar('successText')");
+  });
+
+  it('[RED] GUARD-PROOF - a brand-DERIVED tone DOES vary, which is what the fence excludes', () => {
+    // primaryText is the derived counterpart. It takes a different value per
+    // brand, which is exactly the property successText must NOT have -- so this
+    // shows the distinction the case above turns on is real and observable.
+    const derived = BRANDS.map(function (b) {
+      return deriveThemeTokens(resolveBrandingTheme(b[1]), 'light').primaryText;
+    });
+    expect(new Set(derived).size, 'a derived token did not vary - the contrast proves nothing')
+      .toBeGreaterThan(1);
+    // ⚠ AND THE RENDER SET GENUINELY CONTAINS THAT ONE, so "not in RENDER_TOKEN_KEYS"
+    // above is a discriminating check rather than a check against an empty list.
+    expect(RENDER_TOKEN_KEYS).toContain('primaryText');
+  });
+
+  it('[RED] the value has MARGIN, not a hundredth', () => {
+    // #147C3B cleared the worst derivable recess by 0.01 and was rejected for
+    // exactly the reason the Sign Out button failed: a floor met by a hundredth
+    // is broken by the next change to the ground.
+    const WORST_RECESS = '#ECECF9';
+    expect(contrastRatio('#147C3B', WORST_RECESS)).toBeLessThan(4.6);
+    expect(contrastRatio(STATUS_LIGHT.successText, WORST_RECESS)).toBeGreaterThan(4.7);
+  });
+});
+
+describe('Palette-4c T3 - every money figure in ProfileTab', () => {
+  it('[RED] the money sites and the activity icon declare successText', () => {
+    const sites = CODE.split("color: statusVar('successText')").length - 1;
+    expect(sites, 'expected four successText declarations').toBe(4);
+    expect(CODE).not.toContain('color: R.green,');
+    expect(CODE).not.toContain('color: R.emeraldText,');
+  });
+
+  it('[RED] GUARD-PROOF - the greens they replaced were LIVE FAILURES', () => {
+    eachBrandMode((label, mode, t) => {
+      if (mode !== 'light') return;
+      expect(contrastRatio('#16a34a', t.surface)).toBeLessThan(TEXT_FLOOR);
+      expect(contrastRatio('#16a34a', t.recess)).toBeLessThan(TEXT_FLOOR);
+    });
+    // And the OLD successText was under the floor on recess, which is why these
+    // sites could not simply have been pointed at it before this phase.
+    const plat = deriveThemeTokens(resolveBrandingTheme(null), 'light');
+    expect(contrastRatio('#15803D', plat.recess)).toBeLessThan(TEXT_FLOOR);
+    expect(contrastRatio(STATUS_LIGHT.successText, plat.recess)).toBeGreaterThanOrEqual(TEXT_FLOOR);
+  });
+
+  it('[RED] the activity icon repairs a regression Palette-4b shipped', () => {
+    // Before 4b: R.green on the SOLID R.greenBg = exactly 3.00:1, at the floor.
+    // 4b moved the ground to a 0.12 tint over the recess and it fell to 2.55:1.
+    expect(contrastRatio('#16a34a', '#dcfce7')).toBeCloseTo(3.00, 1);
+    eachBrandMode((label, mode, t) => {
+      if (mode !== 'light') return;
+      const tile = compositeRgba(STATUS_TINT.success, t.recess);
+      expect(contrastRatio('#16A34A', tile), label + ': the OLD icon tone on the tile')
+        .toBeLessThan(GRAPHIC_FLOOR);
+      expect(contrastRatio(STATUS_LIGHT.successText, tile), label + ': the repaired icon')
+        .toBeGreaterThanOrEqual(GRAPHIC_FLOOR);
+    });
+  });
+
+  it('[RED] no money figure in this file sits on a gradient (B.5)', () => {
+    // The hero is the only gradient and it carries no money. If a money figure
+    // ever moves onto it, its floor becomes the DARKER STOP.
+    const heroStart = CODE.indexOf('linear-gradient(145deg,');
+    const heroEnd = CODE.indexOf('STATUS_BANNER.danger');
+    expect(heroStart).toBeGreaterThan(-1);
+    expect(heroEnd).toBeGreaterThan(heroStart);
+    expect(CODE.slice(heroStart, heroEnd)).not.toContain("statusVar('successText')");
+  });
+});
+
+describe('Palette-4c B.2/B.3 - what stayed held, and why', () => {
+  it('[RED] "Joined your network" keeps R.tealText - a status LABEL, not money', () => {
+    expect(CODE).toContain('color: R.tealText');
+    // It clears its floor and means what it paints, so the correct outcome is
+    // leaving it alone. STATUS_CONFIG.app_user.color is the same value.
+    const plat = deriveThemeTokens(resolveBrandingTheme(null), 'light');
+    expect(contrastRatio('#0e7490', plat.recess)).toBeGreaterThanOrEqual(TEXT_FLOOR);
+  });
+
+  it('[RED] the reports pill keeps its own *Bg pair - the tint would be WORSE', () => {
+    expect(CODE).toContain('report.resolved ? R.greenBg : R.amberBg');
+    const warningTint = compositeRgba(STATUS_TINT.warning, '#FFFFFF');
+    const successTint = compositeRgba(STATUS_TINT.success, '#FFFFFF');
+    // What it measures today, on its own solid grounds.
+    expect(contrastRatio('#15803d', '#dcfce7')).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    expect(contrastRatio('#b45309', '#fef3c7')).toBeGreaterThanOrEqual(TEXT_FLOOR);
+    // THE WARNING HALF PINS THE DECISION: on the tint it is still under the
+    // floor, so moving the pair would break one of the two.
+    expect(contrastRatio(STATUS_LIGHT.warningText, warningTint)).toBeLessThan(TEXT_FLOOR);
+    // The success half now clears on the tint only because Palette-4c darkened
+    // the TEXT tone -- recorded so nobody reads it as the tint having improved.
+    expect(contrastRatio(STATUS_LIGHT.successText, successTint)).toBeGreaterThanOrEqual(TEXT_FLOOR);
   });
 });

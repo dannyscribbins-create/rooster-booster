@@ -4872,7 +4872,43 @@ quadruples is evidence about the estimate, not about the wave:
       again on the next phase.
       → `9dc7570` · the R/AD migration entry's preview consequence · `RAD_MIGRATION_PHASE0B_REPORT.md` §6.4
 
-- [ ] **⚠ A.2 — `tealText` / `emeraldText` AND THE GREEN EARNINGS FIGURES ARE UNRULED, AND TWO
+- [ ] **⚠ THREE MONEY TREATMENTS ACROSS TWO TABS, AND DANNY SHOULD SEE IT NAMED RATHER THAN
+      DISCOVER IT. THE ONLY OPEN QUESTION PALETTE-4c LEAVES.**
+      *(Palette-4c, 2026-09-04. Nothing was changed for this; it is reported.)*
+      The same kind of figure now paints three ways:
+      · **`DashboardTab`'s balance and next-payout — `--rm-primary-text`, BRAND-RESPONSIVE.**
+        Burnt orange on the platform, magenta on a magenta contractor. Ruled in Palette-4a.
+      · **`ProfileTab`'s earnings — `successText`, FIXED GREEN on every contractor.** Ruled in
+        Palette-4c on the semantic argument: green means "money you have".
+      · **`ProfileTab`'s stat rows — `--rm-text`.** "Next Payout $500 (+$100 boost)" and
+        "Balance $500" are body text, because that is what they were before the migration and a
+        colour migration does not promote things.
+      ⚠ **THE SHARPEST CASE: the SAME NUMBER, the next payout, is burnt orange on the Dashboard
+      and dark navy on the Profile.** Not a contrast defect — every one of the three clears its
+      floor — a CONSISTENCY question, and a product decision rather than a token one.
+      ⚠ **AND THE TWO RULINGS ARE EACH DEFENSIBLE ALONE**, which is why this needs deciding rather
+      than fixing: money-is-brand says the payout is the product's hero number; money-is-green says
+      an amount earned is a semantic state. They only conflict when both appear in one app.
+      → Palette-4a's `MONEY` constant in `DashboardTab` · `statusVar('successText')` in `ProfileTab`
+
+- [ ] **⚠ `seedLocalStack.js` CANNOT RENDER ANY MONEY SURFACE, AND PALETTE-4c HAD TO WORK AROUND
+      IT BY HAND. THE RECIPE IS RECORDED HERE BECAUSE THE SCRIPT WAS NOT EXTENDED.**
+      *(Palette-4c, 2026-09-04.)* The stack's own limitations block says no referrals or
+      conversions are seeded — so `ProfileTab`'s three money figures and its activity rows render
+      **not at all**, and a harness run against it reports a clean surface that is simply empty.
+      **What it took, all local:** rows in `pipeline_cache` with `pipeline_status='paid'`, a
+      `bonus_amount`, and ⚠ **`referred_by` set to the referrer's FULL NAME** — the stale-cache
+      query matches `LOWER(referred_by) = LOWER($2)` against the user's name, not their id; plus a
+      `contractor_crm_settings` row, because `GET /api/pipeline` returns **503 `crm_not_connected`
+      BEFORE its stale-cache fallback**. ⚠ That row is local config with no credentials and no
+      OAuth — the adapter then throws for want of a token, which is exactly the path that serves
+      the cache.
+      ⚠ **THE ROWS ARE STILL IN THE LOCAL DATABASE** and the throwaway script is not committed, so
+      the next session that needs a money surface will rediscover this unless the recipe moves into
+      `seedLocalStack.js`.
+      → `scripts/seedLocalStack.js`'s "WHAT THIS STACK CANNOT DO" block
+
+- [x] **⚠ A.2 — RULED AND CLOSED BY PALETTE-4c. Kept for the reasoning. ⚠ `tealText` / `emeraldText` AND THE GREEN EARNINGS FIGURES WERE UNRULED, AND TWO
       OF THEM ARE LIVE CONTRAST DEFECTS. REPORTED BY INSTRUCTION, NOT RULED.**
       *(Palette-4b, 2026-09-04. Unruled since the R/AD Phase 0-B; `ProfileTab.jsx` is where they
       live. Six code sites are HELD and fenced by equality.)*
@@ -4895,8 +4931,14 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **SO NEITHER SYSTEM ANSWERS CLEANLY AND THE PHASE DID NOT GUESS.** The one site that moved
       is the icon tile — `STATUS_TINT.success` grounding a glyph is the 3:1 graphic use its own
       header sanctions, and no text sits on it.
-      → `paletteProfile.test.jsx` T3 asserts the surviving reads are EXACTLY these six ·
-      the four in-source `⚠ A.2 — HELD` comments · Palette-4a's money ruling
+      ⚠ **RULED 2026-09-04 AND SHIPPED IN PALETTE-4c: money is semantically green and deliberately
+      NOT brand-responsive.** Three of the six sites moved to `successText`; `tealText` stays (it is
+      a status LABEL, not money, and clears at 4.77:1); the reports pill stays (its own `*Bg` pair
+      measures 4.57/4.51 and `STATUS_TINT` would give 4.39/4.42 — worse). The fence was narrowed to
+      the three that remain held.
+      ⚠ **AND THE REPAIR NEEDED THE TOKEN TO MOVE FIRST**, which is why it could not have been done
+      inside 4b: `successText` was floored against `surface` only and measured **4.39:1 on recess**.
+      → `paletteProfile.test.jsx` T3 · the money-treatment consistency entry above
 
 - [ ] **⚠ THE UPLOAD ERROR ON THE PROFILE HERO HAD NO CORRECT TOKEN, AND THE GROUND HAD TO MOVE
       INSTEAD OF THE TEXT. THE GAP IS GENERAL: THERE IS NO "STATUS ON A BRAND FILL" PAIR.**
@@ -5020,26 +5062,34 @@ quadruples is evidence about the estimate, not about the wave:
       **TWO WERE CORRECT AND THIS PHASE MOVED THEM** — `CDL_3b_BUILD_SPEC.md`'s
       `DashboardTab.jsx:586,610` (the Google Review card) and `CDL_3c_PHASE0_REPORT.md`'s
       `statusTheme.js:88-95` (`STATUS_VARS`). **Both repaired, BY ROLE**, so they cannot rot again.
-      **THREE WERE ALREADY WRONG and are NOT repaired here** — `CDL_3b_BUILD_SPEC.md:136` cites
-      `statusTheme.js:124` for a sentence about `STATUS_VARS` and lands on a bare `//`;
-      `CDL_3c_PHASE0_REPORT.md:265` cites `themeTokens.mjs:345` for `deriveThemeTokens` and lands
-      on a comment about palettes; `CDL_3c_PHASE0_REPORT.md:694` cites `themeTokens.mjs:91` for the
-      dark-mode governor and lands on a `cssName` comment. Re-deriving where those subjects live is
-      the larger job `CLAUDE.md` says to record rather than improvise.
-      **THE SIXTH IS A PROTECTED RECORD AND WAS NOT TOUCHED** — `PRE_LAUNCH_CHECKLIST.md:4225`
-      quotes `statusTheme.js:140` in a sentence whose SUBJECT is that the number rotted.
+      **THREE WERE ALREADY WRONG and are NOT repaired here**, each named by the SUBJECT it should
+      have pointed at rather than by a replacement number: `CDL_3b_BUILD_SPEC.md`'s status-var
+      sentence (wants **`STATUS_VARS`**, lands on a bare `//`); `CDL_3c_PHASE0_REPORT.md`'s
+      token-derivation sentence (wants **`deriveThemeTokens`**, lands on a comment about palettes);
+      and its dark-mode sentence (wants **`deriveDarkTokens`**, lands on a `cssName` comment).
+      Re-deriving where those subjects live is the larger job `CLAUDE.md` says to record rather
+      than improvise.
+      **THE SIXTH IS A PROTECTED RECORD AND WAS NOT TOUCHED** — the `STATUS_BANNER` entry above
+      quotes a `statusTheme.js` line number in a sentence whose SUBJECT is that the number rotted.
+      ⚠ **AND PALETTE-4c FOUND THE HOLE CLAUDE.md PREDICTS IN EXACTLY THIS BLOCK.** Every line
+      number written here as a *correction* rotted the moment `statusTheme.js` and `ProfileTab.jsx`
+      were edited again — six of 4c's ten flagged citations were THIS ENTRY citing its own
+      evidence. The wrong numbers stay, because they are the evidence; the corrections are now
+      given by role, because a correction written as a line number has the same lifespan as the
+      rot it corrects.
       ⚠ **THIS IS `CLAUDE.md`'S WORKED CASE REPRODUCED EXACTLY: adding this phase's delta to all
       six would have moved the two correct ones, left the three wrong ones wrong, and falsified a
       record.** Recorded because it is the second measured instance, not because it is new.
       ⚠ **PALETTE-4b MAKES IT THREE, AND THE SPLIT HELD AGAIN — 50/50, ON TWO.** Its edits flagged
       two citations into `ProfileTab.jsx`, both read at the OLD line in the OLD revision first:
-      **ONE WAS CORRECT AND THIS PHASE MOVED IT** — `CDL_3b_BUILD_SPEC.md:441` cited
-      `ProfileTab.jsx:808` for the sign-out control and landed exactly on the
-      `Contact Support + Sign Out` block. **Repaired BY ROLE.**
-      **ONE WAS ALREADY WRONG and is NOT repaired** — `MEMBER_RANK_ECONOMY_SPEC.md:507` cites
-      `ProfileTab.jsx:603-604` for where shout copy is bucketed by `rank1/rank2_3/rank4_7/rank8_10`,
-      and at HEAD those lines are the **badge tile** (`return (` / `<div key={badge.id}`), not the
-      bucket selection at all. ⚠ **The same sentence also cites `RankingsTab.jsx:91-92`, which this
+      **ONE WAS CORRECT AND THIS PHASE MOVED IT** — `CDL_3b_BUILD_SPEC.md`'s sign-out entry cited
+      `ProfileTab.jsx:808` (the number is quoted as evidence, not as a pointer) and landed exactly
+      on the **`Contact Support + Sign Out` block**. **Repaired BY ROLE.**
+      **ONE WAS ALREADY WRONG and is NOT repaired** — `MEMBER_RANK_ECONOMY_SPEC.md`'s rank entry
+      cites `ProfileTab.jsx:603-604` for where shout copy is bucketed by
+      `rank1/rank2_3/rank4_7/rank8_10`, and at that revision those lines were the **badge tile**,
+      not the bucket selection at all. The subject it should name is **the `SHOUT_BUCKETS`
+      selection in `ProfileTab`**. ⚠ **The same sentence also cites `RankingsTab.jsx:91-92`, which this
       phase did not touch and therefore did not verify** — an unflagged sibling in a list where one
       member was flagged is exactly the shape `CLAUDE.md` calls the sharpest proof.
       **Running total of already-rotted citations found by the Palette arc and left unrepaired: 4.**

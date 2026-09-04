@@ -363,13 +363,18 @@ describe('rules that hold across the whole shelf', () => {
 describe('statusTheme constants', () => {
 
   it('pins the ruled light values that ship as the hardcoded var() fallbacks', () => {
-    // These four hexes are the Phase 4A ruling. Asserted as literals — a test
-    // that only compared the constant to itself would pin nothing.
+    // These hexes are the Phase 4A ruling. Asserted as literals — a test that
+    // only compared the constant to itself would pin nothing.
+    // ⚠ successText MOVED IN PALETTE-4c, ON PURPOSE. It was '#15803D', floored
+    // against `surface` only, and measured 4.39:1 against `recess` — under the
+    // text floor on the ground half the money figures sit on. The new value is
+    // floored against BOTH. This literal is updated deliberately, not to make a
+    // test pass: see statusTheme.js for the derivation and the margin argument.
     expect(STATUS_LIGHT).toMatchObject({
       danger:      '#DC2626',
       dangerText:  '#B91C1C',
       success:     '#16A34A',
-      successText: '#15803D',
+      successText: '#137639',
     });
   });
 

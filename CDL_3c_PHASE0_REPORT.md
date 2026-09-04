@@ -270,7 +270,7 @@ misclassification rather than by work*, so a future reader does not go looking f
 
 ### The two token sets — 3a §8's binding forward note is ALSO already discharged
 
-`STATUS_DARK` exists (`src/constants/statusTheme.js:61-72`) and **`ThemeProvider` reads it**:
+`STATUS_DARK` exists (the `STATUS_DARK` table in `src/constants/statusTheme.js`) and **`ThemeProvider` reads it**:
 
 - `src/components/shared/ThemeProvider.jsx:110-119` — `const palette = mode === 'dark' ? STATUS_DARK : STATUS_LIGHT;`
   then iterates `Object.entries(STATUS_VARS)`.
@@ -284,7 +284,7 @@ there are SIX status vars, not four** — `danger`, `dangerText`, `success`, `su
 
 **So the failure mode the prompt describes — "the 4A primitives stay on LIGHT status fallbacks in
 dark mode" — cannot occur.** `grep` confirms `ThemeProvider.jsx` is the **only** reader of
-`STATUS_DARK` in `src/`, exactly as `statusTheme.js:63-64` claims.
+`STATUS_DARK` in `src/`, exactly as `STATUS_DARK`'s own recorded ratios in `statusTheme.js` claim.
 
 ### What the rep theme provider still needs: **nothing structural. It reuses `ThemeProvider`.**
 

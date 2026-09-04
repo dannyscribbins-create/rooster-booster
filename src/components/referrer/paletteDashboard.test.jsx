@@ -130,7 +130,7 @@ describe('Palette-4a Part B T2 — the warning tint (R-B)', () => {
   });
 
   // ⚠ THIS IS THE CASE R-B ASKED FOR BY NAME, AND ITS ANSWER DECIDED THE PHASE.
-  it('[RED] MEASURED — two of the three tints CANNOT carry banner text', () => {
+  it('[RED] MEASURED — the warning tint CANNOT carry banner text', () => {
     const results = [];
     for (const role of ['danger', 'success', 'warning']) {
       const ground = compositeRgba(STATUS_TINT[role], '#FFFFFF');
@@ -142,12 +142,20 @@ describe('Palette-4a Part B T2 — the warning tint (R-B)', () => {
     // Recorded as MEASUREMENTS, not as a pass/fail, because the point is the
     // shape of the answer: a 0.12 wash of a mid-tone does not leave enough
     // contrast range for text, and that is a property of tints rather than of
-    // these two hexes. success 4.39 was Palette-1's finding; warning 4.42 is
-    // this phase's, and it is why the banners did NOT go onto the tint.
+    // any one hex.
+    //
+    // ⚠ THIS CASE ASSERTED `byRole.success < TEXT_FLOOR` UNTIL PALETTE-4c, AND
+    // THAT IS NOW FALSE. It was 4.39:1 against the old successText (#15803D) and
+    // is 5.00:1 against the re-floored one (#137639). ⚠ NOTHING ABOUT THE TINT
+    // CHANGED — the TEXT tone darkened. A negative assertion whose subject moves
+    // underneath it is the fence CLAUDE.md warns about: still green, still
+    // true-looking, and guarding nothing.
+    // ⚠ THE WARNING HALF STILL PINS THE RULE, so that is what stays asserted,
+    // and the success half is now asserted at its real value rather than deleted.
     expect(byRole.danger).toBeGreaterThanOrEqual(TEXT_FLOOR);
-    expect(byRole.success).toBeLessThan(TEXT_FLOOR);
     expect(byRole.warning).toBeLessThan(TEXT_FLOOR);
     expect(byRole.warning).toBeCloseTo(4.42, 1);
+    expect(byRole.success).toBeCloseTo(5.00, 1);
   });
 
   it('[RED] so STATUS_BANNER grounds on the SURFACE and puts the status colour on the EDGE', () => {

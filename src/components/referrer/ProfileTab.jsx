@@ -472,13 +472,14 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                               Pending completion
                             </span>
                           )}
-                          {/* ⚠ A.2 — HELD, AND THIS ONE IS A COLLISION, NOT JUST A GAP.
-                              `R.emeraldText` IS `STATUS_CONFIG.complete.color`, which
-                              argues status. But it paints a DOLLAR AMOUNT, and
-                              Palette-4a ruled money onto `--rm-primary-text`. Two
-                              shipped rulings point at the same site. 6.83:1 today. */}
+                          {/* ⚠ THE COLLISION IS RESOLVED IN FAVOUR OF STATUS. This is
+                              `STATUS_CONFIG.complete.color` AND a dollar amount, so Palette-4a's
+                              money ruling (--rm-primary-text) and the status argument both claimed
+                              it. Money-is-green wins: it was never a defect at 6.83:1, but leaving
+                              it on a different green from its two siblings would have put three
+                              money figures on one screen in three different colours. */}
                           {ref.status === 'complete' && (ref.conversion_bonus != null || ref.payout != null) && (
-                            <span style={{ fontSize: 14, fontWeight: 800, color: R.emeraldText, fontFamily: R.fontMono }}>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: statusVar('successText'), fontFamily: R.fontMono }}>
                               +${ref.conversion_bonus ?? ref.payout}
                             </span>
                           )}
@@ -524,14 +525,21 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             }}>
               <i className="ph ph-clock-counter-clockwise" style={{ fontSize: 18, color: 'var(--rm-text, #1C2D4D)' }} />
               <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)' }}>Activity</span>
-              {/* ⚠ A.2 — HELD, AND IT IS A LIVE DEFECT. `R.green` is #16a34a, the
-                  3:1 GRAPHIC value, used here as TEXT: measured 3.30:1 on the card.
-                  The obvious repair is statusVar('successText'), but that measures
-                  4.46:1 on the recessed ground its sibling below sits on — also
-                  under. Neither status nor money answers cleanly, so it is reported
-                  rather than guessed at inside a migration phase. */}
+              {/* ⚠ RULED 2026-09-04: MONEY IS SEMANTICALLY GREEN AND DELIBERATELY
+                  NOT BRAND-RESPONSIVE. Green says "money you have" the way danger red
+                  says danger — the argument statusTheme.js exists on. So this is the
+                  status system, not the render set, and it is the SAME green on every
+                  contractor.
+                  ⚠ WHAT THAT TRADES: these figures never respond to a contractor's
+                  palette. Accepted, and recorded so it is not re-litigated.
+                  ⚠ AND THE REPAIR NEEDED THE TOKEN TO MOVE FIRST. This was 3.30:1 —
+                  the 3:1 GRAPHIC tone used as text — and routing it to successText was
+                  blocked because THAT measured 4.39:1 on the recessed ground its
+                  sibling below sits on. Palette-4c re-floored successText against BOTH
+                  grounds; only then was this a substitution rather than a swap of one
+                  failing green for another. */}
               {totalEarned > 0 && (
-                <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: R.green, fontFamily: R.fontMono }}>
+                <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: statusVar('successText'), fontFamily: R.fontMono }}>
                   ${totalEarned.toLocaleString()} earned
                 </span>
               )}
@@ -564,10 +572,23 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                         <div style={{
                           width: 38, height: 38, borderRadius: 10,
-                          background: STATUS_TINT.success, display: "flex",
+                          // ⚠ THE ICON ON THIS TILE IS `successText`, NOT `success`, AND
+                        // THAT REPAIRS A REGRESSION PALETTE-4b SHIPPED. Before 4b the
+                        // glyph was R.green on the SOLID R.greenBg and measured EXACTLY
+                        // 3.00:1 — at the graphic floor with nothing to spare. 4b moved
+                        // the ground to this 0.12 tint over the RECESSED row, a paler
+                        // composite, and the pair fell to 2.55:1 light and 2.70:1 on a
+                        // teal brand. Under the floor, introduced by a phase whose whole
+                        // subject was contrast, and invisible because the tint move
+                        // looked like a pure token substitution. The text tone on the
+                        // same tile is 4.43:1 / 4.68:1.
+                        // ⚠ THE TILE IS UNCHANGED — STATUS_TINT grounding an icon badge
+                        // is still the graphic use it was built for. The FOREGROUND was
+                        // what was wrong.
+                        background: STATUS_TINT.success, display: "flex",
                           alignItems: "center", justifyContent: "center",
                         }}>
-                          <i className="ph ph-money" style={{ fontSize: 20, color: statusVar('success') }} />
+                          <i className="ph ph-money" style={{ fontSize: 20, color: statusVar('successText') }} />
                         </div>
                         <div>
                           <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)' }}>{item.desc}</p>
@@ -579,9 +600,10 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                           )}
                         </div>
                       </div>
-                      {/* ⚠ A.2 — HELD, AND THE WORSE OF THE PAIR: 2.93:1 on the recess.
-                          Same unanswered question as the header figure above. */}
-                      <span style={{ fontSize: 14, fontWeight: 900, color: R.green, fontFamily: R.fontMono }}>
+                      {/* Was 2.93:1 on the recess — the worse of the pair, and the reason
+                          successText had to be floored against `recess` and not only against
+                          `surface`. */}
+                      <span style={{ fontSize: 14, fontWeight: 900, color: statusVar('successText'), fontFamily: R.fontMono }}>
                         +${item.amount.toLocaleString()}
                       </span>
                     </div>

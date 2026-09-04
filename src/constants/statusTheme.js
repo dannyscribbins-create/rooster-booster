@@ -47,7 +47,31 @@ export const STATUS_LIGHT = Object.freeze({
   danger:      '#DC2626',   // fill/accent   — 4.83:1 on #FFFFFF
   dangerText:  '#B91C1C',   // text          — 6.47:1 on #FFFFFF
   success:     '#16A34A',   // fill/accent   — 3.30:1, graphic threshold only, never text
-  successText: '#15803D',   // text          — 5.02:1 on #FFFFFF
+  // ── successText RE-FLOORED IN PALETTE-4c (ruled 2026-09-04) ──────────────
+  // ⚠ THIS TOKEN ALREADY EXISTED. Palette-4c was briefed to "add successText to
+  // the status system"; it has been here since C/DL-3a Phase 4A. The real work
+  // was re-flooring it, and saying so matters because "add the token" and
+  // "the token is under-floored" are different jobs with different blast radii —
+  // this one changes a value FOUR components already read.
+  //
+  // ⚠ WHY IT MOVED: IT WAS FLOORED AGAINST `surface` ONLY. #15803D measured
+  // 5.02:1 on #FFFFFF and was recorded here as if that settled it. Against
+  // `recess` — the ground half the money figures actually sit on — it measured
+  // 4.39:1. Under the floor, and invisible because the number beside it was the
+  // surface one. Same defect `primaryText` was built to avoid, in a token that
+  // predates that lesson.
+  //
+  // ⚠ AND `recess` IS BRAND-DERIVED WHILE THIS VALUE IS FIXED, so the floor is
+  // the WORST recess the derivation can produce, not the platform one. Sampled
+  // across 216 synthetic brands plus the four seeded: light recess ranges
+  // #ECECF9 (L=0.847) to #FFFFFF. Against the darkest of those, #137639 measures
+  // 4.88:1, and 5.71:1 on surface.
+  // ⚠ THE MARGIN IS DELIBERATE. The first value that cleared was #147C3B at
+  // 4.51:1 — over the floor by 0.01, which is exactly the fragility that let the
+  // Sign Out button ship at 4.51 and then fail at 3.95 the moment its ground
+  // moved on hover. A floor met by one hundredth is a floor that the next change
+  // to LIGHT_RECESS_TARGET_L silently breaks.
+  successText: '#137639',   // text — 5.71:1 on #FFFFFF, 4.88:1 on the worst derivable recess
   warning:     '#D97706',   // fill/accent   — 3.10:1, graphic threshold only, never text
   warningText: '#B45309',   // text          — 4.87:1 on #FFFFFF
 });
@@ -62,7 +86,12 @@ export const STATUS_DARK = Object.freeze({
   danger:      '#EF4444',   // fill/accent   — 4.55:1 on #121B31
   dangerText:  '#F87171',   // text          — 6.19:1 on #121B31
   success:     '#16A34A',   // fill/accent   — 5.19:1 on #121B31 (same hex reads well in both)
-  successText: '#7DD3AA',   // text          — 9.59:1 on #121B31
+  // ⚠ CHECKED AGAINST BOTH GROUNDS IN PALETTE-4c AND DELIBERATELY UNCHANGED.
+  // Dark mode inverts the problem — recess goes DARKER than surface, so surface
+  // is the binding ground here, the mirror of light mode. Worst case across the
+  // sampled brand space is 7.36:1. It needed no move; recording that it was
+  // measured is what stops the next session assuming it was overlooked.
+  successText: '#7DD3AA',   // text — 9.59:1 on #121B31, worst sampled 7.36:1
   warning:     '#D97706',   // fill/accent   — same hex both modes, as success is
   warningText: '#fbbf24',   // text/icon     — 10.4:1 on #121B31
   //   ⚠ NOT === AD.amberText. 5.1 moved that token to #92400E and the two
@@ -78,16 +107,19 @@ export const STATUS_DARK = Object.freeze({
 // Same technique AD already uses for its own *Bg values.
 //
 // ⚠ THIS TABLE IS FOR THE 3:1 GRAPHIC USE ONLY — IT GROUNDS AN ICON BADGE. IT
-// MUST NEVER CARRY BODY TEXT, AND THE THIRD ENTRY IS THE PROOF RATHER THAN THE
-// EXCEPTION. Palette-1 measured successText on the success tint at 4.39:1,
-// short of the 4.5 floor by 0.11. Palette-4a Part B measured the warning entry
-// added below, for the same reason and with the same result:
+// MUST NEVER CARRY BODY TEXT.
 //
 //     warning tint over #FFFFFF -> #FAEFE1   warningText #B45309 on it = 4.42:1
+//     success tint over #FFFFFF -> #E3F4E9   successText #137639 on it = 5.00:1
 //
-// TWO OF THE THREE FAIL THE TEXT FLOOR. That is not a property of these two
-// hexes; it is what a 0.12 wash of a mid-tone does to the contrast range left
-// for text. Dropping the alpha to 0.08 reaches 4.61:1 and stops being a tint.
+// ⚠ THIS BLOCK READ "TWO OF THE THREE FAIL THE TEXT FLOOR" UNTIL PALETTE-4c, AND
+// THAT IS NOW FALSE FOR SUCCESS — it was 4.39:1 against the old #15803D and is
+// 5.00:1 against the re-floored one. The correction is recorded rather than
+// quietly applied because the SUBJECT moved: nothing about the tint changed, the
+// TEXT tone darkened. A member of this table passing today because its partner
+// moved is precisely why the rule is not "check the ratio and decide" —
+// warning still fails at 4.42:1, and a table whose members qualify one at a time
+// as unrelated values shift is not one you put body text on.
 // ⚠ SO THE BANNERS DO NOT USE THIS TABLE — see STATUS_BANNER below, which puts
 // the ground on `surface` and the status colour on the EDGE. Routing a banner
 // here instead would reproduce R-1's tint-is-not-a-fill inversion exactly, in
@@ -179,7 +211,8 @@ export const STATUS_VARS = Object.freeze({
 // records as that value's own design point:
 //
 //     light   dangerText  #B91C1C on surface #FFFFFF   6.47:1   (text, 4.5)
-//             successText #15803D on surface #FFFFFF   5.02:1   (text, 4.5)
+//             successText #137639 on surface #FFFFFF   5.71:1   (text, 4.5)
+//               ⚠ was #15803D at 5.02:1 until Palette-4c re-floored it against recess
 //             danger edge #DC2626 on surface #FFFFFF   4.83:1   (graphic, 3)
 //             success edge #16A34A on surface #FFFFFF  3.30:1   (graphic, 3)
 //     dark    dangerText  #F87171 on surface #121B31   6.19:1
@@ -187,8 +220,14 @@ export const STATUS_VARS = Object.freeze({
 //
 // ⚠ STATUS_TINT WAS TRIED FIRST AND MEASURED SHORT — RECORDED SO IT IS NOT
 // RE-PROPOSED AS THE OBVIOUS ANSWER. Compositing STATUS_TINT.success (0.12
-// alpha) over #FFFFFF gives #E3F4E9, and successText on it is 4.39:1 — under
-// the 4.5 floor. STATUS_TINT is correct for what its two consumers actually do
+// alpha) over #FFFFFF gives #E3F4E9, and successText on it was 4.39:1 when that
+// was measured — under the floor, which is what this ruling was made against.
+// ⚠ WITH THE PALETTE-4c VALUE IT IS 5.00:1, SO THE SUCCESS CASE NO LONGER
+// FAILS, AND SAYING SO IS THE POINT: darkening the TEXT tone is what moved it,
+// not anything about the tint. The warning entry still measures 4.42:1 and the
+// ruling stands on that plus the general argument — a 0.12 wash of a mid-tone
+// eats the range text needs, and a table whose members pass or fail one at a
+// time as their partners move is not a table you put body text on. STATUS_TINT is correct for what its two consumers actually do
 // with it: it grounds a 44px ICON BADGE, which answers to the 3:1 graphic
 // threshold. It has never carried body text, and it should not start.
 //
