@@ -3049,24 +3049,33 @@ root cause, and patching them separately produces six unrelated special cases)
       contractor that their palette does nothing. **The branding run ships its preview surfaces
       without the referrer dashboard and adds it after this migration.**
 
-- [ ] **AMENDMENT `A31` / `§20` / `v1.9` IS RESERVED FOR TEXT THAT WILL NEVER BE WRITTEN.
-      RELEASE IT OR RETIRE IT — AN AMBIGUOUS RESERVATION IS HOW THE NEXT SESSION REPEATS A2's
-      MISTAKE.** *(Filed by the BR arc close-out, 2026-09-03.)*
-      **The state, exactly.** `RAD_MIGRATION_PHASE0_REPORT.md` claims `A31`/`§20`/`v1.9` for a
-      *"pin the referrer tree light"* amendment and supplies a draft. **That approach was
-      ruled against** — the pin was replaced by a writer-side guard — so **A31's text was never
-      written and now has no subject.** BR-2 Phase 2 then took **`A32`/`§21`/`v2.0`**, skipping
-      `§20` and `v1.9` to honour the reservation, and recorded the skip in
-      `DECISION_C_DL_BUILD_SPEC.md`'s Status line and at §21's opening note.
-      ⚠ **SO THE SPEC NOW PERMANENTLY CARRIES A HOLE POINTING AT A DOCUMENT GIT HAS NEVER
-      SEEN.** The only description of what `A31` was for lives in an **untracked** root report.
-      **THE DECISION OWED IS ONE OF TWO, AND EITHER IS FINE — LEAVING IT IS NOT:**
-      · **RELEASE it** — the next amendment takes `A31`/`§20`/`v1.9`, and the skip note in
-        `DECISION_C_DL_BUILD_SPEC.md` is rewritten to say the reservation was vacated. The
-        version numbers then run non-monotonically against A32/v2.0, which must be stated.
-      · **RETIRE it** — `A31` is recorded in the spec as *deliberately never issued, because
-        the ruling it would have carried was reversed*, so the hole is documented in a tracked
-        file and nobody hunts for it.
+- [x] ~~**AMENDMENT `A31` / `§20` / `v1.9` IS RESERVED FOR TEXT THAT WILL NEVER BE WRITTEN.
+      RELEASE IT OR RETIRE IT.**~~ ✅ **RULED — `A31` IS RETIRED, NOT RELEASED. THE NUMBER IS
+      VOID AND IS NOT REUSED. THE NEXT FREE AMENDMENT IS `A33`.** *(Filed by the BR arc
+      close-out and ruled by Danny the same day, 2026-09-03.)*
+      **How the number came to be skipped.** BR-2 Phase 2 took **`A32`/`§21`/`v2.0`**, stepping
+      over `§20` and `v1.9` to honour the reservation, and recorded the skip in
+      `DECISION_C_DL_BUILD_SPEC.md`'s Status line and at §21's opening note. **Both of those
+      said RESERVED; both now say RETIRED**, corrected in the same commit as this ruling — a
+      marker left stale in the shipped direction is the same defect as one left stale in the
+      deferred direction.
+      ⚠ **THIS ENTRY ASKED WHY THE SPEC SHOULD CARRY A HOLE POINTING AT A DOCUMENT GIT HAS
+      NEVER SEEN. THAT IS WHAT THE RULING ANSWERS.** The only description of what `A31` was for
+      still lives in an **untracked** root report — so the retirement, and its reason, are now
+      written into the **tracked** spec, where the hole is. Nobody needs the report to
+      understand the gap.
+      **THE RULING (Danny, 2026-09-03): RETIRED.** `A31` was reserved by
+      `RAD_MIGRATION_PHASE0_REPORT.md` for an amendment recording a *"pin the referrer tree to
+      light mode"* decision. **That approach was ruled against — replaced by a writer-side
+      guard on the `theme_mode` setter — and A31's text was never written.** The number is
+      **VOID and is not reused.** `A32` (`§21`, `v2.0`) shipped past it; **the next free
+      amendment is `A33`.**
+      ⚠ **THE REASON FOR RETIRING RATHER THAN RELEASING, RECORDED BECAUSE OTHERWISE SOMEONE
+      WILL "TIDY" THE GAP LATER.** Releasing `A31` means it gets written **out of order,
+      describing something unrelated** — and anyone reading the RAD Phase 0 report would then
+      find that report claiming `A31` for a pin that does not exist, and conclude **the record
+      is corrupt.** ⚠ **A VOID NUMBER WITH A REASON IS LEGIBLE; A REUSED ONE IS NOT.** The gap
+      between `A30` and `A32` is not an error to close. It is the retirement, visible.
       ⚠ **AND THE WAY THIS RESERVATION WAS VERIFIED IS ITS OWN LESSON, RECORDED IN
       `CLAUDE.md`:** the Phase 0 report verified `A31` free with `git grep` — over **tracked**
       files, while being **untracked itself**. A tracked-only search cannot see the reservation

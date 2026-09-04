@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v2.0 — amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RESERVED by the RAD migration arc and is deliberately skipped here** — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
+**Status:** LOCKED v2.0 — amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A33** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -858,8 +858,20 @@ only the latter survives Security's absence. **3-C rules on Security; A30 does n
 
 ## 21. Amendments — v2.0, 2026-09-03 (BR-2 Phase 2: the step copy becomes overridable, and a social row)
 
-⚠ **NUMBERED A32, NOT A31, AND THE SKIP IS DELIBERATE.** `A31` / `§20` / `v1.9` is **reserved by
-the RAD migration arc** for its pin amendment (`RAD_MIGRATION_PHASE0_REPORT.md`). That report
+⚠ **NUMBERED A32, NOT A31, AND THE SKIP IS DELIBERATE.**
+⚠ **STATUS CORRECTED 2026-09-03: `A31` / `§20` / `v1.9` IS NOW RETIRED — VOID, AND NOT REUSED.
+THE NEXT FREE AMENDMENT IS `A33`.** *(Ruled by Danny, 2026-09-03.)* The reservation described in
+this paragraph was real when this section was written, hours earlier; the amendment it was held
+for **records a "pin the referrer tree to light mode" decision that was ruled against** — replaced
+by a writer-side guard on the `theme_mode` setter — **so A31's text was never written and has no
+subject.** ⚠ **RETIRED RATHER THAN RELEASED, AND THE REASON IS WHAT STOPS SOMEONE CLOSING THE GAP
+LATER:** releasing the number means it is written out of order describing something unrelated, and
+a reader of `RAD_MIGRATION_PHASE0_REPORT.md` would then find that report claiming `A31` for a pin
+that does not exist and conclude the record is corrupt. **A void number with a reason is legible;
+a reused one is not. The gap between `A30` and `A32` is the retirement, visible.**
+**What the reservation was, kept because the lesson below depends on it:** `A31` / `§20` / `v1.9`
+was **reserved by the RAD migration arc** for its pin amendment (`RAD_MIGRATION_PHASE0_REPORT.md`).
+That report
 verified A31 free with `git grep` over **tracked** files — and the report is itself **untracked**,
 so a tracked-only search cannot see the reservation it makes. A32 was confirmed free by both a
 `git grep` and a working-tree grep; the only `git grep` hit was the hex colour `#A32D2D`, which is
