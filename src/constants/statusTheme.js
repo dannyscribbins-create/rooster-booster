@@ -133,6 +133,58 @@ export const STATUS_VARS = Object.freeze({
 // with the same limit, and guards the floor from here on.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── STATUS_BANNER — THE GROUND AN INLINE STATUS MESSAGE SITS ON (R-1) ──────
+//
+// ⚠ A STATUS FILL IS NOT A BACKGROUND FOR TEXT, AND THIS CONSTANT EXISTS BECAUSE
+// THREE SCREENS ASSUMED IT WAS.
+//
+// LoginScreen, ResetPinScreen and ChoiceScreen each declared
+// `backgroundColor: 'var(--rm-danger, #FEE2E2)'` with
+// `color: 'var(--rm-danger-text, #B91C1C)'`. The FALLBACK pair is a pale tint
+// under dark red — 5.30:1, perfectly sensible, and it never painted. The
+// provider mounts --rm-danger as STATUS_LIGHT.danger (#DC2626), a SATURATED
+// FILL, so what rendered was dark red on bright red: 1.34:1, on the login
+// screen's failed-login message. The success banners rendered at 1.52:1.
+//
+// ⚠ THE DEFECT CLASS: A FALLBACK THAT IS CORRECT ONLY WHILE THE VARIABLE IS
+// ABSENT. Same shape as LockedSection's scrim, which falls back to a navy and
+// turns into a white veil over gated content the moment --rm-bg is mounted over
+// it. In both cases the source reads correctly and the screen does not.
+//
+// THE FIX, AND WHY IT IS THIS AND NOT A TINT. The banner's ground is the
+// SURFACE; the status colour becomes its EDGE, and the text keeps the *Text
+// tone it already had. Every resulting ratio is a number statusTheme.js already
+// records as that value's own design point:
+//
+//     light   dangerText  #B91C1C on surface #FFFFFF   6.47:1   (text, 4.5)
+//             successText #15803D on surface #FFFFFF   5.02:1   (text, 4.5)
+//             danger edge #DC2626 on surface #FFFFFF   4.83:1   (graphic, 3)
+//             success edge #16A34A on surface #FFFFFF  3.30:1   (graphic, 3)
+//     dark    dangerText  #F87171 on surface #121B31   6.19:1
+//             successText #7DD3AA on surface #121B31   9.59:1
+//
+// ⚠ STATUS_TINT WAS TRIED FIRST AND MEASURED SHORT — RECORDED SO IT IS NOT
+// RE-PROPOSED AS THE OBVIOUS ANSWER. Compositing STATUS_TINT.success (0.12
+// alpha) over #FFFFFF gives #E3F4E9, and successText on it is 4.39:1 — under
+// the 4.5 floor. STATUS_TINT is correct for what its two consumers actually do
+// with it: it grounds a 44px ICON BADGE, which answers to the 3:1 graphic
+// threshold. It has never carried body text, and it should not start.
+//
+// ⚠ AND THE FALLBACKS BELOW ARE THE MOUNTED VALUES, NOT DIFFERENT ONES. That is
+// the whole rule this constant enforces: an unmounted page is a light page, so
+// the fallback must be what the light mount would have produced. A fallback the
+// mount contradicts is the bug, not a safety net.
+export const STATUS_BANNER = Object.freeze({
+  danger: Object.freeze({
+    backgroundColor: 'var(--rm-surface, #FFFFFF)',
+    border: `1px solid var(${STATUS_VARS.danger}, ${STATUS_LIGHT.danger})`,
+  }),
+  success: Object.freeze({
+    backgroundColor: 'var(--rm-surface, #FFFFFF)',
+    border: `1px solid var(${STATUS_VARS.success}, ${STATUS_LIGHT.success})`,
+  }),
+});
+
 /**
  * Builds the CSS value a primitive declares for one semantic status role:
  * the custom property, with the LIGHT value as its literal fallback.

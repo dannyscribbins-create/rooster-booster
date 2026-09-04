@@ -4100,9 +4100,13 @@ none of them. **3-D's real-browser pass is owed IN FULL and this sighting does n
       **never read a field** of the stats payload (zero getter hits, isolated, exit 0). Their
       protection against the async-leak flake is **timing, not the fixture**; they would pass
       identically against `{}`. The two honest options — await the dashboard, or drop the mock
-      — are a behaviour change. **And `statusVar()`'s JSDoc** (`statusTheme.js:140`) declares
+      — are a behaviour change. **And `statusVar()`'s JSDoc `@param` line** declares
       four roles against `STATUS_VARS`' six, omitting `'warning'|'warningText'` — **the roles
-      its own live caller passes.**
+      its own live caller passes.** *(Cited by role since 2026-09-03: this read
+      `statusTheme.js:140`, which was CORRECT, and R-1's `STATUS_BANNER` block inserted 52 lines
+      above it. Verified at `0fde840` before repair — the old line did hold the `@param` — and
+      re-pointed by role rather than by adding the delta, which is what the citecheck header
+      asks for. The finding itself is unchanged and still true.)*
 - [ ] **`crm/index.js` — THE DISPATCHER DOES NOT DISPATCH (multi-tenant).** `:29-30` hardcodes
       `require('./jobber')` and `jobber.refreshTokenIfNeeded()` inside
       `if (connection_method === 'oauth')` — **branching on connection method while ignoring
@@ -4677,6 +4681,22 @@ quadruples is evidence about the estimate, not about the wave:
       long-lived hand-seeded stack in the suite's own database is destroyed by the next
       `npm test` and can wedge `pg_trgm` on the way out. **A separate scratch database, named
       so nobody mistakes it for the test one.**
+      ⚠ **CHALLENGED AND RE-CONFIRMED 2026-09-03 (R-1). THE ENTRY IS CORRECT AS WRITTEN — DO NOT
+      "CORRECT" IT AGAIN.** `RAD_MIGRATION_PHASE0B_REPORT.md` §5.2 originally asserted that Alpha,
+      Beta and Gamma were **only** test fixtures and that no such stack had ever existed, reasoning
+      from a grep of `server/test/`. On that basis this entry was nearly rewritten to say the
+      environment never existed and Security G had been wrongly unblocked. **Both premises were
+      false.** The stack's existence is evidenced in the commit bodies, in a form no fixture can
+      produce: `ca9a9d7` records *"log in, log out, reload the bare host → 'Sign in to Alpha
+      Roofing Co' … the only network call is GET /api/branding/<their slug>"*, and `5a365e1`
+      records a logged-in referrer being handed another contractor's palette via `?brand=`.
+      **And Security G was never recorded as unblocked anywhere** — the Launch Definition says
+      *"never built"* and `CLAUDE_REGISTRY.md` says *"not yet built"*, both unchanged.
+      ⚠ **THE GENERAL POINT, WHICH IS WHY THIS NOTE IS HERE RATHER THAN IN A HANDOFF: A GREP OF
+      THE TRACKED TEST TREE CANNOT SEE AN ENVIRONMENT THAT WAS NEVER TRACKED.** Absence from
+      `server/test/` is evidence about `server/test/` — the same shape as `git grep` being unable
+      to see a reservation made in an untracked file. **`RAD_MIGRATION_PHASE0B_REPORT.md` §5.2 is
+      annotated with the correction; this entry did not move.**
       → the Security G line in the **Launch Definition** above · `CLAUDE_REGISTRY.md` (the
       Multi-Contractor Security Session tracking)
 - [ ] **`ENCRYPTION_KEY` missing locally → `server.js` will not boot.** Document it in the

@@ -216,8 +216,20 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
             padding: '10px 14px',
             marginBottom: 20,
           }}>
-            <i className="ph ph-warning-circle" style={{ color: '#dc2626', fontSize: 16, flexShrink: 0 }} />
-            <p style={{ color: '#dc2626', fontSize: 14, margin: 0, lineHeight: 1.4 }}>{serverError}</p>
+            {/* #b91c1c, NOT the #dc2626 FILL tone. R-1: the fill measures 3.95:1
+                on this tint — under the 4.5 text floor — while the text tone
+                measures 5.30:1. Same pair, same distinction statusTheme.js draws
+                between the danger and dangerText roles.
+                ⚠ THE LITERALS HERE ARE DELIBERATE AND MUST NOT BECOME A CUSTOM
+                PROPERTY. This banner is opaque precisely so nothing mounted over
+                it can invert it, which is the defect R-1 fixed on the other three
+                auth screens. statusBannerContrast.test.jsx asserts the absence.
+                ⚠ The forbidden declaration is NOT spelled out here on purpose —
+                that test reads this block as source text, and naming the pattern
+                in prose would trip it. Rewording the prose is the rule; exempting
+                comments from the guard is not. */}
+            <i className="ph ph-warning-circle" style={{ color: '#b91c1c', fontSize: 16, flexShrink: 0 }} />
+            <p style={{ color: '#b91c1c', fontSize: 14, margin: 0, lineHeight: 1.4 }}>{serverError}</p>
           </div>
         )}
 

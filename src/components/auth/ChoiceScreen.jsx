@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { statusVar, STATUS_BANNER } from '../../constants/statusTheme';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─── The Choice Screen ────────────────────────────────────────────────────────
@@ -138,11 +139,11 @@ export default function ChoiceScreen({ identities = [], onChoose, onCancel, erro
         {error && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, marginTop: 12,
-            backgroundColor: 'var(--rm-danger, #FEE2E2)',
+            ...STATUS_BANNER.danger,
             borderRadius: 8, padding: '8px 12px',
           }}>
-            <i className="ph ph-warning-circle" style={{ color: 'var(--rm-danger-text, #B91C1C)', fontSize: 16, flexShrink: 0 }} />
-            <p style={{ color: 'var(--rm-danger-text, #B91C1C)', fontSize: 15, margin: 0 }}>{error}</p>
+            <i className="ph ph-warning-circle" style={{ color: statusVar('dangerText'), fontSize: 16, flexShrink: 0 }} />
+            <p style={{ color: statusVar('dangerText'), fontSize: 15, margin: 0 }}>{error}</p>
           </div>
         )}
 

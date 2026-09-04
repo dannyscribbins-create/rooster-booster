@@ -230,8 +230,11 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
             padding: '10px 14px',
             marginBottom: 20,
           }}>
-            <i className="ph ph-warning-circle" style={{ color: '#dc2626', fontSize: 16, flexShrink: 0 }} />
-            <p style={{ color: '#dc2626', fontSize: 14, margin: 0, lineHeight: 1.4 }}>{error}</p>
+            {/* #b91c1c, NOT the #dc2626 FILL tone — 5.30:1 on this tint against
+                3.95:1. Same correction as SignupScreen; see its note for why the
+                literals here stay literals. */}
+            <i className="ph ph-warning-circle" style={{ color: '#b91c1c', fontSize: 16, flexShrink: 0 }} />
+            <p style={{ color: '#b91c1c', fontSize: 14, margin: 0, lineHeight: 1.4 }}>{error}</p>
           </div>
         )}
 

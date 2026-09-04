@@ -2,6 +2,7 @@ import { useContext, useState } from 'react';
 import { BACKEND_URL } from '../../config/contractor';
 import { ThemeContext } from '../shared/ThemeProvider';
 import BrandMark from '../shared/BrandMark';
+import { statusVar, STATUS_BANNER } from '../../constants/statusTheme';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─── Set a New Password ───────────────────────────────────────────────────────
@@ -143,9 +144,9 @@ export default function ResetPinScreen({ token }) {
         {status === 'success' ? (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
-            backgroundColor: 'var(--rm-success, #DCFCE7)',
+            ...STATUS_BANNER.success,
             borderRadius: 10, padding: 16, fontSize: 15,
-            color: 'var(--rm-success-text, #166534)',
+            color: statusVar('successText'),
           }}>
             <i className="ph ph-check-circle" style={{ fontSize: 20, flexShrink: 0 }} />
             Password updated! Redirecting to sign in…
@@ -188,10 +189,10 @@ export default function ResetPinScreen({ token }) {
             {error && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, marginTop: 8,
-                backgroundColor: 'var(--rm-danger, #FEE2E2)', borderRadius: 8, padding: '8px 12px',
+                ...STATUS_BANNER.danger, borderRadius: 8, padding: '8px 12px',
               }}>
-                <i className="ph ph-warning-circle" style={{ color: 'var(--rm-danger-text, #B91C1C)', fontSize: 16, flexShrink: 0 }} />
-                <p style={{ color: 'var(--rm-danger-text, #B91C1C)', fontSize: 15, margin: 0 }}>{error}</p>
+                <i className="ph ph-warning-circle" style={{ color: statusVar('dangerText'), fontSize: 16, flexShrink: 0 }} />
+                <p style={{ color: statusVar('dangerText'), fontSize: 15, margin: 0 }}>{error}</p>
               </div>
             )}
 

@@ -6,6 +6,7 @@ import ContactModal from '../shared/ContactModal';
 import FrozenAccountScreen from './FrozenAccountScreen';
 import ChoiceScreen from './ChoiceScreen';
 import TeamAccessRevokedScreen from './TeamAccessRevokedScreen';
+import { statusVar, STATUS_BANNER } from '../../constants/statusTheme';
 import useEntrance from '../../hooks/useEntrance';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -372,10 +373,10 @@ export default function LoginScreen({ onAuthenticated }) {
         {showForgot ? (
           forgotStatus === 'sent' ? (
             <div style={{
-              backgroundColor: 'var(--rm-success, #DCFCE7)',
+              ...STATUS_BANNER.success,
               borderRadius: 10, padding: 16, marginBottom: 16,
               fontSize: 15, lineHeight: 1.5,
-              color: 'var(--rm-success-text, #166534)',
+              color: statusVar('successText'),
             }}>
               Check your email — if that address is registered, a reset link is on its way.
             </div>
@@ -396,10 +397,10 @@ export default function LoginScreen({ onAuthenticated }) {
               {forgotStatus === 'error' && (
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 4,
-                  backgroundColor: 'var(--rm-danger, #FEE2E2)', borderRadius: 8, padding: '8px 12px',
+                  ...STATUS_BANNER.danger, borderRadius: 8, padding: '8px 12px',
                 }}>
-                  <i className="ph ph-warning-circle" style={{ color: 'var(--rm-danger-text, #B91C1C)', fontSize: 16, flexShrink: 0 }} />
-                  <p style={{ color: 'var(--rm-danger-text, #B91C1C)', fontSize: 15, margin: 0 }}>{forgotError}</p>
+                  <i className="ph ph-warning-circle" style={{ color: statusVar('dangerText'), fontSize: 16, flexShrink: 0 }} />
+                  <p style={{ color: statusVar('dangerText'), fontSize: 15, margin: 0 }}>{forgotError}</p>
                 </div>
               )}
             </>
@@ -444,10 +445,10 @@ export default function LoginScreen({ onAuthenticated }) {
         {!showForgot && error && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, marginTop: 8,
-            backgroundColor: 'var(--rm-danger, #FEE2E2)', borderRadius: 8, padding: '8px 12px',
+            ...STATUS_BANNER.danger, borderRadius: 8, padding: '8px 12px',
           }}>
-            <i className="ph ph-warning-circle" style={{ color: 'var(--rm-danger-text, #B91C1C)', fontSize: 16, flexShrink: 0 }} />
-            <p style={{ color: 'var(--rm-danger-text, #B91C1C)', fontSize: 15, margin: 0 }}>{error}</p>
+            <i className="ph ph-warning-circle" style={{ color: statusVar('dangerText'), fontSize: 16, flexShrink: 0 }} />
+            <p style={{ color: statusVar('dangerText'), fontSize: 15, margin: 0 }}>{error}</p>
           </div>
         )}
 
