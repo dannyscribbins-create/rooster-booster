@@ -345,10 +345,18 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             borderRadius: 16, overflow: "hidden", boxShadow: elevationVar('shadow'), marginBottom: 16,
           }}>
             {[
+              // ⚠ `money` MARKS "MONEY THE USER HAS", WHICH IS THE RULING'S OWN TEST —
+              // not "contains a dollar sign". Balance qualifies; Next Payout is a
+              // PROJECTION of what the next sold deal would pay and is excluded, exactly
+              // as it is on the Dashboard. The two counts are not money at all.
+              // ⚠ WITHOUT THIS FLAG THE SAME BALANCE PAINTED GREEN ON THE DASHBOARD AND
+              // body-text here — measured in a browser on a teal contractor,
+              // rgb(19,118,57) against rgb(11,61,59), which is the inconsistency the
+              // money ruling exists to remove.
               { label: "Referrals Sent", val: String(pipeline.length),                               icon: "ph-users"     },
               { label: "Deals Sold",      val: String(soldCount),                                    icon: "ph-handshake" },
               { label: "Next Payout",     val: `$${nextPayout.total} (+$${nextPayout.boost} boost)`, icon: "ph-trend-up"  },
-              { label: "Balance",         val: `$${balance.toLocaleString()}`,                        icon: "ph-wallet"    },
+              { label: "Balance",         val: `$${balance.toLocaleString()}`, money: true,           icon: "ph-wallet"    },
             ].map((item, i, arr) => (
               <div key={item.label} style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -359,7 +367,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                   <i className={`ph ${item.icon}`} style={{ fontSize: 16, color: 'var(--rm-text, #1C2D4D)' }} />
                   <span style={{ fontSize: 15, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody }}>{item.label}</span>
                 </div>
-                <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--rm-text, #1C2D4D)' }}>{item.val}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: item.money ? statusVar('successText') : 'var(--rm-text, #1C2D4D)' }}>{item.val}</span>
               </div>
             ))}
           </div>

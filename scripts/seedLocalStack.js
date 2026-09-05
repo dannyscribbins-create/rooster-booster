@@ -299,6 +299,56 @@ async function seedStack(pool) {
     }
   }
 
+  // ── THE MONEY SURFACE (Palette-5, C.1) ───────────────────────────────────
+  //
+  // ⚠ WITHOUT THESE ROWS EVERY MONEY FIGURE IN THE APP RENDERS NOT AT ALL, and a
+  // harness run reports a clean surface that is simply empty — which is the
+  // "mechanism reporting health it cannot observe" shape, arriving as absence.
+  // Palette-4c hit exactly that and worked around it by hand; this is that
+  // workaround made into the recipe, because a hand-worked stack is a stack that
+  // is throwaway by the next phase.
+  //
+  // ⚠ TWO NON-OBVIOUS REQUIREMENTS, BOTH FOUND THE HARD WAY:
+  //   1. `referred_by` must be the referrer's FULL NAME, not their id. The
+  //      stale-cache query matches `LOWER(referred_by) = LOWER($2)` against the
+  //      user's name — an id here yields zero rows and an empty, plausible page.
+  //   2. A `contractor_crm_settings` row must exist, because GET /api/pipeline
+  //      returns 503 `crm_not_connected` BEFORE it reaches its stale-cache
+  //      fallback. ⚠ IT CARRIES NO CREDENTIALS AND IS NOT AN OAUTH CONNECTION —
+  //      the adapter then throws for want of a token, and that throw is exactly
+  //      the path that serves pipeline_cache.
+  for (const c of CONTRACTORS) {
+    const who = summary.accounts.find((a) => a.contractor === c.id && a.role === 'referrer');
+    if (!who) continue;
+    const { rows: named } = await pool.query('SELECT full_name FROM users WHERE id = $1', [who.id]);
+    const referrerName = named[0].full_name;
+
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, crm_type, is_connected, connected_at)
+       VALUES ($1, 'jobber', TRUE, NOW())
+       ON CONFLICT (contractor_id) DO UPDATE SET is_connected = TRUE`,
+      [c.id]
+    );
+
+    // One PAID row (drives the balance, the activity feed and the earnings
+    // figures) and one still in flight (drives a non-empty pipeline list).
+    const money = [
+      ['stack-paid-' + c.id, 'Sam Reed', 'paid', 500, new Date(Date.now() - 5 * 864e5)],
+      ['stack-lead-' + c.id, 'Ada Kim', 'lead', null, null],
+    ];
+    for (const [jid, client, status, bonus, paidAt] of money) {
+      await pool.query(
+        `INSERT INTO pipeline_cache
+           (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status,
+            bonus_amount, jobber_created_at, last_synced_at, paid_at)
+         VALUES ($1,$2,$3,$4,$5,$6, NOW() - INTERVAL '30 days', NOW(), $7)
+         ON CONFLICT DO NOTHING`,
+        [c.id, jid, client, referrerName, status, bonus, paidAt]
+      );
+    }
+    summary.money = (summary.money || 0) + 1;
+  }
+
   // ── THE DUAL-IDENTITY PERSON — one email, two subjects, one tenant ────────
   const alpha = CONTRACTORS[0].id;
   const dualUser = await pool.query(
@@ -401,6 +451,18 @@ module.exports = { assertLocalStackTarget, withDatabase, seedStack, CONTRACTORS,
 //   not-connected branch only.
 // · NO EMAIL OR SMS. Resend and Twilio are unconfigured; anything that sends will
 //   fail rather than no-op, and that failure is not a defect in the surface.
+// · ⚠ MONEY RENDERS, BUT FROM THE STALE-CACHE PATH ONLY. The pipeline rows are
+//   served because the Jobber adapter THROWS and the route falls back to
+//   pipeline_cache — so every pipeline response carries `stale: true` and the
+//   staleness banner is always up. The live sync path is still unreachable.
+// · ⚠ NO referral_conversions ROWS, so `conversion_bonus` is null everywhere and
+//   the figures come from the boost-schedule fallback (500 + boost). The
+//   CONVERSION-sourced amount, the schedule NAME on an expanded card, and the
+//   inline expand it gates are all still unreachable.
+// · ⚠ NO BADGES. `GET /api/referrer/badges` returns an empty set, so ProfileTab's
+//   badge grid renders its empty branch. The #999 pair Palette-4b repaired
+//   cannot be seen on this stack at all — it was verified by arithmetic and by
+//   forcing the branch in jsdom, never in the browser.
 // · NOT PRODUCTION-SHAPED DATA. No referrals, conversions, badges or
 //   announcements are seeded here — the five contrived-data surfaces Palette
 //   identified still need their own rows, and that is a separate job.

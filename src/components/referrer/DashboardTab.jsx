@@ -39,6 +39,13 @@ const ON_SECONDARY   = 'var(--rm-on-secondary, #FFFFFF)';
 const SURFACE        = 'var(--rm-surface, #FFFFFF)';
 const RECESS         = 'var(--rm-recess, #ECF0F8)';
 
+// ⚠ NARROWED IN PALETTE-5, AND THE NAME NO LONGER MEANS WHAT IT SAYS.
+// This was every money figure on the tab; the BALANCE moved to successText under
+// the money-is-green ruling, and what is left are the two PROJECTED figures the
+// ruling excludes. It is kept under this name rather than renamed because
+// renaming it in the same commit that changes its membership would make the diff
+// unreviewable — the rule this repo learned from relocations.
+//
 // ⚠ THE MONEY PATH. NOT `--rm-primary`, AND THIS CONSTANT EXISTS SO THE
 // DIFFERENCE CANNOT BE LOST IN A DIFF. `primary` is floored against the 3:1
 // NON-TEXT threshold — it is a fill colour. Measured on the platform brand it
@@ -322,18 +329,50 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
             ) : (
               <>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 4, margin: "6px 0 4px" }}>
-                  {/* MONEY — the whole reason Part A built --rm-primary-text. */}
-                  <span style={{ fontSize: 32, color: MONEY, fontFamily: R.fontMono, fontWeight: 700, lineHeight: 1 }}>$</span>
+                  {/* ⚠ RULED 2026-09-04: MONEY IS GREEN EVERYWHERE, NOT ONLY ON PROFILE.
+                      The Available Balance is "money the user has" — the clearest case of
+                      the rule — so both spans take successText. They are ONE figure split
+                      across two elements for typography, and the old split painted the
+                      glyph in the brand accent and the number in body text, which was a
+                      typographic choice nobody made deliberately about money.
+                      ⚠ THIS FIGURE WAS BRAND-RESPONSIVE AND IS NOT ANY MORE. That is the
+                      ruling's cost, accepted: green means "money you have" the way danger
+                      red means danger, and the same balance now reads the same on the
+                      Dashboard and on the Profile. */}
+                  <span style={{ fontSize: 32, color: statusVar('successText'), fontFamily: R.fontMono, fontWeight: 700, lineHeight: 1 }}>$</span>
                   <span style={{
                     fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em",
-                    fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)', lineHeight: 1,
+                    fontFamily: R.fontSans, color: statusVar('successText'), lineHeight: 1,
                   }}>
                     {balance.toLocaleString()}
                   </span>
                 </div>
-                <p style={{ margin: "4px 0 0", fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED }}>
-                  {soldCount} sold referral{soldCount !== 1 ? "s" : ""} this year ·{" "}
-                  Next: <span style={{ color: MONEY, fontWeight: 700 }}>${nextPayout.total}</span>
+                {/* ⚠ THE OPACITY IS ON THE PROSE SPAN, NOT ON THE PARAGRAPH, AND THAT
+                    IS A REPAIR RATHER THAN A STYLE CHOICE. Palette-4a put
+                    `opacity: MUTED` on this <p> to mute the sold-count sentence, and
+                    the money span nested inside it INHERITED the 0.72 — compositing
+                    primaryText down to 3.29:1, under the text floor, on the payout
+                    figure. Measured in a browser; a declaration-level test cannot see
+                    it, because every element's own colour was correct.
+                    ⚠ OPACITY INHERITS AND COLOUR DOES NOT. Any muted container with a
+                    non-muted child has this defect, and this is the third regression in
+                    the arc caused by a GROUND or an ALPHA moving under a foreground
+                    that was itself never touched. */}
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: 'var(--rm-text, #1C2D4D)' }}>
+                  <span style={{ opacity: MUTED }}>
+                    {soldCount} sold referral{soldCount !== 1 ? "s" : ""} this year ·{" "}
+                  {/* ⚠ HELD ON `MONEY` (--rm-primary-text), AND THE REASON IS THE RULE'S
+                      OWN BOUNDARY. "Money the user has" is the test; `nextPayout` is a
+                      PROJECTION — what the next sold deal would pay — which the ruling
+                      excludes alongside tier thresholds and schedule rows.
+                      ⚠ AND THAT LEAVES A CONFLICT THIS PHASE DID NOT INVENT AND WILL NOT
+                      GUESS AT: the same projected figure is ALSO on ProfileTab's stat row,
+                      painted `--rm-text`. So it still reads two ways across two screens.
+                      Resolving it means ruling on the projection itself, which is a
+                      product decision. Filed, not improvised. */}
+                    Next:{" "}
+                  </span>
+                  <span style={{ color: MONEY, fontWeight: 700 }}>${nextPayout.total}</span>
                 </p>
               </>
             )}
@@ -494,7 +533,8 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               </div>
               <div style={{ textAlign: "right" }}>
                 <p style={{ margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontMono, textTransform: "uppercase" }}>Next Payout</p>
-                {/* MONEY — --rm-primary-text, never --rm-primary. See MONEY below. */}
+                {/* ⚠ HELD ON `MONEY` — a PROJECTION, same as the "Next:" figure above.
+                    Still never --rm-primary: that is the 3:1 FILL tone and this is text. */}
                 <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800, fontFamily: R.fontMono, color: MONEY }}>${nextPayout.total}</p>
               </div>
             </div>

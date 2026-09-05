@@ -389,7 +389,14 @@ function recordRanges(lines, relDoc) {
 // at the commit that introduced it, not a figure taken mid-pass. (A count taken
 // before the last edit is about a different set; that mistake is recorded in
 // CLAUDE.md against the --changed-files rotted count.)
-const ROLE_ONLY_BASELINE = 785; // measured 2026-08-31, HEAD 255f1b3 + this commit
+// ⚠ 785 -> 782 IN PALETTE-5, AND THE DROP IS FROM MARKING RECORDS, NOT REPAIRING
+// CITATIONS. Three line numbers inside PRE_LAUNCH_CHECKLIST.md's rotted-citation
+// entry are EVIDENCE of a rot; wrapping that entry in <!-- citecheck:record -->
+// moved them out of the count, which is what the marker is for.
+// ⚠ LOWERING A BASELINE FOR THIS REASON IS LEGITIMATE AND LOWERING IT TO MAKE A
+// BREACH GO AWAY IS NOT. The test is whether the citations still exist: these do,
+// unchanged, and are now correctly classified.
+const ROLE_ONLY_BASELINE = 782; // measured 2026-08-31, HEAD 255f1b3 + this commit
 
 // ─── git plumbing ────────────────────────────────────────────────────────────
 function git(cmd, fallback = '') {

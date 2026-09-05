@@ -4872,8 +4872,62 @@ quadruples is evidence about the estimate, not about the wave:
       again on the next phase.
       → `9dc7570` · the R/AD migration entry's preview consequence · `RAD_MIGRATION_PHASE0B_REPORT.md` §6.4
 
-- [ ] **⚠ THREE MONEY TREATMENTS ACROSS TWO TABS, AND DANNY SHOULD SEE IT NAMED RATHER THAN
-      DISCOVER IT. THE ONLY OPEN QUESTION PALETTE-4c LEAVES.**
+- [ ] **⚠ OPACITY INHERITS AND COLOUR DOES NOT — A DEFECT CLASS NO TEST IN THIS ARC CAN SEE.**
+      *(Palette-5, 2026-09-05. One instance found and fixed; the class is the entry.)*
+      Palette-4a put `opacity: MUTED` on a `<p>` to mute a sentence. The money span nested
+      **inside** it inherited the 0.72, compositing `primaryText` down to **3.29:1** — under the
+      text floor, on a payout figure, for two phases.
+      ⚠ **EVERY ELEMENT'S OWN DECLARATION WAS CORRECT**, which is why the source-text tests, the
+      arithmetic tests and `themeKeyIntegrity` all stayed green. It was found by reading effective
+      alpha off the rendered node in a browser.
+      ⚠ **THE CLASS: any muted container with a non-muted child.** The arc now has three
+      regressions of the same shape — a GROUND or an ALPHA moving under a foreground that was
+      never itself touched (this one, Palette-4b's icon tile at 3.00→2.55, and Palette-4a's hero
+      gradient stop). **No automated fence watches any of them.**
+      → the fixed site in `DashboardTab` · the graphic-floor entry below
+
+- [ ] **⚠ NOTHING IN THIS ARC WATCHES THE 3:1 NON-TEXT FLOOR, AND THAT IS NOW THREE MISSES.**
+      *(Named by Palette-5's brief, confirmed by its measurements.)*
+      Every fence built across Palette watches **4.5:1 text pairs**. The graphic floor has been
+      missed three times and caught only by the *next* phase measuring by hand: the lock icon at
+      1.67:1 (ABR), the activity icon at 2.55:1 (Palette-4b), and the nav's inactive tab at
+      **2.40:1 — on every screen in the app, since before this arc began**.
+      ⚠ **A fence for it would have to know which sites are GRAPHICS**, which is not derivable
+      from a declaration: the same token is text in one place and an icon in another. That is why
+      it has not been built, and it is worth building deliberately rather than by accident.
+      → `paletteNavMoney.test.jsx` T3, which fences the nav specifically
+
+- [ ] **⚠ `citecheck --changed-files` DOES NOT HONOUR `<!-- citecheck:record -->`, SO PROTECTED
+      RECORDS ARE RE-FLAGGED EVERY PHASE.**
+      *(Palette-5, 2026-09-05.)* `scripts/citecheck.js` computes `inRecord` for every finding and
+      stamps it on; `--role-only` filters on it and the changed-files reporter does not.
+      **Measured: Palette-4c's run flagged six citations that were one checklist entry citing its
+      own evidence, and Palette-5's flagged three more.**
+      ⚠ **THE COST IS NOT THE NOISE, IT IS WHAT THE NOISE TRAINS.** A section that re-reports the
+      same protected lines every phase teaches the next reader to skim it — and that section's
+      whole job is surfacing the one citation your edit actually broke.
+      The entry itself is now wrapped in the marker, which fixes the `--role-only` count and
+      changes nothing in changed-files. **The fix is a filter in the reporter; it was not made
+      here because a tool change does not belong in a migration commit.**
+      → `scripts/citecheck.js` · the rotted-citations entry below
+
+- [ ] **⚠ THE NAV'S INACTIVE TAB LABELS ARE COMPLETELY INVISIBLE, AND THAT IS A DESIGN QUESTION
+      PALETTE-5 DID NOT TOUCH.**
+      *(Surfaced 2026-09-05 while measuring the nav's states.)* Inactive labels render at
+      `opacity: 0` — not dimmed, **absent**. Four of the five destinations are identified by icon
+      alone until you tap them.
+      ⚠ **IT IS NOT A CONTRAST DEFECT** — there is nothing to measure — which is exactly why no
+      floor catches it and why it survived every phase that measured this surface.
+      → `BottomNav` in `ReferrerApp.jsx`
+
+- [ ] **⚠ THE NAV'S SHADOW POINTS UP AND THE SIDE CHANNEL HAS ONLY DOWNWARD ROLES.**
+      *(Palette-5, 2026-09-05.)* `0 -4px 20px` — the retired navy inside it was removed, but the
+      value stays a literal because `elevationVar` publishes `shadow`, `shadowMd` and `shadowLg`,
+      all cast downward. Adding an upward role is a token decision, not a migration one.
+      → `src/constants/elevationTheme.js`
+
+- [ ] **⚠ PARTLY RESOLVED BY PALETTE-5 — THE BALANCE IS NOW ONE COLOUR, THE PROJECTION IS NOT.
+      ⚠ THREE MONEY TREATMENTS ACROSS TWO TABS, NAMED RATHER THAN DISCOVERED.**
       *(Palette-4c, 2026-09-04. Nothing was changed for this; it is reported.)*
       The same kind of figure now paints three ways:
       · **`DashboardTab`'s balance and next-payout — `--rm-primary-text`, BRAND-RESPONSIVE.**
@@ -4889,9 +4943,22 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **AND THE TWO RULINGS ARE EACH DEFENSIBLE ALONE**, which is why this needs deciding rather
       than fixing: money-is-brand says the payout is the product's hero number; money-is-green says
       an amount earned is a semantic state. They only conflict when both appear in one app.
-      → Palette-4a's `MONEY` constant in `DashboardTab` · `statusVar('successText')` in `ProfileTab`
+      ⚠ **WHAT PALETTE-5 SETTLED, MEASURED IN A BROWSER ON A MAGENTA CONTRACTOR:** the BALANCE is
+      `rgb(19,118,57)` on both screens — Dashboard 5.71:1, Profile's stat row 5.71:1. Earnings were
+      already green. **That half of the inconsistency is gone.**
+      ⚠ **WHAT IT DID NOT SETTLE, AND WHY:** the NEXT PAYOUT is a PROJECTION, which the ruling's own
+      boundary excludes from "money the user has" alongside tier thresholds and schedule rows. So it
+      stays `--rm-primary-text` on the Dashboard (brand-responsive, 5.87:1 on Beta) and `--rm-text`
+      on Profile's stat row (12.04:1). **The same $600 still reads two ways across two screens.**
+      ⚠ **THIS IS THE ONE THING STILL NEEDING A RULING**, and the options are exactly three: make
+      projections green too (contradicts the boundary), make them brand-responsive on both screens
+      (Profile's stat card would gain an accent it has never had), or make them body text on both
+      (the Dashboard loses its only accent). Each is defensible; none is derivable from the rules
+      already given.
+      → Palette-4a's `MONEY` constant in `DashboardTab` · the `money: true` flag in `ProfileTab`'s
+      stat rows · `statusVar('successText')`
 
-- [ ] **⚠ `seedLocalStack.js` CANNOT RENDER ANY MONEY SURFACE, AND PALETTE-4c HAD TO WORK AROUND
+- [x] **⚠ DONE IN PALETTE-5 — the recipe is in the script and proved by a clean rebuild. Kept for the limits it names. ⚠ `seedLocalStack.js` COULD NOT RENDER ANY MONEY SURFACE, AND PALETTE-4c HAD TO WORK AROUND
       IT BY HAND. THE RECIPE IS RECORDED HERE BECAUSE THE SCRIPT WAS NOT EXTENDED.**
       *(Palette-4c, 2026-09-04.)* The stack's own limitations block says no referrals or
       conversions are seeded — so `ProfileTab`'s three money figures and its activity rows render
@@ -4906,6 +4973,15 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **THE ROWS ARE STILL IN THE LOCAL DATABASE** and the throwaway script is not committed, so
       the next session that needs a money surface will rediscover this unless the recipe moves into
       `seedLocalStack.js`.
+      ⚠ **CLOSED 2026-09-05.** The recipe is in `seedStack()`, and it was proved by DROPPING
+      `roofmiles_local` entirely and rebuilding from `npm run seed:local` alone — the hand-worked
+      rows are gone and the money surface renders from the script.
+      ⚠ **AND THE SCRIPT NOW STATES THREE LIMITS IT DID NOT BEFORE:** the pipeline is served from
+      the STALE-CACHE path only, so every response carries `stale: true`; there are no
+      `referral_conversions` rows, so amounts come from the boost-schedule fallback and the
+      schedule-name expand is unreachable; and there are no badges, so ProfileTab's badge grid
+      renders its empty branch and the `#999` pair Palette-4b repaired **has never been seen in a
+      browser** — it was verified by arithmetic and by forcing the branch in jsdom.
       → `scripts/seedLocalStack.js`'s "WHAT THIS STACK CANNOT DO" block
 
 - [x] **⚠ A.2 — RULED AND CLOSED BY PALETTE-4c. Kept for the reasoning. ⚠ `tealText` / `emeraldText` AND THE GREEN EARNINGS FIGURES WERE UNRULED, AND TWO
@@ -5024,7 +5100,7 @@ quadruples is evidence about the estimate, not about the wave:
       → `paletteDashboard.test.jsx` T5 · the same class as the bank banner's `warningText`, where
       0.72 of a 5.02:1 tone measured 3.07:1 and the opacity was dropped
 
-- [ ] **⚠ `BottomNav` PAINTS THE RETIRED CONTRACTOR NAVY ON EVERY BRAND, MEASURED IN A BROWSER
+- [x] **⚠ DONE IN PALETTE-5 — zero retired-tone hits, and the inactive tab lifted off 2.40:1. ⚠ `BottomNav` PAINTED THE RETIRED CONTRACTOR NAVY ON EVERY BRAND, MEASURED IN A BROWSER
       RATHER THAN INFERRED. IT IS NOT IN ANY PALETTE PHASE YET.**
       *(Surfaced 2026-09-04 by Palette-4a Part B's rendered-colour scan, which had to exclude
       `nav` to see its own file's result.)*
@@ -5034,7 +5110,12 @@ quadruples is evidence about the estimate, not about the wave:
       least branded thing on the screen**, and it sits under every migrated tab.
       ⚠ **IT IS CHEAP AND IT IS NOT A TAB**, so it falls between the per-tab phases. Name it
       explicitly in the remaining Palette sequencing rather than assuming a tab phase will sweep it up.
-      → the Palette phase list · `src/components/referrer/BottomNav.jsx`
+      ⚠ **CLOSED 2026-09-05, AND IT IS NOT IN `BottomNav.jsx` — THERE IS NO SUCH FILE.** The nav is
+      a function declared inline at the top of `src/components/referrer/ReferrerApp.jsx`, which is
+      why a file-scoped search for it kept coming back empty.
+      **Measured after: zero retired-tone hits on any brand; the inactive tab icon 2.40:1 → 3.92:1
+      light, 5.71:1 dark; the nav's ground is `surface` and its shadow's retired navy is gone.**
+      → `ReferrerApp.jsx` · `paletteNavMoney.test.jsx`
 
 - [ ] **⚠ 42 LINE CITATIONS INTO `src/App.jsx` AND `src/components/shared/ThemeProvider.jsx` ARE
       ROTTED, AND MOST WERE ALREADY ROTTED BEFORE PALETTE-1 TOUCHED EITHER FILE.**
@@ -5056,6 +5137,14 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **THE THREE IN `docs/GROUND_TRUTH_2026-08-21.md` MUST NOT BE SHIFTED AT ALL** — it is a
       dated snapshot that QUOTES what it cites, so renumbering would make it claim its quotes come
       from lines that now hold something else.
+<!-- citecheck:record -->
+      ⚠ **EVERY LINE NUMBER FROM HERE TO THE CLOSING MARKER IS EVIDENCE OF A ROT, NOT A POINTER.**
+      Renumbering any of them destroys the record — `CLAUDE.md` is explicit that a record's
+      citations are exempt from repair and are NOT exempt from being wrong.
+      ⚠ **AND THE MARKER IS HERE BECAUSE THE UNMARKED VERSION BECAME NOISE.** Palette-4c's run
+      flagged SIX citations that were this entry citing its own evidence; Palette-5's flagged
+      three more. A section that re-reports the same protected lines every phase teaches the
+      next reader to skim it, which is how the real finding gets missed.
       ⚠ **PALETTE-4a PART B ADDS THREE MORE, AND THE SPLIT IS THE POINT.** Its edits made
       `--changed-files` report **six**; all six were read at the OLD line in the OLD revision
       before anything was touched, and they divided cleanly:
@@ -5093,6 +5182,11 @@ quadruples is evidence about the estimate, not about the wave:
       phase did not touch and therefore did not verify** — an unflagged sibling in a list where one
       member was flagged is exactly the shape `CLAUDE.md` calls the sharpest proof.
       **Running total of already-rotted citations found by the Palette arc and left unrepaired: 4.**
+      ⚠ **AND THE MARKER DOES NOT SILENCE `--changed-files`, WHICH IS A GAP IN THE TOOL RATHER
+      THAN IN THIS ENTRY.** `scripts/citecheck.js` computes `inRecord` for every finding and
+      stamps it on, and the `--role-only` count filters on it — but the changed-files reporter
+      does not, so these lines will keep appearing there. Filed as its own item below.
+<!-- /citecheck:record -->
       **The real repair is re-deriving where each subject lives and citing BY ROLE**, which is a
       larger job than a phase should improvise mid-build. Filed rather than half-done.
 

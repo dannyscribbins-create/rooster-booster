@@ -242,8 +242,17 @@ describe('Palette-4a Part B T3 — THE MONEY FENCE', () => {
     // Anchored on the surrounding declaration, never on a bare token name — a
     // bare '--rm-primary-text' also appears inside '--rm-primary-text' checks
     // and, more to the point, a bare value proves only that it occurs SOMEWHERE.
+    // ⚠ THREE UNTIL PALETTE-5, AND THE CHANGE IS DELIBERATE. The money-is-green
+    // ruling moved the BALANCE — "money the user has" — off `--rm-primary-text`
+    // and onto `successText`. What remains on MONEY are the two PROJECTED
+    // figures, which the ruling's own boundary excludes.
+    // ⚠ THE CASE IS KEPT RATHER THAN DELETED because `--rm-primary-text` is NOT
+    // dead: it still has exactly these two consumers, and this is what says so.
     const moneySites = DASH_CODE.split('color: MONEY').length - 1;
-    expect(moneySites, 'expected three dollar-figure sites on MONEY').toBe(3);
+    expect(moneySites, 'expected the two PROJECTED figures still on MONEY').toBe(2);
+    // And the balance is on the semantic green instead.
+    expect(DASH_CODE.split("color: statusVar('successText')").length - 1,
+      'expected the two balance spans on successText').toBe(2);
   });
 });
 

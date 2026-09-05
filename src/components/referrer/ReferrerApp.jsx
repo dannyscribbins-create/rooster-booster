@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
+import { elevationVar } from '../../constants/elevationTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import Dashboard from './DashboardTab';
 import CashOut from './CashOutTab';
@@ -12,6 +13,39 @@ import ExperiencePopup from './ExperiencePopup';
 import { getReferrerToken } from '../../utils/authStorage';
 
 // ─── Bottom Nav ───────────────────────────────────────────────────────────────
+//
+// ⚠ PALETTE-5. THIS IS A CONTROL, SO 1.4.11 APPLIES — unlike ProfileTab's badge
+// grid, which was ruled to need no boundary because it is not interactive.
+//
+// ⚠ IT WAS THE LAST RETIRED-TONE HOLDOUT IN THE REFERRER TREE, and it sat under
+// every migrated tab: Palette-4b's rendered-colour scan on a teal contractor
+// found 12 retired hits and ELEVEN of them were here.
+//
+// ── WHAT THE MEASUREMENT FOUND, AND WHY THE FIX IS NOT JUST A SUBSTITUTION ───
+// Active and inactive used the SAME colour at different alpha — 1.0 and 0.4.
+// Measured on the platform brand, the inactive icon composited to #99A9BB and
+// sat at 2.40:1 against the nav's white ground: UNDER the 3:1 non-text floor,
+// on every screen in the app, before this phase touched anything.
+//
+// ⚠ AND ALPHA ALONE CANNOT FIX IT. Raising the inactive alpha lifts it off the
+// ground but collapses it toward the active state, and the two constraints
+// cross before either is satisfied. Measured across the four seeded brands:
+//
+//     alpha   inactive vs ground   active vs inactive
+//     0.40          2.24  FAIL           3.86
+//     0.50          2.85  FAIL           2.94  FAIL
+//     0.60          3.68                 2.29  FAIL
+//
+// There is no value that clears 3:1 on both.
+//
+// ⚠ SO THE QUESTION IS WHICH ONE 1.4.11 ACTUALLY BINDS, and the answer is the
+// FIRST. State here is not carried by colour alone: the active tab also gets a
+// FILLED glyph variant, a visible LABEL, and the sliding indicator bar. Where a
+// state difference is multiply encoded, the contrast requirement that matters is
+// each control being perceivable against its ground. That is the number that was
+// failing, and 0.60 clears it at 3.68:1 worst case.
+// ⚠ THE INACTIVE ICONS THEREFORE GET DARKER. That is the repair, not a side
+// effect, and it is the only visible change this migration makes to the nav.
 function BottomNav({ tab, setTab }) {
   const tabs = [
     { id: "dashboard", icon: "ph-house",         label: "Home"     },
@@ -23,7 +57,17 @@ function BottomNav({ tab, setTab }) {
 
   const activeIndex = tabs.findIndex(t => t.id === tab);
   const isReferActive = tab === "refer";
-  const activeColor = isReferActive ? R.red : "#012854";
+  // ⚠ EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS FOR THE PLATFORM
+  // BRAND IN LIGHT MODE. themeKeyIntegrity.test.js fails on any that disagrees.
+  const TEXT = 'var(--rm-text, #1C2D4D)';
+  const PRIMARY = 'var(--rm-primary, #F26A1B)';
+  const SURFACE = 'var(--rm-surface, #FFFFFF)';
+  // The "Refer" tab keeps its own emphasis: it was the ACTION colour, hardcoded
+  // as the retired red, and the action colour is what --rm-primary is.
+  const activeColor = isReferActive ? PRIMARY : TEXT;
+  // ⚠ 0.60, NOT 0.40 — see the block above. This is the number that lifts the
+  // inactive icon off its ground; it is derived, not chosen.
+  const INACTIVE_OPACITY = 0.6;
 
   return (
     <nav style={{
@@ -32,13 +76,20 @@ function BottomNav({ tab, setTab }) {
       left: "50%",
       transform: "translateX(-50%)",
       width: "min(430px, 100vw)",
-      background: R.bgCard,
+      background: SURFACE,
       borderRadius: 24,
       display: "flex",
       zIndex: 100,
       paddingTop: 18,
       paddingBottom: "calc(18px + env(safe-area-inset-bottom, 0px))",
-      boxShadow: "0 -4px 20px rgba(1,40,84,0.08)",
+      // ⚠ THE OLD SHADOW CARRIED THE RETIRED NAVY AS DECIMAL CHANNELS —
+      // rgba(1,40,84,0.08) — which no hex sweep and no `R.`-keyed needle could
+      // see. Same hiding place Palette-4a found it in R.shadowLg.
+      // ⚠ AND IT IS A LITERAL RATHER THAN elevationVar: this shadow points UP
+      // (-4px), and the side channel publishes only downward roles. Inventing an
+      // upward role is a token decision, not a migration one, so the geometry is
+      // kept and only the retired tone is removed. Filed.
+      boxShadow: "0 -4px 20px rgba(0,0,0,0.08)",
       overflow: "hidden",
     }}>
       {/* Sliding underline indicator */}
@@ -57,7 +108,7 @@ function BottomNav({ tab, setTab }) {
       {/* Tab buttons */}
       {tabs.map(t => {
         const active = tab === t.id;
-        const color = active && t.id === "refer" ? R.red : "#012854";
+        const color = active && t.id === "refer" ? PRIMARY : TEXT;
         return (
           <button
             key={t.id}
@@ -86,7 +137,7 @@ function BottomNav({ tab, setTab }) {
                 fontSize: 22,
                 lineHeight: 1,
                 color,
-                opacity: active ? 1 : 0.4,
+                opacity: active ? 1 : INACTIVE_OPACITY,
                 transition: "opacity 200ms ease",
               }}
             />

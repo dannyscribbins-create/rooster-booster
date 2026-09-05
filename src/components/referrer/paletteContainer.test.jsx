@@ -134,9 +134,22 @@ describe('Palette-2 T1 — the five sites carry their ruled token', () => {
     // failure names the container rather than arriving as a generic sweep hit.
     expect(PLATFORM.recess).toBe('#ECF0F8');
     expect(PLATFORM.text).toBe('#1C2D4D');
+    expect(PLATFORM.surface).toBe('#FFFFFF');
+    expect(PLATFORM.primary).toBe('#F26A1B');
     for (const src of [screenSrc(), appSrc()]) {
       for (const [, prop, fallback] of src.matchAll(/var\((--rm-[a-z-]+),\s*(#[0-9A-Fa-f]{6})\)/g)) {
-        const key = { '--rm-recess': 'recess', '--rm-text': 'text' }[prop];
+        // ⚠ WIDENED IN PALETTE-5, AND ONLY BECAUSE THE NAV JOINED THIS FILE.
+        // Palette-2 owned two properties here because ReferrerApp's only themed
+        // thing was the wrapper's ground. The bottom nav — which lives in this
+        // same file and was out of scope then — now declares `surface` for its
+        // own card and `primary` for the active "Refer" tab.
+        // ⚠ THE ASSERTION IS UNWEAKENED: an unknown property still fails, and
+        // every fallback is still checked against the derivation. Only the set
+        // of KNOWN properties grew, by exactly the two the nav introduced.
+        const key = {
+          '--rm-recess': 'recess', '--rm-text': 'text',
+          '--rm-surface': 'surface', '--rm-primary': 'primary',
+        }[prop];
         expect(key, `unexpected custom property ${prop} in the container`).toBeTruthy();
         expect(fallback.toUpperCase(), `${prop} falls back to ${fallback}`).toBe(PLATFORM[key].toUpperCase());
       }
@@ -173,11 +186,17 @@ describe('Palette-2 T3 — what remains of R., enumerated rather than assumed', 
     expect(rRefs(codeOnly(readSrc('components/shared/Screen.jsx')))).toEqual(['fontBody']);
   });
 
-  it('[RED] ReferrerApp keeps only its bottom-nav references', () => {
-    // The bottom nav is not the wrapper and is not in scope. Enumerated so the
-    // next phase inherits a list rather than a guess.
+  it('[RED] ReferrerApp keeps only a font reference — the nav\'s colours are gone', () => {
+    // ⚠ THIS LIST SHRANK IN PALETTE-5, WHICH IS THE POINT OF HAVING WRITTEN IT.
+    // Palette-2 recorded `bgCard, fontMono, red, red` and said the nav was "not
+    // in scope" — Palette-5 was that scope. The three COLOUR reads are gone:
+    // bgCard became `surface`, and both `red`s were the retired Accent red on
+    // the active "Refer" tab, now `--rm-primary`.
+    // ⚠ `fontMono` STAYS, and deliberately: fonts are their own migration and no
+    // phase has ruled on them. A list that shrinks to empty by absorbing an
+    // unrelated concern is not evidence of progress.
     expect(rRefs(codeOnly(readSrc('components/referrer/ReferrerApp.jsx'))).sort())
-      .toEqual(['bgCard', 'fontMono', 'red', 'red']);
+      .toEqual(['fontMono']);
   });
 
   it('[RED] and both files still RENDER — a sweep proves absence, not liveness', () => {
