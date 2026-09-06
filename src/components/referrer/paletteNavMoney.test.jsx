@@ -153,13 +153,17 @@ describe('Palette-5 T1 — money resolves to successText', () => {
       .toBeGreaterThan(1);
   });
 
-  it('[RED] the PROJECTED figures are held, and --rm-primary-text is NOT dead', () => {
-    // ⚠ A.3's answer. `nextPayout` is a projection — what the next sold deal
-    // WOULD pay — which the ruling's own boundary excludes from "money the user
-    // has". Two consumers remain, so the token built in Palette-4a still has a job.
-    const held = DASH_CODE.split('color: MONEY').length - 1;
-    expect(held, 'expected the two projected figures still on MONEY').toBe(2);
-    expect(DASH_CODE).toContain("const MONEY = 'var(--rm-primary-text, #B1480A)'");
+  it('[RED] the PROJECTED figures are on the TEXT TONE, and MONEY is gone', () => {
+    // ⚠ THIS CASE INVERTED IN PALETTE-6 AND IS REWRITTEN RATHER THAN DELETED.
+    // Palette-5 asserted the two projections were HELD on `--rm-primary-text`
+    // and that the token therefore still had consumers. Palette-6 completed the
+    // rule — projections take the text tone — so the constant is gone and the
+    // token has ZERO consumers.
+    // ⚠ THE ASSERTION IS KEPT because the SUBJECT still matters: it is now what
+    // says the projections did not quietly become green.
+    expect(DASH_CODE, 'the MONEY constant should be gone').not.toContain('const MONEY =');
+    expect(DASH_CODE, 'a projection is still on the brand-text token').not.toContain('color: MONEY');
+    expect(DASH_CODE).toContain('${nextPayout.total}');
   });
 });
 

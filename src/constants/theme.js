@@ -1,5 +1,20 @@
 // ─── Brand Design Tokens ──────────────────────────────────────────────────────
 //
+// ⚠ THREE MORE WERE REMOVED ON 2026-09-06 (Palette-6), AND THE REASON IS THE
+// OPPOSITE OF THE FIVE BELOW: those were never used, these STOPPED being used.
+//
+//     bgCardTint  #F5F3EE      bgBlueLight #D3E3F0      shadowMd  a 2-part shadow
+//
+// `bgBlueLight` was a RETIRED ACCENT TONE — the last definition of it in the
+// codebase — and its readers went to `--rm-recess` and `--rm-primary`.
+// `bgCardTint` went to `--rm-recess`; `shadowMd` went to the side channel's own
+// `shadowMd` role, which Palette-4a Part B added.
+//
+// ⚠ THEY WERE FOUND BY themeKeyIntegrity's dead-key check FAILING THE GATE, not
+// by anyone remembering to look. That is the mechanism working as designed: a
+// migration that empties a key is exactly when the key should go, and the check
+// is what makes "in the same session" enforceable rather than aspirational.
+//
 // ⚠ FIVE KEYS WERE REMOVED HERE ON 2026-09-04 (Palette D-5, R-13). TOMBSTONED
 // RATHER THAN SILENTLY DELETED, because one of them is load-bearing EVIDENCE in
 // an open ruling and someone will otherwise go looking for it.
@@ -27,8 +42,6 @@ export const R = {
   // Backgrounds
   bgPage:     "#EEF2F7",
   bgCard:     "#FFFFFF",
-  bgCardTint: "#F5F3EE",
-  bgBlueLight:"#D3E3F0",
 
   // Brand
   red:        "#CC0000",
@@ -67,7 +80,6 @@ export const R = {
   border:    "rgba(0,0,0,0.08)",
   borderMed: "rgba(0,0,0,0.13)",
   shadow:    "0 1px 4px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)",
-  shadowMd:  "0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.05)",
   shadowLg:  "0 8px 32px rgba(1,40,84,0.13)",
 
   // Fonts

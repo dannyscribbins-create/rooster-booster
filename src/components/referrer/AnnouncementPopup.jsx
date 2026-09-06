@@ -82,8 +82,13 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
 
         {/* Amount display */}
         <div style={{ marginBottom: 20 }}>
+          {/* ⚠ MONEY, BUT NOT THE USER'S — this broadcasts what SOMEONE ELSE just
+              earned. The rule covers it without an exception: green means money in
+              YOUR account, so this takes the text tone.
+              ⚠ ONE SITE ONLY. Popups are a later phase; every other colour in this
+              file is deliberately untouched. */}
           <span style={{
-            fontSize: 48, fontWeight: 900, color: R.navy,
+            fontSize: 48, fontWeight: 900, color: 'var(--rm-text, #1C2D4D)',
             fontFamily: R.fontMono, letterSpacing: "-0.02em",
           }}>
             ${parseFloat(announcement.amount).toLocaleString()}

@@ -38,23 +38,25 @@ const SECONDARY_DARK = 'var(--rm-secondary-dark, #0C1320)';
 const ON_SECONDARY   = 'var(--rm-on-secondary, #FFFFFF)';
 const SURFACE        = 'var(--rm-surface, #FFFFFF)';
 const RECESS         = 'var(--rm-recess, #ECF0F8)';
+const TEXT           = 'var(--rm-text, #1C2D4D)';
 
-// ⚠ NARROWED IN PALETTE-5, AND THE NAME NO LONGER MEANS WHAT IT SAYS.
-// This was every money figure on the tab; the BALANCE moved to successText under
-// the money-is-green ruling, and what is left are the two PROJECTED figures the
-// ruling excludes. It is kept under this name rather than renamed because
-// renaming it in the same commit that changes its membership would make the diff
-// unreviewable — the rule this repo learned from relocations.
+// ─── ⚠ `--rm-primary-text` NOW HAS ZERO CONSUMERS, AND IT IS KEPT ON PURPOSE ──
 //
-// ⚠ THE MONEY PATH. NOT `--rm-primary`, AND THIS CONSTANT EXISTS SO THE
-// DIFFERENCE CANNOT BE LOST IN A DIFF. `primary` is floored against the 3:1
-// NON-TEXT threshold — it is a fill colour. Measured on the platform brand it
-// is 3.06:1 on a card, so putting the payout figures on it would have made the
-// single most prominent number in the product pass or fail the 4.5 text floor
-// DEPENDING ON WHOSE BRAND IT IS: 3.06 platform, 5.87 magenta. `primaryText` is
-// the same brand colour nudged until it clears 4.5 against BOTH the card and
-// the recessed well. For a red brand it returns the brand colour unchanged.
-const MONEY = 'var(--rm-primary-text, #B1480A)';
+// The constant that used to live here is gone. Palette-4a built `primaryText`
+// for exactly the sites the money ruling has now moved: the balance went to
+// `successText` in Palette-5, and Palette-6 sent the two PROJECTED figures to
+// the text tone. Nothing in `src/` reads the token today.
+//
+// ⚠ DO NOT DELETE IT. It is derived per brand and per mode and floored against
+// BOTH `surface` and `recess` — the only token in the set that is a brand colour
+// made safe for TEXT. `primary` cannot stand in for it: that is floored against
+// the 3:1 NON-TEXT threshold and measures 3.06:1 on a card for the platform
+// brand, which is why it was built in the first place. The next brand-coloured
+// text site will want it, and re-deriving it correctly is a phase of work.
+//
+// ⚠ AND THE REASON THIS NOTE IS HERE RATHER THAN ONLY IN THE TOKEN FILE: a
+// consumer count of zero is what makes something look deletable, and the person
+// who deletes it will be reading THIS file's history to find out who used it.
 
 // The one muted-text alpha, shared with the nine files that already use this
 // idiom. ⚠ IT IS DERIVED, NOT PICKED: 0.72 is the lowest value that clears 4.5:1
@@ -361,18 +363,16 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                 <p style={{ margin: "4px 0 0", fontSize: 12, color: 'var(--rm-text, #1C2D4D)' }}>
                   <span style={{ opacity: MUTED }}>
                     {soldCount} sold referral{soldCount !== 1 ? "s" : ""} this year ·{" "}
-                  {/* ⚠ HELD ON `MONEY` (--rm-primary-text), AND THE REASON IS THE RULE'S
-                      OWN BOUNDARY. "Money the user has" is the test; `nextPayout` is a
-                      PROJECTION — what the next sold deal would pay — which the ruling
-                      excludes alongside tier thresholds and schedule rows.
-                      ⚠ AND THAT LEAVES A CONFLICT THIS PHASE DID NOT INVENT AND WILL NOT
-                      GUESS AT: the same projected figure is ALSO on ProfileTab's stat row,
-                      painted `--rm-text`. So it still reads two ways across two screens.
-                      Resolving it means ruling on the projection itself, which is a
-                      product decision. Filed, not improvised. */}
+                  {/* ⚠ THE TEXT TONE, BY THE RULE'S OWN BOUNDARY. "Money in the account"
+                      is the test; `nextPayout` is a PROJECTION — what the next sold deal
+                      WOULD pay — which the ruling excludes alongside tier thresholds and
+                      schedule rows.
+                      ⚠ THE CONFLICT PALETTE-5 FILED IS RESOLVED: a PROJECTION takes
+                      the TEXT TONE, so this now matches ProfileTab's stat row and the same
+                      $600 finally reads one way across both screens. */}
                     Next:{" "}
                   </span>
-                  <span style={{ color: MONEY, fontWeight: 700 }}>${nextPayout.total}</span>
+                  <span style={{ color: TEXT, fontWeight: 700 }}>${nextPayout.total}</span>
                 </p>
               </>
             )}
@@ -535,7 +535,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                 <p style={{ margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontMono, textTransform: "uppercase" }}>Next Payout</p>
                 {/* ⚠ HELD ON `MONEY` — a PROJECTION, same as the "Next:" figure above.
                     Still never --rm-primary: that is the 3:1 FILL tone and this is text. */}
-                <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800, fontFamily: R.fontMono, color: MONEY }}>${nextPayout.total}</p>
+                <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800, fontFamily: R.fontMono, color: TEXT }}>${nextPayout.total}</p>
               </div>
             </div>
 

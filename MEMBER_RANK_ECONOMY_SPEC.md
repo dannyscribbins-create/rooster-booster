@@ -504,7 +504,12 @@ Both obvious names are already taken by live meanings, and one collides on the e
 - **`rank` = leaderboard position.** The payload ships `userRank` (`server/routes/referrer.js:2775,2786`),
   consumed at `src/components/referrer/RankingsTab.jsx:58,465`; shout copy buckets by
   `rank1 / rank2_3 / rank4_7 / rank8_10` (`src/constants/shouts.js:1-2`) in **two** components —
-  `RankingsTab.jsx:91-92` and `ProfileTab.jsx:603-604`.
+  the shout-text selection in `RankingsTab` and the `SHOUT_BUCKETS` selection in `ProfileTab`.
+  ⚠ **Both were line citations until 2026-09-06.** The `RankingsTab` one was CORRECT and
+  Palette-6's edits moved it; the `ProfileTab` one was ALREADY WRONG — it pointed at the badge
+  tile. Palette-5 flagged that unverified sibling explicitly and Palette-6 verified it, which is
+  the whole argument for citing by role: the number that was right and the number that was wrong
+  were indistinguishable from the outside.
 - **`tier` is taken twice.** `team_members.tier` (`'general'|'admin'|'owner'`, `server/db.js:1183`),
   which `surfaceFor()` routes the whole application on (`src/App.jsx:57`); and the
   `tier_1`/`tier_2` contact filters (`server/routes/admin/contacts.js:220-231`).

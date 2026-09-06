@@ -344,23 +344,23 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1275 server tests across 201 suites, and 802 React tests across 52 files** (measured 2026-09-05 by Palette-5, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-5 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1275 server tests across 201 suites, and 823 React tests across 53 files** (measured 2026-09-06 by Palette-6, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-6 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
   TESTS.** The gate was run against its working tree and the counts INCLUDE its own new cases, so
   citing the parent would name a revision at which this figure was never true. Same reasoning as
   the BR-1 Phase 1-B entry below, and the OPPOSITE of the docs-only entry below that — which is
   not a contradiction: **the rule is "name the revision at which the figure is true", and which
   commit that is depends on whether the pass added tests.**
-  ⚠ **RE-ARMED BY THE NEXT PHASE THREE TIMES RUNNING NOW, WHICH IS THE POINT.** Each previous
-  figure was ONE commit old when it was replaced and already low — Palette-4c by 18 React tests,
-  Palette-4b by 10, Palette-4a Part B by 23. **A figure re-armed every phase is never more than
+  ⚠ **RE-ARMED BY THE NEXT PHASE FOUR TIMES RUNNING NOW, WHICH IS THE POINT.** Each previous
+  figure was ONE commit old when it was replaced and already low — Palette-5 by 21 React tests,
+  Palette-4c by 18, Palette-4b by 10, Palette-4a Part B by 23. **A figure re-armed every phase is never more than
   one phase wrong**, which is the whole difference from the six-commit drift below. **Re-arming when the number is one commit stale costs nothing; the six-commit
   drift it replaced took 41 server tests and 97 React tests to notice.** If you have just run the
   gate and read all four numbers, you are the session that should re-arm.
   ⚠ **AND THE FIGURE BEFORE THAT WAS FOUND SIX COMMITS STALE, WHICH WAS THE SIXTH INSTANCE.** It
   read 1234 / 191 / 654 / 43 at `f7dfeed` while the whole Palette arc had landed since. Nobody
   lowered it; it simply was not re-armed by the five phases that ran the gate in between.
-  ⚠ **52 REACT FILES IS ABOVE THE "far above 40" TRIPWIRE BELOW AND WAS CHECKED RATHER THAN
+  ⚠ **53 REACT FILES IS ABOVE THE "far above 40" TRIPWIRE BELOW AND WAS CHECKED RATHER THAN
   ASSUMED.** `vite.config.mjs`'s `test.include` is still `src/**/*.test.{js,jsx}`, and the gate log
   names zero `server/` paths. The glob has not widened; the React suite has grown.
   ⚠ **THE HEAD FOR THIS FIGURE IS `f7dfeed`, THE PARENT OF THE COMMIT RE-ARMING IT, AND THE REASONING IS THE OPPOSITE OF THE ENTRY BELOW RATHER THAN A CONTRADICTION OF IT.** This pass changed **only markdown** — no test file, no source file — so the working tree it was measured against differs from `f7dfeed` in nothing the gate can see, and 1234 / 191 / 654 / 43 is exactly what `f7dfeed`'s own commit body reported. **The figure is therefore true AT `f7dfeed`**, which is the test the rule below actually states: name the revision at which the figure is true. A docs-only commit that adds no tests is the one case where the parent is the honest citation, and saying so here is what stops the next reader "correcting" it back.

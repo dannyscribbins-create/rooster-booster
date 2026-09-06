@@ -237,20 +237,16 @@ describe('Palette-4a Part B T3 — THE MONEY FENCE', () => {
     expect(failures.join(' | ')).toContain('Gamma (UNSET)/light');
   });
 
-  it('[RED] and the dollar-figure sites declare --rm-primary-text, not --rm-primary', () => {
-    expect(DASH_CODE).toContain("const MONEY = 'var(--rm-primary-text, #B1480A)'");
-    // Anchored on the surrounding declaration, never on a bare token name — a
-    // bare '--rm-primary-text' also appears inside '--rm-primary-text' checks
-    // and, more to the point, a bare value proves only that it occurs SOMEWHERE.
-    // ⚠ THREE UNTIL PALETTE-5, AND THE CHANGE IS DELIBERATE. The money-is-green
-    // ruling moved the BALANCE — "money the user has" — off `--rm-primary-text`
-    // and onto `successText`. What remains on MONEY are the two PROJECTED
-    // figures, which the ruling's own boundary excludes.
-    // ⚠ THE CASE IS KEPT RATHER THAN DELETED because `--rm-primary-text` is NOT
-    // dead: it still has exactly these two consumers, and this is what says so.
-    const moneySites = DASH_CODE.split('color: MONEY').length - 1;
-    expect(moneySites, 'expected the two PROJECTED figures still on MONEY').toBe(2);
-    // And the balance is on the semantic green instead.
+  it('[RED] account money is successText, and no projection is on the brand-text token', () => {
+    // ⚠ INVERTED BY PALETTE-6 AND REWRITTEN RATHER THAN DELETED. This asserted
+    // the MONEY constant EXISTED and still had two consumers. The money rule
+    // completed: account money is green, PROJECTIONS take the text tone, and
+    // `--rm-primary-text` now has zero consumers anywhere in src/.
+    // ⚠ THE SUBJECT SURVIVES AND IS WORTH MORE THAN THE OLD ONE: it is now what
+    // says the projections did not quietly become green instead.
+    expect(DASH_CODE, 'the MONEY constant should be gone').not.toContain('const MONEY =');
+    expect(DASH_CODE.split('color: MONEY').length - 1,
+      'a projection is still on the brand-text token').toBe(0);
     expect(DASH_CODE.split("color: statusVar('successText')").length - 1,
       'expected the two balance spans on successText').toBe(2);
   });
@@ -331,7 +327,6 @@ describe('Palette-4a Part B T5 — the ruled destinations', () => {
       ['ON_SECONDARY', '--rm-on-secondary', light.onSecondary],
       ['SURFACE', '--rm-surface', light.surface],
       ['RECESS', '--rm-recess', light.recess],
-      ['MONEY', '--rm-primary-text', light.primaryText],
     ];
     for (const [name, prop, value] of EXPECT) {
       expect(DASH_CODE, `${name} is not declared as ${prop} with the derived fallback`)

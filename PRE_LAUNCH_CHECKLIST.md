@@ -4872,6 +4872,52 @@ quadruples is evidence about the estimate, not about the wave:
       again on the next phase.
       → `9dc7570` · the R/AD migration entry's preview consequence · `RAD_MIGRATION_PHASE0B_REPORT.md` §6.4
 
+- [ ] **⚠ MONEY ON A BRAND FILL CANNOT BE GREEN, AND THE RULE HAS NO CLAUSE FOR IT.**
+      *(Palette-6, 2026-09-06. One site; the gap is the entry.)*
+      `CashOutTab`'s hero shows the BALANCE — money in the account, so green by the ruling — but it
+      sits on the `secondary -> secondaryDark` gradient. **Measured, `successText` there is
+      2.40 / 1.75 / 2.11 / 1.40:1** across the seeded brands and modes; on the darker stop it reaches
+      3.26 at best. It is `onSecondary` instead, at 4.61-18.59.
+      ⚠ **SO THE ONE NUMBER THAT PAINTS DIFFERENTLY ACROSS SCREENS IS THE BALANCE**, and it is forced
+      by the ground rather than chosen: green on Dashboard and Profile cards, white on the CashOut
+      hero. V3's "same number, same colour" holds everywhere the ground allows it.
+      ⚠ **THIRD APPEARANCE OF THE SAME GAP** — the status palette, the muted idiom and now the money
+      tone are all defined against `surface`, and a brand fill is not a surface. Palette-4b filed it
+      for status; this is the same hole from the other side.
+      → the commented site in `CashOutTab` · the "status on a brand fill" entry
+
+- [ ] **⚠ `AvatarCircle`'s `bg` PROP NOW HAS ZERO CALLERS, AND ITS `#fff` DEFECT IS UNREACHABLE —
+      BUT STILL PRESENT.**
+      *(Palette-6, 2026-09-06.)* Passing `bg` makes `AvatarCircle` hardcode a white foreground, which
+      its own source documents as wrong: `onPrimary` answers about `--rm-primary`, not about a caller's
+      fill. `RankingsTab`'s warmup rows were the only caller and no longer pass it.
+      ⚠ **THE DEFECT IS DORMANT, NOT FIXED.** The next caller re-arms it, and in dark mode a white
+      foreground on a brightened fill is the 2.51-3.13:1 failure `onSecondary` was built for.
+      ⚠ **AND A CUE WAS LOST:** warmup leaderboard rows no longer differ by avatar fill. They still
+      differ by showing a full name and carrying no photo. Recorded so it is a decision, not a drift.
+      → `src/components/shared/AvatarCircle.jsx` · `paletteRemainingTabs.test.jsx` T1
+
+- [ ] **⚠ THREE `R` KEYS WENT DEAD AND WERE REMOVED — FOUND BY THE GATE, NOT BY REMEMBERING.**
+      *(Palette-6, 2026-09-06.)* `bgCardTint`, `bgBlueLight` and `shadowMd` lost their last readers to
+      this migration. `themeKeyIntegrity`'s dead-key check failed the gate and named all three.
+      ⚠ **`bgBlueLight` WAS THE LAST DEFINITION OF A RETIRED ACCENT TONE IN THE CODEBASE.**
+      ⚠ **THE POINT IS THE MECHANISM.** "Dead code must be removed in the same session it is
+      identified" is a rule nobody can obey by memory; a check that fails the gate the moment a key
+      empties is what makes it enforceable. Tombstoned in `theme.js` beside the five from Palette D-5.
+      → `src/constants/theme.js`'s tombstone
+
+- [ ] **⚠ THE MIGRATION SCRIPTS PRODUCED THREE BROKEN-SOURCE MOMENTS, ALL CAUGHT, AND THE PATTERN IS
+      WORTH THE ENTRY.**
+      *(Palette-6, 2026-09-06.)* A prefix-matching substitution truncated three lines into invalid
+      JavaScript — `color: PRIMARY, R.blueLight,`, `color: TEvy`, and a `marginBoolor: R.red` —
+      and a `{/* */}` JSX comment was placed inside a `cond && (` and inside a style-object literal,
+      each a parse error.
+      ⚠ **NONE WAS CAUGHT BY A TEST.** Two were caught by the R-key sweep, two by `npm run lint`, one
+      by the module failing to transform. **A migration that edits by string match needs a
+      SYNTAX gate immediately after, not only a semantic one** — and the arc has now hit the
+      JSX-comment placement error in three separate phases.
+      → the `_lib6.py` count-asserting patcher · `npm run lint`
+
 - [ ] **⚠ OPACITY INHERITS AND COLOUR DOES NOT — A DEFECT CLASS NO TEST IN THIS ARC CAN SEE.**
       *(Palette-5, 2026-09-05. One instance found and fixed; the class is the entry.)*
       Palette-4a put `opacity: MUTED` on a `<p>` to mute a sentence. The money span nested
@@ -4926,7 +4972,8 @@ quadruples is evidence about the estimate, not about the wave:
       all cast downward. Adding an upward role is a token decision, not a migration one.
       → `src/constants/elevationTheme.js`
 
-- [ ] **⚠ PARTLY RESOLVED BY PALETTE-5 — THE BALANCE IS NOW ONE COLOUR, THE PROJECTION IS NOT.
+- [x] **⚠ CLOSED BY PALETTE-6 — the projection is one colour too. Kept for the reasoning.
+      ⚠ WAS: PARTLY RESOLVED BY PALETTE-5 — THE BALANCE IS NOW ONE COLOUR, THE PROJECTION IS NOT.
       ⚠ THREE MONEY TREATMENTS ACROSS TWO TABS, NAMED RATHER THAN DISCOVERED.**
       *(Palette-4c, 2026-09-04. Nothing was changed for this; it is reported.)*
       The same kind of figure now paints three ways:
@@ -4950,11 +4997,15 @@ quadruples is evidence about the estimate, not about the wave:
       boundary excludes from "money the user has" alongside tier thresholds and schedule rows. So it
       stays `--rm-primary-text` on the Dashboard (brand-responsive, 5.87:1 on Beta) and `--rm-text`
       on Profile's stat row (12.04:1). **The same $600 still reads two ways across two screens.**
-      ⚠ **THIS IS THE ONE THING STILL NEEDING A RULING**, and the options are exactly three: make
-      projections green too (contradicts the boundary), make them brand-responsive on both screens
-      (Profile's stat card would gain an accent it has never had), or make them body text on both
-      (the Dashboard loses its only accent). Each is defensible; none is derivable from the rules
-      already given.
+      ⚠ **RULED AND SHIPPED IN PALETTE-6: the third option.** Projections take the TEXT TONE on both
+      screens. Measured on a magenta contractor, the $600 next-payout now paints `rgb(11,61,59)` on
+      the Dashboard and on Profile's stat row alike, at 12.04:1.
+      ⚠ **AND THE RULE IS NOW ONE SENTENCE:** green means money in the account; everything else is a
+      projection or a teaser and goes on text tone. Schedule rows, prize thresholds, other referrers'
+      leaderboard earnings and the broadcast payout all follow from it without an exception.
+      ⚠ **THE COST, STATED:** the Dashboard's balance card is the only brand-free accent left on that
+      screen, and the payout figures no longer stand out from body copy. That is the trade the ruling
+      names — the surrounding copy says "not yet yours" better than a colour can.
       → Palette-4a's `MONEY` constant in `DashboardTab` · the `money: true` flag in `ProfileTab`'s
       stat rows · `statusVar('successText')`
 

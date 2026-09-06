@@ -1,5 +1,28 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
+import { statusVar, STATUS_BANNER, STATUS_TINT } from '../../constants/statusTheme';
+import { elevationVar } from '../../constants/elevationTheme';
+
+// ─── PALETTE-6 — THE RENDER TOKENS THIS TAB PAINTS WITH ───
+// ⚠ EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS FOR THE PLATFORM
+// BRAND IN LIGHT MODE (M.7). themeKeyIntegrity.test.js fails on any that disagrees.
+const PRIMARY        = 'var(--rm-primary, #F26A1B)';
+const PRIMARY_DARK   = 'var(--rm-primary-dark, #CE530C)';
+const ON_PRIMARY     = 'var(--rm-on-primary, #000000)';
+const SECONDARY      = 'var(--rm-secondary, #1C2D4D)';
+const SECONDARY_DARK = 'var(--rm-secondary-dark, #0C1320)';
+const ON_SECONDARY   = 'var(--rm-on-secondary, #FFFFFF)';
+const SURFACE        = 'var(--rm-surface, #FFFFFF)';
+const RECESS         = 'var(--rm-recess, #ECF0F8)';
+const TEXT           = 'var(--rm-text, #1C2D4D)';
+
+// The one muted alpha, shared with the files that already use this idiom.
+// ⚠ AND ITS GROUND AND ITS PARENTS ARE BOTH CHECKED (M.5). Palette-5 found a
+// money span nested inside a muted paragraph inheriting 0.72 down to 3.29:1 —
+// every element's own declaration correct, the composited pair wrong. Nothing
+// below puts a non-muted child inside a muted parent.
+const MUTED = 0.72;
+
 import { useBranding } from '../shared/ThemeProvider';
 import { BACKEND_URL } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
@@ -104,7 +127,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
     return (
       <Screen>
         <div style={{
-          background: `linear-gradient(145deg, #012854 0%, #001a3a 100%)`,
+          background: `linear-gradient(145deg, ${SECONDARY} 0%, ${SECONDARY_DARK} 100%)`,
           padding: "52px 24px 24px",
         }}>
           <Skeleton width="120px" height="12px" borderRadius="4px" style={{ marginBottom: 8 }} />
@@ -132,27 +155,27 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
         <div style={{
           minHeight: "100vh", display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center", padding: "0 32px",
-          background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
+          background: `linear-gradient(160deg, ${SECONDARY} 0%, ${SECONDARY_DARK} 100%)`,
         }}>
           <style>{`@keyframes cardDrop { 0%{transform:translateY(-60px) scale(0.96);opacity:0} 60%{transform:translateY(8px) scale(1.01);opacity:1} 80%{transform:translateY(-4px) scale(0.995)} 100%{transform:translateY(0) scale(1);opacity:1} }`}</style>
           <div style={{
-            background: R.bgCard, borderRadius: 24, padding: "40px 32px",
-            textAlign: "center", boxShadow: R.shadowLg,
+            background: SURFACE, borderRadius: 24, padding: "40px 32px",
+            textAlign: "center", boxShadow: elevationVar('shadowLg'),
             opacity: 0,
             animation: cardVisible ? "cardDrop 400ms ease-out forwards" : "none",
           }}>
-            <h2 style={{ margin: "0 0 20px", fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: R.navy }}>
+            <h2 style={{ margin: "0 0 20px", fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: TEXT }}>
               Request Submitted!
             </h2>
             <p style={{
-              margin: "0 0 4px", fontSize: 42, fontWeight: 900, color: R.green, fontFamily: R.fontMono,
+              margin: "0 0 4px", fontSize: 42, fontWeight: 900, color: statusVar('successText'), fontFamily: R.fontMono,
               display: "inline-block",
               transform: amountPunching ? "scale(1.15)" : "scale(1)",
               transition: amountPunching ? "transform 150ms ease-out" : "transform 100ms ease-in",
             }}>
               ${displayAmount.toLocaleString()}
             </p>
-            <p style={{ margin: "0 0 16px", fontSize: 14, color: R.textSecondary, fontFamily: R.fontSans }}>
+            <p style={{ margin: "0 0 16px", fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: R.fontSans }}>
               via {ALL_METHODS.find(m => m.id === method)?.label}
             </p>
 
@@ -187,15 +210,15 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
               )}
             </div>
 
-            <p style={{ color: R.textSecondary, fontSize: 15, lineHeight: 1.6, margin: "0 0 24px" }}>
+            <p style={{ color: TEXT, opacity: MUTED, fontSize: 15, lineHeight: 1.6, margin: "0 0 24px" }}>
               Our team will process your payout within 1–2 business days. You'll get a confirmation when it's on its way!
             </p>
             <button onClick={() => { setStep(1); setMethod(null); setAmount(""); setDetail(""); }} style={{
-              background: `linear-gradient(135deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
+              background: `linear-gradient(135deg, ${SECONDARY} 0%, ${SECONDARY_DARK} 100%)`,
               border: "none", borderRadius: 12, padding: "14px 36px",
-              color: "#fff", fontSize: 15, fontWeight: 700,
+              color: ON_SECONDARY, fontSize: 15, fontWeight: 700,
               fontFamily: R.fontSans, cursor: "pointer",
-              boxShadow: R.shadowMd,
+              boxShadow: elevationVar('shadowMd'),
             }}>Done</button>
           </div>
         </div>
@@ -211,8 +234,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
           <div
             onClick={onOpenBankSetup}
             style={{
-              backgroundColor: '#1a0a00',
-              border: '1px solid #ff8c00',
+              ...STATUS_BANNER.warning,
               borderRadius: 10,
               padding: '12px 16px',
               marginBottom: 16,
@@ -223,13 +245,13 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
             }}
           >
             <i className="ph-fill ph-warning"
-               style={{ fontSize: 20, color: '#ff8c00', flexShrink: 0 }} />
+               style={{ fontSize: 20, color: statusVar('warning'), flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
               <div style={{
                 fontFamily: 'Montserrat, sans-serif',
                 fontWeight: 700,
                 fontSize: 13,
-                color: '#ff8c00',
+                color: statusVar('warningText'),
                 marginBottom: 2
               }}>
                 Bank Account Required
@@ -237,21 +259,21 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
               <div style={{
                 fontFamily: 'Roboto, sans-serif',
                 fontSize: 12,
-                color: '#cc7700'
+                color: statusVar('warningText')
               }}>
                 Connect your bank account to initiate cashouts.
                 Tap to connect now.
               </div>
             </div>
             <i className="ph ph-caret-right"
-               style={{ fontSize: 16, color: '#ff8c00', marginLeft: 'auto', flexShrink: 0 }} />
+               style={{ fontSize: 16, color: statusVar('warning'), marginLeft: 'auto', flexShrink: 0 }} />
           </div>
         </div>
       )}
 
       {/* Header */}
       <div style={{
-        background: `linear-gradient(145deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
+        background: `linear-gradient(145deg, ${SECONDARY} 0%, ${SECONDARY_DARK} 100%)`,
         padding: "52px 24px 24px",
       }}>
         {/* ⚠ THE CONTRACTOR'S PROGRAM NAME, NOT A CODENAME (BR-1 Phase 2, B.1).
@@ -265,11 +287,19 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
               `app_display_name`'s helper text in the admin panel has always
               promised this line — "replaces Rooster Booster throughout the
               referrer app" — and nothing had ever consumed it. */}
-        <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,0.5)", fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: "#fff", letterSpacing: "-0.02em" }}>Cash Out</h1>
-        <p style={{ margin: "4px 0 0", fontSize: 15, color: "rgba(255,255,255,0.6)" }}>
+        {/* ⚠ FULL onSecondary, NOT the muted idiom. This sits on a GRADIENT, so its
+            floor is the DARKER STOP, and 0.72 of onSecondary measures 3.54-4.14:1
+            there in dark mode across the seeded brands. Third application of the
+            rule; it has cost a fix in every phase that skipped it. */}
+        <p style={{ margin: "0 0 4px", fontSize: 12, color: ON_SECONDARY, fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: ON_SECONDARY, letterSpacing: "-0.02em" }}>Cash Out</h1>
+        <p style={{ margin: "4px 0 0", fontSize: 15, color: ON_SECONDARY }}>
           ${balance.toLocaleString()} available
         </p>
+        {/* ⚠ A STATUS MESSAGE ON A BRAND FILL, which the token set still has no pair
+            for — the gap Palette-4b filed. Held on the literal here rather than
+            routed to statusVar, whose LIGHT tone would mount at 2.87:1 on this navy.
+            Reported; the fix is a ground move, and this hero has no room for one. */}
         {balance < 20 && (
           <p style={{ margin: "6px 0 16px", fontSize: 13, color: "#fca5a5", fontFamily: R.fontBody }}>
             Minimum cashout amount is $20
@@ -285,10 +315,10 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{
                   width: 28, height: 28, borderRadius: "50%",
-                  background: i + 1 <= step ? R.red : "rgba(255,255,255,0.2)",
-                  color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: i + 1 <= step ? PRIMARY : "rgba(255,255,255,0.2)",
+                  color: i + 1 <= step ? ON_PRIMARY : ON_SECONDARY, display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 12, fontWeight: 700, fontFamily: R.fontMono,
-                  border: i + 1 === step ? "2px solid #fff" : "none",
+                  border: i + 1 === step ? `2px solid ${ON_SECONDARY}` : "none",
                   transition: "background 0.3s, border-color 0.3s",
                   animation: popping === i + 1 ? "nodePop 300ms ease-out" : "none",
                 }}>
@@ -296,7 +326,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                     ? <i className="ph ph-check" style={{ fontSize: 15 }} />
                     : i + 1}
                 </div>
-                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", fontFamily: R.fontMono, marginTop: 3, textTransform: "uppercase" }}>{s}</span>
+                <span style={{ fontSize: 12, color: ON_SECONDARY, fontFamily: R.fontMono, marginTop: 3, textTransform: "uppercase" }}>{s}</span>
               </div>
               {i < steps.length - 1 && (
                 <div style={{
@@ -306,7 +336,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                   <div style={{
                     position: "absolute", left: 0, top: 0, bottom: 0,
                     width: i + 1 < step ? "100%" : "0%",
-                    background: R.red,
+                    background: PRIMARY,
                     transition: "width 450ms ease-in-out",
                   }} />
                 </div>
@@ -321,41 +351,41 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
         {/* Step 1 — Method */}
         {step >= 1 && (
           <AnimCard delay={80}>
-            <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: R.navy, fontFamily: R.fontSans }}>
+            <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: R.fontSans }}>
               1. Choose payout method
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {filteredMethods.map(m => (
                 <button key={m.id} onClick={() => { setMethod(m.id); if (step === 1) advanceStep(2); }} style={{
-                  background: method === m.id ? "#fff7f7" : R.bgCard,
-                  border: `1.5px solid ${method === m.id ? R.red : R.border}`,
+                  background: method === m.id ? STATUS_TINT.danger : SURFACE,
+                  border: `1.5px solid ${method === m.id ? PRIMARY : elevationVar('border')}`,
                   borderRadius: 14, padding: "14px 16px",
                   display: "flex", alignItems: "center", gap: 16,
                   cursor: "pointer", textAlign: "left",
-                  boxShadow: method === m.id ? "0 4px 14px rgba(204,0,0,0.12)" : R.shadow,
+                  boxShadow: elevationVar(method === m.id ? 'shadowMd' : 'shadow'),
                   transition: "border-color 0.2s, box-shadow 0.2s, background 0.2s",
                 }}
-                  onMouseEnter={e => { if (method !== m.id) e.currentTarget.style.borderColor = R.borderMed; }}
-                  onMouseLeave={e => { if (method !== m.id) e.currentTarget.style.borderColor = R.border; }}
+                  onMouseEnter={e => { if (method !== m.id) e.currentTarget.style.borderColor = elevationVar('border'); }}
+                  onMouseLeave={e => { if (method !== m.id) e.currentTarget.style.borderColor = elevationVar('border'); }}
                 >
                   <div style={{
                     width: 40, height: 40, borderRadius: 10,
-                    background: method === m.id ? "#fee2e2" : R.bgBlueLight,
+                    background: method === m.id ? STATUS_TINT.danger : RECESS,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     flexShrink: 0,
                   }}>
-                    <i className={`ph ${m.icon}`} style={{ fontSize: 22, color: method === m.id ? R.red : R.navy }} />
+                    <i className={`ph ${m.icon}`} style={{ fontSize: 22, color: method === m.id ? PRIMARY : TEXT }} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: R.textPrimary, fontFamily: R.fontSans }}>{m.label}</p>
-                    <p style={{ margin: 0, fontSize: 12, color: R.textSecondary }}>{m.sub}</p>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: R.fontSans }}>{m.label}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: TEXT, opacity: MUTED }}>{m.sub}</p>
                   </div>
                   {method === m.id && (
                     <div style={{
                       width: 22, height: 22, borderRadius: "50%",
-                      background: R.red, display: "flex", alignItems: "center", justifyContent: "center",
+                      background: PRIMARY, display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
-                      <i className="ph ph-check" style={{ fontSize: 15, color: "#fff" }} />
+                      <i className="ph ph-check" style={{ fontSize: 15, color: ON_PRIMARY }} />
                     </div>
                   )}
                 </button>
@@ -367,22 +397,22 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
         {/* Step 2 — Amount */}
         {step >= 2 && method && (
           <AnimCard delay={0} style={{ marginTop: 24 }}>
-            <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: R.navy, fontFamily: R.fontSans }}>
+            <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: R.fontSans }}>
               2. Enter amount
             </p>
             <div style={{
-              background: R.bgCard, border: `1.5px solid ${R.border}`,
-              borderRadius: 14, padding: "18px 18px", boxShadow: R.shadow,
+              background: SURFACE, border: `1.5px solid ${elevationVar('border')}`,
+              borderRadius: 14, padding: "18px 18px", boxShadow: elevationVar('shadow'),
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                <span style={{ fontSize: 32, color: R.red, fontFamily: R.fontMono, fontWeight: 800 }}>$</span>
+                <span style={{ fontSize: 32, color: TEXT, fontFamily: R.fontMono, fontWeight: 800 }}>$</span>
                 <input
                   type="number" value={amount}
                   onChange={e => setAmount(e.target.value)}
                   placeholder="0"
                   style={{
                     background: "none", border: "none", outline: "none",
-                    fontSize: 36, fontWeight: 900, color: R.navy,
+                    fontSize: 36, fontWeight: 900, color: TEXT,
                     width: "100%", fontFamily: R.fontSans,
                   }}
                 />
@@ -390,13 +420,13 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
               <div style={{ display: "flex", gap: 8 }}>
                 {[500, 1000, balance].map(v => (
                   <button key={v} onClick={() => setAmount(String(v))} style={{
-                    flex: 1, background: R.bgPage, border: `1px solid ${R.border}`,
-                    borderRadius: 8, padding: "8px", color: R.navy,
+                    flex: 1, background: RECESS, border: `1px solid ${elevationVar('border')}`,
+                    borderRadius: 8, padding: "8px", color: TEXT,
                     fontSize: 12, cursor: "pointer", fontFamily: R.fontMono, fontWeight: 600,
                     transition: "background 0.15s, border-color 0.15s",
                   }}
-                    onMouseEnter={e => { e.currentTarget.style.background = R.bgBlueLight; e.currentTarget.style.borderColor = R.navy; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = R.bgPage; e.currentTarget.style.borderColor = R.border; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = RECESS; e.currentTarget.style.borderColor = SECONDARY; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = SURFACE; e.currentTarget.style.borderColor = elevationVar('border'); }}
                   >
                     {v === balance ? "Max" : `$${v}`}
                   </button>
@@ -405,7 +435,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
             </div>
             <label style={{
               display: "block", fontSize: 12, fontWeight: 500,
-              color: R.textSecondary, marginBottom: 8, fontFamily: R.fontBody,
+              color: TEXT, opacity: MUTED, marginBottom: 8, fontFamily: R.fontBody,
             }}>
               {DETAIL_LABELS[method]}
             </label>
@@ -414,25 +444,25 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                 value={detail} onChange={e => setDetail(e.target.value)}
                 placeholder={method === "check" ? "Mailing address" : `Your ${ALL_METHODS.find(m => m.id === method)?.label} handle / email`}
                 style={{
-                  width: "100%", background: R.bgCard,
-                  border: `1.5px solid ${R.border}`, borderRadius: 12,
-                  padding: "14px 16px", color: R.textPrimary, fontSize: 15,
+                  width: "100%", background: SURFACE,
+                  border: `1.5px solid ${elevationVar('border')}`, borderRadius: 12,
+                  padding: "14px 16px", color: TEXT, fontSize: 15,
                   fontFamily: R.fontBody, outline: "none", boxSizing: "border-box",
                   transition: "border-color 0.2s",
                 }}
-                onFocus={e => e.target.style.borderColor = R.navy}
-                onBlur={e => e.target.style.borderColor = R.border}
+                onFocus={e => e.target.style.borderColor = SECONDARY}
+                onBlur={e => e.target.style.borderColor = elevationVar('border')}
               />
             </div>
             {amount && parseFloat(amount) >= 20 && parseFloat(amount) <= balance && (
               <button onClick={() => advanceStep(3)} style={{
                 width: "100%", marginTop: 16,
-                background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
+                background: `linear-gradient(135deg, ${PRIMARY} 0%, ${PRIMARY_DARK} 100%)`,
                 border: "none", borderRadius: 12, padding: "16px",
                 color: "#fff", fontSize: 15, fontWeight: 700,
                 fontFamily: R.fontSans, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                boxShadow: "0 4px 14px rgba(204,0,0,0.3)",
+                boxShadow: elevationVar('shadowMd'),
               }}>
                 Continue <i className="ph ph-arrow-right" style={{ fontSize: 16 }} />
               </button>
@@ -444,10 +474,10 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
         {step === 3 && (
           <AnimCard delay={0} style={{ marginTop: 24 }}>
             <div style={{
-              background: R.bgCard, border: `1.5px solid ${R.border}`,
-              borderRadius: 16, padding: "20px", boxShadow: R.shadow,
+              background: SURFACE, border: `1.5px solid ${elevationVar('border')}`,
+              borderRadius: 16, padding: "20px", boxShadow: elevationVar('shadow'),
             }}>
-              <p style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: R.navy, fontFamily: R.fontSans }}>
+              <p style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: R.fontSans }}>
                 Confirm your payout
               </p>
               {[
@@ -459,20 +489,20 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                 <div key={k} style={{
                   display: "flex", justifyContent: "space-between",
                   alignItems: "center", marginBottom: 16,
-                  paddingBottom: 16, borderBottom: `1px solid ${R.border}`,
+                  paddingBottom: 16, borderBottom: `1px solid ${elevationVar('border')}`,
                 }}>
-                  <span style={{ fontSize: 15, color: R.textSecondary, fontFamily: R.fontMono }}>{k}</span>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: R.textPrimary }}>{v}</span>
+                  <span style={{ fontSize: 15, color: TEXT, opacity: MUTED, fontFamily: R.fontMono }}>{k}</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: TEXT }}>{v}</span>
                 </div>
               ))}
               {submitError && (
                 <div style={{
                   display: "flex", alignItems: "center", gap: 8,
-                  background: "#fee2e2", borderRadius: 8, padding: "8px 12px",
+                  ...STATUS_BANNER.danger, borderRadius: 8, padding: "8px 12px",
                   marginBottom: 16,
                 }}>
-                  <i className="ph ph-warning-circle" style={{ color: "#dc2626", fontSize: 16, flexShrink: 0 }} />
-                  <p style={{ color: "#dc2626", fontSize: 15, margin: 0 }}>{submitError}</p>
+                  <i className="ph ph-warning-circle" style={{ color: statusVar('dangerText'), fontSize: 16, flexShrink: 0 }} />
+                  <p style={{ color: statusVar('dangerText'), fontSize: 15, margin: 0 }}>{submitError}</p>
                 </div>
               )}
               <button onClick={safeAsync(async () => {
@@ -509,7 +539,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                 disabled={!bankStatus?.connected}
                 style={{
                   width: "100%", marginTop: 4,
-                  background: `linear-gradient(135deg, ${R.green} 0%, #15803d 100%)`,
+                  background: `linear-gradient(135deg, ${statusVar('success')} 0%, ${statusVar('successText')} 100%)`,
                   border: "none", borderRadius: 12, padding: "16px",
                   color: "#fff", fontSize: 15, fontWeight: 700,
                   fontFamily: R.fontSans,
@@ -528,7 +558,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                 <p style={{
                   textAlign: 'center',
                   fontSize: 12,
-                  color: '#cc7700',
+                  color: statusVar('warningText'),
                   marginTop: 8,
                   fontFamily: 'Roboto, sans-serif'
                 }}>
@@ -537,8 +567,8 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
               )}
               <button onClick={() => { setStep(2); setSubmitError(""); }} style={{
                 width: "100%", marginTop: 10, background: "none",
-                border: `1.5px solid ${R.border}`, borderRadius: 12,
-                padding: "12px", color: R.textSecondary, fontSize: 15,
+                border: `1.5px solid ${elevationVar('border')}`, borderRadius: 12,
+                padding: "12px", color: TEXT, opacity: MUTED, fontSize: 15,
                 cursor: "pointer", fontFamily: R.fontBody,
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               }}>

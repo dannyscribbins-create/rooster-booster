@@ -1,5 +1,28 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
+import { statusVar, STATUS_BANNER, STATUS_TINT } from '../../constants/statusTheme';
+import { elevationVar } from '../../constants/elevationTheme';
+
+// ─── PALETTE-6 — THE RENDER TOKENS THIS TAB PAINTS WITH ──────────────────────
+// ⚠ EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS FOR THE PLATFORM
+// BRAND IN LIGHT MODE (M.7). themeKeyIntegrity.test.js fails on any that disagrees.
+const PRIMARY        = 'var(--rm-primary, #F26A1B)';
+const PRIMARY_DARK   = 'var(--rm-primary-dark, #CE530C)';
+const ON_PRIMARY     = 'var(--rm-on-primary, #000000)';
+const SECONDARY      = 'var(--rm-secondary, #1C2D4D)';
+const SECONDARY_DARK = 'var(--rm-secondary-dark, #0C1320)';
+const ON_SECONDARY   = 'var(--rm-on-secondary, #FFFFFF)';
+const SURFACE        = 'var(--rm-surface, #FFFFFF)';
+const RECESS         = 'var(--rm-recess, #ECF0F8)';
+const TEXT           = 'var(--rm-text, #1C2D4D)';
+
+// The one muted alpha, shared with the files that already use this idiom.
+// ⚠ AND ITS GROUND AND ITS PARENTS ARE BOTH CHECKED (M.5). Palette-5 found a
+// money span nested inside a muted paragraph inheriting 0.72 down to 3.29:1 —
+// every element's own declaration correct, the composited pair wrong. Nothing
+// below puts a non-muted child inside a muted parent.
+const MUTED = 0.72;
+
 import { BACKEND_URL } from '../../config/contractor';
 import Skeleton from '../shared/Skeleton';
 
@@ -19,26 +42,29 @@ function EscalatingTable({ steps }) {
   if (!Array.isArray(steps) || steps.length === 0) return null;
   const lastIndex = steps.length - 1;
   return (
-    <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${R.border}` }}>
+    <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${elevationVar('border')}` }}>
       <div style={{
         display: 'flex', padding: '8px 14px',
-        background: R.bgCardTint, borderBottom: `1px solid ${R.border}`,
+        background: RECESS, borderBottom: `1px solid ${elevationVar('border')}`,
       }}>
-        <span style={{ flex: 1.4, fontSize: 11, color: R.textMuted, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Referral #</span>
-        <span style={{ flex: 1, fontSize: 11, color: R.textMuted, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Your Bonus</span>
+        <span style={{ flex: 1.4, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Referral #</span>
+        <span style={{ flex: 1, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Your Bonus</span>
       </div>
       {steps.map((step, i) => (
         <div key={i} style={{
           display: 'flex', alignItems: 'center', padding: '11px 14px',
-          borderBottom: i < lastIndex ? `1px solid ${R.border}` : 'none',
+          borderBottom: i < lastIndex ? `1px solid ${elevationVar('border')}` : 'none',
           background: 'transparent',
         }}>
-          <span style={{ flex: 1.4, fontSize: 14, color: R.textPrimary, fontFamily: R.fontMono, fontWeight: 600 }}>
+          <span style={{ flex: 1.4, fontSize: 14, color: TEXT, fontFamily: R.fontMono, fontWeight: 600 }}>
             {i === lastIndex
               ? `${ordinal(step.referral_number)} referral & beyond`
               : `${ordinal(step.referral_number)} referral`}
           </span>
-          <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: R.red, fontFamily: R.fontMono, textAlign: 'right' }}>
+          {/* ⚠ TEXT TONE, NOT GREEN. A schedule row is what a future referral WOULD
+              pay — the ruling's own example of a projection. Green is reserved for
+              money in the account so that it keeps meaning that. */}
+          <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: TEXT, fontFamily: R.fontMono, textAlign: 'right' }}>
             {formatCurrency(step.payout_amount)}
           </span>
         </div>
@@ -51,25 +77,28 @@ function TieredTable({ brackets }) {
   if (!Array.isArray(brackets) || brackets.length === 0) return null;
   const lastIndex = brackets.length - 1;
   return (
-    <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${R.border}` }}>
+    <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${elevationVar('border')}` }}>
       <div style={{
         display: 'flex', padding: '8px 14px',
-        background: R.bgCardTint, borderBottom: `1px solid ${R.border}`,
+        background: RECESS, borderBottom: `1px solid ${elevationVar('border')}`,
       }}>
-        <span style={{ flex: 1.6, fontSize: 11, color: R.textMuted, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Invoice Total</span>
-        <span style={{ flex: 1, fontSize: 11, color: R.textMuted, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Your Bonus</span>
+        <span style={{ flex: 1.6, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Invoice Total</span>
+        <span style={{ flex: 1, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Your Bonus</span>
       </div>
       {brackets.map((b, i) => (
         <div key={i} style={{
           display: 'flex', alignItems: 'center', padding: '11px 14px',
-          borderBottom: i < lastIndex ? `1px solid ${R.border}` : 'none',
+          borderBottom: i < lastIndex ? `1px solid ${elevationVar('border')}` : 'none',
         }}>
-          <span style={{ flex: 1.6, fontSize: 14, color: R.textPrimary, fontFamily: R.fontMono, fontWeight: 500 }}>
+          <span style={{ flex: 1.6, fontSize: 14, color: TEXT, fontFamily: R.fontMono, fontWeight: 500 }}>
             {b.max == null
               ? `${formatCurrency(b.min)} & above`
               : `${formatCurrency(b.min)} – ${formatCurrency(b.max)}`}
           </span>
-          <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: R.red, fontFamily: R.fontMono, textAlign: 'right' }}>
+          {/* ⚠ TEXT TONE, NOT GREEN. A schedule row is what a future referral WOULD
+              pay — the ruling's own example of a projection. Green is reserved for
+              money in the account so that it keeps meaning that. */}
+          <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: TEXT, fontFamily: R.fontMono, textAlign: 'right' }}>
             {formatCurrency(b.payout_amount)}
           </span>
         </div>
@@ -86,7 +115,7 @@ function QualifyingLine({ schedule }) {
     : '';
   if (!jobText) return null;
   return (
-    <p style={{ margin: '10px 0 0', fontSize: 12, color: R.textMuted, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+    <p style={{ margin: '10px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.5 }}>
       Qualifying jobs: {jobText}.{minText}
     </p>
   );
@@ -95,14 +124,14 @@ function QualifyingLine({ schedule }) {
 function ResetLine({ resetPeriod }) {
   if (resetPeriod === 'annual') {
     return (
-      <p style={{ margin: '6px 0 0', fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>
+      <p style={{ margin: '6px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
         Your referral count resets each year.
       </p>
     );
   }
   if (resetPeriod === 'lifetime') {
     return (
-      <p style={{ margin: '6px 0 0', fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>
+      <p style={{ margin: '6px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
         Your referral count never resets.
       </p>
     );
@@ -133,7 +162,7 @@ function SchedulePane({ schedule }) {
   if (payout_model === 'flat') {
     return (
       <>
-        <p style={{ margin: '0 0 10px', fontSize: 15, color: R.textPrimary, fontFamily: R.fontBody }}>
+        <p style={{ margin: '0 0 10px', fontSize: 15, color: TEXT, fontFamily: R.fontBody }}>
           Earn {formatCurrency(schedule.flat_amount)} for every qualifying referral.
         </p>
         <QualifyingLine schedule={schedule} />
@@ -149,7 +178,7 @@ function SchedulePane({ schedule }) {
       : '';
     return (
       <>
-        <p style={{ margin: '0 0 10px', fontSize: 15, color: R.textPrimary, fontFamily: R.fontBody }}>
+        <p style={{ margin: '0 0 10px', fontSize: 15, color: TEXT, fontFamily: R.fontBody }}>
           Earn {rate} of the final invoice total{capText}.
         </p>
         <QualifyingLine schedule={schedule} />
@@ -185,13 +214,13 @@ export default function RewardScheduleCard({ sessionToken }) {
   return (
     <div>
       <p style={{
-        margin: '0 0 10px', fontSize: 12, color: R.textMuted,
+        margin: '0 0 10px', fontSize: 12, color: TEXT, opacity: MUTED,
         fontFamily: R.fontMono, letterSpacing: '0.1em', textTransform: 'uppercase',
       }}>Reward Schedule</p>
 
       <div style={{
-        background: R.bgCard, border: `1px solid ${R.border}`,
-        borderRadius: 16, overflow: 'hidden', boxShadow: R.shadow,
+        background: SURFACE, border: `1px solid ${elevationVar('border')}`,
+        borderRadius: 16, overflow: 'hidden', boxShadow: elevationVar('shadow'),
         padding: '16px',
       }}>
         {loading && (
@@ -203,7 +232,7 @@ export default function RewardScheduleCard({ sessionToken }) {
         )}
 
         {!loading && (!schedules || schedules.length === 0) && (
-          <p style={{ margin: 0, fontSize: 14, color: R.textMuted, fontFamily: R.fontBody, textAlign: 'center', padding: '12px 0' }}>
+          <p style={{ margin: 0, fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, textAlign: 'center', padding: '12px 0' }}>
             No reward schedules available.
           </p>
         )}
@@ -214,7 +243,7 @@ export default function RewardScheduleCard({ sessionToken }) {
             {schedules.length > 1 && (
               <div style={{
                 display: 'flex', gap: 4, marginBottom: 16,
-                borderBottom: `1px solid ${R.border}`, paddingBottom: 0,
+                borderBottom: `1px solid ${elevationVar('border')}`, paddingBottom: 0,
               }}>
                 {schedules.map((s, i) => (
                   <button
@@ -225,8 +254,9 @@ export default function RewardScheduleCard({ sessionToken }) {
                       padding: '8px 14px 10px',
                       fontSize: 13, fontWeight: activeTab === i ? 700 : 500,
                       fontFamily: R.fontSans,
-                      color: activeTab === i ? R.navy : R.textMuted,
-                      borderBottom: activeTab === i ? `2px solid ${R.red}` : '2px solid transparent',
+                      color: TEXT,
+                      opacity: activeTab === i ? 1 : MUTED,
+                      borderBottom: activeTab === i ? `2px solid ${PRIMARY}` : '2px solid transparent',
                       marginBottom: -1,
                       transition: 'color 0.15s, border-color 0.15s',
                     }}
