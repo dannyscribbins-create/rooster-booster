@@ -76,7 +76,17 @@ describe('Palette D-5 — no source reads a key R does not define', () => {
   // the payout block is repaired this case goes RED and whoever repaired it must
   // delete the entry — so the exception cannot outlive the defect. A list that
   // can only be added to becomes a list of things that were once true.
-  const KNOWN_MISSING = ['accent', 'cardBg'];
+  // ⚠ EMPTIED 2026-09-06 BY PALETTE-10 PART B, BECAUSE ITS DEFECT IS CLOSED —
+  // not because it was inconvenient. It read `['accent', 'cardBg']`: two keys
+  // referenced on `R` that do not exist, whose `||` fallbacks painted the Payout
+  // Method card a navy nobody designed while the text tones — which DO exist —
+  // painted near-black on it, at 1.06:1, for months.
+  // ⚠ THE EQUALITY ASSERTION IS WHAT FORCED THE ORDER. A subset check would have
+  // let this list outlive the defect silently; equality made the suite go red the
+  // moment the reads disappeared, naming the stale entry and refusing to pass
+  // until someone deleted it. That is the closure half working exactly as its
+  // own comment below promises.
+  const KNOWN_MISSING = [];
 
   it('reports every undefined R.<key>, and only the two filed ones remain', () => {
     const found = new Map();

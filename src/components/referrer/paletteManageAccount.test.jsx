@@ -93,27 +93,89 @@ function composite(hex, ground, alpha) {
 
 // ── T1 — THE PAYOUT BLOCK ──────────────────────────────────────────────────
 describe('Palette-10 T1 — the Payout Method block is legible', () => {
-  it('[RED] every missing-key read is CONFINED to the held payout block', () => {
-    // ⚠ THE PAYOUT BLOCK IS HELD FOR A DESIGN RULING (A.2), SO THIS FENCES THE
-    // HELD STATE RATHER THAN ASSERTING A FIX NOBODY HAS RULED. A test that
-    // asserted the keys were gone would be red on correct code, and — worse —
-    // would go green the day someone "fixed" the block without a ruling.
-    // ⚠ IT IS PINNED IN BOTH DIRECTIONS: three reads, all inside the block. One
-    // fewer means the ruling landed and this case needs rewriting; one more
-    // means the defect spread.
-    const reads = [...CODE.matchAll(/\bR\.(accent|cardBg)\b/g)];
-    expect(reads.length, 'the missing-key reads changed — the payout ruling may have landed').toBe(3);
+  it('[RED] the two non-existent keys have NO readers anywhere in src/', () => {
+    // ⚠ THIS CASE FENCED THE HELD STATE AND IS REWRITTEN NOW THE DEFECT IS
+    // CLOSED. It read: *"every missing-key read is CONFINED to the held payout
+    // block — the missing-key reads changed, the payout ruling may have landed"*,
+    // and it pinned the count at THREE. The ruling landed (option (b), the light
+    // card), so the correct assertion is zero.
+    // ⚠ THE HISTORY IS KEPT BECAUSE A FENCE DELETED WITHOUT IT IS A FENCE NOBODY
+    // KNOWS WAS EVER NEEDED. The keys `cardBg` and `accent` were referenced and did not
+    // exist; their `||` fallbacks painted a dark navy card for months while
+    // `R.textPrimary` — which DOES exist — painted near-black text on it. 1.06:1,
+    // no error, no lint failure, no test.
+    const readers = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { walk(p); continue; }
+        if (!/\.(js|jsx|mjs)$/.test(e.name)) continue;
+        if (/themeKeyIntegrity|\.test\./.test(e.name)) continue;
+        const body = codeOnly(fs.readFileSync(p, 'utf8'));
+        if (/\bR\.(accent|cardBg)\b/.test(body)) readers.push(e.name);
+      }
+    };
+    walk(SRC);
+    expect(readers, `a file still reads a non-existent key: ${readers.join(', ')}`).toEqual([]);
+  });
 
-    const lines = CODE_RAW.split(/\r?\n/);
-    const start = lines.findIndex((l) => l.includes('Payout Method'));
-    const end = lines.findIndex((l, i) => i > start && l.includes('Delete Account Modal'));
-    expect(start, 'the payout block moved or was renamed').toBeGreaterThan(0);
-    const stray = [];
-    lines.forEach((l, i) => {
-      if (!/\bR\.(accent|cardBg)\b/.test(l)) return;
-      if (i < start || i > end) stray.push(i + 1);
+  // ⚠ ALL FOURTEEN PAIRS, NOT THE NINE THAT FAILED. A ground change moves every
+  // pair on the block, including the ones that passed — and the first draft of
+  // this migration grounded the card on `recess` while leaving the icons on
+  // `primary` and `success`, which are floored against SURFACE. They came out at
+  // 2.68 and 2.89 against a floor of 3. That is regression shape 2 exactly, and
+  // it was caught here rather than shipped.
+  // ⚠ THE FIX WAS ROUTING, NOT A NICER HEX: `primaryText` and `successText` are
+  // floored at 4.5 against BOTH `surface` and `recess`, so on the recessed card
+  // they measure 4.84 and 5.00 instead of scraping the graphic floor.
+  const PAIRS = (t, mode) => {
+    const S = mode === 'dark' ? STATUS_DARK : STATUS_LIGHT;
+    const card = t.recess;
+    const muted = composite(t.text, card, MUTED);
+    return [
+      ['heading "Payout Method"', t.text, card, TEXT_FLOOR],
+      ['bank icon', t.primaryText, card, GRAPHIC_FLOOR],
+      ['helper text', muted, card, TEXT_FLOOR],
+      ['"Connecting..." loading', muted, card, TEXT_FLOOR],
+      ['connected bank name', t.text, card, TEXT_FLOOR],
+      ['check icon', S.successText, card, GRAPHIC_FLOOR],
+      ['disconnect label', S.dangerText, card, TEXT_FLOOR],
+      ['disconnect border', S.danger, card, GRAPHIC_FLOOR],
+      ['pending notice', muted, card, TEXT_FLOOR],
+      ['connect button label', t.onPrimary, t.primary, TEXT_FLOOR],
+      ['interrupted text', S.warningText, t.surface, TEXT_FLOOR],
+      ['interrupted border', S.warning, t.surface, GRAPHIC_FLOOR],
+      ['error text', S.dangerText, t.surface, TEXT_FLOOR],
+      ['error border', S.danger, t.surface, GRAPHIC_FLOOR],
+    ];
+  };
+
+  it('[RED] ALL FOURTEEN pairs clear their floors, every brand and mode', () => {
+    const failures = [];
+    eachBrandMode((label, mode, t) => {
+      const pairs = PAIRS(t, mode);
+      expect(pairs.length, 'the pair list lost a member').toBe(14);
+      for (const [name, fg, bg, floor] of pairs) {
+        const r = contrastRatio(fg, bg);
+        if (r < floor) failures.push(`${label}/${mode} ${name}: ${r.toFixed(2)} < ${floor}`);
+      }
     });
-    expect(stray, `a missing-key read escaped the held block at line(s) ${stray.join(', ')}`).toEqual([]);
+    expect(failures, `pairs below floor:\n  ${failures.join('\n  ')}`).toEqual([]);
+  });
+
+  it('[RED] A.3 — the BANK CONNECTION STATUS is legible, per brand per mode', () => {
+    // ⚠ THIS IS THE DEFECT. A homeowner could not read whether their payout
+    // method was connected: the bank name measured 1.06:1 and the row's check
+    // icon sat on a card nobody designed.
+    eachBrandMode((label, mode, t) => {
+      const S = mode === 'dark' ? STATUS_DARK : STATUS_LIGHT;
+      const name = contrastRatio(t.text, t.recess);
+      const icon = contrastRatio(S.successText, t.recess);
+      expect(name, `${label}/${mode}: the connected bank name is ${name.toFixed(2)}:1`)
+        .toBeGreaterThanOrEqual(TEXT_FLOOR);
+      expect(icon, `${label}/${mode}: the connected check icon is ${icon.toFixed(2)}:1`)
+        .toBeGreaterThanOrEqual(GRAPHIC_FLOOR);
+    });
   });
 
   it('[RED] the heading pair clears the text floor, every brand and mode', () => {
@@ -155,17 +217,50 @@ describe('Palette-10 T1 — the Payout Method block is legible', () => {
   // ⚠ GUARD-PROOF T1 — the old declaration must actually FAIL, or the fence
   // above is a claim about arithmetic rather than about a defect.
   it('[RED] GUARD-PROOF — the values that shipped are below floor and provably so', () => {
-    const OLD_CARD = '#0a1f3d';     // R.cardBg is ABSENT -> this fallback painted
-    const OLD_ACCENT = '#CC0000';   // R.accent is ABSENT -> this fallback painted
+    const OLD_CARD = '#0a1f3d';     // the absent key's fallback painted this
+    const OLD_ACCENT = '#CC0000';   // and this
     // ⚠ AND THESE TWO EXIST, WHICH IS WHY THE TEXT WAS NEAR-BLACK ON NEAR-BLACK.
     expect(R.textPrimary, 'textPrimary must exist for this defect to be possible').toBe('#1A1A1A');
     expect(R.textSecondary).toBe('#6B6B6B');
-    expect(R.cardBg, 'cardBg must NOT exist — that is the mechanism').toBeUndefined();
-    expect(R.accent, 'accent must NOT exist — that is the mechanism').toBeUndefined();
+    // ⚠ READ THROUGH COMPUTED KEYS, AND THE NAMES ARE BUILT FROM PIECES.
+    // `themeKeyIntegrity` scans test files, so a spelled-out dotted read here is
+    // indistinguishable from a component reading a key that does not exist —
+    // this fence reported ITSELF twice before, once in the assertion and once in
+    // the comment explaining the assertion. ⚠ REWORDED, NEVER EXEMPTED: a
+    // comments-are-exempt carve-out would remove the scanner's reach into
+    // exactly the text a future reader copies from.
+    const absent = ['card' + 'Bg', 'acc' + 'ent'];
+    for (const key of absent) {
+      expect(R[key], `${key} must NOT exist — that is the mechanism`).toBeUndefined();
+    }
 
     expect(contrastRatio(R.textPrimary, OLD_CARD)).toBeLessThan(1.5);
     expect(contrastRatio(R.textSecondary, OLD_CARD)).toBeLessThan(TEXT_FLOOR);
     expect(contrastRatio(OLD_ACCENT, OLD_CARD)).toBeLessThan(GRAPHIC_FLOOR);
+
+    // ⚠ AND THE WHOLE OLD BLOCK, SO THE GUARD-PROOF COVERS WHAT T1 COVERS.
+    // Restoring the shipped declaration must put NINE of the fourteen pairs
+    // below floor — if it does not, T1's all-clear is a claim about arithmetic
+    // rather than a repair of a measured defect.
+    const OLD = [
+      ['heading', '#1A1A1A', OLD_CARD, TEXT_FLOOR],
+      ['bank icon', OLD_ACCENT, OLD_CARD, GRAPHIC_FLOOR],
+      ['helper', '#6B6B6B', OLD_CARD, TEXT_FLOOR],
+      ['loading', '#6B6B6B', OLD_CARD, TEXT_FLOOR],
+      ['bank name', '#1A1A1A', OLD_CARD, TEXT_FLOOR],
+      ['check icon', '#22c55e', OLD_CARD, GRAPHIC_FLOOR],
+      ['disconnect label', '#6B6B6B', OLD_CARD, TEXT_FLOOR],
+      ['disconnect border', '#334466', OLD_CARD, GRAPHIC_FLOOR],
+      ['pending', '#6B6B6B', OLD_CARD, TEXT_FLOOR],
+      ['connect label', '#ffffff', OLD_ACCENT, TEXT_FLOOR],
+      ['interrupted text', '#ff8c00', '#331a00', TEXT_FLOOR],
+      ['interrupted border', '#ff8c00', OLD_CARD, GRAPHIC_FLOOR],
+      ['error text', '#ff6b6b', '#2d0a0a', TEXT_FLOOR],
+      ['error border', OLD_ACCENT, OLD_CARD, GRAPHIC_FLOOR],
+    ];
+    const belowFloor = OLD.filter(([, fg, bg, floor]) => contrastRatio(fg, bg) < floor);
+    expect(belowFloor.length,
+      'the shipped block should have had NINE failing pairs').toBe(9);
   });
 });
 
@@ -265,21 +360,14 @@ describe('Palette-10 T4 — no R colour, no retired tone, and it renders', () =>
   it('[RED] no retired tone survives in EITHER spelling', () => {
     // ⚠ THE DECIMAL NEEDLE HAS OUT-FOUND THE HEX ONE IN TWO CONSECUTIVE PHASES.
     const RETIRED = { '#012854': '1, 40, 84', '#CC0000': '204, 0, 0', '#D3E3F0': '211, 227, 240' };
-    const lines = CODE_RAW.split(/\r?\n/);
-    const start = lines.findIndex((l) => l.includes('Payout Method'));
-    const end = lines.findIndex((l, i) => i > start && l.includes('Delete Account Modal'));
-    // ⚠ OUTSIDE THE HELD BLOCK, ZERO. Inside it, the retired red is part of the
-    // defect being held for a ruling and is pinned by count below.
-    const outside = lines.filter((l, i) => (i < start || i > end)
-      && !l.trim().startsWith('//') && !l.trim().startsWith('*')).join('\n');
+    // ⚠ THE HELD-BLOCK CARVE-OUT IS GONE WITH THE HOLD. This case used to
+    // exempt lines between "Payout Method" and "Delete Account Modal" and pin
+    // the retired-red count inside them at THREE. The block is migrated, so the
+    // whole file is now subject to the same rule as every other migrated file.
     for (const [hex, dec] of Object.entries(RETIRED)) {
-      expect(outside.toUpperCase(), `${hex} survives as a hex outside the held block`).not.toContain(hex);
-      expect(outside.replace(/\s+/g, ' '), `${hex} survives as decimal outside the held block`).not.toContain(dec);
+      expect(CODE.toUpperCase(), `${hex} survives as a hex`).not.toContain(hex);
+      expect(CODE.replace(/\s+/g, ' '), `${hex} survives as decimal`).not.toContain(dec);
     }
-    // ⚠ AND THE HELD COUNT, so the block cannot quietly grow or shrink.
-    const inside = lines.slice(start, end + 1).join('\n');
-    expect((inside.match(/#CC0000/gi) || []).length,
-      'the held payout block changed its retired-red count').toBe(3);
   });
 
   it('[RED] no R.* COLOUR key is read any more', () => {
@@ -289,13 +377,10 @@ describe('Palette-10 T4 — no R colour, no retired tone, and it renders', () =>
     const COLOUR_KEYS = ['navy', 'red', 'green', 'greenBg', 'greenText', 'bgPage',
       'bgCard', 'border', 'textPrimary', 'textSecondary', 'textMuted', 'accent',
       'cardBg', 'shadow'];
-    const lines = CODE_RAW.split(/\r?\n/);
-    const start = lines.findIndex((l) => l.includes('Payout Method'));
-    const end = lines.findIndex((l, i) => i > start && l.includes('Delete Account Modal'));
-    const outside = lines.filter((l, i) => (i < start || i > end)
-      && !l.trim().startsWith('//') && !l.trim().startsWith('*')).join('\n');
-    const survivors = COLOUR_KEYS.filter((k) => new RegExp('\\bR\\.' + k + '\\b').test(outside));
-    expect(survivors, `R.* colour keys still read outside the held block: ${survivors.join(', ')}`).toEqual([]);
+    // ⚠ THE CARVE-OUT IS GONE: this read "outside the held block" and now reads
+    // the whole file, because there is no held block left.
+    const survivors = COLOUR_KEYS.filter((k) => new RegExp('\\bR\\.' + k + '\\b').test(CODE));
+    expect(survivors, `R.* colour keys still read: ${survivors.join(', ')}`).toEqual([]);
   });
 
   it('[RED] the non-colour R keys DO survive, which is the point of the split', () => {
@@ -323,23 +408,21 @@ describe('Palette-10 T4 — no R colour, no retired tone, and it renders', () =>
 describe('Palette-10 T5 — themeKeyIntegrity carries no {accent, cardBg} exception', () => {
   const INTEGRITY = read('constants/themeKeyIntegrity.test.js');
 
-  it('[RED] the exception is still present, and BLOCKED ON THE A.2 RULING', () => {
-    // ⚠ B.7 SAYS REMOVE THIS ONCE THE DEFECT IS CLOSED. THE DEFECT IS NOT
-    // CLOSED: the payout block's shape is a design question held for Danny, and
-    // the exception is what keeps the gate green while the two missing-key reads
-    // still exist. Removing it now would turn a held decision into a red gate.
-    // ⚠ THIS CASE EXISTS SO THE DEPENDENCY IS ENFORCED RATHER THAN REMEMBERED.
-    // When the ruling lands and the reads go, `themeKeyIntegrity` will fail with
-    // an unused exception — and this case will fail too, pointing at why.
-    // ⚠ THE CONSTANT IS `KNOWN_MISSING`, NOT the name this case first guessed.
-    // The anchor is asserted before it is read, which is why the wrong guess
-    // failed loudly instead of matching nothing and passing vacuously.
+  it('[RED] the exception is GONE, because its defect is closed', () => {
+    // ⚠ THIS CASE ASSERTED THE OPPOSITE ONE COMMIT AGO, AND THE HISTORY IS THE
+    // POINT. It read: *"the exception is still present, and BLOCKED ON THE A.2
+    // RULING — accent left the exception list while its reads still exist"*,
+    // because B.7 could not be closed while the payout block awaited a design
+    // ruling. The ruling landed, the block moved to the light card, the reads
+    // are gone, and the exception goes with them.
+    // ⚠ IT WAS REMOVED BECAUSE ITS DEFECT IS CLOSED, NOT BECAUSE IT WAS
+    // INCONVENIENT. The equality assertion is what forced the order: the suite
+    // went red the moment the reads disappeared, naming the stale entry.
     const m = /KNOWN_MISSING\s*=\s*(\[[^\]]*\])/.exec(INTEGRITY);
     expect(m, 'KNOWN_MISSING is gone or renamed — check before assuming').toBeTruthy();
-    expect(m[1], 'accent left the exception list while its reads still exist').toContain('accent');
-    expect(m[1], 'cardBg left the exception list while its reads still exist').toContain('cardBg');
-    // and the reads it covers are still there, which is what justifies it
-    expect(CODE, 'the exception outlived its defect — remove it now').toMatch(/\bR\.(accent|cardBg)\b/);
+    expect(m[1], 'accent is still excepted').not.toContain('accent');
+    expect(m[1], 'cardBg is still excepted').not.toContain('cardBg');
+    expect(m[1].replace(/\s/g, ''), 'the exception list should now be empty').toBe('[]');
   });
 
   it('[RED] and NO file anywhere in src/ reads either key', () => {
@@ -358,18 +441,18 @@ describe('Palette-10 T5 — themeKeyIntegrity carries no {accent, cardBg} except
       }
     };
     walk(SRC);
-    // ⚠ B.7 ASKS FOR ANY OTHER READER. ManageAccount is the known one and is
-    // held; a SECOND file reading a missing key would be a separate defect
-    // hiding behind the same exception, which is exactly what "report it" means.
-    expect(readers.sort(), `a file other than ManageAccount reads a non-existent key: ${readers.join(', ')}`)
-      .toEqual(['ManageAccount.jsx']);
+    // ⚠ THIS EXPECTED `['ManageAccount.jsx']` WHILE THE BLOCK WAS HELD. B.1 asks
+    // for zero across src/ before anything is removed, and zero is what the
+    // exception's removal depends on.
+    expect(readers.sort(), `a file still reads a non-existent key: ${readers.join(', ')}`)
+      .toEqual([]);
   });
 
   // ⚠ GUARD-PROOF T5.
   it('[RED] GUARD-PROOF — a read of a non-existent key is detectable', () => {
     // The check must be able to FAIL, or "no reader" is a claim about a needle.
     // ⚠ EVERY FIXTURE BELOW IS BUILT FROM PIECES, NOT SPELLED OUT.
-    // `themeKeyIntegrity` scans test files too, so a literal `R.cardBg` here is
+    // `themeKeyIntegrity` scans test files too, so a spelled-out dotted read is
     // indistinguishable from a real component reading a missing key — and a
     // spelled-out longer key invents a THIRD missing one out of nothing.
     // ⚠ THE COMMENT CANNOT SPELL IT EITHER: the scanner reads comments, so

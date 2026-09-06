@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { R } from '../../constants/theme';
 import { BACKEND_URL, STRIPE_PUBLISHABLE_KEY } from '../../config/contractor';
 import { getReferrerToken } from '../../utils/authStorage';
-import { statusVar, STATUS_TINT } from '../../constants/statusTheme';
+import { statusVar, STATUS_TINT, STATUS_BANNER } from '../../constants/statusTheme';
 import { elevationVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-10 TOKENS ───────────────────────────────────────────────────────
@@ -23,6 +23,12 @@ const ON_PRIMARY = 'var(--rm-on-primary, #000000)';
 // prerequisite). It is recorded as mode-blind rather than quietly shipped:
 // deriving a real on-danger tone is a token job, not a substitution.
 const ON_DANGER = '#FFFFFF';
+// ⚠ THE BANK ICON'S TONE. `primary` is floored against the 3:1 NON-TEXT
+// threshold on `surface` and measures 2.68:1 on the RECESSED payout card;
+// `primaryText` is floored at 4.5 against BOTH grounds and measures 4.84:1
+// there. Named MONEY because it is the same token the money rule uses — there
+// is no money figure on this screen, so nothing collides.
+const MONEY      = 'var(--rm-primary-text, #B1480A)';
 // The muted idiom, unchanged. ⚠ DO NOT INVENT A SECOND ONE.
 const MUTED = 0.72;
 
@@ -1054,13 +1060,31 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
 
                 {/* ── Payout Method ─────────────────────────── */}
                 <div style={{ padding: '0 18px 18px' }}>
+                  {/* ⚠ RULED 2026-09-05 (option b): THE LIGHT CARD. This block closes the
+                      defect that opened the Palette arc — the heading measured 1.06:1, and
+                      the reason nothing caught it is that the keys `cardBg` and `accent`
+                      were REFERENCED ON `R` BUT DO NOT EXIST, so their `||` fallbacks
+                      painted a dark navy card while `textPrimary`, which DOES exist,
+                      painted near-black text on it. No error, no lint failure, no test.
+                      ⚠ THE KEY NAMES ARE WRITTEN WITHOUT THE `R.` PREFIX ON PURPOSE:
+                      `themeKeyIntegrity` scans comments too, so spelling the read here
+                      would make this file report itself as a missing-key site.
+                      ⚠ THE ALTERNATIVE WAS REJECTED FOR A REASON WORTH KEEPING: fixing the
+                      text tones on the dark card cleared every floor (16.45 / 10.75 / 16.45)
+                      and would have PRESERVED THE ACCIDENT — a retired Accent navy nobody
+                      chose, and the only panel on the screen not following the contractor.
+                      ⚠ GROUND IS `recess`, matching the session rows above; the icons take
+                      the TEXT-floored tones because `primary` and `success` are floored
+                      against `surface` and measured 2.68 and 2.89 here. */}
                   <div ref={bankCardRef} style={{
-                    backgroundColor: R.cardBg || '#0a1f3d',
+                    backgroundColor: RECESS,
                     borderRadius: 12,
                     padding: '16px',
                     marginTop: 12,
-                    border: bankCardHighlighted ? '2px solid #ff8c00' : '2px solid transparent',
-                    boxShadow: bankCardHighlighted ? '0 0 16px rgba(255, 140, 0, 0.5)' : 'none',
+                    border: bankCardHighlighted
+                      ? `2px solid ${statusVar('warning')}`
+                      : `1px solid ${elevationVar('border')}`,
+                    boxShadow: bankCardHighlighted ? elevationVar('shadowMd') : 'none',
                     transition: 'border-color 0.3s ease, box-shadow 0.3s ease',
                   }}>
                     <div style={{
@@ -1069,27 +1093,35 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       gap: 8,
                       marginBottom: 8
                     }}>
-                      <i className="ph ph-bank" style={{ fontSize: 18, color: R.accent || '#CC0000' }} />
+                      <i className="ph ph-bank" style={{ fontSize: 18, color: MONEY }} />
                       <span style={{
                         fontFamily: 'Montserrat, sans-serif',
                         fontWeight: 700,
                         fontSize: 14,
-                        color: R.textPrimary || '#fff'
+                        color: TEXT
                       }}>
                         Payout Method
                       </span>
                     </div>
 
-                    {/* Interrupted notice */}
+                    {/* Interrupted notice.
+                        ⚠ STATUS_BANNER, NOT THE TINT. The tint cannot carry text —
+                        Palette-4c measured warning at 4.42:1 against a 4.5 floor. The
+                        banner grounds on `surface` and uses the status colour as an EDGE,
+                        which is the shipped pattern for exactly this.
+                        ⚠ AND THE COMMENT SITS HERE, ABOVE THE CONDITIONAL, BECAUSE A
+                        JSX comment block cannot be the first child of `cond && ( ... )`.
+                        That is a parse error this arc has now hit in FOUR phases — and
+                        writing the brace-slash-star form inside THIS comment closed it
+                        early, which is the same shape one level down. Say it in words. */}
                     {bankInterrupted && (
                       <div style={{
-                        backgroundColor: '#331a00',
-                        border: '1px solid #ff8c00',
+                        ...STATUS_BANNER.warning,
                         borderRadius: 8,
                         padding: '10px 12px',
                         marginBottom: 10,
                         fontSize: 13,
-                        color: '#ff8c00'
+                        color: statusVar('warningText')
                       }}>
                         Bank connection was interrupted. Tap below to try again.
                       </div>
@@ -1098,13 +1130,12 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                     {/* Error notice */}
                     {bankError && (
                       <div style={{
-                        backgroundColor: '#2d0a0a',
-                        border: '1px solid #CC0000',
+                        ...STATUS_BANNER.danger,
                         borderRadius: 8,
                         padding: '10px 12px',
                         marginBottom: 10,
                         fontSize: 13,
-                        color: '#ff6b6b'
+                        color: statusVar('dangerText')
                       }}>
                         {bankError}
                       </div>
@@ -1115,7 +1146,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       <div>
                         <p style={{
                           fontSize: 13,
-                          color: R.textSecondary || '#8899aa',
+                          color: TEXT, opacity: MUTED,
                           margin: '0 0 12px 0'
                         }}>
                           Connect your bank account to receive cashout payments directly.
@@ -1124,8 +1155,8 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         <button
                           onClick={handleConnectBank}
                           style={{
-                            backgroundColor: R.accent || '#CC0000',
-                            color: '#fff',
+                            backgroundColor: PRIMARY,
+                            color: ON_PRIMARY,
                             border: 'none',
                             borderRadius: 8,
                             padding: '10px 20px',
@@ -1147,7 +1178,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         textAlign: 'center',
                         padding: '12px 0',
                         fontSize: 13,
-                        color: R.textSecondary || '#8899aa'
+                        color: TEXT, opacity: MUTED
                       }}>
                         Connecting...
                       </div>
@@ -1163,10 +1194,10 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                           marginBottom: 12
                         }}>
                           <i className="ph-fill ph-check-circle"
-                             style={{ fontSize: 18, color: '#22c55e' }} />
+                             style={{ fontSize: 18, color: statusVar('successText') }} />
                           <span style={{
                             fontSize: 14,
-                            color: R.textPrimary || '#fff',
+                            color: TEXT,
                             fontWeight: 600
                           }}>
                             {bankStatus.bankName || 'Bank'} ••••{bankStatus.last4}
@@ -1176,8 +1207,8 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                           onClick={handleDisconnectBank}
                           style={{
                             backgroundColor: 'transparent',
-                            color: R.textSecondary || '#8899aa',
-                            border: '1px solid #334466',
+                            color: statusVar('dangerText'),
+                            border: `1px solid ${statusVar('danger')}`,
                             borderRadius: 8,
                             padding: '8px 16px',
                             fontFamily: 'Roboto, sans-serif',
@@ -1196,7 +1227,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       <div style={{
                         marginTop: 10,
                         fontSize: 12,
-                        color: R.textSecondary || '#8899aa',
+                        color: TEXT, opacity: MUTED,
                         textAlign: 'center'
                       }}>
                         Have a pending cashout? Your contractor has been notified

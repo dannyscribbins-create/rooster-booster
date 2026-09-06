@@ -230,7 +230,7 @@ describe('Palette-6 T2 (reversed by Palette-9) — account money is the MONEY to
     expect(mutated.includes(injected), 'the needle cannot see an injected green').toBe(true);
   });
 
-  it('[RED] --rm-primary-text now has EXACTLY THREE code consumers', () => {
+  it('[RED] --rm-primary-text now has EXACTLY FOUR code consumers', () => {
     // ⚠ THIS CASE ASSERTED **ZERO** AND IS REWRITTEN RATHER THAN DELETED. It read:
     // *"--rm-primary-text has ZERO code consumers, and the reason is recorded —
     // a consumer of --rm-primary-text reappeared"*, and it fenced the tombstone
@@ -256,8 +256,16 @@ describe('Palette-6 T2 (reversed by Palette-9) — account money is the MONEY to
       }
     };
     walk(SRC);
-    expect(consumers.sort(), 'the money tone is not on exactly the three money files')
-      .toEqual(['CashOutTab.jsx', 'DashboardTab.jsx', 'ProfileTab.jsx']);
+    // ⚠ WAS THREE. Palette-10 Part B added a FOURTH that is not a money file:
+    // `ManageAccount`'s bank icon. `primary` is floored against `surface` and
+    // measured 2.68:1 on the recessed payout card; `primaryText` is floored at
+    // 4.5 against BOTH grounds and measures 4.84:1 there. The token is "the
+    // brand colour made safe for text", and the money rule is its biggest
+    // consumer rather than its definition.
+    // ⚠ THE COUNT IS STILL FENCED IN BOTH DIRECTIONS. Too few means a money
+    // site was reverted; too many means the tone leaked somewhere unruled.
+    expect(consumers.sort(), 'the money tone is not on exactly the four expected files')
+      .toEqual(['CashOutTab.jsx', 'DashboardTab.jsx', 'ManageAccount.jsx', 'ProfileTab.jsx']);
     expect(RENDER_TOKEN_KEYS).toContain('primaryText');
     // and the tombstone must now say the OPPOSITE of what it used to
     expect(DASH, 'the stale zero-consumer tombstone is still there')

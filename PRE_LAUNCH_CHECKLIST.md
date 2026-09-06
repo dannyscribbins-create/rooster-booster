@@ -5054,7 +5054,23 @@ quadruples is evidence about the estimate, not about the wave:
       a non-painting tab never finishes the timer. **There may be more behind the toggle than the
       six listed.** Whoever does that work measures `ReferTab` first.
 
-- [ ] **⚠ AWAITING DANNY: THE PAYOUT METHOD CARD'S SHAPE. A HOMEOWNER CANNOT READ WHETHER THEIR
+- [x] **✅ CLOSED 2026-09-06 — RULED (option b, the light card) AND BUILT. THIS WAS THE DEFECT
+      THAT OPENED THE PALETTE ARC.**
+      **Measured after, on the rendered node (Beta/light):** heading **1.06 → 11.16**, bank icon
+      **2.80 → 5.45**, helper text **3.09 → 4.97**, connect button 5.89 → 5.87. Arithmetic across
+      all four seeded brands × both modes: **0 failures in 112 measurements** (14 pairs × 8).
+      ⚠ **THE RULING REJECTED THE OTHER OPTION FOR A REASON WORTH KEEPING:** fixing the dark
+      card's text tones cleared every floor too (16.45 / 10.75 / 16.45) and would have
+      **PRESERVED THE ACCIDENT** — a retired Accent navy nobody chose, arriving only as the `||`
+      fallback of a key that does not exist, on the one panel not following the contractor.
+      ⚠ **AND ALL 14 PAIRS WERE RE-MEASURED, NOT THE 9 THAT FAILED.** The first attempt grounded
+      the card on `recess` while leaving the icons on `primary` and `success` — which are floored
+      against `surface` — and they came out at **2.68 and 2.89** against a floor of 3. That is
+      regression shape 2, caught before shipping. Fixed by ROUTING to `primaryText` and
+      `successText`, floored at 4.5 against BOTH grounds: 4.84 and 5.00 on the recessed card.
+      → the original entry, kept below as the record of what was measured and why:
+
+- [x] **⚠ (CLOSED) AWAITING DANNY: THE PAYOUT METHOD CARD'S SHAPE. A HOMEOWNER CANNOT READ WHETHER THEIR
       BANK IS CONNECTED, AND THE FIX IS A DESIGN CHOICE, NOT A CONTRAST TWEAK.**
       *(Palette-10 A.2, 2026-09-06. ⚠ BLOCKS the rest of the Payout block migration AND B.7's
       removal of the `themeKeyIntegrity` exception.)*
@@ -5087,7 +5103,21 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **WHATEVER IS RULED, A.3 STANDS: the bank connection status must be legible.** That is
       the defect, and it is live today.
 
-- [ ] **⚠ B.7 IS BLOCKED, NOT DONE: the `{accent, cardBg}` exception in `themeKeyIntegrity` MUST
+- [x] **✅ CLOSED 2026-09-06 — the `{accent, cardBg}` exception is REMOVED, because its defect is
+      closed. `KNOWN_MISSING` is now `[]`, and the equality assertion passes against it.**
+      ⚠ **THE MECHANISM WORKED EXACTLY AS ITS OWN COMMENT PROMISED.** Equality — not subset —
+      is what made the suite go red the moment the reads disappeared, naming the stale entry
+      and refusing to pass until it was deleted. **B.1 confirmed zero readers across `src/` AND
+      `server/` before anything was removed.**
+      ⚠ **AND THE FENCE REPORTED ITSELF THREE TIMES GETTING THERE**, which is its own lesson:
+      `themeKeyIntegrity` scans test files AND comments, so a spelled-out dotted read of a
+      non-existent key is indistinguishable from a component committing the defect — once in
+      the assertion, once in the comment explaining the assertion, and once in the comment
+      explaining THAT. **Reworded every time, never exempted:** a comments-are-exempt carve-out
+      would remove the scanner's reach into exactly the text a future reader copies from.
+      → the original entry, kept as the record:
+
+- [x] **⚠ (CLOSED) B.7 WAS BLOCKED, NOT DONE: the `{accent, cardBg}` exception in `themeKeyIntegrity` MUST
       OUTLIVE THIS PHASE and must be removed the moment the payout block is ruled.**
       *(Palette-10 B.7, 2026-09-06.)* The exception is asserted **by equality**, so it cannot
       silently outlive its defect — the suite goes red when the reads disappear and whoever fixed
