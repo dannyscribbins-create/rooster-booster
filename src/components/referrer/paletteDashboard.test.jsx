@@ -237,18 +237,26 @@ describe('Palette-4a Part B T3 — THE MONEY FENCE', () => {
     expect(failures.join(' | ')).toContain('Gamma (UNSET)/light');
   });
 
-  it('[RED] account money is successText, and no projection is on the brand-text token', () => {
-    // ⚠ INVERTED BY PALETTE-6 AND REWRITTEN RATHER THAN DELETED. This asserted
-    // the MONEY constant EXISTED and still had two consumers. The money rule
-    // completed: account money is green, PROJECTIONS take the text tone, and
-    // `--rm-primary-text` now has zero consumers anywhere in src/.
-    // ⚠ THE SUBJECT SURVIVES AND IS WORTH MORE THAN THE OLD ONE: it is now what
-    // says the projections did not quietly become green instead.
-    expect(DASH_CODE, 'the MONEY constant should be gone').not.toContain('const MONEY =');
+  it('[RED] account money is the MONEY tone, and no projection wears it', () => {
+    // ⚠ THIS CASE HAS INVERTED TWICE AND BOTH TURNS ARE KEPT, because the pair
+    // of them is the clearest record in the suite of what this arc actually
+    // learned about fences.
+    // PALETTE-4a Part B wrote it: the MONEY constant EXISTS and has two consumers.
+    // PALETTE-6 inverted it to: *"the MONEY constant should be gone — a projection
+    // is still on the brand-text token — expected the two balance spans on
+    // successText"*, because account money had become green.
+    // PALETTE-9 inverts it back, for a reason that is not a correction of either:
+    // Danny reversed the green ruling on 2026-09-05 after seeing it live.
+    // ⚠ THE THING THAT NEVER MOVED THROUGH ALL THREE TURNS is the claim worth
+    // fencing: the balance and the projections must not share a tone. Everything
+    // else in this case has been true, then false, then true again.
+    expect(DASH_CODE, 'the MONEY constant should be back').toContain('const MONEY');
     expect(DASH_CODE.split('color: MONEY').length - 1,
-      'a projection is still on the brand-text token').toBe(0);
+      'expected the two balance spans on the money tone').toBe(2);
     expect(DASH_CODE.split("color: statusVar('successText')").length - 1,
-      'expected the two balance spans on successText').toBe(2);
+      'the Dashboard should carry no successText at all now').toBe(0);
+    expect(DASH_CODE, 'a projection left the text tone')
+      .toContain('<span style={{ color: TEXT, fontWeight: 700 }}>${nextPayout.total}</span>');
   });
 });
 

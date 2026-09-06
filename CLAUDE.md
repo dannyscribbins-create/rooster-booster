@@ -344,9 +344,17 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1300 server tests across 208 suites, and 823 React tests across 53 files** (measured 2026-09-06 by Palette-8 Part C, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-8 PART C COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
-  TESTS.** It adds `server/test/graphicFloor.test.js`, and 1275 → 1300 is exactly its 25 cases.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1300 server tests across 208 suites, and 846 React tests across 54 files** (measured 2026-09-06 by Palette-9, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-9 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  It adds `src/components/referrer/paletteMoneyBrandResponsive.test.jsx`, and 823 → 846 is exactly
+  its 23 cases; the file count moves 53 → 54 for the same reason.
+  ⚠ **THE SERVER NUMBERS DID NOT MOVE, AND THAT IS NOT STALENESS — IT IS THE MIRROR OF THE
+  PREVIOUS ENTRY.** Palette-8 Part C moved the server figures and left React still; this phase does
+  the opposite. Both halves were read by name off this run's own log either way, because **a number
+  that did not change still has to be measured to be re-armed.**
+  ⚠ **THE PREVIOUS ENTRY, KEPT FOR ITS REASONING:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-8
+  PART C COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.* It adds `server/test/graphicFloor.test.js`,
+  and 1275 → 1300 is exactly its 25 cases.
   ⚠ **THE REACT NUMBERS DID NOT MOVE, AND THAT IS NOT STALENESS.** This phase added no React test,
   so 823 / 53 is the same measurement re-observed, not a figure carried forward unchecked — it was
   read by name off this run's own log. **A number that did not change still has to be measured to be

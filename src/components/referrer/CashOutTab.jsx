@@ -15,6 +15,7 @@ const ON_SECONDARY   = 'var(--rm-on-secondary, #FFFFFF)';
 const SURFACE        = 'var(--rm-surface, #FFFFFF)';
 const RECESS         = 'var(--rm-recess, #ECF0F8)';
 const TEXT           = 'var(--rm-text, #1C2D4D)';
+const MONEY          = 'var(--rm-primary-text, #B1480A)';
 
 // The one muted alpha, shared with the files that already use this idiom.
 // ⚠ AND ITS GROUND AND ITS PARENTS ARE BOTH CHECKED (M.5). Palette-5 found a
@@ -168,7 +169,7 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
               Request Submitted!
             </h2>
             <p style={{
-              margin: "0 0 4px", fontSize: 42, fontWeight: 900, color: statusVar('successText'), fontFamily: R.fontMono,
+              margin: "0 0 4px", fontSize: 42, fontWeight: 900, color: MONEY, fontFamily: R.fontMono,
               display: "inline-block",
               transform: amountPunching ? "scale(1.15)" : "scale(1)",
               transition: amountPunching ? "transform 150ms ease-out" : "transform 100ms ease-in",
@@ -293,6 +294,23 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
             rule; it has cost a fix in every phase that skipped it. */}
         <p style={{ margin: "0 0 4px", fontSize: 12, color: ON_SECONDARY, fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: ON_SECONDARY, letterSpacing: "-0.02em" }}>Cash Out</h1>
+        {/* ⚠ THIS IS ACCOUNT MONEY AND IT IS **NOT** ON THE MONEY TONE. THE
+            EXCEPTION SURVIVES THE 2026-09-05 REVERSAL, WITH A NEW MEASUREMENT AND A
+            STRONGER REASON THAN IT HAD UNDER GREEN.
+            Palette-8 A.4 established that no green clears 4.5:1 on a brand fill,
+            over 1328 sampled fills, because a fill can be any lightness.
+            ⚠ PALETTE-9 ASKED WHETHER `--rm-primary-text` WORKS HERE INSTEAD, AND IT
+            IS THE WORST POSSIBLE PAIRING RATHER THAN THE NATURAL ONE. The money
+            tone is DERIVED FROM THE BRAND and this fill IS the brand, so the two
+            converge instead of separating: measured against the darker gradient
+            stop it fails all eight brand/mode pairs — 2.48 / 2.05 / 2.49 in light
+            and 1.02 / 1.05 / 1.01 in dark, where it is very nearly the fill itself.
+            `onSecondary` clears 4.61-14.66 on the same pairs.
+            ⚠ SO THE BALANCE IS THE ONE FIGURE THAT CHANGES COLOUR BY SCREEN, and it
+            is forced by the ground rather than chosen: brand-coloured on the
+            Dashboard card and the Profile rows, white here. V3's "the same number
+            paints the same colour" holds everywhere the ground allows it, and this
+            is the only place it does not. */}
         <p style={{ margin: "4px 0 0", fontSize: 15, color: ON_SECONDARY }}>
           ${balance.toLocaleString()} available
         </p>

@@ -117,13 +117,18 @@ describe('Palette-5 — the sweep has something to sweep', () => {
 });
 
 // ── T1 — MONEY IS ONE COLOUR ────────────────────────────────────────────────
-describe('Palette-5 T1 — money resolves to successText', () => {
-  it('[RED] the Dashboard balance declares successText, both of its spans', () => {
+describe('Palette-5 T1 (reversed by Palette-9) — money resolves to the MONEY tone', () => {
+  it('[RED] the Dashboard balance declares the MONEY tone, both of its spans', () => {
     // The balance is ONE figure split across two elements for typography, so
     // both take the same tone. The old split painted the glyph in the brand
     // accent and the number in body text.
-    const sites = DASH_CODE.split("color: statusVar('successText')").length - 1;
-    expect(sites, 'expected the two balance spans on successText').toBe(2);
+    // ⚠ THIS CASE WAS INVERTED BY THE 2026-09-05 REVERSAL AND IS REWRITTEN
+    // RATHER THAN DELETED. It read: *"the Dashboard balance declares successText,
+    // both of its spans — expected the two balance spans on successText"*. The
+    // SUBJECT is unchanged and still worth fencing: both halves of one figure
+    // must agree. Only the tone they must agree ON has moved.
+    const sites = DASH_CODE.split('color: MONEY').length - 1;
+    expect(sites, 'expected the two balance spans on --rm-primary-text').toBe(2);
   });
 
   it('[RED] and it clears 4.5:1 on the card it sits on, every brand and mode', () => {
@@ -138,37 +143,58 @@ describe('Palette-5 T1 — money resolves to successText', () => {
     // ⚠ Stated because the rule has cost a fix in two phases. The hero IS a
     // gradient; the balance card floats on `surface` above it.
     const heroStart = DASH_CODE.indexOf('linear-gradient(145deg,');
-    const balance = DASH_CODE.indexOf("color: statusVar('successText')");
+    const balance = DASH_CODE.indexOf('color: MONEY');
     expect(heroStart).toBeGreaterThan(-1);
     expect(balance).toBeGreaterThan(-1);
     expect(DASH_CODE).toContain('background: SURFACE, borderRadius: 18');
   });
 
-  // ⚠ GUARD-PROOF T1.
-  it('[RED] GUARD-PROOF — --rm-primary-text would make the balance brand-dependent', () => {
-    // The token the balance moved OFF still varies per brand, which is exactly
-    // the property the ruling rejects for money.
+  // ⚠ THIS WAS A GUARD-PROOF AND IS NOW THE MAIN PROPERTY — THE SHARPEST
+  // SINGLE ARTEFACT OF THE REVERSAL, SO IT IS KEPT IN PLACE RATHER THAN MOVED.
+  it('[RED] --rm-primary-text makes the balance brand-dependent, WHICH IS NOW THE POINT', () => {
+    // It read: *"GUARD-PROOF — --rm-primary-text would make the balance
+    // brand-dependent. The token the balance moved OFF still varies per brand,
+    // which is exactly the property the ruling REJECTS for money."*
+    // ⚠ THE ASSERTION IS CHARACTER-FOR-CHARACTER THE SAME. Only its purpose
+    // flipped: the variation it was written to warn about is the behaviour the
+    // 2026-09-05 ruling asks for. A negative assertion whose PURPOSE reverses
+    // while staying green is the shape Palette-4c had to delete a fence over;
+    // here the honest repair is to say out loud what it now proves.
     const derived = BRANDS.map(([, src]) => deriveThemeTokens(resolveBrandingTheme(src), 'light').primaryText);
-    expect(new Set(derived).size, 'primaryText did not vary — the contrast proves nothing')
+    expect(new Set(derived).size, 'primaryText did not vary — money is not brand-responsive')
       .toBeGreaterThan(1);
   });
 
-  it('[RED] the PROJECTED figures are on the TEXT TONE, and MONEY is gone', () => {
-    // ⚠ THIS CASE INVERTED IN PALETTE-6 AND IS REWRITTEN RATHER THAN DELETED.
-    // Palette-5 asserted the two projections were HELD on `--rm-primary-text`
-    // and that the token therefore still had consumers. Palette-6 completed the
-    // rule — projections take the text tone — so the constant is gone and the
-    // token has ZERO consumers.
-    // ⚠ THE ASSERTION IS KEPT because the SUBJECT still matters: it is now what
-    // says the projections did not quietly become green.
-    expect(DASH_CODE, 'the MONEY constant should be gone').not.toContain('const MONEY =');
-    expect(DASH_CODE, 'a projection is still on the brand-text token').not.toContain('color: MONEY');
-    expect(DASH_CODE).toContain('${nextPayout.total}');
+  it('[RED] the PROJECTED figures are on the TEXT TONE, and MONEY is BACK', () => {
+    // ⚠ THIS CASE HAS NOW INVERTED TWICE, AND BOTH TURNS ARE KEPT.
+    // Palette-5 asserted the projections were HELD on `--rm-primary-text` and
+    // that the token therefore still had consumers.
+    // Palette-6 rewrote it to: *"the MONEY constant should be gone — a
+    // projection is still on the brand-text token"*, because the rule had sent
+    // projections to the text tone and left the token with ZERO consumers.
+    // Palette-9 reverses the other half: money itself is now the brand-text
+    // token, so `const MONEY` is BACK and it is the balance that carries it.
+    // ⚠ WHAT SURVIVED ALL THREE TURNS IS THE SUBJECT: no PROJECTION may wear
+    // the money tone, whatever the money tone currently is. That claim has been
+    // true throughout and is the only thing this case has ever really asserted.
+    expect(DASH_CODE, 'the MONEY constant should be back').toContain('const MONEY');
+    expect(DASH_CODE, 'the inline projection left the text tone')
+      .toContain('<span style={{ color: TEXT, fontWeight: 700 }}>${nextPayout.total}</span>');
+    expect(DASH_CODE, 'the projection card left the text tone')
+      .toContain('fontFamily: R.fontMono, color: TEXT }}>${nextPayout.total}</p>');
   });
 });
 
 // ── T2 — BRAND INVARIANCE ───────────────────────────────────────────────────
-describe('Palette-5 T2 — money is the same colour on every brand', () => {
+// ⚠ THIS DESCRIBE WAS TITLED *"money is the same colour on every brand"*. That
+// is FALSE after 2026-09-05 — money is brand-responsive, and the fence proving
+// it lives in paletteMoneyBrandResponsive.test.jsx T2, which asserts DIFFERENCE
+// across the seeded brands and guard-proofs it by pinning a constant.
+// ⚠ THE CASES BELOW STILL PASS AND ARE NOT VACUOUS, BUT THEIR SUBJECT NARROWED:
+// they are now facts about `successText`'s SURVIVING consumers — the login
+// banner, the reset screen, SuccessState and the copy-link confirmation — which
+// are status messages and are still deliberately the same on every contractor.
+describe('Palette-5 T2 (narrowed by Palette-9) — successText is still brand-invariant', () => {
   it('[RED] successText is not a render token, so it CANNOT be brand-derived', () => {
     // ⚠ STRUCTURAL, NOT NUMERIC. Palette-4c's first attempt read one constant N
     // times and asserted it equalled itself. "Brand-invariant" is a fact about
@@ -182,12 +208,12 @@ describe('Palette-5 T2 — money is the same colour on every brand', () => {
     }
   });
 
-  it('[RED] both tabs reach money through the SAME expression', () => {
+  it('[RED] both tabs still reach money through the SAME expression', () => {
     // ⚠ THE EQUALITY THAT MATTERS IS BETWEEN SCREENS. If Dashboard and Profile
     // named different tokens, "the same number paints the same colour" would be
     // false however invariant each was on its own.
-    expect(DASH_CODE).toContain("statusVar('successText')");
-    expect(codeOnly(PROFILE)).toContain("statusVar('successText')");
+    expect(DASH_CODE).toContain('color: MONEY');
+    expect(codeOnly(PROFILE)).toContain('color: item.money ? MONEY :');
   });
 });
 

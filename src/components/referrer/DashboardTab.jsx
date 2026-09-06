@@ -39,24 +39,26 @@ const ON_SECONDARY   = 'var(--rm-on-secondary, #FFFFFF)';
 const SURFACE        = 'var(--rm-surface, #FFFFFF)';
 const RECESS         = 'var(--rm-recess, #ECF0F8)';
 const TEXT           = 'var(--rm-text, #1C2D4D)';
+const MONEY          = 'var(--rm-primary-text, #B1480A)';
 
-// ─── ⚠ `--rm-primary-text` NOW HAS ZERO CONSUMERS, AND IT IS KEPT ON PURPOSE ──
+// ─── ⚠ `--rm-primary-text` IS THE MONEY TONE. IT HAD ZERO CONSUMERS FOR THREE
+//     PHASES AND THE NOTE SAYING SO IS NOW STALE IN THE OTHER DIRECTION ───────
 //
-// The constant that used to live here is gone. Palette-4a built `primaryText`
-// for exactly the sites the money ruling has now moved: the balance went to
-// `successText` in Palette-5, and Palette-6 sent the two PROJECTED figures to
-// the text tone. Nothing in `src/` reads the token today.
+// ⚠ WHAT THIS BLOCK USED TO SAY, kept because it is the reason the token
+// survived to be used: *"`--rm-primary-text` NOW HAS ZERO CONSUMERS, AND IT IS
+// KEPT ON PURPOSE — do not delete it. The next brand-coloured text site will
+// want it, and re-deriving it correctly is a phase of work."* Palette-6 wrote
+// that. Palette-9 is that next site, three phases later.
 //
-// ⚠ DO NOT DELETE IT. It is derived per brand and per mode and floored against
-// BOTH `surface` and `recess` — the only token in the set that is a brand colour
-// made safe for TEXT. `primary` cannot stand in for it: that is floored against
-// the 3:1 NON-TEXT threshold and measures 3.06:1 on a card for the platform
-// brand, which is why it was built in the first place. The next brand-coloured
-// text site will want it, and re-deriving it correctly is a phase of work.
+// ⚠ IT IS THE ONLY TOKEN IN THE SET THAT IS A BRAND COLOUR MADE SAFE FOR TEXT.
+// `primary` cannot stand in for it: that is floored against the 3:1 NON-TEXT
+// threshold and measures 3.06:1 on a card for the platform brand. `primaryText`
+// is floored at 4.5:1 against BOTH `surface` and `recess`, which is what lets
+// the same tone serve a balance card and a recessed activity row.
 //
-// ⚠ AND THE REASON THIS NOTE IS HERE RATHER THAN ONLY IN THE TOKEN FILE: a
-// consumer count of zero is what makes something look deletable, and the person
-// who deletes it will be reading THIS file's history to find out who used it.
+// ⚠ AND THE LESSON THE ZERO-CONSUMER NOTE ACTUALLY TAUGHT: a consumer count of
+// zero is what makes something look deletable. The note is what stopped it being
+// deleted in the three phases before anything read it.
 
 // The one muted-text alpha, shared with the nine files that already use this
 // idiom. ⚠ IT IS DERIVED, NOT PICKED: 0.72 is the lowest value that clears 4.5:1
@@ -331,20 +333,32 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
             ) : (
               <>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 4, margin: "6px 0 4px" }}>
-                  {/* ⚠ RULED 2026-09-04: MONEY IS GREEN EVERYWHERE, NOT ONLY ON PROFILE.
-                      The Available Balance is "money the user has" — the clearest case of
-                      the rule — so both spans take successText. They are ONE figure split
-                      across two elements for typography, and the old split painted the
-                      glyph in the brand accent and the number in body text, which was a
-                      typographic choice nobody made deliberately about money.
-                      ⚠ THIS FIGURE WAS BRAND-RESPONSIVE AND IS NOT ANY MORE. That is the
-                      ruling's cost, accepted: green means "money you have" the way danger
-                      red means danger, and the same balance now reads the same on the
-                      Dashboard and on the Profile. */}
-                  <span style={{ fontSize: 32, color: statusVar('successText'), fontFamily: R.fontMono, fontWeight: 700, lineHeight: 1 }}>$</span>
+                  {/* ⚠ RULED 2026-09-05 BY DANNY, AFTER SEEING THE GREEN LIVE ON THIS CARD:
+                      MONEY IS BRAND-RESPONSIVE, NOT GREEN. Both spans take `--rm-primary-text`.
+                      They are ONE figure split across two elements for typography.
+                      ⚠ THIS REVERSES THE 2026-09-04 RULING THAT THIS COMMENT USED TO CARRY,
+                      which read *"MONEY IS GREEN EVERYWHERE, NOT ONLY ON PROFILE — the
+                      Available Balance is 'money the user has', the clearest case of the
+                      rule"*. It is recorded rather than deleted because a reversal with no
+                      trace reads as drift to the next reader.
+                      ⚠ WHY IT REVERSED, and it is not that the green was wrong about
+                      contrast — it measured 5.71:1 and never failed: the green stood out as
+                      intended and agreed with nothing else on the screen, so distinction was
+                      bought at the cost of cohesion. And THE LABEL ALREADY CARRIED THE
+                      MEANING — "AVAILABLE BALANCE" sits directly above this figure, so the
+                      colour was doing semantic work the copy had already done.
+                      ⚠ THE RULING WAS TESTED BY SHIPPING IT AND LOOKING AT IT. That is the
+                      correct reason to reverse one, and the reason it was shipped rather
+                      than argued.
+                      ⚠ AND THE 52px FIGURE IS HELD TO 4.5:1, NOT the 3:1 large-text
+                      allowance WCAG would permit at this size. A payout figure is the thing
+                      a homeowner reads most carefully; `primaryText` is already floored at
+                      4.5 against both grounds, so the allowance buys nothing and would cost
+                      a justification nobody would find later. */}
+                  <span style={{ fontSize: 32, color: MONEY, fontFamily: R.fontMono, fontWeight: 700, lineHeight: 1 }}>$</span>
                   <span style={{
                     fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em",
-                    fontFamily: R.fontSans, color: statusVar('successText'), lineHeight: 1,
+                    fontFamily: R.fontSans, color: MONEY, lineHeight: 1,
                   }}>
                     {balance.toLocaleString()}
                   </span>

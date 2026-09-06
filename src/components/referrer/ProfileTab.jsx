@@ -31,6 +31,7 @@ const SECONDARY_DARK = 'var(--rm-secondary-dark, #0C1320)';
 const ON_SECONDARY   = 'var(--rm-on-secondary, #FFFFFF)';
 const SURFACE        = 'var(--rm-surface, #FFFFFF)';
 const RECESS         = 'var(--rm-recess, #ECF0F8)';
+const MONEY          = 'var(--rm-primary-text, #B1480A)';
 
 // The one muted-text alpha, shared with the files that already use this idiom.
 // ⚠ AND ITS GROUND IS CHECKED, NOT ASSUMED — that is Palette-4a's hardest-won
@@ -367,7 +368,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                   <i className={`ph ${item.icon}`} style={{ fontSize: 16, color: 'var(--rm-text, #1C2D4D)' }} />
                   <span style={{ fontSize: 15, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody }}>{item.label}</span>
                 </div>
-                <span style={{ fontSize: 15, fontWeight: 700, color: item.money ? statusVar('successText') : 'var(--rm-text, #1C2D4D)' }}>{item.val}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: item.money ? MONEY : 'var(--rm-text, #1C2D4D)' }}>{item.val}</span>
               </div>
             ))}
           </div>
@@ -480,14 +481,19 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                               Pending completion
                             </span>
                           )}
-                          {/* ⚠ THE COLLISION IS RESOLVED IN FAVOUR OF STATUS. This is
-                              `STATUS_CONFIG.complete.color` AND a dollar amount, so Palette-4a's
-                              money ruling (--rm-primary-text) and the status argument both claimed
-                              it. Money-is-green wins: it was never a defect at 6.83:1, but leaving
-                              it on a different green from its two siblings would have put three
-                              money figures on one screen in three different colours. */}
+                          {/* ⚠ THE COLLISION IS RESOLVED IN FAVOUR OF MONEY, AND THAT IS A
+                              REVERSAL OF WHAT THIS COMMENT USED TO SAY. This is
+                              `STATUS_CONFIG.complete.color` AND a dollar amount, so the
+                              money rule and the status argument both claim it.
+                              ⚠ IT USED TO READ *"THE COLLISION IS RESOLVED IN FAVOUR OF
+                              STATUS... Money-is-green wins"* — which reached the same
+                              SITE by the opposite reasoning, because green was then both
+                              the money tone and the status tone. Now they differ, so the
+                              choice is real: this takes the money tone, because three
+                              money figures on one screen in two colours is the
+                              inconsistency the rule exists to remove. */}
                           {ref.status === 'complete' && (ref.conversion_bonus != null || ref.payout != null) && (
-                            <span style={{ fontSize: 14, fontWeight: 800, color: statusVar('successText'), fontFamily: R.fontMono }}>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: MONEY, fontFamily: R.fontMono }}>
                               +${ref.conversion_bonus ?? ref.payout}
                             </span>
                           )}
@@ -533,21 +539,28 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             }}>
               <i className="ph ph-clock-counter-clockwise" style={{ fontSize: 18, color: 'var(--rm-text, #1C2D4D)' }} />
               <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)' }}>Activity</span>
-              {/* ⚠ RULED 2026-09-04: MONEY IS SEMANTICALLY GREEN AND DELIBERATELY
-                  NOT BRAND-RESPONSIVE. Green says "money you have" the way danger red
-                  says danger — the argument statusTheme.js exists on. So this is the
-                  status system, not the render set, and it is the SAME green on every
-                  contractor.
-                  ⚠ WHAT THAT TRADES: these figures never respond to a contractor's
-                  palette. Accepted, and recorded so it is not re-litigated.
-                  ⚠ AND THE REPAIR NEEDED THE TOKEN TO MOVE FIRST. This was 3.30:1 —
-                  the 3:1 GRAPHIC tone used as text — and routing it to successText was
-                  blocked because THAT measured 4.39:1 on the recessed ground its
-                  sibling below sits on. Palette-4c re-floored successText against BOTH
-                  grounds; only then was this a substitution rather than a swap of one
-                  failing green for another. */}
+              {/* ⚠ RULED 2026-09-05: MONEY IS BRAND-RESPONSIVE. This figure is on
+                  `--rm-primary-text`, floored at 4.5:1 against BOTH `surface` and the
+                  `recess` the rows below sit on.
+                  ⚠ THIS COMMENT SAID THE EXACT OPPOSITE AND IS REWRITTEN RATHER THAN
+                  DELETED. It read: *"MONEY IS SEMANTICALLY GREEN AND DELIBERATELY NOT
+                  BRAND-RESPONSIVE — green says 'money you have' the way danger red says
+                  danger... WHAT THAT TRADES: these figures never respond to a
+                  contractor's palette. Accepted, and recorded so it is not
+                  re-litigated."* It WAS re-litigated, by shipping it and looking at it,
+                  and the trade it named is exactly what was reversed.
+                  ⚠ THE ARGUMENT THAT FAILED, stated so it is not made again unchanged:
+                  the analogy to danger-red is sound for a WARNING, where the colour is
+                  the only carrier of the meaning. It is not sound here, because the
+                  LABEL already carries it — "Balance", "earned", "AVAILABLE BALANCE".
+                  A second, clashing carrier of a meaning the copy already states is
+                  redundancy, not reinforcement.
+                  ⚠ WHAT SURVIVES THE REVERSAL: `successText` KEEPS its Palette-4c
+                  re-floored value. This site was 3.30:1 on the graphic tone, and the
+                  re-floor also repaired sites that are not money — so the token outlives
+                  the ruling that motivated it. DO NOT REVERT THE RE-FLOOR. */}
               {totalEarned > 0 && (
-                <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: statusVar('successText'), fontFamily: R.fontMono }}>
+                <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: MONEY, fontFamily: R.fontMono }}>
                   ${totalEarned.toLocaleString()} earned
                 </span>
               )}
@@ -593,6 +606,18 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                         // ⚠ THE TILE IS UNCHANGED — STATUS_TINT grounding an icon badge
                         // is still the graphic use it was built for. The FOREGROUND was
                         // what was wrong.
+                        // ⚠ AND PALETTE-9 DELIBERATELY LEFT THIS ICON GREEN WHILE MOVING
+                        // THE AMOUNT BESIDE IT TO `--rm-primary-text`. THAT IS A DECISION
+                        // THAT WAS NOT RULED, AND IT IS FLAGGED RATHER THAN GUESSED.
+                        // The 2026-09-05 reversal names money FIGURES; an icon is not a
+                        // figure, so moving it would be completing a ruling nobody made.
+                        // ⚠ BUT THE CONSEQUENCE IS VISIBLE: this tile now shows a green
+                        // glyph on a green tint next to a brand-coloured amount, and
+                        // "green agreed with nothing else on the screen" is precisely the
+                        // reasoning the reversal turned on. Either answer is defensible
+                        // — it reads as a status badge, or it reads as the last green on
+                        // a screen that stopped using green — and the choice is Danny's.
+                        // Filed in PRE_LAUNCH_CHECKLIST.md rather than settled here.
                         background: STATUS_TINT.success, display: "flex",
                           alignItems: "center", justifyContent: "center",
                         }}>
@@ -611,7 +636,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                       {/* Was 2.93:1 on the recess — the worse of the pair, and the reason
                           successText had to be floored against `recess` and not only against
                           `surface`. */}
-                      <span style={{ fontSize: 14, fontWeight: 900, color: statusVar('successText'), fontFamily: R.fontMono }}>
+                      <span style={{ fontSize: 14, fontWeight: 900, color: MONEY, fontFamily: R.fontMono }}>
                         +${item.amount.toLocaleString()}
                       </span>
                     </div>

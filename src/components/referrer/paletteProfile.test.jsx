@@ -515,9 +515,29 @@ describe('Palette-4c T1/T2 - successText is a FIXED green, floored on both groun
 });
 
 describe('Palette-4c T3 - every money figure in ProfileTab', () => {
-  it('[RED] the money sites and the activity icon declare successText', () => {
-    const sites = CODE.split("color: statusVar('successText')").length - 1;
-    expect(sites, 'expected four successText declarations').toBe(4);
+  it('[RED] the money sites declare the MONEY tone; the activity ICON stays successText', () => {
+    // ⚠ THIS ASSERTED FOUR successText DECLARATIONS — three money figures plus
+    // the activity tile's icon. The 2026-09-05 reversal moved the FIGURES to
+    // `--rm-primary-text` and left the ICON where it was, so the count split.
+    // ⚠ THE SPLIT IS THE POINT AND IS FENCED IN BOTH HALVES, because "4 became 1"
+    // is exactly the shape that reads as three sites having been lost.
+    const GREEN_ARG = "'successText'";
+    const green = CODE.split("color: statusVar('successText')").length - 1;
+    expect(green, 'the activity-tile icon should be the ONLY successText left').toBe(1);
+    expect(CODE, 'the surviving green is not the money icon')
+      .toContain('<i className="ph ph-money" style={{ fontSize: 20, color: statusVar(' + GREEN_ARG + ') }} />');
+
+    // ⚠ THE ICON WAS LEFT GREEN DELIBERATELY AND IT IS AN OPEN DECISION, NOT A
+    // SETTLED ONE. The ruling names money FIGURES; an icon is not a figure, so
+    // moving it would be completing a ruling nobody made. But the tile now shows
+    // a green glyph beside a brand-coloured amount, and "green agreed with
+    // nothing else on the screen" is the reasoning the reversal turned on.
+    // Filed in PRE_LAUNCH_CHECKLIST.md; this fence records the state, not a verdict.
+    const money = CODE.split('MONEY').length - 1;
+    expect(money, 'the three Profile money figures plus the declaration').toBeGreaterThanOrEqual(4);
+    expect(CODE, 'the Balance stat row lost the money tone')
+      .toContain('color: item.money ? MONEY :');
+
     expect(CODE).not.toContain('color: R.green,');
     expect(CODE).not.toContain('color: R.emeraldText,');
   });

@@ -4955,6 +4955,99 @@ quadruples is evidence about the estimate, not about the wave:
       unrendered page** — the guards-sharing-an-input failure, arrived at through a browser.
       → `src/hooks/useEntrance.js` · `src/components/shared/AnimCard.jsx`
 
+- [ ] **⚠ THE MONEY-IS-GREEN RULING WAS REVERSED ON 2026-09-05, AFTER SEEING IT LIVE. MONEY IS
+      BRAND-RESPONSIVE. ⚠ THIS IS NOT CHURN AND MUST NOT BE READ AS CHURN.**
+      *(Palette-9, 2026-09-06. Ruled by Danny.)*
+      Every money-in-account figure moved from `successText` to `--rm-primary-text`: the Dashboard
+      balance (both spans), Profile's Balance stat row, its completed-referral bonus, its
+      "$N earned" total, its activity-row amount, and CashOut's confirmation figure. **Seven sites.**
+      ⚠ **THE GREEN WAS NEVER A CONTRAST DEFECT** - it measured 5.71:1 and never failed a floor.
+      It was reversed because it **stood out as intended and agreed with nothing else on the
+      screen**, and because **the LABEL already carried the meaning**: "AVAILABLE BALANCE" sits
+      directly above the figure, so the colour was doing semantic work the copy had already done.
+      Redundant-and-clashing is worse than plain.
+      ⚠ **THE RULING WAS TESTED BY SHIPPING IT AND LOOKING AT IT, WHICH IS THE CORRECT REASON TO
+      REVERSE ONE.** Recorded here because a reversal whose reason is not written down is
+      indistinguishable from a mind changed at random, and the next session will find the fences
+      inverted twice and conclude the arc was thrashing.
+      ⚠ **WHAT SURVIVED:** `successText` KEEPS its Palette-4c re-floored value (`#137639` /
+      `#7DD3AA`) and its four non-money consumers - the login banner, the reset screen,
+      `SuccessState` and the copy-link confirmation. **DO NOT REVERT THE RE-FLOOR**: the old value
+      failed at 3.30 and 2.93, and the re-floor repaired sites that are not money, so the token
+      outlives the ruling that motivated it. Projections, teasers, other people's money and form
+      values stay on `--rm-text`; that half of the rule is untouched.
+      → `paletteMoneyBrandResponsive.test.jsx` · the rewritten fences in `paletteNavMoney`,
+        `paletteRemainingTabs`, `paletteDashboard` and `paletteProfile`
+
+- [ ] **⚠ THE CASHOUT HERO BALANCE STAYS WHITE, AND THE EXCEPTION NOW HAS A STRONGER REASON THAN
+      IT HAD UNDER GREEN.**
+      *(Palette-9 A.5, 2026-09-06. Measured, not assumed.)*
+      Palette-8 A.4 established that no green clears 4.5:1 on a brand fill across 1328 sampled
+      fills. Palette-9 asked whether the new money tone works there instead. **It is the worst
+      possible pairing rather than the natural one: `primaryText` is DERIVED FROM THE BRAND and
+      the fill IS the brand, so the two converge instead of separating.** Against the darker
+      gradient stop it fails **all eight** brand/mode pairs - 2.48 / 2.48 / 2.05 / 2.49 in light,
+      and **1.02 / 1.02 / 1.05 / 1.01 in dark**, where it is very nearly the fill itself.
+      `onSecondary` clears 4.61-14.66 on the same pairs, so the hero keeps it.
+      ⚠ **CONSEQUENCE, AND IT IS THE ONE EXCEPTION TO V3:** the balance is the single figure that
+      changes colour by screen - brand-coloured on the Dashboard and Profile, white on the CashOut
+      hero. Forced by the ground, not chosen.
+      → the recorded comment at the hero in `CashOutTab`
+
+- [ ] **⚠ THE PROFILE MONEY TILE'S ICON WAS LEFT GREEN BESIDE A BRAND-COLOURED AMOUNT. THIS IS AN
+      OPEN DECISION THAT WAS FLAGGED RATHER THAN GUESSED.**
+      *(Palette-9, 2026-09-06. Danny's call, not a defect.)*
+      The 2026-09-05 reversal names money **FIGURES**. An icon is not a figure, so moving the
+      `ph-money` glyph would have been completing a ruling nobody made - and this arc has a rule
+      against that. **But the consequence is visible:** the tile now shows a green glyph on a green
+      tint next to a brand-coloured amount, and *"green agreed with nothing else on the screen"* is
+      precisely the reasoning the reversal turned on.
+      ⚠ **EITHER ANSWER IS DEFENSIBLE** - it reads as a status badge, or it reads as the last green
+      on a screen that stopped using green. **It is now the ONLY `successText` left in `ProfileTab`**,
+      which is what makes it conspicuous.
+      → the flagged comment at the tile · `paletteProfile.test.jsx`'s figures-vs-icon split
+
+- [ ] **⚠ PREREQUISITE OF THE REFERRER DARK-MODE TOGGLE: SIX CONTRAST DEFECTS MUST BE FIXED
+      BEFORE IT SHIPS, OR THEY WILL READ AS THE TOGGLE'S FAULT.**
+      *(Palette-9 AD-3, 2026-09-06. ⚠ TRIGGER: before the referrer theme toggle ships - NOT a
+      general contrast item, and not schedulable independently of that work.)*
+      ⚠ **THE REFERRER SURFACE CANNOT REACH DARK MODE TODAY, AND THAT IS CONFIRMED AT HEAD, NOT
+      ASSUMED:** `PUT /api/preferences/theme-mode` gates on `is_field_rep` and 403s a referrer,
+      and its writer hardcodes `subjectType: 'team_member'` with `session.member.id`. A referrer
+      session is `subjectType: 'user'`. Nothing has widened that predicate, so these remain latent.
+      **The batch that arrives the day the toggle lands**, from Palette-8 Part C's baseline:
+
+      | defect | measured | floor |
+      |---|---|---|
+      | card border, dark - `#000000` on surface | 1.23-1.52 | 3 |
+      | inner border, dark - `#000000` on recess | 1.05-1.08 | 3 |
+      | Cash Out indicator - white on `#21B6B0`, Beta/dark only | 2.51 | 3 |
+      | badge label - `#6B7280` on `#F3F4F6` | 4.39, BOTH modes | 4.5 |
+      | avatar initials - same pair | 4.39, BOTH modes | 4.5 |
+      | disclosure caret - `#A0A0A0` on white | 2.61, BOTH modes | 3 |
+
+      ⚠ **THE REASON THIS IS FILED AGAINST THE TOGGLE AND NOT AGAINST CONTRAST GENERALLY:** if they
+      are not fixed first, the toggle ships six visible defects on day one and they will be
+      attributed to it. **They predate it. They are only unreachable.**
+      → `CD-21`'s deferred client-app design pass · `server/routes/referrer.js`'s
+        `PUT /api/preferences/theme-mode`
+
+- [ ] **⚠ THREE OF THOSE SIX ARE A DIFFERENT DEFECT CLASS: VALUES THAT NEVER GOT A DARK VARIANT
+      AT ALL, AND SO PAINT IDENTICALLY IN A MODE THEY WERE NEVER DESIGNED FOR.**
+      *(Palette-9 AD-3.2, 2026-09-06.)*
+      `#6B7280` on `#F3F4F6` measures **4.39:1 in light AND in dark**; `#A0A0A0` on `#FFFFFF`
+      measures **2.61:1 in both**. **That is not a tie.** A value that responds to the mode and
+      happens to land on the same ratio is a coincidence; these do not respond at all.
+      ⚠ **FILE SEPARATELY FROM "fails in dark", BECAUSE THE FIX IS DIFFERENT** - those need a
+      better value, these need a variant to exist before a value can be chosen. **And it will
+      recur anywhere a raw literal survived the migration**, which makes it a search, not a site.
+
+- [ ] **⚠ THE DARK BATCH ABOVE IS INCOMPLETE, AND THE GAP IS NAMED RATHER THAN LEFT IMPLIED.**
+      *(Palette-9 AD-3.4, 2026-09-06.)* `ReferTab` is unmeasured under six of the eight brand/mode
+      combos - its cards pass no `screenKey`, so `useEntrance` can never mount already-revealed and
+      a non-painting tab never finishes the timer. **There may be more behind the toggle than the
+      six listed.** Whoever does that work measures `ReferTab` first.
+
 - [ ] **⚠ THE MIGRATION SCRIPTS PRODUCED THREE BROKEN-SOURCE MOMENTS, ALL CAUGHT, AND THE PATTERN IS
       WORTH THE ENTRY.**
       *(Palette-6, 2026-09-06.)* A prefix-matching substitution truncated three lines into invalid
@@ -5281,7 +5374,31 @@ quadruples is evidence about the estimate, not about the wave:
       selection in `ProfileTab`**. ⚠ **The same sentence also cites `RankingsTab.jsx:91-92`, which this
       phase did not touch and therefore did not verify** — an unflagged sibling in a list where one
       member was flagged is exactly the shape `CLAUDE.md` calls the sharpest proof.
-      **Running total of already-rotted citations found by the Palette arc and left unrepaired: 4.**
+      ⚠ **PALETTE-9 MAKES IT FOUR PHASES, AND THIS TIME VERIFICATION FOUND A DEAD SUBJECT RATHER
+      THAN A MOVED ONE.** Its edits flagged **eight** citations. **Seven are inside THIS entry** —
+      the quoted `DashboardTab.jsx:586,610`, `ProfileTab.jsx:808` and `ProfileTab.jsx:603-604`
+      numbers, which are evidence of past rot and must not be renumbered. **The eighth is the
+      interesting one.**
+      ⚠ **`CashOutTab.jsx:100` WAS ALREADY WRONG AT HEAD, AND THE THING IT NAMES NO LONGER EXISTS.**
+      Three documents — `CDL_3a_BUILD_SPEC.md` §8, `CDL_3b_BUILD_SPEC.md`'s carried-forward sweep,
+      and the hardcoded-literal entry in this file — list *"`CashOutTab.jsx:100` hardcoded gradient
+      `#012854 → #001a3a`"* as a remaining pre-launch literal. At HEAD that line is
+      `const tick = () => {`, an animation callback, and **`grep 012854 CashOutTab.jsx` returns
+      nothing at all**: the Palette arc migrated that gradient to tokens, and no phase went back to
+      close the sweep item that named it.
+      ⚠ **THE SWEEP ITEM IS STILL LIVE — 33 `#012854` sites remain in `src/`** (`App.jsx`'s
+      focus-visible outline, `ContractorTerms.jsx`, and others). **Only its worked EXAMPLE is
+      dead.** That is the dangerous shape: an item whose headline example has been fixed reads as
+      DONE to anyone who checks the example and stops there.
+      ⚠ **NOT REPAIRED BY ARITHMETIC, AND DELIBERATELY NOT REPAIRED AT ALL** — the subject is gone,
+      so there is no line to shift to. Re-deriving the example from the 33 that remain is the
+      larger job `CLAUDE.md` says to record rather than improvise. **Named by SUBJECT so it needs
+      no number: the sweep wants a live hardcoded-navy site, and `App.jsx`'s focus-visible outline
+      is the obvious candidate.**
+      **Running total of already-rotted citations found by the Palette arc and left unrepaired: 5.**
+      ⚠ **AND THIS TOTAL IS THE THING `CLAUDE.md` WARNS ABOUT** — a hand-maintained number above a
+      list nobody re-counts. It is kept only because each member is enumerated above it and can be
+      recounted by reading; **if it ever disagrees with the enumeration, the enumeration wins.**
       ⚠ **AND THE MARKER DOES NOT SILENCE `--changed-files`, WHICH IS A GAP IN THE TOOL RATHER
       THAN IN THIS ENTRY.** `scripts/citecheck.js` computes `inRecord` for every finding and
       stamps it on, and the `--role-only` count filters on it — but the changed-files reporter

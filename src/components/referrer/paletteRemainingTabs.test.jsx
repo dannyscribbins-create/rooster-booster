@@ -164,25 +164,49 @@ describe('Palette-6 T1 — the ruled destinations', () => {
 });
 
 // ── T2 — THE MONEY FENCE, COMPLETE ─────────────────────────────────────────
-describe('Palette-6 T2 — money in the account is green; everything else is text', () => {
-  it('[RED] account money is successText on both screens that carry it', () => {
-    expect(codeOnly(DASH), 'the Dashboard balance').toContain("statusVar('successText')");
-    expect(codeOnly(PROFILE), 'Profile earnings + Balance row').toContain("statusVar('successText')");
-    expect(CODE.CashOutTab, 'the completed-cashout figure').toContain("statusVar('successText')");
+// ⚠ THIS DESCRIBE WAS TITLED *"money in the account is green; everything else is
+// text"* AND IT GUARD-PROOFED BOTH DIRECTIONS. Danny reversed the green half on
+// 2026-09-05 after seeing it live, so the fence as written guarded the wrong
+// thing while staying perfectly green.
+// ⚠ IT IS REWRITTEN, NOT DELETED, AND BOTH GUARD-PROOFS ARE KEPT — the fence's
+// real value was never the colour it named. It was the CONTRAST between two
+// classes of figure: money the user HAS, and everything else. That distinction
+// survived the reversal untouched; only the tone on one side of it moved.
+describe('Palette-6 T2 (reversed by Palette-9) — account money is the MONEY tone; everything else is text', () => {
+  it('[RED] account money is the MONEY tone on all three screens that carry it', () => {
+    // Was: *"account money is successText on both screens that carry it"*.
+    expect(codeOnly(DASH), 'the Dashboard balance').toContain('color: MONEY');
+    expect(codeOnly(PROFILE), 'Profile earnings + Balance row').toContain('MONEY');
+    expect(CODE.CashOutTab, 'the completed-cashout figure').toContain('color: MONEY');
   });
 
   it('[RED] and it clears 4.5:1 on its ground, every brand and mode', () => {
+    // ⚠ THE GROUND PAIR MOVED WITH THE TONE. This measured `successText` against
+    // `surface`; it now measures the brand-derived money tone against BOTH
+    // `surface` and the `recess` the activity rows sit on — the worse of the two,
+    // and the one Palette-4c learned about the hard way at 2.93:1.
     eachBrandMode((label, mode, t) => {
-      const pair = contrastRatio(successFor(mode), t.surface);
-      expect(pair, label + '/' + mode + ': money on a card is ' + pair.toFixed(2))
-        .toBeGreaterThanOrEqual(TEXT_FLOOR);
+      for (const [ground, hex] of [['surface', t.surface], ['recess', t.recess]]) {
+        const pair = contrastRatio(t.primaryText, hex);
+        expect(pair, label + '/' + mode + ': money on ' + ground + ' is ' + pair.toFixed(2))
+          .toBeGreaterThanOrEqual(TEXT_FLOOR);
+      }
     });
   });
 
   it('[RED] every PROJECTION is on the text tone — none is green', () => {
     // the two Dashboard next-payout figures, Profile's stat row, the schedule
     // rows, the prize thresholds, the leaderboard rows, the broadcast payout.
-    expect(codeOnly(DASH)).not.toContain('color: MONEY');
+    // ⚠ THE FIRST LINE USED TO READ `not.toContain('color: MONEY')` OVER THE WHOLE
+    // DASHBOARD, which is now exactly backwards — the balance is SUPPOSED to say
+    // that. A blanket negative over a file cannot distinguish "no projection took
+    // the tone" from "nothing took the tone at all", and after the reversal it
+    // fails on correct code. The projections are named individually instead.
+    expect(codeOnly(DASH), 'the inline projection left the text tone')
+      .toContain('<span style={{ color: TEXT, fontWeight: 700 }}>${nextPayout.total}</span>');
+    expect(CODE.RewardScheduleCard, 'a schedule row took the money tone').not.toContain('color: MONEY');
+    expect(CODE.RankingsTab, 'a prize figure took the money tone').not.toContain('color: MONEY');
+    expect(codeOnly(POPUP), "another person's payout took the money tone").not.toContain('color: MONEY');
     expect(CODE.RewardScheduleCard, 'a schedule row went green').not.toContain("statusVar('successText')");
     expect(CODE.RankingsTab, 'a prize or leaderboard figure went green').not.toContain("statusVar('successText')");
     expect(codeOnly(POPUP), "another person's payout went green").not.toContain("statusVar('successText')");
@@ -206,8 +230,19 @@ describe('Palette-6 T2 — money in the account is green; everything else is tex
     expect(mutated.includes(injected), 'the needle cannot see an injected green').toBe(true);
   });
 
-  it('[RED] --rm-primary-text has ZERO code consumers, and the reason is recorded', () => {
-    let consumers = 0;
+  it('[RED] --rm-primary-text now has EXACTLY THREE code consumers', () => {
+    // ⚠ THIS CASE ASSERTED **ZERO** AND IS REWRITTEN RATHER THAN DELETED. It read:
+    // *"--rm-primary-text has ZERO code consumers, and the reason is recorded —
+    // a consumer of --rm-primary-text reappeared"*, and it fenced the tombstone
+    // in DashboardTab explaining why a token nothing read was kept.
+    // ⚠ THAT TOMBSTONE IS WHY THIS PHASE WAS A WIRING JOB AND NOT A DERIVATION
+    // JOB. The token survived three phases with no consumer because a comment
+    // said not to delete it; Palette-9 is the "next brand-coloured text site"
+    // that comment predicted.
+    // ⚠ THE COUNT IS FENCED IN BOTH DIRECTIONS ON PURPOSE. Too few means a money
+    // site was reverted; too many means the tone leaked onto a fourth file, which
+    // is how a projection would quietly become account money.
+    const consumers = [];
     const walk = (dir) => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, e.name);
@@ -217,15 +252,18 @@ describe('Palette-6 T2 — money in the account is green; everything else is tex
         // ⚠ codeOnly() TRACKS BLOCK-COMMENT REGIONS. A per-line startsWith check
         // misses CONTINUATION lines of a /* */ block, which is how this counted a
         // comment as a consumer on its first run.
-        if (codeOnly(fs.readFileSync(p, 'utf8')).includes('--rm-primary-text')) consumers++;
+        if (codeOnly(fs.readFileSync(p, 'utf8')).includes('--rm-primary-text')) consumers.push(e.name);
       }
     };
     walk(SRC);
-    expect(consumers, 'a consumer of --rm-primary-text reappeared').toBe(0);
-    // ⚠ AND IT IS STILL DERIVED. A token with no consumer is what gets deleted,
-    // so the tombstone naming the reason is asserted here too.
+    expect(consumers.sort(), 'the money tone is not on exactly the three money files')
+      .toEqual(['CashOutTab.jsx', 'DashboardTab.jsx', 'ProfileTab.jsx']);
     expect(RENDER_TOKEN_KEYS).toContain('primaryText');
-    expect(DASH).toContain('ZERO CONSUMERS, AND IT IS KEPT ON PURPOSE');
+    // and the tombstone must now say the OPPOSITE of what it used to
+    expect(DASH, 'the stale zero-consumer tombstone is still there')
+      .not.toContain('ZERO CONSUMERS, AND IT IS KEPT ON PURPOSE');
+    expect(DASH, 'the reversal is not recorded where the tombstone was')
+      .toContain('IT HAD ZERO CONSUMERS FOR THREE');
   });
 });
 
