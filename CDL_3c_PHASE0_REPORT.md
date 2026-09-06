@@ -155,7 +155,7 @@ is the *prerequisite* both halves needed, not either half.
 | Condition | Evidence |
 |---|---|
 | Storage ✓ | `server/db.js:287-289` — `users.totp_secret`, `totp_enabled`, `sms_2fa_enabled` |
-| Editor ✓ | `src/components/referrer/ManageAccount.jsx:781-897` — full working toggle UI |
+| Editor ✓ | `ManageAccount.jsx`'s **two-factor section** — the `totp_enabled` toggle through the SMS-2FA row — full working toggle UI. *(Cited by role 2026-09-06: the line range 781-897 was correct when written and was moved by Palette-10's token header.)* |
 | Validator ✓ | `server/routes/account.js:260` — a real `speakeasy.totp.verify` at enrolment |
 | **Delivery ✗** | `gatherLoginCandidates()` (`referrer.js:1118-1132`) **does not select the columns**; `POST /api/login` mints a session with no second factor. Grep confirms **zero** reads of `totp_enabled`/`sms_2fa_enabled` outside `account.js`'s own settings echo. |
 

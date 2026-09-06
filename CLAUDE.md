@@ -344,10 +344,14 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1300 server tests across 208 suites, and 846 React tests across 54 files** (measured 2026-09-06 by Palette-9, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-9 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
-  It adds `src/components/referrer/paletteMoneyBrandResponsive.test.jsx`, and 823 → 846 is exactly
-  its 23 cases; the file count moves 53 → 54 for the same reason.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1300 server tests across 208 suites, and 875 React tests across 55 files** (measured 2026-09-06 by Palette-10, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-10 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  It adds `src/components/referrer/paletteManageAccount.test.jsx`, and 846 → 875 is exactly its 29
+  cases; the file count moves 54 → 55 for the same reason. The server figures did not move and were
+  re-measured rather than carried — same reasoning as the entry it replaces, quoted below.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-9 COMMIT ITSELF, BECAUSE THAT
+  COMMIT SHIPS TESTS.* It adds `paletteMoneyBrandResponsive.test.jsx`, and 823 → 846 is exactly its
+  23 cases; the file count moves 53 → 54 for the same reason.
   ⚠ **THE SERVER NUMBERS DID NOT MOVE, AND THAT IS NOT STALENESS — IT IS THE MIRROR OF THE
   PREVIOUS ENTRY.** Palette-8 Part C moved the server figures and left React still; this phase does
   the opposite. Both halves were read by name off this run's own log either way, because **a number

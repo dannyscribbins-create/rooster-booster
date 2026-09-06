@@ -115,7 +115,11 @@ describe('Palette-9 T1 — every money-in-account figure is on --rm-primary-text
     // row reads `color: item.money ? MONEY : ...`. Counting only the direct form
     // would report 3 and read as a missing site; counting the identifier alone
     // would match the declaration too. Both forms are asserted by name.
-    expect(countOf(codeOnly(PROFILE), MONEY_USE), 'the three direct money figures').toBe(3);
+    // ⚠ WAS 3, IS 4 SINCE PALETTE-10 C.1 MOVED THE `ph-money` ICON ONTO THE SAME
+    // TONE. The icon is not a figure — B.3 is explicit that the rule moves the
+    // DIGITS — but it labels one, and Danny ruled it pairs with the amount.
+    expect(countOf(codeOnly(PROFILE), MONEY_USE),
+      'three money figures plus the icon that labels one of them').toBe(4);
     expect(codeOnly(PROFILE), 'the Balance stat row lost the money tone')
       .toContain('color: item.money ? MONEY :');
   });

@@ -606,22 +606,21 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                         // ⚠ THE TILE IS UNCHANGED — STATUS_TINT grounding an icon badge
                         // is still the graphic use it was built for. The FOREGROUND was
                         // what was wrong.
-                        // ⚠ AND PALETTE-9 DELIBERATELY LEFT THIS ICON GREEN WHILE MOVING
-                        // THE AMOUNT BESIDE IT TO `--rm-primary-text`. THAT IS A DECISION
-                        // THAT WAS NOT RULED, AND IT IS FLAGGED RATHER THAN GUESSED.
-                        // The 2026-09-05 reversal names money FIGURES; an icon is not a
-                        // figure, so moving it would be completing a ruling nobody made.
-                        // ⚠ BUT THE CONSEQUENCE IS VISIBLE: this tile now shows a green
-                        // glyph on a green tint next to a brand-coloured amount, and
-                        // "green agreed with nothing else on the screen" is precisely the
-                        // reasoning the reversal turned on. Either answer is defensible
-                        // — it reads as a status badge, or it reads as the last green on
-                        // a screen that stopped using green — and the choice is Danny's.
-                        // Filed in PRE_LAUNCH_CHECKLIST.md rather than settled here.
+                        // ⚠ RULED 2026-09-06: THE ICON TAKES THE MONEY TONE, pairing with
+                        // the amount it labels. Palette-9 left it green and FILED the
+                        // decision rather than guessing it; this closes it.
+                        // ⚠ THE REASONING IS THE REVERSAL'S OWN, APPLIED ONE STEP FURTHER:
+                        // green left the FIGURES because it agreed with nothing else on the
+                        // screen, and that argument does not weaken over three pixels. An
+                        // icon labelling a balance is part of the balance.
+                        // ⚠ IT WAS THE LAST `successText` IN THIS FILE. The tile's GROUND
+                        // is still `STATUS_TINT.success` and that is deliberate — the tint
+                        // is a graphic ground, not a text tone, and B.3 is explicit that the
+                        // money rule moves the DIGITS, not the card and not the label.
                         background: STATUS_TINT.success, display: "flex",
                           alignItems: "center", justifyContent: "center",
                         }}>
-                          <i className="ph ph-money" style={{ fontSize: 20, color: statusVar('successText') }} />
+                          <i className="ph ph-money" style={{ fontSize: 20, color: MONEY }} />
                         </div>
                         <div>
                           <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)' }}>{item.desc}</p>

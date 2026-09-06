@@ -259,6 +259,78 @@ const TEXT_FLOOR = 4.5;
 const LARGE_TEXT_FLOOR = 3;
 const NON_TEXT_FLOOR = 3;
 
+// ─── RULING-DERIVED FLOORS (Palette-10 C.2) ─────────────────────────────────
+// ⚠ A CHECKER QUIETLY SOFTER THAN THE RULES IS THE SAME SHAPE AS THE EMOJI
+// EXEMPTION THAT SWALLOWED MONEY: it reports clean on something nobody
+// verified. WCAG permits 3:1 for large text, and the money ruling declines that
+// allowance — so before this existed, the checker scored the 52px balance
+// against 3 while the fence held it to 4.5, and the two agreed on the OUTCOME
+// only because the measured value happened to clear both.
+//
+// ⚠ A RULING MAY ONLY TIGHTEN. If one would permit LESS than WCAG, that is a
+// FINDING and this module throws rather than honouring it — a configuration
+// that can lower a floor is a way to make any surface pass.
+//
+// Each entry: `id`, the `floor` it demands, `why` (shown in the report), and a
+// `test(reading)` that decides whether the site is the ruled one.
+const RULING_FLOORS = Object.freeze([
+  Object.freeze({
+    id: 'money-4.5',
+    floor: 4.5,
+    why: 'money never takes the large-text allowance (ruled 2026-09-05)',
+    // A money figure is a currency amount or a bare figure in the mono face.
+    // ⚠ ANCHORED, NOT A BARE `$` SUBSTRING: "$" alone is the split glyph of the
+    // Dashboard balance and must match, but a sentence merely containing a
+    // dollar sign is prose and must not.
+    test: (r) => {
+      const t = typeof r.ownText === 'string' ? r.ownText.trim() : '';
+      if (!t) return false;
+      return /^\+?\$$/.test(t) || /^\+?\$?[\d,]+(\.\d+)?$/.test(t);
+    },
+  }),
+]);
+
+/**
+ * The floor a reading must actually meet, and WHERE that floor came from.
+ * ⚠ REPORTS BOTH, because a reader must be able to tell a WCAG floor from a
+ * ruled one. `Math.max` is what makes "tighten only" structural rather than a
+ * convention someone can quietly violate.
+ *
+ * @param {number|null} wcagFloor - the floor the element's own size/role implies
+ * @param {object} reading
+ * @param {Array} rulings - defaults to RULING_FLOORS
+ * @returns {{floor: number|null, floorSource: string, wcagFloor: number|null, ruling: string|null}}
+ * @throws if a ruling would LOOSEN a floor — that is a finding, not a config.
+ */
+function resolveFloor(wcagFloor, reading, rulings) {
+  const table = Array.isArray(rulings) ? rulings : RULING_FLOORS;
+  if (wcagFloor === null) {
+    return { floor: null, floorSource: 'unmeasurable', wcagFloor: null, ruling: null };
+  }
+  let floor = wcagFloor;
+  let ruling = null;
+  for (const rule of table) {
+    if (typeof rule.test !== 'function' || !rule.test(reading)) continue;
+    if (rule.floor < wcagFloor) {
+      throw new Error(
+        'resolveFloor: ruling "' + rule.id + '" would LOOSEN the floor from '
+        + wcagFloor + ' to ' + rule.floor + '. A ruling may only tighten. '
+        + 'This is a finding, not a configuration.'
+      );
+    }
+    const tightened = Math.max(floor, rule.floor);
+    if (tightened > floor) { floor = tightened; ruling = rule.id; }
+    else if (rule.floor === wcagFloor && ruling === null) { ruling = null; }
+  }
+  return {
+    floor,
+    floorSource: ruling ? ('ruling:' + ruling) : 'wcag',
+    wcagFloor,
+    ruling,
+  };
+}
+
+
 // A run of pictographic characters (with optional variation selectors / ZWJ /
 // skin-tone modifiers) and nothing else. Deliberately anchored: a label that
 // merely CONTAINS an emoji beside real words is still text and still gets a floor.
@@ -495,8 +567,10 @@ function buildContrastProbeScript(selector = '*') {
  * Scores one probe reading: composites the foreground at its effective alpha
  * over EVERY ground stop, and keeps the WORST.
  */
-function scoreContrast(r) {
+function scoreContrast(r, rulings) {
   const role = classifyContrastRole(r);
+  // ⚠ THE RULED FLOOR REPLACES THE WCAG ONE ONLY WHEN IT IS STRICTER.
+  const resolved = resolveFloor(role.floor, r, rulings);
   if (!Array.isArray(r.grounds) || r.grounds.length === 0) {
     throw new Error('scoreContrast: reading carries no grounds — the probe failed, this is not a pass');
   }
@@ -516,10 +590,16 @@ function scoreContrast(r) {
   }
   return {
     ...role,
+    floor: resolved.floor,
+    // ⚠ BOTH ARE REPORTED. A reader must be able to tell a WCAG-derived floor
+    // from a ruling-derived one; "4.5" alone does not say which rule produced it.
+    floorSource: resolved.floorSource,
+    wcagFloor: resolved.wcagFloor,
+    ruling: resolved.ruling,
     ratio: Math.round(worst * 100) / 100,
     stops: r.grounds.length,
     worstGround,
-    passes: role.floor === null ? null : worst >= role.floor,
+    passes: resolved.floor === null ? null : worst >= resolved.floor,
   };
 }
 
@@ -588,6 +668,7 @@ module.exports = {
   // Palette-8 Part C — the contrast floor check
   TEXT_FLOOR, LARGE_TEXT_FLOOR, NON_TEXT_FLOOR,
   EMOJI_ONLY,
+  RULING_FLOORS, resolveFloor,
   relativeLuminance, ratioBetween, classifyContrastRole,
   buildContrastProbeScript, scoreContrast, assertContrastResult, summarizeContrast,
 };

@@ -486,8 +486,18 @@ describe('Palette-4c T1/T2 - successText is a FIXED green, floored on both groun
           .not.toContain('successText');
       }
     }
-    // And the money sites reach it through statusVar, which takes no brand.
-    expect(CODE).toContain("statusVar('successText')");
+    // ⚠ THIS LINE ASSERTED THAT ProfileTab READS successText, AND IT NO LONGER
+    // DOES. It was written when the money sites were green; Palette-9 moved the
+    // figures and Palette-10 C.1 moved the icon, so this file's last reader is
+    // gone. **The claim above is untouched by that** — brand-invariance is a fact
+    // about where the value COMES FROM, not about who reads it, and the loop
+    // above proves it from the derivation.
+    // ⚠ REPOINTED TO A FILE THAT STILL READS IT, so the "reached through
+    // statusVar, which takes no brand" half stays exercised rather than deleted.
+    const stillReads = fs.readFileSync(
+      path.resolve(SRC, 'components/shared/SuccessState.jsx'), 'utf8');
+    expect(stillReads, 'SuccessState stopped reaching successText through statusVar')
+      .toContain("statusVar('successText')");
   });
 
   it('[RED] GUARD-PROOF - a brand-DERIVED tone DOES vary, which is what the fence excludes', () => {
@@ -515,17 +525,21 @@ describe('Palette-4c T1/T2 - successText is a FIXED green, floored on both groun
 });
 
 describe('Palette-4c T3 - every money figure in ProfileTab', () => {
-  it('[RED] the money sites declare the MONEY tone; the activity ICON stays successText', () => {
+  it('[RED] the money sites AND the activity icon all declare the MONEY tone', () => {
     // ⚠ THIS ASSERTED FOUR successText DECLARATIONS — three money figures plus
     // the activity tile's icon. The 2026-09-05 reversal moved the FIGURES to
     // `--rm-primary-text` and left the ICON where it was, so the count split.
     // ⚠ THE SPLIT IS THE POINT AND IS FENCED IN BOTH HALVES, because "4 became 1"
     // is exactly the shape that reads as three sites having been lost.
-    const GREEN_ARG = "'successText'";
+    // ⚠ INVERTED AGAIN BY PALETTE-10 C.1, AND REWRITTEN RATHER THAN DELETED.
+    // Palette-9 moved the money FIGURES and left the icon green, asserting
+    // exactly one survivor. Danny then ruled the icon takes the money tone too,
+    // so ProfileTab now carries ZERO. The claim worth fencing was never the
+    // count — it is that the tile's icon and its amount agree.
     const green = CODE.split("color: statusVar('successText')").length - 1;
-    expect(green, 'the activity-tile icon should be the ONLY successText left').toBe(1);
-    expect(CODE, 'the surviving green is not the money icon')
-      .toContain('<i className="ph ph-money" style={{ fontSize: 20, color: statusVar(' + GREEN_ARG + ') }} />');
+    expect(green, 'a successText reader came back to ProfileTab').toBe(0);
+    expect(CODE, 'the money icon did not take the money tone')
+      .toContain('<i className="ph ph-money" style={{ fontSize: 20, color: MONEY }} />');
 
     // ⚠ THE ICON WAS LEFT GREEN DELIBERATELY AND IT IS AN OPEN DECISION, NOT A
     // SETTLED ONE. The ruling names money FIGURES; an icon is not a figure, so

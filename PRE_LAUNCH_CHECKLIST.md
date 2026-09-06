@@ -1305,7 +1305,9 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       the admin panel missing.
       **Built:** `users.totp_secret` / `totp_enabled` / `sms_2fa_enabled` (`db.js:287-289`);
       four routes (`account.js:219-303`); `speakeasy` in `package.json`; a full toggle UI at
-      `ManageAccount.jsx:781-897`, including a real `speakeasy.totp.verify` at enrolment time.
+      `ManageAccount.jsx`'s **two-factor section** (the `totp_enabled` toggle through the SMS-2FA
+      row), including a real `speakeasy.totp.verify` at enrolment time. *(Cited by role 2026-09-06
+      — the range 781-897 was verified correct at HEAD and then moved by Palette-10's header.)*
       **Not built:** `totp_enabled` and `sms_2fa_enabled` are read by **nothing** outside
       `account.js`'s own settings echo and the toggle that sets them.
       `gatherLoginCandidates` (`referrer.js:1118-1132`) does not select the columns, and
@@ -2374,7 +2376,11 @@ check — which is why this is a named build rather than a checklist line.
       forms, that axis is `src/`-only) plus `src/` **90** (55 hex + 35 rgb). Test files
       excluded and reported separately by the script below.
       **⚠ `src/` HAD NEVER BEEN COUNTED BY EITHER RECORD.** This entry named only
-      `CashOutTab.jsx:100`'s gradient and "the referrer-side `rgba(204,0,0,…)` sites" — **two
+      ⚠ **`CashOutTab.jsx:100`'s gradient IS GONE — REPOINTED BY ROLE 2026-09-06 (Palette-10 C.3).**
+      The Palette arc migrated it; that file now contains no `#012854`. The live example is
+      **`App.jsx`'s focus-visible outline rule** (verified at HEAD 2026-09-06: the `focusStyle.textContent` assignment, which writes `outline:2px solid #012854` into a `<style>` element), and **24 `#012854` sites remain in `src/`, so the item is open.**
+      The original wording, kept as the record: `CashOutTab.jsx:100`'s gradient and
+      "the referrer-side `rgba(204,0,0,…)` sites" — **two
       examples standing in for ninety.** The `server/` figure was honest about its own scope
       and was then carried forward as the size of the whole job; the sweep it sized is
       **2.2× larger**.
@@ -5048,6 +5054,62 @@ quadruples is evidence about the estimate, not about the wave:
       a non-painting tab never finishes the timer. **There may be more behind the toggle than the
       six listed.** Whoever does that work measures `ReferTab` first.
 
+- [ ] **⚠ AWAITING DANNY: THE PAYOUT METHOD CARD'S SHAPE. A HOMEOWNER CANNOT READ WHETHER THEIR
+      BANK IS CONNECTED, AND THE FIX IS A DESIGN CHOICE, NOT A CONTRAST TWEAK.**
+      *(Palette-10 A.2, 2026-09-06. ⚠ BLOCKS the rest of the Payout block migration AND B.7's
+      removal of the `themeKeyIntegrity` exception.)*
+      ⚠ **THE MECHANISM IS NOT AN ORDINARY CONTRAST BUG, AND IT IS WHY NOTHING CAUGHT IT.**
+      `R.cardBg` and `R.accent` are **referenced but do not exist** in `theme.js`, so their `||`
+      fallbacks — written for a dark card — are the only values that have ever painted.
+      `R.textPrimary` and `R.textSecondary` **do** exist, so the KEY wins there. The result is
+      near-black text on the near-black card the fallback drew. **No error, no lint failure, no
+      test.** Nobody chose that navy; it is the retired Accent navy arriving as a default.
+      **Measured 2026-09-06, and confirmed independently in a live browser — 9 of 14 pairs fail:**
+
+      | pair | measured | floor |
+      |---|---|---|
+      | heading "Payout Method" — `#1A1A1A` on `#0A1F3D` | **1.06:1** | 4.5 |
+      | connected bank name — same pair | **1.06:1** | 4.5 |
+      | helper / loading / disconnect / pending — `#6B6B6B` on `#0A1F3D` | **3.09:1** | 4.5 |
+      | bank icon — `#CC0000` on `#0A1F3D` | **2.80:1** | 3 |
+      | disconnect border — `#334466` on `#0A1F3D` | **1.69:1** | 3 |
+      | error border — `#CC0000` on `#0A1F3D` | **2.80:1** | 3 |
+
+      **THE TWO OPTIONS, BOTH MEASURED:**
+      **(a) keep a dark card, fix the tones.** White heading 16.45:1, `#C7D2E0` body 10.75:1,
+      white icon 16.45:1 — all clear. ⚠ **But it stays brand-blind**: the card keeps a retired
+      navy nobody chose, and it remains the only dark panel on a light screen.
+      **(b) drop to the light card every surrounding card already uses.** Ground `surface`, text
+      `--rm-text`, icon `--rm-primary-text`, button `--rm-primary`. **Zero failures across all
+      eight brand/mode pairs, worst 5.21:1**, and the panel finally follows the contractor.
+      ⚠ **(b) IS A VISIBLE PRODUCT CHANGE** to the screen where a homeowner manages their bank
+      connection, which is why it is not being made inside a migration phase.
+      ⚠ **WHATEVER IS RULED, A.3 STANDS: the bank connection status must be legible.** That is
+      the defect, and it is live today.
+
+- [ ] **⚠ B.7 IS BLOCKED, NOT DONE: the `{accent, cardBg}` exception in `themeKeyIntegrity` MUST
+      OUTLIVE THIS PHASE and must be removed the moment the payout block is ruled.**
+      *(Palette-10 B.7, 2026-09-06.)* The exception is asserted **by equality**, so it cannot
+      silently outlive its defect — the suite goes red when the reads disappear and whoever fixed
+      them has to delete the entry. **That mechanism is working as designed and is the reason this
+      entry is short.** ⚠ The dependency is also enforced in `paletteManageAccount.test.jsx` T5,
+      which asserts the exception is STILL PRESENT and says why: a test asserting a state nobody
+      has ruled is not a fence.
+      ⚠ **AND THE ANSWER TO "any other reader": THERE IS EXACTLY ONE.** `ManageAccount.jsx` holds
+      all three reads; no second file reads a non-existent key. Fenced by name, not by count.
+
+- [ ] **⚠ A MODE-BLIND SITE INTRODUCED KNOWINGLY, AND NAMED RATHER THAN SHIPPED QUIETLY: there is
+      no `onDanger` token, so the destructive buttons carry a literal white.**
+      *(Palette-10, 2026-09-06.)* White on `statusVar('danger')` measures **4.83:1 in LIGHT and
+      3.76:1 in DARK**. It clears the floor in the mode a referrer can actually reach and fails in
+      the mode they cannot — so it joins the dark-mode prerequisite batch above rather than being
+      a separate item. ⚠ **The alternative was to redesign a destructive button from solid to
+      tinted inside a migration phase**, which is a product decision, not a substitution.
+      ⚠ **AND THE TOKEN MISUSE IT REPLACED IS THE REAL FIX:** the button's fill was
+      `statusVar('dangerText')` — a TEXT tone used as a FILL. Corrected by routing to
+      `statusVar('danger')`, not by choosing a nicer hex.
+      → deriving a real on-danger tone is a token job, filed with CD-21's design pass
+
 - [ ] **⚠ THE MIGRATION SCRIPTS PRODUCED THREE BROKEN-SOURCE MOMENTS, ALL CAUGHT, AND THE PATTERN IS
       WORTH THE ENTRY.**
       *(Palette-6, 2026-09-06.)* A prefix-matching substitution truncated three lines into invalid
@@ -5395,7 +5457,22 @@ quadruples is evidence about the estimate, not about the wave:
       larger job `CLAUDE.md` says to record rather than improvise. **Named by SUBJECT so it needs
       no number: the sweep wants a live hardcoded-navy site, and `App.jsx`'s focus-visible outline
       is the obvious candidate.**
-      **Running total of already-rotted citations found by the Palette arc and left unrepaired: 5.**
+      ⚠ **PALETTE-10 MAKES IT FIVE PHASES, AND ADDS TWO MORE ALREADY-WRONG CITATIONS.** Its edits
+      flagged 24; all but two are the protected records above. The two new ones both live in
+      `CDL_3c_PHASE05_RULINGS.md` and were **verified at the OLD line in the OLD revision before
+      anything was touched**, which is what showed they had never been right:
+      **`PRE_LAUNCH_CHECKLIST.md:2244`** is cited for *"the 2FA orphan IS tracked"*, and at HEAD
+      that line reads *"touched, and 2c touched two of the most-cited files in the repository"* —
+      a sentence about citecheck. **`PRE_LAUNCH_CHECKLIST.md:2325`** is cited for a header reading
+      *"The theme-engine pass — FIVE items"*, and at HEAD it is mid-paragraph in the SH-5
+      sizing note. **Neither is repaired**: the subjects must be re-derived, which is the larger
+      job, and adding this phase's delta would have certified both as fixed.
+      ⚠ **AND ONE CITATION WAS REPAIRED, BY ROLE, BECAUSE IT HAD BEEN CORRECT:**
+      `ManageAccount.jsx:781-897` named the two-factor section accurately at HEAD and was moved by
+      Palette-10's own token header. Both copies now cite the SECTION by name and cannot rot again.
+      **That is the 50/50 split this entry keeps recording: one correct-and-moved, two
+      already-wrong.**
+      **Running total of already-rotted citations found by the Palette arc and left unrepaired: 7.**
       ⚠ **AND THIS TOTAL IS THE THING `CLAUDE.md` WARNS ABOUT** — a hand-maintained number above a
       list nobody re-counts. It is kept only because each member is enumerated above it and can be
       recounted by reading; **if it ever disagrees with the enumeration, the enumeration wins.**

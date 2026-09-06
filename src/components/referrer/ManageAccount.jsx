@@ -2,6 +2,30 @@ import { useState, useEffect, useRef } from 'react';
 import { R } from '../../constants/theme';
 import { BACKEND_URL, STRIPE_PUBLISHABLE_KEY } from '../../config/contractor';
 import { getReferrerToken } from '../../utils/authStorage';
+import { statusVar, STATUS_TINT } from '../../constants/statusTheme';
+import { elevationVar } from '../../constants/elevationTheme';
+
+// ─── PALETTE-10 TOKENS ───────────────────────────────────────────────────────
+// ⚠ LEVELS ARE FIXED: body=`bg`, column=`recess`, cards=`surface`. `--rm-bg` has
+// NO consumer in the referrer tree and must not acquire one here.
+// ⚠ EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS for the platform
+// brand. A fallback that merely looks plausible is R-1's defect: a pale tint
+// standing in for a saturated fill painted 1.34:1 for months.
+const TEXT       = 'var(--rm-text, #1C2D4D)';
+const SURFACE    = 'var(--rm-surface, #FFFFFF)';
+const RECESS     = 'var(--rm-recess, #ECF0F8)';
+const PRIMARY    = 'var(--rm-primary, #F26A1B)';
+const ON_PRIMARY = 'var(--rm-on-primary, #000000)';
+// ⚠ THERE IS NO `onDanger` TOKEN, SO THIS IS A LITERAL WITH ITS MEASUREMENT
+// ATTACHED. White on `statusVar('danger')` measures 4.83:1 in LIGHT and 3.76:1
+// in DARK — it clears the text floor in the mode a referrer can actually reach
+// and fails in the mode they cannot (see PRE_LAUNCH_CHECKLIST's dark-mode
+// prerequisite). It is recorded as mode-blind rather than quietly shipped:
+// deriving a real on-danger tone is a token job, not a substitution.
+const ON_DANGER = '#FFFFFF';
+// The muted idiom, unchanged. ⚠ DO NOT INVENT A SECOND ONE.
+const MUTED = 0.72;
+
 
 // Defined outside ManageAccount so it's a stable reference across renders
 function Toggle({ on, onToggle, disabled }) {
@@ -12,7 +36,7 @@ function Toggle({ on, onToggle, disabled }) {
       aria-label="Toggle"
       style={{
         width: 44, height: 24, borderRadius: 99, flexShrink: 0,
-        background: on ? R.navy : R.border,
+        background: on ? PRIMARY : elevationVar('border'),
         border: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
         position: 'relative', transition: 'background 0.2s', padding: 0,
         opacity: disabled ? 0.5 : 1,
@@ -21,7 +45,7 @@ function Toggle({ on, onToggle, disabled }) {
       <div style={{
         position: 'absolute', top: 3,
         left: on ? 23 : 3,
-        width: 18, height: 18, borderRadius: '50%', background: '#fff',
+        width: 18, height: 18, borderRadius: '50%', background: SURFACE,
         transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
       }} />
     </button>
@@ -170,32 +194,32 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
 
   const inputStyle = {
     width: '100%', padding: '10px 12px',
-    border: `1.5px solid ${R.border}`, borderRadius: 10,
-    fontSize: 14, fontFamily: R.fontBody, color: R.textPrimary,
-    background: R.bgPage, boxSizing: 'border-box', outline: 'none',
+    border: `1.5px solid ${elevationVar('border')}`, borderRadius: 10,
+    fontSize: 14, fontFamily: R.fontBody, color: TEXT,
+    background: RECESS, boxSizing: 'border-box', outline: 'none',
   };
 
   const btnPrimary = {
-    background: R.navy, color: '#fff', border: 'none',
+    background: PRIMARY, color: ON_PRIMARY, border: 'none',
     borderRadius: 8, padding: '9px 18px',
     fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: R.fontBody,
   };
 
   const btnSecondary = {
-    background: 'transparent', color: R.textSecondary,
-    border: `1.5px solid ${R.border}`, borderRadius: 8,
+    background: 'transparent', color: TEXT,
+    border: `1.5px solid ${elevationVar('border')}`, borderRadius: 8,
     padding: '9px 18px', fontSize: 13, fontWeight: 600,
     cursor: 'pointer', fontFamily: R.fontBody,
   };
 
   const rowLabel = {
-    margin: 0, fontSize: 12, color: R.textMuted,
+    margin: 0, fontSize: 12, color: TEXT,
     fontFamily: R.fontBody, textTransform: 'uppercase', letterSpacing: '0.06em',
   };
 
   const rowValue = {
     margin: '2px 0 0', fontSize: 15, fontWeight: 600,
-    color: R.textPrimary, fontFamily: R.fontBody,
+    color: TEXT, fontFamily: R.fontBody,
   };
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -496,8 +520,8 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
   return (
     <>
       <div style={{
-        background: R.bgCard, border: `1px solid ${R.border}`,
-        borderRadius: 16, boxShadow: R.shadow, marginBottom: 16, overflow: 'hidden',
+        background: SURFACE, border: `1px solid ${elevationVar('border')}`,
+        borderRadius: 16, boxShadow: elevationVar('shadow'), marginBottom: 16, overflow: 'hidden',
       }}>
         {/* ── Collapsible header ── */}
         <button
@@ -509,25 +533,25 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <i className="ph ph-gear" style={{ fontSize: 18, color: R.navy }} />
-            <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: R.textPrimary }}>
+            <i className="ph ph-gear" style={{ fontSize: 18, color: PRIMARY }} />
+            <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: TEXT }}>
               Manage Account
             </span>
           </div>
           <i
             className={`ph ph-caret-${open ? 'up' : 'down'}`}
-            style={{ fontSize: 16, color: R.textMuted }}
+            style={{ fontSize: 16, color: TEXT }}
           />
         </button>
 
         {/* ── Expanded body ── */}
         {open && (
-          <div style={{ borderTop: `1px solid ${R.border}` }}>
+          <div style={{ borderTop: `1px solid ${elevationVar('border')}` }}>
 
             {/* Loading skeleton */}
             {acctLoading && (
               <div style={{ padding: '28px 18px', textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: 14, color: R.textMuted, fontFamily: R.fontBody }}>Loading…</p>
+                <p style={{ margin: 0, fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>Loading…</p>
               </div>
             )}
 
@@ -537,7 +561,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                 <div style={{
                   display: 'flex', gap: 8,
                   padding: '12px 16px',
-                  borderBottom: `1px solid ${R.border}`,
+                  borderBottom: `1px solid ${elevationVar('border')}`,
                   overflowX: 'auto',
                 }}>
                   {Object.keys(TAB_LABELS).map(t => (
@@ -545,10 +569,10 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       key={t}
                       onClick={() => setTab(t)}
                       style={{
-                        background: tab === t ? R.navy : R.bgPage,
-                        border: `1.5px solid ${tab === t ? R.navy : R.border}`,
+                        background: tab === t ? PRIMARY : RECESS,
+                        border: `1.5px solid ${tab === t ? PRIMARY : elevationVar('border')}`,
                         borderRadius: 999, padding: '6px 14px',
-                        color: tab === t ? '#fff' : R.textSecondary,
+                        color: tab === t ? ON_PRIMARY : TEXT,
                         fontSize: 12, fontWeight: tab === t ? 700 : 500,
                         cursor: 'pointer', fontFamily: R.fontBody,
                         whiteSpace: 'nowrap',
@@ -565,7 +589,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                   <div>
                     {/* Name */}
                     {editingName ? (
-                      <div style={{ padding: '14px 18px', borderBottom: `1px solid ${R.border}` }}>
+                      <div style={{ padding: '14px 18px', borderBottom: `1px solid ${elevationVar('border')}` }}>
                         <p style={rowLabel}>Name</p>
                         <input
                           value={editNameVal}
@@ -574,7 +598,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                           autoFocus
                         />
                         {nameError && (
-                          <p style={{ margin: '6px 0 0', fontSize: 12, color: R.red }}>{nameError}</p>
+                          <p style={{ margin: '6px 0 0', fontSize: 12, color: statusVar('dangerText') }}>{nameError}</p>
                         )}
                         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                           <button onClick={saveName} disabled={nameSaving} style={btnPrimary}>
@@ -590,7 +614,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       </div>
                     ) : (
                       <div style={{
-                        padding: '14px 18px', borderBottom: `1px solid ${R.border}`,
+                        padding: '14px 18px', borderBottom: `1px solid ${elevationVar('border')}`,
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       }}>
                         <div>
@@ -599,7 +623,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         </div>
                         <button
                           onClick={() => { setEditingName(true); setEditNameVal(acct?.name || userName); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: R.navy, padding: 6 }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: PRIMARY, padding: 6 }}
                         >
                           <i className="ph ph-pencil" style={{ fontSize: 16 }} />
                         </button>
@@ -607,14 +631,14 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                     )}
 
                     {/* Email */}
-                    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${R.border}` }}>
+                    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${elevationVar('border')}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
                           <p style={rowLabel}>Email</p>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                             <p style={rowValue}>{userEmail}</p>
                             {acct?.email_verified && (
-                              <i className="ph ph-check-circle-fill" style={{ fontSize: 15, color: R.green }} />
+                              <i className="ph ph-check-circle-fill" style={{ fontSize: 15, color: statusVar('successText') }} />
                             )}
                           </div>
                         </div>
@@ -629,7 +653,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       </div>
                       {emailCodeSent && (
                         <div style={{ marginTop: 12 }}>
-                          <p style={{ margin: '0 0 8px', fontSize: 13, color: R.textSecondary, fontFamily: R.fontBody }}>
+                          <p style={{ margin: '0 0 8px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
                             Enter the 6-digit code sent to your email.
                           </p>
                           <input
@@ -644,7 +668,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             }}
                           />
                           {emailError && (
-                            <p style={{ margin: '6px 0 0', fontSize: 12, color: R.red }}>{emailError}</p>
+                            <p style={{ margin: '6px 0 0', fontSize: 12, color: statusVar('dangerText') }}>{emailError}</p>
                           )}
                           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                             <button
@@ -664,7 +688,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         </div>
                       )}
                       {emailError && !emailCodeSent && (
-                        <p style={{ margin: '6px 0 0', fontSize: 12, color: R.red }}>{emailError}</p>
+                        <p style={{ margin: '6px 0 0', fontSize: 12, color: statusVar('dangerText') }}>{emailError}</p>
                       )}
                     </div>
 
@@ -677,19 +701,19 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                               <p style={{
                                 ...rowValue,
-                                color: acct?.phone_number ? R.textPrimary : R.textMuted,
+                                color: acct?.phone_number ? TEXT : TEXT,
                                 fontStyle: acct?.phone_number ? 'normal' : 'italic',
                               }}>
                                 {acct?.phone_number || 'Add phone number'}
                               </p>
                               {acct?.phone_verified && (
-                                <i className="ph ph-check-circle-fill" style={{ fontSize: 15, color: R.green }} />
+                                <i className="ph ph-check-circle-fill" style={{ fontSize: 15, color: statusVar('successText') }} />
                               )}
                             </div>
                           </div>
                           <button
                             onClick={() => { setEditingPhone(true); setPhoneInput(acct?.phone_number || ''); }}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: R.navy, padding: 6 }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: PRIMARY, padding: 6 }}
                           >
                             <i className={`ph ph-${acct?.phone_number ? 'pencil' : 'plus-circle'}`} style={{ fontSize: 16 }} />
                           </button>
@@ -705,7 +729,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             autoFocus
                           />
                           {phoneError && (
-                            <p style={{ margin: '6px 0 0', fontSize: 12, color: R.red }}>{phoneError}</p>
+                            <p style={{ margin: '6px 0 0', fontSize: 12, color: statusVar('dangerText') }}>{phoneError}</p>
                           )}
                           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                             <button
@@ -725,7 +749,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         </div>
                       ) : (
                         <div>
-                          <p style={{ margin: '0 0 8px', fontSize: 13, color: R.textSecondary, fontFamily: R.fontBody }}>
+                          <p style={{ margin: '0 0 8px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
                             Enter the 6-digit code sent to {phoneInput}.
                           </p>
                           <input
@@ -740,7 +764,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             }}
                           />
                           {phoneError && (
-                            <p style={{ margin: '6px 0 0', fontSize: 12, color: R.red }}>{phoneError}</p>
+                            <p style={{ margin: '6px 0 0', fontSize: 12, color: statusVar('dangerText') }}>{phoneError}</p>
                           )}
                           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                             <button
@@ -767,13 +791,13 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                 {tab === 'security' && (
                   <div>
                     {/* Authenticator App (TOTP) */}
-                    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${R.border}` }}>
+                    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${elevationVar('border')}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ flex: 1, paddingRight: 16 }}>
-                          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: R.textPrimary, fontFamily: R.fontBody }}>
+                          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
                             Authenticator App (TOTP)
                           </p>
-                          <p style={{ margin: '2px 0 0', fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>
+                          <p style={{ margin: '2px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
                             Use an authenticator app for 2-step login
                           </p>
                         </div>
@@ -789,7 +813,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       </div>
                       {totpSetup && (
                         <div style={{ marginTop: 16 }}>
-                          <p style={{ margin: '0 0 12px', fontSize: 13, color: R.textSecondary, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+                          <p style={{ margin: '0 0 12px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.5 }}>
                             Scan with your authenticator app, then enter the 6-digit code to confirm.
                           </p>
                           <img
@@ -798,7 +822,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             style={{
                               display: 'block', width: 160, height: 160,
                               margin: '0 auto 14px',
-                              borderRadius: 8, border: `1px solid ${R.border}`,
+                              borderRadius: 8, border: `1px solid ${elevationVar('border')}`,
                             }}
                           />
                           <input
@@ -813,7 +837,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             }}
                           />
                           {totpError && (
-                            <p style={{ margin: '6px 0 0', fontSize: 12, color: R.red }}>{totpError}</p>
+                            <p style={{ margin: '6px 0 0', fontSize: 12, color: statusVar('dangerText') }}>{totpError}</p>
                           )}
                           <button
                             onClick={confirmTotp}
@@ -825,7 +849,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         </div>
                       )}
                       {!totpSetup && totpError && (
-                        <p style={{ margin: '6px 0 0', fontSize: 12, color: R.red }}>{totpError}</p>
+                        <p style={{ margin: '6px 0 0', fontSize: 12, color: statusVar('dangerText') }}>{totpError}</p>
                       )}
                       {acct?.totp_enabled && !totpSetup && (
                         <div style={{ marginTop: 10 }}>
@@ -833,7 +857,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             onClick={() => setShowTotpReset(true)}
                             style={{
                               background: 'none', border: 'none', cursor: 'pointer',
-                              padding: 0, color: '#dc2626',
+                              padding: 0, color: statusVar('dangerText'),
                               fontSize: 13, fontWeight: 600, fontFamily: R.fontBody,
                             }}
                           >
@@ -842,9 +866,9 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                           {showTotpReset && (
                             <div style={{
                               marginTop: 10, padding: 14, borderRadius: 10,
-                              background: '#fff5f5', border: '1px solid #fecaca',
+                              background: STATUS_TINT.danger, border: `1px solid ${statusVar('danger')}`,
                             }}>
-                              <p style={{ margin: '0 0 12px', fontSize: 13, color: R.textSecondary, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+                              <p style={{ margin: '0 0 12px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.5 }}>
                                 This will unlink your current authenticator app. You'll need to re-scan a new QR code to re-enable.
                               </p>
                               <div style={{ display: 'flex', gap: 8 }}>
@@ -852,7 +876,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                                   onClick={resetTotp}
                                   disabled={totpBusy}
                                   style={{
-                                    background: '#dc2626', color: '#fff', border: 'none',
+                                    background: statusVar('danger'), color: ON_DANGER, border: 'none',
                                     borderRadius: 8, padding: '8px 16px',
                                     fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: R.fontBody,
                                   }}
@@ -862,8 +886,8 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                                 <button
                                   onClick={() => setShowTotpReset(false)}
                                   style={{
-                                    background: 'transparent', color: R.textSecondary,
-                                    border: `1.5px solid ${R.border}`, borderRadius: 8,
+                                    background: 'transparent', color: TEXT,
+                                    border: `1.5px solid ${elevationVar('border')}`, borderRadius: 8,
                                     padding: '8px 16px', fontSize: 13, fontWeight: 600,
                                     cursor: 'pointer', fontFamily: R.fontBody,
                                   }}
@@ -878,13 +902,13 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                     </div>
 
                     {/* SMS 2FA */}
-                    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${R.border}` }}>
+                    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${elevationVar('border')}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ flex: 1, paddingRight: 16 }}>
-                          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: R.textPrimary, fontFamily: R.fontBody }}>
+                          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
                             2-Step via SMS
                           </p>
-                          <p style={{ margin: '2px 0 0', fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>
+                          <p style={{ margin: '2px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
                             Receive a code by text message at login
                           </p>
                         </div>
@@ -895,15 +919,15 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         />
                       </div>
                       {!acct?.phone_verified && !acct?.sms_2fa_enabled && (
-                        <p style={{ margin: '8px 0 0', fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>
+                        <p style={{ margin: '8px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
                           Verify your phone number first (under Personal Info).
                         </p>
                       )}
                     </div>
 
                     {/* Recovery */}
-                    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${R.border}` }}>
-                      <p style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 600, color: R.textPrimary, fontFamily: R.fontBody }}>
+                    <div style={{ padding: '14px 18px', borderBottom: `1px solid ${elevationVar('border')}` }}>
+                      <p style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
                         Recovery
                       </p>
                       <p style={{ ...rowLabel, marginBottom: 6 }}>Recovery Phone</p>
@@ -921,10 +945,10 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         style={{ ...inputStyle, marginBottom: 12 }}
                       />
                       {recoveryError && (
-                        <p style={{ margin: '0 0 8px', fontSize: 12, color: R.red }}>{recoveryError}</p>
+                        <p style={{ margin: '0 0 8px', fontSize: 12, color: statusVar('dangerText') }}>{recoveryError}</p>
                       )}
                       {recoverySaved && (
-                        <p style={{ margin: '0 0 8px', fontSize: 12, color: R.green, fontFamily: R.fontBody }}>
+                        <p style={{ margin: '0 0 8px', fontSize: 12, color: statusVar('successText'), fontFamily: R.fontBody }}>
                           Saved.
                         </p>
                       )}
@@ -939,11 +963,11 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
 
                     {/* Login Activity */}
                     <div style={{ padding: '14px 18px' }}>
-                      <p style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600, color: R.textPrimary, fontFamily: R.fontBody }}>
+                      <p style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
                         Login Activity
                       </p>
                       {sessionsLoading && (
-                        <p style={{ margin: 0, fontSize: 13, color: R.textMuted, fontFamily: R.fontBody }}>Loading…</p>
+                        <p style={{ margin: 0, fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>Loading…</p>
                       )}
                       {!sessionsLoading && sessions && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -951,26 +975,26 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             <div
                               key={s.id}
                               style={{
-                                background: R.bgPage, borderRadius: 10,
-                                padding: '12px 14px', border: `1px solid ${R.border}`,
+                                background: RECESS, borderRadius: 10,
+                                padding: '12px 14px', border: `1px solid ${elevationVar('border')}`,
                               }}
                             >
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <p style={{
                                     margin: 0, fontSize: 13, fontWeight: 600,
-                                    color: R.textPrimary, fontFamily: R.fontBody,
+                                    color: TEXT, fontFamily: R.fontBody,
                                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   }}>
                                     {s.device_info ? s.device_info.substring(0, 55) : 'Unknown device'}
                                   </p>
-                                  <p style={{ margin: '3px 0 0', fontSize: 12, color: R.textMuted, fontFamily: R.fontBody }}>
+                                  <p style={{ margin: '3px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
                                     {s.city && s.country ? `${s.city}, ${s.country}` : 'Location unavailable'}
                                   </p>
                                 </div>
                                 {s.is_current && (
                                   <span style={{
-                                    flexShrink: 0, background: R.greenBg, color: R.greenText,
+                                    flexShrink: 0, background: STATUS_TINT.success, color: statusVar('successText'),
                                     fontSize: 11, fontWeight: 700, padding: '2px 8px',
                                     borderRadius: 999, fontFamily: R.fontBody,
                                   }}>
@@ -1004,23 +1028,23 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none' }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <i className="ph ph-shield-check" style={{ fontSize: 18, color: R.navy }} />
-                        <span style={{ fontSize: 15, fontWeight: 600, color: R.textPrimary, fontFamily: R.fontBody }}>
+                        <i className="ph ph-shield-check" style={{ fontSize: 18, color: PRIMARY }} />
+                        <span style={{ fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
                           Privacy Policy
                         </span>
                       </div>
-                      <i className="ph ph-arrow-square-out" style={{ fontSize: 16, color: R.textMuted }} />
+                      <i className="ph ph-arrow-square-out" style={{ fontSize: 16, color: TEXT }} />
                     </a>
                   </div>
                 )}
 
                 {/* ── Delete Account ── always visible below tabs ── */}
-                <div style={{ padding: '12px 18px', borderTop: `1px solid ${R.border}` }}>
+                <div style={{ padding: '12px 18px', borderTop: `1px solid ${elevationVar('border')}` }}>
                   <button
                     onClick={() => setShowDeleteModal(true)}
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
-                      padding: 0, color: '#dc2626',
+                      padding: 0, color: statusVar('dangerText'),
                       fontSize: 13, fontWeight: 600, fontFamily: R.fontBody,
                     }}
                   >
@@ -1195,17 +1219,17 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
           padding: '0 20px',
         }}>
           <div style={{
-            background: '#fff', borderRadius: 20, padding: '28px 24px',
+            background: SURFACE, borderRadius: 20, padding: '28px 24px',
             width: '100%', maxWidth: 380,
-            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+            boxShadow: elevationVar('shadowLg'),
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-              <i className="ph ph-warning" style={{ fontSize: 22, color: '#dc2626' }} />
-              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, fontFamily: R.fontSans, color: R.textPrimary }}>
+              <i className="ph ph-warning" style={{ fontSize: 22, color: statusVar('dangerText') }} />
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, fontFamily: R.fontSans, color: TEXT }}>
                 Delete Account
               </h3>
             </div>
-            <p style={{ margin: '0 0 20px', fontSize: 14, color: R.textSecondary, fontFamily: R.fontBody, lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 20px', fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.6 }}>
               This will permanently delete your account in 30 days. This cannot be undone.
             </p>
             <input
@@ -1215,7 +1239,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
               style={{ ...inputStyle, marginBottom: 12 }}
             />
             {deleteError && (
-              <p style={{ margin: '0 0 10px', fontSize: 12, color: '#dc2626' }}>{deleteError}</p>
+              <p style={{ margin: '0 0 10px', fontSize: 12, color: statusVar('dangerText') }}>{deleteError}</p>
             )}
             <button
               onClick={deleteAccount}
@@ -1223,9 +1247,10 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
               style={{
                 width: '100%', border: 'none', borderRadius: 10, padding: '13px',
                 fontSize: 14, fontWeight: 700, fontFamily: R.fontBody, marginBottom: 10,
-                background: deleteInput === 'DELETE' ? '#dc2626' : '#f0f0f0',
-                color: deleteInput === 'DELETE' ? '#fff' : '#bbb',
+                background: deleteInput === 'DELETE' ? statusVar('danger') : RECESS,
+                color: deleteInput === 'DELETE' ? ON_DANGER : TEXT,
                 cursor: deleteInput === 'DELETE' ? 'pointer' : 'not-allowed',
+                opacity: deleteInput === 'DELETE' ? 1 : 0.5,
                 transition: 'background 0.2s, color 0.2s',
               }}
             >
