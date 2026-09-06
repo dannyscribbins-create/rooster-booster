@@ -4906,6 +4906,55 @@ quadruples is evidence about the estimate, not about the wave:
       empties is what makes it enforceable. Tombstoned in `theme.js` beside the five from Palette D-5.
       → `src/constants/theme.js`'s tombstone
 
+- [ ] **⚠ THE GRAPHIC-FLOOR CHECKER FOUND SEVEN SHORTFALL SHAPES. NONE IS FIXED — THAT WAS THE
+      INSTRUCTION, AND EACH NEEDS THE SAME JUDGEMENT THE LOCK ICON AND THE ACTIVITY ICON GOT.**
+      *(Palette-8 Part C, 2026-09-06. Measured in a real browser across all four seeded brands × both
+      modes, on Home, Cash Out, Rankings and Profile.)*
+      | what | pair | measured | floor |
+      |---|---|---|---|
+      | card border, light | `#D97706` on the accent tint | **2.79 - 2.95:1** (Alpha/Gamma 2.79, Accent 2.83, Beta 2.95) | 3 |
+      | card border, dark | `#000000` on `surface` | **1.23 - 1.52:1** | 3 |
+      | inner border, dark | `#000000` on the recessed ground | **1.05 - 1.08:1** | 3 |
+      | status badge label | `#6B7280` on `#F3F4F6` | **4.39:1**, every brand, BOTH modes | 4.5 |
+      | avatar initials | `#6B7280` on `#F3F4F6` | **4.39:1**, every brand, BOTH modes | 4.5 |
+      | disclosure caret | `#A0A0A0` on `#FFFFFF` | **2.61:1**, every brand, BOTH modes | 3 |
+      | Rankings figure, Gamma | `#F26A1B` on the accent tint | **2.68:1** | 4.5 |
+      | Cash Out indicator, Beta/dark | `#FFFFFF` on `#21B6B0` | **2.51:1** | 3 |
+      ⚠ **THE LAST TWO ARE BRAND-DEPENDENT AND WOULD BE INVISIBLE TO A ONE-BRAND SWEEP.** Rankings is
+      clean under Beta and fails under Gamma; the Cash Out indicator is the reverse. **A contrast check
+      run against one contractor is evidence about that contractor.**
+      ⚠ **AND THE THREE ROWS THAT READ IDENTICALLY IN BOTH MODES ARE THEIR OWN FINDING** — a badge,
+      an avatar and a caret whose colours do not move when the mode does. Those are mode-blind values,
+      not near-misses that happen to tie.
+      → `scripts/paletteHarness.js` · `server/test/graphicFloor.test.js` · the C.7 known-miss cases
+
+- [ ] **⚠ THE REFERRER SURFACE HAS NO ROUTE TO DARK MODE AT ALL TODAY, SO EVERY DARK-MODE SHORTFALL
+      ABOVE IS LATENT AND WILL ARRIVE AS A BATCH.**
+      *(Palette-8 Part C, 2026-09-06. Observed, not inferred: `PUT /api/preferences/theme-mode` returned
+      **403** for a referrer session.)* The handler gates on `is_field_rep`, so a referrer cannot store
+      a mode and `DEFAULT_THEME_MODE` governs. The dark palettes are fully built and mounted — they are
+      simply unreachable from that surface.
+      ⚠ **CONSEQUENCE: the dark-mode rows above are not "not yet a problem", they are "not yet
+      REACHABLE".** When 3c's toggle lands it does not introduce them one at a time; it makes all of
+      them live at once, on a surface nobody has ever seen dark.
+      → `server/routes/referrer.js`'s `PUT /api/preferences/theme-mode` · `ThemeProvider`'s pinned mode
+
+- [ ] **⚠ `ReferTab` IS THE ONE SURFACE THE CHECKER COULD NOT MEASURE UNDER A PINNED BRAND, AND THE
+      REASON IS A HARNESS LIMIT RATHER THAN A PAGE DEFECT.**
+      *(Palette-8 Part C, 2026-09-06.)* `useEntrance()` starts hidden and reveals on a `setTimeout`;
+      it only starts VISIBLE when `sessionStorage` holds `rb_seen_<screenKey>`. **`ReferTab`'s cards
+      pass no `screenKey`**, so they can never mount already-revealed, and a browser tab that is not
+      actually painting never runs the timer to completion — the surface sits at 6 readings with its
+      content at effective alpha 0.
+      ⚠ **IT WAS MEASURED UNDER Beta/light (32 readings, clean) AND Beta/dark (one border at 1.47:1)
+      while the tab was genuinely rendering.** The gap is the other six brand/mode combos.
+      ⚠ **THE REUSABLE LESSON, AND IT COST FOUR WRONG RESULTS TO GET: A SETTLED READING SET IS NOT A
+      RENDERED ONE.** A stability check reported `Refer` as stable at 6 readings and a coverage check
+      reported it "1/1 covered", because unrevealed content sits at alpha 0 and was excluded from the
+      denominator as legitimately invisible. **Both guards agreed, and both were reading the same
+      unrendered page** — the guards-sharing-an-input failure, arrived at through a browser.
+      → `src/hooks/useEntrance.js` · `src/components/shared/AnimCard.jsx`
+
 - [ ] **⚠ THE MIGRATION SCRIPTS PRODUCED THREE BROKEN-SOURCE MOMENTS, ALL CAUGHT, AND THE PATTERN IS
       WORTH THE ENTRY.**
       *(Palette-6, 2026-09-06.)* A prefix-matching substitution truncated three lines into invalid

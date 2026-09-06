@@ -226,7 +226,368 @@ function summarize(readings) {
   return { tally, flagged };
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PALETTE-8 PART C — THE CONTRAST FLOOR CHECK
+//
+// ⚠ WHY THIS IS HERE AND NOT IN A SECOND MODULE. The half above already reads
+// COMPOSITED values off RENDERED nodes in a real browser — the only place a
+// var() resolves and the only place an inherited opacity is visible. A separate
+// checker would be a second mechanism answering the same question, and the two
+// would drift. This extends it.
+//
+// ⚠ WHAT MOTIVATED IT: NOTHING IN THE PALETTE ARC WATCHED THE 3:1 NON-TEXT
+// FLOOR, and three defects shipped because of it — each caught by the FOLLOWING
+// phase or by hand, never by a check:
+//   · an icon moved 3.00:1 -> 2.55:1 when its ground changed, in a phase whose
+//     entire subject was contrast (Palette-4b)
+//   · the bottom nav's inactive labels composited to 2.40:1, unnoticed from
+//     before this arc began
+//   · ContactModal's close control at 2.61:1, open across two arcs
+//
+// ⚠ AND THE THREE DEFECT SHAPES IT MUST SEE THROUGH, all of which shipped:
+//   1. OPACITY INHERITS. A correct declaration inside a muted parent composites
+//      to something else; every element's own colour reads fine.
+//   2. A GROUND CAN MOVE. The foreground never changed in the icon case.
+//   3. A GRADIENT HAS TWO STOPS and the floor is the DARKER one.
+// All three are why this measures the COMPOSITE, never the declaration.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** WCAG 1.4.3 normal text. */
+const TEXT_FLOOR = 4.5;
+/** WCAG 1.4.3 large text, and 1.4.11 non-text — the same number for two reasons. */
+const LARGE_TEXT_FLOOR = 3;
+const NON_TEXT_FLOOR = 3;
+
+// A run of pictographic characters (with optional variation selectors / ZWJ /
+// skin-tone modifiers) and nothing else. Deliberately anchored: a label that
+// merely CONTAINS an emoji beside real words is still text and still gets a floor.
+//
+// ⚠ IT MUST CONTAIN AT LEAST ONE Extended_Pictographic, AND IT MUST NOT USE
+// \p{Emoji_Component}. THE FIRST VERSION OF THIS REGEX USED Emoji_Component AND
+// THAT PROPERTY INCLUDES THE ASCII DIGITS 0-9 (they are keycap components), SO
+// '500' AND '1' BOTH MATCHED. The live Home sweep classified a money figure and a
+// rank as 'pictographic, unmeasurable' — an exemption that silently swallowed
+// exactly the values this arc exists to protect, and reported it as a clean run.
+// A false NEGATIVE in a checker is worse than the shortfall it hides, because it
+// reports health it cannot observe.
+const EMOJI_ONLY = /^(?=[\s\S]*\p{Extended_Pictographic})(?:[\p{Extended_Pictographic}\p{Emoji_Modifier}️‍]|\s)+$/u;
+
+/** Relative luminance, WCAG 2.x. Input must be an {r,g,b} 0-255 triple. */
+function relativeLuminance({ r, g, b }) {
+  const f = (v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+/** Contrast ratio between two {r,g,b} triples. */
+function ratioBetween(fg, bg) {
+  const a = relativeLuminance(fg);
+  const b = relativeLuminance(bg);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/**
+ * Which floor applies to this element, and WHY.
+ *
+ * ⚠ C.2's RULE: A CHECKER THAT APPLIES ONE FLOOR TO EVERYTHING IS WRONG IN BOTH
+ * DIRECTIONS — it fails legitimate icons at 3.5:1 and passes body text at 3.5:1.
+ *
+ * ⚠ AND `unclassifiable` IS A REPORTED OUTCOME, NOT A DEFAULT. That looks like
+ * the "could not tell" shape classifyPaint refuses above, and the difference is
+ * the whole point: classifyPaint's unknown would have SATISFIED an absence
+ * assertion silently. This one is counted in its own bucket, is never a pass,
+ * and assertContrastResult refuses to call a run clean while any remain
+ * unacknowledged. A wrong default is worse than a reported unknown.
+ *
+ * @throws on a malformed reading — never guesses at a shape it was not given.
+ */
+function classifyContrastRole(r) {
+  if (!r || typeof r !== 'object') {
+    throw new Error('classifyContrastRole: expected a reading object, got ' + JSON.stringify(r));
+  }
+  if (typeof r.tag !== 'string' || r.tag === '') {
+    throw new Error('classifyContrastRole: reading carries no tag');
+  }
+  const hasOwnText = typeof r.ownText === 'string' && r.ownText.trim() !== '';
+  const px = Number(r.fontSizePx);
+  const weight = Number(r.fontWeight);
+
+  // ⚠ AN EMOJI IS NOT TEXT THE 'color' PROPERTY PAINTS, AND SCORING IT AS TEXT
+  // MANUFACTURES A SHORTFALL THAT IS NOT THERE. A pictographic glyph carries its
+  // own multi-colour bitmap; the computed 'color' is simply not what a reader
+  // sees, so the ratio computed from it is a number about nothing. Found on the
+  // first live Profile sweep, which reported seven of these at 1.44:1 and 2.20:1
+  // — all of them badge emoji sitting on a fill that 'color' never touched.
+  // Reported as UNMEASURABLE rather than passing or failing: this checker cannot
+  // see these, and saying so is the point. Sampling the rendered pixels is the
+  // only way to floor them, which is a different tool.
+  if (hasOwnText && EMOJI_ONLY.test(r.ownText.trim())) {
+    return {
+      kind: 'unclassifiable',
+      floor: null,
+      why: 'pictographic glyph paints its own colour — not measurable from computed style',
+    };
+  }
+
+  if (hasOwnText) {
+    if (!Number.isFinite(px)) {
+      throw new Error('classifyContrastRole: text element with no font size — the probe is wrong, not the page');
+    }
+    // ⚠ Number.isFinite on the VALUE's own shape, not on its siblings' form.
+    const large = px >= 24 || (px >= 18.66 && Number.isFinite(weight) && weight >= 700);
+    return {
+      kind: 'text',
+      floor: large ? LARGE_TEXT_FLOOR : TEXT_FLOOR,
+      why: large ? 'text, large (1.4.3 exception)' : 'text, normal (1.4.3)',
+    };
+  }
+
+  // No text of its own. Is it a GRAPHIC that carries meaning?
+  if (r.tag === 'i' || r.tag === 'svg' || r.tag === 'path' || r.isIconFont === true) {
+    return { kind: 'non-text', floor: NON_TEXT_FLOOR, why: 'icon glyph (1.4.11)' };
+  }
+  if (r.graphicRole) {
+    // borders, state indicators, dividers, focus rings — set by the probe
+    return { kind: 'non-text', floor: NON_TEXT_FLOOR, why: r.graphicRole + ' (1.4.11)' };
+  }
+
+  return {
+    kind: 'unclassifiable',
+    floor: null,
+    why: 'carries a colour but has neither own text nor an identifiable graphic role',
+  };
+}
+
+/**
+ * The contrast probe. One reading per element that paints something a person
+ * could need to see.
+ *
+ * ⚠ IT REPORTS EVERY GRADIENT STOP, NOT AN AVERAGE. The floor is the worst stop;
+ * averaging would have passed the hero text that failed at 3.54:1 on a darker
+ * stop while reading 5.48:1 against the base.
+ * ⚠ AND EFFECTIVE ALPHA IS THE PRODUCT OF EVERY ANCESTOR'S OPACITY. A money span
+ * inside a muted paragraph composited to 3.29:1 with a perfectly correct
+ * declaration of its own; nothing at the element could show that.
+ */
+function buildContrastProbeScript(selector = '*') {
+  return `(() => {
+    const parse = (s) => { const m = String(s).match(/[\\d.]+/g); if (!m) return null;
+      return { r:+m[0], g:+m[1], b:+m[2], a: m.length > 3 ? +m[3] : 1 }; };
+    const over = (f, b) => ({ r: f.r*f.a + b.r*(1-f.a), g: f.g*f.a + b.g*(1-f.a), b: f.b*f.a + b.b*(1-f.a), a: 1 });
+
+    // Walk to the first OPAQUE ground, compositing translucent layers on the way.
+    // A gradient ends the walk and contributes every one of its colour stops.
+    const groundsOf = (el) => {
+      let n = el, layers = [];
+      while (n && n !== document.documentElement) {
+        const cs = getComputedStyle(n);
+        const bi = cs.backgroundImage;
+        if (bi && bi !== 'none') {
+          const stops = [...bi.matchAll(/rgba?\\([^)]*\\)/g)].map(m => parse(m[0])).filter(c => c && c.a > 0);
+          if (stops.length) return stops.map(st => { let c = st;
+            for (let i = layers.length - 1; i >= 0; i--) c = over(layers[i], c); return c; });
+        }
+        const bg = parse(cs.backgroundColor);
+        if (bg && bg.a >= 1) { let c = bg;
+          for (let i = layers.length - 1; i >= 0; i--) c = over(layers[i], c); return [c]; }
+        if (bg && bg.a > 0) layers.push(bg);
+        n = n.parentElement;
+      }
+      return [{ r:255, g:255, b:255, a:1 }];
+    };
+
+    const effectiveAlpha = (el) => { let a = 1, n = el;
+      while (n && n !== document.documentElement) { a *= parseFloat(getComputedStyle(n).opacity); n = n.parentElement; }
+      return a; };
+
+    const ownText = (el) => [...el.childNodes]
+      .filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim();
+
+    const out = [];
+    for (const el of document.querySelectorAll(${JSON.stringify(selector)})) {
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) continue;
+
+      const text = ownText(el);
+      const cls = el.className && typeof el.className === 'string' ? el.className : '';
+      const isIconFont = /\\bph[\\s-]/.test(cls);
+
+      // What visual role, if any, does this element paint?
+      let graphicRole = null;
+      if (!text) {
+        const bw = ['Top','Right','Bottom','Left'].map(s => parseFloat(cs['border' + s + 'Width']) || 0);
+        const solidBorder = bw.some(w => w > 0);
+        if (solidBorder) graphicRole = 'border';
+        else if (rect.height <= 6 && rect.width >= 12) graphicRole = 'state indicator';
+        else if (rect.width <= 6 && rect.height >= 12) graphicRole = 'divider';
+      }
+
+      const alpha = effectiveAlpha(el);
+      if (alpha === 0) continue;   // not painted at all; a hidden state, not a defect
+
+      // FOREGROUND: text colour for text and icons; border colour for a border.
+      const fgRaw = (graphicRole === 'border')
+        ? cs.borderTopColor || cs.borderBottomColor || cs.borderLeftColor || cs.borderRightColor
+        : (text || isIconFont || el.tagName.toLowerCase() === 'i') ? cs.color
+        : (graphicRole ? cs.backgroundColor : null);
+      // Which property supplied the foreground decides where the ground walk starts.
+      const fgSource = (graphicRole === 'border') ? 'border'
+        : (text || isIconFont || el.tagName.toLowerCase() === 'i') ? 'color'
+        : (graphicRole ? 'backgroundColor' : 'color');
+      if (!fgRaw) {
+        // paints nothing a floor applies to (a layout box)
+        if (!text && !graphicRole && !isIconFont) continue;
+      }
+      const fg = parse(fgRaw || cs.color);
+      if (!fg || fg.a === 0) continue;
+
+      // ⚠ WHERE THE GROUND WALK STARTS DEPENDS ON WHICH PROPERTY PAINTED THE
+      // FOREGROUND, AND GETTING THIS WRONG PRODUCES A CONFIDENT 1.00:1.
+      //   - fg from 'color' (text, icon glyph): the element's OWN background sits
+      //     behind those glyphs, so the walk starts AT the element. Starting at the
+      //     parent scores a filled button's label against whatever is behind the
+      //     button, which is not what a reader sees.
+      //   - fg from 'backgroundColor' (a dot, a swatch, a state indicator): the
+      //     element's own background IS the foreground. Starting at the element
+      //     compares it to itself and returns exactly 1.00:1 — a report about the
+      //     probe, not about the page. Start at the PARENT.
+      //   - fg from a border colour: the border delimits the element against what
+      //     surrounds it, so the parent is the honest ground.
+      // Both mistakes were made on the first two live runs; each produced readings
+      // at exactly 1.00:1, which is the tell that fg and ground are the same pixel.
+      const groundStart = (fgSource === 'color') ? el : (el.parentElement || el);
+      const grounds = groundsOf(groundStart);
+
+      // A finding nobody can locate is not actionable. Carry a DOM path.
+      const parts = [];
+      for (let c = el; c && c !== document.body && parts.length < 6; c = c.parentElement) {
+        const sibs = c.parentElement ? [...c.parentElement.children].filter((k) => k.tagName === c.tagName) : [];
+        parts.unshift(c.tagName.toLowerCase() + (sibs.length > 1 ? '[' + (sibs.indexOf(c) + 1) + ']' : ''));
+      }
+
+      out.push({
+        tag: el.tagName.toLowerCase(),
+        cls: cls.slice(0, 40),
+        path: parts.join('>'),
+        fgSource,
+        ownText: text.slice(0, 40),
+        isIconFont,
+        graphicRole,
+        ariaHidden: el.getAttribute('aria-hidden') === 'true',
+        fontSizePx: parseFloat(cs.fontSize),
+        fontWeight: parseFloat(cs.fontWeight),
+        declared: (el.style && el.style.color) || '',
+        effectiveAlpha: alpha,
+        fg: { r: fg.r, g: fg.g, b: fg.b, a: fg.a },
+        grounds: grounds.map(g => ({ r: g.r, g: g.g, b: g.b })),
+      });
+    }
+    return { ok: true, count: out.length, readings: out };
+  })()`;
+}
+
+/**
+ * Scores one probe reading: composites the foreground at its effective alpha
+ * over EVERY ground stop, and keeps the WORST.
+ */
+function scoreContrast(r) {
+  const role = classifyContrastRole(r);
+  if (!Array.isArray(r.grounds) || r.grounds.length === 0) {
+    throw new Error('scoreContrast: reading carries no grounds — the probe failed, this is not a pass');
+  }
+  const alpha = Number(r.effectiveAlpha);
+  if (!Number.isFinite(alpha)) throw new Error('scoreContrast: reading carries no effectiveAlpha');
+
+  let worst = Infinity;
+  let worstGround = null;
+  for (const g of r.grounds) {
+    const composited = {
+      r: r.fg.r * alpha + g.r * (1 - alpha),
+      g: r.fg.g * alpha + g.g * (1 - alpha),
+      b: r.fg.b * alpha + g.b * (1 - alpha),
+    };
+    const ratio = ratioBetween(composited, g);
+    if (ratio < worst) { worst = ratio; worstGround = g; }
+  }
+  return {
+    ...role,
+    ratio: Math.round(worst * 100) / 100,
+    stops: r.grounds.length,
+    worstGround,
+    passes: role.floor === null ? null : worst >= role.floor,
+  };
+}
+
+/**
+ * ⚠ THE FAIL-LOUDLY GATE, EXTENDED RATHER THAN RE-IMPLEMENTED (C.3). It defers
+ * the shape and emptiness checks to assertHarnessResult, then adds the one thing
+ * a contrast run needs on top: a POSITIVE CONTROL.
+ *
+ * ⚠ WHY A POSITIVE CONTROL AND NOT JUST A COUNT. A run can return hundreds of
+ * readings and still have missed the thing you cared about — Palette-8's own
+ * Part A scan returned zero role-on-fill hits, and the only reason that zero was
+ * trustworthy was a control proving the same pass DID find 36 role-carrying
+ * elements. A count proves the probe ran; a control proves it looked in the
+ * right place.
+ *
+ * @param {object} raw               the probe result
+ * @param {object} opts
+ * @param {number} opts.expectAtLeast
+ * @param {function} opts.positiveControl  predicate; at least one reading must satisfy it
+ * @param {string} opts.controlName        what that predicate is looking for
+ */
+function assertContrastResult(raw, { expectAtLeast = 1, positiveControl, controlName } = {}) {
+  const readings = assertHarnessResult(raw, { expectAtLeast });
+  if (typeof positiveControl !== 'function') {
+    throw new Error(
+      'assertContrastResult: no positive control. A contrast run without one cannot ' +
+      'tell "found nothing wrong" from "looked in the wrong place".'
+    );
+  }
+  const hit = readings.some((r) => {
+    try { return positiveControl(r); } catch { return false; }
+  });
+  if (!hit) {
+    throw new Error(
+      'CONTRAST HARNESS: the positive control found nothing' +
+      (controlName ? ' (' + controlName + ')' : '') +
+      '. The probe ran and returned ' + readings.length + ' readings, but not the ones ' +
+      'expected — a wrong surface, a changed selector, or a page in the wrong state. ' +
+      'THIS IS NOT "no defects found".'
+    );
+  }
+  return readings;
+}
+
+/** Rolls contrast readings into the tally a phase would act on. */
+function summarizeContrast(readings) {
+  const tally = { text: 0, 'non-text': 0, unclassifiable: 0 };
+  const shortfalls = [];
+  const unclassifiable = [];
+  for (const r of readings) {
+    const s = scoreContrast(r);
+    tally[s.kind]++;
+    if (s.kind === 'unclassifiable') { unclassifiable.push({ ...r, ...s }); continue; }
+    if (!s.passes) shortfalls.push({ ...r, ...s });
+  }
+  // ⚠ SHORTFALLS ARE REPORTED, NOT RULED ON. This arc has twice decided a
+  // shortfall was correct: the badge grid's 1.12:1 tint is grouping on
+  // non-interactive tiles, and the nav's 0.60 alpha was accepted because no
+  // alpha cleared both of its constraints and state is multiply encoded.
+  return { tally, shortfalls, unclassifiable };
+}
+
 module.exports = {
   normalizeColour, parseVarDeclaration, classifyPaint,
   buildProbeScript, assertHarnessResult, summarize,
+  // Palette-8 Part C — the contrast floor check
+  TEXT_FLOOR, LARGE_TEXT_FLOOR, NON_TEXT_FLOOR,
+  EMOJI_ONLY,
+  relativeLuminance, ratioBetween, classifyContrastRole,
+  buildContrastProbeScript, scoreContrast, assertContrastResult, summarizeContrast,
 };
