@@ -33,8 +33,18 @@ const ON_SUCCESS = '#000000';
 // BY READING. The amber star measured 2.15:1 on the white card against a
 // GRAPHIC floor of 3, and the green fill carried a white label at 3.30:1
 // against a TEXT floor of 4.5. Routed to the status system, which owns these.
-const AMBER = "statusVar('warning')";
-const GREEN = "statusVar('success')";
+// ⚠ THESE ARE CALLS, NOT STRINGS, AND THE DIFFERENCE SHIPPED FIVE BLACK ICONS.
+// Palette-11 B1 wrote `const AMBER = "statusVar('warning')"` — a string literal
+// containing the TEXT of a call. Phosphor's `color` prop received
+// "statusVar('warning')", which is not a valid CSS colour, so every <Star> and
+// <CheckCircle> fell back to black.
+// ⚠ FOUR INDEPENDENT CHECKS PASSED ON IT: the retired-tone sweep (no retired
+// tone present), the R-key sweep (no R key present), the arithmetic (it measures
+// the TOKEN, never what the element received), and the graphic-floor checker
+// (black on white is 21:1). A checker cannot see a defect whose symptom is HIGH
+// contrast. Only a node reading found it — `fill: rgb(0,0,0)`.
+const AMBER = statusVar('warning');
+const GREEN = statusVar('success');
 
 // Slide map (direction determines which content shows on slides 1 and 2):
 //   0  — rating fork

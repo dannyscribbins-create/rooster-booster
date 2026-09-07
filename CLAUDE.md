@@ -344,8 +344,12 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1300 server tests across 208 suites, and 904 React tests across 56 files** (measured 2026-09-07 by Palette-11 B1, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B1 COMMIT ITSELF.** It adds
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1304 server tests across 209 suites, and 906 React tests across 56 files** (measured 2026-09-07 by Palette-11 B1-FIX, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B1-FIX COMMIT ITSELF.** It adds four
+  ground-fence cases to `server/test/graphicFloor.test.js` (1300 → 1304, suites 208 → 209) and two
+  stringified-call cases to `themeKeyIntegrity.test.js` (904 → 906). **Both numbers moved this
+  time**, which is the first time in the arc — the phase ships a server-side fence and a React one.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B1 COMMIT ITSELF.* It adds
   `palettePopupsB1.test.jsx` (27 cases), and 877 → 904 is exactly those 27; the file count moves
   55 → 56 for the same reason. Server unchanged and re-measured, not carried.
   ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-10 PART B COMMIT ITSELF.* It adds two cases to
@@ -1483,6 +1487,14 @@ missing the standard trailers** — which is how you can spot the others, if the
 - Never run destructive SQL without explicit instruction and confirmed backup.
 - Always click Run Backup Now before any migration or DB-touching push.
 - `pending_referrals` records never hard deleted — close-out sets `status='closed'`.
+- ⚠ **A TABLE'S SHAPE IS ITS `CREATE` PLUS EVERY `ALTER` SINCE. READING THE CREATE ALONE GETS IT
+  WRONG, AND THE FAILURE DOES NOT LOOK LIKE A SCHEMA FAILURE.** Twice in two phases, both NOT NULL
+  columns added by a later migration: `cashout_requests.contractor_id` aborted a seed on the
+  constraint, and `sessions.contractor_id` — required by `verifyReferrerSession`'s
+  `s.contractor_id IS NOT NULL` — made a hand-minted token return a **plain 401**, which reads as a
+  bad token rather than a missing column. **The second cost a debugging detour precisely because
+  the error was plausible.** Before writing a row by hand, grep the table name across `db.js` for
+  `ALTER TABLE`, not just for `CREATE TABLE`.
 - `ADD CONSTRAINT ... UNIQUE` in a `DO $$` block must catch `WHEN duplicate_object OR duplicate_table` (re-run collides with its own backing index, raising 42P07). `CHECK` constraints only need `duplicate_object` (no backing index). Prefer the `pg_constraint` pre-check pattern (see `tokens_contractor_id_unique` in db.js) for new UNIQUE constraints.
 - Every fail-closed migration guard (e.g. "exactly 1 `contractors` row") must be wrapped in a work-remaining check (`IF EXISTS (SELECT 1 FROM <table> WHERE <backfill column> IS NULL) THEN ... END IF`) so it fires while backfill work remains and is a permanent no-op after — otherwise it re-crashes every boot the moment a second `contractors` row exists. See `CLAUDE_REGISTRY.md` (ST session, Architecture Notes) for the incident that surfaced this.
 

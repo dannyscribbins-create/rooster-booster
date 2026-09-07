@@ -355,9 +355,12 @@ async function seedStack(pool) {
   // which is why three of them had never been opened in a browser on this stack
   // and one — the badge grid — had only ever rendered its EMPTY branch.
   //
-  // ⚠ EVERY ROW BELOW GOES TO THE **FIRST** CONTRACTOR'S REFERRER, so one login
-  // reaches all four. They are deliberately NOT spread across tenants: a popup
-  // that needs a second login to see is a popup nobody checks.
+  // ⚠ EVERY ROW BELOW GOES TO **BETA'S** REFERRER, so one login reaches all four.
+  // They are deliberately NOT spread across tenants: a popup that needs a second
+  // login to see is a popup nobody checks. Beta is chosen over the first
+  // contractor for the reason given at `popupUser` below — it is the one whose
+  // palette differs from the platform default, so a fallback is visible as a
+  // fallback.
   //
   // ⚠ AND THEY ARE ORDERED THE WAY THE APP GATES THEM. ReferrerApp renders
   // PendingMatch first, then Announcement only when there is no pending match
@@ -365,7 +368,16 @@ async function seedStack(pool) {
   // only the FIRST is visible; the seeder therefore reports the precedence so a
   // reader knows to dismiss one to reach the next, rather than concluding the
   // seed failed.
-  const popupUser = summary.accounts.find((a) => a.role === 'referrer');
+  // ⚠ BETA, NOT THE FIRST CONTRACTOR, AND THE REASON IS THE WHOLE POINT OF THE
+  // FIXTURE. `palette-alpha`'s brand IS the platform default palette — primary
+  // #1C2D4D, secondary #F26A1B — so ALL SIX render tokens mount EQUAL to their
+  // fallbacks on it. A correct wiring and a broken one are indistinguishable
+  // there: it is the Accent problem, reproduced inside the local stack.
+  // ⚠ THE POPUPS SEEDED ONTO ALPHA AND THAT NEARLY HID A LIVE DEFECT. The
+  // B1 browser pass could only read mounted-vs-fallback after hand-seeding a
+  // prompt for Beta, whose tokens differ in five of six.
+  const popupUser = summary.accounts.find((a) => a.contractor === 'palette-beta' && a.role === 'referrer')
+    || summary.accounts.find((a) => a.role === 'referrer');
   if (popupUser) {
     const uid = popupUser.id;
     const cid = popupUser.contractor;

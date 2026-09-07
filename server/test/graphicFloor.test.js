@@ -37,6 +37,7 @@ const {
   ratioBetween, classifyContrastRole, scoreContrast,
   buildContrastProbeScript, assertContrastResult, summarizeContrast,
   EMOJI_ONLY,
+  groundFlooring,
 } = require('../../scripts/paletteHarness');
 
 const WHITE = { r: 255, g: 255, b: 255 };
@@ -311,5 +312,58 @@ describe('Palette-8 C.2 — the pictographic exemption must not swallow real con
     assert.ok(!EMOJI_ONLY.test('500'));
     assert.ok(!EMOJI_ONLY.test('#*0123456789'));
     assert.ok(EMOJI_ONLY.test('🔥'));
+  });
+});
+
+// ── F.4 — THE GROUND FENCE ─────────────────────────────────────────────────
+// ⚠ THREE HAND-CATCHES OF ONE PAIRING IN TWO PHASES, all `--rm-primary` on
+// `--rm-recess`: 2.68, 2.89, 2.68. The token is floored at the 3:1 non-text
+// threshold against `surface`; on a recessed ground it is UNPROVEN, and all
+// three times it was also below floor.
+// ⚠ THIS BELONGS TO THE HARNESS BECAUSE THE GROUND IS A DOM FACT. A declaration
+// says which token an element takes; only the rendered tree says what is behind
+// it. A source sweep cannot ask the question that found all three.
+describe('Palette-11 F.4 — a token carries the ground it was floored against', () => {
+  test('all three known instances are classified UNPROVEN on the recess', () => {
+    // ⚠ THE GUARD-PROOF IS THE THREE REAL CASES, not invented ones. A fence for
+    // a pattern that has already happened should be tested against what happened.
+    const KNOWN = [
+      ['ManageAccount bank icon', 2.68],
+      ['ManageAccount check icon', 2.89],
+      ['MissingReferralModal focus ring', 2.68],
+    ];
+    for (const [label, ratio] of KNOWN) {
+      const g = groundFlooring('--rm-primary', 'recess');
+      assert.equal(g.status, 'unproven', label + ': the pairing should be unproven');
+      assert.ok(ratio < 3, label + ': and it was below the graphic floor at ' + ratio);
+    }
+  });
+
+  test('it stays silent on the routings that are actually correct', () => {
+    // ⚠ A FENCE THAT FLAGS THE FIX TOO IS NOISE, and noise gets switched off.
+    assert.equal(groundFlooring('--rm-primary-text', 'recess').status, 'floored');
+    assert.equal(groundFlooring('--rm-text', 'recess').status, 'floored');
+    assert.equal(groundFlooring('--rm-primary', 'surface').status, 'floored');
+  });
+
+  test('an unrecorded token reports unknown rather than passing silently', () => {
+    // ⚠ THE DEFAULT MUST NOT BE "fine". A token with no recorded flooring is a
+    // gap in the table, and a fence that answers "floored" for anything it has
+    // never heard of is the mechanism-reports-health-it-cannot-observe shape.
+    const g = groundFlooring('--rm-not-a-token', 'recess');
+    assert.equal(g.status, 'unknown-token');
+    assert.equal(g.floor, null);
+    assert.match(g.why, /no recorded flooring/);
+  });
+
+  test('UNPROVEN is not a verdict — it says the measurement is the only evidence', () => {
+    // ⚠ THE DISTINCTION IS LOAD-BEARING. `--rm-primary` on `recess` measures
+    // 5.45:1 for Beta and 2.68:1 for the platform brand. The pairing is unproven
+    // in both cases; only one of them is a defect. A fence that called unproven
+    // "failing" would have blocked a correct Beta rendering.
+    const g = groundFlooring('--rm-primary', 'recess');
+    assert.equal(g.status, 'unproven');
+    assert.equal(g.floor, null, 'unproven must carry no floor of its own');
+    assert.match(g.why, /UNPROVEN/);
   });
 });

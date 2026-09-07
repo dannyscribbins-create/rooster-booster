@@ -212,3 +212,80 @@ describe('Palette D-1 — a fallback is the platform default, not a second opini
     expect(EXPECTED['--rm-bg']).toBe('#FFFFFF');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PALETTE-11 B1-FIX — a token CALL captured as a STRING is a live defect that
+// four independent checks cannot see.
+//
+// ⚠ THE INCIDENT. `ExperiencePopup` shipped `const AMBER = "statusVar('warning')"`
+// — a string literal containing the TEXT of a call. Phosphor's `color` prop
+// received that string, which is not a valid CSS colour, so five <Star> and
+// <CheckCircle> icons rendered BLACK on production.
+//
+// ⚠ WHY NOTHING CAUGHT IT, AND WHY THIS FENCE IS CHEAP ENOUGH TO BE WORTH IT:
+//   · the retired-tone sweep passed — no retired tone is present
+//   · the R-key sweep passed — no R key is present
+//   · the arithmetic passed — it measures the TOKEN, never what the element got
+//   · the graphic-floor checker passed — black on white is 21:1
+// A CHECKER CANNOT SEE A DEFECT WHOSE SYMPTOM IS HIGH CONTRAST. Only a node
+// reading found it.
+//
+// ⚠ THE NEEDLE IS PRECISE IN BOTH DIRECTIONS, WHICH IS WHAT MAKES IT SAFE. It
+// matches a quote immediately followed by `<word>Var(` — the shape of a
+// stringified call. It does NOT match `'var(--rm-text, #1C2D4D)'`, which is the
+// legitimate and very common form: that string starts `var(`, not `xVar(`.
+// Verified against the whole tree before shipping: two hits, both the defect.
+// ⚠ A HALF-WORKING FENCE HERE WOULD BE WORSE THAN NONE because it would read as
+// coverage, so the guard-proof below pins both directions.
+describe('Palette-11 — no token call is captured as a string', () => {
+  // ⚠ ANCHORED ON ASSIGNMENT POSITION, AND THAT IS WHAT MAKES IT SAFE WITHOUT AN
+  // EXEMPTION. The first draft matched any quoted call and fired on 26 sites — all
+  // of them TEST NEEDLES like `.toContain("statusVar('successText')")`, which are
+  // legitimate: a quoted call inside an assertion renders nothing.
+  // ⚠ EXEMPTING TEST FILES WOULD HAVE BEEN THE WRONG FIX. This arc has a standing
+  // rule against carve-outs, and a fence that stops reading the files where the
+  // idiom is most often copied from is a fence with a hole in it. Requiring `=` or
+  // `:` before the quote separates the DEFECT (a value assigned to a constant or a
+  // style property) from the NEEDLE (an argument to a matcher) — no exemption, and
+  // the guard-proof below pins both directions.
+  const CALL_AS_STRING = /[=:]\s*['"`]\s*(?:status|elevation|font)Var\s*\(/;
+
+  it('no file assigns a stringified token call', () => {
+    const offenders = [];
+    for (const { path: p, lines } of FILES) {
+      lines.forEach((line, i) => {
+        const t = line.trim();
+        if (t.startsWith('//') || t.startsWith('*')) return;
+        if (CALL_AS_STRING.test(line)) offenders.push(`${p}:${i + 1}`);
+      });
+    }
+    expect(offenders,
+      'a token call is quoted rather than evaluated — the element receives the '
+      + 'literal text and falls back to its initial colour. Sites: ' + offenders.join(', '))
+      .toEqual([]);
+  });
+
+  it('GUARD-PROOF — the needle catches the real defect and spares the real idiom', () => {
+    // ⚠ THE FIXTURES ARE ASSEMBLED FROM PIECES, NEVER SPELLED IN ASSIGNMENT
+    // POSITION. Written plainly they ARE the defect, so this fence reported
+    // ITSELF — the third time in three phases that a guard-proof has tripped its
+    // own needle. Reworded rather than exempted, every time: a carve-out would
+    // stop the fence reading the file a future author copies the idiom from.
+    const q = '"';
+    const call = (n) => 'status' + 'Var(' + "'" + n + "'" + ')';
+    const assigned = (lhs, n) => lhs + ' = ' + q + call(n) + q + ';';
+    // the exact lines that shipped
+    expect(CALL_AS_STRING.test(assigned('const AMBER', 'warning'))).toBe(true);
+    expect(CALL_AS_STRING.test(assigned('const GREEN', 'success'))).toBe(true);
+    expect(CALL_AS_STRING.test('color: ' + q + 'elevation' + 'Var(' + "'border'" + ')' + q)).toBe(true);
+    // ⚠ AND THE NEEDLES THIS FENCE MUST SPARE — a quoted call inside a matcher is
+    // an assertion about source text, not a style value, and renders nothing.
+    expect(CALL_AS_STRING.test('expect(CODE).toContain(' + q + call('successText') + q + ')')).toBe(false);
+    expect(CALL_AS_STRING.test('.toMatch(' + q + call('danger') + q + ')')).toBe(false);
+    // ⚠ AND IT MUST NOT FIRE ON THE LEGITIMATE FORMS, which outnumber it heavily
+    expect(CALL_AS_STRING.test(`const TEXT = 'var(--rm-text, #1C2D4D)';`)).toBe(false);
+    expect(CALL_AS_STRING.test(`color: statusVar('warning')`)).toBe(false);
+    expect(CALL_AS_STRING.test('border: `1px solid ${elevationVar(\'border\')}`')).toBe(false);
+    expect(CALL_AS_STRING.test(`const S = 'var(--rm-surface, #FFFFFF)';`)).toBe(false);
+  });
+});

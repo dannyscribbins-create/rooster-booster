@@ -273,6 +273,57 @@ const NON_TEXT_FLOOR = 3;
 //
 // Each entry: `id`, the `floor` it demands, `why` (shown in the report), and a
 // `test(reading)` that decides whether the site is the ruled one.
+// ─── TOKEN FLOORING, AND THE GROUND EACH TOKEN WAS FLOORED AGAINST (F.4) ────
+// ⚠ THREE HAND-CATCHES OF THE SAME PAIRING IN TWO PHASES: ManageAccount's bank
+// icon at 2.68:1 and its check icon at 2.89:1, then MissingReferralModal's focus
+// ring at 2.68:1 — every one of them `--rm-primary` used on `--rm-recess`.
+// Three is a pattern, not three coincidences.
+//
+// ⚠ WHY THIS LIVES IN THE HARNESS AND NOT IN A SOURCE SWEEP. The ground is a DOM
+// fact. A declaration says which TOKEN an element takes; only the rendered tree
+// says what is BEHIND it. All three catches came from asking what ground the
+// element actually has, and a source-only fence cannot ask that.
+//
+// Each entry: the token, the ground(s) it was floored against, and the floor it
+// was floored to. A token used on a ground it was NOT floored against is not
+// automatically wrong — it is UNPROVEN, and must clear on the arithmetic instead.
+const TOKEN_FLOORING = Object.freeze({
+  // floored at the 3:1 NON-TEXT threshold against `surface` only
+  '--rm-primary':      Object.freeze({ grounds: ['surface'], floor: 3 }),
+  '--rm-secondary':    Object.freeze({ grounds: ['surface'], floor: 3 }),
+  // floored at 4.5 against BOTH grounds — this is the one that is safe on a recess
+  '--rm-primary-text': Object.freeze({ grounds: ['surface', 'recess'], floor: 4.5 }),
+  // the body text tone is floored against both by construction
+  '--rm-text':         Object.freeze({ grounds: ['surface', 'recess'], floor: 4.5 }),
+});
+
+/**
+ * Was this token PROVEN safe on this ground, or merely used there?
+ *
+ * ⚠ IT RETURNS A STATUS, NOT A VERDICT. `unproven` does not mean "fails" — it
+ * means the token's own flooring says nothing about this ground, so the measured
+ * ratio is the only evidence and must be read. That distinction is the whole
+ * point: the three known instances were all `unproven` AND below floor.
+ *
+ * @param {string} tokenVar  e.g. '--rm-primary'
+ * @param {string} groundName e.g. 'recess'
+ * @returns {{status:'floored'|'unproven'|'unknown-token', floor:number|null, why:string}}
+ */
+function groundFlooring(tokenVar, groundName) {
+  const entry = TOKEN_FLOORING[tokenVar];
+  if (!entry) {
+    return { status: 'unknown-token', floor: null,
+      why: tokenVar + ' has no recorded flooring — add it before relying on this' };
+  }
+  if (entry.grounds.includes(groundName)) {
+    return { status: 'floored', floor: entry.floor,
+      why: tokenVar + ' is floored to ' + entry.floor + ':1 against `' + groundName + '`' };
+  }
+  return { status: 'unproven', floor: null,
+    why: tokenVar + ' is floored against ' + entry.grounds.map((g) => '`' + g + '`').join(' and ')
+      + ' only — on `' + groundName + '` it is UNPROVEN and the measured ratio is the only evidence' };
+}
+
 const RULING_FLOORS = Object.freeze([
   Object.freeze({
     id: 'money-4.5',
@@ -669,6 +720,7 @@ module.exports = {
   TEXT_FLOOR, LARGE_TEXT_FLOOR, NON_TEXT_FLOOR,
   EMOJI_ONLY,
   RULING_FLOORS, resolveFloor,
+  TOKEN_FLOORING, groundFlooring,
   relativeLuminance, ratioBetween, classifyContrastRole,
   buildContrastProbeScript, scoreContrast, assertContrastResult, summarizeContrast,
 };

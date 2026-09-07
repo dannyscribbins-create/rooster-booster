@@ -5079,7 +5079,11 @@ quadruples is evidence about the estimate, not about the wave:
       declared opacity and no animation in its ancestor chain. Popups paint without their entrance
       animation running, exactly the opposite of `AnimCard`. **The source reading was right.**
 
-- [ ] **⚠ SHIPPED IN `eee00df`: `ExperiencePopup`'s STAR AND CHECK ICONS RENDER BLACK. FIVE SITES.
+- [x] **✅ FIXED 2026-09-07 AND CONFIRMED AT THE NODE. The star measures 3.19:1 (was 2.15) and the
+      checks 3.30:1; no black svg remains. A FENCE NOW CATCHES THE CLASS — see below.**
+      → the original entry, kept because the reason four checks missed it is the lesson:
+
+- [x] **⚠ (FIXED) SHIPPED IN `eee00df`: `ExperiencePopup`'s STAR AND CHECK ICONS RENDER BLACK. FIVE SITES.
       A STRING WAS ASSIGNED WHERE A FUNCTION CALL WAS MEANT.**
       *(Palette-11 B1 browser pass, 2026-09-07. ⚠ LIVE — it is on `main`.)*
       The migration wrote `const AMBER = "statusVar('warning')"` and
@@ -5099,8 +5103,35 @@ quadruples is evidence about the estimate, not about the wave:
       repair ships unverified in the same diff.
       → `ExperiencePopup.jsx`'s `AMBER` and `GREEN` declarations
 
-- [ ] **⚠ PRE-EXISTING, NOT INTRODUCED: `MissingReferralModal`'s FOCUS RING NEVER PAINTS. The
-      input's border style and width are wiped when the handler sets `borderColor`.**
+- [ ] **⚠ TWO FENCES BUILT FOR CLASSES THAT HAD ALREADY BITTEN. Both guard-proofed against the REAL
+      instances rather than invented ones.**
+      *(Palette-11 B1-FIX, 2026-09-07.)*
+      **1 — a token CALL captured as a STRING** (`themeKeyIntegrity`). Anchored on ASSIGNMENT
+      position: `[=:]` then a quote then `<word>Var(`. ⚠ **The first draft matched any quoted call
+      and fired on 26 legitimate test needles** like `.toContain("statusVar('successText')")`.
+      **Exempting test files would have been the wrong fix** — a fence that stops reading the files
+      the idiom is copied from has a hole in it. The anchor separates a VALUE from a NEEDLE with no
+      carve-out. ⚠ **And the guard-proof's own fixtures are assembled from pieces**, because
+      written plainly they ARE the defect and the fence reported itself — third phase running for
+      that trap.
+      **2 — a token used on a ground it was not floored against** (`paletteHarness`,
+      `groundFlooring`). ⚠ **THIS IS THE HARNESS'S JOB, NOT A SWEEP'S: the ground is a DOM fact.**
+      A declaration says which token an element takes; only the rendered tree says what is behind
+      it, and all three catches came from asking that. Guard-proofed against all three real
+      instances — 2.68, 2.89, 2.68, every one `--rm-primary` on `--rm-recess`.
+      ⚠ **IT RETURNS `unproven`, NOT `fails`, AND THE DISTINCTION IS LOAD-BEARING.** The same
+      pairing measures 5.45:1 on Beta and 2.68:1 on the platform brand. A fence that called
+      unproven "failing" would block a correct rendering, and a noisy fence gets switched off.
+
+- [ ] **⚠ KEYBOARD-ACCESSIBILITY DEFECT, NOT A CONTRAST ONE, AND IT WANTS ITS OWN JUDGEMENT:
+      `MissingReferralModal`'s FOCUS RING NEVER PAINTS. Four inputs, no visible focus indicator.**
+      *(Re-filed 2026-09-07 by Palette-11 B1-FIX. ⚠ OUT OF SCOPE FOR THE PALETTE ARC — it is not a
+      colour defect and fixing it means changing how the border is declared, which is a component
+      change rather than a token change.)*
+      ⚠ **WHY IT MATTERS MORE THAN ITS CONTRAST NUMBER:** a form with no visible focus state is
+      unusable by keyboard, and WCAG 2.4.7 is about the indicator EXISTING, not about its ratio.
+      The Palette arc measured the ring's colour and never asked whether it rendered.
+      ⚠ **AND IT PREDATES THE ARC**, so it is not a regression to attribute to any phase.
       *(Palette-11 B1 browser pass, 2026-09-07.)*
       `inputStyle` declares the border as a SHORTHAND (`border: 1.5px solid …`) and `onFocus`
       mutates the LONGHAND (`e.target.style.borderColor = …`). Measured at the node, the inline
@@ -5116,7 +5147,16 @@ quadruples is evidence about the estimate, not about the wave:
       read the fix as node-verified.
       → `MissingReferralModal.jsx`'s `inputStyle` and its four `onFocus` handlers
 
-- [ ] **⚠ THE SEEDER PUTS EVERY POPUP ROW ON THE ONE CONTRACTOR WHERE MOUNT AND FALLBACK ARE
+- [x] **✅ CLOSED 2026-09-07 — the popup rows moved to `palette-beta`. Cost: one line and a
+      comment; the seed rebuilds clean from `--drop`.**
+      ⚠ **AND THE STANDING VERIFICATION NOTE NOW READS: verify on a contractor whose palette
+      DIFFERS FROM THE PLATFORM DEFAULT — in the LOCAL STACK as well as in production.** The Accent
+      problem was reproduced inside the fixture: `palette-alpha`'s brand IS the platform default,
+      so all six render tokens mount equal to their fallbacks and a broken wiring is invisible on
+      it. Beta differs in five of six.
+      → the original entry, kept as the record:
+
+- [x] **⚠ (CLOSED) THE SEEDER PUTS EVERY POPUP ROW ON THE ONE CONTRACTOR WHERE MOUNT AND FALLBACK ARE
       INDISTINGUISHABLE.**
       *(Palette-11 B1 browser pass, 2026-09-07.)*
       Part A's seeding lands all four gated popups on the FIRST contractor, `palette-alpha` — and
