@@ -5054,6 +5054,49 @@ quadruples is evidence about the estimate, not about the wave:
       a non-painting tab never finishes the timer. **There may be more behind the toggle than the
       six listed.** Whoever does that work measures `ReferTab` first.
 
+- [ ] **⚠ PALETTE-11 B1's BROWSER VERIFICATION WAS NOT COMPLETED. THE TWO SURFACES ARE MIGRATED AND
+      ARITHMETICALLY VERIFIED, BUT NEVER OBSERVED AT A RENDERED NODE.**
+      *(Palette-11 B1, 2026-09-07. ⚠ Reported rather than implied — R-7's shape is a surface
+      migrated and reported clean without being rendered, and R-7 is still open.)*
+      The Chrome extension became unresponsive part-way through the pass — three distinct failure
+      modes in one session (tab unresponsive, target ambiguity, CDP timeout), after the local stack
+      and a referrer session had been prepared successfully.
+      **What IS established:** the arithmetic across four seeded brands × both modes, the
+      declaration-level tokens, and that both components RENDER THEIR CONTENT (asserted by name in
+      jsdom, plus the negative case that a closed modal renders nothing).
+      **What is NOT:** mounted-vs-fallback at the node, the composited ratios in a real renderer,
+      the graphic-floor checker over these two surfaces, and P.1's confirmation that the popups
+      paint without their entrance animation.
+      ⚠ **P.1 IS ESTABLISHED FROM SOURCE ONLY:** all seven popups have ZERO inline `opacity: 0`
+      declarations and animate via CSS keyframes from a declared opacity of 1, so they should paint
+      even when the animation never runs — the opposite of `AnimCard`, which holds an inline
+      `opacity: 0` until a JS timer fires. **That is a source reading and wants a node check.**
+      → `palettePopupsB1.test.jsx` · re-run the browser pass when the extension is healthy
+
+- [ ] **⚠ THREE CONTRAST DEFECTS FOUND BY MEASURING `ExperiencePopup` AND `MissingReferralModal` —
+      TWO OF THEM LIVE AND SHIPPED, ONE CAUGHT BEFORE IT SHIPPED.**
+      *(Palette-11 B1, 2026-09-07. All three fixed in the same commit.)*
+      | site | measured | floor | fix |
+      |---|---|---|---|
+      | ExperiencePopup's amber star, `#F59E0B` on the white card | **2.15:1** | 3 | routed to `statusVar('warning')`, 3.19 light / 4.33+ dark |
+      | its copied-state button, white label on `#16A34A` | **3.30:1** | 4.5 | dark label, 6.37:1 |
+      | MissingReferralModal's focus ring, `--rm-primary` on the recessed input | **2.68:1** | 3 | routed to `--rm-primary-text`, 4.84 worst |
+      ⚠ **THE THIRD IS REGRESSION SHAPE 2 AGAIN, AND IT WAS CAUGHT BY ASKING WHAT GROUND THE
+      ELEMENT ACTUALLY HAS** rather than by assuming a modal has one. `--rm-primary` is floored
+      against `surface`; the input is `recess`. Identical in kind to the two ManageAccount icons at
+      2.68 and 2.89 last phase — **the same token, the same ground, the same number.**
+      ⚠ **AND THE SECOND ONE'S FIX IS NOT MODE-BLIND, WHICH IS WHY IT DIFFERS FROM `ON_DANGER`.**
+      The success FILL is the same hex in both modes, so a fixed dark label is safe on it. The
+      danger fill is not, which is why ManageAccount's white label had to be recorded as a latent
+      dark-mode item instead of solved.
+
+- [ ] **⚠ `R.borderMed` WENT DEAD AND WAS REMOVED — FOUND BY THE GATE, NOT BY REMEMBERING.**
+      *(Palette-11 B1, 2026-09-07.)* Its last two readers were `ExperiencePopup`'s disabled-review
+      edge; both moved to `elevationVar('border')`. The dead-key check failed the moment they went
+      and named it. **That is the fourth key this arc has retired the same way**, and the mechanism
+      is the point: "dead code must be removed in the same session it is identified" is a rule
+      nobody can obey by memory. Tombstoned in `theme.js` beside the others.
+
 - [x] **✅ CLOSED 2026-09-06 — RULED (option b, the light card) AND BUILT. THIS WAS THE DEFECT
       THAT OPENED THE PALETTE ARC.**
       **Measured after, on the rendered node (Beta/light):** heading **1.06 → 11.16**, bank icon

@@ -349,6 +349,98 @@ async function seedStack(pool) {
     summary.money = (summary.money || 0) + 1;
   }
 
+  // ── ⚠ THE FOUR GATED POPUP SURFACES (Palette-11 A.3) ──────────────────────
+  //
+  // Each of these renders only when a row exists that the seeder never wrote,
+  // which is why three of them had never been opened in a browser on this stack
+  // and one — the badge grid — had only ever rendered its EMPTY branch.
+  //
+  // ⚠ EVERY ROW BELOW GOES TO THE **FIRST** CONTRACTOR'S REFERRER, so one login
+  // reaches all four. They are deliberately NOT spread across tenants: a popup
+  // that needs a second login to see is a popup nobody checks.
+  //
+  // ⚠ AND THEY ARE ORDERED THE WAY THE APP GATES THEM. ReferrerApp renders
+  // PendingMatch first, then Announcement only when there is no pending match
+  // and no experience prompt, then Experience. Seeding all three at once means
+  // only the FIRST is visible; the seeder therefore reports the precedence so a
+  // reader knows to dismiss one to reach the next, rather than concluding the
+  // seed failed.
+  const popupUser = summary.accounts.find((a) => a.role === 'referrer');
+  if (popupUser) {
+    const uid = popupUser.id;
+    const cid = popupUser.contractor;
+
+    // 1 ── PendingMatchPopup: pending_referrals matched to this user, unseen.
+    //      Route: GET /api/referral/pending/match-check
+    //      Needs status='matched' AND matched_user_id=<uid> AND match_seen_at IS NULL.
+    await pool.query(
+      `INSERT INTO pending_referrals
+         (contractor_id, jobber_client_id, client_name, referred_by_name,
+          matched_user_id, matched_at, match_seen_at, status)
+       VALUES ($1, $2, 'Jordan Blake', $3, $4, NOW() - INTERVAL '2 days', NULL, 'matched')
+       ON CONFLICT DO NOTHING`,
+      [cid, 'stack-pending-' + cid, `${CONTRACTORS[0].name} Homeowner`, uid]
+    );
+
+    // 2 ── AnnouncementPopup: an unseen payout announcement. ⚠ TWO rows — the
+    //      route JOINs cashout_requests for the amount and the OTHER person's
+    //      name, which is what makes this "other people's money".
+    // ⚠ contractor_id IS NOT-NULL AND IS ADDED BY A LATER MIGRATION THAN THE
+    // CREATE TABLE, so reading the CREATE statement alone gets this wrong — it
+    // did, and the seed aborted on the constraint rather than writing a tenantless
+    // row. Read the migrations, not just the create.
+    const cash = await pool.query(
+      `INSERT INTO cashout_requests (user_id, contractor_id, full_name, email, amount, method, status)
+       VALUES ($1, $2, 'Riley Chen', $3, 250, 'ach', 'paid')
+       RETURNING id`,
+      [uid, cid, `referrer@${cid}.test`]
+    );
+    await pool.query(
+      `INSERT INTO payout_announcements (cashout_request_id, user_id, seen_at)
+       VALUES ($1, $2, NULL)
+       ON CONFLICT (cashout_request_id) DO NOTHING`,
+      [cash.rows[0].id, uid]
+    );
+
+    // 3 ── ExperiencePopup: a pending experience prompt.
+    //      Route: GET /api/referrer/experience-prompt, response_type='pending'.
+    await pool.query(
+      `INSERT INTO experience_prompts (user_id, contractor_id, response_type, triggered_at)
+       VALUES ($1, $2, 'pending', NOW() - INTERVAL '1 day')
+       ON CONFLICT DO NOTHING`,
+      [uid, cid]
+    );
+
+    // 4 ── BadgeCelebrationPopup AND the badge grid's EARNED branch.
+    //      ⚠ `badge_id` IS A PLAIN STRING FROM A HARDCODED MASTER LIST in
+    //      server/routes/referrer.js — there is no catalogue table to seed, and
+    //      an id that is not in that list simply never renders.
+    //      ⚠ seen=false is what fires the celebration popup; the grid renders
+    //      earned badges regardless. Palette-4b's #999 repair on the UNEARNED
+    //      tiles has never been seen in a browser because every tile was
+    //      unearned AND the grid renders an empty branch with no rows at all.
+    //      Seeding three of seven leaves four unearned, so BOTH branches paint.
+    for (const badgeId of ['first_referral', 'milestone_5', 'client_badge']) {
+      await pool.query(
+        `INSERT INTO user_badges (user_id, badge_id, seen)
+         VALUES ($1, $2, false)
+         ON CONFLICT (user_id, badge_id) DO UPDATE SET seen = false`,
+        [uid, badgeId]
+      );
+    }
+
+    summary.popups = {
+      referrerId: uid,
+      contractor: cid,
+      pendingMatch: 'Jordan Blake',
+      announcement: { amount: 250, referredName: 'Riley Chen' },
+      experiencePrompt: 'pending',
+      badgesEarned: ['first_referral', 'milestone_5', 'client_badge'],
+      badgesUnearned: 4,
+      precedence: 'PendingMatch > Announcement > Experience — dismiss one to reach the next',
+    };
+  }
+
   // ── THE DUAL-IDENTITY PERSON — one email, two subjects, one tenant ────────
   const alpha = CONTRACTORS[0].id;
   const dualUser = await pool.query(
@@ -459,10 +551,21 @@ module.exports = { assertLocalStackTarget, withDatabase, seedStack, CONTRACTORS,
 //   the figures come from the boost-schedule fallback (500 + boost). The
 //   CONVERSION-sourced amount, the schedule NAME on an expanded card, and the
 //   inline expand it gates are all still unreachable.
-// · ⚠ NO BADGES. `GET /api/referrer/badges` returns an empty set, so ProfileTab's
-//   badge grid renders its empty branch. The #999 pair Palette-4b repaired
-//   cannot be seen on this stack at all — it was verified by arithmetic and by
-//   forcing the branch in jsdom, never in the browser.
-// · NOT PRODUCTION-SHAPED DATA. No referrals, conversions, badges or
-//   announcements are seeded here — the five contrived-data surfaces Palette
-//   identified still need their own rows, and that is a separate job.
+// · ⚠ BADGES NOW SEED (Palette-11). Three of the seven master badges are earned
+//   and UNSEEN, which fires BadgeCelebrationPopup and leaves four unearned so the
+//   grid paints BOTH branches. **This closes a gap that had been open since
+//   Palette-4b: the #999 pair that phase repaired had never been seen in a
+//   browser** — it was verified by arithmetic and by forcing the branch in jsdom,
+//   because every tile was unearned and the grid rendered its empty branch.
+// · ⚠ THE POPUP SURFACES NOW SEED (Palette-11 A.3): a matched pending referral,
+//   an unseen payout announcement with its cashout row, a pending experience
+//   prompt, and three earned-unseen badges. All four land on the FIRST
+//   contractor's referrer so one login reaches them.
+//   ⚠ THEY GATE EACH OTHER, AND THAT IS THE APP'S OWN PRECEDENCE, NOT A SEEDING
+//   BUG: ReferrerApp shows PendingMatch first, Announcement only when there is
+//   no pending match and no experience prompt, then Experience. Dismiss one to
+//   reach the next.
+// · NOT PRODUCTION-SHAPED DATA. Still NO referral_conversions rows, so
+//   `conversion_bonus` remains null and the CONVERSION-sourced amount, the
+//   schedule NAME on an expanded card and the inline expand it gates are all
+//   still unreachable.

@@ -344,8 +344,11 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1300 server tests across 208 suites, and 877 React tests across 55 files** (measured 2026-09-06 by Palette-10 Part B, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-10 PART B COMMIT ITSELF.** It adds two cases to
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1300 server tests across 208 suites, and 904 React tests across 56 files** (measured 2026-09-07 by Palette-11 B1, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B1 COMMIT ITSELF.** It adds
+  `palettePopupsB1.test.jsx` (27 cases), and 877 → 904 is exactly those 27; the file count moves
+  55 → 56 for the same reason. Server unchanged and re-measured, not carried.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-10 PART B COMMIT ITSELF.* It adds two cases to
   `paletteManageAccount.test.jsx` — the all-14-pairs fence and A.3's bank-status fence — taking that
   file 29 → 31 and the suite 875 → 877. The FILE count does not move: no new test file.
   ⚠ **AND THE CASE COUNT WAS COUNTED WITH `grep -c`, NOT ESTIMATED.** The two previous phases both

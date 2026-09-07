@@ -4,6 +4,11 @@
 // OPPOSITE OF THE FIVE BELOW: those were never used, these STOPPED being used.
 //
 //     bgCardTint  #F5F3EE      bgBlueLight #D3E3F0      shadowMd  a 2-part shadow
+// ⚠ AND `borderMed` JOINED THEM ON 2026-09-07 (Palette-11 B1). Its last two
+// readers were ExperiencePopup's disabled-review-button edge; both moved to
+// `elevationVar('border')`, which is the side channel that owns borders.
+// The dead-key check found it the moment the readers went — which is the
+// mechanism working, not a surprise.
 //
 // `bgBlueLight` was a RETIRED ACCENT TONE — the last definition of it in the
 // codebase — and its readers went to `--rm-recess` and `--rm-primary`.
@@ -78,7 +83,6 @@ export const R = {
 
   // Borders & Shadows
   border:    "rgba(0,0,0,0.08)",
-  borderMed: "rgba(0,0,0,0.13)",
   shadow:    "0 1px 4px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04)",
   shadowLg:  "0 8px 32px rgba(1,40,84,0.13)",
 

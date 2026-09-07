@@ -1,5 +1,33 @@
 import { useState } from 'react';
 import { R } from '../../constants/theme';
+import { statusVar, STATUS_TINT } from '../../constants/statusTheme';
+import { elevationVar } from '../../constants/elevationTheme';
+
+// ─── PALETTE-11 B1 TOKENS ────────────────────────────────────────────────────
+// ⚠ THE GROUND HERE IS `surface`, NOT the page. A modal sits on a SCRIM, and the
+// scrim stays a literal on purpose: it dims whatever is behind the modal and is
+// not a themed ground — tokenising it would claim the brand owns the dimming.
+// ⚠ AND `--rm-recess` IS A SECOND GROUND INSIDE THE SAME MODAL where form fields
+// are inset. A token floored against `surface` is NOT safe on `recess`; that is
+// what took two ManageAccount icons to 2.68 and 2.89 last phase.
+// ⚠ EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS for the platform
+// brand. A plausible-looking substitute is R-1's defect.
+const TEXT       = 'var(--rm-text, #1C2D4D)';
+const SURFACE    = 'var(--rm-surface, #FFFFFF)';
+const RECESS     = 'var(--rm-recess, #ECF0F8)';
+const PRIMARY    = 'var(--rm-primary, #F26A1B)';
+const ON_PRIMARY = 'var(--rm-on-primary, #000000)';
+const MUTED = 0.72;
+// ⚠ THE FOCUS RING SITS ON THE RECESSED INPUT, NOT ON THE SHEET, AND THAT
+// CHANGES WHICH TOKEN IS SAFE. `--rm-primary` is floored against `surface` at
+// the 3:1 graphic threshold and measures 2.68:1 on the recess for the platform
+// brand — below floor, on a focus indicator. `--rm-primary-text` is floored at
+// 4.5 against BOTH grounds and measures 4.84:1 worst here.
+// ⚠ IT IS THE SAME TOKEN THE MONEY RULE USES, AND THAT IS NOT A COLLISION:
+// the token is "the brand colour made safe for text", and money is its largest
+// consumer rather than its definition. There is no money figure on this surface.
+const FOCUS_RING = 'var(--rm-primary-text, #B1480A)';
+
 import { BACKEND_URL } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import { getReferrerToken } from '../../utils/authStorage';
@@ -70,11 +98,11 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
   const inputStyle = {
     width: '100%', boxSizing: 'border-box',
     padding: '12px 14px',
-    background: R.bgPage,
-    border: `1.5px solid ${R.border}`,
+    background: RECESS,
+    border: `1.5px solid ${elevationVar('border')}`,
     borderRadius: 10,
     fontSize: 15,
-    color: R.textPrimary,
+    color: TEXT,
     fontFamily: R.fontBody,
     outline: 'none',
     transition: 'border-color 0.15s',
@@ -84,7 +112,7 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
     display: 'block',
     fontSize: 12,
     fontWeight: 600,
-    color: R.textSecondary,
+    color: TEXT,
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
@@ -106,19 +134,19 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
       {/* Sheet */}
       <div style={{
         position: 'fixed', left: 0, right: 0, bottom: 0,
-        background: R.bgCard,
+        background: SURFACE,
         borderRadius: '20px 20px 0 0',
         zIndex: 1001,
         maxWidth: 430,
         margin: '0 auto',
         padding: '0 0 env(safe-area-inset-bottom)',
-        boxShadow: R.shadowLg,
+        boxShadow: elevationVar('shadowLg'),
         maxHeight: '90dvh',
         overflowY: 'auto',
       }}>
         {/* Handle */}
         <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 12, paddingBottom: 8 }}>
-          <div style={{ width: 40, height: 4, borderRadius: 99, background: R.border }} />
+          <div style={{ width: 40, height: 4, borderRadius: 99, background: elevationVar('border') }} />
         </div>
 
         <div style={{ padding: '4px 24px 32px' }}>
@@ -127,16 +155,16 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
             <div style={{ textAlign: 'center', padding: '24px 0 8px' }}>
               <div style={{
                 width: 64, height: 64, borderRadius: '50%',
-                background: R.greenBg, display: 'flex',
+                background: STATUS_TINT.success, display: 'flex',
                 alignItems: 'center', justifyContent: 'center',
                 margin: '0 auto 16px',
               }}>
-                <i className="ph ph-check-circle" style={{ fontSize: 32, color: R.green }} />
+                <i className="ph ph-check-circle" style={{ fontSize: 32, color: statusVar('successText') }} />
               </div>
-              <h2 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 700, fontFamily: R.fontSans, color: R.textPrimary }}>
+              <h2 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 700, fontFamily: R.fontSans, color: TEXT }}>
                 Report Submitted
               </h2>
-              <p style={{ margin: '0 0 24px', fontSize: 15, color: R.textSecondary, fontFamily: R.fontBody, lineHeight: 1.6 }}>
+              <p style={{ margin: '0 0 24px', fontSize: 15, color: TEXT, fontFamily: R.fontBody, lineHeight: 1.6 }}>
                 Got it! We'll look into this and make sure you get credit if it's owed.
                 You can track the status of this report in your profile.
               </p>
@@ -144,7 +172,7 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
                 onClick={handleClose}
                 style={{
                   width: '100%', padding: '16px',
-                  background: R.navy, color: '#fff',
+                  background: PRIMARY, color: ON_PRIMARY,
                   border: 'none', borderRadius: 12,
                   fontSize: 15, fontWeight: 700,
                   fontFamily: R.fontBody, cursor: 'pointer',
@@ -156,17 +184,17 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
           ) : (
             /* ── Form ── */
             <>
-              <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 700, fontFamily: R.fontSans, color: R.textPrimary }}>
+              <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 700, fontFamily: R.fontSans, color: TEXT }}>
                 Report a Missing Referral
               </h2>
-              <p style={{ margin: '0 0 24px', fontSize: 14, color: R.textSecondary, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+              <p style={{ margin: '0 0 24px', fontSize: 14, color: TEXT, fontFamily: R.fontBody, lineHeight: 1.5 }}>
                 Don't see a referral in your pipeline? Let us know and we'll investigate.
               </p>
 
               {/* Referred person's name */}
               <div style={{ marginBottom: 16 }}>
                 <label style={labelStyle}>
-                  Who did you refer? <span style={{ color: R.red }}>*</span>
+                  Who did you refer? <span style={{ color: statusVar('dangerText') }}>*</span>
                 </label>
                 <input
                   type="text"
@@ -174,8 +202,8 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
                   onChange={e => setReferredName(e.target.value)}
                   placeholder="Their full name"
                   style={inputStyle}
-                  onFocus={e => { e.target.style.borderColor = R.navy; }}
-                  onBlur={e => { e.target.style.borderColor = R.border; }}
+                  onFocus={e => { e.target.style.borderColor = FOCUS_RING; }}
+                  onBlur={e => { e.target.style.borderColor = elevationVar('border'); }}
                 />
               </div>
 
@@ -188,22 +216,22 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
                   onChange={e => setReferredContact(e.target.value)}
                   placeholder="Phone or email (optional)"
                   style={inputStyle}
-                  onFocus={e => { e.target.style.borderColor = R.navy; }}
-                  onBlur={e => { e.target.style.borderColor = R.border; }}
+                  onFocus={e => { e.target.style.borderColor = FOCUS_RING; }}
+                  onBlur={e => { e.target.style.borderColor = elevationVar('border'); }}
                 />
               </div>
 
               {/* Channel */}
               <div style={{ marginBottom: 16 }}>
                 <label style={labelStyle}>
-                  How did you refer them? <span style={{ color: R.red }}>*</span>
+                  How did you refer them? <span style={{ color: statusVar('dangerText') }}>*</span>
                 </label>
                 <select
                   value={channel}
                   onChange={e => setChannel(e.target.value)}
                   style={{
                     ...inputStyle,
-                    color: channel ? R.textPrimary : R.textMuted,
+                    color: channel ? TEXT : TEXT,
                     cursor: 'pointer',
                     appearance: 'none',
                     WebkitAppearance: 'none',
@@ -212,8 +240,8 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
                     backgroundPosition: 'right 14px center',
                     paddingRight: 40,
                   }}
-                  onFocus={e => { e.target.style.borderColor = R.navy; }}
-                  onBlur={e => { e.target.style.borderColor = R.border; }}
+                  onFocus={e => { e.target.style.borderColor = FOCUS_RING; }}
+                  onBlur={e => { e.target.style.borderColor = elevationVar('border'); }}
                 >
                   {CHANNEL_OPTIONS.map(opt => (
                     <option key={opt.value} value={opt.value} disabled={opt.disabled}>
@@ -230,14 +258,14 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
                   type="date"
                   value={approxDate}
                   onChange={e => setApproxDate(e.target.value)}
-                  style={{ ...inputStyle, color: approxDate ? R.textPrimary : R.textMuted }}
-                  onFocus={e => { e.target.style.borderColor = R.navy; }}
-                  onBlur={e => { e.target.style.borderColor = R.border; }}
+                  style={{ ...inputStyle, color: approxDate ? TEXT : TEXT }}
+                  onFocus={e => { e.target.style.borderColor = FOCUS_RING; }}
+                  onBlur={e => { e.target.style.borderColor = elevationVar('border'); }}
                 />
               </div>
 
               {error && (
-                <p style={{ margin: '0 0 16px', fontSize: 14, color: R.red, fontFamily: R.fontBody }}>
+                <p style={{ margin: '0 0 16px', fontSize: 14, color: statusVar('dangerText'), fontFamily: R.fontBody }}>
                   {error}
                 </p>
               )}
@@ -247,8 +275,9 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
                 disabled={!canSubmit || submitting}
                 style={{
                   width: '100%', padding: '16px',
-                  background: canSubmit && !submitting ? R.navy : R.border,
-                  color: canSubmit && !submitting ? '#fff' : R.textMuted,
+                  background: canSubmit && !submitting ? PRIMARY : RECESS,
+                  color: canSubmit && !submitting ? ON_PRIMARY : TEXT,
+                  opacity: canSubmit && !submitting ? 1 : MUTED,
                   border: 'none', borderRadius: 12,
                   fontSize: 15, fontWeight: 700,
                   fontFamily: R.fontBody,

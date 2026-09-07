@@ -319,7 +319,16 @@ describe('Palette-5 T5/T7 — the seeder, and the shortfall fences', () => {
     expect(SEEDER, 'referred_by must be keyed on the NAME').toContain('referrerName');
     expect(SEEDER, 'the stale-cache limit must be stated').toMatch(/stale-cache path only/i);
     expect(SEEDER, 'the missing conversions must be stated').toMatch(/NO referral_conversions/);
-    expect(SEEDER, 'the missing badges must be stated').toMatch(/NO BADGES/);
+    // ⚠ THIS FENCE ASSERTED THE LIMITS BLOCK SAID "NO BADGES", AND IT HAS INVERTED.
+    // Palette-11 Part A extended the seeder to write three earned-and-unseen
+    // badges, which is what finally made Palette-4b's #999 repair observable in a
+    // browser — that repair had only ever been checked by arithmetic and by
+    // forcing the branch in jsdom.
+    // ⚠ THE SUBJECT SURVIVES: the limits block must still STATE what the seeder
+    // cannot reach. Only the specific gap moved.
+    expect(SEEDER, 'the badge seeding is not stated').toMatch(/BADGES NOW SEED/);
+    expect(SEEDER, 'the remaining conversion gap is no longer stated')
+      .toMatch(/referral_conversions/);
   });
 
   it('[RED] Palette-1\'s shortfall fences are not weakened', () => {

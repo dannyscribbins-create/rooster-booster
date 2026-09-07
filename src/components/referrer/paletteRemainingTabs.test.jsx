@@ -230,7 +230,7 @@ describe('Palette-6 T2 (reversed by Palette-9) — account money is the MONEY to
     expect(mutated.includes(injected), 'the needle cannot see an injected green').toBe(true);
   });
 
-  it('[RED] --rm-primary-text now has EXACTLY FOUR code consumers', () => {
+  it('[RED] --rm-primary-text now has EXACTLY FIVE code consumers', () => {
     // ⚠ THIS CASE ASSERTED **ZERO** AND IS REWRITTEN RATHER THAN DELETED. It read:
     // *"--rm-primary-text has ZERO code consumers, and the reason is recorded —
     // a consumer of --rm-primary-text reappeared"*, and it fenced the tombstone
@@ -264,8 +264,16 @@ describe('Palette-6 T2 (reversed by Palette-9) — account money is the MONEY to
     // consumer rather than its definition.
     // ⚠ THE COUNT IS STILL FENCED IN BOTH DIRECTIONS. Too few means a money
     // site was reverted; too many means the tone leaked somewhere unruled.
-    expect(consumers.sort(), 'the money tone is not on exactly the four expected files')
-      .toEqual(['CashOutTab.jsx', 'DashboardTab.jsx', 'ManageAccount.jsx', 'ProfileTab.jsx']);
+    // ⚠ WAS FOUR. Palette-11 B1 adds MissingReferralModal's FOCUS RING — the
+    // fifth consumer and the second that is not a money site. `--rm-primary` is
+    // floored against `surface` and measures 2.68:1 on the recessed input the
+    // ring sits on; `--rm-primary-text` is floored against BOTH grounds.
+    // ⚠ THE PATTERN IS NOW EXPLICIT: this token is "the brand colour made safe
+    // for text", and money is its largest consumer rather than its definition.
+    // Anything brand-coloured that lands on `recess` needs it.
+    expect(consumers.sort(), 'the money tone is not on exactly the five expected files')
+      .toEqual(['CashOutTab.jsx', 'DashboardTab.jsx', 'ManageAccount.jsx',
+        'MissingReferralModal.jsx', 'ProfileTab.jsx']);
     expect(RENDER_TOKEN_KEYS).toContain('primaryText');
     // and the tombstone must now say the OPPOSITE of what it used to
     expect(DASH, 'the stale zero-consumer tombstone is still there')

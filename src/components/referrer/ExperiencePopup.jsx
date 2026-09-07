@@ -5,9 +5,36 @@ import { BACKEND_URL } from '../../config/contractor';
 import { useBranding } from '../shared/ThemeProvider';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import { getReferrerToken } from '../../utils/authStorage';
+import { statusVar } from '../../constants/statusTheme';
+import { elevationVar } from '../../constants/elevationTheme';
 
-const AMBER = '#F59E0B';
-const GREEN = '#16A34A';
+// ─── PALETTE-11 B1 TOKENS ────────────────────────────────────────────────────
+// ⚠ THE GROUND HERE IS `surface`, NOT the page. A modal sits on a SCRIM, and the
+// scrim stays a literal on purpose: it dims whatever is behind the modal and is
+// not a themed ground — tokenising it would claim the brand owns the dimming.
+// ⚠ AND `--rm-recess` IS A SECOND GROUND INSIDE THE SAME MODAL where form fields
+// are inset. A token floored against `surface` is NOT safe on `recess`; that is
+// what took two ManageAccount icons to 2.68 and 2.89 last phase.
+// ⚠ EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS for the platform
+// brand. A plausible-looking substitute is R-1's defect.
+const TEXT       = 'var(--rm-text, #1C2D4D)';
+const SURFACE    = 'var(--rm-surface, #FFFFFF)';
+const RECESS     = 'var(--rm-recess, #ECF0F8)';
+const PRIMARY    = 'var(--rm-primary, #F26A1B)';
+const ON_PRIMARY = 'var(--rm-on-primary, #000000)';
+const MUTED = 0.72;
+
+// ⚠ NO `onSuccess` TOKEN EXISTS. This is a literal WITH its measurement, the
+// same shape as ManageAccount's ON_DANGER — but unlike that one it is not
+// mode-blind, because the success FILL is the same hex in both modes.
+const ON_SUCCESS = '#000000';
+
+// ⚠ BOTH OF THESE WERE LIVE CONTRAST DEFECTS, FOUND BY MEASURING RATHER THAN
+// BY READING. The amber star measured 2.15:1 on the white card against a
+// GRAPHIC floor of 3, and the green fill carried a white label at 3.30:1
+// against a TEXT floor of 4.5. Routed to the status system, which owns these.
+const AMBER = "statusVar('warning')";
+const GREEN = "statusVar('success')";
 
 // Slide map (direction determines which content shows on slides 1 and 2):
 //   0  — rating fork
@@ -25,7 +52,7 @@ const overlay = {
 };
 
 const card = {
-  background: '#fff',
+  background: SURFACE,
   borderRadius: 20,
   padding: '32px 28px',
   maxWidth: 360,
@@ -184,8 +211,8 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
     flex: '0 0 48%',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
     gap: 6, padding: '16px 8px',
-    borderRadius: 12, border: `1.5px solid ${R.navy}`,
-    background: '#fff', cursor: 'pointer',
+    borderRadius: 12, border: `1.5px solid ${PRIMARY}`,
+    background: SURFACE, cursor: 'pointer',
     fontFamily: R.fontBody,
   };
 
@@ -202,7 +229,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
             style={{
               position: 'absolute', top: 16, right: 16,
               background: 'none', border: 'none', cursor: 'pointer',
-              color: R.textMuted, fontSize: 22, lineHeight: 1, padding: '4px 6px',
+              color: TEXT, fontSize: 22, lineHeight: 1, padding: '4px 6px',
               zIndex: 1,
             }}
           >×</button>
@@ -215,10 +242,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
               <Star size={40} color={AMBER} weight="fill" />
             </div>
-            <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: R.navy, textAlign: 'center', marginBottom: 10 }}>
+            <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
               How'd everything go?
             </div>
-            <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
+            <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
               Your feedback helps {branding.companyName} keep delivering great work.
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
@@ -227,14 +254,14 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 style={responseBtn}
               >
                 <span style={{ fontSize: 28 }}>😊</span>
-                <span style={{ fontWeight: 700, fontSize: 14, color: R.navy }}>Great experience</span>
+                <span style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Great experience</span>
               </button>
               <button
                 onClick={() => { setDirection('negative'); setSlide(1); }}
                 style={responseBtn}
               >
                 <span style={{ fontSize: 28 }}>😕</span>
-                <span style={{ fontWeight: 700, fontSize: 14, color: R.navy }}>Could be better</span>
+                <span style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>Could be better</span>
               </button>
             </div>
           </SlidePanel>
@@ -247,10 +274,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 <div style={{ textAlign: 'center', marginBottom: 20 }}>
                   <Star size={40} color={AMBER} weight="fill" />
                 </div>
-                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: R.navy, textAlign: 'center', marginBottom: 10 }}>
+                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
                   Mind sharing your experience?
                 </div>
-                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
+                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
                   Reviews help other homeowners make a confident decision — and they mean a lot to the team.
                 </div>
                 {/* ⚠ NO DESTINATION, NO BUTTON (BR-2 Phase 2, R2). This rendered
@@ -274,9 +301,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                   disabled={hasLeftForReview}
                   style={{
                     display: 'block', width: '100%',
-                    background: hasLeftForReview ? R.bgPage : R.navy,
-                    color: hasLeftForReview ? R.textMuted : '#fff',
-                    border: hasLeftForReview ? `1.5px solid ${R.borderMed}` : 'none',
+                    background: hasLeftForReview ? RECESS : PRIMARY,
+                    color: hasLeftForReview ? TEXT : ON_PRIMARY,
+                    opacity: hasLeftForReview ? MUTED : 1,
+                    border: hasLeftForReview ? `1.5px solid ${elevationVar('border')}` : 'none',
                     borderRadius: 10,
                     padding: '14px', fontSize: 15, fontWeight: 600,
                     fontFamily: R.fontBody,
@@ -292,7 +320,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                     onClick={() => setSlide(3)}
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
-                      fontFamily: R.fontBody, fontSize: 14, color: R.textMuted,
+                      fontFamily: R.fontBody, fontSize: 14, color: TEXT,
                       textDecoration: 'underline', padding: '4px 8px',
                     }}
                   >Skip for now</button>
@@ -302,12 +330,12 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
               /* Slide 1 — Bad path: Suggestion box */
               <>
                 <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                  <SmileyMeh size={40} color={R.textMuted} weight="fill" />
+                  <SmileyMeh size={40} color={TEXT} weight="fill" />
                 </div>
-                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: R.navy, textAlign: 'center', marginBottom: 10 }}>
+                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
                   We're sorry to hear that.
                 </div>
-                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
+                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
                   Your feedback helps us improve. What could we have done better?
                 </div>
                 <textarea
@@ -318,13 +346,13 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                   rows={6}
                   style={{
                     width: '100%', boxSizing: 'border-box',
-                    borderRadius: 10, border: `1.5px solid ${R.borderMed}`,
+                    borderRadius: 10, border: `1.5px solid ${elevationVar('border')}`,
                     padding: '12px', fontFamily: R.fontBody, fontSize: 14,
-                    color: R.textPrimary, resize: 'vertical', outline: 'none',
+                    color: TEXT, resize: 'vertical', outline: 'none',
                     lineHeight: 1.5,
                   }}
                 />
-                <div style={{ fontSize: 12, color: R.textMuted, textAlign: 'right', marginBottom: 16, marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: TEXT, textAlign: 'right', marginBottom: 16, marginTop: 4 }}>
                   {text.length} / 2000
                 </div>
                 <button
@@ -332,7 +360,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                   disabled={!text.trim() || submitting}
                   style={{
                     display: 'block', width: '100%',
-                    background: R.navy, color: '#fff',
+                    background: PRIMARY, color: ON_PRIMARY,
                     border: 'none', borderRadius: 10,
                     padding: '14px', fontSize: 15, fontWeight: 600,
                     fontFamily: R.fontBody,
@@ -343,7 +371,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                   {submitting ? 'Sending…' : 'Submit'}
                 </button>
                 {error && (
-                  <div style={{ marginTop: 10, fontSize: 13, color: R.red, textAlign: 'center' }}>
+                  <div style={{ marginTop: 10, fontSize: 13, color: statusVar('dangerText'), textAlign: 'center' }}>
                     {error}
                   </div>
                 )}
@@ -352,7 +380,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                     onClick={() => setSlide(2)}
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
-                      fontFamily: R.fontBody, fontSize: 14, color: R.textMuted,
+                      fontFamily: R.fontBody, fontSize: 14, color: TEXT,
                       textDecoration: 'underline', padding: '4px 8px',
                     }}
                   >Skip</button>
@@ -369,10 +397,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 <div style={{ marginBottom: 20, marginTop: 8 }}>
                   <CheckCircle size={40} color={GREEN} weight="fill" />
                 </div>
-                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: R.navy, marginBottom: 10 }}>
+                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, marginBottom: 10 }}>
                   Thank you! 🙏
                 </div>
-                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, lineHeight: 1.5, marginBottom: 28 }}>
+                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, lineHeight: 1.5, marginBottom: 28 }}>
                   Taking the time to leave a review means the world to us — and helps other homeowners make a confident decision.
                 </div>
                 <button
@@ -381,7 +409,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                     setSlide(3);
                   }}
                   style={{
-                    background: R.navy, color: '#fff',
+                    background: PRIMARY, color: ON_PRIMARY,
                     border: 'none', borderRadius: 10,
                     padding: '14px 32px', fontSize: 15, fontWeight: 600,
                     fontFamily: R.fontBody, cursor: 'pointer',
@@ -394,16 +422,16 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 <div style={{ marginBottom: 20, marginTop: 8 }}>
                   <CheckCircle size={40} color={GREEN} weight="fill" />
                 </div>
-                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: R.navy, marginBottom: 10 }}>
+                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, marginBottom: 10 }}>
                   We hear you.
                 </div>
-                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, lineHeight: 1.5, marginBottom: 28 }}>
+                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, lineHeight: 1.5, marginBottom: 28 }}>
                   Our team will review your feedback and follow up. In the meantime, your app access is fully yours — your documents, warranties, and client portal are all here whenever you need them. We hope we can soon earn a recommendation from you to friends and family.
                 </div>
                 <button
                   onClick={() => { markComplete(); onDismiss(); }}
                   style={{
-                    background: R.navy, color: '#fff',
+                    background: PRIMARY, color: ON_PRIMARY,
                     border: 'none', borderRadius: 10,
                     padding: '14px 32px', fontSize: 15, fontWeight: 600,
                     fontFamily: R.fontBody, cursor: 'pointer',
@@ -416,20 +444,26 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
           {/* ── Slide 3: Referral nudge (good path only) ────────────────────── */}
           <SlidePanel>
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <ShareNetwork size={40} color={R.navy} weight="fill" />
+              <ShareNetwork size={40} color={PRIMARY} weight="fill" />
             </div>
-            <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: R.navy, textAlign: 'center', marginBottom: 10 }}>
+            <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
               Got anyone in mind?
             </div>
-            <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
+            <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
               Share your personal link — they'll get to explore {branding.companyName} before committing to anything.
             </div>
             <button
               onClick={handleShare}
               style={{
                 display: 'block', width: '100%',
-                background: copied ? GREEN : R.navy,
-                color: '#fff',
+                background: copied ? statusVar('success') : PRIMARY,
+                // ⚠ THE LABEL FLIPS WITH THE FILL, AND A FIXED WHITE FAILED.
+                // White on the success fill is 3.30:1 against a text floor of
+                // 4.5. Black on it is 6.37:1 — and `success` is the SAME HEX IN
+                // BOTH MODES (see statusTheme), so a fixed dark label here is
+                // NOT mode-blind, which is the property the ON_DANGER literal in
+                // ManageAccount could not claim.
+                color: copied ? ON_SUCCESS : ON_PRIMARY,
                 border: 'none', borderRadius: 10,
                 padding: '14px', fontSize: 15, fontWeight: 600,
                 fontFamily: R.fontBody, cursor: 'pointer',
@@ -440,7 +474,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
               {copied ? 'Copied!' : 'Share My Link'}
             </button>
             {error && (
-              <div style={{ marginBottom: 12, fontSize: 13, color: R.red, textAlign: 'center' }}>
+              <div style={{ marginBottom: 12, fontSize: 13, color: statusVar('dangerText'), textAlign: 'center' }}>
                 {error}
               </div>
             )}
@@ -452,7 +486,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 }}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  fontFamily: R.fontBody, fontSize: 14, color: R.textMuted,
+                  fontFamily: R.fontBody, fontSize: 14, color: TEXT,
                   textDecoration: 'underline', padding: '4px 8px',
                 }}
               >Maybe later</button>
@@ -465,10 +499,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
               <div style={{ marginBottom: 20, marginTop: 8 }}>
                 <CheckCircle size={40} color={GREEN} weight="fill" />
               </div>
-              <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: R.navy, marginBottom: 10 }}>
+              <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, marginBottom: 10 }}>
                 You're all set!
               </div>
-              <div style={{ fontFamily: R.fontBody, fontSize: 14, color: R.textMuted, lineHeight: 1.5, marginBottom: 28 }}>
+              <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, lineHeight: 1.5, marginBottom: 28 }}>
                 Thanks for being part of the {branding.companyName} community.
               </div>
               <button
@@ -477,7 +511,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                   handleClose();
                 }}
                 style={{
-                  background: R.navy, color: '#fff',
+                  background: PRIMARY, color: ON_PRIMARY,
                   border: 'none', borderRadius: 10,
                   padding: '14px 32px', fontSize: 15, fontWeight: 600,
                   fontFamily: R.fontBody, cursor: 'pointer',
