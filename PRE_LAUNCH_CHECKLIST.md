@@ -5073,6 +5073,82 @@ quadruples is evidence about the estimate, not about the wave:
       `opacity: 0` until a JS timer fires. **That is a source reading and wants a node check.**
       → `palettePopupsB1.test.jsx` · re-run the browser pass when the extension is healthy
 
+      ⚠ **THE PASS RAN 2026-09-07 AND FOUND TWO DEFECTS. THIS ENTRY STAYS OPEN ONLY FOR THE
+      REMAINING HALF** — see the two entries directly below. P.1 IS NOW CONFIRMED AT THE NODE:
+      with `document.hidden === true`, a popup heading measured effective alpha **1**, with no
+      declared opacity and no animation in its ancestor chain. Popups paint without their entrance
+      animation running, exactly the opposite of `AnimCard`. **The source reading was right.**
+
+- [ ] **⚠ SHIPPED IN `eee00df`: `ExperiencePopup`'s STAR AND CHECK ICONS RENDER BLACK. FIVE SITES.
+      A STRING WAS ASSIGNED WHERE A FUNCTION CALL WAS MEANT.**
+      *(Palette-11 B1 browser pass, 2026-09-07. ⚠ LIVE — it is on `main`.)*
+      The migration wrote `const AMBER = "statusVar('warning')"` and
+      `const GREEN = "statusVar('success')"` — **string literals containing the text of a call, not
+      the call.** Phosphor's `color` prop then receives `"statusVar('warning')"`, which is not a
+      valid CSS colour, so the icon falls back to black. Measured at the node: `fill: rgb(0,0,0)`
+      on both `<Star>` elements.
+      **The five sites:** two `<Star size={40} color={AMBER}>` and three
+      `<CheckCircle size={40} color={GREEN}>`.
+      ⚠ **NOTHING COULD HAVE CAUGHT THIS EXCEPT A NODE READING, AND THAT IS THE POINT OF THE
+      ENTRY.** The retired-tone sweep passed (no retired tone). The R-key sweep passed (no R key).
+      The arithmetic passed (it measures the tokens, not what the element received). **And the
+      graphic-floor checker passes too** — black on white is 21:1, so a broken colour that happens
+      to be black clears every floor. **A checker cannot see a defect whose symptom is high
+      contrast.**
+      ⚠ **NOT FIXED HERE ON PURPOSE:** the pass that finds a defect must not also repair it, or the
+      repair ships unverified in the same diff.
+      → `ExperiencePopup.jsx`'s `AMBER` and `GREEN` declarations
+
+- [ ] **⚠ PRE-EXISTING, NOT INTRODUCED: `MissingReferralModal`'s FOCUS RING NEVER PAINTS. The
+      input's border style and width are wiped when the handler sets `borderColor`.**
+      *(Palette-11 B1 browser pass, 2026-09-07.)*
+      `inputStyle` declares the border as a SHORTHAND (`border: 1.5px solid …`) and `onFocus`
+      mutates the LONGHAND (`e.target.style.borderColor = …`). Measured at the node, the inline
+      style attribute after focus reads
+      `border-color: var(--rm-primary-text, #B1480A); border-top-style: ; border-top-width: ;` —
+      **the style and width longhands are empty strings**, so no border paints and the computed
+      `borderTopColor` stays at the idle `rgba(0,0,0,0.12)`.
+      ⚠ **THE SHAPE PREDATES THIS ARC.** Before the migration the same handler assigned `R.navy`
+      into the same shorthand; only the colour string changed. **B1 did not introduce it.**
+      ⚠ **CONSEQUENCE FOR THE RECORD: B1's focus-ring routing is ARITHMETIC ONLY.** The routing is
+      correct — `--rm-primary` measures 2.68:1 on the recessed input and `--rm-primary-text`
+      measures 4.84:1 — but **the ring does not render, so neither value was observed.** Do not
+      read the fix as node-verified.
+      → `MissingReferralModal.jsx`'s `inputStyle` and its four `onFocus` handlers
+
+- [ ] **⚠ THE SEEDER PUTS EVERY POPUP ROW ON THE ONE CONTRACTOR WHERE MOUNT AND FALLBACK ARE
+      INDISTINGUISHABLE.**
+      *(Palette-11 B1 browser pass, 2026-09-07.)*
+      Part A's seeding lands all four gated popups on the FIRST contractor, `palette-alpha` — and
+      **Alpha's brand IS the platform default palette**, so all six render tokens mount EQUAL to
+      their fallbacks (`--rm-text` `#1C2D4D`, `--rm-primary` `#F26A1B`, and so on). **A correct
+      wiring and a broken one are identical on it**, which is the exact property the arc warns
+      about under Accent.
+      ⚠ **THE PASS ONLY GOT ITS ANSWER BY HAND-SEEDING A PROMPT FOR BETA**, whose tokens differ in
+      five of six. The seeder should place the popup rows on Beta, or on both.
+      ⚠ **AND A SECOND SCHEMA INSTANCE OF PART A's FINDING, FOUND THE SAME WAY:**
+      `sessions.contractor_id` is required by `verifyReferrerSession` and is added by a LATER ALTER
+      than the CREATE TABLE. A session minted without it is rejected with a plain 401, which reads
+      as a bad token rather than a missing column. **A table's shape is CREATE plus every ALTER
+      since — twice now.**
+
+- [ ] **⚠ B.6 — A FENCE COULD CATCH `--rm-primary` ON `recess`, AND THE PATTERN NOW HAS THREE
+      INSTANCES. REPORTED, NOT BUILT.**
+      *(Palette-11 B1 browser pass, 2026-09-07.)*
+      The same token on the same ground at the same number has been hand-caught three times:
+      ManageAccount's bank icon (2.68) and check icon (2.89) in Palette-10, and
+      MissingReferralModal's focus ring (2.68) in B1. **Three is a pattern, not three
+      coincidences.**
+      **What a fence would assert:** every token carries the ground it is FLOORED AGAINST, and a
+      declaration pairs a token with a ground it was not floored against only if the arithmetic
+      still clears. `--rm-primary` is floored against `surface` at the 3:1 graphic threshold;
+      `--rm-primary-text` is floored at 4.5 against BOTH `surface` and `recess`. The pairing that
+      keeps failing is `primary` × `recess`.
+      ⚠ **THE HARD PART IS NOT THE ARITHMETIC, IT IS KNOWING THE GROUND** — which is a DOM fact,
+      not a source fact, and the three catches all came from asking what ground the element
+      actually has. A source-only fence would need the ground declared beside the token, which is
+      a convention change rather than a test.
+
 - [ ] **⚠ THREE CONTRAST DEFECTS FOUND BY MEASURING `ExperiencePopup` AND `MissingReferralModal` —
       TWO OF THEM LIVE AND SHIPPED, ONE CAUGHT BEFORE IT SHIPPED.**
       *(Palette-11 B1, 2026-09-07. All three fixed in the same commit.)*
