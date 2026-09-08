@@ -1,4 +1,30 @@
 import { R } from '../../constants/theme';
+
+// ─── PALETTE-11 B2 TOKENS ─── ⚠ THIS IS A DARK PANEL ─────────────────────────
+// ⚠ THE PANEL FILL IS `--rm-secondary` — the contractor's PRIMARY BRAND COLOUR,
+// the dark neutral, per the documented crossover. Its text is
+// `--rm-on-secondary`, DERIVED for that fill: worst 6.71:1 across all four
+// seeded brands and both modes.
+// ⚠ `--rm-text` WOULD BE WRONG HERE. It is floored against `surface` and
+// `recess`, never against a brand fill, and a token floored against one ground
+// is not safe on another — hand-caught in three consecutive phases.
+// ⚠ THE PANEL KEEPS ITS SHAPE. This is a migration, not a redesign, and unlike
+// ManageAccount's navy this one is DELIBERATE rather than the `||` fallback of a
+// key that does not exist.
+//
+// ⚠ AND THE GAP THIS FILE EXPOSES, FILED RATHER THAN INVENTED AROUND: the token
+// set has NO variant for a hairline, a divider or a STATUS colour sitting on a
+// BRAND FILL. `elevationVar('border')` resolves per MODE, not per panel, so on a
+// dark panel in light mode it is a black hairline nobody can see; and
+// `statusVar('dangerText')` is a DARK red chosen for a light ground. Where no
+// token covers the case the value stays a neutral literal WITH ITS REASON, and
+// the gap is recorded in PRE_LAUNCH_CHECKLIST.md.
+const SECONDARY    = 'var(--rm-secondary, #1C2D4D)';
+const ON_SECONDARY = 'var(--rm-on-secondary, #FFFFFF)';
+const PRIMARY      = 'var(--rm-primary, #F26A1B)';
+const ON_PRIMARY   = 'var(--rm-on-primary, #000000)';
+const MUTED = 0.72;
+
 import { useBranding } from '../shared/ThemeProvider';
 import {
   Clock, MapPin, Star,
@@ -70,7 +96,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
         style={{
           width: '100%',
           maxWidth: 380,
-          background: R.navy,
+          background: SECONDARY,
           borderRadius: 16,
           maxHeight: '80vh',
           overflowY: 'auto',
@@ -90,20 +116,20 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
                 style={{ height: 48, width: 'auto', objectFit: 'contain', marginBottom: 12, display: 'block', margin: '0 auto 12px' }}
               />
             ) : (
-              <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 700, color: 'rgba(211,227,240,0.6)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+              <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.6)', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                 {contractorName}
               </p>
             )}
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff', fontFamily: R.fontSans, letterSpacing: '-0.01em' }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: ON_SECONDARY, fontFamily: R.fontSans, letterSpacing: '-0.01em' }}>
               Meet {contractorName}
             </h2>
-            <div style={{ width: 40, height: 3, background: R.red, borderRadius: 99, margin: '12px auto 0' }} />
+            <div style={{ width: 40, height: 3, background: PRIMARY, borderRadius: 99, margin: '12px auto 0' }} />
           </div>
 
           {/* Bio */}
           {aboutData.bio && (
             <div style={{
-              borderLeft: `3px solid ${R.red}`,
+              borderLeft: `3px solid ${PRIMARY}`,
               paddingLeft: 16,
               marginBottom: 24,
             }}>
@@ -118,7 +144,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
               {aboutData.years_in_business && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Clock size={18} weight="fill" color={R.blueLight} />
+                  <Clock size={18} weight="fill" color={'rgba(255,255,255,0.85)'} />
                   <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', fontFamily: R.fontBody }}>
                     {aboutData.years_in_business}
                   </span>
@@ -126,7 +152,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
               )}
               {aboutData.service_area && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <MapPin size={18} weight="fill" color={R.blueLight} />
+                  <MapPin size={18} weight="fill" color={'rgba(255,255,255,0.85)'} />
                   <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', fontFamily: R.fontBody }}>
                     {aboutData.service_area}
                   </span>
@@ -184,7 +210,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
             <div style={{ marginBottom: 24, textAlign: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <Star size={22} weight="fill" color="#F5A623" />
-                <span style={{ fontSize: 24, fontWeight: 800, color: '#fff', fontFamily: R.fontMono, lineHeight: 1 }}>
+                <span style={{ fontSize: 24, fontWeight: 800, color: ON_SECONDARY, fontFamily: R.fontMono, lineHeight: 1 }}>
                   {aboutData.google_rating}
                 </span>
                 <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', fontFamily: R.fontMono }}>/5</span>
@@ -207,7 +233,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
             if (certs.length === 0) return null;
             return (
             <div style={{ marginBottom: 28 }}>
-              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(211,227,240,0.5)' }}>
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' }}>
                 Certifications &amp; Awards
               </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -222,7 +248,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
                       <div style={{
                         display: 'inline-flex', alignItems: 'center', gap: 6,
                         padding: '5px 11px', borderRadius: 99,
-                        border: '1px solid rgba(211,227,240,0.3)',
+                        border: '1px solid rgba(255,255,255,0.3)',
                       }}>
                         <img
                           src={`/badges/${cert.id}.png`}
@@ -231,12 +257,12 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
                           style={{ objectFit: 'contain' }}
                           onError={e => { e.target.style.display = 'none'; }}
                         />
-                        <span style={{ color: R.blueLight, fontSize: 12, fontFamily: R.fontBody }}>
+                        <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: R.fontBody }}>
                           {label}
                         </span>
                       </div>
                       {displayYears.length > 0 && (
-                        <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(211,227,240,0.45)', fontFamily: R.fontBody }}>
+                        <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: R.fontBody }}>
                           {displayYears.join(' · ')}{hasMore ? ' +' : ''}
                         </p>
                       )}
@@ -253,16 +279,16 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
         <div style={{
           padding: '16px 24px 20px',
           display: 'flex', flexDirection: 'column', gap: 8,
-          background: R.navy,
-          borderTop: '1px solid rgba(211,227,240,0.1)',
+          background: SECONDARY,
+          borderTop: '1px solid rgba(255,255,255,0.1)',
           position: 'sticky', bottom: 0,
         }}>
           <button
             onClick={onBook}
             style={{
               width: '100%', padding: '14px 24px',
-              background: R.red, border: 'none', borderRadius: 12,
-              color: '#fff', fontSize: 15, fontWeight: 700,
+              background: PRIMARY, border: 'none', borderRadius: 12,
+              color: ON_SECONDARY, fontSize: 15, fontWeight: 700,
               fontFamily: R.fontSans, cursor: 'pointer',
             }}
           >
@@ -273,7 +299,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
             style={{
               width: '100%', padding: '12px 24px',
               background: 'transparent', border: 'none', borderRadius: 12,
-              color: R.blueLight, fontSize: 14, fontWeight: 500,
+              color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 500,
               fontFamily: R.fontSans, cursor: 'pointer',
             }}
           >

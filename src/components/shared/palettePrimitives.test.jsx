@@ -26,6 +26,20 @@ import { deriveThemeTokens, contrastRatio } from '../../utils/themeTokens.mjs';
 import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 import { ELEVATION_LIGHT, elevationVar } from '../../constants/elevationTheme';
 import AvatarCircle from './AvatarCircle';
+// ⚠ STATIC, NOT `await import()` INSIDE THE TEST BODY. A dynamic import in a
+// test is resolved against the PER-TEST timeout, so the module's load cost is
+// charged to the case rather than to module setup. Under a 57-file suite the
+// DashboardTab case reached 44s against a 20000ms allowance; isolated it was
+// unchanged at 2.41s, so it was contention, not the component.
+// ⚠ THE BESPOKE TIMEOUT WAS REMOVED RATHER THAN RAISED. Its own comment said a
+// second timeout meant "a real change in the component, investigate rather than
+// re-raise" — that was right, and the investigation showed the cost had not
+// moved. Raising the number a second time would have been fitting the check to
+// the failure; hoisting removes the cause instead.
+import RankingsTab from '../referrer/RankingsTab';
+import LoginScreen from '../auth/LoginScreen';
+import ProfileTab from '../referrer/ProfileTab';
+import DashboardTab from '../referrer/DashboardTab';
 import ContactModal from './ContactModal';
 import StatusBadge from './StatusBadge';
 import { ThemeContext } from './ThemeProvider';
@@ -209,23 +223,20 @@ describe('Palette-3 T4 — every importer still renders', () => {
 
   // Named explicitly, per A.1. ContactModal's LoginScreen importer is the
   // PRE-AUTH one and is the reason this phase touches a pre-auth surface.
-  it('[RED] AvatarCircle renders inside a tab (Dashboard, Profile, Rankings all import it)', async () => {
+  it('[RED] AvatarCircle renders inside a tab (Dashboard, Profile, Rankings all import it)', () => {
     installFetch();
-    const { default: RankingsTab } = await import('../referrer/RankingsTab');
     const { container } = render(<RankingsTab token="t" />);
     expect(container).toBeTruthy();
   });
 
   it('[RED] LoginScreen — ContactModal\'s PRE-AUTH importer — still renders', async () => {
     installFetch();
-    const { default: LoginScreen } = await import('../auth/LoginScreen');
     render(<LoginScreen onAuthenticated={() => {}} />);
     expect(screen.getByLabelText('Password')).toBeTruthy();
   });
 
-  it('[RED] ProfileTab — importer of all three primitives — still renders', async () => {
+  it('[RED] ProfileTab — importer of all three primitives — still renders', () => {
     installFetch();
-    const { default: ProfileTab } = await import('../referrer/ProfileTab');
     const { container } = render(
       <ProfileTab onLogout={() => {}} pipeline={[]} loading={false} userName="A" userEmail="a@b.co"
         onNameUpdate={() => {}} setProfilePhoto={() => {}} onResetHighlight={() => {}}
@@ -245,15 +256,14 @@ describe('Palette-3 T4 — every importer still renders', () => {
   // assertion pass. 20000ms is ~9x the isolated cost, which clears contention.
   // If this ever times out AGAIN, that is a real change in the component and
   // should be investigated rather than re-raised.
-  it('[RED] DashboardTab — importer of AvatarCircle and StatusBadge — still renders', async () => {
+  it('[RED] DashboardTab — importer of AvatarCircle and StatusBadge — still renders', () => {
     installFetch();
-    const { default: DashboardTab } = await import('../referrer/DashboardTab');
     const { container } = render(
       <DashboardTab setTab={() => {}} pipeline={[]} loading={false} userName="A" balance={0}
         paidCount={0} sessionToken="t" />
     );
     expect(container.querySelector('div')).toBeTruthy();
-  }, 20000);
+  });
 });
 
 // ── T5 — CONTACTMODAL IN DARK MODE ──────────────────────────────────────────

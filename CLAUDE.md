@@ -344,8 +344,11 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1304 server tests across 209 suites, and 906 React tests across 56 files** (measured 2026-09-07 by Palette-11 B1-FIX, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B1-FIX COMMIT ITSELF.** It adds four
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1304 server tests across 209 suites, and 934 React tests across 57 files** (measured 2026-09-08 by Palette-11 B2, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B2 COMMIT ITSELF.** It adds
+  `palettePopupsB2.test.jsx` (28 cases), and 906 → 934 is exactly those 28; the file count moves
+  56 → 57. The server figures did not move and were re-measured rather than carried.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B1-FIX COMMIT ITSELF.* It adds four
   ground-fence cases to `server/test/graphicFloor.test.js` (1300 → 1304, suites 208 → 209) and two
   stringified-call cases to `themeKeyIntegrity.test.js` (904 → 906). **Both numbers moved this
   time**, which is the first time in the arc — the phase ships a server-side fence and a React one.

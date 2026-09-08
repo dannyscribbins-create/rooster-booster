@@ -5103,6 +5103,68 @@ quadruples is evidence about the estimate, not about the wave:
       repair ships unverified in the same diff.
       → `ExperiencePopup.jsx`'s `AMBER` and `GREEN` declarations
 
+- [ ] **⚠ THE DECIMAL NEEDLE'S BIGGEST CATCH OF THE ARC: TWELVE REACHES OF THE RETIRED ACCENT LIGHT
+      BLUE, AND THE HEX NEEDLE FOUND ZERO OF THEM.**
+      *(Palette-11 B2, 2026-09-08. All removed.)*
+      `rgba(211,227,240,…)` — `#D3E3F0` in decimal — appeared **9 times** across `BookingFormModal`
+      and `ContractorAboutModal`, plus **3** `R.blueLight` reads. Two more files dimmed with
+      `rgba(1,40,84,…)` and one with `rgba(204,0,0,…)`: **the retired navy and red, as scrims and
+      shadows.** Every one invisible to a hex sweep.
+      ⚠ **THE DECIMAL NEEDLE HAS NOW OUT-FOUND THE HEX ONE IN FOUR CONSECUTIVE PHASES**, and this is
+      the widest margin yet. A retired tone reaches code by three routes — hex, decimal, and an `R`
+      key whose VALUE is the tone — and a sweep that reads one of them reports clean.
+
+- [ ] **⚠ TWO OF THE FIVE B2 SURFACES ARE DARK PANELS, AND THEY EXPOSE A REAL GAP IN THE TOKEN SET:
+      THERE IS NO VARIANT FOR A HAIRLINE, A DIVIDER OR A STATUS COLOUR ON A BRAND FILL.**
+      *(Palette-11 B2, 2026-09-08. Filed, not invented around.)*
+      `BookingFormModal` and `ContractorAboutModal` are panels filled with `--rm-secondary`. Their
+      body text is `--rm-on-secondary`, which is derived for that fill and measures **6.71:1 worst**
+      across all four brands and both modes — that half is solved.
+      ⚠ **WHAT IS NOT:** `elevationVar('border')` resolves per **MODE**, not per panel, so on a dark
+      panel in light mode it is a black hairline nobody can see. And `statusVar('dangerText')` is a
+      dark red chosen for a light ground. **Neither has a brand-fill variant.**
+      ⚠ **WHERE NO TOKEN COVERS THE CASE THE VALUE IS A NEUTRAL LITERAL WITH ITS REASON IN A
+      COMMENT** — not a retired brand tone, which is what it was. That is the defect closed; the gap
+      is the follow-up.
+      ⚠ **THIS IS THE THIRD TIME THE SAME HOLE HAS BEEN FILED** — the status palette, the muted
+      idiom and now borders are all defined against `surface`, and a brand fill is not a surface.
+
+- [ ] **⚠ A BRAND-ACTION ELEMENT ON A BRAND-NEUTRAL PANEL CONVERGES, AND IT IS PRE-EXISTING.**
+      *(Palette-11 B2, 2026-09-08.)* `ContractorAboutModal`'s accent bar and CTA sit on the dark
+      panel. `--rm-primary` on `--rm-secondary` measures **4.47 / 2.05 / 2.49 in light and
+      1.01-1.05 in dark** — 6 of 8 below the 3:1 graphic floor.
+      ⚠ **IT IS NOT A REGRESSION THIS PHASE INTRODUCED: the shipped state was `R.red` on `R.navy` at
+      2.49:1**, already below floor. The migration carries the condition forward rather than
+      creating it, and in dark mode it converges further.
+      ⚠ **SAME FAMILY AS THE CASHOUT HERO** — two brand-derived tokens can be arbitrarily close,
+      which is why money on a brand fill is white. Filed with the boost bar as a design question.
+
+- [ ] **⚠ THREE OF THE FIVE B2 SURFACES CANNOT BE RENDERED ON THE LOCAL STACK, FOR DATA REASONS
+      RATHER THAN COLOUR ONES. SAID PLAINLY RATHER THAN REPORTED CLEAN.**
+      *(Palette-11 B2, 2026-09-08. R-7's shape, and R-7 is open.)*
+      · **`AnnouncementPopup`** — its data arrives in the **LOGIN payload**, not from a fetch on
+        mount. A token-restored session never calls `/api/login`, so the row exists and the popup
+        never fires. **Seeding cannot reach it; only a real login can.**
+      · **`ContractorAboutModal`** — gated on `aboutData` from the contractor's about fields, which
+        the seeder does not write.
+      · **`BookingFormModal`** — opens FROM the About modal, so it inherits the same gate.
+      **All three are covered in jsdom** (render assertions by name, with negatives), and their
+      arithmetic is verified across four brands and both modes. **What is missing is
+      mounted-vs-fallback at the node**, which is the one thing arithmetic cannot see — and the
+      phase that learned that lesson is the one before this.
+      → extending the seeder with contractor about fields would reach two of the three
+
+- [ ] **✅ V5 DELIVERED 2026-09-08 — PALETTE-4b's `#999` REPAIR IS OBSERVED IN A BROWSER FOR THE
+      FIRST TIME, SEVEN PHASES AFTER IT SHIPPED.**
+      The badge grid renders BOTH branches now that badges seed: earned tiles at **11.16:1**,
+      unearned at **4.97:1** (`--rm-text` at the 0.72 muted idiom, on the recessed row).
+      ⚠ **AND THE OBSERVED FIGURE IS NOT THE RECORDED ONE.** Palette-4b recorded the repair
+      analytically as **2.53 → 9.71**. The shipped pairing measures **4.97**, because what actually
+      renders is the MUTED tone on `recess`, not the full tone on `surface`. Both clear the 4.5
+      floor, so the repair is confirmed effective — **but the 9.71 described a pair that does not
+      ship.** That is what an unobserved analytic figure is worth, and it is the argument for
+      seeding a surface rather than reasoning about it.
+
 - [ ] **⚠ TWO FENCES BUILT FOR CLASSES THAT HAD ALREADY BITTEN. Both guard-proofed against the REAL
       instances rather than invented ones.**
       *(Palette-11 B1-FIX, 2026-09-07.)*
@@ -5661,7 +5723,17 @@ quadruples is evidence about the estimate, not about the wave:
       Palette-10's own token header. Both copies now cite the SECTION by name and cannot rot again.
       **That is the 50/50 split this entry keeps recording: one correct-and-moved, two
       already-wrong.**
-      **Running total of already-rotted citations found by the Palette arc and left unrepaired: 7.**
+      ⚠ **PALETTE-11 B2 ADDS TWO MORE, BOTH IN BUILD SPECS AND BOTH ALREADY WRONG AT HEAD.**
+      `CDL_3b_BUILD_SPEC.md` cites **`AnnouncementPopup.jsx:9`** three times as the line carrying the
+      `preset_2` Accent string — at HEAD that line is an `import`, because the preset copy moved to
+      `utils/announcementMessage.js`. `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` cites
+      **`AnnouncementPopup.jsx:64-85`** as the logo lockup to reuse; the range has drifted onto the
+      comment prose beside it.
+      **Neither is repaired**: the subjects must be re-derived, and adding this phase's delta would
+      certify two wrong numbers as fixed. Named by subject instead — the preset copy lives in
+      **`announcementMessage.js`'s `preset_2`**, and the lockup is **AnnouncementPopup's logo-plus-
+      divider block**.
+      **Running total of already-rotted citations found by the Palette arc and left unrepaired: 9.**
       ⚠ **AND THIS TOTAL IS THE THING `CLAUDE.md` WARNS ABOUT** — a hand-maintained number above a
       list nobody re-counts. It is kept only because each member is enumerated above it and can be
       recounted by reading; **if it ever disagrees with the enumeration, the enumeration wins.**

@@ -1,5 +1,34 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
+import { statusVar } from '../../constants/statusTheme';
+
+// ─── PALETTE-11 B2 TOKENS ─── ⚠ THIS IS A DARK PANEL ─────────────────────────
+// ⚠ THE PANEL FILL IS `--rm-secondary` — the contractor's PRIMARY BRAND COLOUR,
+// the dark neutral, per the documented crossover. Its text is
+// `--rm-on-secondary`, DERIVED for that fill: worst 6.71:1 across all four
+// seeded brands and both modes.
+// ⚠ `--rm-text` WOULD BE WRONG HERE. It is floored against `surface` and
+// `recess`, never against a brand fill, and a token floored against one ground
+// is not safe on another — hand-caught in three consecutive phases.
+// ⚠ THE PANEL KEEPS ITS SHAPE. This is a migration, not a redesign, and unlike
+// ManageAccount's navy this one is DELIBERATE rather than the `||` fallback of a
+// key that does not exist.
+//
+// ⚠ AND THE GAP THIS FILE EXPOSES, FILED RATHER THAN INVENTED AROUND: the token
+// set has NO variant for a hairline, a divider or a STATUS colour sitting on a
+// BRAND FILL. `elevationVar('border')` resolves per MODE, not per panel, so on a
+// dark panel in light mode it is a black hairline nobody can see; and
+// `statusVar('dangerText')` is a DARK red chosen for a light ground. Where no
+// token covers the case the value stays a neutral literal WITH ITS REASON, and
+// the gap is recorded in PRE_LAUNCH_CHECKLIST.md.
+const SECONDARY    = 'var(--rm-secondary, #1C2D4D)';
+const ON_SECONDARY = 'var(--rm-on-secondary, #FFFFFF)';
+const PRIMARY      = 'var(--rm-primary, #F26A1B)';
+const ON_PRIMARY   = 'var(--rm-on-primary, #000000)';
+const MUTED = 0.72;
+// The CTA's darker stop, for the submitting state.
+const PRIMARY_DARK = 'var(--rm-primary-dark, #CE530C)';
+
 import { BACKEND_URL } from '../../config/contractor';
 import { useBranding } from '../shared/ThemeProvider';
 import { X, CheckCircle } from '@phosphor-icons/react';
@@ -62,14 +91,14 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
   const inputStyle = {
     width: '100%', padding: '12px 14px',
     background: 'rgba(255,255,255,0.1)',
-    border: '1px solid rgba(211,227,240,0.25)',
+    border: '1px solid rgba(255,255,255,0.25)',
     borderRadius: 10, fontFamily: R.fontBody, fontSize: 15,
-    color: '#fff', outline: 'none', boxSizing: 'border-box',
+    color: ON_SECONDARY, outline: 'none', boxSizing: 'border-box',
     transition: 'border-color 0.15s',
   };
 
-  const focusHandler = e => { e.target.style.borderColor = 'rgba(211,227,240,0.65)'; };
-  const blurHandler  = e => { e.target.style.borderColor = 'rgba(211,227,240,0.25)'; };
+  const focusHandler = e => { e.target.style.borderColor = 'rgba(255,255,255,0.65)'; };
+  const blurHandler  = e => { e.target.style.borderColor = 'rgba(255,255,255,0.25)'; };
 
   return (
     <div
@@ -85,7 +114,7 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
         onClick={e => e.stopPropagation()}
         style={{
           width: '100%',
-          background: R.navy,
+          background: SECONDARY,
           borderRadius: '20px 20px 0 0',
           maxHeight: '90vh',
           overflowY: 'auto',
@@ -106,12 +135,12 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
                 style={{ maxWidth: 160, width: '100%', height: 'auto', objectFit: 'contain', display: 'block' }}
               />
             ) : (
-              <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#fff', fontFamily: R.fontSans }}>
+              <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: ON_SECONDARY, fontFamily: R.fontSans }}>
                 {branding.companyName}
               </p>
             )}
-            <CheckCircle size={64} weight="fill" color="#22C55E" />
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#fff', fontFamily: R.fontSans }}>
+            <CheckCircle size={64} weight="fill" color={statusVar('success')} />
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: ON_SECONDARY, fontFamily: R.fontSans }}>
               You're all set!
             </h2>
             <p style={{ margin: 0, fontSize: 15, color: 'rgba(255,255,255,0.75)', fontFamily: R.fontBody, lineHeight: 1.6 }}>
@@ -122,7 +151,7 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
           <div style={{ padding: '24px 24px 28px' }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#fff', fontFamily: R.fontSans }}>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: ON_SECONDARY, fontFamily: R.fontSans }}>
                 Request Inspection
               </h2>
               <button
@@ -130,7 +159,7 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
                 disabled={status === 'submitting'}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', opacity: status === 'submitting' ? 0.4 : 1 }}
               >
-                <X size={22} color="rgba(211,227,240,0.7)" weight="bold" />
+                <X size={22} color={ON_SECONDARY} weight="bold" />
               </button>
             </div>
 
@@ -222,14 +251,14 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
 
             {/* Validation error */}
             {fieldError && (
-              <p style={{ margin: '10px 0 0', fontSize: 13, color: '#f87171', fontFamily: R.fontBody }}>
+              <p style={{ margin: '10px 0 0', fontSize: 13, color: 'rgba(255,140,140,1)', fontFamily: R.fontBody }}>
                 {fieldError}
               </p>
             )}
 
             {/* API error */}
             {status === 'error' && (
-              <p style={{ margin: '10px 0 0', fontSize: 13, color: '#f87171', fontFamily: R.fontBody }}>
+              <p style={{ margin: '10px 0 0', fontSize: 13, color: 'rgba(255,140,140,1)', fontFamily: R.fontBody }}>
                 Something went wrong. Please try again.
               </p>
             )}
@@ -240,9 +269,9 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
               disabled={status === 'submitting'}
               style={{
                 marginTop: 20, width: '100%', padding: '14px 24px',
-                background: status === 'submitting' ? R.redDark : R.red,
+                background: status === 'submitting' ? PRIMARY_DARK : PRIMARY,
                 border: 'none', borderRadius: 12,
-                color: '#fff', fontSize: 15, fontWeight: 700,
+                color: ON_SECONDARY, fontSize: 15, fontWeight: 700,
                 fontFamily: R.fontSans, cursor: status === 'submitting' ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 transition: 'background 0.15s',

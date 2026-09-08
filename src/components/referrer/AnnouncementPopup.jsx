@@ -1,5 +1,23 @@
 import { useState, useEffect } from 'react';
 import { R } from '../../constants/theme';
+import { elevationVar } from '../../constants/elevationTheme';
+
+// ─── PALETTE-11 B2 TOKENS ────────────────────────────────────────────────────
+// ⚠ A MODAL SITS ON A SCRIM, AND THE SCRIM STAYS A LITERAL. It dims whatever is
+// behind the modal and is not a themed ground — B1's ruling, followed here.
+// ⚠ BUT A SCRIM MAY NOT BE A RETIRED BRAND TONE EITHER. Two of these files
+// dimmed with `rgba(1,40,84,…)` — the retired Accent navy in DECIMAL form,
+// invisible to every hex sweep this arc has run. Neutral black now.
+// ⚠ EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS.
+const TEXT       = 'var(--rm-text, #1C2D4D)';
+const SURFACE    = 'var(--rm-surface, #FFFFFF)';
+const PRIMARY    = 'var(--rm-primary, #F26A1B)';
+const ON_PRIMARY = 'var(--rm-on-primary, #000000)';
+// ⚠ THE GRADIENT'S DARKER STOP. Text on a gradient clears the DARKER stop, and
+// the pair asserted in the suite is onPrimary against `primaryDark`.
+const PRIMARY_DARK = 'var(--rm-primary-dark, #CE530C)';
+const MUTED = 0.72;
+
 import { useBranding } from '../shared/ThemeProvider';
 // ⚠ ONE DEFINITION, SHARED WITH THE ADMIN PREVIEW (Admin Brand Retirement Phase
 // 4). The templates and this resolver used to be copied into each surface, and
@@ -26,14 +44,14 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 300,
-      background: "rgba(1,40,84,0.85)",
+      background: 'rgba(0,0,0,0.85)',
       display: "flex", alignItems: "center", justifyContent: "center",
       padding: 24,
     }}>
       <div style={{
-        background: "#FFFFFF", borderRadius: 24,
+        background: SURFACE, borderRadius: 24,
         padding: "36px 28px", width: "100%", maxWidth: 360,
-        boxShadow: "0 12px 48px rgba(1,40,84,0.3)",
+        boxShadow: elevationVar('shadowLg'),
         textAlign: "center",
         opacity: cardVisible ? 1 : 0,
         transform: cardVisible ? "translateY(0)" : "translateY(20px)",
@@ -75,7 +93,7 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
         {/* Message */}
         <p style={{
           margin: "0 0 20px", fontSize: 16, lineHeight: 1.6,
-          color: R.textPrimary, fontFamily: R.fontBody,
+          color: TEXT, fontFamily: R.fontBody,
         }}>
           {message}
         </p>
@@ -93,7 +111,7 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
           }}>
             ${parseFloat(announcement.amount).toLocaleString()}
           </span>
-          <p style={{ margin: "4px 0 0", fontSize: 14, color: R.textSecondary }}>
+          <p style={{ margin: "4px 0 0", fontSize: 14, color: TEXT }}>
             for referring {announcement.referredName}
           </p>
         </div>
@@ -103,11 +121,11 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
           onClick={onDismiss}
           style={{
             width: "100%", marginBottom: 12,
-            background: `linear-gradient(135deg, ${R.red} 0%, ${R.redDark} 100%)`,
+            background: `linear-gradient(135deg, ${PRIMARY} 0%, ${PRIMARY_DARK} 100%)`,
             border: "none", borderRadius: 12, padding: "14px 24px",
-            color: "#fff", fontSize: 15, fontWeight: 700,
+            color: ON_PRIMARY, fontSize: 15, fontWeight: 700,
             fontFamily: R.fontSans, cursor: "pointer",
-            boxShadow: "0 4px 14px rgba(204,0,0,0.35)",
+            boxShadow: elevationVar('shadowMd'),
             transition: "transform 0.2s",
           }}
           onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
@@ -122,7 +140,7 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
           onClick={onDismiss}
           style={{
             background: "none", border: "none", padding: "8px",
-            color: R.textMuted, fontSize: 14, cursor: "pointer",
+            color: TEXT, fontSize: 14, cursor: "pointer",
             fontFamily: R.fontBody,
           }}
         >
