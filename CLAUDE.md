@@ -1177,6 +1177,144 @@ TO A TRACKED FILE.** The bare form regenerates `docs/ARCHITECTURE.md`; `npm run 
 Running the bare form to "see what it says" modifies the working tree. `citecheck`,
 `tablecheck` and `--check` all print and exit 0, touching nothing.
 
+### A check can only see the defect it was built to look for, and the gap is where the next one lives
+
+⚠ **THE HEADLINE FINDING OF THE PALETTE ARC: FOUR INDEPENDENT CHECKS PASSED ON FIVE ICONS
+RENDERING BLACK, AND EACH ONE PASSED FOR A CORRECT REASON.** `ExperiencePopup` held
+`const AMBER = "statusVar('warning')"` — a string containing the TEXT of a call, not the
+call. Phosphor received a value that is not a CSS colour and fell back to black.
+
+| check | why it passed |
+|---|---|
+| the retired-tone sweep | no retired tone was present, and none was |
+| the R-key sweep | no `R.` read was present, and none was |
+| the arithmetic | it measures TOKENS, never what the element received |
+| the graphic-floor checker | **black on white is 21:1** |
+
+⚠ **THE GAP NONE OF THEM COVERS IS WHETHER THE VALUE REACHING THE ELEMENT IS A COLOUR AT
+ALL.** Every one of them assumes a colour is present and measures its properties.
+⚠ **A CHECKER CANNOT SEE A DEFECT WHOSE SYMPTOM IS HIGH CONTRAST.** Only a reading taken at
+the rendered node found it, as `fill: rgb(0,0,0)`.
+
+**A fence now catches the class**, in `themeKeyIntegrity`, anchored on ASSIGNMENT position —
+`[=:]` then a quote then `<word>Var(`. ⚠ **EXEMPTING TEST FILES WAS REJECTED AS THE FIX.** The
+first draft matched any quoted call and fired on 26 legitimate test needles like
+`.toContain("statusVar('successText')")`; the anchor separates a VALUE from a NEEDLE with no
+carve-out, because **a fence that stops reading the files an idiom gets copied from has a hole
+in it.**
+
+### Measure composited, on the rendered node — never at the declaration
+
+**Three shapes, all CORRECT AT THE DECLARATION, all wrong where they landed, all passing every
+test that existed.**
+
+- ⚠ **OPACITY INHERITS; COLOUR DOES NOT.** `opacity: MUTED` on a paragraph muted a money span
+  nested inside it — **3.29:1 on a payout figure, live for two phases.** Every element's own
+  declaration was right.
+- ⚠ **A GROUND CAN MOVE UNDER AN ELEMENT, AND THIS WAS CAUGHT IN FOUR CONSECUTIVE PHASES.**
+  Palette-4b took an icon from 3.00 to 2.55 by moving what it sat on, in a phase whose subject
+  was contrast. Then twice more at **2.68 and 2.89**, and again at **2.68** — every one
+  `--rm-primary` (floored against `surface`) used on `--rm-recess`.
+  ⚠ **A TOKEN FLOORED AGAINST ONE GROUND IS NOT SAFE ON ANOTHER**, and **modals change grounds
+  by construction** — one had two grounds in a single sheet.
+- ⚠ **TEXT ON A GRADIENT CLEARS THE DARKER STOP, NOT THE BASE.** Arithmetic against the base
+  approved 4.67–5.48 where the real figure was **3.54–4.14**.
+
+⚠ **THE COMMON PROPERTY: a declaration is a claim about a token; only the rendered tree says
+what is behind it.** Which is why the ground fence lives in the harness rather than in a sweep.
+
+### Two guards agreeing is not evidence when they share a precondition
+
+⚠ **STABILITY SAID A SURFACE WAS STABLE AT 6 READINGS AND COVERAGE SAID IT WAS 1/1 COVERED.
+BOTH WERE TRUE AND BOTH WERE READING AN UNRENDERED PAGE** — unrevealed content sits at
+effective alpha 0, so it left the coverage denominator entirely. The page had not finished
+rendering and nothing in either guard could say so.
+
+*(Same family as the five guards fed by one broken parse, recorded above. The test is not
+whether guards agree; it is whether they could disagree.)*
+
+### If readings do not vary across conditions that should differ, suspect the reader
+
+**Three variants in one arc, and the third is not a reader fault at all.**
+
+- A **backgrounded tab** whose opacity transition never ticked: the inline style said `1` and
+  the computed style said `0`.
+- A **memoised `getComputedStyle`** serving stale values across five brand/mode combinations —
+  every combo returned an identical reading while the host carried different variables.
+- ⚠ **AND THE THIRD: THE CONTRACTOR COULD NOT MAKE THEM VARY.** The local stack's first
+  contractor was seeded with the PLATFORM DEFAULT PALETTE, so **all six render tokens mount
+  EQUAL to their fallbacks on it** and a correct wiring is indistinguishable from a broken one.
+  ⚠ **THAT IS THE ACCENT PROBLEM REPRODUCED INSIDE OUR OWN FIXTURE**, and the seeder had been
+  placing every popup row on exactly that contractor.
+  **THE RULE: verify on a contractor whose palette DIFFERS from the platform default — in the
+  LOCAL STACK as well as in production.**
+
+### Validate every needle against known answers, in BOTH directions
+
+**It must find the defect AND spare the legitimate idiom. Seven measured failures:**
+
+- a **heredoc consuming `\.`** — 80 plausible, file-attributed findings; the true count was **7**
+- **`git grep` sees tracked files only**, and it was run from an untracked file to decide
+  whether an identifier was free
+- a **bare substring** deciding `A32` was taken, when every hit was the hex colour `#A32D2D`
+- a **proximity grep** reporting "on a fill" for elements merely NEAR one
+- ⚠ **`${…}` matching every interpolation** — in JSX TEXT it renders a literal `$`, inside
+  BACKTICKS it interpolates. **Same three characters, opposite meanings.**
+- ⚠ **`\p{Emoji_Component}` INCLUDES THE ASCII DIGITS.** `"500"` and `"1"` were exempted as
+  pictographic **by a checker built to catch contrast defects on money figures.** A false
+  NEGATIVE in a checker is worse than the defect it hides, because it reports health it never
+  observed.
+- a **prefix substitution** truncating three lines into invalid JavaScript
+
+⚠ **AND THE THIRD ROUTE A VALUE TRAVELS.** A retired tone reaches code as a HEX, as a DECIMAL
+`rgba()`, **and through a key whose VALUE is the tone**. A gear icon reached `#012854` via
+`R.navy` and the hex needle found zero. Measured at the close of the arc: of 45 retired-tone
+reaches in `src/`, the hex needle sees **23** — a bare majority, and it saw **none** of a
+twelve-instance class in one phase.
+
+### Scans read test files and comments, so prose describing a forbidden pattern IS the pattern
+
+⚠ **FOUR PHASES RUNNING, AND IT ESCALATES.** In one phase a fence reported **itself three
+times** — the assertion, the comment explaining the assertion, then the comment explaining
+THAT. In another, a guard-proof fixture had to be **assembled from pieces** (`'R' + '.' +
+'cardBg'`) because written plainly it WAS the defect. The JSX comment inside `cond && ( … )`
+cost four phases and was then **reproduced inside the comment describing it.**
+
+⚠ **THE RULE IS REWORD, NEVER EXEMPT.** To describe a forbidden pattern without matching it:
+name the parts without the connector (*"the keys `cardBg` and `accent`"*, never the dotted
+form), say the shape in words (*"a JSX comment block cannot be the first child"*), or build the
+fixture from concatenated pieces. **A comments-are-exempt carve-out removes the scan's reach
+into exactly the text a future reader copies from.**
+
+### Predict the test count, and COUNT it — an estimate cannot do this job
+
+⚠ **THE PREDICTION EXISTS TO CATCH A SILENT MODULE-LOAD FAILURE**, where a file throws while
+being imported and contributes nothing to either column. **A wrong prediction that happens to
+be LOW looks identical to a suite that did not run.**
+
+**Two estimate-instead-of-count failures before `grep -c` settled it** — 24 predicted against
+29, and 18 against 23. Both were low; neither was a typo; both were arithmetic done in the head
+about a file already written. **Count the `it(`/`test(` lines, and remember a loop emits cases
+a line count cannot see.**
+
+### Fix a timing flake at its cause, not at its threshold
+
+**Three instances, none resolved by raising a number.**
+
+- A **dynamic `await import()` inside a test body** is charged against the per-test timeout. A
+  case failed at 5.2s under full-suite load and passed in isolation — **which reads exactly
+  like a flake and is not one.** Hoisted to a static import; the cost lands at module load.
+- **Contention from suite growth**, 49 files to 57. A case reached 44s against a 20000ms
+  allowance while its **isolated cost was unchanged at 2.41s.** The imports were hoisted and
+  the bespoke timeout **REMOVED, not raised** — its own comment had said a second timeout meant
+  "a real change in the component, investigate rather than re-raise", and the investigation
+  showed the cost had not moved.
+- One case does carry an explicit timeout, and it was **DERIVED FROM MEASUREMENT** rather than
+  guessed.
+
+⚠ **RAISING A THRESHOLD TWICE IS FITTING THE CHECK TO THE FAILURE.** The second raise is the
+tell.
+
 ### A number in a governing document needs a source
 
 **A number with no source is a claim, not a measurement.** Three instances surfaced in one

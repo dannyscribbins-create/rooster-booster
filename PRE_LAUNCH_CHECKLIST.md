@@ -5013,6 +5013,179 @@ quadruples is evidence about the estimate, not about the wave:
       which is what makes it conspicuous.
       → the flagged comment at the tile · `paletteProfile.test.jsx`'s figures-vs-icon split
 
+- [ ] **⚠ THE `#012854` SWEEP COUNT COMES FROM THE WEAKEST OF THREE NEEDLES, AND THE ENTRY SHOULD BE
+      READ AS AN INSTRUMENT READING RATHER THAN A TOTAL.**
+      *(Palette doc pass, 2026-09-08. Re-measured at HEAD with all three needles, each validated in
+      both directions first — 8 fixture cases, 0 failures.)*
+      A retired tone reaches code three ways: as a **HEX**, as a **DECIMAL `rgba()`**, and **through
+      an `R` key whose VALUE is the tone** (`R.navy`, `R.red`, `R.blueLight`).
+
+      | needle | reaches found at HEAD |
+      |---|---|
+      | hex | **23** |
+      | decimal | **2** |
+      | via an `R` key | **20** |
+      | **total** | **45** |
+
+      ⚠ **A HEX-ONLY SWEEP SEES 23 OF 45 — 51%.** ⚠ **AND THAT UNDERSTATES THE RISK RATHER THAN
+      OVERSTATING IT**, because the ratio is a snapshot: in Palette-11 B2 the decimal needle found
+      **twelve reaches of `#D3E3F0` where the hex needle found ZERO**, and those were cleared, which
+      is why the decimal column reads 2 today. **The instrument was blind to a whole class, and the
+      class happened to be finite.**
+      ⚠ **`AvatarCircle` COULD NEVER HAVE BEEN IN `HARDCODED_ACCENT_INVENTORY.md`**: a hex needle
+      cannot see a hex it never reads, and `theme.js` is needle-exempt as the definition site.
+      **The remaining 45 are: 20 via `R` in the auth screens, 23 hex in the legal pages,
+      `EmailPreferences`, `App.jsx`, `ErrorBoundary` and `LockedSection`, and 2 decimal.**
+
+- [ ] **⚠ CORRECTION TO PALETTE-4b's RECORDED BADGE-GRID FIGURE: IT DESCRIBES A PAIRING THAT DOES
+      NOT RENDER.**
+      *(Palette doc pass, 2026-09-08. Observed at the node in Palette-11 B2.)*
+      Palette-4b recorded the `#999` repair as **2.53 → 9.71**. **What ships measures 4.97:1** — the
+      muted tone at 0.72 on `recess`, not the full tone on `surface`. Earned tiles measure 11.16.
+      **The repair works and clears its floor; the recorded number was for a different pair.**
+      ⚠ **WHY IT SURVIVED SEVEN PHASES: THE SURFACE COULD NOT BE RENDERED.** The seeder wrote no
+      badges, so the grid always drew its empty branch, so **arithmetic was the only instrument and
+      nothing could contradict it.**
+      ⚠ **THAT IS REGRESSION SHAPE 2 OCCURRING IN THE RECORD RATHER THAN IN THE CODE** — a figure
+      computed against one ground, describing an element that landed on another. The lesson is not
+      that the arithmetic was careless; it is that **an unobserved figure has no error bar.**
+
+- [ ] **⚠ SURFACES UNVERIFIABLE BY CONSTRUCTION — A DISTINCT CLASS FROM "NOT YET VERIFIED", WITH A
+      DIFFERENT FIX.**
+      *(Palette doc pass, 2026-09-08.)*
+      · **`AnnouncementPopup`** — its data arrives in the **LOGIN payload**. A token-restored session
+        never calls `/api/login`, so the row can exist and the popup still never fires.
+        ⚠ **SEEDING CANNOT REACH IT. Only a real login can**, and the stack's PIN is a placeholder
+        hash by design.
+      · **`ContractorAboutModal`** — gated on `aboutData` from contractor about-fields the seeder
+        does not write. · **`BookingFormModal`** — opens FROM that modal, so it inherits the gate.
+      **All three have jsdom coverage with named render assertions and negative cases**, and their
+      arithmetic is verified across four brands and both modes.
+      ⚠ **WHAT IS MISSING IS MOUNTED-VS-FALLBACK AT THE NODE — the exact gap that hid five black
+      icons behind four passing checks.**
+      **TRIGGER:** seeding the contractor about-fields reaches two of the three; the third needs a
+      login path. **Do not report these clean on arithmetic alone.**
+
+- [ ] **⚠ THE BOOST BAR IS A DESIGN QUESTION, NOT A DEFECT — AND DANNY'S FRAMING IS THE POINT.**
+      *(Palette doc pass, 2026-09-08. The last retired-tone hold in the referrer tree.)*
+      `DashboardTab`'s boost bar is `linear-gradient(90deg, ${R.red} 0%, ${R.navy} 100%)` — **the
+      only gradient in the referrer tree still on retired tones; every other one is on token
+      partners.** On Beta it renders red-into-navy on a page with neither colour.
+      ⚠ **IT IS DELIBERATE DESIGN: a gradient effect that intentionally works ACROSS TWO BRAND
+      COLOURS.** So the question is **not "what do we do about it" but "how does it become
+      brand-responsive while keeping the effect"** — and inventing an answer inside a migration
+      phase is how a ruling gets made by accident.
+      **Group it with the other cross-colour gradients** — CashOut's success hero, and the podium
+      wash. **TRIGGER: the gradient look-at, three screenshots.**
+      ⚠ **AND ONE CLAIM CHECKED AND FOUND FALSE:** the status gradient was reported to carry a
+      STALE `successText` LITERAL left behind by Palette-4c's re-floor. **At HEAD it reads
+      `${statusVar('successText')}` — a live token call**, so it tracks the re-floored value
+      automatically. **There is no stale literal.** Recorded because the claim would otherwise be
+      inherited as a defect that does not exist.
+
+- [ ] **⚠ `primary` ON `secondary` FAILS 6 OF 8 BRAND/MODE PAIRS — PRE-EXISTING, AND THE SAME
+      FAMILY AS THE CASHOUT HERO.**
+      *(Palette doc pass, 2026-09-08.)* Measured **4.47 / 2.05 / 2.49 light and 1.01–1.05 dark**
+      against a 3:1 graphic floor, on `ContractorAboutModal`'s accent bar and CTA edge.
+      ⚠ **NOT INTRODUCED BY THE MIGRATION: the shipped state was `R.red` on `R.navy` at 2.49:1**,
+      already below floor.
+      ⚠ **THE CAUSE IS STRUCTURAL — TWO BRAND-DERIVED TOKENS CAN BE ARBITRARILY CLOSE**, which is
+      the same reason money on a brand fill is white. Filed with the boost bar.
+
+- [ ] **⚠ THE GROUND FENCE RETURNS `unproven`, WHICH IS NEITHER PASS NOR FAIL, AND THAT DISTINCTION
+      IS LOAD-BEARING.**
+      *(Palette doc pass, 2026-09-08. `groundFlooring()` in the harness.)*
+      `--rm-primary` on `--rm-recess` measures **5.45:1 on Beta and 2.68:1 on the platform brand.**
+      The pairing is unproven in both cases; only one is a defect.
+      ⚠ **A FENCE THAT CALLED `unproven` "FAILING" WOULD BLOCK A CORRECT RENDERING, AND A NOISY
+      FENCE GETS SWITCHED OFF.** `unproven` means **the token's own flooring says nothing about this
+      ground, so READ THE MEASUREMENT.** An unrecorded token reports `unknown-token` rather than
+      passing silently.
+
+- [ ] **⚠ THE BUCKET-BLIND RESIDUE AND FONTS — AND THE RECORDED FIGURE CANNOT BE REPRODUCED BY ANY
+      SCOPE I MEASURED, WHICH IS ITSELF THE FINDING.**
+      *(Palette doc pass, 2026-09-08. Needles validated both ways first.)*
+      `RAD_MIGRATION_PHASE0B_REPORT.md`'s R-11 records **259 raw colours, 36 font literals, 19
+      gradients**, scoped to *bucket-blind sites* — a classification from that analysis which a
+      plain sweep cannot recompute. **Measured at HEAD, excluding `var()` fallbacks and the token
+      definition files:**
+
+      | scope | colours | fonts | gradients |
+      |---|---|---|---|
+      | ALL of `src/` | 563 | 103 | 30 |
+      | the **admin** tree | 410 | 48 | 11 |
+      | **referrer + shared** (what Palette migrated) | **68** | **12** | **14** |
+      | auth | 21 | 21 | 5 |
+      | legal pages and other components | 52 | 22 | 0 |
+
+      ⚠ **NEITHER FIGURE IS "THE" RESIDUE, AND COMPARING THEM WOULD BE COMPARING TWO INSTRUMENTS.**
+      A whole-`src/` count is dominated by the **admin tree, which Palette never touched** — 410 of
+      563. **The referrer tree Palette did migrate stands at 68 / 12 / 14.**
+      ⚠ **DO NOT READ 563 AS GROWTH.** Record which scope any future figure uses, or it will be
+      compared against the wrong one.
+
+- [ ] **⚠ FONTS ARE CONTRACTOR-SET AND IGNORED, AND THE VERIFICATION TRAP IS THE WHOLE ENTRY.**
+      *(Palette doc pass, 2026-09-08.)* `font_heading` and `font_body` are **set for Accent** and
+      reach **campaign email HTML only** — the app does not follow them.
+      ⚠ **ACCENT'S STORED FONTS ARE ALSO RoofMiles' FONTS**, so on that contractor a correct wiring
+      and a broken one look **IDENTICAL** — the same shape as the palette trap, one field along.
+      ⚠ **ANY VERIFICATION MUST SET A CONTRACTOR TO SOMETHING UNMISTAKABLE — a serif — AND WATCH THE
+      APP FOLLOW.** A test that reads the stored value and finds Montserrat has proved nothing.
+
+- [x] **✅ WHAT THE PALETTE ARC SHIPPED — recorded so the next session does not re-derive it.**
+      *(Palette doc pass, 2026-09-08. Eleven phases, closed.)*
+
+      **THE REFERRER TREE IS MIGRATED**, apart from three named holds: the **boost bar**, the
+      **bucket-blind residue**, and **fonts**. Every tab, every shared primitive, the container, the
+      nav, `ManageAccount` and all seven popups resolve through tokens.
+
+      **THE THREE GROUND LEVELS ARE FIXED: body = `bg`, column = `recess`, cards = `surface`.**
+      ⚠ **`--rm-bg` HAS NO CONSUMER IN THE REFERRER TREE** — verified at HEAD, and the distinction
+      matters: it *is* consumed elsewhere (the auth screens' page ground, and `LockedSection`'s
+      permission scrim, which is rendered only by admin components). **"No consumer" is scoped to
+      the referrer tree, not absolute.** `R.bgPage` is down to **two** reads at HEAD, both in auth.
+      ⚠ **AND R-5's ORIGINAL FRAMING WAS NEVER TRUE OF THE RENDERED PRODUCT:** `R.bgSurface` had
+      **no reader at all**, so the *"three levels into two"* question was about a key nothing used.
+
+      **TOKENS ADDED:** `recess`, `primaryText`, `onSecondary`, a warning tint, `shadowMd` /
+      `shadowLg`, and the gradient partners. **`successText` was re-floored** and keeps that value.
+
+      ⚠ **THE MONEY RULE, AND ITS REVERSAL — RECORDED IN FULL SO IT DOES NOT READ AS CHURN.**
+      Money was ruled GREEN, shipped, **LOOKED AT, and reversed** to brand-responsive. The green
+      was never a contrast defect — it measured 5.71:1. It was reversed because **the label already
+      carried the meaning** ("AVAILABLE BALANCE" sits directly above the figure) and **green agreed
+      with nothing else on the screen**. ⚠ **A ruling tested by shipping it and looking at it is the
+      correct reason to reverse one.**
+      **As it now stands:** money in the account is **`--rm-primary-text`, brand-responsive, DIGITS
+      ONLY**. Projections, teasers, **other people's money** and form values are **`--rm-text`**.
+      ⚠ **ON A BRAND FILL MONEY IS WHITE (`onSecondary`)** — measured over **1328 derivable fills,
+      no green works there**, and `primaryText` is worse rather than better because it derives from
+      the brand and the fill IS the brand (1.01–1.05:1 in dark).
+
+      **LIVE DEFECTS CLOSED:** the payout card heading **1.06 → 11.16**; the login error message
+      **1.34 → 6.47**; `ContactModal`'s close control **2.61 → 12.04**; **five icons rendering
+      black**; the amber star **2.15 → 3.19**; the copied button **3.30 → 6.37**.
+
+      **FENCES SHIPPED:** `themeKeyIntegrity` (undefined keys · dead keys ·
+      fallback-equals-derivation · **a token call captured as a string**), the **graphic-floor
+      checker** with ruling-derived floors, and the **ground fence**.
+
+- [x] **✅ CLOSED BY PALETTE — entries whose subject no longer exists.**
+      *(Palette doc pass, 2026-09-08. ⚠ An entry left open after its fix is the same defect class as
+      a stale status marker, which this document has been caught carrying twice.)*
+      · **`--rm-primary-text` has no consumer** — it now has **five**: the Dashboard balance,
+        Profile's figures and money icon, CashOut's confirmation, `ManageAccount`'s bank icon, and
+        `MissingReferralModal`'s focus ring. ⚠ **The tombstone that kept it alive through three
+        phases with zero readers is why this phase was a wiring job rather than a derivation job.**
+      · **The elevation question (R-5)** — the render set now has `recess` below `surface`, and the
+        three levels are ruled and enforced. Its original *"three levels into two"* framing was
+        about `R.bgSurface`, which had no reader.
+      · **`R.borderMed`, `R.bgCardTint`, `R.bgBlueLight`, `R.shadowMd`** and the earlier five —
+        retired as dead keys, each **found by the gate rather than by remembering**.
+      ⚠ **STILL OPEN AND NOT CLOSED HERE:** the boost bar, the residue, fonts, the six latent
+      dark-mode defects, the focus-ring accessibility defect, `ReferTab`'s six unmeasured combos,
+      the three conversion-gated sites, and the `#012854` sweep at 24.
+
 - [ ] **⚠ PREREQUISITE OF THE REFERRER DARK-MODE TOGGLE: SIX CONTRAST DEFECTS MUST BE FIXED
       BEFORE IT SHIPS, OR THEY WILL READ AS THE TOGGLE'S FAULT.**
       *(Palette-9 AD-3, 2026-09-06. ⚠ TRIGGER: before the referrer theme toggle ships - NOT a
@@ -5699,9 +5872,10 @@ quadruples is evidence about the estimate, not about the wave:
       `const tick = () => {`, an animation callback, and **`grep 012854 CashOutTab.jsx` returns
       nothing at all**: the Palette arc migrated that gradient to tokens, and no phase went back to
       close the sweep item that named it.
-      ⚠ **THE SWEEP ITEM IS STILL LIVE — 33 `#012854` sites remain in `src/`** (`App.jsx`'s
-      focus-visible outline, `ContractorTerms.jsx`, and others). **Only its worked EXAMPLE is
-      dead.** That is the dangerous shape: an item whose headline example has been fixed reads as
+      ⚠ **THE SWEEP ITEM IS STILL LIVE — 24 `#012854` sites remain in `src/`** (`App.jsx`'s
+      focus-visible outline, the three legal pages, and others). **Only its worked EXAMPLE is
+      dead.** *(Re-measured 2026-09-08: 24, not the 33 recorded a phase earlier — Palette
+      cleared nine incidentally while migrating the referrer tree.)* That is the dangerous shape: an item whose headline example has been fixed reads as
       DONE to anyone who checks the example and stops there.
       ⚠ **NOT REPAIRED BY ARITHMETIC, AND DELIBERATELY NOT REPAIRED AT ALL** — the subject is gone,
       so there is no line to shift to. Re-deriving the example from the 33 that remain is the
