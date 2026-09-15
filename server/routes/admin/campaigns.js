@@ -1,5 +1,27 @@
 const express = require('express');
 const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
+// ⚠ THE SANCTIONED ESCAPER, AND buildEmailHtml USED TO CARRY ITS OWN.
+// The local copy was named `esc` and covered THREE characters — ampersand,
+// less-than, greater-than — where this one covers five, adding the double and
+// single quote. Its output was interpolated inside DOUBLE-QUOTED style and alt
+// attributes, so a stored font name or campaign name carrying a double quote
+// closed the attribute and injected new ones into the <h1> and the <img>.
+//
+// ⚠ THIS IS SH-5 IN `SECURITY_HARDENING_SPEC.md`, AND IT WAS ALREADY KNOWN.
+// That audit named it a HIGH and characterised it exactly — "doesn't escape the
+// double quote and is used inside double-quoted HTML attributes — a genuine
+// attribute-injection gap." It is recorded here rather than claimed as a new
+// find, because a rediscovery presented as a discovery makes the audit that
+// caught it first look like it missed it.
+//
+// ⚠ SH-5 IS ONLY PARTLY CLOSED BY THIS CHANGE. Its fix direction is to
+// consolidate ALL the duplicates, which would also close SH-4. A sweep for the
+// replace CHAIN rather than the name `escapeHtml` finds eight copies across
+// server/ — the canonical one and seven duplicates. This change repairs the one
+// that is LIVE, because it is the only copy that both omits the double quote and
+// interpolates into an attribute. campaignEmailEscaping.test.js carries a
+// baseline fence so the remaining six cannot grow while they wait.
+const { escapeHtml } = require('../../utils/pendingReferral');
 
 const router = express.Router();
 
@@ -282,23 +304,22 @@ Output: One email message body only. No subject line. No preview text. No button
 
 function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsubscribeUrl = null) {
   const cs = contractorSettings;
-  function esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
   const ctaHref = token && process.env.BACKEND_URL
     ? `${process.env.BACKEND_URL}/api/track/click/${token}`
     : campaignData.cta_url;
-  const bodyEscaped = esc(body);
+  const bodyEscaped = escapeHtml(body);
 
   const headerHtml = campaignData.email_header
-    ? `<h1 style="font-family:${esc(cs.font_heading) || 'Georgia, serif'};font-size:28px;font-weight:700;color:#1a1a1a;margin:0 0 20px 0;">${esc(campaignData.email_header)}</h1>`
+    ? `<h1 style="font-family:${escapeHtml(cs.font_heading) || 'Georgia, serif'};font-size:28px;font-weight:700;color:#1a1a1a;margin:0 0 20px 0;">${escapeHtml(campaignData.email_header)}</h1>`
     : '';
 
-  const imageAlt = esc(campaignData.name || 'Campaign image');
+  const imageAlt = escapeHtml(campaignData.name || 'Campaign image');
   const imageHtml = campaignData.image_url
     ? `<img src="${campaignData.image_url}" alt="${imageAlt}" style="display:block;max-width:100%;width:100%;border-radius:8px;margin:0 auto 24px auto;" />`
     : '';
 
-  const bodyHtml = `<p style="font-family:${esc(cs.font_body) || 'Arial, sans-serif'};font-size:16px;line-height:1.8;color:#1a1a1a;white-space:pre-wrap;margin:0;">${bodyEscaped}</p>`;
+  const bodyHtml = `<p style="font-family:${escapeHtml(cs.font_body) || 'Arial, sans-serif'};font-size:16px;line-height:1.8;color:#1a1a1a;white-space:pre-wrap;margin:0;">${bodyEscaped}</p>`;
 
   // ⚠ THIS CTA AND ITS TWO PREVIEWS MUST CARRY THE SAME VALUE (5.4).
   // The previews are AdminCampaigns.jsx's two "what the recipient sees" blocks.
@@ -323,9 +344,9 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsu
   const dividerHtml = `<hr style="border:none;border-top:1px solid #eeeeee;margin:40px 0 24px;" />`;
 
   const logoHtml = cs.logo_url
-    ? `<img src="${cs.logo_url}" alt="${esc(cs.company_name) || 'Company logo'}" style="display:block;max-height:48px;max-width:160px;margin:0 auto 8px;" />`
+    ? `<img src="${cs.logo_url}" alt="${escapeHtml(cs.company_name) || 'Company logo'}" style="display:block;max-height:48px;max-width:160px;margin:0 auto 8px;" />`
     : '';
-  const poweredByHtml = `<p style="text-align:center;font-size:11px;color:#aaaaaa;margin:0 0 16px;">${esc(cs.company_name) || ''}${cs.company_name ? '<br/>' : ''}Powered by RoofMiles</p>`;
+  const poweredByHtml = `<p style="text-align:center;font-size:11px;color:#aaaaaa;margin:0 0 16px;">${escapeHtml(cs.company_name) || ''}${cs.company_name ? '<br/>' : ''}Powered by RoofMiles</p>`;
 
   const socialLinks = [
     { url: cs.social_facebook,  label: 'Facebook' },
@@ -348,7 +369,7 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsu
     : '';
 
   const contactLink = cs.company_email
-    ? `<a href="mailto:${esc(cs.company_email)}" style="color:#555555;">${esc(cs.company_email)}</a>`
+    ? `<a href="mailto:${escapeHtml(cs.company_email)}" style="color:#555555;">${escapeHtml(cs.company_email)}</a>`
     : 'contact your service provider';
   const doNotReplyHtml = `<p style="font-size:12px;color:#777777;text-align:center;line-height:1.7;margin:0 0 16px;">Please do not reply to this email — replies cannot be received.<br/>For questions about your account or rewards: ${contactLink}<br/>For platform support: <a href="mailto:hello@roofmiles.com" style="color:#555555;">hello@roofmiles.com</a></p>`;
 
@@ -360,10 +381,10 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsu
 
   const addressParts = [cs.company_address, cs.company_city, cs.company_state, cs.company_zip]
     .filter(p => p && p.trim() !== '');
-  const addressStr = addressParts.length > 0 ? esc(addressParts.join(', ')) : 'Address on file';
+  const addressStr = addressParts.length > 0 ? escapeHtml(addressParts.join(', ')) : 'Address on file';
   const addressHtml = `<p style="font-size:11px;color:#aaaaaa;text-align:center;margin:0 0 12px;">${addressStr}</p>`;
 
-  const copyrightHtml = `<p style="font-size:11px;color:#aaaaaa;text-align:center;margin:0 0 24px;">© ${new Date().getFullYear()} ${esc(cs.company_name) || 'RoofMiles'}. All rights reserved.</p>`;
+  const copyrightHtml = `<p style="font-size:11px;color:#aaaaaa;text-align:center;margin:0 0 24px;">© ${new Date().getFullYear()} ${escapeHtml(cs.company_name) || 'RoofMiles'}. All rights reserved.</p>`;
 
   const pixelHtml = token && process.env.BACKEND_URL
     ? `<img src="${process.env.BACKEND_URL}/api/track/open/${token}" width="1" height="1" style="display:none;width:1px;height:1px;border:0;" alt="" />`
@@ -3374,6 +3395,12 @@ router.put('/api/admin/engagement-cadence/:month', requirePermission('campaigns.
 });
 
 module.exports = router;
+// Exported so the suite drives the real template rather than restating it — the
+// convention SETTINGS_WRITABLE_COLUMNS in admin/index.js already follows. A test
+// that rebuilt the markup itself would still pass after someone reintroduced a
+// local escaper here, which is the exact defect campaignEmailEscaping.test.js
+// exists to fence.
+module.exports.buildEmailHtml = buildEmailHtml;
 
 
 

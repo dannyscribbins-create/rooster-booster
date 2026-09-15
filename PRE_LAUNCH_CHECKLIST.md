@@ -2318,6 +2318,29 @@ check — which is why this is a named build rather than a checklist line.
       - `server/routes/resendWebhook.js:14` — **does NOT escape `'`**
       - `server/routes/webhooks/jobber.js:3` — **does NOT escape `'`**
 
+      ⚠ **CORRECTED 2026-09-15 — IT WAS EIGHT, NOT SEVEN, AND THE EIGHTH WAS THE ONLY ONE
+      THAT WAS LIVE.** `buildEmailHtml()` in `server/routes/admin/campaigns.js` carried a
+      **third** weak variant escaping only `& < >` — **neither `"` nor `'`** — and its output
+      was interpolated inside DOUBLE-quoted `style` and `alt` attributes. A stored
+      `font_heading` or campaign name containing a double quote closed the attribute and
+      injected new ones into the `<h1>` and the `<img>`; measured, jsdom parsed the `<h1>` as
+      carrying `["style","onload"]`.
+      ⚠ **IT WAS MISSED BY EVERY PRIOR ENUMERATION — THIS ONE, `escapeHtmlExport.test.js`'s
+      and ground truth §C5's — FOR ONE REASON: IT WAS NAMED `esc`, NOT `escapeHtml`, AND ALL
+      THREE SEARCHED FOR THE NAME.** A sweep for the replace CHAIN finds all eight. This is
+      the run-time-assembled-name failure in `CLAUDE.md` wearing a different costume: a
+      name-based search cannot find a thing that is spelled differently.
+      ⚠ **REPAIRED — `campaigns.js` now imports the canonical copy**, with the attack shape
+      fenced by parsing the rendered markup in `server/test/campaignEmailEscaping.test.js`,
+      which also carries a BASELINE fence so the remaining six cannot grow and which fails if
+      a repaired file is left listed. **The other six are untouched and this item stays
+      OPEN.** ⚠ **None of the six is live in the same way**: measured 2026-09-15, none of
+      their outputs lands in a SINGLE-quoted attribute, which is the only context their
+      missing `'` opens. They are drift; `campaigns.js` was a defect.
+      ⚠ **SO `SECURITY_HARDENING_SPEC.md` SH-5 IS PARTLY CLOSED, NOT CLOSED.** Its stated fix
+      direction is to consolidate ALL duplicates, which also closes SH-4 (`jobber.js`'s
+      unescaped `firstName`). SH-4 is untouched.
+
       Exactly **one** file imports the canonical one: `server/routes/landing.js:73`.
       ⚠ **FOUR of the six local copies do not escape `'`. With Jobber client names flowing into
       server-generated HTML email, that is an attribute-context injection path, not a tidiness

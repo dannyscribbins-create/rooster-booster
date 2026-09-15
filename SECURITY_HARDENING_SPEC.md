@@ -167,6 +167,14 @@ Severity scale matches `CONTRACTOR2_READINESS_AUDIT.md`: CRITICAL / HIGH / MEDIU
 
 **Fix direction:** consolidate all duplicates into imports from `pendingReferral.js` — fixes SH-4, SH-5, and the CLAUDE.md compliance gap in one pass.
 
+**STATUS 2026-09-15 — PARTLY CLOSED. The attribute-injection gap this finding names is FIXED; the consolidation is not.** `buildEmailHtml()` in `campaigns.js` now imports the canonical `escapeHtml`, and its local `esc()` is deleted. ⚠ **The remaining six duplicates are untouched and SH-4 is untouched, so this finding stays OPEN.** Measured while fixing it: a sweep for the replace CHAIN — not the name `escapeHtml` — finds **eight** copies, the canonical one plus seven, which corroborates this entry's "7+ forms" against the "three" recorded elsewhere at the time.
+
+<!-- citecheck:record -->
+⚠ **This entry's citation of `campaigns.js:234` was ALREADY WRONG before that fix** — at `05bf8e3` line 234 held `const customMessage = (campaignData.message_body || '').toString().trim().slice(0, 2000);`, and the local escaper was thirty-odd lines below it, inside `buildEmailHtml()`. The prose describing the defect was exactly right; only the line number was not. **Cited by role from here on: `buildEmailHtml()`'s local `esc()`** — a function name does not drift. *(This paragraph is inside a record marker because its SUBJECT is that a citation is wrong: it must quote the wrong number as evidence, and the correction beside it is given by ROLE rather than as a second line number with the same lifespan as the first. The marker says "this is a record"; it does not say "this is correct".)*
+<!-- /citecheck:record -->
+
+⚠ **None of the six survivors is live in the same way** — none of their outputs lands in a single-quoted attribute, the only context their missing `'` opens. Fenced against regression and against growth by `server/test/campaignEmailEscaping.test.js`.
+
 ### SH-6 — HIGH — Jobber webhooks have no replay-attack protection
 
 **Where:** `server/routes/webhooks/jobber.js`, all 5 handlers. No `occurredAt` timestamp window, no event-ID dedup. The only accidental protection is a DB unique constraint that covers just one of the five event types. **The original May audit's own "Additional Items" list already named this exact gap — it remains unfixed.**

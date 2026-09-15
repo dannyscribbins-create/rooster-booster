@@ -344,8 +344,21 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1320 server tests across 210 suites, and 954 React tests across 58 files** (measured 2026-09-15 by the dependency-upgrade arc, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS `ad3b6d7`, THE multer COMMIT — NOT THE LAST COMMIT OF THE ARC.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1339 server tests across 212 suites, and 954 React tests across 58 files** (measured 2026-09-15 by the campaign-email escaping repair, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE ESCAPING-REPAIR COMMIT ITSELF, BECAUSE THAT COMMIT
+  SHIPS TESTS.** It adds `server/test/campaignEmailEscaping.test.js`; 1320 → 1339 is exactly
+  its 19 cases and 210 → 212 is exactly its two `describe` blocks. Citing the parent would
+  name a revision at which this figure was never true.
+  ⚠ **AND THE 19 WAS COUNTED, NOT ESTIMATED — WITH THE LOOP ARITHMETIC SHOWN, BECAUSE A LINE
+  COUNT STRUCTURALLY CANNOT SEE A LOOP.** `grep -c` reports **12** `it(` lines; three of them
+  sit inside `for` loops emitting 4, 3 and 3 cases, and the other nine emit one each —
+  4 + 3 + 3 + 9 = 19, which is what the runner reported. ⚠ **A FIRST PASS AT THIS ARITHMETIC
+  SAID "11 `it(` lines" AND STILL REACHED 19**, because two errors cancelled. The total
+  agreeing is not the check; the breakdown is.
+  ⚠ **THE REACT HALF DID NOT MOVE, AND THAT IS NOT STALENESS.** This change adds no React
+  test, so 954 / 58 is the same measurement re-observed — read by name off this run's own log.
+  **A number that did not change still has to be measured to be re-armed.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS `ad3b6d7`, THE multer COMMIT — NOT THE LAST COMMIT OF THE ARC.*
   That commit adds `server/test/multerFieldArrayIndex.test.js` (13 cases), taking 1307 → 1320 and
   209 → 210. The three dependency commits after it moved **no** test, so the figure is true at all
   four — and naming the revision where it *became* true is the rule this line states.
