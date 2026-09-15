@@ -4144,6 +4144,155 @@ none of them. **3-D's real-browser pass is owed IN FULL and this sighting does n
       ⚠ **`multer`'s advisories are all DoS-or-bypass on an authenticated upload route**, which is
       why deferring is defensible and why it is written down rather than left in a commit body.
       **TRIGGER: the dependency pass. Do not close it on `nanoid` alone.**
+
+      ── **RECONCILED AND SCOPED 2026-09-15 (Dependency pass — investigation only, nothing
+      upgraded). ⚠ THE HEADLINE IS THAT EVERY FINDING IS A LOCKFILE REFRESH. NO SEMVER-MAJOR, NO
+      `package.json` EDIT, NO EXPRESS 5.** ──
+
+      ⚠ **THERE IS NO THIRD HIGH, AND THE PREMISE WAS INVERTED.** The "8 vs 7" was never a missing
+      vulnerability: **`npm audit`'s summary counts PACKAGE NODES and rolls each package up to its
+      highest severity, while Dependabot counts ADVISORIES.** Deduplicated by GHSA, `npm audit`
+      carries **8 advisories — 4 high, 3 moderate, 1 low** — the same total Dependabot reports, and
+      **one MORE high than Dependabot's 3**, not one fewer. The low (`multer` GHSA-qvfw-j98x-7q72)
+      exists in npm's data and is invisible in its summary because multer's high swallows it.
+      ⚠ **ONE ITEM IS STILL UNRECONCILED AND IT IS A SEVERITY LABEL, NOT A PACKAGE.** Dependabot
+      says 3 high / 4 moderate; the advisory-level view says 4 high / 3 moderate. One advisory is
+      rated differently by the two, and **which one cannot be settled from this machine: `gh auth
+      status` reports the keyring token invalid, so the Dependabot alert list could not be read.**
+      Candidates are `nanoid` GHSA-2v37-7h3g-55p8 (GitHub's page rates it HIGH, CVSS v4 8.2, but it
+      carries two version ranges and Dependabot may score the matched range differently) or one of
+      the three `multer` highs. **Stated as unread rather than guessed.** There is exactly one
+      manifest pair (`package.json` + `package-lock.json`) and no `.github/dependabot.yml`, so an
+      extra-manifest explanation is ruled out.
+
+      **THE EIGHT, WITH REACHABILITY — versions read from `node_modules/<pkg>/package.json` AND
+      `package-lock.json`, never `npm ls`:**
+      · **HIGH · `multer` 2.2.0 · DIRECT prod · GHSA-wc9g-mqfw-jrwm (CVE-2026-77078, CVSS 7.5) —
+        REACHABLE.** Two crafted multipart **TEXT FIELD NAMES** raise an uncaught
+        `RangeError: Invalid array length` outside Express's error chain.
+        ⚠ **THE 2 MB CAP, THE MIME WHITELIST AND THE MAGIC-BYTE CHECK ARE IRRELEVANT TO IT** —
+        every one of them inspects the FILE, and this attack never sends a file. `.single()` still
+        parses the whole multipart body, so the mode does not help either.
+      · **HIGH · `multer` · GHSA-535w-7cp7-47q4 (CVE-2026-82333, CVSS 7.5) — REACHABLE, and the
+        worst of the four here.** A field named `items[4294967294]` plus a non-numeric sibling
+        forces a max-length sparse array to be walked **synchronously**, blocking the event loop.
+        ⚠ **THE PROCESS-LEVEL `uncaughtException` HANDLER DOES NOT HELP: THIS IS A HANG, NOT A
+        THROW.** One Express process serves everything, so the whole service stalls.
+      · **HIGH · `multer` · GHSA-qfvm-cv95-jqjf (CVE-2026-77037) — ⚠ NOT REACHABLE.** The advisory
+        is explicit that it is a `diskStorage` file-descriptor leak. **Both multer instances use
+        `memoryStorage()`, and `diskStorage` appears nowhere in the repo.**
+      · **LOW · `multer` · GHSA-qvfw-j98x-7q72 (CVE-2026-77063, CVSS 3.7) — ⚠ NOT REACHABLE.** It
+        requires an **asynchronous `fileFilter`**. **`fileFilter` is passed nowhere in the repo.**
+      · **HIGH · `nanoid` 3.3.17 · transitive DEV · GHSA-2v37-7h3g-55p8 — ⚠ NOT REACHABLE, AND NOW
+        PROVEN RATHER THAN ASSERTED.** Pulled only by `postcss` (`^3.3.16`), marked `[dev]` in the
+        lockfile. **`nanoid` appears in no file under `src/`, `server/` or `scripts/`, and the
+        string does not occur anywhere in the built `dist/` bundle** — checked with a non-vacuity
+        control (12 files, 1.9 MB, `react` found in the 1.16 MB entry chunk). The vulnerable entry
+        points `customAlphabet` / `customRandom` are called nowhere.
+      · **MODERATE ×2 · `qs` 6.15.2 · transitive PROD · GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g —
+        ⚠ REACHABLE ON EVERY ROUTE, INCLUDING UNAUTHENTICATED ONES.** No `query parser` setting is
+        made anywhere, so Express uses the extended parser and `qs` parses the query string of
+        every request. **Broader exposure than `multer`, at lower severity** — worth saying,
+        because severity ordering and exposure ordering disagree here.
+      · **MODERATE · `vitest` 4.1.10 (DIRECT dev) + `@vitest/mocker` 4.1.10 · GHSA-82fw-gwwq-j7x9 —
+        ONE advisory, two packages. Not on a production path.** ⚠ This pair is the reason npm's
+        package-count and the advisory count diverge most visibly.
+
+      **⚠ THE FIX, WHICH IS THE SINGLE MOST USEFUL NUMBER HERE: EVERY ONE IS A MINOR OR PATCH THAT
+      ALREADY SATISFIES THE DECLARED RANGE.** Registry reads only; nothing installed.
+      · `multer` **2.2.0 → 2.3.0** closes all four. Declared `^2.2.0`, so **no `package.json`
+        edit**. 2.4.0 also published. Release notes report **no breaking API change** for
+        `multer({storage, limits})` with `.single()` — both call sites use exactly that shape.
+      · `express` **4.22.2 → 4.22.3** — a **PATCH on the 4 line**, declared `^4.22.2`. 4.22.3
+        requires `qs ~6.16.0` and `body-parser ~1.20.5`, and `body-parser` 1.20.8 requires
+        `qs ~6.16.0`. **That closes `qs`, `body-parser` and `express` together.**
+      · `vitest` **4.1.10 → 4.1.11**, declared `^4.1.10`. · `nanoid` **3.3.17 → 3.3.18**, admitted
+        by postcss's `^3.3.16`.
+      · Corroborated by npm's own model: **`fixAvailable` is `true` — not an object — for all
+        seven packages**, which is npm's way of saying no semver-major of a direct dependency is
+        required.
+
+      ⚠ **TWO PREMISES THIS PASS WAS GIVEN TURNED OUT TO BE FALSE, AND BOTH WOULD HAVE SIZED THE
+      WORK WRONG:**
+      · *"the qs/body-parser/express chain needs an Express 4→5 major"* — **it does not.** Express
+        4.22.3 exists and carries the fixed `qs` range.
+      · *"the Express 4→5 major is already filed as its own arc"* — **no such entry exists.** A
+        repo-wide grep of every tracked `.md` for `Express 5` / `express@5` / `Express 4` returns
+        nothing. **If that arc is wanted it still has to be filed**, and it is now optional rather
+        than a security prerequisite.
+
+      ⚠ **THE ONE THING THAT IS *NOT* FREE, AND IT IS A CALL-SITE CHANGE ON A MINOR.** multer
+      2.3.0 adds `limits.fieldArrayIndexLimit` as **OPT-IN, with no safe default**, and it is the
+      control for GHSA-535w-7cp7-47q4 — the event-loop stall. **Upgrading alone fixes three of the
+      four; the fourth needs the option set at BOTH call sites** (`logoUpload` in
+      `server/routes/admin/index.js`, and the shared `upload` in `server/routes/admin/campaigns.js`).
+      ⚠ **DO NOT CLOSE THIS ITEM ON THE VERSION BUMP ALONE.** A green `npm audit` after the bump
+      will say nothing about whether the option was set.
+
+      **COST GROUPS — 8 advisories across 7 packages:**
+      · **patch/minor, no call-site change — 6 advisories** (`express`/`qs` ×2/`body-parser`,
+        `vitest`+`@vitest/mocker`, `nanoid`, and multer's GHSA-wc9g).
+      · **minor WITH a call-site change — 1** (multer GHSA-535w, needs `fieldArrayIndexLimit`).
+      · **breaking major — 0.**
+      · **won't fix — 0**; two multer advisories (GHSA-qfvm, GHSA-qvfw) are **not reachable** in
+        this configuration and are carried along by the same bump rather than argued about.
+      **PRODUCTION PATH: 6 advisories** (multer ×4, qs ×2 — plus the `express`/`body-parser`
+      chained edges). **DEV-ONLY: 2** (`nanoid`, the vitest pair). ⚠ **The checklist should not
+      treat those as one question, which is what the original one-package entry did.**
+
+      **ESTIMATE FOR A SINGLE UPGRADE SESSION: half a day to a day.** Lower end if the lockfile
+      refresh is clean and the gate stays at its counts; upper end driven by (a) re-running the
+      full gate after a lockfile move that touches Express's own dependency chain, and (b)
+      deriving and justifying a `fieldArrayIndexLimit` value rather than copying one. **The
+      Express work rides along — it is a patch, not the filed major**, and no separate arc is
+      needed for it.
+
+      **RECOMMENDED ORDER (⚠ recommendation only — CLAUDE.md gates dependency changes on flagging
+      to Danny first, and this pass IS the flag):**
+      1. **`multer` 2.2.0 → 2.3.0**, alone, with its own gate run. Highest severity, on a live
+         authenticated production route, and the only one needing a code change.
+      2. **Set `limits.fieldArrayIndexLimit` at both call sites**, with the value derived from what
+         the CSV and image forms actually post. ⚠ **Same commit as step 1 or the item stays open.**
+      3. **`express` 4.22.2 → 4.22.3**, which carries `qs` and `body-parser` with it. Second
+         because its exposure is every route, but its severity is moderate and the fix is a patch.
+      4. **`vitest` → 4.1.11 and `nanoid` → 3.3.18** last, together. Dev-only; they cannot affect a
+         customer and they are the cheapest to revert if the toolchain objects.
+      ⚠ **PREFER TARGETED INSTALLS OVER `npm audit fix`.** `audit fix` runs a full install and may
+      move transitive packages nobody reviewed; the standing instruction above already forbids it
+      in a feature session, and this is the reason it should be avoided in the upgrade session too.
+
+      ⚠ **REACHABILITY IS PART OF THE FINDING, NOT A FOOTNOTE, SO BOTH DIRECTIONS ARE STATED.**
+      Two of multer's four are **not exercisable in this configuration at all**, and saying "four
+      HIGH advisories on the upload path" without that would be an alarm. The other two **are**
+      exercisable, and the mitigations the upload route is proud of — the 2 MB cap, the mime
+      whitelist, the magic-byte check — **do not touch them**, because they guard the file and the
+      attack is in the field names. Calling those a mitigation would be the opposite error.
+      ⚠ **AND THE GATE IS AUTHENTICATION, WHICH IS THE ONLY REAL ONE.** All three multer routes sit
+      behind `requirePermission(...)` (`branding.manage`, `campaigns.manage` ×2), which returns 401
+      without calling `next()` when there is no token or no live session, so **multer never parses
+      an unauthenticated body.** ⚠ **THAT IS THINNER THAN IT SOUNDS: sessions are a 30-day sliding
+      window and step-up re-authentication is still a PRE-LAUNCH item**, so a single stolen admin
+      token buys the ability to stall the whole service at will.
+      ⚠ **AND THE PROCESS-HANDLER NUANCE, BECAUSE IT CUTS BOTH WAYS.** `server.js` registers
+      `process.on('uncaughtException')` and **does not exit**, so the GHSA-wc9g crash does not
+      terminate the service the way the advisory describes for a default Node process. **That is
+      not a mitigation to rely on** — Node's own guidance is to exit after an uncaught exception,
+      the request is left hanging, and whatever pool resources it held are not returned. **It turns
+      a crash into a slow leak**, which is harder to notice and not obviously better.
+
+      **A METHOD NOTE WORTH KEEPING: `npm audit`'s exit code was misread on the first attempt of
+      this very pass.** The redirect target directory did not exist, the shell failed the
+      redirection, and `$?` was **1 — the same value `npm audit` returns when it finds
+      vulnerabilities.** It was caught only because the output file was empty. **Read the captured
+      bytes as well as the code.** On the correct run: **`npm audit` own exit code 1, run
+      COMPLETED** (1744 bytes, zero registry/network errors) — a completed run reporting findings,
+      which is a different state from a run that could not reach the registry.
+      ⚠ **AND ONE LEAD LEFT UNVERIFIED RATHER THAN REPORTED AS A FINDING:** a release-notes summary
+      mentioned a fifth multer CVE, **CVE-2026-88932, fixed in 2.4.0**. **It is not in `npm audit`,
+      not in the GitHub advisory listing for multer, and NVD did not resolve it.** The same summary
+      carried release dates internally inconsistent with 2026 CVE identifiers, so **it is recorded
+      as a lead to confirm, not as an eighth-plus advisory.** If it is real, 2.4.0 rather than
+      2.3.0 is the target and nothing else in this plan changes.
 - [ ] **Landing Page Ambient Branding** — expanded to cover the React auth surfaces, not just
       the landing page. ⚠ Carries the **D11 namespace caveat**: `--brand-*` and `--rm-*` stay
       separate; write the gradient against each surface's own token set rather than unifying
