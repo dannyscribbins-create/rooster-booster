@@ -4124,7 +4124,75 @@ none of them. **3-D's real-browser pass is owed IN FULL and this sighting does n
       wrong logo. ⚠ They render outside `ThemeProvider` **deliberately and correctly** because
       they must be reachable without a session; **do not wrap them** to fix a branding
       symptom. → §10
-- [ ] **Dependency pass** — `nanoid` HIGH (GHSA-2v37-7h3g-55p8) via `vite → postcss`.
+- [x] **✅ Dependency pass — CLOSED 2026-09-15. `npm audit` reports ZERO across 471 dependencies,
+      and ⚠ GHSA-535w CLOSED ON THE OPTION, NOT ON THE VERSION.**
+      *(Four commits, four gate runs: `ad3b6d7` multer · `1b1fe9d` express · `0613385` vitest ·
+      `68f391a` nanoid. Approved by Danny; the reconciliation that scoped it is `999fe92`.)*
+
+      **WHAT SHIPPED, every version confirmed from `node_modules/<pkg>/package.json` AND the
+      lockfile, never `npm ls`:** `multer` 2.2.0 → **2.3.0**, `express` 4.22.2 → **4.22.3**,
+      `qs` 6.15.2 → **6.16.0**, `body-parser` 1.20.6 → **1.20.8** (prod); `vitest` and
+      `@vitest/mocker` 4.1.10 → **4.1.11**, `nanoid` 3.3.17 → **3.3.19** (dev).
+      **All 8 advisories closed. `npm audit` own exit code 0, 24 bytes captured, zero registry
+      errors, `"vulnerabilities": {}` and `total: 0` in the JSON.**
+
+      ⚠ **THE ONE THING THAT WOULD HAVE BEEN CLOSED WRONGLY: GHSA-535w-7cp7-47q4 IS NOT CLOSED BY
+      THE VERSION.** multer 2.3.0 ships `limits.fieldArrayIndexLimit` as **OPT-IN with a documented
+      default of `Infinity`**, and `make-middleware.js` runs the check only when the key is
+      present. **A green `npm audit` after the bump says nothing about whether the option is set.**
+      It is set to **0** at both call sites — `logoUpload` (`server/routes/admin/index.js`, via the
+      exported `LOGO_UPLOAD_LIMIT`) and the shared `upload`
+      (`server/routes/admin/campaigns.js`, via `CAMPAIGN_UPLOAD_FIELD_ARRAY_INDEX_LIMIT`).
+      ⚠ **IF EITHER LINE IS EVER DELETED, THE AUDIT WILL STILL BE GREEN.**
+      `server/test/multerFieldArrayIndex.test.js` is what notices.
+
+      ⚠ **THE VALUE IS DERIVED, NOT COPIED.** All three multer routes post exactly ONE field each —
+      `logo`, `image`, `csv`, every one a file — all three handlers read `req.file` only and never
+      `req.body`, and no client `FormData` in `src/` appends a bracketed name. The largest array
+      index a legitimate request needs is **none**, and 0 is the honest encoding of that:
+      `exceedsArrayIndexLimit` refuses any `[n]` with `n > 0`, so `a[0]` still parses.
+      **A future form needing an array field will 400 loudly — raise the number deliberately, do
+      not delete the line.**
+
+      ⚠ **THE GUARD-PROOF MEASURED THE VULNERABILITY ITSELF.** Removing the option from the logo
+      instance took the attack-shape case from a millisecond rejection to **72,883 ms — seventy-
+      three seconds of blocked event loop for ONE request** — and the source fence went red beside
+      it. Restored from a `cp` backup, not `git checkout`. **That is the number to remember if
+      anyone proposes dropping the option as noise.**
+
+      ⚠ **AND THE EXPRESS BUMP DID NOT CARRY ITS CHAIN, WHICH THE PLAN SAID IT WOULD.**
+      `npm install express@4.22.3` gave express a **private nested copy** of `qs` 6.16.0 and left
+      the **hoisted** `qs` at 6.15.2 with `body-parser` at 1.20.6 — express left the audit, `qs` and
+      `body-parser` did not. **The blocker was `body-parser`, not `express`**: 1.20.6 declares
+      `qs ~6.15.1`, and npm does not move an already-installed package that still satisfies its
+      parent's range. `npm update body-parser qs` resolved it inside express's own `~1.20.5`, and
+      the nested copy disappeared. **Reading the lockfile rather than the plan is what caught it** —
+      the reason "confirm the transitives actually moved" is an instruction and not a formality.
+
+      ⚠ **TWO ADVISORIES WERE NEVER REACHABLE HERE AND NOW HAVE FENCES** so a future change cannot
+      re-arm them silently: **GHSA-qfvm** needs `diskStorage` (both instances use `memoryStorage()`)
+      and **GHSA-qvfw** needs an **async** `fileFilter` (`fileFilter` is passed nowhere). Both
+      needles are validated in BOTH directions before the sweep runs.
+
+      ⚠ **STILL OPEN — TWO ITEMS THAT ARE NOT CLOSED BY ANY OF THIS:**
+      · **The unreconciled severity label.** Dependabot reported 3 high / 4 moderate / 1 low; the
+        advisory-level view was 4 high / 3 moderate / 1 low — same total 8, one advisory rated
+        differently. ⚠ **STILL UNREAD: `gh auth status` reports the keyring token invalid**, so the
+        Dependabot alert list could not be fetched. It is moot for remediation (everything is
+        fixed) and it is **not moot as a question about which scanner to trust next time.**
+        **TRIGGER:** `gh auth login -h github.com`, then read the alert list.
+      · **The unverified fifth multer CVE.** **CVE-2026-88932**, reportedly fixed in 2.4.0, from a
+        release-notes summary whose dates were internally inconsistent with 2026 CVE identifiers.
+        **Absent from `npm audit`, from GitHub's multer advisory listing, and NVD did not resolve
+        it.** ⚠ **LEFT UNVERIFIED ON PURPOSE.** If it is real, **2.4.0 becomes the target and
+        nothing else in the plan changes** — the option, the derived 0 and both fences are
+        unaffected.
+
+      **The original entry, kept because it is the record of what was believed before it was
+      measured:**
+
+- [ ] **Dependency pass — ⚠ SUPERSEDED BY THE CLOSURE ABOVE; THIS IS THE RECORD, NOT LIVE WORK.**
+      `nanoid` HIGH (GHSA-2v37-7h3g-55p8) via `vite → postcss`.
       Acknowledged and deferred 2026-08-14; the deciding factor was **timing, not severity**.
       ⚠ Do not run `npm audit fix` inside a feature session. → §10
       ⚠ **THIS ENTRY NAMED ONE PACKAGE AND THE AUDIT NOW CARRIES SEVEN, INCLUDING A SECOND HIGH ON

@@ -344,8 +344,22 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1307 server tests across 209 suites, and 954 React tests across 58 files** (measured 2026-09-15 by Palette-12 Part B, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-12 PART B COMMIT ITSELF.** It adds
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1320 server tests across 210 suites, and 954 React tests across 58 files** (measured 2026-09-15 by the dependency-upgrade arc, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS `ad3b6d7`, THE multer COMMIT — NOT THE LAST COMMIT OF THE ARC.**
+  That commit adds `server/test/multerFieldArrayIndex.test.js` (13 cases), taking 1307 → 1320 and
+  209 → 210. The three dependency commits after it moved **no** test, so the figure is true at all
+  four — and naming the revision where it *became* true is the rule this line states.
+  ⚠ **THE REACT HALF DID NOT MOVE, AND THAT IS NOT STALENESS.** 954 / 58 was re-measured on every
+  one of the four gate runs rather than carried; a number that did not change still has to be
+  measured to be re-armed.
+  ⚠ **AND ON THE `vitest` COMMIT THE REACT FIGURE WAS CHECKED THREE WAYS, BECAUSE THE UPGRADE WAS
+  THE INSTRUMENT ITSELF.** A runner that silently stops collecting a file reports smaller numbers
+  and no reason. The runner's own report (58 / 954), a **case-level diff of every case NAME from a
+  verbose run before and after** (954 lines each, zero differences), and a grep the runner cannot
+  influence (58 files by `find`, 817 `it(`/`test(` lines by `grep -c`). ⚠ **817 is not 954 and is
+  not meant to be** — the gap is cases emitted by loops, which a line count structurally cannot
+  see. **A figure derived from the instrument cannot validate the instrument.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-12 PART B COMMIT ITSELF.* It adds
   `paletteBoostBar.test.jsx` (20 cases), and 934 → 954 is exactly those 20; the file count moves
   57 → 58. **BOTH HALVES MOVED THIS TIME**: three cases were added to `server/test/graphicFloor.test.js`
   for the partner-floored tokens, and 1304 → 1307 is exactly those three. ⚠ **THE SUITE COUNT DID
