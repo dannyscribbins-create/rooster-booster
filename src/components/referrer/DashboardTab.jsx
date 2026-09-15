@@ -559,21 +559,33 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               <div style={{
                 width: "100%",
                 height: "100%",
-                // ⚠ HELD ON LITERALS ON PURPOSE (R-D). THIS IS THE ONE SITE IN THIS
-                // FILE THAT KEEPS `R.` COLOUR READS, AND paletteDashboard.test.jsx
-                // ASSERTS IT BY EQUALITY SO THE HOLD CANNOT SILENTLY GROW.
-                // Every other gradient here is `X -> X-dark` on ONE brand colour,
-                // which Palette-1's derived partners cover exactly. This one runs
-                // between TWO DIFFERENT brand colours — the action red into the
-                // dark neutral — and Palette-1 explicitly did not cover that.
-                // `--rm-primary -> --rm-secondary` is the mechanical substitution
-                // and it is not obviously right: on a brand whose two colours are
-                // close it collapses to a flat fill, and the direction of travel
-                // (bright to dark) is a design intent nobody has re-stated for the
-                // multi-brand case. That is a DESIGN question, and inventing an
-                // answer inside a migration phase is how a ruling gets made by
-                // accident. Filed, not guessed.
-                background: `linear-gradient(90deg, ${R.red} 0%, ${R.navy} 100%)`,
+                // ⚠ THE HOLD IS CLOSED. RULED 2026-09-05 (Palette-12 Part B,
+                // Option A): this becomes a TONAL gradient like the four tab
+                // headers, and the two-colour effect is GIVEN UP DELIBERATELY.
+                //
+                // ⚠ THE EFFECT WAS MEASURED IMPOSSIBLE, NOT ABANDONED, AND THAT
+                // DISTINCTION IS THE WHOLE RULING. A contractor chooses `primary`
+                // and `secondary` INDEPENDENTLY; nothing constrains them to sit
+                // far apart, close, or harmonious, so a gradient between them is a
+                // coin flip per brand. The mechanical substitution
+                // `secondary -> primary` fell below the 1.35 separation floor in
+                // 54% of 1728 synthetic pairs, was FLAT on all four seeded brands
+                // in dark (1.01-1.05), and on Beta measured WORSE than the shipped
+                // pair (2.05 against 2.49) — Beta being the brand the hold was
+                // raised on. The choice was an effect that works only on one brand
+                // against a gradient that works on every brand.
+                //
+                // ⚠ THE DERIVED PARTNERS WORK FOR THE OPPOSITE REASON: `X -> X-dark`
+                // has a GUARANTEED relationship, which is what let Palette-1
+                // calibrate it to 1.35 and have it hold everywhere. Measured here:
+                // 1.35-1.49 across all eight seeded brand/mode pairs.
+                //
+                // ⚠ AND THE TRACK IS A SECOND GROUND. The fill sits on `RECESS`,
+                // not on the card — `--rm-secondary` is floored against `surface`
+                // only and `--rm-secondary-dark` against its partner rather than
+                // any ground, so BOTH stops are UNPROVEN here and were measured:
+                // 4.38:1 worst against the track, over the 3:1 graphic floor.
+                background: `linear-gradient(90deg, ${SECONDARY} 0%, ${SECONDARY_DARK} 100%)`,
                 borderRadius: 999,
                 transform: barAnimated ? `scaleX(${progressPct / 100})` : "scaleX(0)",
                 transformOrigin: "left",

@@ -344,8 +344,17 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1304 server tests across 209 suites, and 934 React tests across 57 files** (measured 2026-09-08 by Palette-11 B2, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B2 COMMIT ITSELF.** It adds
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1307 server tests across 209 suites, and 954 React tests across 58 files** (measured 2026-09-15 by Palette-12 Part B, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-12 PART B COMMIT ITSELF.** It adds
+  `paletteBoostBar.test.jsx` (20 cases), and 934 → 954 is exactly those 20; the file count moves
+  57 → 58. **BOTH HALVES MOVED THIS TIME**: three cases were added to `server/test/graphicFloor.test.js`
+  for the partner-floored tokens, and 1304 → 1307 is exactly those three. ⚠ **THE SUITE COUNT DID
+  NOT MOVE, AND THAT IS NOT A MISS** — the three landed inside an EXISTING `describe`, so they add
+  cases without adding a suite. A file count and a suite count answer different questions.
+  ⚠ **AND BOTH PREDICTIONS WERE COUNTED WITH `grep -c`, NOT ESTIMATED** — 20 `it(` lines in the
+  React file, and 30 `test(` lines in `graphicFloor.test.js` of which one sits inside a loop that
+  emits 3, so 30 + 2 = 32 cases from that file. The run reported 32.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B2 COMMIT ITSELF.* It adds
   `palettePopupsB2.test.jsx` (28 cases), and 906 → 934 is exactly those 28; the file count moves
   56 → 57. The server figures did not move and were re-measured rather than carried.
   ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-11 B1-FIX COMMIT ITSELF.* It adds four
@@ -395,9 +404,16 @@ then say what was not checked.
   ⚠ **AND THE FIGURE BEFORE THAT WAS FOUND SIX COMMITS STALE, WHICH WAS THE SIXTH INSTANCE.** It
   read 1234 / 191 / 654 / 43 at `f7dfeed` while the whole Palette arc had landed since. Nobody
   lowered it; it simply was not re-armed by the five phases that ran the gate in between.
-  ⚠ **53 REACT FILES IS ABOVE THE "far above 40" TRIPWIRE BELOW AND WAS CHECKED RATHER THAN
-  ASSUMED.** `vite.config.mjs`'s `test.include` is still `src/**/*.test.{js,jsx}`, and the gate log
-  names zero `server/` paths. The glob has not widened; the React suite has grown.
+  ⚠ **58 REACT FILES IS ABOVE THE "far above 40" TRIPWIRE BELOW AND WAS CHECKED RATHER THAN
+  ASSUMED, RE-CHECKED 2026-09-15.** `vite.config.mjs`'s `test.include` is still
+  `src/**/*.test.{js,jsx}`, and the ONE `server/test` string in the gate log is the `node --test`
+  npm-script line, not a Vitest path. The glob has not widened; the React suite has grown.
+  ⚠ **THE CHECK IS "WHICH PATHS DID VITEST RUN", NOT "DOES THE LOG MENTION `server/`".** The
+  previous entry said the log *"names zero `server/` paths"*, which is no longer true and was never
+  quite the question — a gate log always names the server suite, because it runs it. Read the glob,
+  and read what Vitest itself listed.
+  ⚠ **THE PREVIOUS ENTRY:** *53 REACT FILES IS ABOVE THE "far above 40" TRIPWIRE BELOW AND WAS
+  CHECKED RATHER THAN ASSUMED.*
   ⚠ **THE HEAD FOR THIS FIGURE IS `f7dfeed`, THE PARENT OF THE COMMIT RE-ARMING IT, AND THE REASONING IS THE OPPOSITE OF THE ENTRY BELOW RATHER THAN A CONTRADICTION OF IT.** This pass changed **only markdown** — no test file, no source file — so the working tree it was measured against differs from `f7dfeed` in nothing the gate can see, and 1234 / 191 / 654 / 43 is exactly what `f7dfeed`'s own commit body reported. **The figure is therefore true AT `f7dfeed`**, which is the test the rule below actually states: name the revision at which the figure is true. A docs-only commit that adds no tests is the one case where the parent is the honest citation, and saying so here is what stops the next reader "correcting" it back.
   ⚠ **THE PREVIOUS ENTRY, AND ITS WARNING, WHICH STILL GOVERN THE ORDINARY CASE.** It read **1182 / 186 / 628 / 41**, measured 2026-09-03 by BR-1 Phase 1-B, and said: *"THE HEAD FOR THIS FIGURE IS THE BR-1 PHASE 1-B COMMIT ITSELF — the child of `5a365e1` on `main`. The gate was run against 1-B's working tree, and the counts INCLUDE 1-B's own new tests, so citing the parent SHA would name a revision at which this figure was never true. Do not 'correct' it to `5a365e1`, and do not rewrite it to a later docs-only SHA either."* **That was right for that figure** — 1-B shipped tests, so only 1-B's own commit could carry it. ⚠ **It went stale in four commits anyway**, ending 52 server tests and 26 React tests below the truth, which is the fifth instance of the failure the paragraphs below enumerate.
   **The figures this line carried before, kept as the record of what it said rather than as live numbers:** 1182 / 186 / 628 / 41, measured 2026-09-03 by BR-1 Phase 1-B; 1160 / 183 / 557 / 40, measured 2026-09-01 at `a5dd574` (C/DL-3c Phase 3 Phase 0); and before that 1118 / 177 / 483 / 34, measured 2026-08-30 at `7252cc5` (Wave 1.1 close-out). ⚠ **A tripwire in this file has attracted a well-meaning edit twice**; one of them set it 171 tests below its own floor.

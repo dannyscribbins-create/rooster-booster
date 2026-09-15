@@ -4127,6 +4127,23 @@ none of them. **3-D's real-browser pass is owed IN FULL and this sighting does n
 - [ ] **Dependency pass** — `nanoid` HIGH (GHSA-2v37-7h3g-55p8) via `vite → postcss`.
       Acknowledged and deferred 2026-08-14; the deciding factor was **timing, not severity**.
       ⚠ Do not run `npm audit fix` inside a feature session. → §10
+      ⚠ **THIS ENTRY NAMED ONE PACKAGE AND THE AUDIT NOW CARRIES SEVEN, INCLUDING A SECOND HIGH ON
+      A DIRECT DEPENDENCY. RE-MEASURED 2026-09-15 (Palette-12 Part B), `npm audit` exit 1:**
+      · **HIGH `multer` 2.2.0 — DIRECT, and NOT covered by the acknowledgement above.** Four
+        advisories: DoS via crafted multipart field names (GHSA-wc9g-mqfw-jrwm), DoS via file
+        descriptor leak on aborted uploads (GHSA-qfvm-cv95-jqjf), file-size-limit bypass via an
+        async `fileFilter` race (GHSA-qvfw-j98x-7q72), DoS via oversized array index in field
+        names (GHSA-535w-7cp7-47q4).
+      · **HIGH `nanoid` 3.3.17** — the one already acknowledged. ⚠ **VERSION READ FROM
+        `node_modules/nanoid/package.json`, NOT FROM `npm ls`**, which this repo has measured
+        printing the FIXED version while the vulnerable one sat on disk.
+      · MODERATE: `qs` 6.15.2, `body-parser`, `express` 4.22.2, `vitest`, `@vitest/mocker`.
+      ⚠ **EXPLICITLY ACKNOWLEDGED AND NOT FIXED HERE, AND THE REASON IS SCOPE, NOT SEVERITY.**
+      Palette-12 Part B changes one gradient declaration; upgrading `multer` touches the upload
+      path, and the standing instruction above forbids `npm audit fix` inside a feature session.
+      ⚠ **`multer`'s advisories are all DoS-or-bypass on an authenticated upload route**, which is
+      why deferring is defensible and why it is written down rather than left in a commit body.
+      **TRIGGER: the dependency pass. Do not close it on `nanoid` alone.**
 - [ ] **Landing Page Ambient Branding** — expanded to cover the React auth surfaces, not just
       the landing page. ⚠ Carries the **D11 namespace caveat**: `--brand-*` and `--rm-*` stay
       separate; write the gradient against each surface's own token set rather than unifying
@@ -5066,31 +5083,136 @@ quadruples is evidence about the estimate, not about the wave:
       **TRIGGER:** seeding the contractor about-fields reaches two of the three; the third needs a
       login path. **Do not report these clean on arithmetic alone.**
 
-- [ ] **⚠ THE BOOST BAR IS A DESIGN QUESTION, NOT A DEFECT — AND DANNY'S FRAMING IS THE POINT.**
-      *(Palette doc pass, 2026-09-08. The last retired-tone hold in the referrer tree.)*
-      `DashboardTab`'s boost bar is `linear-gradient(90deg, ${R.red} 0%, ${R.navy} 100%)` — **the
-      only gradient in the referrer tree still on retired tones; every other one is on token
-      partners.** On Beta it renders red-into-navy on a page with neither colour.
-      ⚠ **IT IS DELIBERATE DESIGN: a gradient effect that intentionally works ACROSS TWO BRAND
-      COLOURS.** So the question is **not "what do we do about it" but "how does it become
-      brand-responsive while keeping the effect"** — and inventing an answer inside a migration
-      phase is how a ruling gets made by accident.
-      **Group it with the other cross-colour gradients** — CashOut's success hero, and the podium
-      wash. **TRIGGER: the gradient look-at, three screenshots.**
-      ⚠ **AND ONE CLAIM CHECKED AND FOUND FALSE:** the status gradient was reported to carry a
-      STALE `successText` LITERAL left behind by Palette-4c's re-floor. **At HEAD it reads
-      `${statusVar('successText')}` — a live token call**, so it tracks the re-floored value
-      automatically. **There is no stale literal.** Recorded because the claim would otherwise be
-      inherited as a defect that does not exist.
+- [x] **✅ THE BOOST BAR — CLOSED 2026-09-15 (Palette-12 Part B). THE CROSS-BRAND EFFECT WAS
+      MEASURED IMPOSSIBLE, NOT ABANDONED, AND THAT DISTINCTION IS THE RULING.**
+      *(Opened by the Palette doc pass, 2026-09-08, as the last retired-tone hold in the referrer
+      tree. Ruled by Danny 2026-09-05; shipped 2026-09-15.)*
+      `DashboardTab`'s boost bar was `linear-gradient(90deg, ${R.red} 0%, ${R.navy} 100%)`. It is now
+      **`--rm-secondary → --rm-secondary-dark`** — a tonal gradient like the four tab headers.
+      ⚠ **THE ENTRY ABOVE WAS RIGHT THAT IT WAS DELIBERATE DESIGN, AND THAT IS WHY THE MEASUREMENT
+      MATTERED.** The question it posed — *"how does it become brand-responsive while KEEPING the
+      effect"* — was answered **no**, on evidence: a contractor picks `primary` and `secondary`
+      INDEPENDENTLY, so nothing constrains them to sit apart and a gradient between them is a coin
+      flip per brand. The mechanical substitution `secondary → primary` fell below the 1.35
+      separation floor in **54% of 1728 synthetic pairs** (Part A's grid), was **flat on all four
+      seeded brands in dark, 1.01–1.05**, and on **Beta measured 2.05 against the shipped pair's
+      2.49** — worse than what it replaced, on the brand the hold was raised for.
+      ⚠ **THE DERIVED PARTNERS WORK FOR THE OPPOSITE REASON: `X → X-dark` has a GUARANTEED
+      relationship.** Measured after the change: **1.35 / 1.46 / 1.36 / 1.46 / 1.37 / 1.49 / 1.35 /
+      1.41** across the eight seeded brand/mode pairs — 0 below floor — and **0 of 3456** synthetic
+      measurements below it.
+      ⚠ **WHAT WAS GIVEN UP, RECORDED SO IT DOES NOT READ AS DRIFT:** the bar stops being a
+      two-colour effect. **That is a deliberate loss.**
+      **This closes the last retired-tone reach in the referrer tree — the three-needle sweep
+      (hex, decimal, `R.`-key) now returns ZERO over all 15 components.**
 
-- [ ] **⚠ `primary` ON `secondary` FAILS 6 OF 8 BRAND/MODE PAIRS — PRE-EXISTING, AND THE SAME
-      FAMILY AS THE CASHOUT HERO.**
-      *(Palette doc pass, 2026-09-08.)* Measured **4.47 / 2.05 / 2.49 light and 1.01–1.05 dark**
-      against a 3:1 graphic floor, on `ContractorAboutModal`'s accent bar and CTA edge.
+- [ ] **⚠ `primary` ON `secondary` FAILS 6 OF 8 BRAND/MODE PAIRS — ⚠ SPLIT OUT FROM THE BOOST BAR
+      ON 2026-09-15, AND STILL OPEN. IT IS A DIFFERENT SITE.**
+      *(Palette doc pass, 2026-09-08. Re-scoped by Palette-12 Part B.)* Measured **4.47 / 2.05 /
+      2.49 light and 1.01–1.05 dark** against a 3:1 graphic floor, on `ContractorAboutModal`'s
+      accent bar, its quote rule and its CTA fill.
+      ⚠ **THE BOOST-BAR RULING DOES NOT RESOLVE THIS, AND CLOSING IT ALONGSIDE WOULD HAVE BEEN
+      WRONG.** It was *"filed with the boost bar"* because the two share a CAUSE — two
+      independently-chosen brand tokens can be arbitrarily close. They do not share a SITE.
+      `ContractorAboutModal` still paints `PRIMARY` on a `SECONDARY` panel: verified at HEAD
+      2026-09-15 at the accent rule under the heading, the quoted block's left border, and the
+      footer CTA's fill. The boost bar's fix was to stop pairing two brand tokens at all; that
+      answer is unavailable here, because the CTA must be the action colour ON the panel.
       ⚠ **NOT INTRODUCED BY THE MIGRATION: the shipped state was `R.red` on `R.navy` at 2.49:1**,
       already below floor.
-      ⚠ **THE CAUSE IS STRUCTURAL — TWO BRAND-DERIVED TOKENS CAN BE ARBITRARILY CLOSE**, which is
-      the same reason money on a brand fill is white. Filed with the boost bar.
+      ⚠ **AND THE FIGURES WERE INDEPENDENTLY REPRODUCED** by Palette-12 Part B's V1 sweep, which
+      measured the same pair as the rejected gradient candidate and got the same eight numbers.
+      That is a cross-check, not a second filing.
+
+- [ ] **⚠ THE SCREENSHOT TOOL RETURNS BLACK FRAMES WITH SUCCESS STATUSES, AND THE CAUSE IS A
+      ZERO-WIDTH VIEWPORT. ⚠ A SUCCESS STATUS ON A ZERO-WIDTH CAPTURE IS THE FAILURE MODE.**
+      *(Diagnosed by Palette-12 Part A, filed 2026-09-15.)*
+      Every "look-at" in the Palette arc that asked for an image got a black frame back **with a
+      reported success**, and it was treated as intermittent for eleven phases. It is not
+      intermittent. **Measured: `innerWidth` 0, `outerWidth` 0, `screen.width` 0 — there is no
+      viewport at all — and `resize_window` reports success while changing nothing.**
+      ⚠ **THE POINT IS THE STATUS, NOT THE BLACKNESS.** A capture that fails loudly costs a
+      retry; one that returns a black PNG and says `success` is the *mechanism-reports-health-it-
+      cannot-observe* shape, and it cost this arc a standing owed-browser-pass item that could
+      never be paid.
+      **WHAT WORKS INSTEAD, and it is what Palette-11 B1 and Palette-12 Part B actually used:**
+      drive the page with `javascript_tool` and **report NUMBERS read off the rendered node** —
+      mounted custom-property values, `getComputedStyle().backgroundImage` with `var()` already
+      resolved, composited ratios. **Do not dress a description up as a look-at.**
+      **TRIGGER:** anyone asking for a screenshot in this repo. **Say the numbers instead.**
+
+- [ ] **⚠ `ROLE_ONLY_BASELINE` HAS BEEN IN BREACH BY −3 FOR ABOUT FIFTEEN COMMITS, AND THE CAUSE
+      WAS NOT DETERMINED. ⚠ IT IS DELIBERATELY NOT RE-ARMED HERE.**
+      *(Found by Palette-12 Part B, 2026-09-15.)*
+      `npm run citecheck -- --role-only` counts **779**; the constant reads **782**, "measured
+      2026-08-31, HEAD `255f1b3`". **Measured both with and without this phase's markdown edits and
+      it is 779 either way** — by stashing `PRE_LAUNCH_CHECKLIST.md` and re-running — so this phase
+      did not cause it and inherited it.
+      ⚠ **A TRIPWIRE SET THREE ABOVE THE TRUE COUNT CANNOT FIRE UNTIL THREE NEW LINE CITATIONS HAVE
+      ALREADY BEEN ADDED.** That is the same hole this file records against the test-count tripwire,
+      one mechanism along.
+      ⚠ **AND IT IS NOT RE-ARMED HERE ON PURPOSE.** The constant's own comment says to change it
+      only in the commit that deliberately changes the count, and the script's breach message says
+      to lower it and say so. **Both are satisfiable only by a session that can say WHICH commit
+      removed the three** — and *"citations were repaired"* and *"a live citation was wrapped in a
+      record marker"* produce an identical −3, which the script warns about in terms. **Writing 779
+      in without knowing which happened attaches an unsourced number to a guard whose whole subject
+      is unsourced numbers.**
+      **WHAT IT TAKES:** walk the ~15 commits from `255f1b3` to HEAD running `--role-only` at each,
+      find the commit where it steps 782 → 779, read that commit's diff to see whether it repaired
+      or marked, then lower the constant **and say which**.
+
+- [ ] **⚠ THE WARNING BORDER FALLS TO 2.95:1 ON A RECESS — TWO BANNERS, BETA LIGHT, PRE-EXISTING.**
+      *(Found by Palette-12 Part B's live graphic-floor run, 2026-09-15.)*
+      The **bank-connect banner** and the **stale-pipeline banner** both draw `1px solid`
+      `statusVar('warning')` (`#D97706`). Measured at the rendered node on Beta light: **2.95:1**
+      against the composited ground, under the **3:1** non-text floor. The same token measures
+      **3.19:1 on `surface`** and **4.33:1 in dark** — so it clears everywhere except here.
+      ⚠ **IT IS THE GROUND, NOT THE TOKEN.** These banners sit on the **column recess**, and the
+      status palette is floored against `surface`. **Fourth filing of this same hole** — the status
+      palette, the muted idiom, borders, and now the status BORDER are all defined against
+      `surface`, and a recess is not a surface.
+      ⚠ **NOT INTRODUCED BY PALETTE-12 PART B**, whose entire source diff is one gradient
+      declaration in `DashboardTab` and the comment above it.
+      ⚠ **AND IT IS A 0.05 SHORTFALL, WHICH IS WHY IT NEEDS A RULING RATHER THAN A NUDGE.**
+      Darkening `warning` to clear a recess moves it on every surface that already passes.
+
+- [ ] **⚠ THE CONTRAST PROBE CANNOT READ AN ELEMENT THAT IS MID-TRANSITION, AND THE WHOLE APP
+      TRANSITIONS ON LOAD BECAUSE THE MODE PREFERENCE ARRIVES ASYNCHRONOUSLY.**
+      *(Found by Palette-12 Part B, 2026-09-15. ⚠ NOT A CONFIRMED SHIPPED DEFECT — filed as a
+      READER problem, and saying which it is was the whole difficulty.)*
+      The live run reported **one** below-floor reading on Beta dark: the bottom nav's sliding
+      indicator at **1.01:1**, foreground `rgb(28,45,77)` — which is `#1C2D4D`, the **light-mode
+      fallback** written in `BottomNav`'s `var(--rm-text, #1C2D4D)`. That reads exactly like a
+      fallback-not-mounted defect, the class that cost this arc the login error box at 1.34:1.
+      ⚠ **IT IS NOT ONE, AND THE PROOF IS THAT THE VALUE KEEPS MOVING.** The mounted `--rm-text`
+      at that node is `#EEFCFB`; the element carries `transition: background 200ms`; and
+      `ThemeProvider` renders LIGHT first and flips to dark only when
+      `GET /api/preferences/theme-mode` settles. **A reading taken during that flip is a real
+      number about a state that lasts 200ms.**
+      ⚠ **BUT A SECOND READING, TAKEN EIGHT TIMES OVER 3.2s, SETTLED AT `rgb(240,243,250)` — WHICH
+      IS NEITHER THE FALLBACK NOR THE MOUNTED VALUE.** So the settled reading is not trustworthy
+      either, and **this element's computed background cannot currently be read at all.**
+      **WHAT IS OWED:** either make the probe wait for transitions to settle (and prove it waits,
+      by showing a reading that changes), or read this element with its transition disabled.
+      ⚠ **DO NOT "FIX" THE NAV UNTIL IT CAN BE READ.** Changing a colour to satisfy a number the
+      reader cannot produce is fitting the code to the instrument.
+
+- [ ] **⚠ INVENTORY CORRECTION: THERE IS ONE CROSS-BRAND GRADIENT IN THE REFERRER TREE, NOT TWO.
+      THE RECORD SAID OTHERWISE AND IT WAS WRONG.**
+      *(Corrected by Palette-12 Part A, recorded 2026-09-15.)*
+      The boost-bar entry above used to say *"group it with the other cross-colour gradients —
+      CashOut's success hero, and the podium wash."* **Checked at HEAD: neither is one.**
+      · **CashOut's heroes are `SECONDARY → SECONDARY_DARK`** — derived partners, settled by
+        Palette-1. There is no "success hero" gradient pairing two brand colours.
+      · **CashOut's status gradient is `statusVar('success') → statusVar('successText')`** — both
+        from the STATUS system, which is a family, not a brand pairing.
+      · **Rankings' podium wash is `RECESS → SURFACE`** — two GROUNDS.
+      · **The other 11 gradients are derived partners.**
+      ⚠ **THE LESSON IS THE ONE THIS FILE KEEPS RECORDING: a grouping written from memory reads
+      exactly like one written from a sweep.** Had the boost bar been ruled *with* its two
+      supposed siblings, the ruling would have moved two settled gradients for no reason.
+      **Nothing is owed here. The entry exists so the wrong inventory is not inherited.**
 
 - [ ] **⚠ THE GROUND FENCE RETURNS `unproven`, WHICH IS NEITHER PASS NOR FAIL, AND THAT DISTINCTION
       IS LOAD-BEARING.**
@@ -5138,6 +5260,16 @@ quadruples is evidence about the estimate, not about the wave:
       **THE REFERRER TREE IS MIGRATED**, apart from three named holds: the **boost bar**, the
       **bucket-blind residue**, and **fonts**. Every tab, every shared primitive, the container, the
       nav, `ManageAccount` and all seven popups resolve through tokens.
+      ⚠ **CORRECTION, 2026-09-15: TWO HOLDS, NOT THREE.** Palette-12 Part B closed the boost bar;
+      the **residue** and **fonts** remain. **The record above is left as written** — it was true
+      on 2026-09-08, and a record whose subject is what an arc left open must not be quietly
+      rewritten to match what a later arc closed.
+      ⚠ **AND THE RETIRED-TONE COUNT FOR THE TREE IS NOW ZERO**, measured over all 15 components
+      with all three needles (hex, decimal, `R.`-key), each validated in both directions.
+      ⚠ **THAT IS NOT "NO `R.` COLOUR READ", AND THE TWO CLAIMS MUST NOT BE MERGED.**
+      `ProfileTab` still reads five STATUS keys off `R` — `greenBg`, `greenText`, `amberBg`,
+      `amberText`, `tealText` — held by Palette-4b's ruling and named by an equality fence so the
+      set cannot grow. They are the status palette, not a retired brand tone.
 
       **THE THREE GROUND LEVELS ARE FIXED: body = `bg`, column = `recess`, cards = `surface`.**
       ⚠ **`--rm-bg` HAS NO CONSUMER IN THE REFERRER TREE** — verified at HEAD, and the distinction
@@ -5185,6 +5317,9 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **STILL OPEN AND NOT CLOSED HERE:** the boost bar, the residue, fonts, the six latent
       dark-mode defects, the focus-ring accessibility defect, `ReferTab`'s six unmeasured combos,
       the three conversion-gated sites, and the `#012854` sweep at 24.
+      ⚠ **CORRECTION, 2026-09-15: THE BOOST BAR CAME OFF THIS LIST** — closed by Palette-12 Part B.
+      The rest of the list stands. **The record above is left as written**: it was true on
+      2026-09-08 and renumbering a record destroys the evidence of what the arc actually left open.
 
 - [ ] **⚠ PREREQUISITE OF THE REFERRER DARK-MODE TOGGLE: SIX CONTRAST DEFECTS MUST BE FIXED
       BEFORE IT SHIPS, OR THEY WILL READ AS THE TOGGLE'S FAULT.**
@@ -5311,6 +5446,12 @@ quadruples is evidence about the estimate, not about the wave:
       creating it, and in dark mode it converges further.
       ⚠ **SAME FAMILY AS THE CASHOUT HERO** — two brand-derived tokens can be arbitrarily close,
       which is why money on a brand fill is white. Filed with the boost bar as a design question.
+      ⚠ **CORRECTION, 2026-09-15 (Palette-12 Part B): "FILED WITH THE BOOST BAR" IS NOW AN
+      INSTRUCTION THAT WOULD CLOSE THIS WRONGLY.** The boost bar shipped, and its fix — stop
+      pairing two brand tokens at all — is unavailable here, because the CTA must be the action
+      colour ON the panel. **This was SPLIT OUT and remains OPEN.** It is the same item as the
+      re-scoped `primary` on `secondary` entry above; that entry is the live one, this is its
+      Palette-11 B2 record. **Do not close either when the other closes.**
 
 - [ ] **⚠ THREE OF THE FIVE B2 SURFACES CANNOT BE RENDERED ON THE LOCAL STACK, FOR DATA REASONS
       RATHER THAN COLOUR ONES. SAID PLAINLY RATHER THAN REPORTED CLEAN.**

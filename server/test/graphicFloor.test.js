@@ -19,14 +19,23 @@
 // the commit body. The two halves are split deliberately so the arithmetic can
 // be tested without a browser and the browser is not asked to test arithmetic.
 //
-// ⚠ EXPECTED COUNT: 25 cases in this file — 22 written literally plus 3 generated
-// by the MISSES loop in C.7. (Was 19/16 before the pictographic case below was
-// added; the live sweep produced it, which is what the browser pass is for.)
-// ⚠ AND THE FIRST PREDICTION WAS 17, WHICH IS WHAT COUNTING `test(` SOURCE LINES
-// GIVES YOU. A loop that emits one case per row is invisible to a line count, so
-// the number to predict is CASES EMITTED, not statements written. Recorded
-// because a count you cannot predict cannot surprise you — and this one was off
-// by exactly the loop.
+// ⚠ EXPECTED COUNT: 32 cases — 30 `test(` statements, one of which sits INSIDE
+// the C.7 MISSES loop and emits 3 rather than 1, so the loop is worth +2.
+// 30 + 2 = 32, and the run reports 32.
+// ⚠ THE ARITHMETIC IN THE PREVIOUS ENTRY DID NOT ADD UP, AND IT IS WORTH SAYING
+// WHY RATHER THAN QUIETLY RE-STATING IT. It read "25 cases — 22 written literally
+// plus 3 generated", which double-counts: the loop's own `test(` line is one of
+// the literal statements, so its contribution is +2, never +3. The number was
+// also several commits stale — the B1-fix pass added four ground-fence cases and
+// did not re-arm it. Both failures are the same one this repo keeps recording: a
+// hand-maintained count in prose that nothing updates when the thing it counts
+// grows. The form above is stated so the next reader can re-derive it instead of
+// trusting it.
+// ⚠ AND THE FIRST PREDICTION THIS FILE EVER CARRIED WAS 17, WHICH IS WHAT
+// COUNTING `test(` SOURCE LINES GIVES YOU. A loop that emits one case per row is
+// invisible to a line count, so the number to predict is CASES EMITTED, not
+// statements written. Recorded because a count you cannot predict cannot
+// surprise you — and that one was off by exactly the loop.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const { test, describe } = require('node:test');
@@ -365,5 +374,43 @@ describe('Palette-11 F.4 — a token carries the ground it was floored against',
     assert.equal(g.status, 'unproven');
     assert.equal(g.floor, null, 'unproven must carry no floor of its own');
     assert.match(g.why, /UNPROVEN/);
+  });
+
+  // ── Palette-12 Part B — the partner-floored tokens ────────────────────────
+  test('a gradient PARTNER is unproven on every ground, and the reason names its partner', () => {
+    // ⚠ BEFORE THIS THEY RETURNED `unknown-token`, whose message reads "add it
+    // before relying on this" — and the boost bar now puts
+    // `--rm-secondary-dark` on `--rm-recess`, so something relies on it. A
+    // partner token is floored against ANOTHER TOKEN, never against a ground, so
+    // every ground use is unproven and the measured ratio is the only evidence.
+    for (const [tok, partner] of [
+      ['--rm-secondary-dark', '--rm-secondary'],
+      ['--rm-primary-dark', '--rm-primary'],
+    ]) {
+      for (const ground of ['recess', 'surface', 'bg']) {
+        const g = groundFlooring(tok, ground);
+        assert.equal(g.status, 'unproven', tok + ' on ' + ground + ' should be unproven');
+        assert.equal(g.floor, null, tok + ': unproven must carry no floor of its own');
+        assert.match(g.why, /UNPROVEN/);
+        assert.ok(g.why.includes(partner), tok + ': the reason should name ' + partner + ', got: ' + g.why);
+      }
+    }
+  });
+
+  test('and a partner token never reports the empty-list sentence, which reads like an answer', () => {
+    // ⚠ THE SHAPE THIS GUARDS: `'floored against ' + [].join(' and ')` produces
+    // "floored against  only", a grammatical sentence carrying no information. A
+    // reader would take it as a recorded flooring. Asserting the ABSENCE of that
+    // phrasing is what stops the empty-grounds branch degrading back into it.
+    const g = groundFlooring('--rm-secondary-dark', 'recess');
+    assert.ok(!/floored against\s+only/.test(g.why), 'the empty-list sentence came back: ' + g.why);
+    assert.ok(/not against any ground/.test(g.why), 'the reason should say it has no ground flooring');
+  });
+
+  test('the partner entries did not turn an unrecorded token into a recorded one', () => {
+    // A positive control on the change itself: the unknown branch must survive.
+    assert.equal(groundFlooring('--rm-tertiary-dark', 'recess').status, 'unknown-token');
+    assert.equal(groundFlooring('--rm-secondary', 'recess').status, 'unproven');
+    assert.equal(groundFlooring('--rm-secondary', 'surface').status, 'floored');
   });
 });

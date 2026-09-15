@@ -353,12 +353,18 @@ describe('Palette-4a Part B T5 — the ruled destinations', () => {
     expect(DASH_CODE).toContain('border: `3px solid ${PRIMARY}`');
   });
 
-  it('[RED] R-D — 400 IS HELD ON LITERALS, and the hold cannot silently grow', () => {
-    // ⚠ ASSERTED BY EQUALITY, NOT BY "AT MOST ONE". This is the single site in
-    // the file that still reads a colour off R, and it is deliberate: a
-    // cross-brand-colour gradient is a design question, not a substitution. If a
-    // second R colour read appears, this goes RED and whoever added it must say
-    // why — an exception list that can only grow stops being an exception list.
+  it('[RED] R-D — THE HOLD IS CLOSED, and the assertion is inverted rather than deleted', () => {
+    // ⚠ THIS ASSERTION USED TO SAY THE OPPOSITE, AND SAYING SO IS THE POINT.
+    // It read `expect(...).toEqual(['navy', 'red'])` — a fence around the ONE
+    // deliberate hold in this file, asserted by equality so an exception list
+    // could not silently grow. Palette-12 Part B ruled the hold closed
+    // (`--rm-secondary -> --rm-secondary-dark`), and at that moment the old
+    // assertion stopped being a fence around a decision and became a fence
+    // around the defect: still true, still green, and standing between the
+    // codebase and the fix.
+    // ⚠ INVERTED, NOT UPDATED WITH A NEW VALUE, AND NOT DELETED. The empty set
+    // is the claim now; deleting it would remove the only thing that notices a
+    // colour read coming back.
     const R_COLOUR = /(^|[^A-Za-z0-9_.])R\.(red|redDark|navy|navyDark|blueLight|bgBlueLight|bgCard|bgPage|bgCardTint|textPrimary|textSecondary|textMuted|border|borderMed|shadow|shadowMd|shadowLg)\b/g;
     const hits = [];
     codeOnly(DASH).split(/\r?\n/).forEach((line, i) => {
@@ -369,10 +375,9 @@ describe('Palette-4a Part B T5 — the ruled destinations', () => {
         R_COLOUR.lastIndex = m.index + m[0].length;
       }
     });
-    expect(hits.map((h) => h.key).sort()).toEqual(['navy', 'red']);
-    // And both are on ONE line — the progress fill — not scattered.
-    expect(new Set(hits.map((h) => h.line)).size).toBe(1);
-    expect(hits[0].line).toContain('linear-gradient(90deg,');
+    expect(hits.map((h) => `${h.key} @ ${h.line}`)).toEqual([]);
+    // And the fill now names both derived stops on one line.
+    expect(DASH_CODE).toContain('linear-gradient(90deg, ${SECONDARY} 0%, ${SECONDARY_DARK} 100%)');
   });
 
   it('[RED] R-E and the muted idiom land where they were ruled', () => {

@@ -287,6 +287,16 @@ const NON_TEXT_FLOOR = 3;
 // Each entry: the token, the ground(s) it was floored against, and the floor it
 // was floored to. A token used on a ground it was NOT floored against is not
 // automatically wrong — it is UNPROVEN, and must clear on the arithmetic instead.
+//
+// ⚠ AND A TOKEN CAN BE FLOORED AGAINST A PARTNER RATHER THAN A GROUND (Palette-12
+// Part B). The two gradient partners are derived by nudging lightness until they
+// separate from their base by GRADIENT_PARTNER_MIN_CONTRAST — that is a floor
+// against ANOTHER TOKEN, and it says nothing whatsoever about any ground. Before
+// this they returned `unknown-token`, whose message reads "add it before relying
+// on this"; the boost bar now puts `--rm-secondary-dark` on `--rm-recess`, so
+// something is relying on it. Recorded with `partnerOf` and an EMPTY grounds
+// list, which makes every ground use come back `unproven` — the honest answer —
+// instead of an unrecognised token that a reader can mistake for an oversight.
 const TOKEN_FLOORING = Object.freeze({
   // floored at the 3:1 NON-TEXT threshold against `surface` only
   '--rm-primary':      Object.freeze({ grounds: ['surface'], floor: 3 }),
@@ -295,6 +305,9 @@ const TOKEN_FLOORING = Object.freeze({
   '--rm-primary-text': Object.freeze({ grounds: ['surface', 'recess'], floor: 4.5 }),
   // the body text tone is floored against both by construction
   '--rm-text':         Object.freeze({ grounds: ['surface', 'recess'], floor: 4.5 }),
+  // floored against their PARTNER, against no ground at all
+  '--rm-primary-dark':   Object.freeze({ grounds: [], floor: null, partnerOf: '--rm-primary' }),
+  '--rm-secondary-dark': Object.freeze({ grounds: [], floor: null, partnerOf: '--rm-secondary' }),
 });
 
 /**
@@ -318,6 +331,15 @@ function groundFlooring(tokenVar, groundName) {
   if (entry.grounds.includes(groundName)) {
     return { status: 'floored', floor: entry.floor,
       why: tokenVar + ' is floored to ' + entry.floor + ':1 against `' + groundName + '`' };
+  }
+  // ⚠ A PARTNER-FLOORED TOKEN IS UNPROVEN ON EVERY GROUND, INCLUDING THE ONE ITS
+  // BASE WAS FLOORED AGAINST. Saying "floored against  only" with an empty list
+  // would be a sentence that reads like an answer and carries none.
+  if (entry.partnerOf) {
+    return { status: 'unproven', floor: null,
+      why: tokenVar + ' is floored against its partner ' + entry.partnerOf
+        + ', not against any ground — on `' + groundName + '` it is UNPROVEN and the'
+        + ' measured ratio is the only evidence' };
   }
   return { status: 'unproven', floor: null,
     why: tokenVar + ' is floored against ' + entry.grounds.map((g) => '`' + g + '`').join(' and ')
