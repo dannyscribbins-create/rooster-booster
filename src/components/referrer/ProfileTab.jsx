@@ -17,7 +17,7 @@ import MissingReferralModal from './MissingReferralModal';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import { getReferrerToken } from '../../utils/authStorage';
 import { statusVar, STATUS_BANNER, STATUS_TINT } from '../../constants/statusTheme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-4b — THE RENDER TOKENS THIS TAB PAINTS WITH ─────────────────────
 //
@@ -286,7 +286,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               `app_display_name`'s helper text in the admin panel has always
               promised this line — "replaces Rooster Booster throughout the
               referrer app" — and nothing had ever consumed it. */}
-        <p style={{ margin: "0 0 20px", fontSize: 12, color: ON_SECONDARY, fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
+        <p style={{ margin: "0 0 20px", fontSize: 12, color: ON_SECONDARY, fontFamily: fontVar('mono'), letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
 
         {/* Avatar + name */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -306,7 +306,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             showCameraHint={true}
           />
           <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: ON_SECONDARY }}>{userName}</h1>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: fontVar('heading'), color: ON_SECONDARY }}>{userName}</h1>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: ON_SECONDARY, display: "flex", alignItems: "center", gap: 4 }}>
               <i className="ph ph-star-fill" style={{ fontSize: 15, color: ON_SECONDARY }} />
               {soldCount} sold referral{soldCount !== 1 ? "s" : ""} this year
@@ -332,7 +332,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             ...STATUS_BANNER.danger,
             marginTop: 10, borderRadius: 10, padding: "10px 12px",
           }}>
-            <p style={{ margin: 0, fontSize: 13, color: statusVar('dangerText'), fontFamily: R.fontBody }}>{uploadError}</p>
+            <p style={{ margin: 0, fontSize: 13, color: statusVar('dangerText'), fontFamily: fontVar('body') }}>{uploadError}</p>
           </div>
         )}
       </div>
@@ -366,7 +366,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <i className={`ph ${item.icon}`} style={{ fontSize: 16, color: 'var(--rm-text, #1C2D4D)' }} />
-                  <span style={{ fontSize: 15, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody }}>{item.label}</span>
+                  <span style={{ fontSize: 15, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>{item.label}</span>
                 </div>
                 <span style={{ fontSize: 15, fontWeight: 700, color: item.money ? MONEY : 'var(--rm-text, #1C2D4D)' }}>{item.val}</span>
               </div>
@@ -389,8 +389,8 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               display: "flex", alignItems: "center", gap: 8,
             }}>
               <i className="ph ph-users" style={{ fontSize: 18, color: 'var(--rm-text, #1C2D4D)' }} />
-              <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)' }}>My Referrals</span>
-              <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontMono }}>
+              <span style={{ fontSize: 16, fontWeight: 700, fontFamily: fontVar('heading'), color: 'var(--rm-text, #1C2D4D)' }}>My Referrals</span>
+              <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('mono') }}>
                 {pipeline.length} total
               </span>
             </div>
@@ -409,7 +409,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                   color: filter === f ? ON_SECONDARY : 'var(--rm-text, #1C2D4D)',
                   opacity: filter === f ? 1 : MUTED,
                   fontSize: 12, fontWeight: filter === f ? 700 : 500,
-                  cursor: "pointer", fontFamily: R.fontBody,
+                  cursor: "pointer", fontFamily: fontVar('body'),
                   whiteSpace: "nowrap", transition: "background 0.2s, border-color 0.2s, color 0.2s",
                 }}>{filterLabels[f]}</button>
               ))}
@@ -454,7 +454,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                             width: 34, height: 34, borderRadius: "50%",
                             background: s.bg, color: s.color,
                             display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 11, fontWeight: 700, fontFamily: R.fontMono, flexShrink: 0,
+                            fontSize: 11, fontWeight: 700, fontFamily: fontVar('mono'), flexShrink: 0,
                           }}>
                             {ref.name.split(" ").map(n => n[0]).join("")}
                           </div>
@@ -477,7 +477,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                           <StatusBadge status={ref.status} />
                           {ref.status === 'sold' && !ref.pre_start_date && (
-                            <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody }}>
+                            <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>
                               Pending completion
                             </span>
                           )}
@@ -493,12 +493,12 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                               money figures on one screen in two colours is the
                               inconsistency the rule exists to remove. */}
                           {ref.status === 'complete' && (ref.conversion_bonus != null || ref.payout != null) && (
-                            <span style={{ fontSize: 14, fontWeight: 800, color: MONEY, fontFamily: R.fontMono }}>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: MONEY, fontFamily: fontVar('mono') }}>
                               +${ref.conversion_bonus ?? ref.payout}
                             </span>
                           )}
                           {ref.status === 'complete' && ref.conversion_bonus == null && ref.payout == null && (
-                            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontMono }}>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('mono') }}>
                               +$—
                             </span>
                           )}
@@ -512,7 +512,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                           marginTop: 10, paddingTop: 10,
                           borderTop: `1px solid ${elevationVar('border')}`,
                         }}>
-                          <p style={{ margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody }}>
+                          <p style={{ margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>
                             {scheduleNameForCard}
                           </p>
                         </div>
@@ -538,7 +538,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               display: "flex", alignItems: "center", gap: 8,
             }}>
               <i className="ph ph-clock-counter-clockwise" style={{ fontSize: 18, color: 'var(--rm-text, #1C2D4D)' }} />
-              <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)' }}>Activity</span>
+              <span style={{ fontSize: 16, fontWeight: 700, fontFamily: fontVar('heading'), color: 'var(--rm-text, #1C2D4D)' }}>Activity</span>
               {/* ⚠ RULED 2026-09-05: MONEY IS BRAND-RESPONSIVE. This figure is on
                   `--rm-primary-text`, floored at 4.5:1 against BOTH `surface` and the
                   `recess` the rows below sit on.
@@ -560,7 +560,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                   re-floor also repaired sites that are not money — so the token outlives
                   the ruling that motivated it. DO NOT REVERT THE RE-FLOOR. */}
               {totalEarned > 0 && (
-                <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: MONEY, fontFamily: R.fontMono }}>
+                <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: MONEY, fontFamily: fontVar('mono') }}>
                   ${totalEarned.toLocaleString()} earned
                 </span>
               )}
@@ -626,7 +626,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                           <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)' }}>{item.desc}</p>
                           <p style={{ margin: "3px 0 0", fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED }}>Paid referral bonus</p>
                           {scheduleName && (
-                            <p style={{ margin: "2px 0 0", fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody }}>
+                            <p style={{ margin: "2px 0 0", fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>
                               {scheduleName}
                             </p>
                           )}
@@ -635,7 +635,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                       {/* Was 2.93:1 on the recess — the worse of the pair, and the reason
                           successText had to be floored against `recess` and not only against
                           `surface`. */}
-                      <span style={{ fontSize: 14, fontWeight: 900, color: MONEY, fontFamily: R.fontMono }}>
+                      <span style={{ fontSize: 14, fontWeight: 900, color: MONEY, fontFamily: fontVar('mono') }}>
                         +${item.amount.toLocaleString()}
                       </span>
                     </div>
@@ -659,7 +659,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               display: "flex", alignItems: "center", gap: 8,
             }}>
               <i className="ph ph-trophy" style={{ fontSize: 18, color: 'var(--rm-text, #1C2D4D)' }} />
-              <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)' }}>My Badges</span>
+              <span style={{ fontSize: 16, fontWeight: 700, fontFamily: fontVar('heading'), color: 'var(--rm-text, #1C2D4D)' }}>My Badges</span>
             </div>
 
             {/* Loading */}
@@ -677,7 +677,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                 <button onClick={fetchBadges} style={{
                   background: SECONDARY, color: ON_SECONDARY, border: "none",
                   borderRadius: 8, padding: "8px 18px",
-                  fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: R.fontBody,
+                  fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: fontVar('body'),
                 }}>Retry</button>
               </div>
             )}
@@ -701,8 +701,8 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                           textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
                         }}>
                           <span style={{ fontSize: 32, lineHeight: 1 }}>{badge.emoji}</span>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)', fontFamily: R.fontBody, lineHeight: 1.3 }}>{badge.name}</span>
-                          <span style={{ fontSize: 11, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody }}>Earned {dateStr}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)', fontFamily: fontVar('body'), lineHeight: 1.3 }}>{badge.name}</span>
+                          <span style={{ fontSize: 11, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>Earned {dateStr}</span>
                         </div>
                       );
                     }
@@ -723,7 +723,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                         textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
                       }}>
                         <span style={{ fontSize: 32, lineHeight: 1, opacity: 0.2 }}>{badge.emoji}</span>
-                        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.3 }}>{badge.name}</span>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body'), lineHeight: 1.3 }}>{badge.name}</span>
                       </div>
                     );
                   })}
@@ -754,7 +754,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                   display: "flex", alignItems: "center", gap: 8,
                 }}>
                   <i className="ph ph-chat-circle" style={{ fontSize: 18, color: 'var(--rm-text, #1C2D4D)' }} />
-                  <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)' }}>Leaderboard Shout</span>
+                  <span style={{ fontSize: 16, fontWeight: 700, fontFamily: fontVar('heading'), color: 'var(--rm-text, #1C2D4D)' }}>Leaderboard Shout</span>
                 </div>
 
                 {/* Opt-out toggle */}
@@ -763,7 +763,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                   display: "flex", justifyContent: "space-between", alignItems: "center",
                   borderBottom: !shoutOptOut ? `1px solid ${elevationVar('border')}` : "none",
                 }}>
-                  <span style={{ fontSize: 15, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody }}>Show my shout on the leaderboard</span>
+                  <span style={{ fontSize: 15, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>Show my shout on the leaderboard</span>
                   <button
                     onClick={() => {
                       const next = !shoutOptOut;
@@ -790,10 +790,10 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                 {/* Pin section — only when showing shout */}
                 {!shoutOptOut && (
                   <div style={{ padding: "16px 18px" }}>
-                    <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)', fontFamily: R.fontBody }}>
+                    <p style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)', fontFamily: fontVar('body') }}>
                       Pin a favorite phrase
                     </p>
-                    <p style={{ margin: "0 0 14px", fontSize: 13, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+                    <p style={{ margin: "0 0 14px", fontSize: 13, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body'), lineHeight: 1.5 }}>
                       Choose a phrase to always show instead of a random one.
                     </p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -814,7 +814,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                               background: selected ? SECONDARY : RECESS,
                               color: selected ? ON_SECONDARY : 'var(--rm-text, #1C2D4D)',
                               opacity: selected ? 1 : MUTED,
-                              fontSize: 13, fontFamily: R.fontBody,
+                              fontSize: 13, fontFamily: fontVar('body'),
                               cursor: "pointer", fontWeight: selected ? 600 : 400,
                               transition: "background 0.15s, border-color 0.15s, color 0.15s",
                             }}
@@ -844,7 +844,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               display: "flex", alignItems: "center", gap: 8,
             }}>
               <i className="ph ph-magnifying-glass" style={{ fontSize: 18, color: 'var(--rm-text, #1C2D4D)' }} />
-              <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)' }}>My Referral Reports</span>
+              <span style={{ fontSize: 16, fontWeight: 700, fontFamily: fontVar('heading'), color: 'var(--rm-text, #1C2D4D)' }}>My Referral Reports</span>
             </div>
 
             {/* Entry point row */}
@@ -855,7 +855,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                 justifyContent: "space-between", padding: "14px 18px",
                 background: "transparent", border: "none", cursor: "pointer",
                 borderBottom: `1px solid ${elevationVar('border')}`,
-                fontFamily: R.fontBody,
+                fontFamily: fontVar('body'),
                 transition: "background 0.15s",
               }}
               onMouseEnter={e => { e.currentTarget.style.background = RECESS; }}
@@ -873,7 +873,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                   <div style={{ height: 52, borderRadius: 10, background: RECESS, animation: "pulse 1.5s ease-in-out infinite" }} />
                 </>
               ) : missingReports.length === 0 ? (
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, textAlign: "center", padding: "12px 0 4px", fontFamily: R.fontBody }}>
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, textAlign: "center", padding: "12px 0 4px", fontFamily: fontVar('body') }}>
                   No reports submitted yet.
                 </p>
               ) : (
@@ -885,10 +885,10 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                     boxShadow: elevationVar('shadow'),
                   }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)', fontFamily: R.fontBody }}>
+                      <p style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)', fontFamily: fontVar('body') }}>
                         {report.referred_name}
                       </p>
-                      <p style={{ margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontBody }}>
+                      <p style={{ margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>
                         {CHANNEL_LABEL_MAP[report.channel] || report.channel}
                         {report.approximate_date && ` · ${new Date(report.approximate_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
                       </p>
@@ -940,7 +940,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             width: "100%", background: SURFACE,
             border: `1.5px solid ${elevationVar('border')}`, borderRadius: 12,
             padding: "16px", color: 'var(--rm-text, #1C2D4D)', fontSize: 15, fontWeight: 600,
-            cursor: "pointer", fontFamily: R.fontBody, marginBottom: 10,
+            cursor: "pointer", fontFamily: fontVar('body'), marginBottom: 10,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             transition: "background 0.2s",
           }}
@@ -969,7 +969,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
             width: "100%", background: SURFACE,
             border: `1.5px solid ${statusVar('danger')}`, borderRadius: 12,
             padding: "16px", color: statusVar('dangerText'), fontSize: 15, fontWeight: 700,
-            cursor: "pointer", fontFamily: R.fontBody,
+            cursor: "pointer", fontFamily: fontVar('body'),
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             transition: "background 0.2s",
           }}

@@ -181,16 +181,28 @@ describe('Palette-3 T2 — the close control clears the 3:1 non-text floor', () 
 
 // ── T3 — WHAT REMAINS, ENUMERATED ───────────────────────────────────────────
 describe('Palette-3 T3 — the remaining R. is enumerated, and the files still run', () => {
-  it('[RED] AvatarCircle keeps only its font', () => {
-    expect(rRefs(codeOnly(readSrc('components/shared/AvatarCircle.jsx')))).toEqual(['fontMono']);
+  it('[RED] AvatarCircle reads nothing from R — its font is migrated', () => {
+    // ⚠ THIS EXPECTED `['fontMono']`; Palette-13 B.7 migrated the font.
+    // ⚠ AND A DRAFT OF THIS CASE EXPECTED `['navy']`, ON THE STRENGTH OF A
+    // MEASUREMENT THAT COUNTED COMMENTS AS CODE. All three `R.` strings left in
+    // that file are RECORDS of retired reads — two in `//` comments and one in a
+    // JSX `{/* */}` comment, which a naive line-prefix filter does not strip at
+    // all. `codeOnly()` does, so the honest set is empty, and this fence is what
+    // said so. **A sweep that reads comments reports a defect that is not there**
+    // — the mirror image of the prose-matches-the-pattern trap.
+    expect(rRefs(codeOnly(readSrc('components/shared/AvatarCircle.jsx')))).toEqual([]);
+    // Paired positive — the file still declares a family.
+    expect(readSrc('components/shared/AvatarCircle.jsx')).toMatch(/fontVar\('mono'\)/);
   });
 
-  it('[RED] ContactModal keeps only fonts and the large shadow', () => {
+  it('[RED] ContactModal keeps only the large shadow — its fonts are migrated', () => {
     // ⚠ shadowLg HAS NO DESTINATION. The side channel publishes ONE shadow role;
     // `shadowLg` is a heavier elevation with nowhere to go, and inventing a
     // second role is Palette-1's job, not this phase's. Reported, not forced.
+    // ⚠ THE FOUR FONT KEYS LEFT IN PALETTE-13 B.7 — migrated, not deleted.
     expect(rRefs(codeOnly(readSrc('components/shared/ContactModal.jsx'))).sort())
-      .toEqual(['fontBody', 'fontBody', 'fontBody', 'fontSans', 'shadowLg']);
+      .toEqual(['shadowLg']);
+    expect(readSrc('components/shared/ContactModal.jsx')).toMatch(/fontVar\('(heading|body)'\)/);
   });
 
   it('[RED] no retired Accent tone remains in either migrated file', () => {
@@ -300,9 +312,12 @@ describe('Palette-3 T5 — ContactModal no longer hardcodes a light panel', () =
 
 // ── B.5 — THE StatusBadge RULING, RECORDED AS A TEST SO IT IS NOT RE-LITIGATED
 describe('Palette-3 B.5 — StatusBadge belongs to the STATUS system, and is NOT migrated', () => {
-  it('its only R. reference is a font — it has no colour of its own to migrate', () => {
-    // Every colour it paints comes from STATUS_CONFIG, which it is handed.
-    expect(rRefs(codeOnly(readSrc('components/shared/StatusBadge.jsx')))).toEqual(['fontMono']);
+  it('it reads nothing from R — it had no colour of its own, and now no font either', () => {
+    // Every colour it paints comes from STATUS_CONFIG, which it is handed. Its
+    // one remaining reference was the monospace key, migrated in Palette-13 B.7.
+    expect(rRefs(codeOnly(readSrc('components/shared/StatusBadge.jsx')))).toEqual([]);
+    // Paired positive — it still declares a family; the file was not emptied.
+    expect(readSrc('components/shared/StatusBadge.jsx')).toMatch(/fontVar\('mono'\)/);
   });
 
   it('⚠ and the status system does NOT cover its vocabulary — which is why it waits', () => {

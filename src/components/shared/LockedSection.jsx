@@ -1,5 +1,6 @@
 import { AD } from '../../constants/adminTheme';
 import { statusVar } from '../../constants/statusTheme';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── LockedSection — §7.4 locked-but-visible primitive ───────────────────────
 // The single reusable lock treatment for denied permissions.
@@ -183,7 +184,7 @@ export default function LockedSection({ mode, label, tooltip, children }) {
               color: AD.textPrimary,
               fontSize: 14,
               fontWeight: 600,
-              fontFamily: AD.fontSans,
+              fontFamily: fontVar('body'),
             }}>
               {label}
             </span>
@@ -191,7 +192,7 @@ export default function LockedSection({ mode, label, tooltip, children }) {
           <span style={{
             color: AD.textSecondary,
             fontSize: 12,
-            fontFamily: AD.fontSans,
+            fontFamily: fontVar('body'),
             lineHeight: 1.6,
           }}>
             {tooltipText}

@@ -1,4 +1,5 @@
 import { R } from '../../constants/theme';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared loading indicator (C/DL-3a Phase 4A).
@@ -70,7 +71,7 @@ export default function LoadingIndicator({ size = 24, label = null, style = {} }
         // --rm-text is the only token the engine PROVES readable against the
         // surface, so it is what carries text here. Never --rm-primary.
         color: `var(--rm-text, ${R.textPrimary})`,
-        fontFamily: R.fontBody, fontSize: 14,
+        fontFamily: fontVar('body'), fontSize: 14,
         ...style,
       }}
     >

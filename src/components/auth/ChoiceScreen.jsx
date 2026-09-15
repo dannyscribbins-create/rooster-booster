@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { statusVar, STATUS_BANNER } from '../../constants/statusTheme';
 import useEntrance from '../../hooks/useEntrance';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── The Choice Screen ────────────────────────────────────────────────────────
 //
@@ -62,7 +63,7 @@ export default function ChoiceScreen({ identities = [], onChoose, onCancel, erro
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: 'var(--rm-bg, #FFFFFF)',
-      padding: '32px 24px', fontFamily: 'Roboto, system-ui, sans-serif',
+      padding: '32px 24px', fontFamily: fontVar('body'),
     }}>
       <div style={{
         width: '100%', maxWidth: 420,
@@ -75,7 +76,7 @@ export default function ChoiceScreen({ identities = [], onChoose, onCancel, erro
       }}>
         <h2 style={{
           margin: '0 0 8px', fontSize: 22, fontWeight: 700,
-          fontFamily: 'Montserrat, system-ui, sans-serif',
+          fontFamily: fontVar('heading'),
           color: 'var(--rm-text, #1C2D4D)',
         }}>
           Which account?
@@ -113,7 +114,7 @@ export default function ChoiceScreen({ identities = [], onChoose, onCancel, erro
               <span>
                 <span style={{
                   display: 'block', fontSize: 16, fontWeight: 700,
-                  fontFamily: 'Montserrat, system-ui, sans-serif',
+                  fontFamily: fontVar('heading'),
                   color: 'var(--rm-text, #1C2D4D)',
                 }}>
                   {identity.contractor_name}

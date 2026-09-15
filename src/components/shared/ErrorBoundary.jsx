@@ -1,5 +1,6 @@
 import React from 'react'
 import { reportClientError } from '../../utils/clientErrorReporter'
+import { fontVar } from '../../constants/elevationTheme';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -27,7 +28,7 @@ class ErrorBoundary extends React.Component {
           padding: '32px',
           textAlign: 'center',
           backgroundColor: '#f9f9f9',
-          fontFamily: 'Roboto, sans-serif'
+          fontFamily: fontVar('body')
         }}>
           <div style={{
             fontSize: '48px',
@@ -38,7 +39,7 @@ class ErrorBoundary extends React.Component {
             fontWeight: '700',
             color: '#021428', // intentional exception — ErrorBoundary renders outside React tree, cannot use R tokens
             marginBottom: '8px',
-            fontFamily: 'Montserrat, sans-serif'
+            fontFamily: fontVar('heading')
           }}>
             Something went wrong
           </div>
@@ -62,7 +63,7 @@ class ErrorBoundary extends React.Component {
               fontSize: '14px',
               fontWeight: '600',
               cursor: 'pointer',
-              fontFamily: 'Montserrat, sans-serif'
+              fontFamily: fontVar('heading')
             }}
           >
             Refresh Page

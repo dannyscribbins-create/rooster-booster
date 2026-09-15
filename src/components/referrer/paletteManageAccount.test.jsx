@@ -383,10 +383,14 @@ describe('Palette-10 T4 — no R colour, no retired tone, and it renders', () =>
     expect(survivors, `R.* colour keys still read: ${survivors.join(', ')}`).toEqual([]);
   });
 
-  it('[RED] the non-colour R keys DO survive, which is the point of the split', () => {
+  it('[RED] the TYPOGRAPHY survives the colour sweep, which is the point of the split', () => {
     // ⚠ A SWEEP THAT REMOVED EVERYTHING WOULD PASS THE CASE ABOVE AND BE WRONG.
-    // R's fonts and radii are not covered by any token set and must stay.
-    expect(CODE, 'the body font left R').toContain('R.fontBody');
+    // ⚠ THIS SAID "R's fonts and radii are not covered by any token set and must
+    // stay." THE FONT HALF IS NO LONGER TRUE — Palette-13 published three font
+    // roles through the side channel and B.7 moved every site onto them. The
+    // radii half stands, and R keeps them.
+    expect(CODE, 'the file lost its typography').toMatch(/fontVar\('(heading|body|mono)'\)/);
+    expect(CODE, 'a font is still read off R').not.toMatch(/R\.font(Body|Sans|Mono)/);
   });
 
   it('[RED] the component still RENDERS — a sweep proves absence, not life', () => {

@@ -3,6 +3,7 @@ import { ThemeContext } from '../shared/ThemeProvider';
 import BrandMark from '../shared/BrandMark';
 import RepBottomNav, { REP_TABS } from './RepBottomNav';
 import RepThemeToggleRow from './RepThemeToggleRow';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── THE FIELD REP SHELL — C/DL-3c Phase 3-A ─────────────────────────────────
 //
@@ -107,7 +108,7 @@ export default function RepShell({ onLogout, switcher = null }) {
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: 'var(--rm-bg, #FFFFFF)',
-        fontFamily: 'Roboto, system-ui, sans-serif',
+        fontFamily: fontVar('body'),
         color: 'var(--rm-text, #1C2D4D)',
       }}
     >
@@ -232,7 +233,7 @@ function ScreenTitle({ title, subtitle }) {
       <h1
         style={{
           margin: '0 0 4px',
-          fontFamily: 'Montserrat, system-ui, sans-serif',
+          fontFamily: fontVar('heading'),
           fontSize: 30, fontWeight: 700, letterSpacing: '-0.01em',
           color: 'var(--rm-text, #1C2D4D)',
         }}

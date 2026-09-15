@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Star, SmileyMeh, CheckCircle, ShareNetwork } from '@phosphor-icons/react';
-import { R } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
 import { useBranding } from '../shared/ThemeProvider';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import { getReferrerToken } from '../../utils/authStorage';
 import { statusVar } from '../../constants/statusTheme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-11 B1 TOKENS ────────────────────────────────────────────────────
 // ⚠ THE GROUND HERE IS `surface`, NOT the page. A modal sits on a SCRIM, and the
@@ -223,7 +222,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
     gap: 6, padding: '16px 8px',
     borderRadius: 12, border: `1.5px solid ${PRIMARY}`,
     background: SURFACE, cursor: 'pointer',
-    fontFamily: R.fontBody,
+    fontFamily: fontVar('body'),
   };
 
   // Terminal screens: show × close button
@@ -252,10 +251,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
               <Star size={40} color={AMBER} weight="fill" />
             </div>
-            <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
+            <div style={{ fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
               How'd everything go?
             </div>
-            <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
+            <div style={{ fontFamily: fontVar('body'), fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
               Your feedback helps {branding.companyName} keep delivering great work.
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
@@ -284,10 +283,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 <div style={{ textAlign: 'center', marginBottom: 20 }}>
                   <Star size={40} color={AMBER} weight="fill" />
                 </div>
-                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
+                <div style={{ fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
                   Mind sharing your experience?
                 </div>
-                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
+                <div style={{ fontFamily: fontVar('body'), fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
                   Reviews help other homeowners make a confident decision — and they mean a lot to the team.
                 </div>
                 {/* ⚠ NO DESTINATION, NO BUTTON (BR-2 Phase 2, R2). This rendered
@@ -317,7 +316,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                     border: hasLeftForReview ? `1.5px solid ${elevationVar('border')}` : 'none',
                     borderRadius: 10,
                     padding: '14px', fontSize: 15, fontWeight: 600,
-                    fontFamily: R.fontBody,
+                    fontFamily: fontVar('body'),
                     cursor: hasLeftForReview ? 'not-allowed' : 'pointer',
                     marginBottom: 14,
                   }}
@@ -330,7 +329,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                     onClick={() => setSlide(3)}
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
-                      fontFamily: R.fontBody, fontSize: 14, color: TEXT,
+                      fontFamily: fontVar('body'), fontSize: 14, color: TEXT,
                       textDecoration: 'underline', padding: '4px 8px',
                     }}
                   >Skip for now</button>
@@ -342,10 +341,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 <div style={{ textAlign: 'center', marginBottom: 20 }}>
                   <SmileyMeh size={40} color={TEXT} weight="fill" />
                 </div>
-                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
+                <div style={{ fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
                   We're sorry to hear that.
                 </div>
-                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
+                <div style={{ fontFamily: fontVar('body'), fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
                   Your feedback helps us improve. What could we have done better?
                 </div>
                 <textarea
@@ -357,7 +356,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                   style={{
                     width: '100%', boxSizing: 'border-box',
                     borderRadius: 10, border: `1.5px solid ${elevationVar('border')}`,
-                    padding: '12px', fontFamily: R.fontBody, fontSize: 14,
+                    padding: '12px', fontFamily: fontVar('body'), fontSize: 14,
                     color: TEXT, resize: 'vertical', outline: 'none',
                     lineHeight: 1.5,
                   }}
@@ -373,7 +372,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                     background: PRIMARY, color: ON_PRIMARY,
                     border: 'none', borderRadius: 10,
                     padding: '14px', fontSize: 15, fontWeight: 600,
-                    fontFamily: R.fontBody,
+                    fontFamily: fontVar('body'),
                     cursor: (!text.trim() || submitting) ? 'not-allowed' : 'pointer',
                     opacity: (!text.trim() || submitting) ? 0.5 : 1,
                   }}
@@ -390,7 +389,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                     onClick={() => setSlide(2)}
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
-                      fontFamily: R.fontBody, fontSize: 14, color: TEXT,
+                      fontFamily: fontVar('body'), fontSize: 14, color: TEXT,
                       textDecoration: 'underline', padding: '4px 8px',
                     }}
                   >Skip</button>
@@ -407,10 +406,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 <div style={{ marginBottom: 20, marginTop: 8 }}>
                   <CheckCircle size={40} color={GREEN} weight="fill" />
                 </div>
-                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, marginBottom: 10 }}>
+                <div style={{ fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 20, color: TEXT, marginBottom: 10 }}>
                   Thank you! 🙏
                 </div>
-                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, lineHeight: 1.5, marginBottom: 28 }}>
+                <div style={{ fontFamily: fontVar('body'), fontSize: 14, color: TEXT, lineHeight: 1.5, marginBottom: 28 }}>
                   Taking the time to leave a review means the world to us — and helps other homeowners make a confident decision.
                 </div>
                 <button
@@ -422,7 +421,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                     background: PRIMARY, color: ON_PRIMARY,
                     border: 'none', borderRadius: 10,
                     padding: '14px 32px', fontSize: 15, fontWeight: 600,
-                    fontFamily: R.fontBody, cursor: 'pointer',
+                    fontFamily: fontVar('body'), cursor: 'pointer',
                   }}
                 >Continue</button>
               </div>
@@ -432,10 +431,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 <div style={{ marginBottom: 20, marginTop: 8 }}>
                   <CheckCircle size={40} color={GREEN} weight="fill" />
                 </div>
-                <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, marginBottom: 10 }}>
+                <div style={{ fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 20, color: TEXT, marginBottom: 10 }}>
                   We hear you.
                 </div>
-                <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, lineHeight: 1.5, marginBottom: 28 }}>
+                <div style={{ fontFamily: fontVar('body'), fontSize: 14, color: TEXT, lineHeight: 1.5, marginBottom: 28 }}>
                   Our team will review your feedback and follow up. In the meantime, your app access is fully yours — your documents, warranties, and client portal are all here whenever you need them. We hope we can soon earn a recommendation from you to friends and family.
                 </div>
                 <button
@@ -444,7 +443,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                     background: PRIMARY, color: ON_PRIMARY,
                     border: 'none', borderRadius: 10,
                     padding: '14px 32px', fontSize: 15, fontWeight: 600,
-                    fontFamily: R.fontBody, cursor: 'pointer',
+                    fontFamily: fontVar('body'), cursor: 'pointer',
                   }}
                 >Back to Dashboard</button>
               </div>
@@ -456,10 +455,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
             <div style={{ textAlign: 'center', marginBottom: 20 }}>
               <ShareNetwork size={40} color={PRIMARY} weight="fill" />
             </div>
-            <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
+            <div style={{ fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 20, color: TEXT, textAlign: 'center', marginBottom: 10 }}>
               Got anyone in mind?
             </div>
-            <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
+            <div style={{ fontFamily: fontVar('body'), fontSize: 14, color: TEXT, textAlign: 'center', marginBottom: 28, lineHeight: 1.5 }}>
               Share your personal link — they'll get to explore {branding.companyName} before committing to anything.
             </div>
             <button
@@ -476,7 +475,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 color: copied ? ON_SUCCESS : ON_PRIMARY,
                 border: 'none', borderRadius: 10,
                 padding: '14px', fontSize: 15, fontWeight: 600,
-                fontFamily: R.fontBody, cursor: 'pointer',
+                fontFamily: fontVar('body'), cursor: 'pointer',
                 marginBottom: 14,
                 transition: 'background 0.2s ease',
               }}
@@ -496,7 +495,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                 }}
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer',
-                  fontFamily: R.fontBody, fontSize: 14, color: TEXT,
+                  fontFamily: fontVar('body'), fontSize: 14, color: TEXT,
                   textDecoration: 'underline', padding: '4px 8px',
                 }}
               >Maybe later</button>
@@ -509,10 +508,10 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
               <div style={{ marginBottom: 20, marginTop: 8 }}>
                 <CheckCircle size={40} color={GREEN} weight="fill" />
               </div>
-              <div style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 20, color: TEXT, marginBottom: 10 }}>
+              <div style={{ fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 20, color: TEXT, marginBottom: 10 }}>
                 You're all set!
               </div>
-              <div style={{ fontFamily: R.fontBody, fontSize: 14, color: TEXT, lineHeight: 1.5, marginBottom: 28 }}>
+              <div style={{ fontFamily: fontVar('body'), fontSize: 14, color: TEXT, lineHeight: 1.5, marginBottom: 28 }}>
                 Thanks for being part of the {branding.companyName} community.
               </div>
               <button
@@ -524,7 +523,7 @@ export default function ExperiencePopup({ prompt, onDismiss }) {
                   background: PRIMARY, color: ON_PRIMARY,
                   border: 'none', borderRadius: 10,
                   padding: '14px 32px', fontSize: 15, fontWeight: 600,
-                  fontFamily: R.fontBody, cursor: 'pointer',
+                  fontFamily: fontVar('body'), cursor: 'pointer',
                 }}
               >Back to Dashboard</button>
             </div>

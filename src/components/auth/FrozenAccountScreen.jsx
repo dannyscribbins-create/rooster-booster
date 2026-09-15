@@ -1,5 +1,6 @@
 import BrandMark from '../shared/BrandMark';
 import useEntrance from '../../hooks/useEntrance';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ⚠ REPAINTED ONTO --rm-* IN PHASE 5, and this is a SCOPE ADDITION to §7.1's
 // two-file Group A list. The reason is that the Phase 5 visual check asks for
@@ -81,7 +82,7 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: 'var(--rm-bg, #FFFFFF)',
-      padding: '32px 24px', fontFamily: 'Roboto, system-ui, sans-serif',
+      padding: '32px 24px', fontFamily: fontVar('body'),
     }}>
       <div style={{
         width: '100%', maxWidth: 380,
@@ -103,14 +104,14 @@ export default function FrozenAccountScreen({ branding = null, onBack = null }) 
           <div style={{
             fontSize: 13, fontWeight: 600, letterSpacing: '0.04em',
             color: 'var(--rm-text, #1C2D4D)', opacity: 0.72,
-            fontFamily: 'Montserrat, system-ui, sans-serif', marginBottom: 20,
+            fontFamily: fontVar('heading'), marginBottom: 20,
           }}>
             {companyName}
           </div>
 
           <h2 style={{
             margin: '0 0 10px', fontSize: 22, fontWeight: 700,
-            fontFamily: 'Montserrat, system-ui, sans-serif',
+            fontFamily: fontVar('heading'),
             color: 'var(--rm-text, #1C2D4D)',
           }}>
             Your account is inactive

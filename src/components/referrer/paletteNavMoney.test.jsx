@@ -181,7 +181,7 @@ describe('Palette-5 T1 (reversed by Palette-9) — money resolves to the MONEY t
     expect(DASH_CODE, 'the inline projection left the text tone')
       .toContain('<span style={{ color: TEXT, fontWeight: 700 }}>${nextPayout.total}</span>');
     expect(DASH_CODE, 'the projection card left the text tone')
-      .toContain('fontFamily: R.fontMono, color: TEXT }}>${nextPayout.total}</p>');
+      .toContain("fontFamily: fontVar('mono'), color: TEXT }}>${nextPayout.total}</p>");
   });
 });
 

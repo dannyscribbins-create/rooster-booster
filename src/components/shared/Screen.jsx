@@ -1,4 +1,4 @@
-import { R } from '../../constants/theme';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-2 — THE FIRST MIGRATED SURFACE ─────────────────────────────────
 //
@@ -32,13 +32,17 @@ import { R } from '../../constants/theme';
 // fixed modals still resolve against the viewport — `overflowY: auto` would
 // create a scroll container and change what `100vh` children measure against.
 //
-// `fontFamily` still reads `R.fontBody`: fonts are not this phase.
+// ⚠ THIS READ "`fontFamily` still reads the body key: fonts are not this phase."
+// Fonts ARE this phase now — it declares `fontVar('body')`, so the whole screen
+// inherits the contractor's body face and every descendant that sets no family
+// of its own follows it. That inheritance is load-bearing: the 15 `font:
+// 'inherit'` sites in these trees resolve through here.
 export default function Screen({ children, style = {} }) {
   return (
     <div style={{
       maxWidth: 430, margin: "0 auto", minHeight: "100vh",
       background: 'var(--rm-recess, #ECF0F8)', color: 'var(--rm-text, #1C2D4D)', paddingBottom: 88,
-      fontFamily: R.fontBody, position: "relative", overflowX: "hidden", overflowY: "visible",
+      fontFamily: fontVar('body'), position: "relative", overflowX: "hidden", overflowY: "visible",
       ...style,
     }}>
       {children}

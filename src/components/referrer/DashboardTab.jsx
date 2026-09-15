@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { ShareNetwork, X, Lock, DownloadSimple } from '@phosphor-icons/react';
-import { R } from '../../constants/theme';
 import { getNextPayout } from '../../constants/boostSchedule';
 import RewardScheduleCard from './RewardScheduleCard';
 import { BACKEND_URL } from '../../config/contractor';
@@ -14,7 +13,7 @@ import ContractorAboutModal from './ContractorAboutModal';
 import BookingFormModal from './BookingFormModal';
 import { getReferrerToken } from '../../utils/authStorage';
 import { statusVar, STATUS_BANNER } from '../../constants/statusTheme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-4a PART B — THE RENDER TOKENS THIS TAB PAINTS WITH ──────────────
 //
@@ -209,12 +208,16 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                style={{ fontSize: 20, color: statusVar('warning'), flexShrink: 0 }} />
             <div>
               <div style={{
-                // ⚠ FONTS LEFT AS THE RAW LITERALS THEY WERE. Fonts are out of
-                // this phase's scope, and R.fontSans is NOT this string — it is
-                // "'Montserrat', 'Roboto', sans-serif", so "normalising" it here
-                // would quietly change the fallback stack under cover of a
-                // colour migration. Flagged for the font phase instead.
-                fontFamily: 'Montserrat, sans-serif',
+                // ⚠ THE FONT PHASE THIS WAS FLAGGED FOR IS THIS ONE, and the
+                // flag worked: the colour pass left a raw literal here rather
+                // than "normalising" it onto the display key, because that key
+                // carried a different fallback stack and the swap would have
+                // changed rendering under cover of a colour migration.
+                // ⚠ THE STACK DID CHANGE, DELIBERATELY AND ON THE RECORD (R-H).
+                // The display key's second term is gone — the mounted value is
+                // the family plus its OWN generic, per family, so a serif falls
+                // back to a serif rather than to a sans.
+                fontFamily: fontVar('heading'),
                 fontWeight: 700,
                 fontSize: 13,
                 color: statusVar('warningText'),
@@ -231,7 +234,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                   this phase is fixing one out of. The hierarchy here is carried
                   by weight and size, which cost no contrast. */}
               <div style={{
-                fontFamily: 'Roboto, sans-serif',
+                fontFamily: fontVar('body'),
                 fontSize: 12,
                 color: statusVar('warningText')
               }}>
@@ -300,7 +303,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
             </p>
             <h1 style={{
               margin: "4px 0 0", fontSize: 22, fontWeight: 800,
-              fontFamily: R.fontSans, color: ON_SECONDARY,
+              fontFamily: fontVar('heading'), color: ON_SECONDARY,
               letterSpacing: "-0.02em",
             }}>Your Dashboard</h1>
           </div>
@@ -322,7 +325,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
           }}>
             <p style={{
               margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
-              fontFamily: R.fontMono, letterSpacing: "0.12em", textTransform: "uppercase",
+              fontFamily: fontVar('mono'), letterSpacing: "0.12em", textTransform: "uppercase",
             }}>Available Balance</p>
 
             {loading ? (
@@ -355,10 +358,10 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                       a homeowner reads most carefully; `primaryText` is already floored at
                       4.5 against both grounds, so the allowance buys nothing and would cost
                       a justification nobody would find later. */}
-                  <span style={{ fontSize: 32, color: MONEY, fontFamily: R.fontMono, fontWeight: 700, lineHeight: 1 }}>$</span>
+                  <span style={{ fontSize: 32, color: MONEY, fontFamily: fontVar('mono'), fontWeight: 700, lineHeight: 1 }}>$</span>
                   <span style={{
                     fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em",
-                    fontFamily: R.fontSans, color: MONEY, lineHeight: 1,
+                    fontFamily: fontVar('heading'), color: MONEY, lineHeight: 1,
                   }}>
                     {balance.toLocaleString()}
                   </span>
@@ -396,7 +399,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               background: `linear-gradient(135deg, ${PRIMARY} 0%, ${PRIMARY_DARK} 100%)`,
               border: "none", borderRadius: 10, padding: "13px 24px",
               color: ON_PRIMARY, fontSize: 15, fontWeight: 700,
-              fontFamily: R.fontSans, cursor: "pointer",
+              fontFamily: fontVar('heading'), cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               // ⚠ THE BRAND-TINTED GLOW IS LOST HERE, AND IT IS A REAL LOSS.
               // This was the retired Accent red at 30% alpha, reached as decimal
@@ -427,7 +430,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
               gap: 8, background: PRIMARY, border: 'none', borderRadius: 12,
               padding: 16, color: ON_PRIMARY, fontSize: 16, fontWeight: 700,
-              fontFamily: R.fontSans, cursor: 'pointer',
+              fontFamily: fontVar('heading'), cursor: 'pointer',
             }}
           >
             <ShareNetwork size={20} weight="fill" />
@@ -445,7 +448,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
             <i className="ph ph-warning" style={{ fontSize: 18, color: statusVar('warning'), flexShrink: 0 }} />
-            <p style={{ margin: 0, fontSize: 13, color: statusVar('warningText'), fontFamily: R.fontBody, lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: 13, color: statusVar('warningText'), fontFamily: fontVar('body'), lineHeight: 1.5 }}>
               Pipeline data is temporarily unavailable. Please wait a few minutes and try again.
             </p>
           </div>
@@ -461,7 +464,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
             <i className="ph ph-clock-countdown" style={{ fontSize: 18, color: statusVar('warning'), flexShrink: 0 }} />
-            <p style={{ margin: 0, fontSize: 13, color: statusVar('warningText'), fontFamily: R.fontBody, lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: 13, color: statusVar('warningText'), fontFamily: fontVar('body'), lineHeight: 1.5 }}>
               {'Showing cached pipeline data' + (pipelineStaleSince ? ` (last updated ${(() => { const diff = Date.now() - new Date(pipelineStaleSince).getTime(); const mins = Math.floor(diff / 60000); const hrs = Math.floor(mins / 60); return hrs > 0 ? `${hrs}h ago` : mins > 0 ? `${mins}m ago` : 'just now'; })()})` : '') + '. Live sync will resume automatically.'}
             </p>
           </div>
@@ -477,7 +480,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
             display: 'flex', alignItems: 'center', gap: 10,
           }}>
             <i className="ph ph-warning-circle" style={{ fontSize: 18, color: statusVar('danger'), flexShrink: 0 }} />
-            <p style={{ margin: 0, fontSize: 13, color: statusVar('dangerText'), fontFamily: R.fontBody, lineHeight: 1.5 }}>
+            <p style={{ margin: 0, fontSize: 13, color: statusVar('dangerText'), fontFamily: fontVar('body'), lineHeight: 1.5 }}>
               Pipeline data is currently unavailable. Please try again later.
             </p>
           </div>
@@ -493,7 +496,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               background: SECONDARY, borderRadius: 16, padding: '18px 20px',
               boxShadow: elevationVar('shadowLg'),
             }}>
-              <p style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: ON_SECONDARY, fontFamily: R.fontSans }}>
+              <p style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: ON_SECONDARY, fontFamily: fontVar('heading') }}>
                 Book Your Free Inspection
               </p>
               {/* ⚠ R-A MEASURED THIS PAIR BEFORE CHOOSING. It was the retired
@@ -506,7 +509,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                   ⚠ The alpha moves 0.75 -> 0.72 to land on the ONE muted value
                   used across the nine files that already have this idiom (R-F).
                   Two near-identical muted alphas is how a tenth pattern starts. */}
-              <p style={{ margin: '0 0 14px', fontSize: 13, color: ON_SECONDARY, opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+              <p style={{ margin: '0 0 14px', fontSize: 13, color: ON_SECONDARY, opacity: MUTED, fontFamily: fontVar('body'), lineHeight: 1.5 }}>
                 Schedule your free roof inspection with {branding.companyName || 'us'} today.
               </p>
               <button
@@ -514,7 +517,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                 style={{
                   background: PRIMARY, border: 'none', borderRadius: 10, padding: '11px 20px',
                   color: ON_PRIMARY, fontSize: 14, fontWeight: 700,
-                  fontFamily: R.fontSans, cursor: 'pointer',
+                  fontFamily: fontVar('heading'), cursor: 'pointer',
                 }}
               >
                 Book Now
@@ -536,20 +539,20 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               <div>
                 <p style={{
                   margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
-                  fontFamily: R.fontMono, letterSpacing: "0.1em", textTransform: "uppercase",
+                  fontFamily: fontVar('mono'), letterSpacing: "0.1em", textTransform: "uppercase",
                 }}>Boost Progress</p>
                 <p style={{
                   margin: "4px 0 0", fontSize: 16, fontWeight: 800,
-                  fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)',
+                  fontFamily: fontVar('heading'), color: 'var(--rm-text, #1C2D4D)',
                 }}>
                   {soldCount} <span style={{ color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontWeight: 400, fontSize: 15 }}>of 7 referrals</span>
                 </p>
               </div>
               <div style={{ textAlign: "right" }}>
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontMono, textTransform: "uppercase" }}>Next Payout</p>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('mono'), textTransform: "uppercase" }}>Next Payout</p>
                 {/* ⚠ HELD ON `MONEY` — a PROJECTION, same as the "Next:" figure above.
                     Still never --rm-primary: that is the 3:1 FILL tone and this is text. */}
-                <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800, fontFamily: R.fontMono, color: TEXT }}>${nextPayout.total}</p>
+                <p style={{ margin: "4px 0 0", fontSize: 22, fontWeight: 800, fontFamily: fontVar('mono'), color: TEXT }}>${nextPayout.total}</p>
               </div>
             </div>
 
@@ -631,7 +634,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               onMouseEnter={e => e.currentTarget.style.boxShadow = elevationVar('shadowMd')}
               onMouseLeave={e => e.currentTarget.style.boxShadow = elevationVar('shadow')}
             >
-              <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: R.fontMono, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('mono'), letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                 About {branding.companyName || 'Your Contractor'}
               </p>
               {aboutData.google_rating != null && (
@@ -643,7 +646,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                       give a non-status thing a status colour, and to --rm-primary
                       would make a third-party rating look like our brand. */}
                   <i className="ph ph-star-fill" style={{ color: '#F5A623', fontSize: 14 }} />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--rm-text, #1C2D4D)', fontFamily: R.fontMono }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--rm-text, #1C2D4D)', fontFamily: fontVar('mono') }}>
                     {aboutData.google_rating}
                   </span>
                   <span style={{ fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED }}>star rating on Google</span>
@@ -651,7 +654,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontSize: 13, color: 'var(--rm-text, #1C2D4D)', fontWeight: 600, fontFamily: R.fontBody }}>Learn more</span>
+                  <span style={{ fontSize: 13, color: 'var(--rm-text, #1C2D4D)', fontWeight: 600, fontFamily: fontVar('body') }}>Learn more</span>
                   <i className="ph ph-arrow-right" style={{ fontSize: 13, color: 'var(--rm-text, #1C2D4D)' }} />
                 </div>
                 {!bookingSubmitted && (
@@ -661,7 +664,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                       background: PRIMARY, border: 'none', borderRadius: 8,
                       padding: '6px 14px', color: ON_PRIMARY,
                       fontSize: 12, fontWeight: 700,
-                      fontFamily: R.fontSans, cursor: 'pointer',
+                      fontFamily: fontVar('heading'), cursor: 'pointer',
                     }}
                   >
                     Book Now
@@ -679,11 +682,11 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <p style={{
               margin: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
-              fontFamily: R.fontMono, letterSpacing: "0.1em", textTransform: "uppercase",
+              fontFamily: fontVar('mono'), letterSpacing: "0.1em", textTransform: "uppercase",
             }}>Recent Referrals</p>
             <button onClick={onViewAllReferrals} style={{
               background: "none", border: "none", cursor: "pointer",
-              color: 'var(--rm-text, #1C2D4D)', fontSize: 12, fontFamily: R.fontMono, fontWeight: 600,
+              color: 'var(--rm-text, #1C2D4D)', fontSize: 12, fontFamily: fontVar('mono'), fontWeight: 600,
               display: "flex", alignItems: "center", gap: 4,
             }}>
               View all <i className="ph ph-arrow-right" style={{ fontSize: 15 }} />
@@ -735,7 +738,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                         width: 34, height: 34, borderRadius: "50%",
                         background: PRIMARY, color: ON_PRIMARY,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 12, fontWeight: 700, fontFamily: R.fontMono, flexShrink: 0,
+                        fontSize: 12, fontWeight: 700, fontFamily: fontVar('mono'), flexShrink: 0,
                       }}>
                         {ref.name.split(" ").map(n => n[0]).join("")}
                       </div>
@@ -823,7 +826,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                   // FULL onSecondary, not the muted idiom: this is the card's
                   // whole message, not a sub-label beneath one.
                   color: ON_SECONDARY,
-                  fontFamily: R.fontBody,
+                  fontFamily: fontVar('body'),
                   lineHeight: 1.4,
                 }}>
                   {branding.reviewMessage}
@@ -838,7 +841,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                     color: ON_PRIMARY,
                     fontSize: 15,
                     fontWeight: 700,
-                    fontFamily: R.fontBody,
+                    fontFamily: fontVar('body'),
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
@@ -906,7 +909,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
               marginBottom: 4,
             }}>
               <span style={{
-                fontFamily: R.fontSans, fontSize: 18, fontWeight: 700, color: 'var(--rm-text, #1C2D4D)',
+                fontFamily: fontVar('heading'), fontSize: 18, fontWeight: 700, color: 'var(--rm-text, #1C2D4D)',
               }}>
                 Your Referral QR Code
               </span>
@@ -950,14 +953,14 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                 {/* ⚠ NOT --rm-primary-text. This is red because it is an ERROR,
                     not because it is the brand — the one red in this file that
                     belongs to the status system rather than the render set. */}
-                <p style={{ fontFamily: R.fontBody, fontSize: 14, color: statusVar('dangerText'), margin: '0 0 12px' }}>
+                <p style={{ fontFamily: fontVar('body'), fontSize: 14, color: statusVar('dangerText'), margin: '0 0 12px' }}>
                   Could not load your QR code. Please try again.
                 </p>
                 <button
                   onClick={() => { setQrError(false); setShowQRModal(false); setTimeout(() => setShowQRModal(true), 50); }}
                   style={{
                     background: SECONDARY, color: ON_SECONDARY, border: 'none', borderRadius: 8,
-                    padding: '10px 20px', fontFamily: R.fontSans, fontWeight: 600,
+                    padding: '10px 20px', fontFamily: fontVar('heading'), fontWeight: 600,
                     fontSize: 14, cursor: 'pointer',
                   }}
                 >
@@ -975,7 +978,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                   style={{ width: 180, height: 180, display: 'block' }}
                 />
                 <p style={{
-                  fontFamily: R.fontBody, fontSize: 12,
+                  fontFamily: fontVar('body'), fontSize: 12,
                   color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
                   margin: 0, textAlign: 'center',
                 }}>
@@ -989,7 +992,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                       gap: 6, background: PRIMARY, opacity: 0.5, color: ON_PRIMARY,
                       border: 'none', borderRadius: 10, padding: '12px 0',
-                      fontFamily: R.fontSans, fontWeight: 600, fontSize: 14, cursor: 'not-allowed',
+                      fontFamily: fontVar('heading'), fontWeight: 600, fontSize: 14, cursor: 'not-allowed',
                     }}
                   >
                     <Lock size={16} weight="bold" />
@@ -1001,7 +1004,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                       gap: 6, background: SECONDARY, color: ON_SECONDARY,
                       border: 'none', borderRadius: 10, padding: '12px 0',
-                      fontFamily: R.fontSans, fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                      fontFamily: fontVar('heading'), fontWeight: 600, fontSize: 14, cursor: 'pointer',
                     }}
                   >
                     <DownloadSimple size={16} weight="bold" />
@@ -1010,7 +1013,7 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                 </div>
                 {shareLinkTapped && (
                   <p style={{
-                    fontFamily: R.fontBody, fontSize: 13,
+                    fontFamily: fontVar('body'), fontSize: 13,
                     color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
                     margin: 0, textAlign: 'center',
                   }}>

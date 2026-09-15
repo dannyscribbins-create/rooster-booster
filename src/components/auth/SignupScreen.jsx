@@ -8,6 +8,7 @@ import { BACKEND_URL } from '../../config/contractor';
 // PNG wrapped in an <svg>). Same mark, icon + wordmark, 22KB.
 import useEntrance from '../../hooks/useEntrance';
 import BrandMark from '../shared/BrandMark';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── Signup Screen ─────────────────────────────────────────────────────────────
 //
@@ -110,7 +111,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
     padding: '14px 16px 14px 44px',
     color: R.textPrimary,
     fontSize: 15,
-    fontFamily: R.fontBody,
+    fontFamily: fontVar('body'),
     outline: 'none',
     boxSizing: 'border-box',
     transition: 'border-color 0.2s',
@@ -132,7 +133,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
     fontWeight: 500,
     color: R.textSecondary,
     marginBottom: 6,
-    fontFamily: R.fontBody,
+    fontFamily: fontVar('body'),
   };
 
   const fieldErrorStyle = {
@@ -162,7 +163,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
       justifyContent: 'center',
       background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
       padding: '32px 24px',
-      fontFamily: R.fontBody,
+      fontFamily: fontVar('body'),
     }}>
       {/* ── 5.3: THE RETIRED TOP MARK IS GONE ────────────────────────────
           This carried the retired Rooster Booster wordmark ABOVE the card, while
@@ -196,7 +197,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
           margin: '0 0 6px',
           fontSize: 22,
           fontWeight: 700,
-          fontFamily: R.fontSans,
+          fontFamily: fontVar('heading'),
           color: R.navy,
         }}>
           Create your account
@@ -400,7 +401,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
             color: '#fff',
             fontSize: 15,
             fontWeight: 700,
-            fontFamily: R.fontSans,
+            fontFamily: fontVar('heading'),
             cursor: loading ? 'default' : 'pointer',
             display: 'flex',
             alignItems: 'center',
@@ -443,7 +444,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
         marginTop: 24,
         color: 'rgba(255,255,255,0.4)',
         fontSize: 12,
-        fontFamily: R.fontMono,
+        fontFamily: fontVar('mono'),
         letterSpacing: '0.06em',
         opacity: cardVisible ? 1 : 0,
         transition: 'opacity 0.5s ease 0.3s',

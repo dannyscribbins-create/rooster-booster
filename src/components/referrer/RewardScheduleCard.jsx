@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { R } from '../../constants/theme';
 import { statusVar, STATUS_BANNER, STATUS_TINT } from '../../constants/statusTheme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-6 — THE RENDER TOKENS THIS TAB PAINTS WITH ──────────────────────
 // ⚠ EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS FOR THE PLATFORM
@@ -47,8 +46,8 @@ function EscalatingTable({ steps }) {
         display: 'flex', padding: '8px 14px',
         background: RECESS, borderBottom: `1px solid ${elevationVar('border')}`,
       }}>
-        <span style={{ flex: 1.4, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Referral #</span>
-        <span style={{ flex: 1, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Your Bonus</span>
+        <span style={{ flex: 1.4, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: fontVar('mono'), textTransform: 'uppercase', letterSpacing: '0.08em' }}>Referral #</span>
+        <span style={{ flex: 1, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: fontVar('mono'), textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Your Bonus</span>
       </div>
       {steps.map((step, i) => (
         <div key={i} style={{
@@ -56,7 +55,7 @@ function EscalatingTable({ steps }) {
           borderBottom: i < lastIndex ? `1px solid ${elevationVar('border')}` : 'none',
           background: 'transparent',
         }}>
-          <span style={{ flex: 1.4, fontSize: 14, color: TEXT, fontFamily: R.fontMono, fontWeight: 600 }}>
+          <span style={{ flex: 1.4, fontSize: 14, color: TEXT, fontFamily: fontVar('mono'), fontWeight: 600 }}>
             {i === lastIndex
               ? `${ordinal(step.referral_number)} referral & beyond`
               : `${ordinal(step.referral_number)} referral`}
@@ -64,7 +63,7 @@ function EscalatingTable({ steps }) {
           {/* ⚠ TEXT TONE, NOT GREEN. A schedule row is what a future referral WOULD
               pay — the ruling's own example of a projection. Green is reserved for
               money in the account so that it keeps meaning that. */}
-          <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: TEXT, fontFamily: R.fontMono, textAlign: 'right' }}>
+          <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: TEXT, fontFamily: fontVar('mono'), textAlign: 'right' }}>
             {formatCurrency(step.payout_amount)}
           </span>
         </div>
@@ -82,15 +81,15 @@ function TieredTable({ brackets }) {
         display: 'flex', padding: '8px 14px',
         background: RECESS, borderBottom: `1px solid ${elevationVar('border')}`,
       }}>
-        <span style={{ flex: 1.6, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Invoice Total</span>
-        <span style={{ flex: 1, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontMono, textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Your Bonus</span>
+        <span style={{ flex: 1.6, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: fontVar('mono'), textTransform: 'uppercase', letterSpacing: '0.08em' }}>Invoice Total</span>
+        <span style={{ flex: 1, fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: fontVar('mono'), textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'right' }}>Your Bonus</span>
       </div>
       {brackets.map((b, i) => (
         <div key={i} style={{
           display: 'flex', alignItems: 'center', padding: '11px 14px',
           borderBottom: i < lastIndex ? `1px solid ${elevationVar('border')}` : 'none',
         }}>
-          <span style={{ flex: 1.6, fontSize: 14, color: TEXT, fontFamily: R.fontMono, fontWeight: 500 }}>
+          <span style={{ flex: 1.6, fontSize: 14, color: TEXT, fontFamily: fontVar('mono'), fontWeight: 500 }}>
             {b.max == null
               ? `${formatCurrency(b.min)} & above`
               : `${formatCurrency(b.min)} – ${formatCurrency(b.max)}`}
@@ -98,7 +97,7 @@ function TieredTable({ brackets }) {
           {/* ⚠ TEXT TONE, NOT GREEN. A schedule row is what a future referral WOULD
               pay — the ruling's own example of a projection. Green is reserved for
               money in the account so that it keeps meaning that. */}
-          <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: TEXT, fontFamily: R.fontMono, textAlign: 'right' }}>
+          <span style={{ flex: 1, fontSize: 15, fontWeight: 800, color: TEXT, fontFamily: fontVar('mono'), textAlign: 'right' }}>
             {formatCurrency(b.payout_amount)}
           </span>
         </div>
@@ -115,7 +114,7 @@ function QualifyingLine({ schedule }) {
     : '';
   if (!jobText) return null;
   return (
-    <p style={{ margin: '10px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+    <p style={{ margin: '10px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body'), lineHeight: 1.5 }}>
       Qualifying jobs: {jobText}.{minText}
     </p>
   );
@@ -124,14 +123,14 @@ function QualifyingLine({ schedule }) {
 function ResetLine({ resetPeriod }) {
   if (resetPeriod === 'annual') {
     return (
-      <p style={{ margin: '6px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
+      <p style={{ margin: '6px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>
         Your referral count resets each year.
       </p>
     );
   }
   if (resetPeriod === 'lifetime') {
     return (
-      <p style={{ margin: '6px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
+      <p style={{ margin: '6px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>
         Your referral count never resets.
       </p>
     );
@@ -162,7 +161,7 @@ function SchedulePane({ schedule }) {
   if (payout_model === 'flat') {
     return (
       <>
-        <p style={{ margin: '0 0 10px', fontSize: 15, color: TEXT, fontFamily: R.fontBody }}>
+        <p style={{ margin: '0 0 10px', fontSize: 15, color: TEXT, fontFamily: fontVar('body') }}>
           Earn {formatCurrency(schedule.flat_amount)} for every qualifying referral.
         </p>
         <QualifyingLine schedule={schedule} />
@@ -178,7 +177,7 @@ function SchedulePane({ schedule }) {
       : '';
     return (
       <>
-        <p style={{ margin: '0 0 10px', fontSize: 15, color: TEXT, fontFamily: R.fontBody }}>
+        <p style={{ margin: '0 0 10px', fontSize: 15, color: TEXT, fontFamily: fontVar('body') }}>
           Earn {rate} of the final invoice total{capText}.
         </p>
         <QualifyingLine schedule={schedule} />
@@ -215,7 +214,7 @@ export default function RewardScheduleCard({ sessionToken }) {
     <div>
       <p style={{
         margin: '0 0 10px', fontSize: 12, color: TEXT, opacity: MUTED,
-        fontFamily: R.fontMono, letterSpacing: '0.1em', textTransform: 'uppercase',
+        fontFamily: fontVar('mono'), letterSpacing: '0.1em', textTransform: 'uppercase',
       }}>Reward Schedule</p>
 
       <div style={{
@@ -232,7 +231,7 @@ export default function RewardScheduleCard({ sessionToken }) {
         )}
 
         {!loading && (!schedules || schedules.length === 0) && (
-          <p style={{ margin: 0, fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, textAlign: 'center', padding: '12px 0' }}>
+          <p style={{ margin: 0, fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: fontVar('body'), textAlign: 'center', padding: '12px 0' }}>
             No reward schedules available.
           </p>
         )}
@@ -253,7 +252,7 @@ export default function RewardScheduleCard({ sessionToken }) {
                       background: 'none', border: 'none', cursor: 'pointer',
                       padding: '8px 14px 10px',
                       fontSize: 13, fontWeight: activeTab === i ? 700 : 500,
-                      fontFamily: R.fontSans,
+                      fontFamily: fontVar('heading'),
                       color: TEXT,
                       opacity: activeTab === i ? 1 : MUTED,
                       borderBottom: activeTab === i ? `2px solid ${PRIMARY}` : '2px solid transparent',

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { R } from '../../constants/theme';
 import { statusVar, STATUS_BANNER, STATUS_TINT } from '../../constants/statusTheme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // â”€â”€â”€ PALETTE-6 â€” THE RENDER TOKENS THIS TAB PAINTS WITH â”€â”€â”€
 // âš  EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS FOR THE PLATFORM
@@ -176,10 +175,10 @@ export default function RankingsTab({ token }) {
               referrer app" — and nothing had ever consumed it. */}
         {/* ⚠ FULL onSecondary — this sits on a GRADIENT, so the floor is the DARKER
             STOP, where the muted idiom measures 3.54-4.14:1 in dark mode. */}
-        <p style={{ margin: "0 0 6px", fontSize: 12, color: ON_SECONDARY, fontFamily: R.fontMono, letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
+        <p style={{ margin: "0 0 6px", fontSize: 12, color: ON_SECONDARY, fontFamily: fontVar('mono'), letterSpacing: "0.14em", textTransform: "uppercase" }}>{programName}</p>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <i className="ph ph-trophy-fill" style={{ fontSize: 24, color: ON_SECONDARY }} />
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: R.fontSans, color: ON_SECONDARY, letterSpacing: "-0.02em" }}>Rankings</h1>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, fontFamily: fontVar('heading'), color: ON_SECONDARY, letterSpacing: "-0.02em" }}>Rankings</h1>
       </div>
       <p style={{ margin: "4px 0 0", fontSize: 15, color: ON_SECONDARY }}>Top referrers this period</p>
     </div>
@@ -222,7 +221,7 @@ export default function RankingsTab({ token }) {
                   borderRadius: 999, padding: "8px 18px",
                   color: period === p.value ? ON_SECONDARY : TEXT,
                   fontSize: 13, fontWeight: period === p.value ? 700 : 500,
-                  cursor: "pointer", fontFamily: R.fontBody,
+                  cursor: "pointer", fontFamily: fontVar('body'),
                   whiteSpace: "nowrap",
                   transition: "background 0.2s, border-color 0.2s, color 0.2s",
                 }}
@@ -269,7 +268,7 @@ export default function RankingsTab({ token }) {
                 display: "flex", alignItems: "center", gap: 8,
               }}>
                 <i className="ph ph-gift" style={{ fontSize: 18, color: TEXT }} />
-                <span style={{ fontSize: 15, fontWeight: 700, fontFamily: R.fontSans, color: TEXT }}>
+                <span style={{ fontSize: 15, fontWeight: 700, fontFamily: fontVar('heading'), color: TEXT }}>
                   Prizes This Period
                 </span>
               </div>
@@ -297,7 +296,7 @@ export default function RankingsTab({ token }) {
                         }}>
                           <span style={{ fontSize: 20 }}>{medal.emoji}</span>
                           <div style={{ flex: 1 }}>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: TEXT, fontFamily: R.fontBody }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: TEXT, fontFamily: fontVar('body') }}>
                               {rank === 1 ? "1st" : rank === 2 ? "2nd" : "3rd"} Place
                             </span>
                             {prize?.description && (
@@ -305,7 +304,7 @@ export default function RankingsTab({ token }) {
                             )}
                           </div>
                           {hasAmount && (
-                            <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, fontFamily: R.fontMono }}>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: TEXT, fontFamily: fontVar('mono') }}>
                               ${parseFloat(prize.amount).toLocaleString()}
                             </span>
                           )}
@@ -338,9 +337,9 @@ export default function RankingsTab({ token }) {
                       <span style={{ fontSize: 22, marginBottom: -8, lineHeight: 1 }}>🥈</span>
                       <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={52} />
                       <div style={{ textAlign: "center", marginTop: 8 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, fontFamily: R.fontBody }}>{name}</div>
-                        <div style={{ fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, marginTop: 2 }}>{e.converted_count} jobs</div>
-                        <div style={{ fontSize: 11, color: TEXT, fontFamily: R.fontMono, marginTop: 1 }}>${e.period_earnings.toLocaleString()}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, fontFamily: fontVar('body') }}>{name}</div>
+                        <div style={{ fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: fontVar('body'), marginTop: 2 }}>{e.converted_count} jobs</div>
+                        <div style={{ fontSize: 11, color: TEXT, fontFamily: fontVar('mono'), marginTop: 1 }}>${e.period_earnings.toLocaleString()}</div>
                       </div>
                     </div>
                   );
@@ -355,9 +354,9 @@ export default function RankingsTab({ token }) {
                       <span style={{ fontSize: 26, marginBottom: -10, lineHeight: 1 }}>🥇</span>
                       <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={64} />
                       <div style={{ textAlign: "center", marginTop: 10 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: R.fontBody }}>{name}</div>
-                        <div style={{ fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, marginTop: 2 }}>{e.converted_count} jobs</div>
-                        <div style={{ fontSize: 12, color: TEXT, fontFamily: R.fontMono, marginTop: 1 }}>${e.period_earnings.toLocaleString()}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: fontVar('body') }}>{name}</div>
+                        <div style={{ fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body'), marginTop: 2 }}>{e.converted_count} jobs</div>
+                        <div style={{ fontSize: 12, color: TEXT, fontFamily: fontVar('mono'), marginTop: 1 }}>${e.period_earnings.toLocaleString()}</div>
                       </div>
                     </div>
                   );
@@ -372,9 +371,9 @@ export default function RankingsTab({ token }) {
                       <span style={{ fontSize: 22, marginBottom: -8, lineHeight: 1 }}>🥉</span>
                       <AvatarCircle userName={name} profilePhoto={e.is_warmup ? null : (e.profile_photo || null)} size={52} />
                       <div style={{ textAlign: "center", marginTop: 8 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, fontFamily: R.fontBody }}>{name}</div>
-                        <div style={{ fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, marginTop: 2 }}>{e.converted_count} jobs</div>
-                        <div style={{ fontSize: 11, color: TEXT, fontFamily: R.fontMono, marginTop: 1 }}>${e.period_earnings.toLocaleString()}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, fontFamily: fontVar('body') }}>{name}</div>
+                        <div style={{ fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: fontVar('body'), marginTop: 2 }}>{e.converted_count} jobs</div>
+                        <div style={{ fontSize: 11, color: TEXT, fontFamily: fontVar('mono'), marginTop: 1 }}>${e.period_earnings.toLocaleString()}</div>
                       </div>
                     </div>
                   );
@@ -418,7 +417,7 @@ export default function RankingsTab({ token }) {
                   style={{
                     background: SECONDARY, color: ON_SECONDARY, border: "none",
                     borderRadius: 10, padding: "10px 22px",
-                    fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: R.fontBody,
+                    fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: fontVar('body'),
                   }}
                 >
                   Try Again
@@ -450,7 +449,7 @@ export default function RankingsTab({ token }) {
                   borderBottom: `1px solid ${elevationVar('border')}`,
                   borderLeft: "3px solid transparent",
                 }}>
-                  <span style={{ fontSize: 16, fontWeight: 900, fontFamily: R.fontMono, color: TEXT, minWidth: 24, textAlign: "center" }}>
+                  <span style={{ fontSize: 16, fontWeight: 900, fontFamily: fontVar('mono'), color: TEXT, minWidth: 24, textAlign: "center" }}>
                     {row.rank}
                   </span>
                   <AvatarCircle
@@ -483,8 +482,8 @@ export default function RankingsTab({ token }) {
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                    <span style={{ fontSize: 18, fontWeight: 800, fontFamily: R.fontMono, color: TEXT }}>{row.converted_count}</span>
-                    <span style={{ fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>jobs</span>
+                    <span style={{ fontSize: 18, fontWeight: 800, fontFamily: fontVar('mono'), color: TEXT }}>{row.converted_count}</span>
+                    <span style={{ fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>jobs</span>
                   </div>
                 </div>
               );
@@ -499,7 +498,7 @@ export default function RankingsTab({ token }) {
                   borderTop: `1px solid ${elevationVar('border')}`,
                 }}>
                   <div style={{ flex: 1, height: 1, background: elevationVar('border') }} />
-                  <span style={{ fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: R.fontMono, letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 11, color: TEXT, opacity: MUTED, fontFamily: fontVar('mono'), letterSpacing: "0.08em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
                     Your Ranking
                   </span>
                   <div style={{ flex: 1, height: 1, background: elevationVar('border') }} />
@@ -510,7 +509,7 @@ export default function RankingsTab({ token }) {
                   borderLeft: `3px solid ${PRIMARY}`,
                   background: RECESS,
                 }}>
-                  <span style={{ fontSize: 16, fontWeight: 900, fontFamily: R.fontMono, color: PRIMARY, minWidth: 24, textAlign: "center" }}>
+                  <span style={{ fontSize: 16, fontWeight: 900, fontFamily: fontVar('mono'), color: PRIMARY, minWidth: 24, textAlign: "center" }}>
                     {data.userRank ? data.userRank.rank : '—'}
                   </span>
                   <AvatarCircle
@@ -526,12 +525,12 @@ export default function RankingsTab({ token }) {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                      <span style={{ fontSize: 18, fontWeight: 800, fontFamily: R.fontMono, color: PRIMARY }}>
+                      <span style={{ fontSize: 18, fontWeight: 800, fontFamily: fontVar('mono'), color: PRIMARY }}>
                         {data.userRank?.converted_count ?? 0}
                       </span>
-                      <span style={{ fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>jobs</span>
+                      <span style={{ fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>jobs</span>
                     </div>
-                    <span style={{ fontSize: 12, color: TEXT, fontFamily: R.fontMono }}>
+                    <span style={{ fontSize: 12, color: TEXT, fontFamily: fontVar('mono') }}>
                       ${(data.userRank?.period_earnings ?? 0).toLocaleString()}
                     </span>
                   </div>

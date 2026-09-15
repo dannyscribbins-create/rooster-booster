@@ -1,4 +1,3 @@
-import { R } from '../../constants/theme';
 
 // ─── PALETTE-11 B2 TOKENS ─── ⚠ THIS IS A DARK PANEL ─────────────────────────
 // ⚠ THE PANEL FILL IS `--rm-secondary` — the contractor's PRIMARY BRAND COLOUR,
@@ -26,6 +25,7 @@ const ON_PRIMARY   = 'var(--rm-on-primary, #000000)';
 const MUTED = 0.72;
 
 import { useBranding } from '../shared/ThemeProvider';
+import { fontVar } from '../../constants/elevationTheme';
 import {
   Clock, MapPin, Star,
   FacebookLogo, InstagramLogo, GoogleLogo, House, Globe,
@@ -120,7 +120,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
                 {contractorName}
               </p>
             )}
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: ON_SECONDARY, fontFamily: R.fontSans, letterSpacing: '-0.01em' }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: ON_SECONDARY, fontFamily: fontVar('heading'), letterSpacing: '-0.01em' }}>
               Meet {contractorName}
             </h2>
             <div style={{ width: 40, height: 3, background: PRIMARY, borderRadius: 99, margin: '12px auto 0' }} />
@@ -133,7 +133,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
               paddingLeft: 16,
               marginBottom: 24,
             }}>
-              <p style={{ margin: 0, fontSize: 15, color: 'rgba(255,255,255,0.85)', fontFamily: R.fontBody, lineHeight: 1.65 }}>
+              <p style={{ margin: 0, fontSize: 15, color: 'rgba(255,255,255,0.85)', fontFamily: fontVar('body'), lineHeight: 1.65 }}>
                 {aboutData.bio}
               </p>
             </div>
@@ -145,7 +145,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
               {aboutData.years_in_business && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <Clock size={18} weight="fill" color={'rgba(255,255,255,0.85)'} />
-                  <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', fontFamily: R.fontBody }}>
+                  <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', fontFamily: fontVar('body') }}>
                     {aboutData.years_in_business}
                   </span>
                 </div>
@@ -153,7 +153,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
               {aboutData.service_area && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <MapPin size={18} weight="fill" color={'rgba(255,255,255,0.85)'} />
-                  <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', fontFamily: R.fontBody }}>
+                  <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.8)', fontFamily: fontVar('body') }}>
                     {aboutData.service_area}
                   </span>
                 </div>
@@ -210,13 +210,13 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
             <div style={{ marginBottom: 24, textAlign: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                 <Star size={22} weight="fill" color="#F5A623" />
-                <span style={{ fontSize: 24, fontWeight: 800, color: ON_SECONDARY, fontFamily: R.fontMono, lineHeight: 1 }}>
+                <span style={{ fontSize: 24, fontWeight: 800, color: ON_SECONDARY, fontFamily: fontVar('mono'), lineHeight: 1 }}>
                   {aboutData.google_rating}
                 </span>
-                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', fontFamily: R.fontMono }}>/5</span>
+                <span style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', fontFamily: fontVar('mono') }}>/5</span>
               </div>
               {aboutData.google_review_count != null && (
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.45)', fontFamily: R.fontBody }}>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.45)', fontFamily: fontVar('body') }}>
                   Based on {Number(aboutData.google_review_count).toLocaleString()} Google reviews
                 </p>
               )}
@@ -257,12 +257,12 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
                           style={{ objectFit: 'contain' }}
                           onError={e => { e.target.style.display = 'none'; }}
                         />
-                        <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: R.fontBody }}>
+                        <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: fontVar('body') }}>
                           {label}
                         </span>
                       </div>
                       {displayYears.length > 0 && (
-                        <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: R.fontBody }}>
+                        <p style={{ margin: '4px 0 0', fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: fontVar('body') }}>
                           {displayYears.join(' · ')}{hasMore ? ' +' : ''}
                         </p>
                       )}
@@ -289,7 +289,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
               width: '100%', padding: '14px 24px',
               background: PRIMARY, border: 'none', borderRadius: 12,
               color: ON_SECONDARY, fontSize: 15, fontWeight: 700,
-              fontFamily: R.fontSans, cursor: 'pointer',
+              fontFamily: fontVar('heading'), cursor: 'pointer',
             }}
           >
             Book Your Free Inspection
@@ -300,7 +300,7 @@ export default function ContractorAboutModal({ visible, onContinue, onBook, abou
               width: '100%', padding: '12px 24px',
               background: 'transparent', border: 'none', borderRadius: 12,
               color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: 500,
-              fontFamily: R.fontSans, cursor: 'pointer',
+              fontFamily: fontVar('heading'), cursor: 'pointer',
             }}
           >
             Continue Exploring

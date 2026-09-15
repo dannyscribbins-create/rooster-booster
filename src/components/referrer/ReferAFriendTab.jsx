@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Copy, DownloadSimple, Phone, Envelope, ShareNetwork, GlobeSimple } from '@phosphor-icons/react';
-import { R } from '../../constants/theme';
 import { statusVar, STATUS_BANNER, STATUS_TINT } from '../../constants/statusTheme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // â”€â”€â”€ PALETTE-6 â€” THE RENDER TOKENS THIS TAB PAINTS WITH â”€â”€â”€
 // âš  EVERY FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS FOR THE PLATFORM
@@ -122,13 +121,13 @@ export default function ReferAFriendTab({ userName, token }) {
         {/* ── Section 1: Header ── */}
         <AnimCard delay={0}>
           <h2 style={{
-            fontFamily: R.fontSans, fontSize: 22, fontWeight: 700,
+            fontFamily: fontVar('heading'), fontSize: 22, fontWeight: 700,
             color: TEXT, margin: '0 0 8px', lineHeight: 1.3,
           }}>
             Hey {firstName}, know someone who needs a new roof?
           </h2>
           <p style={{
-            fontFamily: R.fontBody, fontSize: 14, color: TEXT, opacity: MUTED,
+            fontFamily: fontVar('body'), fontSize: 14, color: TEXT, opacity: MUTED,
             margin: 0, lineHeight: 1.6,
           }}>
             Share your personal invite link or QR code — when they sign up and become a customer, you earn a cash bonus.
@@ -148,14 +147,14 @@ export default function ReferAFriendTab({ userName, token }) {
 
             {!linkLoading && linkError && (
               <div style={{ textAlign: 'center', padding: '12px 0' }}>
-                <p style={{ fontFamily: R.fontBody, fontSize: 14, color: statusVar('dangerText'), margin: '0 0 12px' }}>
+                <p style={{ fontFamily: fontVar('body'), fontSize: 14, color: statusVar('dangerText'), margin: '0 0 12px' }}>
                   Could not load your invite link. Please try again.
                 </p>
                 <button
                   onClick={fetchInviteLink}
                   style={{
                     background: SECONDARY, color: ON_SECONDARY, border: 'none',
-                    borderRadius: 8, padding: '10px 20px', fontFamily: R.fontSans,
+                    borderRadius: 8, padding: '10px 20px', fontFamily: fontVar('heading'),
                     fontWeight: 600, fontSize: 14, cursor: 'pointer',
                   }}
                 >
@@ -174,7 +173,7 @@ export default function ReferAFriendTab({ userName, token }) {
                       style={{ width: 180, height: 180, display: 'block' }}
                     />
                     <p style={{
-                      fontFamily: R.fontBody, fontSize: 12, color: TEXT, opacity: MUTED,
+                      fontFamily: fontVar('body'), fontSize: 12, color: TEXT, opacity: MUTED,
                       margin: 0, letterSpacing: 0.2,
                     }}>
                       Your personal referral QR code
@@ -190,7 +189,7 @@ export default function ReferAFriendTab({ userName, token }) {
                   display: 'flex', alignItems: 'center', gap: 8,
                 }}>
                   <p style={{
-                    fontFamily: R.fontMono, fontSize: 12, color: TEXT, opacity: MUTED,
+                    fontFamily: fontVar('mono'), fontSize: 12, color: TEXT, opacity: MUTED,
                     margin: 0, flex: 1, overflow: 'hidden',
                     textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
@@ -213,7 +212,7 @@ export default function ReferAFriendTab({ userName, token }) {
                   </button>
                 </div>
                 {copied && (
-                  <p style={{ fontFamily: R.fontBody, fontSize: 12, color: statusVar('successText'), margin: '-4px 0 0', alignSelf: 'flex-start' }}>
+                  <p style={{ fontFamily: fontVar('body'), fontSize: 12, color: statusVar('successText'), margin: '-4px 0 0', alignSelf: 'flex-start' }}>
                     Link copied!
                   </p>
                 )}
@@ -226,7 +225,7 @@ export default function ReferAFriendTab({ userName, token }) {
                       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                       gap: 6, background: PRIMARY, color: ON_PRIMARY,
                       border: 'none', borderRadius: 10, padding: '12px 0',
-                      fontFamily: R.fontSans, fontWeight: 600, fontSize: 14, cursor: 'pointer',
+                      fontFamily: fontVar('heading'), fontWeight: 600, fontSize: 14, cursor: 'pointer',
                     }}
                   >
                     <ShareNetwork size={16} weight="bold" />
@@ -239,7 +238,7 @@ export default function ReferAFriendTab({ userName, token }) {
                       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                       gap: 6, background: SECONDARY, color: ON_SECONDARY,
                       border: 'none', borderRadius: 10, padding: '12px 0',
-                      fontFamily: R.fontSans, fontWeight: 600, fontSize: 14,
+                      fontFamily: fontVar('heading'), fontWeight: 600, fontSize: 14,
                       cursor: qrCodeDataUrl ? 'pointer' : 'default',
                       opacity: qrCodeDataUrl ? 1 : 0.5,
                     }}
@@ -255,7 +254,7 @@ export default function ReferAFriendTab({ userName, token }) {
 
         {/* ── Section 3: How it works ── */}
         <AnimCard delay={200}>
-          <h3 style={{ fontFamily: R.fontSans, fontSize: 16, fontWeight: 700, color: TEXT, margin: '0 0 10px' }}>
+          <h3 style={{ fontFamily: fontVar('heading'), fontSize: 16, fontWeight: 700, color: TEXT, margin: '0 0 10px' }}>
             How it works
           </h3>
           <div style={{ background: SURFACE, borderRadius: 16, boxShadow: elevationVar('shadow'), overflow: 'hidden' }}>
@@ -275,14 +274,14 @@ export default function ReferAFriendTab({ userName, token }) {
                 <div style={{
                   width: 28, height: 28, borderRadius: '50%', background: PRIMARY, color: ON_PRIMARY,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontFamily: R.fontSans, fontWeight: 700, fontSize: 13,
+                  fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 13,
                   flexShrink: 0, marginTop: 1,
                 }}>
                   {step.n}
                 </div>
                 <div>
-                  <p style={{ fontFamily: R.fontSans, fontWeight: 700, fontSize: 14, color: TEXT, margin: '0 0 3px' }}>{step.title}</p>
-                  <p style={{ fontFamily: R.fontBody, fontSize: 13, color: TEXT, opacity: MUTED, margin: 0, lineHeight: 1.5 }}>{step.desc}</p>
+                  <p style={{ fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 14, color: TEXT, margin: '0 0 3px' }}>{step.title}</p>
+                  <p style={{ fontFamily: fontVar('body'), fontSize: 13, color: TEXT, opacity: MUTED, margin: 0, lineHeight: 1.5 }}>{step.desc}</p>
                 </div>
               </div>
             ))}
@@ -291,7 +290,7 @@ export default function ReferAFriendTab({ userName, token }) {
 
         {/* ── Section 4: Contact fallback ── */}
         <AnimCard delay={300}>
-          <h3 style={{ fontFamily: R.fontSans, fontSize: 14, fontWeight: 600, color: TEXT, opacity: MUTED, margin: '0 0 10px' }}>
+          <h3 style={{ fontFamily: fontVar('heading'), fontSize: 14, fontWeight: 600, color: TEXT, opacity: MUTED, margin: '0 0 10px' }}>
             Prefer to refer the old-fashioned way?
           </h3>
           <div style={{ background: SURFACE, borderRadius: 16, boxShadow: elevationVar('shadow'), overflow: 'hidden', position: 'relative' }}>
@@ -303,7 +302,7 @@ export default function ReferAFriendTab({ userName, token }) {
               <span style={{ display: 'flex', color: TEXT }}><ShareNetwork size={20} /></span>
             </button>
             {contactCopied && (
-              <span style={{ position: 'absolute', top: 12, right: 38, fontFamily: R.fontBody, fontSize: 12, color: TEXT, opacity: MUTED }}>
+              <span style={{ position: 'absolute', top: 12, right: 38, fontFamily: fontVar('body'), fontSize: 12, color: TEXT, opacity: MUTED }}>
                 Copied!
               </span>
             )}
@@ -317,7 +316,7 @@ export default function ReferAFriendTab({ userName, token }) {
                 }}
               >
                 <span style={{ display: 'flex', color: TEXT }}><Phone size={20} weight="duotone" /></span>
-                <span style={{ fontFamily: R.fontBody, fontSize: 15, color: TEXT }}>{branding.phone}</span>
+                <span style={{ fontFamily: fontVar('body'), fontSize: 15, color: TEXT }}>{branding.phone}</span>
               </a>
             )}
             {branding.email && (
@@ -330,7 +329,7 @@ export default function ReferAFriendTab({ userName, token }) {
                 }}
               >
                 <span style={{ display: 'flex', color: TEXT }}><Envelope size={20} weight="duotone" /></span>
-                <span style={{ fontFamily: R.fontBody, fontSize: 15, color: TEXT }}>{branding.email}</span>
+                <span style={{ fontFamily: fontVar('body'), fontSize: 15, color: TEXT }}>{branding.email}</span>
               </a>
             )}
             {branding.website && (
@@ -340,7 +339,7 @@ export default function ReferAFriendTab({ userName, token }) {
                 style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '15px 18px', textDecoration: 'none' }}
               >
                 <span style={{ display: 'flex', color: TEXT }}><GlobeSimple size={20} weight="duotone" /></span>
-                <span style={{ fontFamily: R.fontBody, fontSize: 15, color: TEXT }}>{branding.website}</span>
+                <span style={{ fontFamily: fontVar('body'), fontSize: 15, color: TEXT }}>{branding.website}</span>
               </a>
             )}
           </div>

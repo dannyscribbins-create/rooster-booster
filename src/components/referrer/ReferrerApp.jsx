@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { R } from '../../constants/theme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import Dashboard from './DashboardTab';
 import CashOut from './CashOutTab';
@@ -143,7 +142,7 @@ function BottomNav({ tab, setTab }) {
             />
             <span style={{
               fontSize: 11,
-              fontFamily: R.fontMono,
+              fontFamily: fontVar('mono'),
               letterSpacing: "0.05em",
               textTransform: "uppercase",
               fontWeight: 600,

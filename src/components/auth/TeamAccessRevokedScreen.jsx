@@ -1,4 +1,5 @@
 import useEntrance from '../../hooks/useEntrance';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── Team Access Revoked ──────────────────────────────────────────────────────
 //
@@ -55,7 +56,7 @@ export default function TeamAccessRevokedScreen({ contractorName = null, onConti
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: 'var(--rm-bg, #FFFFFF)',
-      padding: '32px 24px', fontFamily: 'Roboto, system-ui, sans-serif',
+      padding: '32px 24px', fontFamily: fontVar('body'),
     }}>
       <div style={{
         width: '100%', maxWidth: 400,
@@ -76,7 +77,7 @@ export default function TeamAccessRevokedScreen({ contractorName = null, onConti
 
           <h2 style={{
             margin: '14px 0 10px', fontSize: 22, fontWeight: 700,
-            fontFamily: 'Montserrat, system-ui, sans-serif',
+            fontFamily: fontVar('heading'),
             color: 'var(--rm-text, #1C2D4D)',
           }}>
             Your team access has ended
@@ -112,7 +113,7 @@ export default function TeamAccessRevokedScreen({ contractorName = null, onConti
               color: 'var(--rm-on-primary, #000000)',
               border: 'none', borderRadius: 12, cursor: 'pointer',
               fontSize: 15, fontWeight: 700,
-              fontFamily: 'Montserrat, system-ui, sans-serif',
+              fontFamily: fontVar('heading'),
             }}
           >
             Continue to my account

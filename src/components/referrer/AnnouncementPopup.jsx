@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { R } from '../../constants/theme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-11 B2 TOKENS ────────────────────────────────────────────────────
 // ⚠ A MODAL SITS ON A SCRIM, AND THE SCRIM STAYS A LITERAL. It dims whatever is
@@ -93,7 +92,7 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
         {/* Message */}
         <p style={{
           margin: "0 0 20px", fontSize: 16, lineHeight: 1.6,
-          color: TEXT, fontFamily: R.fontBody,
+          color: TEXT, fontFamily: fontVar('body'),
         }}>
           {message}
         </p>
@@ -107,7 +106,7 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
               file is deliberately untouched. */}
           <span style={{
             fontSize: 48, fontWeight: 900, color: 'var(--rm-text, #1C2D4D)',
-            fontFamily: R.fontMono, letterSpacing: "-0.02em",
+            fontFamily: fontVar('mono'), letterSpacing: "-0.02em",
           }}>
             ${parseFloat(announcement.amount).toLocaleString()}
           </span>
@@ -124,7 +123,7 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
             background: `linear-gradient(135deg, ${PRIMARY} 0%, ${PRIMARY_DARK} 100%)`,
             border: "none", borderRadius: 12, padding: "14px 24px",
             color: ON_PRIMARY, fontSize: 15, fontWeight: 700,
-            fontFamily: R.fontSans, cursor: "pointer",
+            fontFamily: fontVar('heading'), cursor: "pointer",
             boxShadow: elevationVar('shadowMd'),
             transition: "transform 0.2s",
           }}
@@ -141,7 +140,7 @@ export default function AnnouncementPopup({ announcement, referrerFirstName, onD
           style={{
             background: "none", border: "none", padding: "8px",
             color: TEXT, fontSize: 14, cursor: "pointer",
-            fontFamily: R.fontBody,
+            fontFamily: fontVar('body'),
           }}
         >
           I'll check it out later

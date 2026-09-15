@@ -1,4 +1,5 @@
 import { R } from '../../constants/theme';
+import { fontVar } from '../../constants/elevationTheme';
 
 export default function AvatarCircle({ userName, profilePhoto, size, shadow, onClick, showCameraHint, bg }) {
   const initials = userName.split(" ").map(n => n[0]).join("");
@@ -39,7 +40,7 @@ export default function AvatarCircle({ userName, profilePhoto, size, shadow, onC
           // It resolves when RankingsTab migrates and stops passing a raw tone.
           color: bg ? '#fff' : 'var(--rm-on-primary, #000000)',
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: size * 0.34, fontWeight: 700, fontFamily: R.fontMono,
+          fontSize: size * 0.34, fontWeight: 700, fontFamily: fontVar('mono'),
           boxShadow: shadow,
         }}>
           {initials}

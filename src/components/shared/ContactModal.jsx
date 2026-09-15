@@ -1,5 +1,5 @@
 import { R } from '../../constants/theme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 import { useBranding } from './ThemeProvider';
 
 // Contact Modal
@@ -42,7 +42,7 @@ export default function ContactModal({ isOpen, onClose }) {
       >
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <p style={{ margin: 0, fontSize: 22, fontWeight: 700, fontFamily: R.fontSans, color: 'var(--rm-text, #1C2D4D)' }}>
+          <p style={{ margin: 0, fontSize: 22, fontWeight: 700, fontFamily: fontVar('heading'), color: 'var(--rm-text, #1C2D4D)' }}>
             Get in Touch
           </p>
           <button
@@ -67,7 +67,7 @@ export default function ContactModal({ isOpen, onClose }) {
           <i className="ph ph-phone" style={{ fontSize: 22, color: 'var(--rm-text, #1C2D4D)', flexShrink: 0 }} />
           <a
             href={`tel:${dialDigits}`}
-            style={{ color: 'var(--rm-text, #1C2D4D)', fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
+            style={{ color: 'var(--rm-text, #1C2D4D)', fontSize: 15, fontFamily: fontVar('body'), textDecoration: "none" }}
             onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
             onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
           >
@@ -82,7 +82,7 @@ export default function ContactModal({ isOpen, onClose }) {
           <i className="ph ph-envelope" style={{ fontSize: 22, color: 'var(--rm-text, #1C2D4D)', flexShrink: 0 }} />
           <a
             href={`mailto:${branding.email}`}
-            style={{ color: 'var(--rm-text, #1C2D4D)', fontSize: 15, fontFamily: R.fontBody, textDecoration: "none" }}
+            style={{ color: 'var(--rm-text, #1C2D4D)', fontSize: 15, fontFamily: fontVar('body'), textDecoration: "none" }}
             onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
             onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
           >
@@ -98,7 +98,7 @@ export default function ContactModal({ isOpen, onClose }) {
             marginTop: 24, width: "100%", background: "none",
             border: `1.5px solid ${elevationVar('border')}`, borderRadius: 12,
             padding: 12, color: 'var(--rm-text, #1C2D4D)', opacity: 0.75, fontSize: 15,
-            cursor: "pointer", fontFamily: R.fontBody,
+            cursor: "pointer", fontFamily: fontVar('body'),
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}
         >

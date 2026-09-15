@@ -178,25 +178,31 @@ describe('Palette-2 T2 — the two grounds paint the SAME value', () => {
 
 // ── T3 — NO R. IN THE MIGRATED DECLARATIONS, AND THE FILES STILL RUN ────────
 describe('Palette-2 T3 — what remains of R., enumerated rather than assumed', () => {
-  it('[RED] Screen keeps only its font reference — every colour is migrated', () => {
-    // ⚠ NOT "no R. remains". Fonts are explicitly out of this phase, so
-    // R.fontBody stays and the honest assertion is the EXACT remaining set. A
-    // blanket "no R." here would have to be either false or a licence to migrate
-    // something this phase was told not to touch.
-    expect(rRefs(codeOnly(readSrc('components/shared/Screen.jsx')))).toEqual(['fontBody']);
+  it('[RED] Screen reads nothing from R — colour migrated, then typography', () => {
+    // ⚠ THIS EXPECTED `['fontBody']` AND SAID: "NOT 'no R. remains'. Fonts are
+    // explicitly out of this phase, so R.fontBody stays and the honest assertion
+    // is the EXACT remaining set." THAT WAS RIGHT THEN AND IS SPENT NOW — fonts
+    // WERE their own migration, Palette-13 B.7 was it, and the set is empty.
+    // ⚠ IT IS STILL AN EXACT-SET ASSERTION, which is what keeps it a fence: a
+    // key creeping back in fails this line just as loudly as it did before.
+    expect(rRefs(codeOnly(readSrc('components/shared/Screen.jsx')))).toEqual([]);
+    // Paired positive — the file did not simply lose its typography.
+    expect(readSrc('components/shared/Screen.jsx')).toMatch(/fontVar\('body'\)/);
   });
 
-  it('[RED] ReferrerApp keeps only a font reference — the nav\'s colours are gone', () => {
-    // ⚠ THIS LIST SHRANK IN PALETTE-5, WHICH IS THE POINT OF HAVING WRITTEN IT.
-    // Palette-2 recorded `bgCard, fontMono, red, red` and said the nav was "not
-    // in scope" — Palette-5 was that scope. The three COLOUR reads are gone:
-    // bgCard became `surface`, and both `red`s were the retired Accent red on
-    // the active "Refer" tab, now `--rm-primary`.
-    // ⚠ `fontMono` STAYS, and deliberately: fonts are their own migration and no
-    // phase has ruled on them. A list that shrinks to empty by absorbing an
-    // unrelated concern is not evidence of progress.
+  it('[RED] ReferrerApp reads nothing from R — the nav is fully migrated', () => {
+    // ⚠ THIS LIST SHRANK IN PALETTE-5 AND AGAIN IN PALETTE-13, WHICH IS THE
+    // POINT OF HAVING WRITTEN IT. Palette-2 recorded `bgCard, fontMono, red,
+    // red`; Palette-5 took the three colour reads; B.7 takes the last one.
+    // ⚠ THE OLD NOTE SAID `fontMono` STAYS "deliberately: fonts are their own
+    // migration and no phase has ruled on them", and warned that "a list that
+    // shrinks to empty by absorbing an unrelated concern is not evidence of
+    // progress." THE CONCERN IS NO LONGER UNRELATED — R-D ruled a mono role and
+    // this list shrank because that ruling was carried out, not because the
+    // fence was widened to swallow it.
     expect(rRefs(codeOnly(readSrc('components/referrer/ReferrerApp.jsx'))).sort())
-      .toEqual(['fontMono']);
+      .toEqual([]);
+    expect(readSrc('components/referrer/ReferrerApp.jsx')).toMatch(/fontVar\('mono'\)/);
   });
 
   it('[RED] and both files still RENDER — a sweep proves absence, not liveness', () => {

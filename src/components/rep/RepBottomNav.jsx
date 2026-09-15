@@ -1,5 +1,6 @@
 import { useContext } from 'react';
 import { ThemeContext } from '../shared/ThemeProvider';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── THE REP BOTTOM NAV — C/DL-3c Phase 3-A, amendment A29 ───────────────────
 //
@@ -116,7 +117,7 @@ export default function RepBottomNav({ activeTab, onSelect, centreSlot = null })
         />
         <span
           style={{
-            fontFamily: 'Roboto, system-ui, sans-serif',
+            fontFamily: fontVar('body'),
             fontSize: 13,
             fontWeight: active ? 700 : 500,
             color: 'var(--rm-text, #1C2D4D)',

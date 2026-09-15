@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { R } from '../../constants/theme';
 import { statusVar, STATUS_TINT } from '../../constants/statusTheme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-11 B1 TOKENS ────────────────────────────────────────────────────
 // ⚠ THE GROUND HERE IS `surface`, NOT the page. A modal sits on a SCRIM, and the
@@ -103,7 +102,7 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
     borderRadius: 10,
     fontSize: 15,
     color: TEXT,
-    fontFamily: R.fontBody,
+    fontFamily: fontVar('body'),
     outline: 'none',
     transition: 'border-color 0.15s',
   };
@@ -116,7 +115,7 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    fontFamily: R.fontBody,
+    fontFamily: fontVar('body'),
   };
 
   return (
@@ -161,10 +160,10 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
               }}>
                 <i className="ph ph-check-circle" style={{ fontSize: 32, color: statusVar('successText') }} />
               </div>
-              <h2 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 700, fontFamily: R.fontSans, color: TEXT }}>
+              <h2 style={{ margin: '0 0 12px', fontSize: 20, fontWeight: 700, fontFamily: fontVar('heading'), color: TEXT }}>
                 Report Submitted
               </h2>
-              <p style={{ margin: '0 0 24px', fontSize: 15, color: TEXT, fontFamily: R.fontBody, lineHeight: 1.6 }}>
+              <p style={{ margin: '0 0 24px', fontSize: 15, color: TEXT, fontFamily: fontVar('body'), lineHeight: 1.6 }}>
                 Got it! We'll look into this and make sure you get credit if it's owed.
                 You can track the status of this report in your profile.
               </p>
@@ -175,7 +174,7 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
                   background: PRIMARY, color: ON_PRIMARY,
                   border: 'none', borderRadius: 12,
                   fontSize: 15, fontWeight: 700,
-                  fontFamily: R.fontBody, cursor: 'pointer',
+                  fontFamily: fontVar('body'), cursor: 'pointer',
                 }}
               >
                 Done
@@ -184,10 +183,10 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
           ) : (
             /* ── Form ── */
             <>
-              <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 700, fontFamily: R.fontSans, color: TEXT }}>
+              <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 700, fontFamily: fontVar('heading'), color: TEXT }}>
                 Report a Missing Referral
               </h2>
-              <p style={{ margin: '0 0 24px', fontSize: 14, color: TEXT, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+              <p style={{ margin: '0 0 24px', fontSize: 14, color: TEXT, fontFamily: fontVar('body'), lineHeight: 1.5 }}>
                 Don't see a referral in your pipeline? Let us know and we'll investigate.
               </p>
 
@@ -265,7 +264,7 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
               </div>
 
               {error && (
-                <p style={{ margin: '0 0 16px', fontSize: 14, color: statusVar('dangerText'), fontFamily: R.fontBody }}>
+                <p style={{ margin: '0 0 16px', fontSize: 14, color: statusVar('dangerText'), fontFamily: fontVar('body') }}>
                   {error}
                 </p>
               )}
@@ -280,7 +279,7 @@ export default function MissingReferralModal({ isOpen, onClose, onSuccess }) {
                   opacity: canSubmit && !submitting ? 1 : MUTED,
                   border: 'none', borderRadius: 12,
                   fontSize: 15, fontWeight: 700,
-                  fontFamily: R.fontBody,
+                  fontFamily: fontVar('body'),
                   cursor: canSubmit && !submitting ? 'pointer' : 'not-allowed',
                   transition: 'background 0.2s, color 0.2s',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,

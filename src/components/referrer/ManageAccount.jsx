@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { R } from '../../constants/theme';
 import { BACKEND_URL, STRIPE_PUBLISHABLE_KEY } from '../../config/contractor';
 import { getReferrerToken } from '../../utils/authStorage';
 import { statusVar, STATUS_TINT, STATUS_BANNER } from '../../constants/statusTheme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-10 TOKENS ───────────────────────────────────────────────────────
 // ⚠ LEVELS ARE FIXED: body=`bg`, column=`recess`, cards=`surface`. `--rm-bg` has
@@ -201,31 +200,31 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
   const inputStyle = {
     width: '100%', padding: '10px 12px',
     border: `1.5px solid ${elevationVar('border')}`, borderRadius: 10,
-    fontSize: 14, fontFamily: R.fontBody, color: TEXT,
+    fontSize: 14, fontFamily: fontVar('body'), color: TEXT,
     background: RECESS, boxSizing: 'border-box', outline: 'none',
   };
 
   const btnPrimary = {
     background: PRIMARY, color: ON_PRIMARY, border: 'none',
     borderRadius: 8, padding: '9px 18px',
-    fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: R.fontBody,
+    fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: fontVar('body'),
   };
 
   const btnSecondary = {
     background: 'transparent', color: TEXT,
     border: `1.5px solid ${elevationVar('border')}`, borderRadius: 8,
     padding: '9px 18px', fontSize: 13, fontWeight: 600,
-    cursor: 'pointer', fontFamily: R.fontBody,
+    cursor: 'pointer', fontFamily: fontVar('body'),
   };
 
   const rowLabel = {
     margin: 0, fontSize: 12, color: TEXT,
-    fontFamily: R.fontBody, textTransform: 'uppercase', letterSpacing: '0.06em',
+    fontFamily: fontVar('body'), textTransform: 'uppercase', letterSpacing: '0.06em',
   };
 
   const rowValue = {
     margin: '2px 0 0', fontSize: 15, fontWeight: 600,
-    color: TEXT, fontFamily: R.fontBody,
+    color: TEXT, fontFamily: fontVar('body'),
   };
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -540,7 +539,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <i className="ph ph-gear" style={{ fontSize: 18, color: PRIMARY }} />
-            <span style={{ fontSize: 16, fontWeight: 700, fontFamily: R.fontSans, color: TEXT }}>
+            <span style={{ fontSize: 16, fontWeight: 700, fontFamily: fontVar('heading'), color: TEXT }}>
               Manage Account
             </span>
           </div>
@@ -557,7 +556,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
             {/* Loading skeleton */}
             {acctLoading && (
               <div style={{ padding: '28px 18px', textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>Loading…</p>
+                <p style={{ margin: 0, fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>Loading…</p>
               </div>
             )}
 
@@ -580,7 +579,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         borderRadius: 999, padding: '6px 14px',
                         color: tab === t ? ON_PRIMARY : TEXT,
                         fontSize: 12, fontWeight: tab === t ? 700 : 500,
-                        cursor: 'pointer', fontFamily: R.fontBody,
+                        cursor: 'pointer', fontFamily: fontVar('body'),
                         whiteSpace: 'nowrap',
                         transition: 'background 0.2s, border-color 0.2s, color 0.2s',
                       }}
@@ -659,7 +658,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       </div>
                       {emailCodeSent && (
                         <div style={{ marginTop: 12 }}>
-                          <p style={{ margin: '0 0 8px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
+                          <p style={{ margin: '0 0 8px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>
                             Enter the 6-digit code sent to your email.
                           </p>
                           <input
@@ -669,7 +668,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             placeholder="000000"
                             style={{
                               ...inputStyle,
-                              fontFamily: R.fontMono, fontSize: 20,
+                              fontFamily: fontVar('mono'), fontSize: 20,
                               letterSpacing: '0.2em', textAlign: 'center',
                             }}
                           />
@@ -755,7 +754,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         </div>
                       ) : (
                         <div>
-                          <p style={{ margin: '0 0 8px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
+                          <p style={{ margin: '0 0 8px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>
                             Enter the 6-digit code sent to {phoneInput}.
                           </p>
                           <input
@@ -765,7 +764,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             placeholder="000000"
                             style={{
                               ...inputStyle,
-                              fontFamily: R.fontMono, fontSize: 20,
+                              fontFamily: fontVar('mono'), fontSize: 20,
                               letterSpacing: '0.2em', textAlign: 'center',
                             }}
                           />
@@ -800,10 +799,10 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                     <div style={{ padding: '14px 18px', borderBottom: `1px solid ${elevationVar('border')}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ flex: 1, paddingRight: 16 }}>
-                          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
+                          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: fontVar('body') }}>
                             Authenticator App (TOTP)
                           </p>
-                          <p style={{ margin: '2px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
+                          <p style={{ margin: '2px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>
                             Use an authenticator app for 2-step login
                           </p>
                         </div>
@@ -819,7 +818,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                       </div>
                       {totpSetup && (
                         <div style={{ marginTop: 16 }}>
-                          <p style={{ margin: '0 0 12px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+                          <p style={{ margin: '0 0 12px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: fontVar('body'), lineHeight: 1.5 }}>
                             Scan with your authenticator app, then enter the 6-digit code to confirm.
                           </p>
                           <img
@@ -838,7 +837,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             placeholder="000000"
                             style={{
                               ...inputStyle,
-                              fontFamily: R.fontMono, fontSize: 20,
+                              fontFamily: fontVar('mono'), fontSize: 20,
                               letterSpacing: '0.2em', textAlign: 'center',
                             }}
                           />
@@ -864,7 +863,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             style={{
                               background: 'none', border: 'none', cursor: 'pointer',
                               padding: 0, color: statusVar('dangerText'),
-                              fontSize: 13, fontWeight: 600, fontFamily: R.fontBody,
+                              fontSize: 13, fontWeight: 600, fontFamily: fontVar('body'),
                             }}
                           >
                             Reset Authenticator
@@ -874,7 +873,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                               marginTop: 10, padding: 14, borderRadius: 10,
                               background: STATUS_TINT.danger, border: `1px solid ${statusVar('danger')}`,
                             }}>
-                              <p style={{ margin: '0 0 12px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.5 }}>
+                              <p style={{ margin: '0 0 12px', fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: fontVar('body'), lineHeight: 1.5 }}>
                                 This will unlink your current authenticator app. You'll need to re-scan a new QR code to re-enable.
                               </p>
                               <div style={{ display: 'flex', gap: 8 }}>
@@ -884,7 +883,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                                   style={{
                                     background: statusVar('danger'), color: ON_DANGER, border: 'none',
                                     borderRadius: 8, padding: '8px 16px',
-                                    fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: R.fontBody,
+                                    fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: fontVar('body'),
                                   }}
                                 >
                                   {totpBusy ? 'Resetting…' : 'Reset'}
@@ -895,7 +894,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                                     background: 'transparent', color: TEXT,
                                     border: `1.5px solid ${elevationVar('border')}`, borderRadius: 8,
                                     padding: '8px 16px', fontSize: 13, fontWeight: 600,
-                                    cursor: 'pointer', fontFamily: R.fontBody,
+                                    cursor: 'pointer', fontFamily: fontVar('body'),
                                   }}
                                 >
                                   Cancel
@@ -911,10 +910,10 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                     <div style={{ padding: '14px 18px', borderBottom: `1px solid ${elevationVar('border')}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ flex: 1, paddingRight: 16 }}>
-                          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
+                          <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: fontVar('body') }}>
                             2-Step via SMS
                           </p>
-                          <p style={{ margin: '2px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
+                          <p style={{ margin: '2px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>
                             Receive a code by text message at login
                           </p>
                         </div>
@@ -925,7 +924,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         />
                       </div>
                       {!acct?.phone_verified && !acct?.sms_2fa_enabled && (
-                        <p style={{ margin: '8px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
+                        <p style={{ margin: '8px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>
                           Verify your phone number first (under Personal Info).
                         </p>
                       )}
@@ -933,7 +932,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
 
                     {/* Recovery */}
                     <div style={{ padding: '14px 18px', borderBottom: `1px solid ${elevationVar('border')}` }}>
-                      <p style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
+                      <p style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: fontVar('body') }}>
                         Recovery
                       </p>
                       <p style={{ ...rowLabel, marginBottom: 6 }}>Recovery Phone</p>
@@ -954,7 +953,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                         <p style={{ margin: '0 0 8px', fontSize: 12, color: statusVar('dangerText') }}>{recoveryError}</p>
                       )}
                       {recoverySaved && (
-                        <p style={{ margin: '0 0 8px', fontSize: 12, color: statusVar('successText'), fontFamily: R.fontBody }}>
+                        <p style={{ margin: '0 0 8px', fontSize: 12, color: statusVar('successText'), fontFamily: fontVar('body') }}>
                           Saved.
                         </p>
                       )}
@@ -969,11 +968,11 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
 
                     {/* Login Activity */}
                     <div style={{ padding: '14px 18px' }}>
-                      <p style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
+                      <p style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: fontVar('body') }}>
                         Login Activity
                       </p>
                       {sessionsLoading && (
-                        <p style={{ margin: 0, fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>Loading…</p>
+                        <p style={{ margin: 0, fontSize: 13, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>Loading…</p>
                       )}
                       {!sessionsLoading && sessions && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -989,12 +988,12 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <p style={{
                                     margin: 0, fontSize: 13, fontWeight: 600,
-                                    color: TEXT, fontFamily: R.fontBody,
+                                    color: TEXT, fontFamily: fontVar('body'),
                                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   }}>
                                     {s.device_info ? s.device_info.substring(0, 55) : 'Unknown device'}
                                   </p>
-                                  <p style={{ margin: '3px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: R.fontBody }}>
+                                  <p style={{ margin: '3px 0 0', fontSize: 12, color: TEXT, opacity: MUTED, fontFamily: fontVar('body') }}>
                                     {s.city && s.country ? `${s.city}, ${s.country}` : 'Location unavailable'}
                                   </p>
                                 </div>
@@ -1002,7 +1001,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                                   <span style={{
                                     flexShrink: 0, background: STATUS_TINT.success, color: statusVar('successText'),
                                     fontSize: 11, fontWeight: 700, padding: '2px 8px',
-                                    borderRadius: 999, fontFamily: R.fontBody,
+                                    borderRadius: 999, fontFamily: fontVar('body'),
                                   }}>
                                     Current
                                   </span>
@@ -1035,7 +1034,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <i className="ph ph-shield-check" style={{ fontSize: 18, color: PRIMARY }} />
-                        <span style={{ fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: R.fontBody }}>
+                        <span style={{ fontSize: 15, fontWeight: 600, color: TEXT, fontFamily: fontVar('body') }}>
                           Privacy Policy
                         </span>
                       </div>
@@ -1051,7 +1050,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                     style={{
                       background: 'none', border: 'none', cursor: 'pointer',
                       padding: 0, color: statusVar('dangerText'),
-                      fontSize: 13, fontWeight: 600, fontFamily: R.fontBody,
+                      fontSize: 13, fontWeight: 600, fontFamily: fontVar('body'),
                     }}
                   >
                     Delete Account
@@ -1095,7 +1094,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                     }}>
                       <i className="ph ph-bank" style={{ fontSize: 18, color: MONEY }} />
                       <span style={{
-                        fontFamily: 'Montserrat, sans-serif',
+                        fontFamily: fontVar('heading'),
                         fontWeight: 700,
                         fontSize: 14,
                         color: TEXT
@@ -1160,7 +1159,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             border: 'none',
                             borderRadius: 8,
                             padding: '10px 20px',
-                            fontFamily: 'Montserrat, sans-serif',
+                            fontFamily: fontVar('heading'),
                             fontWeight: 700,
                             fontSize: 13,
                             cursor: 'pointer',
@@ -1211,7 +1210,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
                             border: `1px solid ${statusVar('danger')}`,
                             borderRadius: 8,
                             padding: '8px 16px',
-                            fontFamily: 'Roboto, sans-serif',
+                            fontFamily: fontVar('body'),
                             fontSize: 12,
                             cursor: 'pointer',
                             width: '100%'
@@ -1256,11 +1255,11 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
               <i className="ph ph-warning" style={{ fontSize: 22, color: statusVar('dangerText') }} />
-              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, fontFamily: R.fontSans, color: TEXT }}>
+              <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, fontFamily: fontVar('heading'), color: TEXT }}>
                 Delete Account
               </h3>
             </div>
-            <p style={{ margin: '0 0 20px', fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: R.fontBody, lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 20px', fontSize: 14, color: TEXT, opacity: MUTED, fontFamily: fontVar('body'), lineHeight: 1.6 }}>
               This will permanently delete your account in 30 days. This cannot be undone.
             </p>
             <input
@@ -1277,7 +1276,7 @@ export default function ManageAccount({ userEmail, userName, onNameUpdate, onLog
               disabled={deleteInput !== 'DELETE' || deleteLoading}
               style={{
                 width: '100%', border: 'none', borderRadius: 10, padding: '13px',
-                fontSize: 14, fontWeight: 700, fontFamily: R.fontBody, marginBottom: 10,
+                fontSize: 14, fontWeight: 700, fontFamily: fontVar('body'), marginBottom: 10,
                 background: deleteInput === 'DELETE' ? statusVar('danger') : RECESS,
                 color: deleteInput === 'DELETE' ? ON_DANGER : TEXT,
                 cursor: deleteInput === 'DELETE' ? 'pointer' : 'not-allowed',

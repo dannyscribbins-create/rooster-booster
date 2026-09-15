@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { R } from '../../constants/theme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-11 B2 TOKENS ────────────────────────────────────────────────────
 // ⚠ A MODAL SITS ON A SCRIM, AND THE SCRIM STAYS A LITERAL. It dims whatever is
@@ -54,7 +53,7 @@ export default function BadgeCelebrationPopup({ badges, onDismiss }) {
           <p style={{
             margin: '0 0 16px',
             fontSize: 12, color: TEXT,
-            fontFamily: R.fontBody, letterSpacing: '0.05em',
+            fontFamily: fontVar('body'), letterSpacing: '0.05em',
           }}>
             {currentIndex + 1} of {badges.length}
           </p>
@@ -69,7 +68,7 @@ export default function BadgeCelebrationPopup({ badges, onDismiss }) {
         <h2 style={{
           margin: '0 0 8px',
           fontSize: 18, fontWeight: 700,
-          fontFamily: R.fontSans, color: TEXT,
+          fontFamily: fontVar('heading'), color: TEXT,
         }}>
           New Badge Unlocked!
         </h2>
@@ -78,7 +77,7 @@ export default function BadgeCelebrationPopup({ badges, onDismiss }) {
         <p style={{
           margin: '0 0 6px',
           fontSize: 15, fontWeight: 600,
-          fontFamily: R.fontBody, color: TEXT,
+          fontFamily: fontVar('body'), color: TEXT,
         }}>
           {isSecret ? 'You unlocked something rare...' : badge.name}
         </p>
@@ -87,7 +86,7 @@ export default function BadgeCelebrationPopup({ badges, onDismiss }) {
         <p style={{
           margin: '0 0 24px',
           fontSize: 14, color: TEXT,
-          fontFamily: R.fontBody, lineHeight: 1.5,
+          fontFamily: fontVar('body'), lineHeight: 1.5,
         }}>
           {isSecret ? 'Check your badge gallery.' : badge.description}
         </p>
@@ -99,7 +98,7 @@ export default function BadgeCelebrationPopup({ badges, onDismiss }) {
             width: '100%', background: PRIMARY, color: ON_PRIMARY,
             border: 'none', borderRadius: 10,
             padding: '14px', fontSize: 15, fontWeight: 700,
-            cursor: 'pointer', fontFamily: R.fontBody,
+            cursor: 'pointer', fontFamily: fontVar('body'),
           }}
         >
           {isLast ? 'Done' : 'Next'}

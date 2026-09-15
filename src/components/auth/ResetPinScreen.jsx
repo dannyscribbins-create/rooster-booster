@@ -4,6 +4,7 @@ import { ThemeContext } from '../shared/ThemeProvider';
 import BrandMark from '../shared/BrandMark';
 import { statusVar, STATUS_BANNER } from '../../constants/statusTheme';
 import useEntrance from '../../hooks/useEntrance';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── Set a New Password ───────────────────────────────────────────────────────
 //
@@ -93,7 +94,7 @@ export default function ResetPinScreen({ token }) {
     border: `1.5px solid ${focused === field ? 'var(--rm-primary, #F26A1B)' : 'rgba(128,128,128,0.35)'}`,
     borderRadius: 10, padding: '16px 16px 16px 48px',
     color: 'var(--rm-text, #1C2D4D)', fontSize: 15,
-    fontFamily: 'Roboto, system-ui, sans-serif', outline: 'none',
+    fontFamily: fontVar('body'), outline: 'none',
     boxSizing: 'border-box', transition: 'border-color 0.2s',
   });
 
@@ -114,7 +115,7 @@ export default function ResetPinScreen({ token }) {
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: 'var(--rm-bg, #FFFFFF)',
-      padding: '32px 24px', fontFamily: 'Roboto, system-ui, sans-serif',
+      padding: '32px 24px', fontFamily: fontVar('body'),
     }}>
       <div style={{
         width: '100%', maxWidth: 380,
@@ -129,7 +130,7 @@ export default function ResetPinScreen({ token }) {
 
         <h2 style={{
           margin: '0 0 8px', fontSize: 22, fontWeight: 700,
-          fontFamily: 'Montserrat, system-ui, sans-serif',
+          fontFamily: fontVar('heading'),
           color: 'var(--rm-text, #1C2D4D)',
         }}>
           Set a new password
@@ -200,7 +201,7 @@ export default function ResetPinScreen({ token }) {
               width: '100%', marginTop: 16,
               backgroundColor: 'var(--rm-primary, #F26A1B)', color: 'var(--rm-on-primary, #000000)',
               border: 'none', borderRadius: 10, padding: 16,
-              fontSize: 15, fontWeight: 700, fontFamily: 'Montserrat, system-ui, sans-serif',
+              fontSize: 15, fontWeight: 700, fontFamily: fontVar('heading'),
               cursor: status === 'loading' ? 'default' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               transition: 'transform 0.2s, opacity 0.2s',
@@ -218,7 +219,7 @@ export default function ResetPinScreen({ token }) {
 
       <p style={{
         marginTop: 24, marginBottom: 0, fontSize: 12,
-        fontFamily: 'Roboto Mono, ui-monospace, monospace', letterSpacing: '0.06em',
+        fontFamily: fontVar('mono'), letterSpacing: '0.06em',
         color: 'var(--rm-text, #1C2D4D)', opacity: 0.45, textTransform: 'uppercase',
       }}>
         {companyName}

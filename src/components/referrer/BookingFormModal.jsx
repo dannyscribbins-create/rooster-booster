@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { R } from '../../constants/theme';
 import { statusVar } from '../../constants/statusTheme';
 
 // ─── PALETTE-11 B2 TOKENS ─── ⚠ THIS IS A DARK PANEL ─────────────────────────
@@ -32,6 +31,7 @@ const PRIMARY_DARK = 'var(--rm-primary-dark, #CE530C)';
 import { BACKEND_URL } from '../../config/contractor';
 import { useBranding } from '../shared/ThemeProvider';
 import { X, CheckCircle } from '@phosphor-icons/react';
+import { fontVar } from '../../constants/elevationTheme';
 
 export default function BookingFormModal({ visible, onClose, onBookingSuccess, sessionToken }) {
   const branding = useBranding();
@@ -92,7 +92,7 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
     width: '100%', padding: '12px 14px',
     background: 'rgba(255,255,255,0.1)',
     border: '1px solid rgba(255,255,255,0.25)',
-    borderRadius: 10, fontFamily: R.fontBody, fontSize: 15,
+    borderRadius: 10, fontFamily: fontVar('body'), fontSize: 15,
     color: ON_SECONDARY, outline: 'none', boxSizing: 'border-box',
     transition: 'border-color 0.15s',
   };
@@ -135,15 +135,15 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
                 style={{ maxWidth: 160, width: '100%', height: 'auto', objectFit: 'contain', display: 'block' }}
               />
             ) : (
-              <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: ON_SECONDARY, fontFamily: R.fontSans }}>
+              <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: ON_SECONDARY, fontFamily: fontVar('heading') }}>
                 {branding.companyName}
               </p>
             )}
             <CheckCircle size={64} weight="fill" color={statusVar('success')} />
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: ON_SECONDARY, fontFamily: R.fontSans }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: ON_SECONDARY, fontFamily: fontVar('heading') }}>
               You're all set!
             </h2>
-            <p style={{ margin: 0, fontSize: 15, color: 'rgba(255,255,255,0.75)', fontFamily: R.fontBody, lineHeight: 1.6 }}>
+            <p style={{ margin: 0, fontSize: 15, color: 'rgba(255,255,255,0.75)', fontFamily: fontVar('body'), lineHeight: 1.6 }}>
               We'll be in touch soon to schedule your free inspection.
             </p>
           </div>
@@ -151,7 +151,7 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
           <div style={{ padding: '24px 24px 28px' }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: ON_SECONDARY, fontFamily: R.fontSans }}>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: ON_SECONDARY, fontFamily: fontVar('heading') }}>
                 Request Inspection
               </h2>
               <button
@@ -251,14 +251,14 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
 
             {/* Validation error */}
             {fieldError && (
-              <p style={{ margin: '10px 0 0', fontSize: 13, color: 'rgba(255,140,140,1)', fontFamily: R.fontBody }}>
+              <p style={{ margin: '10px 0 0', fontSize: 13, color: 'rgba(255,140,140,1)', fontFamily: fontVar('body') }}>
                 {fieldError}
               </p>
             )}
 
             {/* API error */}
             {status === 'error' && (
-              <p style={{ margin: '10px 0 0', fontSize: 13, color: 'rgba(255,140,140,1)', fontFamily: R.fontBody }}>
+              <p style={{ margin: '10px 0 0', fontSize: 13, color: 'rgba(255,140,140,1)', fontFamily: fontVar('body') }}>
                 Something went wrong. Please try again.
               </p>
             )}
@@ -272,7 +272,7 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
                 background: status === 'submitting' ? PRIMARY_DARK : PRIMARY,
                 border: 'none', borderRadius: 12,
                 color: ON_SECONDARY, fontSize: 15, fontWeight: 700,
-                fontFamily: R.fontSans, cursor: status === 'submitting' ? 'not-allowed' : 'pointer',
+                fontFamily: fontVar('heading'), cursor: status === 'submitting' ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 transition: 'background 0.15s',
               }}

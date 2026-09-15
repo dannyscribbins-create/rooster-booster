@@ -2,6 +2,7 @@ import { useContext } from 'react';
 import { ThemeContext } from './ThemeProvider';
 import BrandLogo from './BrandLogo';
 import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── BrandMark — WHICH mark a surface shows, and whether it is a mark at all ──
 //
@@ -122,7 +123,7 @@ export default function BrandMark({ width = 120, marginBottom = 20, branding: su
         margin: `0 auto ${marginBottom}px`,
         maxWidth: '100%',
         textAlign: 'center',
-        fontFamily: 'Montserrat, system-ui, sans-serif',
+        fontFamily: fontVar('heading'),
         fontSize: 20,
         fontWeight: 700,
         lineHeight: 1.25,

@@ -8,6 +8,7 @@ import ChoiceScreen from './ChoiceScreen';
 import TeamAccessRevokedScreen from './TeamAccessRevokedScreen';
 import { statusVar, STATUS_BANNER } from '../../constants/statusTheme';
 import useEntrance from '../../hooks/useEntrance';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THE UNIFIED LOGIN DOOR — C/DL-3b Phase 5, CD-4
@@ -304,14 +305,14 @@ export default function LoginScreen({ onAuthenticated }) {
     border: `1.5px solid ${focused === field ? 'var(--rm-primary, #F26A1B)' : 'rgba(128,128,128,0.35)'}`,
     borderRadius: 10, padding: '16px 16px 16px 48px',
     color: 'var(--rm-text, #1C2D4D)', fontSize: 15,
-    fontFamily: 'Roboto, system-ui, sans-serif', outline: 'none',
+    fontFamily: fontVar('body'), outline: 'none',
     boxSizing: 'border-box', transition: 'border-color 0.2s',
   });
 
   const labelStyle = {
     display: 'block', fontSize: 12, fontWeight: 500, marginBottom: 8,
     color: 'var(--rm-text, #1C2D4D)', opacity: 0.75,
-    fontFamily: 'Roboto, system-ui, sans-serif',
+    fontFamily: fontVar('body'),
   };
 
   const iconStyle = (field) => ({
@@ -326,7 +327,7 @@ export default function LoginScreen({ onAuthenticated }) {
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: 'var(--rm-bg, #FFFFFF)',
-      padding: '32px 24px', fontFamily: 'Roboto, system-ui, sans-serif',
+      padding: '32px 24px', fontFamily: fontVar('body'),
     }}>
       <div style={{
         width: '100%', maxWidth: 380,
@@ -344,7 +345,7 @@ export default function LoginScreen({ onAuthenticated }) {
 
         <h2 style={{
           margin: '0 0 8px', fontSize: 22, fontWeight: 700,
-          fontFamily: 'Montserrat, system-ui, sans-serif',
+          fontFamily: fontVar('heading'),
           color: 'var(--rm-text, #1C2D4D)',
         }}>
           Welcome back
@@ -459,7 +460,7 @@ export default function LoginScreen({ onAuthenticated }) {
                 width: '100%', marginTop: 16,
                 backgroundColor: 'var(--rm-primary, #F26A1B)', color: 'var(--rm-on-primary, #000000)',
                 border: 'none', borderRadius: 10, padding: 16,
-                fontSize: 15, fontWeight: 700, fontFamily: 'Montserrat, system-ui, sans-serif',
+                fontSize: 15, fontWeight: 700, fontFamily: fontVar('heading'),
                 cursor: forgotStatus === 'loading' ? 'default' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 transition: 'transform 0.2s, opacity 0.2s',
@@ -488,7 +489,7 @@ export default function LoginScreen({ onAuthenticated }) {
             width: '100%', marginTop: 16,
             backgroundColor: 'var(--rm-primary, #F26A1B)', color: 'var(--rm-on-primary, #000000)',
             border: 'none', borderRadius: 10, padding: 16,
-            fontSize: 15, fontWeight: 700, fontFamily: 'Montserrat, system-ui, sans-serif',
+            fontSize: 15, fontWeight: 700, fontFamily: fontVar('heading'),
             cursor: loading ? 'default' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             transition: 'transform 0.2s, opacity 0.2s',
@@ -563,7 +564,7 @@ export default function LoginScreen({ onAuthenticated }) {
           value that only appears on a branch no test happens to render. */}
       <p style={{
         marginTop: 24, marginBottom: 0, fontSize: 12,
-        fontFamily: 'Roboto Mono, ui-monospace, monospace', letterSpacing: '0.06em',
+        fontFamily: fontVar('mono'), letterSpacing: '0.06em',
         color: 'var(--rm-text, #1C2D4D)', opacity: 0.45,
         textTransform: 'uppercase',
         transition: 'opacity 0.5s ease 0.3s',

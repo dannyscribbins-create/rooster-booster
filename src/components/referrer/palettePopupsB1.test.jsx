@@ -270,10 +270,14 @@ describe('Palette-11 B1 T4 — no R colour, no retired tone', () => {
     }
   });
 
-  it('[RED] the non-colour R keys DO survive, which is the point of the split', () => {
+  it('[RED] the TYPOGRAPHY survives the colour sweep, which is the point of the split', () => {
     // ⚠ A SWEEP THAT REMOVED EVERYTHING WOULD PASS THE CASE ABOVE AND BE WRONG.
+    // That reasoning is unchanged; what proves it moved in Palette-13 B.7. The
+    // font keys left R because they were MIGRATED to the side channel, so the
+    // proof of non-emptying is now the token call, not the key.
     for (const [name, code] of FILES) {
-      expect(code, `${name} lost its body font`).toMatch(/R\.font(Body|Sans)/);
+      expect(code, `${name} lost its typography`).toMatch(/fontVar\('(heading|body|mono)'\)/);
+      expect(code, `${name} still reads a font off R`).not.toMatch(/R\.font(Body|Sans|Mono)/);
     }
   });
 

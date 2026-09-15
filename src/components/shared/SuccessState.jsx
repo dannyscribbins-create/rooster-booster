@@ -1,6 +1,7 @@
 import { R } from '../../constants/theme';
 import { statusVar, STATUS_TINT } from '../../constants/statusTheme';
 import StateCard from './StateCard';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared success state (C/DL-3a Phase 4A).
@@ -36,7 +37,7 @@ export default function SuccessState({ icon = null, title, message = null, style
       )}
 
       <div style={{
-        fontFamily: R.fontSans, fontWeight: 700, fontSize: 16,
+        fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 16,
         // successText, NOT success. The fill tone (#16A34A) sits at 3.30:1 on
         // white — the graphic threshold, not the text one. Text uses the darker
         // member of the pair; that split is the point of having both.

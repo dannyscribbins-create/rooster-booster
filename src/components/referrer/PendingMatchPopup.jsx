@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { R } from '../../constants/theme';
-import { elevationVar } from '../../constants/elevationTheme';
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
 
 // ─── PALETTE-11 B2 TOKENS ────────────────────────────────────────────────────
 // ⚠ A MODAL SITS ON A SCRIM, AND THE SCRIM STAYS A LITERAL. It dims whatever is
@@ -126,7 +125,7 @@ export default function PendingMatchPopup({ match, token, onClose, onViewPipelin
 
         {/* Headline */}
         <h2 style={{
-          fontFamily: R.fontSans,
+          fontFamily: fontVar('heading'),
           fontWeight: 700,
           fontSize: 26,
           color: TEXT,
@@ -137,7 +136,7 @@ export default function PendingMatchPopup({ match, token, onClose, onViewPipelin
 
         {/* Subhead */}
         <p style={{
-          fontFamily: R.fontBody,
+          fontFamily: fontVar('body'),
           fontSize: 15,
           color: TEXT,
           margin: '0 0 12px',
@@ -148,7 +147,7 @@ export default function PendingMatchPopup({ match, token, onClose, onViewPipelin
 
         {/* Body */}
         <p style={{
-          fontFamily: R.fontBody,
+          fontFamily: fontVar('body'),
           fontSize: 14,
           color: TEXT,
           margin: '0 0 28px',
@@ -168,7 +167,7 @@ export default function PendingMatchPopup({ match, token, onClose, onViewPipelin
             border: 'none',
             borderRadius: 12,
             padding: '15px 0',
-            fontFamily: R.fontSans,
+            fontFamily: fontVar('heading'),
             fontWeight: 700,
             fontSize: 15,
             cursor: marking ? 'default' : 'pointer',
@@ -188,7 +187,7 @@ export default function PendingMatchPopup({ match, token, onClose, onViewPipelin
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            fontFamily: R.fontBody,
+            fontFamily: fontVar('body'),
             fontSize: 12,
             color: TEXT,
             padding: '4px 0',

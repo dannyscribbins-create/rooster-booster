@@ -307,8 +307,16 @@ describe('Palette-12 B T4 — no R colour here, no retired tone in the tree', ()
     expect(survivors, `DashboardTab still reads: ${survivors.join(', ')}`).toEqual([]);
   });
 
-  it('[RED] and it keeps its FONT keys — the split is the point, not the emptying', () => {
-    expect(DASH_CODE).toMatch(/R\.font(Body|Sans|Mono)/);
+  it('[RED] and it keeps its TYPOGRAPHY — the split is the point, not the emptying', () => {
+    // ⚠ THE PURPOSE OF THIS CASE IS UNCHANGED AND IS THE REASON IT STILL EXISTS:
+    // a sweep that emptied the file of every declaration would pass the case
+    // above and be WRONG. What proves non-emptying MOVED in Palette-13 B.7.
+    // The font keys are gone because they were MIGRATED, not deleted — the file
+    // now declares the three roles through the side channel, which is where a
+    // contractor's chosen face actually arrives.
+    expect(DASH_CODE).toMatch(/fontVar\('(heading|body|mono)'\)/);
+    // And the old spelling must be gone, or the migration was partial.
+    expect(DASH_CODE).not.toMatch(/R\.font(Body|Sans|Mono)/);
   });
 
   it('[RED] NO RETIRED TONE SURVIVES ANYWHERE IN THE REFERRER TREE, in any of its three spellings', () => {

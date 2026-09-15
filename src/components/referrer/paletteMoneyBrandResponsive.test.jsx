@@ -219,7 +219,7 @@ describe('Palette-9 T3 — projections still take the text tone', () => {
     expect(codeOnly(DASH), 'the inline next-payout projection left the text tone')
       .toContain('<span style={{ color: TEXT, fontWeight: 700 }}>${nextPayout.total}</span>');
     expect(codeOnly(DASH), 'the next-payout card figure left the text tone')
-      .toContain('fontFamily: R.fontMono, color: TEXT }}>${nextPayout.total}</p>');
+      .toContain("fontFamily: fontVar('mono'), color: TEXT }}>${nextPayout.total}</p>");
     expect(codeOnly(PROFILE)).toContain('${nextPayout.total}');
   });
 

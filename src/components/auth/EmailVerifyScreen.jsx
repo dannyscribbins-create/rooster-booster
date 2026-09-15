@@ -8,6 +8,7 @@ import { BACKEND_URL } from '../../config/contractor';
 // PNG wrapped in an <svg>). Same mark, icon + wordmark, 22KB.
 import useEntrance from '../../hooks/useEntrance';
 import BrandMark from '../shared/BrandMark';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─── Email Verify Screen ───────────────────────────────────────────────────────
 //
@@ -134,7 +135,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
         justifyContent: 'center',
         background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
         padding: '32px 24px',
-        fontFamily: R.fontBody,
+        fontFamily: fontVar('body'),
       }}>
         <div style={{
           width: '100%',
@@ -150,7 +151,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
             margin: '0 0 8px',
             fontSize: 24,
             fontWeight: 700,
-            fontFamily: R.fontSans,
+            fontFamily: fontVar('heading'),
             color: R.navy,
           }}>
             Email verified!
@@ -173,7 +174,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
       justifyContent: 'center',
       background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
       padding: '32px 24px',
-      fontFamily: R.fontBody,
+      fontFamily: fontVar('body'),
     }}>
       {/* ── 5.3: THE RETIRED TOP MARK IS GONE ────────────────────────────
           This carried the retired Rooster Booster wordmark ABOVE the card, while
@@ -208,7 +209,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
           margin: '0 0 8px',
           fontSize: 22,
           fontWeight: 700,
-          fontFamily: R.fontSans,
+          fontFamily: fontVar('heading'),
           color: R.navy,
         }}>
           Check your email
@@ -246,7 +247,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
             fontWeight: 500,
             color: R.textSecondary,
             marginBottom: 8,
-            fontFamily: R.fontBody,
+            fontFamily: fontVar('body'),
           }}>
             Verification code
           </label>
@@ -269,7 +270,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
               padding: '18px 16px',
               color: R.textPrimary,
               fontSize: 36,
-              fontFamily: R.fontMono,
+              fontFamily: fontVar('mono'),
               textAlign: 'center',
               letterSpacing: '0.25em',
               outline: 'none',
@@ -296,7 +297,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
             color: '#fff',
             fontSize: 15,
             fontWeight: 700,
-            fontFamily: R.fontSans,
+            fontFamily: fontVar('heading'),
             cursor: (loading || code.length !== 6) ? 'default' : 'pointer',
             display: 'flex',
             alignItems: 'center',
@@ -353,7 +354,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
         marginTop: 24,
         color: 'rgba(255,255,255,0.4)',
         fontSize: 12,
-        fontFamily: R.fontMono,
+        fontFamily: fontVar('mono'),
         letterSpacing: '0.06em',
         opacity: cardVisible ? 1 : 0,
         transition: 'opacity 0.5s ease 0.3s',

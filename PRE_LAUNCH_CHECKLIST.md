@@ -2307,8 +2307,21 @@ check — which is why this is a named build rather than a checklist line.
       **THE REPAIR IS NOW OPTIONAL AND INCREMENTAL**, which is the whole reason the tripwire went
       first. Highest value first: the documents a fresh session reads **before** building.
       → `scripts/citecheck.js`, `ROLE_ONLY_BASELINE`
-- [ ] **PALETTE-13 PART B — THE PAINTERS. The font chain is joined; the components do not yet
-      ask for it.** The chain commit wired resolver → provider → loader, so a contractor's stored
+- [x] **PALETTE-13 PART B — THE PAINTERS. DONE.** 313 sites moved onto the three font roles
+      across referrer, shared, auth and rep; a contractor's chosen face now reaches the node.
+      Verified in a real browser on `palette-beta`'s values: `h2` resolves to
+      `"Playfair Display", serif`, body/label/input to `Nunito`, money and PIN fields to
+      `"Roboto Mono", monospace`, and both faces report `[loaded]` in `document.fonts` rather
+      than merely declared. Fetch behaviour unchanged at 25 declared / 4 fetched / 0 Google.
+      ⚠ **CLOSED IN THE SAME SESSION IT WAS FILED, WHICH IS THE ONLY REASON IT READS AS DONE.**
+      The entry below it — the escaper one — is the counter-example: an item that can only grow.
+      ⚠ **WHAT THIS DID NOT CLOSE, AND EACH IS STILL OPEN:** the campaign email's diverging
+      defaults and missing webfont; `Source Sans Pro`'s retired Google name; the mono role
+      having no column; and `src/index.css`, which is a CRA leftover, a standing violation of
+      *never add CSS files*, and the thing that would decide what 13 `font: inherit` sites
+      inherit if `Screen` ever stopped declaring a family.
+
+- [ ] **PALETTE-13 PART B — THE PAINTERS — ORIGINAL ENTRY, kept for its measurements.** The chain commit wired resolver → provider → loader, so a contractor's stored
       face now RESOLVES, MOUNTS on `--rm-font-heading`/`-body`/`-mono`, and LOADS. **What remains
       is the second half: ~313 sites in the four in-scope trees** — 277 font-key reads through `R`
       (63/134/52 referrer, 5/7/2 shared, 5/6/3 auth) and 36 raw `fontFamily` literals (8 referrer,

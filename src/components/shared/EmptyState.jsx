@@ -1,5 +1,6 @@
 import { R } from '../../constants/theme';
 import StateCard from './StateCard';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared empty state (C/DL-3a Phase 4A).
@@ -27,7 +28,7 @@ export default function EmptyState({ icon = null, title, message = null, action 
       {icon && <div style={{ fontSize: 32, lineHeight: 1, marginBottom: 12 }}>{icon}</div>}
 
       <div style={{
-        fontFamily: R.fontSans, fontWeight: 700, fontSize: 16,
+        fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 16,
         // --rm-text is the one token the engine PROVES readable against the
         // surface. Never --rm-primary — orange-on-white fails contrast, and
         // primary is a fill.

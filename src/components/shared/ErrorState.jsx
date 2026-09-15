@@ -1,6 +1,7 @@
 import { R } from '../../constants/theme';
 import { statusVar, STATUS_TINT } from '../../constants/statusTheme';
 import StateCard from './StateCard';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared error state (C/DL-3a Phase 4A).
@@ -51,7 +52,7 @@ export default function ErrorState({
       )}
 
       <div style={{
-        fontFamily: R.fontSans, fontWeight: 700, fontSize: 16,
+        fontFamily: fontVar('heading'), fontWeight: 700, fontSize: 16,
         // Status text, NOT --rm-primary. The brand tokens carry no red at
         // all, which is the whole reason statusTheme.js exists.
         color: statusVar('dangerText'),
@@ -84,7 +85,7 @@ export default function ErrorState({
             background: 'transparent',
             border: `1px solid ${statusVar('danger')}`,
             color: statusVar('dangerText'),
-            fontFamily: R.fontSans, fontWeight: 600, fontSize: 14,
+            fontFamily: fontVar('heading'), fontWeight: 600, fontSize: 14,
             cursor: 'pointer',
           }}
         >

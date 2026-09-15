@@ -1,4 +1,5 @@
 import { R } from '../../constants/theme';
+import { fontVar } from '../../constants/elevationTheme';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared card shell for the UI-state primitives (C/DL-3a Phase 4A).
@@ -45,7 +46,7 @@ const CARD_BASE = Object.freeze({
   background: `var(--rm-surface, ${R.bgCard})`,
   borderRadius: 14,
   textAlign: 'center',
-  fontFamily: R.fontBody,
+  fontFamily: fontVar('body'),
 });
 
 /**
