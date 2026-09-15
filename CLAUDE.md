@@ -344,10 +344,23 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1395 server tests across 219 suites, and 1056 React tests across 64 files** (measured 2026-09-15 by Palette-15, the two-auth-screens commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-15 COMMIT ITSELF.** 1030 → 1056 is its 26 React
-  cases in one new file; 63 → 64 is that file. The SERVER numbers did not move and were
-  re-measured rather than carried — Palette-15 touches no server file.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1410 server tests across 225 suites, and 1056 React tests across 64 files** (measured 2026-09-15 by the font-loader-SELECT commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE FONT-LOADER COMMIT ITSELF.** 1395 → 1410 is its 15 server
+  cases in one new file, and 219 → 225 is that file's six `describe` blocks. The REACT numbers did
+  not move and were re-measured rather than carried — that commit adds no React test, it only
+  corrects a comment in one.
+  ⚠ **15 CASES, COUNTED WITH `grep -c`, AND THE FIRST PASS PREDICTED 14** — one block was planned
+  with two cases and written with three. **That is the THIRD recorded estimate-instead-of-count
+  slip and all three were LOW**, which is the direction that matters: a low prediction is
+  indistinguishable from a suite that did not run. Several `for` loops in that file all sit inside
+  `it()` bodies and multiply nothing.
+  ⚠ **AND A `suites 0` READING WAS SEEN AND ACTED ON DURING THAT WORK** — `tests 1` beside
+  `suites 0` and `fail 1`, the module-load signature this file names. Cause: a backtick inside a
+  SQL comment **inside a template literal**, which closed the string. The lucky variant; the
+  recorded `landing.js` case produced no error at all.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-15 COMMIT ITSELF.* 1030 →
+  1056 is its 26 React cases in one new file; 63 → 64 is that file. The SERVER numbers did not
+  move and were re-measured rather than carried — Palette-15 touches no server file.
   ⚠ **26 `it(` LINES AND NINETEEN `for` LOOPS, AND THE LOOPS MULTIPLY NOTHING** — every one sits
   inside an `it()` body or a helper, so the count is 26, not 26 × anything.
   ⚠ **AND THE FIRST PASS PREDICTED 25.** One block was planned with two cases and written with

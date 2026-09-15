@@ -99,6 +99,31 @@ async function loadContractorBranding(db, contractorId) {
             -- every branding consumer the socials without a second delivery path.
             s.social_facebook, s.social_instagram, s.social_google,
             s.social_nextdoor, s.social_website,
+            -- ⚠ THE FONT COLUMNS, AND THEIR ABSENCE MADE THE ENTIRE FONT ARC
+            -- INERT. resolveBrandingTheme reads src.font_heading and
+            -- src.font_body; this SELECT named neither, so it saw undefined,
+            -- resolveFont returned the platform default, and NO CONTRACTOR'S
+            -- CHOSEN FONTS COULD REACH ANY SURFACE. Palette-13 built the
+            -- resolver, the allowlist and the mount, Part B declared 25
+            -- self-hosted faces and B.7 migrated 313 painters — all of it
+            -- downstream of this line, all of it unable to receive a value.
+            --
+            -- ⚠ IT SURVIVED BECAUSE THE VERIFICATION INJECTED DOWNSTREAM OF THE
+            -- GAP. B.7's serif check set the family below this loader and
+            -- verified forward; nobody checked that the resolver RECEIVES
+            -- anything. A test that injects at the wrong layer passes on a
+            -- broken chain.
+            --
+            -- ⚠ AND THE TRAP WAS PREDICTED IN TERMS by elevationTheme.js:
+            -- "Accent's stored fonts are Montserrat and Roboto — WHICH ARE ALSO
+            -- THE PLATFORM DEFAULTS. On that contractor a correct wiring and a
+            -- completely unwired one render IDENTICAL PIXELS." The only
+            -- contractor anyone checked could not have shown the defect.
+            --
+            -- ⚠ NO font_mono: there is no such column. The resolver emits the
+            -- platform value for that role unconditionally, which is why it
+            -- alone takes no src read.
+            s.font_heading, s.font_body,
             -- LP §2's overridable step copy (BR-2 Phase 2, A32(a)). NULL means
             -- "use the frozen default"; renderState1 holds the defaults.
             s.landing_step1_title, s.landing_step2_title, s.landing_step2_body,

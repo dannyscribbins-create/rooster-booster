@@ -13,6 +13,26 @@
 // This commit joins 1-3. The painters are the second commit, so these tests
 // prove the VALUE ARRIVES, not that any component asks for it yet.
 //
+// ⚠⚠ CORRECTED 2026-09-15: IT WAS FIVE PLACES, AND THE FIFTH IS UPSTREAM OF ALL
+// FOUR ABOVE — `loadContractorBranding()`'s SELECT NAMED NEITHER FONT COLUMN.
+// So `resolveBrandingTheme` was handed a row with no `font_heading` and no
+// `font_body`, saw undefined, and returned the platform default for EVERY
+// contractor. Fixing 1-4 could not have made a single stored font appear.
+//
+// ⚠ THE ENUMERATION ABOVE IS LEFT INTACT RATHER THAN EDITED, because it is the
+// record of what was believed — but it must not be read as complete. A reader
+// consulting this file for "where can the font chain break" would have got four
+// places and missed the only one that mattered.
+//
+// ⚠ AND THIS FILE COULD NOT HAVE CAUGHT IT, WHICH IS THE LESSON RATHER THAN A
+// CRITICISM. Every case here INJECTS a row straight into `resolveBrandingTheme`
+// via `row({ font_heading: … })`. That is the correct unit test for the
+// resolver's own contract and it is still valid and still passing — but a test
+// that supplies the value itself cannot discover that nothing upstream supplies
+// it. The gap was not in any assertion here; it was that no test existed at the
+// layer ABOVE. server/test/brandingFontDelivery.test.js is that layer, and it
+// sources every value from a real row rather than handing one over.
+//
 // ── THE VERIFICATION TRAP THIS FILE IS BUILT AROUND ─────────────────────────
 // ⚠ ACCENT'S STORED FONTS ARE MONTSERRAT AND ROBOTO — WHICH ARE ALSO THE
 // PLATFORM DEFAULTS AND ALSO WHAT THE OLD HARDCODED LOADER FETCHED. On that

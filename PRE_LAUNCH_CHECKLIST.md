@@ -5602,7 +5602,7 @@ quadruples is evidence about the estimate, not about the wave:
 
       | # | what | trigger |
       |---|---|---|
-      | A | ⚠ **A CONTRACTOR'S FONTS CANNOT REACH THE APP AT ALL. `loadContractorBranding()` selects no font columns.** That function is *the ONE loader behind both the landing page and `GET /api/branding/:slug`*, by its own comment — so `resolveBrandingTheme(row)` sees `font_heading`/`font_body` as `undefined` and `resolveFont()` returns the PLATFORM DEFAULT for every contractor. **Measured in a browser: a seeded contractor stored as `Playfair Display`/`Lato` mounted `--rm-font-heading: 'Montserrat'`.** ⚠ Palette-13 joined resolver → provider → loader and B.7 migrated the painters; **the DATA never arrives.** This is CLAUDE.md's *five states, not three* — storage, editor and validator all exist, **DELIVERY does not** | a server change to that SELECT plus a re-run of the font chain. ⚠ **AND IT SURVIVED EXACTLY AS `elevationTheme.js` PREDICTED IT WOULD**: that file warns in terms that Accent's stored fonts *are* Montserrat and Roboto, so on the only contractor anyone checked **a correct wiring and a broken one render identical pixels**, and says verification must use a contractor set to something unmistakable. This is the first time anyone did |
+      | A | ~~⚠ **A CONTRACTOR'S FONTS CANNOT REACH THE APP AT ALL.**~~ ✅ **FIXED 2026-09-15** — the two columns are in the SELECT, and the chain is verified end-to-end from a real row (see **THE FONT LOADER SELECT** below). The original finding is kept unstruck below because its reasoning is the record: ⚠ **`loadContractorBranding()` selects no font columns.** That function is *the ONE loader behind both the landing page and `GET /api/branding/:slug`*, by its own comment — so `resolveBrandingTheme(row)` sees `font_heading`/`font_body` as `undefined` and `resolveFont()` returns the PLATFORM DEFAULT for every contractor. **Measured in a browser: a seeded contractor stored as `Playfair Display`/`Lato` mounted `--rm-font-heading: 'Montserrat'`.** ⚠ Palette-13 joined resolver → provider → loader and B.7 migrated the painters; **the DATA never arrives.** This is CLAUDE.md's *five states, not three* — storage, editor and validator all exist, **DELIVERY does not** | a server change to that SELECT plus a re-run of the font chain. ⚠ **AND IT SURVIVED EXACTLY AS `elevationTheme.js` PREDICTED IT WOULD**: that file warns in terms that Accent's stored fonts *are* Montserrat and Roboto, so on the only contractor anyone checked **a correct wiring and a broken one render identical pixels**, and says verification must use a contractor set to something unmistakable. This is the first time anyone did |
       | B | ⚠ **THE SIGNUP PATH RESOLVES *NEUTRAL*, SO THE MIGRATED CHROME PAINTS THE PLATFORM PALETTE.** `server/utils/inviteTokens.js` builds `${FRONTEND_URL}?signup=<slug>`; the D4 chain's source 2.5 reads **`?brand=`**, which that URL does not carry. Source 2 is null on `app.*` and source 3 cannot be written across the origin boundary — **which is the very reason 2.5 exists.** Measured on a genuine cold visit: `--rm-primary #F26A1B`, `--rm-text #1C2D4D`, stored hint `null`. ⚠ **NOT A REGRESSION — STRICTLY BETTER**: the chrome was one retired tenant's navy for *every* contractor before this phase, and is now the platform's own neutral. The contractor's identity still reaches the screen through the invite **prop** (mark, name, copy), so no absence rule is broken | either the invite link carries `&brand=<slug>`, or the chain learns `?signup=`. ⚠ **THE FIRST OPTION DOES NOT WORK FOR EVERY CONTRACTOR**: `contractors.slug` is NULL for the state every contractor arrives in (the seeder says so in terms), and a null slug cannot be named in a hint at all |
       | C | ⚠ **`scoreContrast()` IGNORES THE FOREGROUND'S OWN ALPHA CHANNEL.** It composites using `effectiveAlpha` — the CSS `opacity` chain — and never reads `fg.a`. **Measured: the input hairline `rgba(0,0,0,0.12)` on white scores `21:1 PASS` where Palette-1 records the truth as `1.32:1`.** ⚠ **A CHECKER THAT CANNOT SEE A DEFECT WHOSE SYMPTOM IS HIGH CONTRAST** — the same gap that let five black icons past four independent checks. Every `border` reading in **every** graphic-floor run this arc has produced is scored against the border's opaque colour, Palette-14's `32/32` included | ⚠ **NOT FIXED HERE ON PURPOSE**: changing the scorer re-scores every prior baseline, which is a job with its own blast radius. The shortfall it hides is already filed and ruled (Palette-1: no hairline clears 3:1 and none can) |
       | D | **Two citations into `SignupScreen.jsx` rotted, and BOTH WERE ALREADY WRONG BEFORE THE EDIT THAT MOVED THEM.** `CDL_3c_PHASE0_REPORT.md`'s 8-character-policy sentence cited `:55`, which held the **email regex**; `CDL_3c_PHASE05_RULINGS.md`'s prop sentence cited `:17`, a **comment continuation**. ⚠ **AND VERIFYING THE SET FOUND A THIRD THE TOOL NEVER FLAGGED**: the same policy sentence also cites `ResetPinScreen.jsx:58`, which is the error **message**, one line below the check — unflagged only because that file was not touched. **Adding the delta would have certified two wrong numbers as repaired and left the third wrong** | re-derive all four **by role** — the validator, not a line. ⚠ **Recorded rather than improvised, per the rule**: the re-derivation is the larger job, and the numbers above are quoted as EVIDENCE and must not be renumbered |
@@ -5617,6 +5617,59 @@ quadruples is evidence about the estimate, not about the wave:
       button is genuinely `disabled`, and the alpha is unchanged from before the migration. The
       **enabled** state measures **6.85:1**. The graphic-floor run reports those two as shortfalls
       and they are the only two across 48 readings.
+
+- [x] **✅ THE FONT LOADER SELECT — THE CHAIN'S MISSING LINK, FIXED 2026-09-15.**
+
+      `loadContractorBranding()`'s SELECT now names `s.font_heading, s.font_body`. **That one line
+      was the whole defect**: the resolver read `src.font_heading`, the loader never supplied it,
+      `resolveFont()` returned the platform default, and **no contractor's chosen fonts could reach
+      any surface.** Palette-13 built the resolver, the allowlist, the per-family generics and the
+      mount; Part B declared 25 self-hosted faces; B.7 migrated 313 painters. **All of it was
+      downstream of this line and none of it could receive a value.**
+
+      **Verified end-to-end from a real row, nothing injected at any layer** (`palette-beta`,
+      stored `Playfair Display` / `Lato` — ⚠ deliberately NOT the platform defaults, which is the
+      trap the whole arc is built around): the `h2` computes `"Playfair Display", serif` while its
+      DECLARATION still names Montserrat as the fallback, so the mounted value won.
+      `document.fonts` reports the faces **loaded**, not merely declared — and the fetched set
+      moved from **3 app faces to 6**, adding `playfair-display-latin.woff2` and both Lato weights.
+      **A browser downloads a face only when a USED family matches it**, so the changed fetch set
+      is what separates a painted face from a declaration. Zero Google requests. An unset
+      contractor still gets Montserrat / Roboto (width 212.97, matching Montserrat exactly).
+
+      ⚠ **AND THE FIELD AUDIT THAT CAME WITH IT: 28 of 28 columns now supplied, and the fonts were
+      the ONLY gap.** *If fonts were missing, what else is?* — asked mechanically, by extracting
+      every `src.<col>` the resolver reads and differencing it against the loader's SELECT rather
+      than reading either list by eye. `server/test/brandingFontDelivery.test.js` carries that
+      difference as a permanent fence, **so the next missing column fails there instead of
+      shipping.** That is the closure half: the defect was never "fonts were forgotten", it was
+      "nothing checks the loader against the resolver".
+
+      ⚠ **THERE IS ONLY ONE LOADER, CHECKED RATHER THAN ASSUMED.** `GET /api/branding/:slug`,
+      `GET /api/session/branding`, `GET /api/admin/me`, `GET /api/invite/:slug` and the
+      server-rendered landing page ALL route through `loadContractorBranding`. No second SELECT was
+      left short, and a test pins that they keep sharing it.
+
+      ⚠ **WHY IT SURVIVED, WHICH IS WORTH MORE THAN THE FIX: B.7's SERIF TEST PASSED BECAUSE IT
+      INJECTED DOWNSTREAM OF THE GAP.** `src/constants/fontChain.test.jsx` hands a row straight to
+      `resolveBrandingTheme` via `row({ font_heading: 'Playfair Display' })`. That is the correct
+      unit test for the resolver's own contract, it is still valid and still green — **but a test
+      that supplies the value itself cannot discover that nothing upstream supplies it.** The gap
+      was never a wrong assertion; it was that **no test existed at the layer above.**
+      ⚠ **AND THAT FILE'S HEADER ENUMERATED THE CHAIN AS BREAKING IN "FOUR PLACES" AND THE LOADER
+      WAS NOT ONE OF THEM** — it was five, and the fifth sat upstream of all four. The enumeration
+      is left intact with a correction beside it, because it is the record of what was believed;
+      a reader consulting it for *where can the font chain break* would have got four and missed
+      the only one that mattered.
+
+- [ ] **⚠ WHAT THE FONT-LOADER FIX LEAVES BEHIND.** *(2026-09-15.)*
+
+      | # | what | trigger |
+      |---|---|---|
+      | i | ⚠ **THE LANDING PAGE NOW RECEIVES THE FONT VALUES AND IGNORES THEM.** It uses the same loader, so `headingFont`/`bodyFont` arrive — and `PAGE_CSS` **hardcodes** `'Montserrat'` and `'Roboto'` and declares only those two `@font-face` blocks. **Verified against the served bytes: the page for a contractor stored as Playfair Display contains ZERO occurrences of "Playfair" or "Lato".** ⚠ **SO THE PUBLIC HOMEOWNER-FACING PAGE IS UNCHANGED BY THIS FIX — named rather than discovered**, which is what V4 asked for. It is the remaining half of the same delivery gap, one layer further on | a landing-page change: emit the resolved stacks into `PAGE_CSS` and declare the matching faces. ⚠ It self-hosts under `font-src 'self'`, so a new family needs its file present, not just its name |
+      | ii | **Two preloaded faces are now dead weight for any contractor not on the platform defaults.** `useReferrerFonts()` preloads Montserrat, Roboto and Roboto Mono unconditionally. On a serif contractor, Montserrat and Roboto are downloaded and never painted — measured, both fetched on Beta's page alongside the three that are actually used | the loader's own comment already reasons *"no preload is better than a wrong one, which costs a download nobody uses"* — it anticipated not guessing a contractor's face, but not that the platform three become the wasted download. A ruling on whether to preload at all once branding is known |
+      | iii | **The campaign email still reads `cs.font_heading`/`cs.font_body` straight off its own SELECT** with `Georgia, serif` / `Arial, sans-serif` defaults, and loads no webfont. Unaffected by this fix and deliberately untouched — a separate path with its own defaults | already filed as item 11 of the Palette closing inventory; unchanged |
+      | iv | **`palette-beta`'s stored body font is `Lato`, not `Nunito`.** Worth recording because `Nunito` is `fontChain.test.jsx`'s injected fixture value, and it is easy to mistake a test fixture for the seeded row — which is precisely the confusion this whole phase is about | none; the seeder is correct and the two simply differ |
 
 - [ ] **⚠ THE BUCKET-BLIND RESIDUE AND FONTS — AND THE RECORDED FIGURE CANNOT BE REPRODUCED BY ANY
       SCOPE I MEASURED, WHICH IS ITSELF THE FINDING.**
