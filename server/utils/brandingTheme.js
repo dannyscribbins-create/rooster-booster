@@ -91,6 +91,95 @@ const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 // lives is greppable if they ever change it.
 const GOOGLE_WRITE_REVIEW_BASE = 'https://search.google.com/local/writereview?placeid=';
 
+// ── THE FONT ALLOWLIST (Palette-13, R-A and R-C) ────────────────────────────
+//
+// FAMILY -> ITS GENERIC FALLBACK CATEGORY. Two columns, one table, and the
+// second column is not decoration: `HEADING_FONTS` in the admin picker offers
+// TWO SERIFS, and appending `sans-serif` to everything — which is what the
+// admin preview does today — gives a serif family a fallback that CHANGES
+// CATEGORY the moment the face fails to load. A contractor who chose Playfair
+// Display gets Arial, not Georgia, and nothing reports it.
+//
+// ⚠ THE KEYS ARE THE ALLOWLIST AND THE VALUES ARE THE STACK. Keeping them in
+// one table is why R-C costs nothing: the check and the fallback answer the
+// same lookup.
+//
+// ⚠ THIS SET IS THE PICKER'S SET, AND THE PICKER IS NOT THE CONSTRAINT.
+// `HEADING_FONTS`/`BODY_FONTS` in BrandingProfileSettings.jsx are two arrays in
+// an admin BUNDLE. `PUT /api/admin/settings` whitelists COLUMN NAMES and never
+// inspects a value; the column is VARCHAR(100) with no CHECK. So the picker
+// constrains a person using the form and constrains nothing else — which is
+// exactly why this table is consulted at READ time. See resolveFont below.
+//
+// ⚠ 'Source Sans Pro' IS A RETIRED GOOGLE NAME and is kept deliberately. Google
+// renamed the family to 'Source Sans 3' — `ofl/sourcesanspro` is a 404 in their
+// repo while `ofl/sourcesans3` serves — but the css2 API still serves the old
+// name at v23, and it is what contractors have already SAVED. Renaming the key
+// would silently invalidate a stored selection and fall those contractors back
+// to the platform default. Retiring it is a migration, not a rename.
+const FONT_STACKS = Object.freeze({
+  'Montserrat':       'sans-serif',
+  'Poppins':          'sans-serif',
+  'Inter':            'sans-serif',
+  'Raleway':          'sans-serif',
+  'Playfair Display': 'serif',
+  'DM Serif Display': 'serif',
+  'Oswald':           'sans-serif',
+  'Lato':             'sans-serif',
+  'Roboto':           'sans-serif',
+  'Open Sans':        'sans-serif',
+  'Nunito':           'sans-serif',
+  'Source Sans Pro':  'sans-serif',
+  'Work Sans':        'sans-serif',
+  'DM Sans':          'sans-serif',
+  // The mono role's face. ⚠ IT HAS NO COLUMN — there is no `font_mono` in
+  // contractor_settings and no picker control, so mono is PLATFORM-FIXED and a
+  // contractor cannot change it. It lives in this table anyway so that the one
+  // place a family maps to a generic is the one place, and so the loader can
+  // ask this table for every face it has to declare.
+  'Roboto Mono':      'monospace',
+});
+
+// Returns `value` when it is a family this platform will actually serve, else
+// `fallback`.
+//
+// ⚠ THIS IS resolveColor's SHAPE AND ITS REASONING, APPLIED TO THE SECOND
+// FREE-TEXT ADMIN FIELD THAT REACHES A STYLE CONTEXT. That function's comment
+// states the argument and it transfers without modification: the value arrives
+// from an admin field, so a typo is ordinary; unvalidated it reaches the page
+// and renders as nothing. And "the same check also means no attacker-influenced
+// string can be interpolated into a style context."
+//
+// ⚠ READ-TIME, NOT WRITE-TIME, AND THE DISTINCTION IS THE WHOLE POINT. A
+// write-time check constrains one endpoint. This column is also reachable by a
+// direct database write, by a migration, and by any tenant admin holding
+// `branding.manage`. A write-time constraint is not a read-time guarantee, so
+// the guarantee is taken where the value is consumed. `PUT /api/admin/settings`
+// gained a check too, and that one is DEFENCE IN DEPTH — it is not sufficient
+// and must not be recorded as if it were.
+//
+// TRIMMED BEFORE LOOKUP, matching firstNonEmpty's treatment of a cleared field:
+// ' Montserrat ' is a stored value with stray whitespace, not a different family.
+function resolveFont(value, fallback) {
+  if (typeof value !== 'string') return fallback;
+  const family = value.trim();
+  return Object.prototype.hasOwnProperty.call(FONT_STACKS, family) ? family : fallback;
+}
+
+// Builds the CSS font-family list for a resolved family: the family, quoted,
+// then ITS OWN generic — never a blanket 'sans-serif'.
+//
+// Falls back to the platform sans stack for an unknown family rather than
+// emitting a bare quoted name with no generic. An unknown family cannot reach
+// here through resolveFont, but this function is exported and a caller that
+// hands it something else must not produce a declaration with no fallback at
+// all — which is what the campaign email does today, and why a contractor on
+// Playfair Display gets their mail client's default rather than a serif.
+function fontStack(family) {
+  const generic = FONT_STACKS[family];
+  return generic ? `'${family}', ${generic}` : `'${BRANDING_THEME_DEFAULTS.bodyFont}', sans-serif`;
+}
+
 // The RoofMiles fallback tokens (LP §5). A brand-new contractor gets a decent
 // page from these before uploading anything.
 //
@@ -146,6 +235,18 @@ const BRANDING_THEME_DEFAULTS = Object.freeze({
   backgroundColor:  '#FFFFFF',
   reviewButtonText: 'Leave a Review',
   reviewMessage:    'Enjoying the rewards? Leave us a quick review!',
+  // ── THE THREE FONT ROLES (Palette-13, R-D) ────────────────────────────────
+  // GENERIC COPY, NOT IDENTITY, by the rule stated above this object: a typeface
+  // says WHAT, not WHO. So unlike logoUrl and reviewUrl these default freely —
+  // an unbranded contractor gets the platform's faces rather than no text.
+  //
+  // ⚠ monoFont HAS NO COLUMN and is platform-fixed — see FONT_STACKS. It is a
+  // default with no override, which is a different thing from a default that a
+  // contractor has not set yet, and the distinction is stated here so nobody
+  // goes looking for the picker control that would change it.
+  headingFont:      'Montserrat',
+  bodyFont:         'Roboto',
+  monoFont:         'Roboto Mono',
 });
 
 // Returns the first argument that is a non-empty string, else null.
@@ -214,6 +315,28 @@ function resolveBrandingTheme(input) {
     logoUrl:         firstNonEmpty(src.logo_url),
     phone:           firstNonEmpty(src.company_phone),
     email:           firstNonEmpty(src.company_email),
+
+    // ── THE FONT ROLES (Palette-13, R-F) ───────────────────────────────────
+    // Widened here for the same reason the review trio was: the columns had a
+    // real editor and a real stored value and NO DELIVERY PATH to the referrer
+    // app. `font_heading` and `font_body` reached campaign email HTML and
+    // nothing else, so a contractor picked fonts and their homeowners never saw
+    // them.
+    //
+    // ⚠ THE CHAIN BROKE IN FOUR PLACES, NOT ONE, and this is the first: the
+    // resolver emitted no font key at all, so ThemeProvider mounted the platform
+    // defaults, useReferrerFonts() hardcoded one Google stylesheet, and the
+    // painters hardcoded the family. A fix that touched only the loader and the
+    // painter would have left the stored value still unable to arrive.
+    //
+    // RESOLVED, NOT PASSED THROUGH — see resolveFont. An off-list value becomes
+    // the platform default rather than reaching a style context.
+    headingFont:     resolveFont(src.font_heading, BRANDING_THEME_DEFAULTS.headingFont),
+    bodyFont:        resolveFont(src.font_body,    BRANDING_THEME_DEFAULTS.bodyFont),
+    // No src.* read: there is no column. Platform-fixed by construction, and
+    // emitted anyway so every consumer asks the resolver for all three roles
+    // rather than special-casing the one that cannot vary.
+    monoFont:        BRANDING_THEME_DEFAULTS.monoFont,
 
     // ── THE REVIEW TRIO (C/DL-3b Phase 6A) ─────────────────────────────────
     // Added because Phase 6's Phase 0 found a state the settings-backing gate had
@@ -341,4 +464,12 @@ function resolveBrandingTheme(input) {
   return theme;
 }
 
-module.exports = { resolveBrandingTheme, BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE: HEX_RE };
+// ⚠ FONT_STACKS, resolveFont AND fontStack ARE EXPORTED, AND THAT IS NOT
+// CONVENIENCE. The write-time check in PUT /api/admin/settings must consult the
+// SAME table this resolver reads, the font loader must declare a face for every
+// family this table admits, and the suite must drive the real list rather than
+// restating it. Three copies of one allowlist is how the escapers happened.
+module.exports = {
+  resolveBrandingTheme, BRANDING_THEME_DEFAULTS, BRANDING_HEX_RE: HEX_RE,
+  FONT_STACKS, resolveFont, fontStack,
+};

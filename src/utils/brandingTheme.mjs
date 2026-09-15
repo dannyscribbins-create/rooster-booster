@@ -115,6 +115,53 @@ const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 // lives is greppable if they ever change it.
 const GOOGLE_WRITE_REVIEW_BASE = 'https://search.google.com/local/writereview?placeid=';
 
+// ── THE FONT ALLOWLIST (Palette-13, R-A and R-C) ────────────────────────────
+// FAMILY -> ITS OWN GENERIC. Mirrored from the canonical copy, where the full
+// reasoning lives. Two points worth restating because deleting them here would
+// look harmless:
+//   - the picker is two arrays in an admin bundle and constrains nothing; the
+//     write path whitelists COLUMN NAMES and never inspects a value, so this
+//     table is consulted at READ time;
+//   - the second column is load-bearing. Two of the heading families are
+//     SERIFS, and a blanket 'sans-serif' fallback changes category when a face
+//     fails to load.
+// 'Source Sans Pro' is a retired Google name kept deliberately — contractors
+// have it saved, and renaming the key would silently invalidate their choice.
+const FONT_STACKS = Object.freeze({
+  'Montserrat':       'sans-serif',
+  'Poppins':          'sans-serif',
+  'Inter':            'sans-serif',
+  'Raleway':          'sans-serif',
+  'Playfair Display': 'serif',
+  'DM Serif Display': 'serif',
+  'Oswald':           'sans-serif',
+  'Lato':             'sans-serif',
+  'Roboto':           'sans-serif',
+  'Open Sans':        'sans-serif',
+  'Nunito':           'sans-serif',
+  'Source Sans Pro':  'sans-serif',
+  'Work Sans':        'sans-serif',
+  'DM Sans':          'sans-serif',
+  // The mono role's face. No column, no picker control — platform-fixed.
+  'Roboto Mono':      'monospace',
+});
+
+// resolveColor's shape and reasoning, applied to the second free-text admin
+// field that reaches a style context. Off-list resolves to the fallback rather
+// than being interpolated. Trimmed before lookup, matching firstNonEmpty's
+// treatment of a cleared field.
+function resolveFont(value, fallback) {
+  if (typeof value !== 'string') return fallback;
+  const family = value.trim();
+  return Object.prototype.hasOwnProperty.call(FONT_STACKS, family) ? family : fallback;
+}
+
+// The family, quoted, then ITS OWN generic — never a blanket 'sans-serif'.
+function fontStack(family) {
+  const generic = FONT_STACKS[family];
+  return generic ? `'${family}', ${generic}` : `'${BRANDING_THEME_DEFAULTS.bodyFont}', sans-serif`;
+}
+
 // The RoofMiles fallback tokens (LP §5). A brand-new contractor gets a decent
 // page from these before uploading anything.
 //
@@ -170,6 +217,13 @@ const BRANDING_THEME_DEFAULTS = Object.freeze({
   backgroundColor:  '#FFFFFF',
   reviewButtonText: 'Leave a Review',
   reviewMessage:    'Enjoying the rewards? Leave us a quick review!',
+  // ── THE THREE FONT ROLES (Palette-13, R-D) ────────────────────────────────
+  // Generic copy, not identity — a typeface says WHAT, not WHO — so these
+  // default freely, unlike logoUrl and reviewUrl. monoFont has no column and
+  // cannot be overridden. Full reasoning in the canonical copy.
+  headingFont:      'Montserrat',
+  bodyFont:         'Roboto',
+  monoFont:         'Roboto Mono',
 });
 
 // Returns the first argument that is a non-empty string, else null.
@@ -234,6 +288,15 @@ function resolveBrandingTheme(input) {
     // re-sourcing the slot would silently ignore a value they had saved.
     accentColor:     resolveColor(src.accent_color,     BRANDING_THEME_DEFAULTS.accentColor),
     backgroundColor: resolveColor(src.landing_bg_color, BRANDING_THEME_DEFAULTS.backgroundColor),
+
+    // ── THE FONT ROLES (Palette-13, R-F) ───────────────────────────────────
+    // Mirrored from the canonical copy; the reasoning lives there. In short: the
+    // columns had an editor and a stored value and NO delivery path, so a
+    // contractor picked fonts and only their campaign email ever showed them.
+    // monoFont has no column and is platform-fixed.
+    headingFont:     resolveFont(src.font_heading, BRANDING_THEME_DEFAULTS.headingFont),
+    bodyFont:        resolveFont(src.font_body,    BRANDING_THEME_DEFAULTS.bodyFont),
+    monoFont:        BRANDING_THEME_DEFAULTS.monoFont,
 
     logoUrl:         firstNonEmpty(src.logo_url),
     phone:           firstNonEmpty(src.company_phone),
@@ -367,4 +430,7 @@ function resolveBrandingTheme(input) {
 
 // ⚠ THE ONE LINE THAT IS NOT A VERBATIM MIRROR. The server copy ends with
 // `module.exports = { … }`; same three names, same three values. See the header.
-export { resolveBrandingTheme, BRANDING_THEME_DEFAULTS, HEX_RE as BRANDING_HEX_RE };
+export {
+  resolveBrandingTheme, BRANDING_THEME_DEFAULTS, HEX_RE as BRANDING_HEX_RE,
+  FONT_STACKS, resolveFont, fontStack,
+};

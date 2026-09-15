@@ -12,7 +12,10 @@ const { body, validationResult } = require('express-validator');
 const { getPeriodDateRange } = require('../../utils/dateUtils');
 // Zero-row settings defaults are read from the resolver rather than re-typed
 // (C/DL-3b Phase 6A) — see the review_button_text / review_message lines below.
-const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
+// resolveFont is imported from the resolver rather than re-implemented here, so
+// the write check and the read guard consult THE SAME TABLE. Two copies of one
+// allowlist is how the seven duplicated escapers happened.
+const { BRANDING_THEME_DEFAULTS, resolveFont } = require('../../utils/brandingTheme');
 // GET /api/admin/me's branding block (Admin Brand Retirement Phase 2B, D-H).
 // THE SAME LOADER THE REFERRER PAYLOAD USES, imported rather than reimplemented —
 // a second resolution path is a second set of fallbacks that can drift from the
@@ -799,6 +802,30 @@ router.put('/api/admin/settings', requirePermission('branding.manage'), async (r
   const columns = SETTINGS_WRITABLE_COLUMNS.filter(
     col => Object.prototype.hasOwnProperty.call(body, col)
   );
+
+  // ── FONT VALIDATION — DEFENCE IN DEPTH, AND THAT LABEL IS LOAD-BEARING ─────
+  // ⚠ THIS IS NOT THE CONTROL. The control is `resolveFont()` at the READ side
+  // (server/utils/brandingTheme.js), and it is there because this column is also
+  // reachable by a direct database write, by a migration, and by any tenant admin
+  // holding `branding.manage`. A write-time constraint is not a read-time
+  // guarantee — so if this check is ever removed, nothing downstream breaks, and
+  // if the read-side one is ever removed, this will not save it.
+  //
+  // What it buys is a 400 instead of a silent substitution: an admin whose
+  // client sent a family this platform cannot serve gets told, rather than
+  // saving successfully and wondering why the page still looks the same.
+  //
+  // EMPTY AND NULL ARE ACCEPTED DELIBERATELY — clearing the field is how an
+  // admin returns to the platform default, and PRESENCE-not-nullness is this
+  // endpoint's whole design (see the note above).
+  for (const col of ['font_heading', 'font_body']) {
+    if (!columns.includes(col)) continue;
+    const value = body[col];
+    if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) continue;
+    if (typeof value !== 'string' || resolveFont(value, null) === null) {
+      return res.status(400).json({ error: `${col} must be one of the supported font families` });
+    }
+  }
 
   // company_country's historical default. Applied only when the key is PRESENT —
   // an absent company_country must be omitted like any other absent column, not

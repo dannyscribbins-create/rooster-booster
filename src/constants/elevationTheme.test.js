@@ -37,7 +37,7 @@ function over(rgba, hex) {
 // above the list it counts is the shape CLAUDE.md records as its own worst
 // instance. Read the list.
 describe('Palette-1 T3 — the side channel publishes its roles', () => {
-  it('covers the elevation roles and both fonts', () => {
+  it('covers the elevation roles and all three fonts', () => {
     // ⚠ HAND-WRITTEN ON PURPOSE — an INDEPENDENT statement of the role set. If
     // this derived its expectation from ELEVATION_VARS it could not fail, which
     // is the whole point: a role added to the map without a value in both tables
@@ -45,7 +45,14 @@ describe('Palette-1 T3 — the side channel publishes its roles', () => {
     // without anyone deciding to add it is what this one catches.
     // shadowMd/shadowLg arrived in Palette-4a Part B under R-C.
     expect(Object.keys(ELEVATION_VARS).sort()).toEqual(['border', 'shadow', 'shadowLg', 'shadowMd']);
-    expect(Object.keys(FONT_VARS).sort()).toEqual(['body', 'heading']);
+    // ⚠ 'mono' ADDED IN PALETTE-13 PART B UNDER R-D — a DELIBERATE widening,
+    // updated openly rather than discovered as a failure and quietly adjusted.
+    // Publishing heading and body only would have left the migrated files
+    // carrying their monospace sites on the old key, which reads as done.
+    // ⚠ STILL AN EXACT-SET ASSERTION, AND THAT IS WHAT KEEPS IT UNWEAKENED. The
+    // repair here is a third member, not a loosening to a subset check — a role
+    // added without anyone deciding to add it still fails this line.
+    expect(Object.keys(FONT_VARS).sort()).toEqual(['body', 'heading', 'mono']);
   });
 
   it('the two elevation tables carry the same roles — a drift here is a silent gap', () => {
@@ -139,7 +146,11 @@ describe('Palette-1 B.3 — fonts diverge from elevation, deliberately', () => {
     // so a light/dark split would invent a distinction nobody makes. Elevation
     // needs both; fonts need neither. Asserted so the asymmetry is deliberate
     // rather than something a later reader "fixes" into symmetry.
-    expect(Object.keys(FONT_DEFAULTS).sort()).toEqual(['body', 'heading']);
+    // 'mono' added in Palette-13 Part B (R-D). ⚠ THE ASYMMETRY THIS CASE
+    // DEFENDS IS UNCHANGED AND IS THE WHOLE POINT: a THIRD role arrived and
+    // there is still ONE table, because the reason fonts take no mode is about
+    // typefaces, not about how many of them there are.
+    expect(Object.keys(FONT_DEFAULTS).sort()).toEqual(['body', 'heading', 'mono']);
     // There is no FONT_DARK, and this is the assertion that says so.
     // eslint-disable-next-line no-undef
     expect(typeof globalThis.FONT_DARK).toBe('undefined');

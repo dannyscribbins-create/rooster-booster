@@ -344,11 +344,29 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1339 server tests across 212 suites, and 954 React tests across 58 files** (measured 2026-09-15 by the campaign-email escaping repair, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE ESCAPING-REPAIR COMMIT ITSELF, BECAUSE THAT COMMIT
-  SHIPS TESTS.** It adds `server/test/campaignEmailEscaping.test.js`; 1320 → 1339 is exactly
-  its 19 cases and 210 → 212 is exactly its two `describe` blocks. Citing the parent would
-  name a revision at which this figure was never true.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1339 server tests across 212 suites, and 1007 React tests across 61 files** (measured 2026-09-15 by Palette-13 Part B's chain commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-13 CHAIN COMMIT ITSELF, BECAUSE THAT COMMIT
+  SHIPS TESTS.** 954 → 1007 is its 53 React cases across three new files; 58 → 61 is those
+  three files. **The SERVER numbers did not move and were re-measured rather than carried** —
+  this commit adds no server test, it only widens two existing fences.
+  ⚠ **AND THE 53 WAS RECONCILED PER FILE, NOT ACCEPTED AS A TOTAL — WHICH IS THE ONLY REASON
+  A FOURTH CONTRIBUTOR WAS FOUND.** The three new files hold 33 + 12 + 7 = **52**, and the
+  gate reported **53**. The missing case is in `adminBranding.test.jsx`, which this commit
+  never opened: that sweep WALKS `src/constants/` recursively rather than iterating a
+  hand-maintained FILES list, so the new `fontManifest.mjs` was swept automatically, one case
+  per file. **A total that looked one too high was the only signal, and a breakdown was the
+  only thing that could explain it** — the previous entry records two arithmetic errors that
+  cancelled and left the total agreeing.
+  ⚠ **AND THE LOOP ARITHMETIC IS SHOWN BECAUSE A LINE COUNT STRUCTURALLY CANNOT SEE A LOOP.**
+  `fontChain.test.jsx`: 19 `it(` lines, two inside loops emitting 8 each → 8 + 8 + 17 = 33.
+  `fontFallbackIntegrity.test.js`: 6 `it(` lines, three inside a 3-role loop → 9 + 3 = 12.
+  `fontLoader.test.jsx`: 7 lines, no loops → 7. ⚠ **Two `for` loops in those files sit INSIDE
+  an `it()` body and emit no cases at all**; counting them as case-multipliers is the obvious
+  way to get this wrong.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE ESCAPING-REPAIR COMMIT ITSELF,
+  BECAUSE THAT COMMIT SHIPS TESTS.* It adds `server/test/campaignEmailEscaping.test.js`;
+  1320 → 1339 is exactly its 19 cases and 210 → 212 is exactly its two `describe` blocks.
+  Citing the parent would name a revision at which this figure was never true.
   ⚠ **AND THE 19 WAS COUNTED, NOT ESTIMATED — WITH THE LOOP ARITHMETIC SHOWN, BECAUSE A LINE
   COUNT STRUCTURALLY CANNOT SEE A LOOP.** `grep -c` reports **12** `it(` lines; three of them
   sit inside `for` loops emitting 4, 3 and 3 cases, and the other nine emit one each —

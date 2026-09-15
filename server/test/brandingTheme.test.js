@@ -174,6 +174,20 @@ const POPULATED_EXPECTED = Object.freeze({
   landingStep2Body:  null,
   landingStep3Title: null,
   landingStep3Body:  null,
+  // ⚠ ADDED IN PALETTE-13 PART B, on the same precedent and — stated because the
+  // two notes above both had to state it — IN THE SAME ORDER. The mirror drift
+  // guard's key list and its resolution table were extended and PROVEN BY
+  // INJECTION (a drifted default, and a dropped .trim() caught by the
+  // 'font padded but valid' case) BEFORE this fence was touched.
+  //
+  // ⚠ THESE ARE THE DEFAULTS, NOT A CHOICE, AND THAT IS THE POINT OF THE ROW.
+  // POPULATED sets no font_heading and no font_body — so a resolver that started
+  // reading some OTHER column, or stopped resolving fonts at all, would still
+  // have to produce exactly these three values to pass. monoFont has no column
+  // and can never be anything else.
+  headingFont:      'Montserrat',
+  bodyFont:         'Roboto',
+  monoFont:         'Roboto Mono',
 });
 
 describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
@@ -625,6 +639,14 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
     for (const key of [
       'companyName', 'primaryColor', 'secondaryColor', 'backgroundColor',
       'reviewButtonText', 'reviewMessage',
+      // The three font roles, added in Palette-13 Part B on the same precedent
+      // and in the same ORDER: this list and the resolution table below were
+      // extended and PROVEN BY INJECTION before the deepEqual fence above was
+      // touched. Updating the fence first would have taught it to accept the new
+      // shape, and the guard proof would then have run against a table edited to
+      // fit. monoFont is platform-fixed (no column) and is checked anyway — a
+      // default that cannot vary can still drift between two copies.
+      'headingFont', 'bodyFont', 'monoFont',
     ]) {
       assert.equal(
         mirror.BRANDING_THEME_DEFAULTS[key], canonical[key],
@@ -681,6 +703,22 @@ describe('C/DL-2 Phase 3a — resolveBrandingTheme', () => {
       ['website present',       { company_url: 'accentroofingservice.com' }],
       ['website unset',         { company_url: null }],
       ['non-string scalars',    { primary_color: 123456, secondary_color: true, landing_bg_color: [] }],
+      // ── THE FONT ROLES (Palette-13 Part B) ────────────────────────────────
+      // Same shape as the review trio above and for the same recorded reason: a
+      // field NO CASE SETS is invisible to this guard. Each role gets a case
+      // that sets it to a distinctive value, one that clears it, one that leaves
+      // it out, and — the branch colours do not have — one that is OFF THE
+      // ALLOWLIST, which is the only branch resolveFont adds over resolveColor.
+      ['fonts populated',       { font_heading: 'Playfair Display', font_body: 'Nunito' }],
+      ['fonts empty',           { font_heading: '', font_body: '' }],
+      ['fonts null',            { font_heading: null, font_body: null }],
+      ['fonts whitespace only', { font_heading: '   ', font_body: '\t' }],
+      ['font padded but valid', { font_heading: '  Oswald  ', font_body: ' DM Sans ' }],
+      ['heading only',          { font_heading: 'DM Serif Display' }],
+      ['body only',             { font_body: 'Work Sans' }],
+      ['fonts off-allowlist',   { font_heading: 'Comic Sans MS', font_body: 'Wingdings' }],
+      ['font with a quote',     { font_heading: 'Arial" onload="alert(1)' }],
+      ['font non-string',       { font_heading: 42, font_body: [] }],
       ['null input',            null],
     ];
     for (const [label, input] of cases) {

@@ -4,6 +4,10 @@ import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTh
 import {
   ELEVATION_VARS, ELEVATION_LIGHT, ELEVATION_DARK, FONT_VARS, FONT_DEFAULTS,
 } from '../../constants/elevationTheme';
+// fontStack() from the MIRROR, not a local copy — it is the same table
+// resolveFont() validates against, so the families this provider can mount and
+// the families the resolver admits cannot drift apart.
+import { fontStack } from '../../utils/brandingTheme.mjs';
 import BrandingProvider, { NEUTRAL_BRANDING, useAdminBranding } from './BrandingProvider';
 import { BACKEND_URL } from '../../config/contractor';
 import { getReferrerToken, getAdminToken } from '../../utils/authStorage';
@@ -143,20 +147,38 @@ export function themeVariables(brand, mode) {
     vars[property] = value;
   }
 
-  // ⚠ FONTS TAKE NO MODE, DELIBERATELY. A typeface has no dark variant, so there
-  // is one table and no branch. See elevationTheme.js's divergence note.
-  // ⚠ AND THESE ARE THE PLATFORM DEFAULTS, NOT THE CONTRACTOR'S. The resolver
-  // does not emit font_heading/font_body yet — there is nothing to read. Wiring
-  // that, the loader in App.jsx, and the painters is Palette-2.
+  // ⚠ FONTS TAKE NO MODE, DELIBERATELY (R-B.4). A typeface has no dark variant
+  // and no contrast ratio, so there is one table and no branch — none of
+  // primaryText's derivation machinery applies. See elevationTheme.js's
+  // divergence note.
+  //
+  // ⚠ THESE ARE THE CONTRACTOR'S FONTS NOW. This loop read FONT_DEFAULTS
+  // unconditionally until Palette-13 Part B, because the resolver emitted no
+  // font key to read — which is why a contractor could pick Montserrat or
+  // Playfair Display and get the platform's faces either way.
+  //
+  // FONT_DEFAULTS IS STILL THE FLOOR, for a brand object that predates the
+  // resolver widening or was built by a test double: an absent role falls back
+  // rather than mounting `undefined`. The drift check below is unchanged and
+  // still fires when FONT_VARS and FONT_DEFAULTS disagree about the role SET.
+  const fonts = {
+    heading: brand && brand.headingFont,
+    body:    brand && brand.bodyFont,
+    mono:    brand && brand.monoFont,
+  };
   for (const [role, property] of Object.entries(FONT_VARS)) {
-    const value = FONT_DEFAULTS[role];
-    if (typeof value !== 'string' || value === '') {
+    const fallback = FONT_DEFAULTS[role];
+    if (typeof fallback !== 'string' || fallback === '') {
       throw new Error(
         `ThemeProvider: font role '${role}' has no value — ` +
         'FONT_VARS and FONT_DEFAULTS in src/constants/elevationTheme.js have drifted'
       );
     }
-    vars[property] = value;
+    // fontStack() supplies the family's OWN generic — serif for a serif, never a
+    // blanket sans-serif (R-C). An unresolvable family yields the platform
+    // stack rather than a declaration with no fallback at all.
+    const family = fonts[role];
+    vars[property] = typeof family === 'string' && family !== '' ? fontStack(family) : fallback;
   }
 
   return vars;

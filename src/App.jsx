@@ -18,6 +18,8 @@ import ThemeProvider from './components/shared/ThemeProvider';
 import RepSurface from './components/rep/RepSurface';
 import SurfaceSwitcher from './components/shared/SurfaceSwitcher';
 import PaletteHarnessRoute from './components/dev/PaletteHarnessRoute';
+import { FONT_FACES, fontFaceCss, preloadUrls } from './constants/fontManifest.mjs';
+import { BRANDING_THEME_DEFAULTS } from './utils/brandingTheme.mjs';
 import useAdminPermissions, {
   RepCapabilitiesContext, useRepCapabilitiesValue,
 } from './hooks/useAdminPermissions';
@@ -137,18 +139,91 @@ function BootSpinner() {
 }
 
 // ─── Font + Icon Loader ───────────────────────────────────────────────────────
+//
+// Rewritten in Palette-13 Part B. It fetched one HARDCODED Google stylesheet, so
+// a contractor's stored fonts reached campaign email and nothing else. ⚠ THE
+// REASONING — self-hosting vs Google, the weight story, why declaring is free —
+// LIVES IN src/constants/fontManifest.mjs AND IS NOT RESTATED HERE.
+//
+// ⚠ THE NAME IS KEPT THOUGH THE MECHANISM CHANGED COMPLETELY: it is cited by
+// name in four tracked documents and two test files.
+//
+// ⚠ IT DECLARES EVERY FAMILY AND FETCHES NONE. A browser downloads a face only
+// when a used `font-family` matches it — measured in a real browser, 25 faces
+// declared and 4 files fetched. So the LOADER needs no contractor; only the
+// PAINTER does, which is ThemeProvider mounting the stack on --rm-font-*.
+//
+// ⚠ AND THAT IS THE ANSWER TO "NOT SURFACE-SCOPED": this runs above the surface
+// branch, so the admin panel gets it too. That mattered when it meant a Google
+// request; now it is a few KB of inert CSS. Moving it below the branch would
+// make the declaration wait on branding, which is what makes a face
+// unpreloadable. It stays, deliberately.
 function useReferrerFonts() {
   useEffect(() => {
-    const fonts = document.createElement("link");
-    fonts.rel = "stylesheet";
-    fonts.href = "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;600&display=swap";
-    document.head.appendChild(fonts);
-    const icons = document.createElement("script");
-    icons.src = "https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js";
-    document.head.appendChild(icons);
-    const focusStyle = document.createElement("style");
-    focusStyle.textContent = "button:focus-visible,a:focus-visible{outline:2px solid #012854;outline-offset:2px;border-radius:inherit;}";
-    document.head.appendChild(focusStyle);
+    // ⚠ EVERY INJECTION BELOW IS GUARDED BY id — a REPAIR, not a test
+    // convenience. This effect appends to document.head and returns no cleanup,
+    // so a second mount used to inject a second copy of everything.
+    // BrandingProfileSettings' own font loader already guards this way.
+    if (!document.getElementById("rm-font-faces")) {
+      const faces = document.createElement("style");
+      faces.id = "rm-font-faces";
+      faces.textContent = Object.keys(FONT_FACES).map(fontFaceCss).join("");
+      document.head.appendChild(faces);
+    }
+
+    // PRELOAD THE PLATFORM DEFAULTS ONLY. These are the faces the common case
+    // paints and — unlike a contractor's choice — they are known before
+    // branding resolves, which is the whole reason a preload is possible at all.
+    // A contractor on other families simply fetches theirs when the CSS matches;
+    // no preload is better than a wrong one, which costs a download nobody uses.
+    for (const href of preloadUrls([
+      BRANDING_THEME_DEFAULTS.headingFont,
+      BRANDING_THEME_DEFAULTS.bodyFont,
+      BRANDING_THEME_DEFAULTS.monoFont,
+    ])) {
+      if (document.querySelector(`link[rel="preload"][href="${href}"]`)) continue;
+      const link = document.createElement("link");
+      // ⚠ setAttribute, NOT THE `as` PROPERTY. `HTMLLinkElement.as` is a
+      // reflected property in the spec and jsdom does not implement it — the
+      // assignment silently sets no attribute at all. A preload with no `as` is
+      // IGNORED by real browsers, so the property form would have shipped a
+      // preload that does nothing and tests that could not see it. Measured.
+      link.setAttribute("rel", "preload");
+      link.setAttribute("as", "font");
+      link.setAttribute("type", "font/woff2");
+      // REQUIRED EVEN SAME-ORIGIN. A font fetch is CORS-mode by specification,
+      // so a preload without this attribute is a DIFFERENT request from the one
+      // the CSS makes — the file is fetched twice and the preload warns in the
+      // console rather than helping.
+      link.setAttribute("crossorigin", "anonymous");
+      link.setAttribute("href", href);
+      document.head.appendChild(link);
+    }
+
+    if (!document.getElementById("rm-icons")) {
+      const icons = document.createElement("script");
+      icons.id = "rm-icons";
+      icons.src = "https://unpkg.com/@phosphor-icons/web@2.1.1/src/index.js";
+      document.head.appendChild(icons);
+    }
+    if (!document.getElementById("rm-focus-ring")) {
+      const focusStyle = document.createElement("style");
+      focusStyle.id = "rm-focus-ring";
+    // ⚠ THE FOCUS RING CARRIED A RETIRED CONTRACTOR TONE UNTIL PALETTE-13 PART B
+    // (R-G). It was a hardcoded Accent navy on EVERY focusable control across
+    // referrer, rep and auth — and it was invisible to every sweep in this repo,
+    // because it sat inside a template string in App.jsx rather than in a style
+    // object. "The referrer tree is at zero retired tones" was true and did not
+    // cover this: the literal is in App.jsx, which is in none of the trees that
+    // sentence counts.
+    // ⚠ THE FALLBACK IS THE VALUE THE PROVIDER ACTUALLY MOUNTS for an unbranded
+    // contractor, not a plausible alternative — themeKeyIntegrity's rule. The
+    // rule applies to elements INSIDE the provider's wrapper, where --rm-* is
+    // mounted and resolves; the fallback is what paints anywhere else.
+      focusStyle.textContent =
+        "button:focus-visible,a:focus-visible{outline:2px solid var(--rm-secondary, #1C2D4D);outline-offset:2px;border-radius:inherit;}";
+      document.head.appendChild(focusStyle);
+    }
     document.body.style.margin = "0";
     // ⚠ THE PAGE BACKGROUND IS NOT WRITTEN HERE ANY MORE (C/DL-3c Phase 1a,
     // Ruling 4). This line used to paint the page ground on the body element with

@@ -2307,6 +2307,42 @@ check — which is why this is a named build rather than a checklist line.
       **THE REPAIR IS NOW OPTIONAL AND INCREMENTAL**, which is the whole reason the tripwire went
       first. Highest value first: the documents a fresh session reads **before** building.
       → `scripts/citecheck.js`, `ROLE_ONLY_BASELINE`
+- [ ] **PALETTE-13 PART B — THE PAINTERS. The font chain is joined; the components do not yet
+      ask for it.** The chain commit wired resolver → provider → loader, so a contractor's stored
+      face now RESOLVES, MOUNTS on `--rm-font-heading`/`-body`/`-mono`, and LOADS. **What remains
+      is the second half: ~313 sites in the four in-scope trees** — 277 font-key reads through `R`
+      (63/134/52 referrer, 5/7/2 shared, 5/6/3 auth) and 36 raw `fontFamily` literals (8 referrer,
+      4 shared, 21 auth, 3 rep). ⚠ **UNTIL THOSE MOVE, A CONTRACTOR'S CHOSEN FACE DOWNLOADS AND
+      NOTHING RENDERS IN IT.** That is not a regression — it is the same pixels as before — but it
+      is exactly the state that reads as finished from the outside.
+      ⚠ **THE SWEEP NEEDLE IS `fontSans` / `fontBody` / `fontMono`.** There is no key named for the
+      heading role; a sweep spelling it that way returns zero, which reads as already-migrated.
+      ⚠ **AND THREE FORMS NO KEY-OR-`fontFamily` NEEDLE CAN SEE**, measured: the `font:` shorthand
+      carrying a family (1 site, the dev harness), CSS-file declarations (2, in `src/index.css` —
+      which is itself a standing violation of *never add CSS files*), and 15 `font: 'inherit'`
+      sites that are benign and carried for free by migrating their ancestors.
+      ⚠ **OPEN QUESTIONS THE CHAIN COMMIT DELIBERATELY DID NOT ANSWER:**
+      · **The campaign email's defaults differ and were left alone.** It falls back to
+        `Georgia, serif` / `Arial, sans-serif` where the app uses Montserrat / Roboto, so an unset
+        contractor gets a SERIF heading in email and a sans everywhere else. It also loads no
+        webfont at all, so a contractor on Playfair Display gets their recipient's default face.
+        **Converging it is a behaviour change to a live outbound path and needs its own ruling.**
+      · **`Source Sans Pro` is a RETIRED GOOGLE NAME.** Google renamed the family to
+        `Source Sans 3` (`ofl/sourcesanspro` is a 404 in their repo; `ofl/sourcesans3` serves), and
+        the css2 API still serves the old name at v23. The key is kept deliberately — contractors
+        have it SAVED and renaming would silently invalidate their choice — so **retiring it is a
+        migration, not a rename.**
+      · **The mono role has no column.** `R`'s monospace key has 59 production reads and there is
+        no `font_mono`, no picker control. Platform-fixed today; whether a contractor should be
+        able to set it is unasked.
+      ⚠ **AND THE CHAIN COMMIT ROTTED 97 LINE CITATIONS AND REPAIRED NONE.** It inserted into
+      `src/App.jsx` and `server/routes/admin/index.js`, both heavily cited. **A sample of ten,
+      verified at the OLD line in the OLD revision, found roughly half ALREADY WRONG before the
+      edit and four more that are protected records or dated snapshots** — so adding the delta
+      would have certified wrong numbers as repaired AND destroyed evidence. Re-deriving them is
+      the larger job `CLAUDE.md` says to record rather than improvise. **Same disposition as the
+      escaping commit's 18.**
+
 - [ ] **🔴 Locally redefined `escapeHtml` — SEVEN definitions, not three. LAUNCH-GATING
       SECURITY, not a consolidation.** Measured 2026-08-21 (ground truth §C5). One canonical
       plus **six local redefinitions**:
@@ -6263,6 +6299,18 @@ quadruples is evidence about the estimate, not about the wave:
       larger job `CLAUDE.md` says to record rather than improvise. **Named by SUBJECT so it needs
       no number: the sweep wants a live hardcoded-navy site, and `App.jsx`'s focus-visible outline
       is the obvious candidate.**
+      ⚠ **THAT CANDIDATE IS NOW CLOSED — Palette-13 Part B, R-G.** `useReferrerFonts()`'s injected
+      rule is `outline: 2px solid var(--rm-secondary, #1C2D4D)`, and the two `#012854` strings left
+      in `App.jsx` are both COMMENTS about `LockedSection`'s deliberate scrim fallback, not live
+      values. **Recorded here because an entry that can only grow stops being a list of open work**
+      — this one named the candidate, the candidate was fixed, and nothing else would have said so.
+      ⚠ **THE SWEEP ITEM ITSELF STAYS OPEN.** The three legal pages still carry theirs, and they are
+      OUT of Palette-13's scope by ruling R-E: they return above the `ThemeProvider` wrap, so
+      `var(--rm-*)` there takes its fallback forever, exactly like the admin tree.
+      ⚠ **AND THE FOCUS RING WAS INVISIBLE TO EVERY SWEEP IN THIS REPO** — it sat inside a template
+      string in `App.jsx` rather than in a style object. *"The referrer tree is at zero retired
+      tones"* was TRUE and did not cover it, because `App.jsx` is in none of the trees that sentence
+      counts. **A true statement with a scope nobody stated is the shape worth remembering here.**
       ⚠ **PALETTE-10 MAKES IT FIVE PHASES, AND ADDS TWO MORE ALREADY-WRONG CITATIONS.** Its edits
       flagged 24; all but two are the protected records above. The two new ones both live in
       `CDL_3c_PHASE05_RULINGS.md` and were **verified at the OLD line in the OLD revision before

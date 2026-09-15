@@ -309,6 +309,25 @@ describe('C/DL-3b Phase 1 Step 2 — GET /api/branding/:slug', () => {
       'landingStep1Title', 'landingStep2Title', 'landingStep2Body',
       'landingStep3Title', 'landingStep3Body',
       'socials',
+      // ⚠ ADDED IN PALETTE-13 PART B (R-F) — the three font roles. The sweep is
+      // UNWEAKENED on the same terms as the two widenings above: still an exact
+      // allowlist, still failing on any key nobody added deliberately, and the
+      // two assertions below — no contractor id in any key OR VALUE, no slug
+      // echoed — are untouched. Three names were added to it.
+      //
+      // THEY BELONG ON THIS ENDPOINT, and the disclosure question is answered
+      // rather than assumed: a typeface is GENERIC COPY, not identity — it says
+      // WHAT, not WHO, which is the line BRANDING_THEME_DEFAULTS draws. Nothing
+      // is newly disclosed either, because the name of the face a page is
+      // rendered in is readable from the rendered page itself. And none of the
+      // three helps walk the slug space, which is what this endpoint's
+      // non-enumerability actually protects.
+      //
+      // ⚠ THESE ARE ALWAYS-PRESENT, LIKE THE STEP COPY AND UNLIKE `socials` —
+      // so they surface on every fixture immediately rather than only when a
+      // contractor has set one. That is why this fence caught them on the first
+      // run of the gate, which is the behaviour the note above hoped for.
+      'headingFont', 'bodyFont', 'monoFont',
     ]);
 
     for (const slug of [SLUG_A, SLUG_B, SLUG_UNKNOWN, SLUG_RESERVED]) {

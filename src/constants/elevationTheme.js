@@ -35,10 +35,26 @@
 // distinction that does not exist and imply a choice nobody makes. So FONT_VARS
 // has one table, and `fontVar()` reads it directly.
 //
-// ⚠ NOTHING IN THIS FILE IS WIRED TO A COMPONENT YET. Palette-1 publishes the
-// tokens; Palette-2 decides which of the 24 `R.bgPage` sites, the 110
-// `R.border`/`R.shadow` sites and the 262 font sites consume them. Not one
-// `R.*` reference changed in the commit that added this file.
+// ⚠ THIS READ "NOTHING IN THIS FILE IS WIRED TO A COMPONENT YET" AND THAT IS NO
+// LONGER TRUE OF THE FONT HALF. Palette-1 published the tokens and Palette-13
+// Part B is `fontVar()`'s FIRST consumer — until then it had none at all, which
+// is worth knowing before trusting that it works: an unused export is not a
+// tested one.
+//
+// ⚠ AND THE "262 font sites" FIGURE WAS NEVER SOURCED. Re-measured 2026-09-15
+// across all of `src/`: 284 font-key reads in production files (75 `fontSans`,
+// 150 `fontBody`, 59 `fontMono`) plus 103 raw `fontFamily` literals — of which
+// the four in-scope trees hold 277 and 36.
+// ⚠ AND THE KEYS ARE `fontSans`, `fontBody` AND `fontMono`. There is no key
+// named for the heading role; a sweep spelling it that way returns zero, which
+// reads as already-migrated rather than as a wrong needle.
+// ⚠ THE DOTTED FORMS ARE DELIBERATELY NOT WRITTEN IN THIS PARAGRAPH.
+// `themeKeyIntegrity` scans source TEXT and does not exempt comments —
+// correctly, since a key name in prose is exactly what someone pastes into
+// code. It fired on the first draft of these very lines. Reword, never exempt.
+//
+// The elevation half of this sentence still stands: the 24 `R.bgPage` and 110
+// `R.border`/`R.shadow` sites are a separate arc's business.
 
 // ── ⚠ THE HONEST LIMITATION ON `border`, MEASURED AND NOT BURIED ────────────
 // NEITHER VALUE BELOW CLEARS THE 3:1 NON-TEXT FLOOR, AND NO HAIRLINE CAN.
@@ -115,19 +131,27 @@ export const ELEVATION_VARS = Object.freeze({
 
 // ── FONTS ───────────────────────────────────────────────────────────────────
 //
-// ⚠ THESE ARE CONTRACTOR-SET COLUMNS THAT CURRENTLY REACH NOTHING. `font_heading`
-// and `font_body` are real `contractor_settings` columns with a real editor in
-// the branding panel, and their ONLY consumer is campaign email HTML. The
-// referrer tree hardcodes `R.fontSans`/`R.fontBody`/`R.fontMono`, and
-// `useReferrerFonts()` — which lives in `src/App.jsx`, NOT in `src/hooks/` —
-// hardcodes one Google Fonts href for Montserrat + Roboto + Roboto Mono. So the
-// family is hardcoded in one place and the stylesheet link in another, and
-// NEITHER is contractor-aware.
+// ⚠ INVERTED BY PALETTE-13 PART B, NOT MERELY OUT OF DATE — CORRECTED RATHER
+// THAN DELETED because a reader who discounts a stale sentence keeps its
+// conclusion, and this one's conclusion is now the opposite of the truth.
 //
-// ⚠ THIS FILE PUBLISHES THE TOKENS AND NOTHING ELSE. The resolver does not yet
-// emit the font columns at all, so there is no contractor value to mount — the
-// provider mounts these defaults. Wiring the resolver, the loader and the
-// painters is Palette-2.
+// THIS BLOCK USED TO SAY the font columns "CURRENTLY REACH NOTHING", that the
+// resolver "does not yet emit the font columns at all", and that "THIS FILE
+// PUBLISHES THE TOKENS AND NOTHING ELSE". All three were true when written and
+// all three are now false.
+//
+// WHAT IS TRUE NOW: `resolveBrandingTheme()` emits `headingFont`, `bodyFont` and
+// `monoFont` through `resolveFont()`, `ThemeProvider` mounts the resolved stacks
+// on these three custom properties, and `useReferrerFonts()` declares
+// self-hosted @font-face blocks for the resolved families. The chain that was
+// broken in four places — resolver, provider, loader, painters — is joined in
+// the first three.
+//
+// ⚠ THE PAINTERS ARE STILL THE OLD WAY, AND THAT IS THE ONE HALF OF THE OLD
+// SENTENCE THAT SURVIVES. The four in-scope trees still read
+// `R.fontSans`/`R.fontBody`/`R.fontMono` and still carry raw `fontFamily`
+// literals; migrating those ~313 sites is Part B's second commit. So a
+// contractor's chosen face LOADS today and the components do not yet ask for it.
 //
 // ⚠⚠ THE VERIFICATION TRAP, RECORDED BECAUSE IT MAKES A BROKEN WIRING LOOK
 // CORRECT. Accent's stored fonts are Montserrat and Roboto — WHICH ARE ALSO THE
@@ -136,14 +160,32 @@ export const ELEVATION_VARS = Object.freeze({
 // verification MUST set a contractor to something unmistakable — the branding
 // panel's own list offers `Playfair Display` and `DM Serif Display`, both
 // serifs — and watch the app follow. Checking on Accent proves nothing.
+// ⚠ EACH VALUE HERE MUST EQUAL fontStack(BRANDING_THEME_DEFAULTS.<role>Font) —
+// THE VALUE THE PROVIDER ACTUALLY MOUNTS FOR AN UNBRANDED CONTRACTOR, not a
+// plausible-looking equivalent. A var() fallback that disagrees with the mount
+// is the defect class that painted the login screen's error message at 1.34:1
+// for months, and jsdom resolves no var() so no render test can see it.
+// src/constants/fontFallbackIntegrity.test.js fails on any disagreement and
+// names the expected value.
 export const FONT_DEFAULTS = Object.freeze({
   heading: "'Montserrat', sans-serif",
   body: "'Roboto', sans-serif",
+  // ── THE MONO ROLE (Palette-13, R-D) ──────────────────────────────────────
+  // ⚠ ADDED BECAUSE TWO ROLES IS NOT THE SHAPE OF THE PROBLEM. `R.fontMono` has
+  // 59 production reads in the four in-scope trees. Publishing heading and body
+  // only would leave those files migrated except for a third of their font
+  // sites — which reads as done and is not.
+  // ⚠ IT IS PLATFORM-FIXED, NOT CONTRACTOR-SET. There is no `font_mono` column
+  // and no picker control, so the resolver emits this same value for every
+  // contractor. It is mounted anyway so a consumer asks for all three roles the
+  // same way rather than special-casing the one that cannot vary.
+  mono: "'Roboto Mono', monospace",
 });
 
 export const FONT_VARS = Object.freeze({
   heading: '--rm-font-heading',
   body: '--rm-font-body',
+  mono: '--rm-font-mono',
 });
 
 /**
