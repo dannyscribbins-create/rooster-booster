@@ -344,10 +344,20 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1339 server tests across 212 suites, and 1022 React tests across 62 files** (measured 2026-09-15 by Palette-13 B.7, the painter commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE B.7 COMMIT ITSELF.** 1007 → 1022 is its 15 React cases
-  in one new file; 61 → 62 is that file. The server numbers did not move and were re-measured
-  rather than carried — B.7 touches no server file at all.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1395 server tests across 219 suites, and 1022 React tests across 62 files** (measured 2026-09-15 by the email URL-context commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE URL-CONTEXT COMMIT ITSELF.** 1339 → 1395 is its 56
+  server cases in one new file, and 212 → 219 is that file's seven `describe` blocks. The
+  REACT numbers did not move and were re-measured rather than carried — this commit touches
+  no `src/` file.
+  ⚠ **AND THE 56 WAS COUNTED, WITH THE LOOP ARITHMETIC — WHICH IS WHERE IT WOULD HAVE GONE
+  WRONG.** `grep -c` reports **17** `it(` lines and **five** loops over the 14-payload evasion
+  table. ⚠ **ONLY THREE OF THOSE FIVE WRAP AN `it()`**; the other two sit INSIDE `it()` bodies
+  and emit nothing. So 3 × 14 = 42, plus the 14 un-looped lines = 56. **Reading "five loops ×
+  14" would have predicted 70 and reading "17 lines" would have predicted 17** — neither is a
+  small error, and only the breakdown distinguishes them.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE B.7 COMMIT ITSELF.* 1007 → 1022
+  is its 15 React cases in one new file; 61 → 62 is that file. The server numbers did not move
+  and were re-measured rather than carried — B.7 touches no server file at all.
   ⚠ **AND THE 15 WAS COUNTED, WITH THE LOOP ARITHMETIC, AND THE FIRST PASS WAS STILL WRONG.**
   `grep -c` reports **13** `it(` lines; ONE sits inside a three-role loop and emits 3, the
   other twelve emit one each — 12 + 3 = 15. A first pass predicted **14** by mis-splitting the

@@ -22,6 +22,9 @@ const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
 // interpolates into an attribute. campaignEmailEscaping.test.js carries a
 // baseline fence so the remaining six cannot grow while they wait.
 const { escapeHtml } = require('../../utils/pendingReferral');
+// The SHARED scheme check — the same one the landing page uses for these very
+// columns. Escaping stops a breakout; it does not stop a scheme.
+const { safeLogoUrl, safeWebsiteUrl } = require('../../utils/safeUrl');
 
 const router = express.Router();
 
@@ -305,9 +308,22 @@ Output: One email message body only. No subject line. No preview text. No button
 function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsubscribeUrl = null) {
   const cs = contractorSettings;
 
+  // ── THE CTA'S DESTINATION ─────────────────────────────────────────────────
+  // `cta_url` is validated on write ONLY as `typeof === 'string'`, so it is free
+  // text like the rest of these columns and needs the same read-time control.
+  //
+  // ⚠ GUARDED EVEN WHEN A TRACKING TOKEN REPLACES IT IN THE href, and that is
+  // the part worth stating: with a token the link points at our own
+  // /api/track/click/:token, which then REDIRECTS to the stored cta_url. So a
+  // hostile value is reachable through a link that looks entirely ours. Refusing
+  // the whole block on an unsafe cta_url closes both paths at once.
+  // ⚠ THE REDIRECT ITSELF IS A SEPARATE SURFACE AND IS NOT FIXED HERE — an HTTP
+  // Location header is not an HTML attribute, and widening this pass to cover it
+  // would be a different change with a different blast radius. Reported.
+  const safeCta = safeWebsiteUrl(campaignData.cta_url);
   const ctaHref = token && process.env.BACKEND_URL
     ? `${process.env.BACKEND_URL}/api/track/click/${token}`
-    : campaignData.cta_url;
+    : (safeCta ? safeCta.href : null);
   const bodyEscaped = escapeHtml(body);
 
   const headerHtml = campaignData.email_header
@@ -337,14 +353,32 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsu
   // contractor_settings, and the CTA is the one element that does not — so a
   // contractor's referrers currently get the platform's colour on the one button
   // in the message. When that lands, the previews follow it.
-  const ctaHtml = campaignData.cta_enabled && campaignData.cta_url
-    ? `<div style="text-align:center;margin-top:32px;"><a href="${ctaHref}" style="display:inline-block;background:#1C2D4D;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">${deriveCTALabel(campaignData.cta_url)}</a></div>`
+  // ⚠ THE GATE IS `safeCta`, NOT `campaignData.cta_url`. A button whose
+  // destination was refused must not render at all — an href="" or a dead button
+  // is a visible failure in something the recipient reads.
+  const ctaHtml = campaignData.cta_enabled && safeCta && ctaHref
+    ? `<div style="text-align:center;margin-top:32px;"><a href="${escapeHtml(ctaHref)}" style="display:inline-block;background:#1C2D4D;color:#ffffff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">${deriveCTALabel(campaignData.cta_url)}</a></div>`
     : '';
 
   const dividerHtml = `<hr style="border:none;border-top:1px solid #eeeeee;margin:40px 0 24px;" />`;
 
-  const logoHtml = cs.logo_url
-    ? `<img src="${cs.logo_url}" alt="${escapeHtml(cs.company_name) || 'Company logo'}" style="display:block;max-height:48px;max-width:160px;margin:0 auto 8px;" />`
+  // ── THE LOGO'S SCHEME (the URL-context pass) ──────────────────────────────
+  // ⚠ ESCAPING STOPPED THE BREAKOUT AND NOT THE SCHEME. 460e87c closed every
+  // attribute-breakout site in this function; nothing in `javascript:alert(1)`
+  // needs escaping, so an escaped hostile scheme lands in src= intact and is
+  // still a link that runs code. `logo_url` is an unconstrained TEXT column any
+  // tenant admin can write, so the scheme is a separate control.
+  // ⚠ THE SAME FUNCTION THE LANDING PAGE USES, not a second opinion — it had
+  // solved this for this exact column, and a second copy of a security predicate
+  // is how this file ended up with the weakest of eight escapers.
+  // ⚠ A REFUSED LOGO OMITS THE ELEMENT. An empty src= is not neutral: a browser
+  // resolves it against the current document, which is a second request and a
+  // visibly broken image in something the recipient can see. The company name
+  // renders immediately below either way, so the brand is still carried — which
+  // is the outcome the landing page reaches by rendering the name as text.
+  const safeLogo = safeLogoUrl(cs.logo_url);
+  const logoHtml = safeLogo
+    ? `<img src="${escapeHtml(safeLogo)}" alt="${escapeHtml(cs.company_name) || 'Company logo'}" style="display:block;max-height:48px;max-width:160px;margin:0 auto 8px;" />`
     : '';
   const poweredByHtml = `<p style="text-align:center;font-size:11px;color:#aaaaaa;margin:0 0 16px;">${escapeHtml(cs.company_name) || ''}${cs.company_name ? '<br/>' : ''}Powered by RoofMiles</p>`;
 
@@ -359,11 +393,23 @@ function buildEmailHtml(body, campaignData, token, contractorSettings = {}, unsu
     // in a text footer that does not use icons at all.
     { url: cs.social_nextdoor,  label: 'Nextdoor' },
     { url: cs.social_website,   label: 'Website' },
-  ].filter(s => s.url && s.url.trim() !== '');
+  ]
+    // ⚠ safeWebsiteUrl, NOT safeLogoUrl, AND THE SPLIT IS THE POINT. These are
+    // unconstrained VARCHAR(500) columns an admin PASTED into, and a bare domain
+    // is the normal case for them — the logo guard refuses one, correctly, since
+    // for an img src a bare hostname is a broken relative path. The landing page
+    // makes exactly this distinction for exactly these columns.
+    // ⚠ IT RETURNS AN OBJECT, NOT A STRING. Taking the return value directly
+    // would render href="", which is a link to the current page rather than a
+    // visible failure.
+    // ⚠ A REFUSED SOCIAL DROPS THAT LINK ONLY. Its siblings still render; the
+    // footer is not lost because one value was junk.
+    .map(s => ({ ...s, href: safeWebsiteUrl(s.url)?.href || null }))
+    .filter(s => s.href);
   const socialHtml = socialLinks.length > 0
     ? `<p style="text-align:center;margin:0 0 16px;">${
         socialLinks.map(s =>
-          `<a href="${s.url}" style="display:inline-block;margin:0 4px;font-size:11px;color:#555555;text-decoration:none;padding:3px 8px;border:1px solid #dddddd;border-radius:12px;">${s.label}</a>`
+          `<a href="${escapeHtml(s.href)}" style="display:inline-block;margin:0 4px;font-size:11px;color:#555555;text-decoration:none;padding:3px 8px;border:1px solid #dddddd;border-radius:12px;">${s.label}</a>`
         ).join('')
       }</p>`
     : '';
@@ -1325,6 +1371,20 @@ router.patch('/api/admin/campaigns/:id/messaging', requirePermission('campaigns.
   if (typeof ai_rapport_enabled !== 'boolean') return res.status(400).json({ error: 'ai_rapport_enabled must be boolean' });
   if (typeof cta_enabled !== 'boolean') return res.status(400).json({ error: 'cta_enabled must be boolean' });
   if (cta_url !== null && cta_url !== undefined && typeof cta_url !== 'string') return res.status(400).json({ error: 'cta_url must be string or null' });
+  // ── CTA SCHEME — DEFENCE IN DEPTH, AND THE LABEL IS LOAD-BEARING ───────────
+  // ⚠ THIS IS NOT THE CONTROL. The control is `safeWebsiteUrl()` at the READ
+  // side in buildEmailHtml, and it is there because this column is also
+  // reachable by a direct database write, by a migration, and by any tenant
+  // admin. A write-time check constrains one endpoint; it is not a read-time
+  // guarantee. Remove this and nothing downstream breaks; remove the read-side
+  // one and this will not save it.
+  // What it buys is a 400 instead of a silently dropped button: an admin who
+  // pasted something this platform will not link to gets told, rather than
+  // saving successfully and wondering where their CTA went.
+  // EMPTY AND NULL STAY ACCEPTED — clearing the field is how a CTA is removed.
+  if (typeof cta_url === 'string' && cta_url.trim() !== '' && !safeWebsiteUrl(cta_url)) {
+    return res.status(400).json({ error: 'cta_url must be a valid https link' });
+  }
   if (message_body !== null && message_body !== undefined && typeof message_body === 'string' && message_body.length > 1000) return res.status(400).json({ error: 'message_body exceeds 1000 characters' });
   if (subject_line !== null && subject_line !== undefined && typeof subject_line === 'string' && subject_line.length > 200) return res.status(400).json({ error: 'subject_line exceeds 200 characters' });
   if (selected_tone !== null && selected_tone !== undefined && !validTones.includes(selected_tone)) return res.status(400).json({ error: 'Invalid selected_tone' });

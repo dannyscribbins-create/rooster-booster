@@ -9,6 +9,10 @@ const { resendShouldRetry, twilioShouldRetry, jobberShouldRetry } = require('./r
 // errorLogger and constants/boostSchedule — nothing that reaches back here, so there is
 // no cycle. (pipelineSync.js uses lazy requires for THIS file for the opposite reason.)
 const { getFreshContractorAccessToken } = require('../crm/jobber');
+// The SHARED scheme check. ⚠ NOT A CYCLE: safeUrl.js imports nothing, which is
+// why it is a util rather than an export from landing.js — that route already
+// requires escapeHtml from THIS file.
+const { safeLogoUrl } = require('./safeUrl');
 // THE CANONICAL escapeHtml. CLAUDE.md names this file as its home: "import from
 // there, never redefine locally."
 //
@@ -94,16 +98,28 @@ async function sendPendingInviteEmail(pendingRecord, contractorId) {
     // unreachable second term of this chain and of two identical ones below,
     // NULL for every contractor, with no writer anywhere in the product.
     // ⚠ THE `|| null` STAYS AND IS NOT REDUNDANT. `settings` is `rows[0] || {}`,
-    // so with no settings row `settings.logo_url` is UNDEFINED — and `logoHtml`
-    // below branches on truthiness while `safeLogoUrl` interpolates. Normalising
-    // to null keeps one absent shape rather than two.
+    // so with no settings row `settings.logo_url` is UNDEFINED. Normalising to
+    // null keeps one absent shape rather than two.
+    // ⚠ THIS SENTENCE USED TO END "...while safeLogoUrl interpolates", naming a
+    // LOCAL that no longer exists and whose behaviour was the defect. The gate
+    // and the interpolation now both read the CHECKED value.
     const logoUrl     = settings.logo_url || null;
     const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
-    const safeLogoUrl = escapeHtml(logoUrl || '');
+    // ⚠ THIS LINE WAS `escapeHtml(logoUrl || '')` AND ITS NAME CLAIMED A
+    // PROPERTY IT DID NOT HAVE. Escaping stops an attribute breakout; nothing
+    // in `javascript:alert(1)` needs escaping, so an escaped hostile scheme
+    // landed in this src= perfectly intact. `logo_url` is an unconstrained TEXT
+    // column any tenant admin can write. The name read as solved at all three
+    // call sites, which is why a sweep for the NAME would never have found it —
+    // it was found by sweeping for the SHAPE, a value inside a URL attribute.
+    // ⚠ THE SHARED CHECK, not a fourth local opinion: the same function the
+    // landing page uses for this same column. A refused logo falls through to
+    // the company-name-as-text branch below, which this file already had.
+    const checkedLogoUrl = safeLogoUrl(logoUrl);
     const safeReferrerName = escapeHtml(pendingRecord.referred_by_name || '');
 
-    const logoHtml = logoUrl
-      ? `<img src="${safeLogoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
+    const logoHtml = checkedLogoUrl
+      ? `<img src="${escapeHtml(checkedLogoUrl)}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
       // ⚠ A3 — THE COMPANY NAME AS TEXT, NOT AN EMPTY STRING (BR-1 Phase 2).
       // This was `: ''`. The absence rule's email prong: a contractor with no
       // logo is named rather than left unmarked, exactly as the landing page's
@@ -204,13 +220,23 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
     // Simplified with the app_logo_url drop — see sendPendingInviteEmail above
     // for why `|| null` is load-bearing rather than redundant.
     const logoUrl = settings.logo_url || null;
-    const safeLogoUrl = escapeHtml(logoUrl || '');
+    // ⚠ THIS LINE WAS `escapeHtml(logoUrl || '')` AND ITS NAME CLAIMED A
+    // PROPERTY IT DID NOT HAVE. Escaping stops an attribute breakout; nothing
+    // in `javascript:alert(1)` needs escaping, so an escaped hostile scheme
+    // landed in this src= perfectly intact. `logo_url` is an unconstrained TEXT
+    // column any tenant admin can write. The name read as solved at all three
+    // call sites, which is why a sweep for the NAME would never have found it —
+    // it was found by sweeping for the SHAPE, a value inside a URL attribute.
+    // ⚠ THE SHARED CHECK, not a fourth local opinion: the same function the
+    // landing page uses for this same column. A refused logo falls through to
+    // the company-name-as-text branch below, which this file already had.
+    const checkedLogoUrl = safeLogoUrl(logoUrl);
     const appUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
     const safeReferredName = escapeHtml(referredRecord.referred_name || '');
     const safeReferrerName = escapeHtml(referredRecord.referred_by_name || '');
 
-    const logoHtml = logoUrl
-      ? `<img src="${safeLogoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
+    const logoHtml = checkedLogoUrl
+      ? `<img src="${escapeHtml(checkedLogoUrl)}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
       // ⚠ A3 — THE COMPANY NAME AS TEXT, NOT AN EMPTY STRING (BR-1 Phase 2).
       // This was `: ''`. The absence rule's email prong: a contractor with no
       // logo is named rather than left unmarked, exactly as the landing page's
@@ -767,14 +793,24 @@ async function sendPendingRewardEmail(pendingReferrerEmail, pendingReferrerName,
     // Simplified with the app_logo_url drop — see sendPendingInviteEmail above
     // for why `|| null` is load-bearing rather than redundant.
     const logoUrl = settings.logo_url || null;
-    const safeLogoUrl = escapeHtml(logoUrl || '');
+    // ⚠ THIS LINE WAS `escapeHtml(logoUrl || '')` AND ITS NAME CLAIMED A
+    // PROPERTY IT DID NOT HAVE. Escaping stops an attribute breakout; nothing
+    // in `javascript:alert(1)` needs escaping, so an escaped hostile scheme
+    // landed in this src= perfectly intact. `logo_url` is an unconstrained TEXT
+    // column any tenant admin can write. The name read as solved at all three
+    // call sites, which is why a sweep for the NAME would never have found it —
+    // it was found by sweeping for the SHAPE, a value inside a URL attribute.
+    // ⚠ THE SHARED CHECK, not a fourth local opinion: the same function the
+    // landing page uses for this same column. A refused logo falls through to
+    // the company-name-as-text branch below, which this file already had.
+    const checkedLogoUrl = safeLogoUrl(logoUrl);
     const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
     const safeReferrerName = escapeHtml(pendingReferrerName || '');
     const safeClientName = escapeHtml(clientName || '');
     const formattedAmount = parseFloat(bonusAmount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-    const logoHtml = logoUrl
-      ? `<img src="${safeLogoUrl}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
+    const logoHtml = checkedLogoUrl
+      ? `<img src="${escapeHtml(checkedLogoUrl)}" alt="${companyName}" style="max-width:180px;height:auto;display:block;margin:0 auto 24px;" />`
       // ⚠ A3 — THE COMPANY NAME AS TEXT, NOT AN EMPTY STRING (BR-1 Phase 2).
       // This was `: ''`. The absence rule's email prong: a contractor with no
       // logo is named rather than left unmarked, exactly as the landing page's

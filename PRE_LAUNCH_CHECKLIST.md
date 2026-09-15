@@ -2356,6 +2356,32 @@ check — which is why this is a named build rather than a checklist line.
       the larger job `CLAUDE.md` says to record rather than improvise. **Same disposition as the
       escaping commit's 18.**
 
+- [x] **URL-CONTEXT HANDLING IN OUTBOUND EMAIL — DONE.** Escaping stopped the attribute
+      breakout and never stopped the SCHEME; a `javascript:` logo or social or CTA landed in
+      `src=`/`href=` escaped and intact. `buildEmailHtml()`'s logo, five socials and CTA, plus
+      the three `<img src>` in `pendingReferral.js`, now go through the same `safeLogoUrl` /
+      `safeWebsiteUrl` the landing page already used for these exact columns — moved verbatim
+      to `server/utils/safeUrl.js` so there is one implementation, not three.
+      ⚠ **`pendingReferral.js` HAD A LOCAL `safeLogoUrl` THAT WAS `escapeHtml()` AND NOTHING
+      ELSE.** A name that claimed the property it lacked, reading as solved at all three call
+      sites. Found by sweeping for the SHAPE — a value inside a URL attribute — because a
+      sweep for the NAME finds a thing that already looks right.
+      ⚠ **AND THIS ITEM WAS NEVER FILED HERE UNTIL IT WAS CLOSED, WHICH IS THE R14 FAILURE IN
+      ITS EXACT RECORDED FORM.** The gap was identified in `460e87c`'s §S.3, reported in a
+      terminal response, and lived nowhere else for two commits. *"A handoff is not a place
+      deferrals live — it is untracked, it is read once, and the next session opens the
+      checklist instead."* It survived by luck, in a session that happened to continue.
+      ⚠ **NOT CLOSED BY THIS: THE TRACKING REDIRECT.** `/api/track/click/:token` does
+      `res.redirect(cta_url || …)`, so the stored value is still a redirect target. An HTTP
+      `Location` header is not an HTML attribute — a different surface with a different blast
+      radius. The email now refuses to render a CTA whose destination is unsafe, which closes
+      the path a recipient can reach, but the redirect itself is untouched and open.
+      ⚠ **AND `safeWebsiteUrl` NORMALISES A PROTOCOL-RELATIVE INPUT TO https** —
+      `//evil.test/x` becomes `https://evil.test/x`. Examined and ruled NOT a hole: the output
+      is https, and an admin can reach the identical result by typing the bare domain, which is
+      what the field is for. `safeLogoUrl` refuses the same input, correctly, because for an
+      `img src` a bare hostname is a broken relative path. Recorded so it is not re-raised.
+
 - [ ] **🔴 Locally redefined `escapeHtml` — SEVEN definitions, not three. LAUNCH-GATING
       SECURITY, not a consolidation.** Measured 2026-08-21 (ground truth §C5). One canonical
       plus **six local redefinitions**:
