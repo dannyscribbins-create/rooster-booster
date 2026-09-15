@@ -344,7 +344,14 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1395 server tests across 219 suites, and 1022 React tests across 62 files** (measured 2026-09-15 by the email URL-context commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1395 server tests across 219 suites, and 1030 React tests across 63 files** (measured 2026-09-15 by Palette-14, the residue commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-14 COMMIT ITSELF.** 1022 → 1030 is its 8 React
+  cases in one new file; 62 → 63 is that file. The SERVER numbers did not move and were
+  re-measured rather than carried — Palette-14 touches no server file.
+  ⚠ **8 `it(` LINES AND FOUR `for` LOOPS, AND THE LOOPS MULTIPLY NOTHING** — all four sit
+  inside `it()` bodies or helpers, so the count is 8, not 8 × anything. The two commits before
+  this both had loops that DID wrap an `it()`, which is why the distinction is worth making
+  every time rather than pattern-matching on "there are loops".
   ⚠ **THE HEAD FOR THIS FIGURE IS THE URL-CONTEXT COMMIT ITSELF.** 1339 → 1395 is its 56
   server cases in one new file, and 212 → 219 is that file's seven `describe` blocks. The
   REACT numbers did not move and were re-measured rather than carried — this commit touches

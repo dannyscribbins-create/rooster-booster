@@ -5539,6 +5539,40 @@ quadruples is evidence about the estimate, not about the wave:
       ground, so READ THE MEASUREMENT.** An unrecorded token reports `unknown-token` rather than
       passing silently.
 
+- [ ] **⚠ WHAT THE PALETTE ARC LEAVES BEHIND — THE CLOSING INVENTORY, WITH TRIGGERS.**
+      *(Palette-14, 2026-09-15. The arc ends here: the four in-scope trees are migrated for
+      colour, fonts and the bucket-blind residue.)*
+      ⚠ **A FINDING REPORTED ONLY IN CONVERSATION IS NOT FILED.** The email URL-context gap sat
+      in a terminal response for two commits and survived on luck, in a session that happened to
+      continue. Every item below is written down for that reason, each with the thing that would
+      make it actionable.
+
+      | # | what | trigger |
+      |---|---|---|
+      | 1 | **410 admin-tree colours + 48 fonts + 11 gradients.** Palette never touched it | ⚠ needs a **provider decision first** — the admin tree renders OUTSIDE `ThemeProvider` (Ruling 5), so there is nothing for a token to resolve against. Migrating colour before deciding that is building on sand |
+      | 2 | ⚠ **`EmailVerifyScreen.jsx` and `SignupScreen.jsx` WERE NEVER COLOUR-MIGRATED.** Their five auth siblings were. 46 `R.` colour keys and 22 retired-tone reaches between them | a colour phase of their own. **NOT residue** — these are whole screens, on the signup and email-verification paths |
+      | 3 | The legal pages' **7 hardcoded `#012854`** on a public page | they render ABOVE the provider wrap, so a token cannot resolve there either; needs the same decision as (1) |
+      | 4 | The **six latent dark-mode defects** | recorded by the dark-mode pass; unblocked already |
+      | 5 | **`ReferTab`'s unmeasured combos** | a harness run across the brand/mode matrix |
+      | 6 | **`referral_conversions`** | its own arc |
+      | 7 | **The focus-ring keyboard defect** | unblocked; the ring's tone was fixed in Palette-13, the keyboard behaviour was not |
+      | 8 | **`src/index.css`** — a CRA leftover and a standing violation of *never add CSS files*. It sets a SYSTEM font stack on `body` | removing it changes what 13 `font: inherit` sites inherit if `Screen` ever stops declaring a family. Fenced, not fixed |
+      | 9 | **The mono role has no column.** Platform-fixed; a contractor cannot set it | a ruling on whether they should |
+      | 10 | **`Source Sans Pro` is a retired Google name** (renamed to Source Sans 3) | a **migration, not a rename** — contractors have the old name saved, and changing the key invalidates their choice |
+      | 11 | **The campaign email's font defaults diverge** (Georgia/Arial vs Montserrat/Roboto) and it loads no webfont at all | a ruling on a live outbound path |
+      | 12 | ⚠ **`BookingFormModal` and `ProfileTab` hold DIFFERENT light-reds for the same job** — `rgba(255,140,140,1)` and `#fca5a5`. Both correct-as-literals (the status set has no error-on-a-brand-fill pair); neither wrong | a colour decision, which a migration phase is the wrong place to make |
+      | 13 | **The tracking redirect** — `/api/track/click/:token` still redirects to the stored `cta_url` | an HTTP `Location` is not an HTML attribute; different surface, different blast radius |
+
+      ⚠ **AND ONE CLOSED HERE THAT HAD SURVIVED ELEVEN COLOUR PHASES:** `ErrorBoundary.jsx`
+      painted its crash-screen button `#CC0000` — **Accent Roofing's retired red** — under a note
+      reading *"intentional exception … cannot use R tokens"*. The exception was SOUND (it renders
+      when the tree has crashed, possibly outside the provider, so a literal is honest) and the
+      VALUE was one tenant's brand. **"Use a literal" never meant "use that contractor's
+      literal", and nobody re-ran the choice when the palette was retired.**
+      ⚠ **IT SURVIVED BECAUSE EVERY SWEEP THAT REPORTED "zero retired tones" WAS SCOPED TO THE
+      REFERRER TREE, AND THIS FILE IS IN `shared/`.** A true statement whose scope was never
+      stated — the same shape as `App.jsx`'s focus ring, one directory along.
+
 - [ ] **⚠ THE BUCKET-BLIND RESIDUE AND FONTS — AND THE RECORDED FIGURE CANNOT BE REPRODUCED BY ANY
       SCOPE I MEASURED, WHICH IS ITSELF THE FINDING.**
       *(Palette doc pass, 2026-09-08. Needles validated both ways first.)*
@@ -5560,6 +5594,34 @@ quadruples is evidence about the estimate, not about the wave:
       563. **The referrer tree Palette did migrate stands at 68 / 12 / 14.**
       ⚠ **DO NOT READ 563 AS GROWTH.** Record which scope any future figure uses, or it will be
       compared against the wrong one.
+
+      **RE-MEASURED 2026-09-15 BY PALETTE-14, same methodology (var() fallbacks and the token
+      definition files excluded), needles validated both ways, ⚠ and block comments BLANKED
+      LINE-BY-LINE rather than dropping marker-prefixed lines only:**
+
+      | scope | colours | fonts | gradients |
+      |---|---|---|---|
+      | ALL of `src/` | 551 | 67 | 30 |
+      | the **admin** tree | 410 | 48 | 11 |
+      | **referrer + shared** | **68** | **0** | **14** |
+      | auth | 21 | **0** | 5 |
+      | rep | 0 | 0 | 0 |
+      | legal pages and other components | 52 | 19 | 0 |
+
+      ⚠ **THE FONT COLUMN IS NOW ZERO IN EVERY IN-SCOPE TREE, AND THE ARITHMETIC RECONCILES
+      EXACTLY:** whole-`src` fonts 103 → 67 is **−36**, which is precisely the 36 raw literals
+      Palette-13 B.7 migrated (12 referrer+shared + 21 auth + 3 rep). **B.7's sweep missed
+      nothing.**
+      ⚠ **AND 563 IS UNREPRODUCIBLE, EXACTLY AS 259 IS — WHICH IS THE SAME FINDING TWICE.** This
+      entry was written to record that R-11's 259/36/19 cannot be recomputed. Its OWN whole-`src`
+      total cannot either: **563 does not equal the sum of its own sub-scopes**, which come to
+      551, and no variant of the instrument reproduces it — comments stripped gives 551, comments
+      counted 681, neither 944. ⚠ **THE SUB-SCOPES, HOWEVER, REPRODUCE TO THE DIGIT** — the admin
+      tree is 410 / 48 / 11 now as then, untouched in between, which is what shows the instrument
+      agrees. **So use the sub-scopes and never the total.** A whole-tree number assembled from a
+      different pass is not an instrument; it is a claim.
+      ⚠ **DO NOT TRY TO MATCH EITHER 259 OR 563.** Both are recorded here as unreproducible so the
+      next session spends no time on it.
 
 - [ ] **⚠ FONTS ARE CONTRACTOR-SET AND IGNORED, AND THE VERIFICATION TRAP IS THE WHOLE ENTRY.**
       *(Palette doc pass, 2026-09-08.)* `font_heading` and `font_body` are **set for Accent** and

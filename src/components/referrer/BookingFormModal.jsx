@@ -249,6 +249,23 @@ export default function BookingFormModal({ visible, onClose, onBookingSuccess, s
               />
             </div>
 
+            {/* ⚠ THE TWO ERROR LINES BELOW HOLD A RAW LIGHT-RED, DELIBERATELY,
+                AND THAT WAS TRUE BEFORE PALETTE-14 AND UNDOCUMENTED.
+                Same case ProfileTab's error-on-a-brand-fill note sets out at
+                length: an error message sitting ON a brand-coloured ground, for
+                which the status set has no pair. `statusVar('dangerText')`
+                mounts the LIGHT tone, which on this dark fill is less readable
+                than the literal, not more — the route that looks correct is the
+                one that fails.
+                ⚠ AND THE TWO SITES DISAGREE WITH EACH OTHER: this is
+                rgba(255,140,140,1) while ProfileTab holds #fca5a5 —
+                rgb(252,165,165). Two different light-reds for one job, neither
+                wrong, arrived at separately. ⚠ NOT UNIFIED HERE: picking one
+                changes pixels on a surface nobody was asked about, and a
+                migration phase is the wrong place to make a colour decision.
+                Filed instead.
+                ⚠ ALPHA 1 WRITTEN AS rgba() IS THE TELL that this wanted to be a
+                hex and was never revisited. Left as-is for the same reason. */}
             {/* Validation error */}
             {fieldError && (
               <p style={{ margin: '10px 0 0', fontSize: 13, color: 'rgba(255,140,140,1)', fontFamily: fontVar('body') }}>
