@@ -344,10 +344,19 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1395 server tests across 219 suites, and 1030 React tests across 63 files** (measured 2026-09-15 by Palette-14, the residue commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-14 COMMIT ITSELF.** 1022 → 1030 is its 8 React
-  cases in one new file; 62 → 63 is that file. The SERVER numbers did not move and were
-  re-measured rather than carried — Palette-14 touches no server file.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1395 server tests across 219 suites, and 1056 React tests across 64 files** (measured 2026-09-15 by Palette-15, the two-auth-screens commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-15 COMMIT ITSELF.** 1030 → 1056 is its 26 React
+  cases in one new file; 63 → 64 is that file. The SERVER numbers did not move and were
+  re-measured rather than carried — Palette-15 touches no server file.
+  ⚠ **26 `it(` LINES AND NINETEEN `for` LOOPS, AND THE LOOPS MULTIPLY NOTHING** — every one sits
+  inside an `it()` body or a helper, so the count is 26, not 26 × anything.
+  ⚠ **AND THE FIRST PASS PREDICTED 25.** One block was planned with two cases and written with
+  three; `grep -c` caught it before the run. **Both previously recorded estimate-instead-of-count
+  failures were also LOW**, which is the dangerous direction — a prediction that is low looks
+  identical to a suite that did not run.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-14 COMMIT ITSELF.* 1022 →
+  1030 is its 8 React cases in one new file; 62 → 63 is that file. The SERVER numbers did not
+  move and were re-measured rather than carried — Palette-14 touches no server file.
   ⚠ **8 `it(` LINES AND FOUR `for` LOOPS, AND THE LOOPS MULTIPLY NOTHING** — all four sit
   inside `it()` bodies or helpers, so the count is 8, not 8 × anything. The two commits before
   this both had loops that DID wrap an `it()`, which is why the distinction is worth making
@@ -478,14 +487,21 @@ then say what was not checked.
   ⚠ **AND THE FIGURE BEFORE THAT WAS FOUND SIX COMMITS STALE, WHICH WAS THE SIXTH INSTANCE.** It
   read 1234 / 191 / 654 / 43 at `f7dfeed` while the whole Palette arc had landed since. Nobody
   lowered it; it simply was not re-armed by the five phases that ran the gate in between.
-  ⚠ **58 REACT FILES IS ABOVE THE "far above 40" TRIPWIRE BELOW AND WAS CHECKED RATHER THAN
-  ASSUMED, RE-CHECKED 2026-09-15.** `vite.config.mjs`'s `test.include` is still
+  ⚠ **64 REACT FILES IS ABOVE THE "far above 40" TRIPWIRE BELOW AND WAS CHECKED RATHER THAN
+  ASSUMED, RE-CHECKED 2026-09-15 BY PALETTE-15.** `vite.config.mjs`'s `test.include` is still
+  `src/**/*.test.{js,jsx}`. The glob has not widened; the React suite has grown.
+  ⚠ **AND THE COUNT WAS CONFIRMED BY AN INSTRUMENT VITEST CANNOT INFLUENCE.** A green run's
+  default reporter prints **no per-file lines at all**, so "read what Vitest listed" has nothing
+  to read on a passing gate — and the `✓ migration:` lines in the log belong to the SERVER suite,
+  which is exactly the kind of thing a loose grep mistakes for one. `find src -name '*.test.js'
+  -o -name '*.test.jsx'` returns **64**, matching Vitest's own 64, and a search for any test file
+  outside `src/` and `server/test/` returns nothing. **A figure derived from the instrument cannot
+  validate the instrument.**
+  ⚠ **THE PREVIOUS ENTRY:** *58 REACT FILES … `vite.config.mjs`'s `test.include` is still
   `src/**/*.test.{js,jsx}`, and the ONE `server/test` string in the gate log is the `node --test`
-  npm-script line, not a Vitest path. The glob has not widened; the React suite has grown.
-  ⚠ **THE CHECK IS "WHICH PATHS DID VITEST RUN", NOT "DOES THE LOG MENTION `server/`".** The
-  previous entry said the log *"names zero `server/` paths"*, which is no longer true and was never
-  quite the question — a gate log always names the server suite, because it runs it. Read the glob,
-  and read what Vitest itself listed.
+  npm-script line, not a Vitest path.* ⚠ **Its stated check — "which paths did Vitest run" —
+  cannot be performed on a green run**, which is why the independent count above replaces it
+  rather than repeating it.
   ⚠ **THE PREVIOUS ENTRY:** *53 REACT FILES IS ABOVE THE "far above 40" TRIPWIRE BELOW AND WAS
   CHECKED RATHER THAN ASSUMED.*
   ⚠ **THE HEAD FOR THIS FIGURE IS `f7dfeed`, THE PARENT OF THE COMMIT RE-ARMING IT, AND THE REASONING IS THE OPPOSITE OF THE ENTRY BELOW RATHER THAN A CONTRADICTION OF IT.** This pass changed **only markdown** — no test file, no source file — so the working tree it was measured against differs from `f7dfeed` in nothing the gate can see, and 1234 / 191 / 654 / 43 is exactly what `f7dfeed`'s own commit body reported. **The figure is therefore true AT `f7dfeed`**, which is the test the rule below actually states: name the revision at which the figure is true. A docs-only commit that adds no tests is the one case where the parent is the honest citation, and saying so here is what stops the next reader "correcting" it back.

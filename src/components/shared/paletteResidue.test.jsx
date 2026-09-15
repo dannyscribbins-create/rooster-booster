@@ -82,12 +82,15 @@ const RETIRED_BASELINE = Object.freeze({
   // literal is what paints there; re-pointing it in the same pass that moved the
   // mount tree is how a deliberate fallback becomes an accidental one. Filed.
   'shared/LockedSection.jsx': ['hex #012854'],
-  // ⚠ NOT RESIDUE — TWO SCREENS THAT WERE NEVER COLOUR-MIGRATED AT ALL. Their
-  // five siblings in auth/ are migrated and carry none of this. Migrating these
-  // is a phase with its own blast radius across signup and email verification,
-  // not a cleanup, and it is filed as such.
-  'auth/EmailVerifyScreen.jsx': ['hex/decimal/keys — unmigrated screen'],
-  'auth/SignupScreen.jsx': ['hex/decimal/keys — unmigrated screen'],
+  // ⚠ THE TWO AUTH SCREENS LEFT THIS LIST ON 2026-09-15 (PALETTE-15), AND THE
+  // SHRINK-CHECK BELOW IS WHAT MADE THAT MANDATORY RATHER THAN OPTIONAL. They
+  // read: "NOT RESIDUE — TWO SCREENS THAT WERE NEVER COLOUR-MIGRATED AT ALL …
+  // a phase with its own blast radius across signup and email verification."
+  // That phase happened. Between them they carried 43 `R.` colour keys, 22
+  // retired-tone reaches and 5 gradients; they now carry none.
+  // ⚠ THE ENTRIES ARE DELETED, NOT RELABELLED. A baseline that keeps a repaired
+  // file under a softer description is how a list of open work becomes a list of
+  // things that were once true.
 });
 
 describe('T3 — retired tones in the four in-scope trees', () => {
@@ -151,11 +154,18 @@ describe('T2 — the residue, and what is correctly literal', () => {
     'shared/Skeleton.jsx': 'neutral-alpha fill',
     'shared/SurfaceSwitcher.jsx': 'alpha-on-brand',
     'auth/ChoiceScreen.jsx': 'shadow',
-    'auth/EmailVerifyScreen.jsx': 'unmigrated screen',
+    // ⚠ RE-RULED BY PALETTE-15, NOT MERELY RE-WORDED. These two read "unmigrated
+    // screen" — an acknowledgement that nothing about them had been classified.
+    // What remains is CLASSIFIED: the opaque error banner, which R-1 ruled must
+    // stay literal precisely so nothing mounted over it can invert it.
+    // statusBannerContrast.test.jsx T3 is the fence, and it asserts the ABSENCE
+    // of a var() in that block — so a later "consistency" sweep has to come past
+    // it and read why converting this would be a regression rather than a tidy-up.
+    'auth/EmailVerifyScreen.jsx': 'opaque status banner (R-1, ruled literal)',
     'auth/FrozenAccountScreen.jsx': 'shadow',
     'auth/LoginScreen.jsx': 'shadow + neutral-alpha border',
     'auth/ResetPinScreen.jsx': 'shadow + neutral-alpha border',
-    'auth/SignupScreen.jsx': 'unmigrated screen',
+    'auth/SignupScreen.jsx': 'opaque status banner (R-1, ruled literal)',
     'auth/TeamAccessRevokedScreen.jsx': 'shadow',
   });
 

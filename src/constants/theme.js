@@ -10,8 +10,23 @@
 // The dead-key check found it the moment the readers went — which is the
 // mechanism working, not a surprise.
 //
-// `bgBlueLight` was a RETIRED ACCENT TONE — the last definition of it in the
-// codebase — and its readers went to `--rm-recess` and `--rm-primary`.
+// `bgBlueLight` was a RETIRED ACCENT TONE and its readers went to `--rm-recess`
+// and `--rm-primary`.
+//
+// ⚠ AND ONE MORE WENT ON 2026-09-15 (PALETTE-15): `blueLight`, #D3E3F0. Its
+// only three readers were the two auth screens that were never colour-migrated,
+// and it died the moment they were. themeKeyIntegrity's dead-key check found it
+// by FAILING THE GATE — the mechanism working, again, rather than anyone
+// remembering to look.
+//
+// ⚠ THE SENTENCE ABOVE USED TO CALL `bgBlueLight` "the last definition of it in
+// the codebase", AND THAT WAS FALSE ON THE DAY IT WAS WRITTEN — `blueLight` held
+// the IDENTICAL value seven lines below it, in this same object. It is corrected
+// rather than quietly deleted because the error is instructive: the claim was
+// made about a KEY NAME, and a sweep for that name could not see a differently
+// named key carrying the same tone. That is the third route a retired tone
+// travels, recorded elsewhere in CLAUDE.md, biting inside the very comment that
+// announced the tone was gone. It is gone NOW.
 // `bgCardTint` went to `--rm-recess`; `shadowMd` went to the side channel's own
 // `shadowMd` role, which Palette-4a Part B added.
 //
@@ -53,7 +68,6 @@ export const R = {
   redDark:    "#8C0000",
   navy:       "#012854",
   navyDark:   "#041D3E",
-  blueLight:  "#D3E3F0",
 
   // Text
   textPrimary:   "#1A1A1A",

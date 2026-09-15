@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
-import { R } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
-// The PLATFORM default mark, used only when the contractor has uploaded none.
-// Replaces a direct import of AccentRoofing-Logo.png — one tenant's logo shown to
-// every homeowner of every other tenant (C/DL-2 Phase 3c).
-// Repointed from roofmiles_logo_svg.svg (removed 2026-08-02 — 640KB of base64
-// PNG wrapped in an <svg>). Same mark, icon + wordmark, 22KB.
+import { statusVar } from '../../constants/statusTheme';
+// One import from the side channel, not two — see SignupScreen's note.
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
+// ⚠ THE SAME DANGLING PLATFORM-LOGO COMMENT STOOD HERE, WORD FOR WORD, AND IT IS
+// REMOVED FOR THE SAME REASON: the import it described went with `logoSrc` in
+// BR-1 Phase 2 and the prose outlived it in BOTH files. A fact written into N
+// files costs N corrections — this one was two, and finding the second took
+// opening the file rather than any search, because the search that would have
+// found it is for a comment nobody knew to look for.
 import useEntrance from '../../hooks/useEntrance';
 import BrandMark from '../shared/BrandMark';
-import { fontVar } from '../../constants/elevationTheme';
 
 // ─── Email Verify Screen ───────────────────────────────────────────────────────
 //
@@ -23,6 +25,9 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
   const [verified, setVerified]         = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendSuccess, setResendSuccess]   = useState(false);
+  // Drives the code field's focus edge declaratively. Replaces an imperative
+  // `e.target.style.borderColor` write — see the field's own note.
+  const [codeFocused, setCodeFocused]       = useState(false);
   const cardVisible = useEntrance(80);
 
   // WHOSE PROGRAM THIS IS. The chain ends at the platform rather than at any
@@ -133,30 +138,40 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
+        // The FIRST of this file's two page grounds. See the second, on the
+        // normal state below, for why the gradient went rather than moving.
+        backgroundColor: 'var(--rm-bg, #FFFFFF)',
         padding: '32px 24px',
         fontFamily: fontVar('body'),
       }}>
         <div style={{
           width: '100%',
           maxWidth: 380,
-          background: R.bgCard,
+          backgroundColor: 'var(--rm-surface, #FFFFFF)',
           borderRadius: 20,
           padding: '48px 28px',
-          boxShadow: R.shadowLg,
+          boxShadow: elevationVar('shadowLg'),
           textAlign: 'center',
         }}>
+          {/* ⚠ THE TICK IS AN EMOJI AND STAYS ONE — classified, not defaulted.
+              It carries no contractor meaning and has no colour declaration to
+              migrate, so it belongs to Palette-14's DECORATIVE class alongside
+              the medal golds and the review star: meaning that is not the
+              contractor's, which must not move when their brand does. */}
           <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
           <h2 style={{
             margin: '0 0 8px',
             fontSize: 24,
             fontWeight: 700,
             fontFamily: fontVar('heading'),
-            color: R.navy,
+            color: 'var(--rm-text, #1C2D4D)',
           }}>
             Email verified!
           </h2>
-          <p style={{ margin: 0, fontSize: 15, color: R.textSecondary }}>
+          <p style={{
+            margin: 0, fontSize: 15,
+            color: 'var(--rm-text, #1C2D4D)', opacity: 0.72,
+          }}>
             Redirecting to sign in...
           </p>
         </div>
@@ -172,7 +187,14 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
+      // ⚠ THE SECOND OF THIS FILE'S TWO PAGE GROUNDS. The success state above
+      // carries the other and they must move together — a migration that took
+      // only the state a test happens to render leaves the other half painting
+      // a retired palette, green. See SignupScreen's page-ground note for the
+      // full reasoning: the retired gradient failed the text floor at EVERY
+      // stop, no derived partner expresses an X -> X-LIGHT pair, and all five
+      // migrated auth siblings use a flat `--rm-bg`.
+      backgroundColor: 'var(--rm-bg, #FFFFFF)',
       padding: '32px 24px',
       fontFamily: fontVar('body'),
     }}>
@@ -191,14 +213,17 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
 
           The whole wrapper goes, not just the <img> — leaving an empty animated
           div would keep its marginBottom and its opacity transition. */}
-      {/* Verify card */}
+      {/* ⚠ THE CARD IS DEFINED BY ITS EDGE. Light-mode `bg` and `surface` are
+          legitimately the same colour on a default palette, so this shadow is
+          what separates the card from the canvas — the same reasoning
+          LoginScreen's card carries. */}
       <div style={{
         width: '100%',
         maxWidth: 380,
-        background: R.bgCard,
+        backgroundColor: 'var(--rm-surface, #FFFFFF)',
         borderRadius: 20,
         padding: '32px 28px',
-        boxShadow: R.shadowLg,
+        boxShadow: elevationVar('shadowLg'),
         opacity: cardVisible ? 1 : 0,
         transform: cardVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
@@ -210,14 +235,26 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
           fontSize: 22,
           fontWeight: 700,
           fontFamily: fontVar('heading'),
-          color: R.navy,
+          color: 'var(--rm-text, #1C2D4D)',
         }}>
           Check your email
         </h2>
-        <p style={{ margin: '0 0 24px', fontSize: 15, color: R.textSecondary, lineHeight: 1.5 }}>
-          We sent a 6-digit code to{' '}
-          <strong style={{ color: R.textPrimary }}>{email}</strong>.
-          Enter it below to verify your account.
+        {/* ⚠ THE ADDRESS IS THE ONE THING A PERSON HAS TO CHECK ON THIS SCREEN,
+            so it takes the text token at FULL strength while the sentence around
+            it is muted. The `<strong>` sits inside the muted paragraph, and
+            opacity INHERITS — so the emphasis has to be the parent's job, not a
+            second opacity. Muting the paragraph as a whole and un-muting the
+            child is not possible; the child would still composite through 0.72.
+            The sentence is therefore split: muted wrapper, full-strength span
+            declared on its own element outside the muted flow. */}
+        <p style={{ margin: '0 0 24px', fontSize: 15, lineHeight: 1.5 }}>
+          <span style={{ color: 'var(--rm-text, #1C2D4D)', opacity: 0.72 }}>
+            We sent a 6-digit code to{' '}
+          </span>
+          <strong style={{ color: 'var(--rm-text, #1C2D4D)' }}>{email}</strong>
+          <span style={{ color: 'var(--rm-text, #1C2D4D)', opacity: 0.72 }}>
+            . Enter it below to verify your account.
+          </span>
         </p>
 
         {/* Error card */}
@@ -245,7 +282,8 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
             display: 'block',
             fontSize: 12,
             fontWeight: 500,
-            color: R.textSecondary,
+            color: 'var(--rm-text, #1C2D4D)',
+            opacity: 0.75,
             marginBottom: 8,
             fontFamily: fontVar('body'),
           }}>
@@ -264,11 +302,21 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
             placeholder="000000"
             style={{
               width: '100%',
-              background: R.bgPage,
-              border: `2px solid ${R.border}`,
+              backgroundColor: 'var(--rm-bg, #FFFFFF)',
+              // ⚠ THE FOCUS EDGE IS DECLARATIVE NOW, AND THAT IS NOT TIDYING.
+              // This field drove its focus colour by WRITING `e.target.style
+              // .borderColor` in onFocus/onBlur. An imperative write of a
+              // `var(--rm-primary, …)` string works in a browser and is
+              // unreadable to any declaration-level test, so the migration would
+              // have been unassertable exactly where it matters — and the
+              // handlers silently reintroduce whatever value they name, out of
+              // sight of every sweep that reads the style object. The `focused`
+              // state pattern is what the five migrated siblings already use.
+              border: `2px solid ${codeFocused
+                ? 'var(--rm-primary, #F26A1B)' : elevationVar('border')}`,
               borderRadius: 12,
               padding: '18px 16px',
-              color: R.textPrimary,
+              color: 'var(--rm-text, #1C2D4D)',
               fontSize: 36,
               fontFamily: fontVar('mono'),
               textAlign: 'center',
@@ -277,24 +325,37 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
               boxSizing: 'border-box',
               transition: 'border-color 0.2s',
             }}
-            onFocus={e => { e.target.style.borderColor = R.navy; }}
-            onBlur={e => { e.target.style.borderColor = R.border; }}
+            onFocus={() => setCodeFocused(true)}
+            onBlur={() => setCodeFocused(false)}
           />
         </div>
 
-        {/* Verify button — navy gradient */}
+        {/* ── Verify button ────────────────────────────────────────────────
+            ⚠ `primary`, NOT `secondary` — see SignupScreen's submit button for
+            why the crossover makes this look backwards. The retired gradient ran
+            on the dark NEUTRAL; this is the contractor's ACTION colour, which is
+            what a primary CTA takes everywhere else in the product.
+            ⚠ The shadow's `rgba(1,40,84,0.35)` was the retired navy in DECIMAL
+            channels — invisible to every hex needle and every key needle in this
+            arc. `shadowMd` is the same geometry with a neutral black.
+
+            ⚠ THE 0.6 ON THE DISABLED STATE IS KEPT, AND IT IS AN EXEMPTION RATHER
+            THAN AN OVERSIGHT. Opacity inherits, so the label composites down with
+            the fill: measured, that pair lands under the text floor. WCAG 1.4.3
+            exempts INACTIVE user-interface components, and this button is
+            genuinely `disabled` — a person cannot act on it and it carries no
+            information the enabled state does not. It is recorded here rather
+            than left for someone to rediscover as a finding. */}
         <button
           onClick={handleVerify}
           disabled={loading || code.length !== 6}
           style={{
             width: '100%',
-            background: (loading || code.length !== 6)
-              ? R.navyDark
-              : `linear-gradient(135deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
+            backgroundColor: 'var(--rm-primary, #F26A1B)',
             border: 'none',
             borderRadius: 10,
             padding: '16px',
-            color: '#fff',
+            color: 'var(--rm-on-primary, #000000)',
             fontSize: 15,
             fontWeight: 700,
             fontFamily: fontVar('heading'),
@@ -305,7 +366,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
             gap: 8,
             transition: 'transform 0.2s, box-shadow 0.2s',
             transform: loading ? 'scale(0.98)' : 'scale(1)',
-            boxShadow: (loading || code.length !== 6) ? 'none' : `0 4px 14px rgba(1,40,84,0.35)`,
+            boxShadow: (loading || code.length !== 6) ? 'none' : elevationVar('shadowMd'),
             opacity: code.length !== 6 && !loading ? 0.6 : 1,
           }}
         >
@@ -315,18 +376,28 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
           }
         </button>
 
-        {/* Resend section */}
+        {/* ── Resend section ───────────────────────────────────────────────
+            ⚠ THE CONFIRMATION WAS PAINTED WITH THE SUCCESS **FILL**, AND THAT
+            WAS A LIVE TEXT DEFECT. `R.green` is #16A34A, which statusTheme
+            records as "fill/accent — 3.30:1, graphic threshold only, never
+            text". It carried this sentence at 3.30:1 on the card, under the 4.5
+            floor. `successText` is the tone for the job — 5.71:1 — and is also
+            floored against the worst derivable recess, which the fill is not.
+
+            ⚠ THE TWO MUTED LINES WERE `R.textMuted` (#A0A0A0) AT 2.61:1, which
+            is under the floor as text AND under 3:1 as a graphic. `--rm-text` at
+            0.7 is 4.91:1 on the worst brand. */}
         <div style={{ textAlign: 'center', marginTop: 20 }}>
           {resendSuccess ? (
-            <p style={{ fontSize: 14, color: R.green, margin: 0, fontWeight: 500 }}>
+            <p style={{ fontSize: 14, color: statusVar('successText'), margin: 0, fontWeight: 500 }}>
               Code resent! Check your inbox.
             </p>
           ) : resendCooldown > 0 ? (
-            <p style={{ fontSize: 14, color: R.textMuted, margin: 0 }}>
+            <p style={{ fontSize: 14, color: 'var(--rm-text, #1C2D4D)', opacity: 0.7, margin: 0 }}>
               Resend available in {resendCooldown}s
             </p>
           ) : (
-            <p style={{ fontSize: 14, color: R.textMuted, margin: 0 }}>
+            <p style={{ fontSize: 14, color: 'var(--rm-text, #1C2D4D)', opacity: 0.7, margin: 0 }}>
               Didn't get a code?{' '}
               <button
                 onClick={handleResend}
@@ -337,7 +408,7 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
                   margin: 0,
                   font: 'inherit',
                   cursor: 'pointer',
-                  color: R.navy,
+                  color: 'var(--rm-text, #1C2D4D)',
                   fontWeight: 600,
                   fontSize: 14,
                 }}
@@ -349,14 +420,20 @@ export default function EmailVerifyScreen({ userId, email, inviteSlug, contracto
         </div>
       </div>
 
-      {/* Footer */}
+      {/* ── Footer ───────────────────────────────────────────────────────────
+          ⚠ WAS `rgba(255,255,255,0.4)` — WHITE, because this sat on a dark
+          gradient that is now gone. The colour had to move with the ground.
+          ⚠ ALPHA 0.7, NOT the siblings' 0.45: 0.45 measures 2.51:1 on the worst
+          brand, under the 4.5 floor for this 12px uppercase line. See
+          SignupScreen's footer note — the reasoning is one decision, applied
+          twice, and the sibling value is filed rather than copied. */}
       <p style={{
         marginTop: 24,
-        color: 'rgba(255,255,255,0.4)',
+        color: 'var(--rm-text, #1C2D4D)',
+        opacity: cardVisible ? 0.7 : 0,
         fontSize: 12,
         fontFamily: fontVar('mono'),
         letterSpacing: '0.06em',
-        opacity: cardVisible ? 1 : 0,
         transition: 'opacity 0.5s ease 0.3s',
         textTransform: 'uppercase',
       }}>

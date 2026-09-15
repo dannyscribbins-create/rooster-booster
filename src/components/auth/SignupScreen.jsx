@@ -1,14 +1,18 @@
 import { useState } from 'react';
-import { R } from '../../constants/theme';
 import { BACKEND_URL } from '../../config/contractor';
-// The PLATFORM default mark, used only when the contractor has uploaded none.
-// Replaces a direct import of AccentRoofing-Logo.png — one tenant's logo shown to
-// every homeowner of every other tenant (C/DL-2 Phase 3c).
-// Repointed from roofmiles_logo_svg.svg (removed 2026-08-02 — 640KB of base64
-// PNG wrapped in an <svg>). Same mark, icon + wordmark, 22KB.
+import { statusVar } from '../../constants/statusTheme';
+// ⚠ ONE IMPORT FROM THE SIDE CHANNEL, NOT TWO. `fontVar` was imported from this
+// module on its own line at the bottom of this block; adding `elevationVar`
+// beside it would have made two import statements naming one module.
+import { elevationVar, fontVar } from '../../constants/elevationTheme';
+// ⚠ A FIVE-LINE COMMENT DESCRIBING THE PLATFORM LOGO IMPORT STOOD HERE AND THE
+// IMPORT IT DESCRIBED WAS DELETED IN BR-1 PHASE 2 — it went with `logoSrc`, and
+// the prose stayed. It has been dangling ever since, and this phase's import
+// edit moved it adjacent to `useEntrance`, where it read as describing THAT.
+// Removed rather than relocated: BrandMark's own header now carries the whole
+// absence rule, including the sentence this comment was making.
 import useEntrance from '../../hooks/useEntrance';
 import BrandMark from '../shared/BrandMark';
-import { fontVar } from '../../constants/elevationTheme';
 
 // ─── Signup Screen ─────────────────────────────────────────────────────────────
 //
@@ -103,13 +107,21 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
   }
 
   // ─── Styles ───────────────────────────────────────────────────────────────────
+  //
+  // ⚠ THE ERROR EDGE TAKES THE FILL ROLE AND THE ERROR TEXT TAKES THE TEXT ROLE,
+  // AND THEY ARE DIFFERENT VALUES ON PURPOSE. `danger` (#DC2626) is a 3:1
+  // GRAPHIC value — correct for a border. `dangerText` (#B91C1C) is the 4.5:1
+  // text tone. The retired code used the FILL for both; as text it measured
+  // 4.83:1 and passed by luck rather than by role.
   const inputStyle = (field) => ({
     width: '100%',
-    background: R.bgPage,
-    border: `1.5px solid ${fieldErrors[field] ? '#dc2626' : focused === field ? R.navy : R.border}`,
+    backgroundColor: 'var(--rm-bg, #FFFFFF)',
+    border: `1.5px solid ${fieldErrors[field]
+      ? statusVar('danger')
+      : focused === field ? 'var(--rm-primary, #F26A1B)' : elevationVar('border')}`,
     borderRadius: 10,
     padding: '14px 16px 14px 44px',
-    color: R.textPrimary,
+    color: 'var(--rm-text, #1C2D4D)',
     fontSize: 15,
     fontFamily: fontVar('body'),
     outline: 'none',
@@ -131,28 +143,55 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
     display: 'block',
     fontSize: 12,
     fontWeight: 500,
-    color: R.textSecondary,
+    color: 'var(--rm-text, #1C2D4D)',
+    opacity: 0.75,
     marginBottom: 6,
     fontFamily: fontVar('body'),
   };
 
   const fieldErrorStyle = {
-    color: '#dc2626',
+    color: statusVar('dangerText'),
     fontSize: 12,
     marginTop: 4,
     marginBottom: 0,
   };
 
+  // ⚠ 0.6, NOT THE 0.5 THE MIGRATED SIBLINGS USE — RE-DERIVED, NOT INHERITED.
+  // `--rm-text` at 0.5 composites to 2.85:1 on the worst brand, under the 3:1
+  // non-text floor these glyphs answer to; 0.6 is 3.68:1. The margin is
+  // deliberate: a floor met by hundredths is one the next token change silently
+  // breaks, which is the lesson `successText` cost. The siblings' 0.5 is FILED.
+  // ⚠ IT REPLACES `R.textMuted` (#A0A0A0), WHICH WAS 2.61:1 — a live defect, not
+  // a stylistic preference.
   const iconStyle = (field) => ({
     position: 'absolute',
     left: 14,
     top: '50%',
     transform: 'translateY(-50%)',
     fontSize: 16,
-    color: focused === field ? R.navy : R.textMuted,
-    transition: 'color 0.2s',
+    color: focused === field ? 'var(--rm-primary, #F26A1B)' : 'var(--rm-text, #1C2D4D)',
+    opacity: focused === field ? 1 : 0.6,
+    transition: 'color 0.2s, opacity 0.2s',
     pointerEvents: 'none',
   });
+
+  // The show/hide control on both password fields. One object rather than two
+  // identical inline blocks — they were duplicated, and a duplicated style is
+  // two things to keep in step.
+  const revealButtonStyle = {
+    position: 'absolute',
+    right: 12,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    background: 'none',
+    border: 'none',
+    padding: 4,
+    cursor: 'pointer',
+    color: 'var(--rm-text, #1C2D4D)',
+    opacity: 0.6,
+    display: 'flex',
+    alignItems: 'center',
+  };
 
   return (
     <div style={{
@@ -161,7 +200,32 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      background: `linear-gradient(160deg, ${R.navy} 0%, ${R.blueLight} 100%)`,
+      // ── THE PAGE GROUND (M.2, A.1) ────────────────────────────────────────
+      // ⚠ WAS A RETIRED-ACCENT GRADIENT, #012854 -> #D3E3F0, AND IT IS NOT
+      // MIGRATED TO A TOKEN PAIR — IT IS GONE. Three reasons, in order:
+      //
+      //   1. IT FAILED THE TEXT FLOOR AT EVERY STOP. The footer company name sat
+      //      on it at rgba(255,255,255,0.4): 3.50:1 against the DARK stop,
+      //      1.12:1 against the light one, and 1.46:1 where the line actually
+      //      falls below the centred card. ⚠ THE BINDING STOP IS THE LIGHTEST
+      //      ONE, NOT THE DARKEST — "text on a gradient clears the darker stop"
+      //      is the rule for DARK text and inverts for white.
+      //   2. NO DERIVED PARTNER EXPRESSES IT. Palette-1 publishes `primaryDark`
+      //      and `secondaryDark` — X -> X-DARK pairs. This ran X -> X-LIGHT, and
+      //      there is no light partner in the render set. It is NOT Palette-12's
+      //      cross-colour case either (that ruling is about `secondary` ->
+      //      `primary`), so neither existing ruling covers it and inventing a
+      //      third pairing is precisely what was declined.
+      //   3. ⚠ ALL FIVE MIGRATED AUTH SIBLINGS USE A FLAT `--rm-bg` PAGE GROUND
+      //      and none of them carries a gradient. A sixth and seventh screen
+      //      diverging from five is worse than the state this phase found.
+      //
+      // ⚠ AND `bg` IS THE RIGHT LEVEL HERE EVEN THOUGH IT HAS NO CONSUMER IN THE
+      // REFERRER TREE. Screen.jsx records that `--rm-bg` goes unused there
+      // because that tree's outermost element is a 430px COLUMN, which is the
+      // `recess` level. These are full-page screens with no column, so the level
+      // that is genuinely page-ground exists on them and this is it.
+      backgroundColor: 'var(--rm-bg, #FFFFFF)',
       padding: '32px 24px',
       fontFamily: fontVar('body'),
     }}>
@@ -181,13 +245,18 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
           The whole wrapper goes, not just the <img> — leaving an empty animated
           div would keep its marginBottom and its opacity transition. */}
       {/* Signup card */}
+      {/* ⚠ THE CARD IS DEFINED BY ITS EDGE, NOT BY CONTRAST AGAINST THE CANVAS.
+          Light-mode `bg` and `surface` are legitimately the same colour on a
+          default palette (themeTokens' documented consequence), so this shadow
+          is what separates the two — the same reasoning LoginScreen's card
+          carries, and the reason the shadow is not optional here. */}
       <div style={{
         width: '100%',
         maxWidth: 380,
-        background: R.bgCard,
+        backgroundColor: 'var(--rm-surface, #FFFFFF)',
         borderRadius: 20,
         padding: '32px 28px',
-        boxShadow: R.shadowLg,
+        boxShadow: elevationVar('shadowLg'),
         opacity: cardVisible ? 1 : 0,
         transform: cardVisible ? 'translateY(0)' : 'translateY(20px)',
         transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
@@ -198,11 +267,14 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
           fontSize: 22,
           fontWeight: 700,
           fontFamily: fontVar('heading'),
-          color: R.navy,
+          color: 'var(--rm-text, #1C2D4D)',
         }}>
           Create your account
         </h2>
-        <p style={{ margin: '0 0 24px', fontSize: 15, color: R.textSecondary }}>
+        <p style={{
+          margin: '0 0 24px', fontSize: 15,
+          color: 'var(--rm-text, #1C2D4D)', opacity: 0.72,
+        }}>
           Join {branding?.companyName || contractorName || 'the referral program'} and start earning rewards.
         </p>
 
@@ -329,17 +401,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
               type="button"
               onClick={() => setShowPassword(v => !v)}
               style={{
-                position: 'absolute',
-                right: 12,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'none',
-                border: 'none',
-                padding: 4,
-                cursor: 'pointer',
-                color: R.textMuted,
-                display: 'flex',
-                alignItems: 'center',
+                ...revealButtonStyle,
               }}
             >
               <i className={`ph ph-${showPassword ? 'eye-slash' : 'eye'}`} style={{ fontSize: 16 }} />
@@ -367,17 +429,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
               type="button"
               onClick={() => setShowConfirm(v => !v)}
               style={{
-                position: 'absolute',
-                right: 12,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'none',
-                border: 'none',
-                padding: 4,
-                cursor: 'pointer',
-                color: R.textMuted,
-                display: 'flex',
-                alignItems: 'center',
+                ...revealButtonStyle,
               }}
             >
               <i className={`ph ph-${showConfirm ? 'eye-slash' : 'eye'}`} style={{ fontSize: 16 }} />
@@ -386,19 +438,41 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
           {fieldErrors.confirmPassword && <p style={{ ...fieldErrorStyle, marginBottom: 16 }}>{fieldErrors.confirmPassword}</p>}
         </div>
 
-        {/* Submit button — navy gradient (not red, differentiates from login) */}
+        {/* ── Submit button ────────────────────────────────────────────────
+            ⚠ THIS READ "navy gradient (not red, differentiates from login)", AND
+            THAT REASON IS GONE RATHER THAN OUT OF DATE. It differentiated one
+            tenant's navy from that same tenant's red, at a time when both were
+            hardcoded. There is no product-wide navy or red now: the login
+            button is `--rm-primary`, and a signup button deliberately painted a
+            DIFFERENT colour would be the contractor's primary action rendered in
+            their dark neutral on the one screen where it matters most.
+
+            ⚠ `primary`, NOT `secondary`, AND THE CROSSOVER IS WHY IT LOOKS
+            BACKWARDS. B-1 routes the render token `primary` from the STORED
+            `secondaryColor` — the contractor's ACTION colour. The retired
+            gradient ran on the dark NEUTRAL, which is the render token
+            `secondary`. Reading "navy" and reaching for `secondary` reproduces
+            the old pixels and the old mistake.
+
+            ⚠ THE SHADOW CARRIED THE RETIRED TONE AND NO NEEDLE IN THIS ARC SAW
+            IT: `rgba(1,40,84,0.35)` is the retired navy written as three DECIMAL
+            channels, so it is neither a hex nor a colour key. `shadowMd` is the
+            published role with the same geometry and a neutral black.
+
+            ⚠ NO `opacity` ON THE LOADING STATE, DELIBERATELY. Opacity INHERITS,
+            so fading the button fades its label against a ground that is already
+            fading — the composite defect that put a payout figure at 3.29:1.
+            The scale nudge and the dropped shadow carry the state instead. */}
         <button
           onClick={handleSubmit}
           disabled={loading}
           style={{
             width: '100%',
-            background: loading
-              ? R.navyDark
-              : `linear-gradient(135deg, ${R.navy} 0%, ${R.navyDark} 100%)`,
+            backgroundColor: 'var(--rm-primary, #F26A1B)',
             border: 'none',
             borderRadius: 10,
             padding: '16px',
-            color: '#fff',
+            color: 'var(--rm-on-primary, #000000)',
             fontSize: 15,
             fontWeight: 700,
             fontFamily: fontVar('heading'),
@@ -409,7 +483,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
             gap: 8,
             transition: 'transform 0.2s, box-shadow 0.2s',
             transform: loading ? 'scale(0.98)' : 'scale(1)',
-            boxShadow: loading ? 'none' : `0 4px 14px rgba(1,40,84,0.35)`,
+            boxShadow: loading ? 'none' : elevationVar('shadowMd'),
           }}
         >
           {loading
@@ -418,8 +492,15 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
           }
         </button>
 
-        {/* Sign in link */}
-        <p style={{ textAlign: 'center', marginTop: 20, color: R.textMuted, fontSize: 15 }}>
+        {/* ── Sign in link ─────────────────────────────────────────────────
+            ⚠ `R.textMuted` WAS #A0A0A0 — 2.61:1 on the card, a live text defect
+            under the 4.5 floor. `--rm-text` at 0.7 is 4.91:1 on the worst brand.
+            The inline button takes the same treatment LoginScreen's "Contact
+            your rep" does: the text token at full strength, weight 600. */}
+        <p style={{
+          textAlign: 'center', marginTop: 20, fontSize: 15,
+          color: 'var(--rm-text, #1C2D4D)', opacity: 0.7,
+        }}>
           Already have an account?{' '}
           <button
             onClick={() => onSignupComplete({ action: 'login' })}
@@ -430,7 +511,7 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
               margin: 0,
               font: 'inherit',
               cursor: 'pointer',
-              color: R.navy,
+              color: 'var(--rm-text, #1C2D4D)',
               fontWeight: 600,
             }}
           >
@@ -439,14 +520,26 @@ export default function SignupScreen({ inviteSlug, contractorName, branding, onS
         </p>
       </div>
 
-      {/* Footer */}
+      {/* ── Footer ───────────────────────────────────────────────────────────
+          ⚠ WAS `rgba(255,255,255,0.4)` — WHITE, because this sat on a dark
+          gradient. That gradient is gone (see the page ground above), so white
+          here would now be white on `--rm-bg`. The colour had to move with the
+          ground; leaving it would have been a rule applied once to a surface and
+          never re-run when the surface moved.
+
+          ⚠ AND THE ALPHA IS 0.7, NOT THE 0.45 LoginScreen AND ResetPinScreen USE.
+          Re-derived rather than inherited: 0.45 composites to 2.51:1 on the worst
+          brand, under the 4.5 floor for this 12px uppercase line. 0.7 is 4.91:1
+          on that same worst case. The siblings' value is FILED, not copied —
+          paletteAuthScreens.test.jsx carries the measurement and fails if 0.45
+          ever becomes adequate. */}
       <p style={{
         marginTop: 24,
-        color: 'rgba(255,255,255,0.4)',
+        color: 'var(--rm-text, #1C2D4D)',
+        opacity: cardVisible ? 0.7 : 0,
         fontSize: 12,
         fontFamily: fontVar('mono'),
         letterSpacing: '0.06em',
-        opacity: cardVisible ? 1 : 0,
         transition: 'opacity 0.5s ease 0.3s',
         textTransform: 'uppercase',
       }}>

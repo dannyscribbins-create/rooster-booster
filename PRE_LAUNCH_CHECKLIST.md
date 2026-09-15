@@ -5549,8 +5549,8 @@ quadruples is evidence about the estimate, not about the wave:
 
       | # | what | trigger |
       |---|---|---|
-      | 1 | **410 admin-tree colours + 48 fonts + 11 gradients.** Palette never touched it | ⚠ needs a **provider decision first** — the admin tree renders OUTSIDE `ThemeProvider` (Ruling 5), so there is nothing for a token to resolve against. Migrating colour before deciding that is building on sand |
-      | 2 | ⚠ **`EmailVerifyScreen.jsx` and `SignupScreen.jsx` WERE NEVER COLOUR-MIGRATED.** Their five auth siblings were. 46 `R.` colour keys and 22 retired-tone reaches between them | a colour phase of their own. **NOT residue** — these are whole screens, on the signup and email-verification paths |
+      | 1 | ~~**410 admin-tree colours + 48 fonts + 11 gradients.**~~ ✅ **CLOSED — RULED, NOT BUILT** (Danny, 2026-09-05; recorded by Palette-15). See **THE PROVIDER DECISION** below |
+      | 2 | ~~⚠ **`EmailVerifyScreen.jsx` and `SignupScreen.jsx` WERE NEVER COLOUR-MIGRATED.**~~ ✅ **DONE — PALETTE-15, 2026-09-15.** Both migrated; 0 `R.` colour keys, 0 retired reaches, 0 gradients. See **PALETTE-15** below for what it found on the way |
       | 3 | The legal pages' **7 hardcoded `#012854`** on a public page | they render ABOVE the provider wrap, so a token cannot resolve there either; needs the same decision as (1) |
       | 4 | The **six latent dark-mode defects** | recorded by the dark-mode pass; unblocked already |
       | 5 | **`ReferTab`'s unmeasured combos** | a harness run across the brand/mode matrix |
@@ -5572,6 +5572,51 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **IT SURVIVED BECAUSE EVERY SWEEP THAT REPORTED "zero retired tones" WAS SCOPED TO THE
       REFERRER TREE, AND THIS FILE IS IN `shared/`.** A true statement whose scope was never
       stated — the same shape as `App.jsx`'s focus ring, one directory along.
+
+- [x] **✅ THE PROVIDER DECISION — CLOSED BY RULING, NOT BY BUILDING. THE ADMIN TREE STAYS ON
+      LITERALS.** *(Ruled by Danny 2026-09-05; recorded by Palette-15, 2026-09-15.)*
+
+      **Option 1: document the palette, migrate nothing.** The admin panel is **not
+      white-labelled**, **no homeowner ever sees it**, and **nothing about it is broken**. The 410
+      colours are a **RULING, NOT A BACKLOG** — and that distinction is the whole reason this is
+      being closed rather than left open. ⚠ **AN UNDECIDED ITEM READS AS PENDING WORK**, so 410
+      colours sitting under an open decision look like debt somebody should pay down, and the next
+      session to find them would price a migration nobody wants.
+
+      ⚠ **THE TRIGGER THAT REOPENS IT, FILED BECAUSE A DECISION WITHOUT ONE IS A DEAD END RATHER
+      THAN A RULING: ADMIN DARK MODE.** A literal cannot express two modes. The moment admin dark
+      mode is wanted, **option 1 stops being available** — not "becomes less attractive", stops
+      being available — and this decision returns with the provider question still unanswered
+      underneath it. Nothing else reopens it: more admin screens, more colours, and a tidier
+      codebase are all explicitly *not* reasons.
+
+      ⚠ **AND ITS CLOSURE DOES NOT CLOSE `AdminSettingsNotifications` — CHECKED, NOT ASSUMED.**
+      That file reaches `R.navy` (`#012854`) and `R.red`/`R.redDark` on an admin surface **today**,
+      through `theme.js`, which is why no hex sweep can see it. It is filed separately under
+      **D-3 · R-8** above as an **AD-token** job belonging to whoever owns admin chrome. **It is
+      not part of the 410 and does not close with them.**
+
+- [ ] **⚠ WHAT PALETTE-15 FOUND WHILE MIGRATING THE TWO AUTH SCREENS — FILED, BECAUSE A FINDING
+      REPORTED ONLY IN CONVERSATION IS NOT FILED.** *(2026-09-15. The migration itself is done and
+      closed as item (2) above; these are the things it uncovered and deliberately did NOT fix.)*
+
+      | # | what | trigger |
+      |---|---|---|
+      | A | ⚠ **A CONTRACTOR'S FONTS CANNOT REACH THE APP AT ALL. `loadContractorBranding()` selects no font columns.** That function is *the ONE loader behind both the landing page and `GET /api/branding/:slug`*, by its own comment — so `resolveBrandingTheme(row)` sees `font_heading`/`font_body` as `undefined` and `resolveFont()` returns the PLATFORM DEFAULT for every contractor. **Measured in a browser: a seeded contractor stored as `Playfair Display`/`Lato` mounted `--rm-font-heading: 'Montserrat'`.** ⚠ Palette-13 joined resolver → provider → loader and B.7 migrated the painters; **the DATA never arrives.** This is CLAUDE.md's *five states, not three* — storage, editor and validator all exist, **DELIVERY does not** | a server change to that SELECT plus a re-run of the font chain. ⚠ **AND IT SURVIVED EXACTLY AS `elevationTheme.js` PREDICTED IT WOULD**: that file warns in terms that Accent's stored fonts *are* Montserrat and Roboto, so on the only contractor anyone checked **a correct wiring and a broken one render identical pixels**, and says verification must use a contractor set to something unmistakable. This is the first time anyone did |
+      | B | ⚠ **THE SIGNUP PATH RESOLVES *NEUTRAL*, SO THE MIGRATED CHROME PAINTS THE PLATFORM PALETTE.** `server/utils/inviteTokens.js` builds `${FRONTEND_URL}?signup=<slug>`; the D4 chain's source 2.5 reads **`?brand=`**, which that URL does not carry. Source 2 is null on `app.*` and source 3 cannot be written across the origin boundary — **which is the very reason 2.5 exists.** Measured on a genuine cold visit: `--rm-primary #F26A1B`, `--rm-text #1C2D4D`, stored hint `null`. ⚠ **NOT A REGRESSION — STRICTLY BETTER**: the chrome was one retired tenant's navy for *every* contractor before this phase, and is now the platform's own neutral. The contractor's identity still reaches the screen through the invite **prop** (mark, name, copy), so no absence rule is broken | either the invite link carries `&brand=<slug>`, or the chain learns `?signup=`. ⚠ **THE FIRST OPTION DOES NOT WORK FOR EVERY CONTRACTOR**: `contractors.slug` is NULL for the state every contractor arrives in (the seeder says so in terms), and a null slug cannot be named in a hint at all |
+      | C | ⚠ **`scoreContrast()` IGNORES THE FOREGROUND'S OWN ALPHA CHANNEL.** It composites using `effectiveAlpha` — the CSS `opacity` chain — and never reads `fg.a`. **Measured: the input hairline `rgba(0,0,0,0.12)` on white scores `21:1 PASS` where Palette-1 records the truth as `1.32:1`.** ⚠ **A CHECKER THAT CANNOT SEE A DEFECT WHOSE SYMPTOM IS HIGH CONTRAST** — the same gap that let five black icons past four independent checks. Every `border` reading in **every** graphic-floor run this arc has produced is scored against the border's opaque colour, Palette-14's `32/32` included | ⚠ **NOT FIXED HERE ON PURPOSE**: changing the scorer re-scores every prior baseline, which is a job with its own blast radius. The shortfall it hides is already filed and ruled (Palette-1: no hairline clears 3:1 and none can) |
+      | D | **Two citations into `SignupScreen.jsx` rotted, and BOTH WERE ALREADY WRONG BEFORE THE EDIT THAT MOVED THEM.** `CDL_3c_PHASE0_REPORT.md`'s 8-character-policy sentence cited `:55`, which held the **email regex**; `CDL_3c_PHASE05_RULINGS.md`'s prop sentence cited `:17`, a **comment continuation**. ⚠ **AND VERIFYING THE SET FOUND A THIRD THE TOOL NEVER FLAGGED**: the same policy sentence also cites `ResetPinScreen.jsx:58`, which is the error **message**, one line below the check — unflagged only because that file was not touched. **Adding the delta would have certified two wrong numbers as repaired and left the third wrong** | re-derive all four **by role** — the validator, not a line. ⚠ **Recorded rather than improvised, per the rule**: the re-derivation is the larger job, and the numbers above are quoted as EVIDENCE and must not be renumbered |
+      | E | **The five already-migrated auth siblings carry two sub-floor alphas**, inherited by nobody now but still live in `LoginScreen`, `ResetPinScreen`, `ChoiceScreen`, `FrozenAccountScreen`, `TeamAccessRevokedScreen`: the footer company name at `opacity: 0.45` measures **2.51:1** on the worst brand (floor 4.5, 12px uppercase), and the unfocused input icons at `opacity: 0.5` measure **2.85:1** (floor 3). Palette-15 used **0.7** and **0.6** instead and did NOT copy the sibling values — *a safety measure copied from a prior phase must be re-derived* | a sweep of the five siblings. The measurements and the divergence are fenced in `paletteAuthScreens.test.jsx`, which fails if 0.45 ever becomes adequate |
+      | F | **`SignupScreen`'s password placeholder still reads `"Min. 6 characters"` while the validator, the server and D12 all require 8.** A live copy defect on the signup path — a person is told 6, types 7, and is refused | one-line copy fix; **not made here** because this phase's subject was colour and a copy change on a live funnel wants its own review |
+      | G | **Both screens use `.then()` chains** (`handleSubmit`, `handleVerify`) against CLAUDE.md's *no `.then()` chains*, and **their `<label>`s carry no `htmlFor`** while all five migrated siblings pair `htmlFor` with an `id` | flagged per the silent-audit rule and deliberately left: rewriting async control flow on the signup path is a different blast radius from a colour migration |
+      | H | ⚠ **BOTH SCREENS ARE PERMANENTLY LIGHT IN PRACTICE, AND NOTHING SAYS SO.** `ThemeLayer` resolves mode as `pinnedMode ?? storedMode ?? DEFAULT_THEME_MODE`; `storedMode` comes from an **authenticated** `GET /api/preferences/theme-mode`, and **`prefers-color-scheme` is never consulted** (zero occurrences in the provider). These screens are pre-auth, so they always render light — the same standing that `App.jsx` records explicitly for the reset screen and does not record for these | a ruling on whether a pre-auth surface should follow the OS preference. Until then the dark half of these two screens is reachable only by arithmetic, which is how this phase verified it |
+
+      ⚠ **AND THE MEASURED EXEMPTION, RECORDED SO IT IS NOT REDISCOVERED AS A FINDING:** the
+      `EmailVerifyScreen` verify button in its **disabled** state composites to **2.89:1** (label
+      and icon, `opacity: 0.6`). **WCAG 1.4.3 exempts inactive user-interface components**, the
+      button is genuinely `disabled`, and the alpha is unchanged from before the migration. The
+      **enabled** state measures **6.85:1**. The graphic-floor run reports those two as shortfalls
+      and they are the only two across 48 readings.
 
 - [ ] **⚠ THE BUCKET-BLIND RESIDUE AND FONTS — AND THE RECORDED FIGURE CANNOT BE REPRODUCED BY ANY
       SCOPE I MEASURED, WHICH IS ITSELF THE FINDING.**
