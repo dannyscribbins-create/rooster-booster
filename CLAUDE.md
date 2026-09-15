@@ -344,15 +344,22 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1410 server tests across 225 suites, and 1056 React tests across 64 files** (measured 2026-09-15 by the font-loader-SELECT commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE FONT-LOADER COMMIT ITSELF.** 1395 → 1410 is its 15 server
-  cases in one new file, and 219 → 225 is that file's six `describe` blocks. The REACT numbers did
-  not move and were re-measured rather than carried — that commit adds no React test, it only
-  corrects a comment in one.
-  ⚠ **15 CASES, COUNTED WITH `grep -c`, AND THE FIRST PASS PREDICTED 14** — one block was planned
-  with two cases and written with three. **That is the THIRD recorded estimate-instead-of-count
-  slip and all three were LOW**, which is the direction that matters: a low prediction is
-  indistinguishable from a suite that did not run. Several `for` loops in that file all sit inside
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1425 server tests across 232 suites, and 1056 React tests across 64 files** (measured 2026-09-15 by the landing-page-fonts commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE LANDING-FONTS COMMIT ITSELF.** 1410 → 1425 is its 15 server
+  cases in one new file, and 225 → 232 is that file's seven `describe` blocks. The REACT numbers
+  did not move and were re-measured rather than carried — that commit touches no `src/` file.
+  ⚠ **15 CASES, COUNTED WITH `grep -c`, AND THE FIRST PASS PREDICTED 14 — AGAIN.** That is the
+  **FOURTH** recorded estimate-instead-of-count slip in this arc **and all four were LOW**, which
+  is the direction that matters: a low prediction is indistinguishable from a suite that partly
+  failed to register. **Write the count from the file, never from the plan.**
+  ⚠ **AND A BROKEN `beforeEach` ANNOUNCES ITSELF BY FAILING EVERYTHING, INCLUDING WHAT CANNOT
+  DEPEND ON IT.** That file's first RED run failed all 15 cases — including a pure-arithmetic
+  fixture case with no database access — because the hook deleted `contractors` without first
+  clearing the `titles` FK. **A hook fault and a subject fault look different: a subject fault
+  spares the cases that do not touch it.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE FONT-LOADER COMMIT ITSELF.* 1395 →
+  1410 is its 15 server cases in one new file, and 219 → 225 is that file's six `describe` blocks.
+  The REACT numbers did not move and were re-measured rather than carried. Several `for` loops in that file all sit inside
   `it()` bodies and multiply nothing.
   ⚠ **AND A `suites 0` READING WAS SEEN AND ACTED ON DURING THAT WORK** — `tests 1` beside
   `suites 0` and `fail 1`, the module-load signature this file names. Cause: a backtick inside a

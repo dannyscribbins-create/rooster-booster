@@ -72,7 +72,13 @@ const { resolveDefaultMarketingToken } = require('../utils/inviteTokens');
 const { b2PublicOrigin } = require('../utils/b2Media');
 const { escapeHtml } = require('../utils/pendingReferral');
 const { safeLogoUrl, safeWebsiteUrl } = require('../utils/safeUrl');
-const { BRANDING_THEME_DEFAULTS } = require('../utils/brandingTheme');
+// FONT_STACKS is the allowlist's family -> generic map, and it is the same table
+// resolveFont() validates against — so the category a stack degrades to cannot
+// disagree with the category the resolver admitted.
+const { BRANDING_THEME_DEFAULTS, FONT_STACKS } = require('../utils/brandingTheme');
+// The server-side face table. A mirror of the app's manifest with this origin's
+// URL base; its header says why an import is not available and what pins parity.
+const { themeFontFaces } = require('../utils/fontManifest');
 
 // ── PER-REQUEST NONCE ────────────────────────────────────────────────────────
 // base64url, NOT base64. Two reasons, both practical: standard base64 pads with
@@ -242,6 +248,48 @@ function icon(name, cls, size) {
 // ALWAYS EMITTED, including on the neutral State 0 where there is no contractor
 // at all. A page with no theme block paints against the browser's defaults, which
 // on a public marketing surface reads as broken rather than as neutral.
+// ── THE SYSTEM CHAIN BEHIND A BRAND FACE ─────────────────────────────────────
+//
+// ⚠ TWO RULINGS MEET HERE AND NEITHER ONE ALONE IS RIGHT.
+//
+// This page ruled (C/DL-2 3d-2) that a face which fails to load must degrade to
+// something CHOSEN, never the browser's default — "the failure mode is not
+// 'slightly different sans' but Times New Roman on the contractor's headline".
+// Palette-13 ruled (B.2) the PER-FAMILY GENERIC: a serif must degrade to serif,
+// because falling through to sans-serif changes CATEGORY.
+//
+// ⚠ `fontStack()` SATISFIES THE SECOND AND WOULD WEAKEN THE FIRST. It returns
+// `'Playfair Display', serif` — correct for the app, and on this page that bare
+// `serif` IS the Times New Roman fallback the original ruling was written
+// against. Taking it unchanged would have quietly undone a ruling while
+// obeying another.
+//
+// So the chain is the family, then a CHOSEN list in its own category, ending at
+// that category's generic. Both rulings hold.
+const SYSTEM_CHAIN = Object.freeze({
+  'sans-serif': "ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif",
+  'serif':      "ui-serif,Georgia,'Times New Roman',serif",
+  'monospace':  "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace",
+});
+
+/**
+ * The full font-family value for one resolved family.
+ *
+ * ⚠ THE FAMILY IS ALREADY ALLOWLISTED when this is called — `resolveFont()` has
+ * replaced anything off-list with the platform default before it reaches a
+ * theme. The `|| ` branches below are defence in depth, not the control: an
+ * unknown family degrades to the platform's own stack rather than being
+ * interpolated into a style context.
+ *
+ * @param {string} family - an allowlisted family name.
+ * @returns {string} e.g. "'Playfair Display',ui-serif,Georgia,'Times New Roman',serif"
+ */
+function brandFontStack(family) {
+  const generic = FONT_STACKS[family];
+  if (!generic) return `'${BRANDING_THEME_DEFAULTS.bodyFont}',${SYSTEM_CHAIN['sans-serif']}`;
+  return `'${family}',${SYSTEM_CHAIN[generic] || SYSTEM_CHAIN['sans-serif']}`;
+}
+
 function themeStyle(theme) {
   return [
     ':root{',
@@ -260,6 +308,24 @@ function themeStyle(theme) {
     `--brand-secondary:${theme.primaryColor};`,
     `--brand-accent:${theme.accentColor};`,
     `--brand-bg:${theme.backgroundColor};`,
+    // ── THE TYPOGRAPHY, ADDED WHEN THE LOADER STARTED SUPPLYING IT ───────────
+    // ⚠ THIS PAGE WAS THE LAST SURFACE RECEIVING THE FONT VALUES AND IGNORING
+    // THEM. The stylesheet below hardcoded 'Montserrat' and 'Roboto'; a
+    // contractor stored as Playfair Display got a page containing zero
+    // occurrences of the word.
+    //
+    // ⚠ fontStack(), NOT THE BARE FAMILY, and the generic is per-family. Two of
+    // the fourteen are serifs, and a serif degrading to sans-serif changes
+    // CATEGORY on font failure — a worse failure than a different sans.
+    //
+    // ⚠ SAFE TO INTERPOLATE FOR THE SAME REASON THE COLOURS ARE. Every value
+    // here is either a validated six-digit hex or, now, one of fifteen
+    // allowlisted family names: `resolveFont()` returns the platform default for
+    // anything else, so no attacker-influenced string reaches this style
+    // context. That is the READ-TIME guarantee, and this page is the surface it
+    // was argued for.
+    `--brand-font-heading:${brandFontStack(theme.headingFont)};`,
+    `--brand-font-body:${brandFontStack(theme.bodyFont)};`,
     '}',
   ].join('');
 }
@@ -319,23 +385,22 @@ function neutralTheme() {
 // the visual intent — a rising entrance, a checkmark celebration with confetti in
 // the brand colours — is unchanged, and prefers-reduced-motion turns all of it
 // off rather than merely shortening it.
-const FONT_FACE_CSS = `
-@font-face{font-family:'Montserrat';font-style:normal;font-weight:100 900;font-display:swap;
-  src:url('/static/fonts/montserrat-latin.woff2') format('woff2');
-  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
-@font-face{font-family:'Roboto';font-style:normal;font-weight:100 900;font-display:swap;
-  src:url('/static/fonts/roboto-latin.woff2') format('woff2');
-  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;}
-`;
-
-const PAGE_CSS = FONT_FACE_CSS + `
+// ⚠ THE TWO HARDCODED @font-face BLOCKS THAT STOOD HERE ARE GONE, AND THEIR
+// REPLACEMENT IS PER-REQUEST. They declared Montserrat and Roboto and nothing
+// else, which is why a contractor's chosen family could never paint here even
+// after the loader began supplying it. `themeFontFaces(theme)` in
+// server/utils/fontManifest.js now emits exactly the families this request will
+// use — see that function for why this page declares two where the SPA declares
+// fourteen. `font-display: swap` and the latin unicode-range are unchanged, and
+// the files still come from /static/fonts on this origin.
+const PAGE_CSS = `
 *,*::before,*::after{box-sizing:border-box;}
 body{margin:0;background:var(--brand-bg);color:var(--brand-secondary);
-  font-family:'Roboto',ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif;
+  font-family:var(--brand-font-body,'Roboto',ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif);
   -webkit-font-smoothing:antialiased;line-height:1.5;}
 .wrap{max-width:430px;margin:0 auto;
   padding:calc(28px + env(safe-area-inset-top)) 20px calc(32px + env(safe-area-inset-bottom));}
-h1,h2,h3{font-family:'Montserrat',ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif;
+h1,h2,h3{font-family:var(--brand-font-heading,'Montserrat',ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif);
   font-weight:700;margin:0;letter-spacing:-0.01em;}
 h1{font-size:26px;line-height:1.25;}
 p{margin:0;}
@@ -347,7 +412,7 @@ p{margin:0;}
    nothing else - display, height and centring are inherited. The mark is 400x120,
    so at 220px wide it draws about 66px tall, undistorted and inside the cap. */
 .brand-logo--platform{max-width:220px;max-height:88px;}
-.brand-name{font-family:'Montserrat',ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif;
+.brand-name{font-family:var(--brand-font-heading,'Montserrat',ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif);
   font-size:21px;font-weight:700;color:var(--brand-primary);letter-spacing:-0.01em;}
 .chip{display:inline-block;margin-top:12px;padding:7px 15px;border-radius:999px;
   background:var(--brand-accent);color:var(--brand-secondary);font-size:14px;font-weight:500;}
@@ -377,7 +442,7 @@ p{margin:0;}
 .step{display:flex;gap:14px;align-items:flex-start;}
 .step-num{flex:0 0 32px;height:32px;border-radius:999px;background:var(--brand-primary);color:#fff;
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;
-  font-family:'Montserrat',ui-sans-serif,system-ui,sans-serif;}
+  font-family:var(--brand-font-heading,'Montserrat',ui-sans-serif,system-ui,sans-serif);}
 .step h3{font-size:15px;}
 .step p{font-size:14px;opacity:.72;margin-top:2px;}
 .card{background:#fff;border-radius:16px;padding:22px 18px;
@@ -394,7 +459,7 @@ p{margin:0;}
 .row .field{flex:1;}
 .hint{font-size:12px;opacity:.6;margin-top:5px;}
 .btn{width:100%;padding:14px 16px;border:0;border-radius:11px;font-size:16px;font-weight:700;
-  font-family:'Montserrat',ui-sans-serif,system-ui,sans-serif;color:#fff;
+  font-family:var(--brand-font-heading,'Montserrat',ui-sans-serif,system-ui,sans-serif);color:#fff;
   background:var(--brand-primary);cursor:pointer;
   transition:transform .12s ease,opacity .16s ease;}
 .btn:active{transform:scale(.985);}
@@ -429,7 +494,7 @@ p{margin:0;}
    page. tabular-nums keeps the digits identically wide within the face we already
    load. Flagged as a deviation rather than made quietly. */
 .code input{width:100%;aspect-ratio:1/1.15;min-width:0;text-align:center;font-size:22px;font-weight:700;
-  font-family:'Roboto',ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif;
+  font-family:var(--brand-font-body,'Roboto',ui-sans-serif,system-ui,'Segoe UI',Helvetica,Arial,sans-serif);
   font-variant-numeric:tabular-nums;
   border:1px solid #d8dee7;border-radius:10px;background:#fff;color:inherit;padding:0;}
 .code input:focus{outline:0;border-color:var(--brand-primary);
@@ -700,7 +765,7 @@ function renderDocument({ theme, title, body }) {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>${escapeHtml(title)}</title>
-<style>${themeStyle(theme)}${PAGE_CSS}</style>
+<style>${themeFontFaces(theme)}${themeStyle(theme)}${PAGE_CSS}</style>
 </head><body>
 <div class="wrap">
 ${body}

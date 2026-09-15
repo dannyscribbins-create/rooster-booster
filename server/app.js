@@ -44,6 +44,34 @@ function createApp() {
   // assets; a replacement ships under a new name rather than mutating one in
   // place. express.static's default is maxAge 0, i.e. no caching at all, on what
   // is a first-touch marketing page.
+  // ── THE FONT SET, MOUNTED FIRST AND FROM THE REPO'S OWN public/fonts ───────
+  //
+  // ⚠ THE LANDING PAGE CAN NOW PAINT A CONTRACTOR'S CHOSEN FAMILY, AND THIS
+  // MOUNT IS WHAT MAKES THAT POSSIBLE UNDER ITS OWN CSP. That router narrows
+  // `font-src` to 'self' deliberately — on the one public page that interpolates
+  // contractor-controlled strings, a remote font is an exfiltration channel — so
+  // a face MUST come from this origin. The app's 25 woff2 files are served to
+  // the SPA by VERCEL at /fonts/, which is a different origin and unreachable
+  // here. server/public/fonts holds only Montserrat and Roboto.
+  //
+  // ⚠ THE FILES ARE ALREADY ON THIS FILESYSTEM. `public/` is NOT gitignored —
+  // only `/build` and `/dist` are — and its 40 font entries are tracked, so
+  // Railway's `npm install` over a full checkout has them. This is a mount of a
+  // directory that already exists, NOT a 492 KB duplication of binaries into
+  // server/public with nothing keeping the two copies in step.
+  //
+  // ⚠ MOUNTED BEFORE THE /static MOUNT BELOW, AND THE ORDER IS THE POINT.
+  // express.static falls through when a file is absent, so this serves all 14
+  // families and server/public/fonts remains a fallback for the two it holds —
+  // which are byte-identical to their namesakes here (asserted in the suite).
+  // A missing directory therefore degrades to today's behaviour rather than
+  // taking every face down with it.
+  app.use('/static/fonts', express.static(path.join(__dirname, '..', 'public', 'fonts'), {
+    maxAge: '1y',
+    immutable: true,
+    dotfiles: 'ignore',
+  }));
+
   app.use('/static', express.static(path.join(__dirname, 'public'), {
     maxAge: '1y',
     immutable: true,

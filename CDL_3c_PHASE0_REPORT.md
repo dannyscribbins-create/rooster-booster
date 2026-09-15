@@ -801,7 +801,7 @@ measured 2026-08-29 at HEAD `ae70e50`.
 is relative to the router's mount point and the walk **never accumulates the mount prefix**.
 `'/api/admin/'` and `'/api/referrer/'` work **for one reason only — `adminRoutes`, `stripeRoutes`
 and `referrerRoutes` are all mounted at `'/'` in `createApp()`.** `accountRoutes` is mounted at
-`'/api/account'` (`server/app.js:76`), so its fifteen routes come out as `GET /me`, `PUT /name`
+`'/api/account'` (the `accountRoutes` mount in `server/app.js`), so its fifteen routes come out as `GET /me`, `PUT /name`
 — and a caller passing `'/api/account/'` **would receive an empty array and every assertion over
 it would pass vacuously.**
 

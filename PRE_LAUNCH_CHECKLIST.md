@@ -2653,7 +2653,11 @@ check — which is why this is a named build rather than a checklist line.
 - [ ] **Apex-domain legal links 404 — NOT fixed by the `vercel.json` rewrite.**
       `admin/campaigns.js:302` hardcodes `https://roofmiles.com/terms` and
       `https://roofmiles.com/privacy` — the **apex** domain, not `app.`. That host is Railway's
-      landing server, which owns only `/` and `/i/:slug` (`landing.js:1380,1386`), so both
+      landing server, which owns only `/` and `/i/:slug` (`landing.js`'s two `serveLanding`
+      route mounts — ⚠ **the line citation that stood here, `:1380,1386`, was verified against
+      its own revision on 2026-09-15 and was ALREADY WRONG before the edit that moved it**: those
+      lines held a bare `);` and a Security-Standards comment, not the mounts. Repaired by role
+      rather than by adding the delta, which would have certified a wrong number as fixed), so both
       paths 404 by a **different mechanism** than the SPA-rewrite bug did. Two broken-legal-link
       defects with one symptom and two causes; fixing one reads as fixing both.
 - [ ] **Nothing verifies Vercel's routing layer — record this as a defect CLASS, not one bug.**
@@ -4739,7 +4743,10 @@ none of them. **3-D's real-browser pass is owed IN FULL and this sighting does n
       `line.includes(needle)`, a substring test a trailing `\r` cannot affect, and the
       reported `i + 1` stays correct. **It breaks the day anyone changes that to a
       `$`-anchored regex, or asserts on line equality or length.** Cleared and NOT counted as
-      latent: `landingFonts.test.js:264` (in-process HTTP body, plus `.trim()`) and
+      latent: `landingFonts.test.js`'s fallback-chain case (in-process HTTP body, plus `.trim()`
+      — ⚠ **that case was REWRITTEN on 2026-09-15** when the landing page stopped hardcoding its
+      families; the `$`-anchored `/sans-serif\s*$/` the line citation pointed at is gone, and the
+      CRLF reasoning still applies to the assertions that replaced it) and
       `themeTokens.test.js:75` (values from imported modules).
 - **The `brandingTheme.js` / `.mjs` MIRROR drift guard is STRUCTURALLY IMMUNE to CRLF.**
       `server/test/brandingTheme.test.js:587` does `await import()` and compares imported
@@ -5666,10 +5673,101 @@ quadruples is evidence about the estimate, not about the wave:
 
       | # | what | trigger |
       |---|---|---|
-      | i | ⚠ **THE LANDING PAGE NOW RECEIVES THE FONT VALUES AND IGNORES THEM.** It uses the same loader, so `headingFont`/`bodyFont` arrive — and `PAGE_CSS` **hardcodes** `'Montserrat'` and `'Roboto'` and declares only those two `@font-face` blocks. **Verified against the served bytes: the page for a contractor stored as Playfair Display contains ZERO occurrences of "Playfair" or "Lato".** ⚠ **SO THE PUBLIC HOMEOWNER-FACING PAGE IS UNCHANGED BY THIS FIX — named rather than discovered**, which is what V4 asked for. It is the remaining half of the same delivery gap, one layer further on | a landing-page change: emit the resolved stacks into `PAGE_CSS` and declare the matching faces. ⚠ It self-hosts under `font-src 'self'`, so a new family needs its file present, not just its name |
+      | i | ~~⚠ **THE LANDING PAGE NOW RECEIVES THE FONT VALUES AND IGNORES THEM.**~~ ✅ **FIXED 2026-09-15** — see **THE LANDING PAGE'S FONTS** below. The original finding is kept unstruck below because its reasoning is the record: ⚠ **it receives them and ignores them.** It uses the same loader, so `headingFont`/`bodyFont` arrive — and `PAGE_CSS` **hardcodes** `'Montserrat'` and `'Roboto'` and declares only those two `@font-face` blocks. **Verified against the served bytes: the page for a contractor stored as Playfair Display contains ZERO occurrences of "Playfair" or "Lato".** ⚠ **SO THE PUBLIC HOMEOWNER-FACING PAGE IS UNCHANGED BY THIS FIX — named rather than discovered**, which is what V4 asked for. It is the remaining half of the same delivery gap, one layer further on | a landing-page change: emit the resolved stacks into `PAGE_CSS` and declare the matching faces. ⚠ It self-hosts under `font-src 'self'`, so a new family needs its file present, not just its name |
       | ii | **Two preloaded faces are now dead weight for any contractor not on the platform defaults.** `useReferrerFonts()` preloads Montserrat, Roboto and Roboto Mono unconditionally. On a serif contractor, Montserrat and Roboto are downloaded and never painted — measured, both fetched on Beta's page alongside the three that are actually used | the loader's own comment already reasons *"no preload is better than a wrong one, which costs a download nobody uses"* — it anticipated not guessing a contractor's face, but not that the platform three become the wasted download. A ruling on whether to preload at all once branding is known |
       | iii | **The campaign email still reads `cs.font_heading`/`cs.font_body` straight off its own SELECT** with `Georgia, serif` / `Arial, sans-serif` defaults, and loads no webfont. Unaffected by this fix and deliberately untouched — a separate path with its own defaults | already filed as item 11 of the Palette closing inventory; unchanged |
       | iv | **`palette-beta`'s stored body font is `Lato`, not `Nunito`.** Worth recording because `Nunito` is `fontChain.test.jsx`'s injected fixture value, and it is easy to mistake a test fixture for the seeded row — which is precisely the confusion this whole phase is about | none; the seeder is correct and the two simply differ |
+
+- [x] **✅ THE LANDING PAGE'S FONTS — THE LAST SURFACE, DONE 2026-09-15.**
+
+      The page emits the contractor's families per request: `themeStyle()` gained
+      `--brand-font-heading` / `--brand-font-body`, a new `themeFontFaces(theme)` emits the
+      `@font-face` blocks, and `PAGE_CSS`'s six hardcoded `'Montserrat'`/`'Roboto'` usages became
+      `var(--brand-font-*, <today's exact stack>)`. **The fix fitted an existing seam**: this page
+      already emitted a per-request `:root` block for colour (`<style>${themeStyle(theme)}…`), so
+      typography follows the mechanism colour already used. **The CSP is untouched —
+      `font-src 'self'`, fenced twice.**
+
+      ⚠ **THE HARD PART WAS NOT THE CSS, IT WAS WHERE THE FILES LIVE — AND THE ANSWER IS BETTER
+      THAN THE OBVIOUS ONE.** There are **two font directories on two deploy targets**:
+      `server/public/fonts` (Express/Railway, `/static/fonts`, **2 files, 68 KB**) and
+      `public/fonts` (Vite/Vercel, `/fonts/`, **25 files, 560 KB**). The landing page is served by
+      Express and narrows `font-src` to `'self'`, so **Vercel's copy is unreachable to it**. The
+      obvious fix — duplicate 23 woff2 files into `server/public/` — would have added **492 KB of
+      binaries with nothing keeping the two copies in step**, plus their OFL licences.
+      ⚠ **IT WAS UNNECESSARY: `public/` IS TRACKED AND NOT GITIGNORED** (only `/build` and `/dist`
+      are), and Railway's build is `npm install` over a full checkout, **so those files are already
+      on that filesystem**. The fix is a one-line `express.static` mount of a directory that was
+      already there, placed BEFORE the `/static` mount so `server/public/fonts` stays a fallback
+      for the two it holds — which are byte-identical to their namesakes, asserted in the suite.
+
+      **A.4 — the served byte delta: +879 bytes** for `palette-beta` (33,582 → 34,461), and most of
+      that is Lato shipping **three** weight files. **B.3 — this page declares the contractor's
+      families only, not all fourteen**, and the app's reason for declaring everything **does not
+      transfer**: the SPA resolves branding in the BROWSER and cannot know which family it needs,
+      while this page resolves it on the SERVER before writing a byte. Declaring the other twelve
+      would be ~1.5 KB of CSS that can never match, on the page whose job is loading fast for a
+      stranger. `font-display: swap` survives on every face.
+
+      ⚠ **A RULING COLLISION WAS RESOLVED RATHER THAN PICKED BETWEEN.** This page ruled that a
+      failed face must degrade to something CHOSEN, "never Times New Roman on the contractor's
+      headline"; Palette-13 ruled the per-family generic, so a serif must degrade to `serif`.
+      `fontStack()` satisfies the second and would have **quietly undone the first** — its bare
+      `serif` IS the default this page was protected against. The emitted stack is therefore the
+      family, a chosen list in its own category, then that category's generic:
+      `'Playfair Display',ui-serif,Georgia,'Times New Roman',serif`. Both rulings hold.
+
+      ⚠ **AND ONE EXISTING TEST WAS UPDATED DELIBERATELY AND OPENLY**, per the characterization
+      rule. `landingFonts.test.js`'s fallback-chain case matched `font-family:'(Montserrat|Roboto)'`
+      and required every stack to END AT `sans-serif`. Both encodings died with the hardcoding, and
+      the second is now **wrong as a universal rule** — two of the fourteen families are serifs.
+      **The PROPERTY it guarded is unchanged and is still asserted**; only its observation point
+      moved. The other 8 cases in that file passed unmodified.
+
+- [ ] **⚠ THE LANDING FONT WORK'S OPEN QUESTION — WHETHER THE FACE VISIBLY PAINTS IS NOT SETTLED,
+      AND THE INSTRUMENT IS THE REASON.** *(2026-09-15.)*
+
+      **What IS settled, each by its own instrument:** the served bytes carry the contractor's
+      families in both the `@font-face` and the usage CSS; the woff2 files fetch **200** from
+      `/static/fonts` and are byte-identical to the repo's; `document.fonts` reports them
+      **`loaded`** with `check(font, text)` confirming **full coverage of the headline** and zero
+      uncovered characters; the fetch set changed **completely** (Beta's page pulls Playfair and
+      both Lato weights and **no Montserrat or Roboto at all**, where before it pulled only those
+      two); every URL is same-origin; zero Google requests.
+
+      ⚠ **WHAT IS NOT SETTLED: width measurement says the h1 renders ~Georgia, not Playfair** — and
+      the same instrument then says `"Lato", sans-serif` renders wider than `"Lato"` alone, **which
+      is not a credible rendering result.** A font list cannot be beaten by its own second entry.
+      Measured three independent ways — DOM clone with `nowrap`, a `Range` over the real element,
+      and canvas `measureText` — **all three agree with each other and all three produce that
+      incoherent answer**, so they are not three checks but one, sharing whatever the fault is.
+      ⚠ **PRODUCTION CODE WAS NOT ADJUSTED TO SATISFY IT.** The measurement indicated dropping
+      `Georgia` from the serif chain; that would have been fitting the code to an instrument
+      already shown to be unreliable, which the characterization rule forbids.
+      ⚠ **AND THE FINGERPRINT PREDATES THIS PHASE.** The brief's own recorded figure — *"Playfair
+      420.33 vs generic serif 421.92 is 0.35 apart and separates nothing"* — is the same ~2px
+      near-identity this instrument produces between a loaded webfont and the default. **That was
+      recorded as a property of the discriminator; it may instead be the symptom.**
+
+      | trigger | what would settle it |
+      |---|---|
+      | A real screenshot, or any pixel readout | the arc has none — capture returns a uniformly near-black frame AND reports success, which is why the computed-style harness exists at all |
+      | A second browser or machine | the whole reading may be local to this Chrome profile; nothing here has been reproduced elsewhere |
+      | ⚠ It also affects the SPA, not just this page | the same measurement shape appeared there one phase earlier and was read as a pass. **If the face does not paint, BOTH surfaces are affected and neither commit caused it** — the delivery chain is correct either way, which is what the byte, network and `document.fonts` evidence establishes |
+
+      ⚠ **DO NOT "FIX" THIS BY CHANGING A FONT STACK UNTIL THE INSTRUMENT IS TRUSTED.** Also worth
+      recording: **`window.innerWidth` reported 2560 here, not 0** as the brief stated — so that
+      particular harness limitation is not currently in force, and a session that assumes it is
+      will skip a check it could actually run.
+
+- [ ] **⚠ THE LANDING PAGE CAN PRELOAD A CONTRACTOR'S FACE AND THE SPA CANNOT — AN ASYMMETRY WORTH
+      USING.** *(2026-09-15, A.5.)* `useReferrerFonts()` preloads the platform defaults only, and
+      its reason is sound: branding resolves in the browser, so the contractor's family is unknown
+      when the preload would have to be emitted. ⚠ **That reason does not hold here.** This page
+      resolves branding ON THE SERVER before it writes a byte, so it could emit a
+      `<link rel="preload">` for exactly the right face. It emits none today — it never has, for
+      either family | a page-weight/latency decision on the product's first-impression surface;
+      the mechanism is now available where it previously was not |
 
 - [ ] **⚠ THE BUCKET-BLIND RESIDUE AND FONTS — AND THE RECORDED FIGURE CANNOT BE REPRODUCED BY ANY
       SCOPE I MEASURED, WHICH IS ITSELF THE FINDING.**

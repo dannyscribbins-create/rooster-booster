@@ -237,34 +237,64 @@ describe('C/DL-2 Phase 3d-2 — self-hosted webfonts', () => {
     }
   });
 
-  it('the fallback chain behind each face is the system UI font, never a serif default', async () => {
+  it('the fallback chain behind each face is a CHOSEN list, never a browser default', async () => {
     // A face that fails to load — a 404, a truncated download, a subset miss —
     // must degrade to something CHOSEN. A bare `font-family:'Montserrat'` falls
     // back to the browser's default serif, so the failure mode is not "slightly
     // different sans" but Times New Roman on the contractor's headline.
     //
-    // NON-VACUITY: the page's 200 and the presence of both family names are
-    // asserted first, so this describes real declarations rather than a document
-    // that names no fonts at all.
+    // ⚠ REWRITTEN 2026-09-15, DELIBERATELY AND NOT SILENTLY. The PROPERTY above
+    // is unchanged and is still the point. What changed is the page: the
+    // families are no longer hardcoded, so the two things this case used to
+    // match on are both gone.
+    //
+    //   IT MATCHED  /font-family:\s*'(Montserrat|Roboto)'/  in the usage CSS.
+    //   The usages are now `font-family:var(--brand-font-heading,…)`, because a
+    //   contractor's stored family is emitted per request into `:root`.
+    //
+    //   IT REQUIRED  every stack to END AT `sans-serif`.
+    //   ⚠ THAT IS NOW WRONG AS A UNIVERSAL RULE, and the reason is a second
+    //   ruling rather than an oversight. Two of the fourteen allowlisted
+    //   families are SERIFS, and Palette-13's per-family generic says a serif
+    //   must degrade to `serif` — forcing it to `sans-serif` changes CATEGORY on
+    //   font failure, which is a worse failure than a different sans.
+    //
+    // ⚠ THE TWO RULINGS ARE NOT IN CONFLICT ONCE STATED PRECISELY. What this
+    // page forbids is an UNCHOSEN default — a bare family with nothing behind
+    // it. What it now emits is the family, a chosen list in its own category,
+    // and that category's generic last. Both hold. This case asserts exactly
+    // that, which is what the old one was reaching for.
     const res = await httpGet(port, landingPath(tokenSlug), { host: hostFor(SLUG) });
     assert.equal(res.status, 200, `precondition: the landing page must render (got ${res.status})`);
 
     // The @font-face blocks are EXCLUDED before matching. Their own
     // `font-family:'Montserrat';` is the face's NAME, not a usage stack, and it
     // is correct for it to be bare — a fallback list there would be meaningless.
-    // Only the places the page USES a family can carry a fallback chain, and
-    // those are the only places worth asserting on.
     const usageCss = res.raw.replace(/@font-face\s*\{[^}]*\}/g, '');
 
-    const stacks = [...usageCss.matchAll(/font-family:\s*'(Montserrat|Roboto)'([^;}]*)/g)];
-    assert.ok(stacks.length > 0, 'precondition: the page must set font-family to the LP families');
+    // 1. THE EMITTED STACKS. This tenant stores no fonts, so both are the
+    //    platform defaults — which is exactly the page this suite has always
+    //    described, reached through the new mechanism.
+    const stacks = [...usageCss.matchAll(/--brand-font-(heading|body):([^;]+);/g)];
+    assert.equal(stacks.length, 2, 'precondition: the page must emit both brand font stacks');
 
-    for (const [, family, rest] of stacks) {
+    for (const [, role, value] of stacks) {
+      const v = value.trim();
+      assert.ok(/^'[^']+'/.test(v), `the ${role} stack must start with a quoted family, got: '${v}'`);
       assert.ok(
-        /system-ui|ui-sans-serif/.test(rest) && /sans-serif\s*$/.test(rest.trim()),
-        `the ${family} stack must fall through to the system UI font and end at sans-serif, got: '${rest.trim()}'`
+        /ui-sans-serif|ui-serif|system-ui|Georgia/.test(v),
+        `the ${role} stack must fall through a CHOSEN list, got: '${v}'`
+      );
+      assert.ok(
+        /(^|,)\s*(sans-serif|serif|monospace)$/.test(v),
+        `the ${role} stack must end at a generic, got: '${v}'`
       );
     }
+
+    // 2. AND NO USAGE NAMES A FAMILY WITH NOTHING BEHIND IT — the original
+    //    prohibition, asserted directly rather than implied by the stack shape.
+    const bare = [...usageCss.matchAll(/font-family:\s*'([^']+)'\s*[;}]/g)].map((m) => m[1]);
+    assert.deepEqual(bare, [], `these usages fall back to the browser default: ${bare.join(', ')}`);
   });
 
   // ── 3. THE LANDING CSP PERMITS EXACTLY THIS AND NOTHING MORE ───────────────
