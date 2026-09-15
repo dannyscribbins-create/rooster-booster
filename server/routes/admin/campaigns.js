@@ -50,10 +50,41 @@ const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { resendShouldRetry, jobberShouldRetry, anthropicShouldRetry } = require('../../utils/retryHelpers');
 const { refreshTokenIfNeeded, getContractorAccessToken } = require('../../crm/jobber');
 const multer = require('multer');
+// Exported with the router so the suite reads it rather than hardcoding a number
+// that would break on any deliberate tune — the convention `LOGO_UPLOAD_LIMIT`
+// and `LANDING_RESOLVE_LIMIT` already use. See the block at `upload` for why 0.
+const CAMPAIGN_UPLOAD_FIELD_ARRAY_INDEX_LIMIT = 0;
 const Papa = require('papaparse');
 // S3Client is no longer constructed here — getMediaS3Client() below owns it.
 const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+// ─── THE SHARED CAMPAIGNS UPLOAD INSTANCE ───────────────────────────────────
+//
+// ⚠ `fieldArrayIndexLimit` IS THE CONTROL FOR GHSA-535w AND THE multer 2.3.0
+// BUMP ALONE DOES NOT CLOSE IT. The option is OPT-IN with no safe default —
+// README says `Infinity`, and `make-middleware.js` runs the check only when the
+// key is present. **A green `npm audit` after the bump says nothing about
+// whether this line exists.** The twin of this block is at `logoUpload` in
+// `server/routes/admin/index.js`; both call sites need it, and neither covers
+// the other.
+//
+// THE ATTACK: `items[4294967294]` plus a non-numeric sibling makes `appendField`
+// allocate a maximum-length sparse array and then walk it synchronously,
+// stalling the single Express process. ⚠ A HANG, NOT A THROW — the
+// `uncaughtException` handler in `server.js` does nothing for it.
+//
+// ⚠ THE VALUE IS DERIVED, NOT COPIED, AND IT IS THE SAME 0 FOR THE SAME REASON
+// RATHER THAN BY IMITATION. Both routes this instance serves post exactly ONE
+// field — `image` and `csv`, each a file (`AdminCampaigns.jsx`) — and both
+// handlers read `req.file` only, never `req.body`. No bracketed field name is
+// legitimate on either, so the largest index a real request needs is NONE.
+// `exceedsArrayIndexLimit` rejects any `[n]` with `n > 0`, so `a[0]` still
+// parses and `a[1]` is refused with `LIMIT_FIELD_ARRAY_INDEX`.
+// ⚠ AND THE 10MB fileSize IS THIS INSTANCE'S, NOT THE LOGO ROUTE'S 2MB — the
+// two instances are deliberately separate and must not be merged.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, fieldArrayIndexLimit: CAMPAIGN_UPLOAD_FIELD_ARRAY_INDEX_LIMIT },
+});
 const { deriveOptOutType } = require('../../utils/adminHelpers');
 const { applyTag, backfillTagsForContacts } = require('../../utils/tags');
 const { evaluateAudience } = require('../../cron/jobs/dynamicAudiences');

@@ -867,11 +867,47 @@ const LOGO_MIME_EXT = Object.freeze({
 const LOGO_UPLOAD_LIMIT = Object.freeze({
   maxBytes: 2 * 1024 * 1024,
   mimeTypes: Object.freeze(Object.keys(LOGO_MIME_EXT)),
+  // See the block at `logoUpload` for why this is 0 and why it is derived.
+  // Exported with its siblings so the suite reads it rather than hardcoding a
+  // number that would break on any deliberate tune.
+  fieldArrayIndexLimit: 0,
 });
 
+// ─── `fieldArrayIndexLimit` IS THE CONTROL FOR GHSA-535w, AND THE VERSION BUMP
+//     ALONE DOES NOT CLOSE IT ────────────────────────────────────────────────
+//
+// ⚠ multer 2.3.0 ADDS THIS OPTION AS OPT-IN WITH NO SAFE DEFAULT — its README
+// documents the default as `Infinity`, and `make-middleware.js` only runs the
+// check when the key is PRESENT (`hasOwnProperty`). So upgrading to 2.3.0 fixes
+// three of that release's four advisories and leaves this one live until the
+// option is written down. **A green `npm audit` after the bump says nothing
+// about whether this line exists.**
+//
+// THE ATTACK: a field named `items[4294967294]` makes `appendField` allocate a
+// maximum-length sparse array, and a non-numeric sibling on the same base then
+// converts it to an object by iterating the full length — synchronously. One
+// Express process serves everything, so the event loop stalls for the walk.
+// ⚠ IT IS A HANG, NOT A THROW, so `server.js`'s `uncaughtException` handler is
+// irrelevant to it.
+//
+// ⚠ THE VALUE IS DERIVED, NOT COPIED. This route's form posts exactly ONE field
+// — `logo`, a file (`BrandingProfileSettings.jsx`) — and the handler reads
+// `req.file` only, never `req.body`. No bracketed field name is legitimate here
+// at all, so the largest index any real request needs is NONE.
+// `0` is the honest encoding of that: `exceedsArrayIndexLimit` rejects any
+// `[n]` with `n > 0`, so `a[0]` still parses and `a[1]` is refused with
+// `LIMIT_FIELD_ARRAY_INDEX`. A negative value would also reject `a[0]`, but the
+// README defines this as "the largest array index your field names require" and
+// relying on undocumented arithmetic to go one tighter buys nothing.
+// ⚠ IF A FUTURE FORM NEEDS AN ARRAY FIELD HERE IT WILL 400, LOUDLY, AND THAT IS
+// THE INTENDED FAILURE — raise the number deliberately, do not delete the line.
 const logoUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: LOGO_UPLOAD_LIMIT.maxBytes, files: 1 },
+  limits: {
+    fileSize: LOGO_UPLOAD_LIMIT.maxBytes,
+    files: 1,
+    fieldArrayIndexLimit: LOGO_UPLOAD_LIMIT.fieldArrayIndexLimit,
+  },
 });
 
 // Wraps multer so its own errors become clean client errors. Left unwrapped, a
