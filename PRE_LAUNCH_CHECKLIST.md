@@ -2355,6 +2355,25 @@ check — which is why this is a named build rather than a checklist line.
       would have certified wrong numbers as repaired AND destroyed evidence. Re-deriving them is
       the larger job `CLAUDE.md` says to record rather than improvise. **Same disposition as the
       escaping commit's 18.**
+      ⚠ **CORRECTION, 2026-09-15 (Palette close-out doc pass): "THE ESCAPING COMMIT'S 18" HAS NO
+      SOURCE, AND A SECOND RECORD OF THE SAME ITEM SAYS 28.** `460e87c`'s commit body carries **no
+      citation count at all**; `87c062d`'s says *"28 citations rotted, none repaired — they are the
+      SAME set verified in `460e87c`."* **Two records of one item, neither traceable to a run, and
+      they disagree by ten** — the shape this document exists to prevent, found on this page again.
+      ⚠ **THE ONLY REPRODUCIBLE FIGURE IS A DIFFERENT QUESTION, AND SAYING SO IS THE POINT.**
+      Counted at HEAD across all tracked markdown and source, working tree included: **30
+      occurrences** of a `campaigns.js:<line>` citation, **17 distinct targets**, across **7
+      files** — `.claude/rules/backend.md`, `CDL_3c_PHASE05_RULINGS.md`, `CDL_3c_PHASE0_REPORT.md`,
+      `CONTRACTOR2_READINESS_AUDIT.md`, this file, `SECURITY_HARDENING_SPEC.md` and
+      `TENANT_RESOLUTION_REBUILD_SPEC.md`. ⚠ **THAT IS NOT "18 CORRECTED TO 30".** *How many
+      citations point into this file today* and *how many `--changed-files` flagged at a given
+      commit* are two instruments; comparing them is the error the residue totals are recorded
+      under. **Use 30/17/7 as the size of the re-derivation job. Do not use it to settle 18 vs 28,
+      which is unsettleable from what was written down.**
+      ⚠ **AND NEITHER NUMBER REACHED THE RUNNING TOTAL OF 9** in the rotted-citations record near
+      the end of this document, which counts only the members it enumerates. That is correct by
+      that entry's own rule — **the enumeration wins** — and is recorded here so nobody reconciles
+      9 against 18, 28 or 30 and concludes something is missing.
 
 - [x] **URL-CONTEXT HANDLING IN OUTBOUND EMAIL — DONE.** Escaping stopped the attribute
       breakout and never stopped the SCHEME; a `javascript:` logo or social or CTA landed in
@@ -5446,9 +5465,33 @@ quadruples is evidence about the estimate, not about the wave:
       measured the same pair as the rejected gradient candidate and got the same eight numbers.
       That is a cross-check, not a second filing.
 
+- [x] **⚠ (SUPERSEDED — READ THIS FIRST) THE DIAGNOSIS BELOW IS WRONG IN BOTH ITS HALVES, AND IT
+      INSTRUCTS AGAINST THE FIX.** *(Corrected by the Palette close-out doc pass, 2026-09-15.)*
+      **The cause is not a zero-width viewport. It is a screen-dimming browser extension** that
+      injects a `<screen-shader>` element as a direct child of `<html>`, painting a full-viewport
+      `div` at `rgb(17,17,17)`, `opacity: 1`, `z-index: 2147483645`. **The capture pipeline was
+      working the whole time and faithfully photographing an opaque overlay** — see
+      **THE BLACK FRAMES** below for the diagnosis, the evidence that was already sitting in an
+      earlier phase's own paint sweep, and how to take a picture.
+      **And `innerWidth` measures 2560, not 0** — the zero reading was real, transient, and became
+      a premise four phases carried without re-testing.
+      ⚠ **THE PART THAT HAD TO BE CORRECTED RATHER THAN LEFT AS A STALE RECORD IS THE CLOSING
+      INSTRUCTION: *"TRIGGER: anyone asking for a screenshot in this repo. Say the numbers
+      instead."*** That is not out of date, it is **INVERTED** — it tells the next session not to
+      do the thing that works. **Screenshots work. Take one.** A photograph closed a font question
+      in one look that five phases of computed-style readings could not settle.
+      ⚠ **WHAT STAYS TRUE BELOW, AND IS THE REASON THE BLOCK IS KEPT:** *"the point is the status,
+      not the blackness"* — a capture that fails loudly costs a retry; one that returns a black
+      PNG and says `success` reports health it cannot observe. **That reasoning was right. Only
+      its cause was wrong.** The numbers-off-the-rendered-node technique also stays: it is the
+      right instrument for contrast and mounted values, and it is now a companion to a screenshot
+      rather than a substitute for one.
+
 - [ ] **⚠ THE SCREENSHOT TOOL RETURNS BLACK FRAMES WITH SUCCESS STATUSES, AND THE CAUSE IS A
       ZERO-WIDTH VIEWPORT. ⚠ A SUCCESS STATUS ON A ZERO-WIDTH CAPTURE IS THE FAILURE MODE.**
-      *(Diagnosed by Palette-12 Part A, filed 2026-09-15.)*
+      *(Diagnosed by Palette-12 Part A, filed 2026-09-15. ⚠ SUPERSEDED — the correction directly
+      above governs. Kept unaltered as the record of what was believed, per the rule that a
+      renumbered or reworded record destroys the evidence.)*
       Every "look-at" in the Palette arc that asked for an image got a black frame back **with a
       reported success**, and it was treated as intermittent for eleven phases. It is not
       intermittent. **Measured: `innerWidth` 0, `outerWidth` 0, `screen.width` 0 — there is no
@@ -5483,6 +5526,21 @@ quadruples is evidence about the estimate, not about the wave:
       **WHAT IT TAKES:** walk the ~15 commits from `255f1b3` to HEAD running `--role-only` at each,
       find the commit where it steps 782 → 779, read that commit's diff to see whether it repaired
       or marked, then lower the constant **and say which**.
+      ⚠ **RE-MEASURED 2026-09-15 AT HEAD `3935e2c` BY THE CLOSE-OUT DOC PASS: IT IS NOW 777, AND
+      THE BREACH HAS WIDENED TO −5.** Two more citations left the count during Palette-13 through
+      -16 — **the drift is ongoing, not a single historical step**, which is the part that changes
+      what this entry is about. A one-off −3 is a stale constant; a count moving under an unfired
+      tripwire is a mechanism nobody is watching.
+      ⚠ **THIS SESSION DID NOT CAUSE IT, PROVEN THE SAME WAY THE −3 WAS**: `CLAUDE.md` and this
+      file were stashed and `--role-only` re-run — **777 either way** — and independently, this
+      session's diff adds and removes **zero** citation-shaped tokens, by construction: every
+      reference it writes is by ROLE. **Two instruments, and they are genuinely independent — one
+      reads the whole tree, the other reads only the diff.**
+      ⚠ **AND THE SEARCH IS NOW CHEAPER THAN THE PARAGRAPH ABOVE SAYS.** The step from 779 to 777
+      is inside the **five** Palette-13-to-16 commits, not the fifteen from `255f1b3`. Those five
+      are `9b4da37`, `6db3218`, `21fbab7`, `6c3ceba`, `3935e2c`. **Finding the second step does
+      not settle the first** — they may have different causes, and one repaired citation plus one
+      record-marker wrap is indistinguishable from two of either.
 
 - [ ] **⚠ THE WARNING BORDER FALLS TO 2.95:1 ON A RECESS — TWO BANNERS, BETA LIGHT, PRE-EXISTING.**
       *(Found by Palette-12 Part B's live graphic-floor run, 2026-09-15.)*
@@ -5579,6 +5637,61 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **IT SURVIVED BECAUSE EVERY SWEEP THAT REPORTED "zero retired tones" WAS SCOPED TO THE
       REFERRER TREE, AND THIS FILE IS IN `shared/`.** A true statement whose scope was never
       stated — the same shape as `App.jsx`'s focus ring, one directory along.
+
+- [ ] **⚠ ONE RETIRED-TONE REACH SURVIVED THE WHOLE ARC AND IS LIVE AT HEAD: `ContactModal`
+      STILL READS `R.shadowLg`, WHICH IS THE RETIRED NAVY AS DECIMAL CHANNELS INSIDE A SHADOW.**
+      *(Found by the Palette close-out doc pass, 2026-09-15, by reading KEY VALUES rather than key
+      names. ⚠ Measured at HEAD, not inherited from any prior sweep.)*
+
+      `src/components/shared/ContactModal.jsx` sets `boxShadow: R.shadowLg`, and
+      `src/constants/theme.js` defines `shadowLg` as **`"0 8px 32px rgba(1,40,84,0.13)"`** —
+      `rgba(1,40,84)` **is** `#012854`, the retired contractor navy. The published role
+      `elevationVar('shadowLg')` carries the neutral `rgba(0,0,0,0.13)` with **identical
+      geometry**, and **eight files already use it** — `SignupScreen`, `EmailVerifyScreen`,
+      `AnnouncementPopup`, `CashOutTab`, `DashboardTab`, `ManageAccount`, `MissingReferralModal`
+      and `PendingMatchPopup`. This one site did not move.
+      ⚠ **`R.shadowLg` HAS EXACTLY ONE LIVE READER IN ALL OF `src/`, AND THIS IS IT.** Enumerated
+      at HEAD rather than sampled: the grep returns three hits and **the other two are comments** —
+      one in `ReferrerApp` and one in `elevationTheme.js`'s own header. ⚠ **A comment-counting
+      sweep would report three reaches here; a code-only sweep reports one. This entry counted
+      code**, which is the distinction the residue census got wrong twice in this same arc.
+      ⚠ **AND `ReferrerApp`'s COMMENT IS THE SHARPEST PART: it says *"same hiding place Palette-4a
+      found it in `R.shadowLg`"*.** The hiding place was known, written down inside the referrer
+      tree, **as early as Palette-4a** — and the site one import away was still not swept, through
+      twelve more phases.
+
+      ⚠ **WHY IT MATTERS MORE THAN A SHADOW USUALLY WOULD: IT PAINTS ON THE LOGIN SCREEN.**
+      `ContactModal` is imported by `LoginScreen` and by `ProfileTab`, so the occlusion under that
+      modal is one tenant's retired brand tone on a **pre-auth surface a stranger reaches** and on
+      a referrer's profile, **for every contractor**.
+
+      ⚠ **IT SURVIVED BY BEING IN BOTH BLIND SPOTS AT ONCE, WHICH IS WHY IT IS FILED AS A FINDING
+      AND NOT A TYPO.**
+      - **The FOURTH ROUTE.** It is not a hex, not a colour key, and not a colour property — it is
+        a brand tone inside a **non-colour** key. The arc's three needles (hex, decimal `rgba()`,
+        `R.`-key) each correctly return nothing for it. The auth migration named this route in
+        terms and moved its own two screens; **nothing then swept the rest of the repo for the
+        route it had just discovered.**
+      - **The UNSTATED SCOPE.** It lives in `shared/`, so every *"zero retired tones"* report
+        scoped to the referrer tree was true and did not cover it — the same shape as `App.jsx`'s
+        focus ring and `ErrorBoundary`'s crash button, **now three times in one arc.**
+      ⚠ **SO THE RECORDED CLAIM "the three-needle sweep returns ZERO over all 15 components" IS
+      NOT WRONG AND IS NOT WIDE ENOUGH.** It is scoped to the referrer tree's components; this is
+      a shared primitive that tree renders. **Both sentences are true. Only one of them is what a
+      reader takes away.**
+
+      **TRIGGER: none needed — it is a one-line swap to `elevationVar('shadowLg')`, the identical
+      change already made at five other sites.** ⚠ **DELIBERATELY NOT MADE HERE**: this is a
+      documentation pass and touching `src/` would leave it. The reason it is filed rather than
+      fixed-in-passing is the reason this whole pass exists — *a finding reported only in
+      conversation is not filed.*
+      ⚠ **AND THE REAL JOB IS BIGGER THAN THE SWAP: NOTHING SWEEPS FOR THE FOURTH ROUTE.** Fixing
+      this one site closes a site; **enumerating every non-colour key whose VALUE contains a
+      retired tone closes the class.** `theme.js`'s own shadow and radius keys are where such a
+      value can hide, and the needle that finds it reads values, not names.
+      → `src/components/shared/ContactModal.jsx` · `src/constants/theme.js`'s `shadowLg` ·
+        `src/constants/elevationTheme.js`, whose header already explains why `shadowLg` changed
+        value
 
 - [x] **✅ THE PROVIDER DECISION — CLOSED BY RULING, NOT BY BUILDING. THE ADMIN TREE STAYS ON
       LITERALS.** *(Ruled by Danny 2026-09-05; recorded by Palette-15, 2026-09-15.)*
@@ -5938,6 +6051,18 @@ quadruples is evidence about the estimate, not about the wave:
       `ProfileTab` still reads five STATUS keys off `R` — `greenBg`, `greenText`, `amberBg`,
       `amberText`, `tealText` — held by Palette-4b's ruling and named by an equality fence so the
       set cannot grow. They are the status palette, not a retired brand tone.
+      ⚠ **RE-MEASURED AT HEAD 2026-09-15 BY THE CLOSE-OUT DOC PASS, AND THE NUMBER HOLDS — BUT
+      ONLY UNDER THE SCOPE IT NAMES, WHICH IS THE WHOLE POINT OF THE ENTRY BELOW.**
+      `src/components/referrer/` carries exactly **5** `R.` reads, all in `ProfileTab`, all five
+      the status keys named above, comments blanked line-by-line before counting.
+      **`src/components/shared/` carries ELEVEN MORE**, and they are not the same kind of thing:
+      **eight** sit inside a `var(--rm-X, ${R.y})` **fallback** (`EmptyState` ×2, `ErrorState`,
+      `SuccessState`, `LoadingIndicator` ×2, `StateCard`) and are the correct idiom, not a
+      residue; **two** are bare neutral `R.border` reads (`LoadingIndicator`, `StateCard`); and
+      **one** is `R.shadowLg` — ⚠ **which is a live retired-tone reach, filed as its own entry
+      below.** ⚠ **A prior figure of "11 R. colour reads" counted COMMENTS as code and a plan
+      carried "zero" as fact — both wrong, in opposite directions, and neither number stated the
+      tree it was counting.** Say `referrer/` or `referrer + shared` and say which, every time.
 
       **THE THREE GROUND LEVELS ARE FIXED: body = `bg`, column = `recess`, cards = `surface`.**
       ⚠ **`--rm-bg` HAS NO CONSUMER IN THE REFERRER TREE** — verified at HEAD, and the distinction
@@ -6529,8 +6654,24 @@ quadruples is evidence about the estimate, not about the wave:
       hover: 6.47:1 and 5.37:1.
       → `paletteProfile.test.jsx` T1
 
+- [x] **✅ CLOSED 2026-09-15 BY PALETTE-12 PART B — AND LEFT HERE UNALTERED BECAUSE ITS QUESTION
+      WAS ANSWERED RATHER THAN ABANDONED.** *(Closed by the Palette close-out doc pass, 2026-09-15.
+      ⚠ It was still ticked OPEN for the whole of Palette-13 through -16 — the fix shipped and the
+      entry did not move, which is the exact defect class* **A tracking mechanism needs both
+      halves** *names, found inside the arc that keeps recording it.)*
+      The bar is now `--rm-secondary → --rm-secondary-dark`. **The ruling, the 1728-pair
+      measurement and what was deliberately given up live in the closure entry** — *THE BOOST BAR
+      — CLOSED 2026-09-15* above; they are not copied here. ⚠ **Its sibling did NOT close with
+      it**: `ContractorAboutModal` still paints `primary` on a `secondary` panel and is a separate
+      open entry beside that closure. **The text below is the record of the hold and is left
+      exactly as written**, including *"IS STILL ON RETIRED LITERALS"*, which was true when
+      written and is now false — renumbering or rewording it would destroy the evidence of what
+      the arc was actually holding and why.
+
 - [ ] **⚠ THE BOOST PROGRESS BAR'S FILL IS A CROSS-BRAND-COLOUR GRADIENT AND IS STILL ON
       RETIRED LITERALS — THE ONE SITE IN `DashboardTab.jsx` PALETTE-4a DID NOT MIGRATE.**
+      ⚠ **SUPERSEDED — SEE THE CLOSURE DIRECTLY ABOVE. The checkbox below stays unticked because
+      this block is a RECORD, not live work; the live status is the ticked entry above it.**
       *(Ruled R-D, 2026-09-04, by Danny: "LEAVE ON LITERALS AND REPORT IT … a DESIGN question,
       not a substitution. Do not invent an answer inside a migration phase.")*
       **It runs `R.red -> R.navy`** — the action colour into the dark neutral — where every other
@@ -6809,6 +6950,43 @@ quadruples is evidence about the estimate, not about the wave:
       reconciliation finding above: `docs/ARCHITECTURE.md:217`'s check cannot have run and
       passed. **Record the date here each time it runs**, so the next omission announces itself
       instead of being discovered by its consequences four sessions later.
+
+---
+
+## How to read a checkbox in this document
+
+⚠ **AN UNTICKED `- [ ]` MEANS TWO DIFFERENT THINGS HERE, AND NOTHING DISTINGUISHES THEM.**
+*(Named 2026-09-15 by the Palette close-out doc pass, which had to decide entry by entry which
+kind it was looking at.)* Some are **open work**. Others are **records of a lesson** whose subject
+is already closed — *"three `R` keys went dead and were removed"*, *"two fences built for classes
+that had already bitten"* — kept because the mechanism is the point, and left unticked because
+they are not tasks anyone completes. **Both render identically.**
+
+**So do NOT size the remaining work by counting unticked boxes, in either direction.** A reader
+totalling them over-counts the backlog; a reader tidying them by ticking destroys records.
+
+⚠ **THE TEST IS THE ENTRY'S OWN CLAIM, NOT ITS BOX:** *does this sentence assert something about
+the CURRENT codebase that a reader would act on?* If yes and it is false, **correct it in place** —
+that is the inverted-record rule and it is not optional. If it only describes what was done and
+learned, **leave it exactly as it is.**
+
+⚠ **THIS PASS APPLIED THAT TEST TWICE AND DELIBERATELY STOPPED THERE.** The boost-bar entry said
+a site *"IS STILL ON RETIRED LITERALS"* after it had been migrated, and the screenshot entry told
+the next session *"say the numbers instead"* when screenshots in fact work — **both were
+instructions against the fix, not merely stale.** The dead-key records were left untouched.
+**Re-marking the convention across the whole document is a separate decision and is not made
+here**, because several hundred re-ticked boxes is a diff nobody can review.
+
+⚠ **AND WHY THIS SECTION IS AT THE BOTTOM RATHER THAN IN THE PREAMBLE WHERE IT BELONGS — IT IS AN
+INSTANCE OF ITS OWN SUBJECT, AND WORTH ONE SENTENCE.** It was written into *READ THIS BEFORE
+TRUSTING THE LIST* first. **Twenty inserted lines at the top of this file rotted 30 line citations
+into it**, measured with `citecheck --changed-files` — including six into
+`docs/GROUND_TRUTH_2026-08-21.md`, a dated snapshot whose citations **must not be shifted at all**.
+It was moved here, below every line anything cites into this document, where it moves nothing.
+⚠ **THAT IS A STANDING TAX ON THIS FILE'S PREAMBLE, NOT A ONE-OFF:** the top of the canonical
+index is the most-cited region of the most-cited document, so **every future addition there pays
+the same 30**. Recorded rather than solved — the real fix is re-deriving those citations by role,
+which is the larger job already filed.
 
 ---
 

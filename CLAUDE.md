@@ -816,16 +816,20 @@ something looks wrong — the point is that nothing does.
 
 ### A test's own greenness is not evidence that it tests anything
 
-**TEN shapes are recorded below.** Six were found in C/DL-3b, a seventh in the Admin Brand
-Retirement build, an eighth in its 6B pass, a ninth in Wave 1.1-g, and a tenth predicted in
-C/DL-3c Phase 0 before it could ship. **None of the nine that shipped was findable by reading;
-every one was found by forcing the failure.**
+**The shapes are enumerated below — ⚠ and this sentence deliberately does not say how many.**
+They were found in C/DL-3b, in the Admin Brand Retirement build and its 6B pass, in Wave 1.1-g,
+in C/DL-3c Phase 0 (the one predicted before it could ship) and in the Palette arc's font work.
+**Every one that shipped was found by forcing the failure, not by reading.**
 
-⚠ **THIS INTRO SAID "SIX … A SEVENTH … AN EIGHTH" ABOVE A LIST OF NINE UNTIL 2026-08-30.** Shape 9
-was appended without it, and shape 10 would have left it two behind. **The count lives in the list,
-not in this sentence — recount by reading when you add one.** Same failure this file records for
-its own test-count tripwire and for `PRE_LAUNCH_CHECKLIST.md`'s *"FIVE items"* above a list of six:
-**a hand-maintained number in prose nobody edits when the thing it counts grows.**
+⚠ **THIS INTRO SAID "SIX … A SEVENTH … AN EIGHTH" ABOVE A LIST OF NINE UNTIL 2026-08-30, THEN
+"TEN" ABOVE A LIST OF TEN UNTIL 2026-09-15**, when an eleventh was appended. Each correction
+replaced one hand-maintained number with the next. ⚠ **THE NUMBER IS NOW GONE RATHER THAN
+UPDATED, AND THAT IS DELIBERATE — DO NOT PUT ONE BACK.** This file's own conclusion, reached
+after four self-referential miscounts, is *"do not put a count in a heading or a lead sentence at
+all"* when the thing it counts is a list directly beneath it: there is no mechanism that updates
+it, and even a reader actively cataloguing this defect bumps the number rather than deleting it.
+Same failure as this file's test-count tripwire and `PRE_LAUNCH_CHECKLIST.md`'s *"FIVE items"*
+above a list of six.
 
 1. **A case row proves nothing until the field exists.** Five rows added to the branding drift
    guard passed vacuously — that guard compares two copies, so a field absent from **both** is
@@ -915,6 +919,28 @@ its own test-count tripwire and for `PRE_LAUNCH_CHECKLIST.md`'s *"FIVE items"* a
     PROVIDER.** `useAdminBranding()` throws rather than defaulting, deliberately (D-H), and that
     throw is exercised on every referrer boot instead of only in a test. **A default is a claim
     that its absence is acceptable — fix by routing, not by asserting harder.**
+
+11. **A NEGATIVE CASE THAT IS VACUOUS *BECAUSE IT MIRRORS THE DEFECT*.** Found while fixing the
+    font loader, and it is the sharpest of the family because the assertion is about the right
+    subject and still cannot fail. A draft test asserted *"an off-allowlist font value falls back
+    to the platform default."* It passed. ⚠ **IT PASSED AGAINST THE BROKEN LOADER TOO — BECAUSE A
+    COLUMN NOBODY READS ALSO PRODUCES THE DEFAULT.** The fallback is the observable for both "the
+    value was rejected" and "the value never arrived", so the two states are indistinguishable by
+    it.
+    ⚠ **DISTINCT FROM #10, AND THE DISTINCTION DECIDES THE FIX.** #10 is a context default making
+    a missing PROVIDER invisible; this is a validator's own fallback making a missing SUPPLY
+    invisible. #10's repair is a flag-ON sibling on the same mount; this one's is upstream.
+    **THE RULE: pair every negative case with a STORED-VALUE POSITIVE on the same path.** Without
+    the pair it passes against a build that ignores the column entirely — which is exactly what
+    shipped. The pairing took both allowlist cases from green to RED before the fix, **which is
+    the proof they had been passing for the wrong reason.**
+    ⚠ **AND A SECOND INSTANCE IN THE SAME FAMILY, WHERE THE MECHANISM WAS THE HARNESS RATHER THAN
+    THE ASSERTION.** A fence asserting a hostile sentinel is **ABSENT** from a rendered page
+    passed **twice** against writes that never happened — once on a SQL syntax error from
+    interpolating the payload, once on an unresolvable `pg` import. Both left the column
+    unchanged, and *"the sentinel is absent"* read like a pass each time. **Fixed by
+    parameterising the write and READING THE COLUMN BACK before trusting the page.** ⚠ **An
+    absence assertion must first prove the presence it is asserting the absence of.**
 
 **The conclusion:** non-vacuity assertions belong in tests that look **too simple to need
 them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this
@@ -1095,7 +1121,7 @@ separate.
 identical pixels, keeps the special case, and goes wrong again the next time the table moves.
 **Deleting the special case makes the right value fall out — and keep falling out.**
 
-### Sweeps have two independent gaps
+### Sweeps have independent gaps, and the widest one is the scope nobody wrote down
 
 - **Formatting, not values.** `770-277-4869` and `7702774869` are the same number and do not
   match. **Normalise before comparing** — strip non-digits for phones; strip scheme, `www.`
@@ -1104,6 +1130,37 @@ identical pixels, keeps the special case, and goes wrong again the next time the
 - **The hand-maintained FILES list — NOT FIXED.** Every sweep iterates a list someone typed.
   New files are invisible until remembered, and **nothing announces the omission**. A clean
   sweep is evidence about the listed files only. Prefer walking a directory tree.
+- ⚠ **THE UNSTATED SCOPE, AND IT IS THE ONE THAT SHIPPED THREE DEFECTS: A NEGATIVE FINDING IS
+  ONLY AS WIDE AS THE SCOPE IT NAMES.** Eleven consecutive phases reported *"zero retired
+  tones"*. **Every one of those sweeps was scoped to the referrer tree, every report was TRUE,
+  and three live reaches sat one directory along the whole time.** Each was found by a different
+  accident, none by a sweep:
+  - **`App.jsx`'s focus ring** — `outline: 2px solid #012854`, the retired contractor navy on
+    **every focus ring across three trees**, injected from inside a **template string** in a
+    file that belongs to none of the trees the sentence counted.
+  - **`ErrorBoundary`'s crash-screen button** — `#CC0000`, one tenant's retired red, **under an
+    exception that was sound.** The exception was granted for the MECHANISM (the tree has
+    crashed, possibly outside the provider, so a literal is the honest choice) and **the VALUE
+    was never re-run when the palette was retired.** ⚠ ***"Use a literal" never meant "use that
+    contractor's literal."*** It is in `shared/`, so the referrer-scoped sweeps could not see it.
+  - **`SignupScreen` and `EmailVerifyScreen`** — **46 colour keys and 25 retired reaches**,
+    never colour-migrated at all while their five auth siblings were. Missed for eleven phases,
+    on the signup and email-verification path: the first two screens a contractor's first
+    referrer ever sees. ⚠ **Not residue — an entire unmigrated surface**, which is a different
+    thing from leftovers and must not be filed as one.
+
+  ⚠ **AND A FOURTH WAS FOUND BY THE ARC'S OWN CLOSE-OUT, STILL LIVE, IN THE SAME BLIND SPOT** —
+  `ContactModal` reading a shadow key whose VALUE is the retired navy. It is in `shared/` (the
+  scope gap) **and** it travels the non-colour-key route (the needle gap), so **two independent
+  blind spots had to close for it to be visible, and neither did.** Filed on
+  `PRE_LAUNCH_CHECKLIST.md`; not counted in the three above, because those are closed and it is
+  not.
+
+  **THE RULE: state the scope BESIDE the claim, in the same sentence, every time.** *"Zero
+  retired tones in `src/components/referrer/`"* is a finding. *"Zero retired tones"* is the same
+  measurement written so that it will be read as covering everything, by a reader who has no way
+  to tell. ⚠ **The sweep was never wrong. The sentence was**, and a true sentence is the hardest
+  kind of claim to catch — nothing about it invites checking.
 
 ### A guard that fires on the prose beside it is working. Reword the prose.
 
@@ -1186,6 +1243,39 @@ Four confirmed instances:
 **THE RULE: when you add a check, a guard, a sweep, or a tripwire, state what it would look
 like when it FAILS, and prove it fails that way before trusting that it passes. A check whose
 failure mode has never been observed is a claim, not a check.**
+
+⚠ **AND THE SAME FAILURE WITH THE SIGN FLIPPED: A MECHANISM THAT REPORTS A LIMITATION IT NEVER
+DIAGNOSED. A RECORDED LIMITATION IS A CLAIM, AND IT NEEDS A SOURCE LIKE ANY OTHER NUMBER.**
+
+`scripts/paletteHarness.js` opened with *"Screenshot capture is unusable in this environment:
+reproduced against a white page with black text — the capture returned a uniformly near-black
+frame AND REPORTED SUCCESS."* ⚠ **THE OBSERVATION WAS ACCURATE AND REPRODUCES TODAY. THE
+DIAGNOSIS WAS WRONG, AND IT WAS CARRIED IN FIVE CONSECUTIVE PHASE BRIEFS.** The cause is a
+**screen-dimming browser extension**: it injects a `<screen-shader>` element as a direct child
+of `<html>` which paints a full-viewport `div` at `rgb(17,17,17)`, `opacity: 1`,
+`z-index: 2147483645` — the maximum. **The capture pipeline was working the whole time and
+faithfully photographing an opaque overlay.** Hide any full-viewport `div` whose `z-index`
+exceeds 2,000,000,000, then capture; it is per-tab and reversible. The accompanying claim in the
+same briefs — that `innerWidth` / `outerWidth` / `screen.width` are all zero — **is also false,
+measured 2560.** Both halves of a standing caveat were wrong, and a session that inherits it
+skips a check it could actually run.
+
+⚠ **THE COST: a whole arc concluded "say the numbers instead of looking", and a font question
+that one photograph settled in one look stayed open for five phases.** Each phase re-ran the
+observation and inherited the conclusion. **Re-running an observation is not re-deriving a
+diagnosis.**
+
+⚠ **AND THE EVIDENCE WAS ALREADY SITTING IN A REPORT.** An earlier phase's paint sweep listed
+`html` at `rgb(17, 17, 17)` and a `<screen-shader>` element, **and filtered both out as browser
+chrome.** The value in that reading and the value of the black frames are the same number.
+**THE RULE: a value filtered as noise in one investigation is evidence in another.** When a
+sweep discards something as chrome, it is discarding it for THAT question only — say what was
+filtered, so the next question can look at it.
+
+⚠ **AND ONE MEASUREMENT, TAKEN ONCE, IS NOT A DIAGNOSIS.** The zero-viewport reading was real
+and transient, and it became a premise **four phases carried without re-testing**. A transient
+reading promoted to a standing environment fact is indistinguishable from a permanent one, and
+nothing about it announces which it was.
 
 **The closure half.** Every one of the four instances above is a mechanism that could record a
 state ARRIVING and could not record it LEAVING. That asymmetry has its own name and its own fix.
@@ -1346,6 +1436,34 @@ first draft matched any quoted call and fired on 26 legitimate test needles like
 carve-out, because **a fence that stops reading the files an idiom gets copied from has a hole
 in it.**
 
+⚠ **THE SECOND INSTANCE IS THE SAME SHAPE ONE LAYER UP, AND IT LEFT AN ENTIRE ARC INERT.**
+`loadContractorBranding()` — the ONE loader behind the landing page, `GET /api/branding/:slug`,
+`GET /api/session/branding`, `GET /api/admin/me` and `GET /api/invite/:slug` — **named neither
+font column in its SELECT.** The resolver read `src.font_heading`, the loader supplied
+`undefined`, `resolveFont()` returned the platform default, and **no contractor's chosen fonts
+could reach any surface.** Three commits of work sat behind a query that never asked: the
+resolver, the allowlist, the per-family generics, 25 declared faces and 313 migrated painters.
+
+⚠ **AND THE SERIF TEST PASSED, WHICH IS THE PART WORTH KEEPING.** `fontChain.test.jsx` hands a
+row straight to the resolver via `row({ font_heading: 'Playfair Display' })`. **That is the
+correct unit test for the resolver's own contract — still valid, still green, never wrong.** The
+gap was not a bad assertion. It was that **no test existed at the layer ABOVE.**
+
+**THE RULE: A TEST THAT INJECTS THE VALUE ITSELF CANNOT DISCOVER THAT NOTHING UPSTREAM SUPPLIES
+IT. Assert at the boundary that actually supplies the value.** Practically: for any resolved
+value, one test must source it from the real producer — a real row through the real query — and
+a double that returns whatever the test handed it does not count, because it would not exercise
+the SELECT at all and would stay green against the broken loader.
+
+⚠ **THE CLOSURE HALF IS WHAT MAKES IT A FIX RATHER THAN A REPAIR.** The defect was never *"the
+fonts were forgotten"*; it was *"nothing checks the loader against the resolver"*, and a second
+missing column would have had the identical symptom — a value that resolves to its default for
+everyone and looks correct on the platform brand. Every `src.<col>` the resolver reads is now
+differenced against the loader's SELECT and that difference is a permanent fence, so the next
+missing column fails there instead of shipping. **The audit found 26 of 28 supplied, and the
+fonts were the only gap** — asked mechanically, because "if fonts were missing, what else is?"
+is not answerable by reading either list by eye.
+
 ### Measure composited, on the rendered node — never at the declaration
 
 **Three shapes, all CORRECT AT THE DECLARATION, all wrong where they landed, all passing every
@@ -1376,15 +1494,67 @@ rendering and nothing in either guard could say so.
 *(Same family as the five guards fed by one broken parse, recorded above. The test is not
 whether guards agree; it is whether they could disagree.)*
 
+### One instrument in three hats is one instrument, and three methods agreeing can all be wrong
+
+**The two rules above are about GUARDS sharing an input or a precondition. This is the same
+failure one level down: three METHODS that share whatever the fault is.**
+
+Width measurement said a landing-page `h1` rendered approximately Georgia rather than the
+contractor's Playfair Display. It was measured three independent-looking ways — a DOM clone with
+`nowrap`, a `Range` over the real element, and canvas `measureText` — **and all three agreed.**
+
+⚠ **THE TELL WAS AN IMPOSSIBLE ANSWER, NOT A DISAGREEMENT.** The same instrument reported that
+`"Lato", sans-serif` renders **WIDER** than `"Lato"` alone. **A font list cannot be beaten by its
+own second entry.** Three methods producing one incoherent result are not three checks; they are
+one check wearing three hats.
+
+⚠ **THE RESOLUTION WAS A DIFFERENT KIND OF INSTRUMENT, AND IT TOOK ONE LOOK.** A screenshot
+settled it: the face paints, exactly as the stack is written, and **every width-based font claim
+in the arc is retired.** The `document.fonts` load status — which had said `loaded` throughout —
+was right the whole time.
+
+⚠ **AND THE RESTRAINT WAS VINDICATED, WHICH IS THE PART TO COPY.** The measurement indicated
+dropping a family from a font stack. **Production code was not adjusted**, on the grounds that
+this would be fitting the code to an instrument already shown to be unreliable — which the
+characterization rule forbids. Had it been "fixed", the repair would have damaged a stack that
+was already correct, under a commit message saying a defect was closed.
+
+⚠ **THE FINGERPRINT PREDATED THE PHASE AND HAD BEEN RECORDED AS A PROPERTY.** The same
+instrument put a loaded webfont and the generic default **0.35px apart**, which was written down
+as *"the discriminator separates nothing"*. **It was not a property of the discriminator; it was
+the symptom.** When a measurement cannot tell two states apart, that is a claim about the
+measurement until something else confirms it.
+
 ### If readings do not vary across conditions that should differ, suspect the reader
 
-**Three variants in one arc, and the third is not a reader fault at all.**
+**The recorded variants — ⚠ and the last of them is not a reader fault at all, which is why the
+list is worth reading to the end rather than pattern-matching on the heading.**
 
 - A **backgrounded tab** whose opacity transition never ticked: the inline style said `1` and
-  the computed style said `0`.
+  the computed style said `0`. ⚠ **The colour form of this is worse**: a backgrounded tab returns
+  each colour transition's **START** value, which on a repainted surface is the pre-repaint
+  platform neutral — **byte-identical to the `var()` fallback**. Five icons read as `fallback`
+  with the property demonstrably mounted, and **no colour comparison could ever have separated
+  the two.** Proven a reader fault rather than assumed: probes injected into the same parent with
+  the same declaration resolved correctly, and killing the transition snapped the real icon to
+  the mounted value. **Suppress transitions before every sweep.**
 - A **memoised `getComputedStyle`** serving stale values across five brand/mode combinations —
   every combo returned an identical reading while the host carried different variables.
-- ⚠ **AND THE THIRD: THE CONTRACTOR COULD NOT MAKE THEM VARY.** The local stack's first
+- ⚠ **A PROBE MOUNTED WITHOUT ITS REAL ANCESTOR CHAIN, AND IT LOOKED EXACTLY LIKE THE PREDICTED
+  DEFECT.** A component mounted bare reported `-apple-system` on its `font: inherit` buttons —
+  the body stack, not the contractor's face — which was precisely the defect that phase was
+  looking for. It was an artifact: the probe had no ancestor declaring a family. Re-run inside a
+  real `Screen`, all four resolved correctly. ⚠ **A reader fault that CONFIRMS your hypothesis is
+  the one you will not question.**
+- ⚠ **A PROBE'S OWN SPAN CAUSED A FACE TO APPEAR ON A PAGE THAT DOES NOT USE IT.** The
+  measurement created a USED family, the browser fetched the face, and the fetch set — the very
+  evidence that separates a painted face from a declared one — was the thing the probe changed.
+  **A reader that writes to the DOM is part of the system under measurement.**
+- ⚠ **A CONTAMINATED `rm_brand_hint` FROM THE SESSION'S OWN EARLIER `?brand=` VISIT.** A "no
+  brand parameter" read resolved a contractor from source 3 of the D4 chain, because an earlier
+  visit in the same browser had written the hint. **Clear persisted state and re-read cold before
+  recording any negative result about resolution.**
+- ⚠ **AND THE LAST: THE CONTRACTOR COULD NOT MAKE THEM VARY.** The local stack's first
   contractor was seeded with the PLATFORM DEFAULT PALETTE, so **all six render tokens mount
   EQUAL to their fallbacks on it** and a correct wiring is indistinguishable from a broken one.
   ⚠ **THAT IS THE ACCENT PROBLEM REPRODUCED INSIDE OUR OWN FIXTURE**, and the seeder had been
@@ -1392,9 +1562,18 @@ whether guards agree; it is whether they could disagree.)*
   **THE RULE: verify on a contractor whose palette DIFFERS from the platform default — in the
   LOCAL STACK as well as in production.**
 
+⚠ **AND ONE CONDITION TO CONTROL FOR THAT IS NOT A DIAGNOSIS AND MUST NOT BE WRITTEN UP AS ONE:
+THE BROWSER MAY BE IN USE BY A PERSON WHILE A SESSION READS FROM IT.** Danny's observation, and
+it would account for the backgrounded-tab stall above — a tab only backgrounds when something
+else takes focus. **Recorded as a question to ask, not as a cause that was established.** If a
+reading looks wrong in a way that smells like the reader, ask whether the browser was contended
+**before** concluding an environment limitation. That is the question nobody asked for the five
+phases recorded in the entry below.
+
 ### Validate every needle against known answers, in BOTH directions
 
-**It must find the defect AND spare the legitimate idiom. Seven measured failures:**
+**It must find the defect AND spare the legitimate idiom. The measured failures, each checkable
+— ⚠ and deliberately not totalled in this sentence, per the heading rule below:**
 
 - a **heredoc consuming `\.`** — 80 plausible, file-attributed findings; the true count was **7**
 - **`git grep` sees tracked files only**, and it was run from an untracked file to decide
@@ -1408,12 +1587,41 @@ whether guards agree; it is whether they could disagree.)*
   NEGATIVE in a checker is worse than the defect it hides, because it reports health it never
   observed.
 - a **prefix substitution** truncating three lines into invalid JavaScript
+- ⚠ **A `\bFROM\b` NEEDLE MATCHED THE WORD "from" IN A SQL COMMENT.** A non-greedy
+  `/SELECT(.*?)\bFROM\b/i` run over `loadContractorBranding()` matched the prose *"the resolver
+  derives one from the other"*, truncated the capture immediately before a real column, and
+  **reported a SUPPLIED column as absent** — a confident, file-attributed, entirely wrong
+  "missing column" finding, in an audit whose whole purpose was finding missing columns.
+  Comments are stripped before the `FROM` is located now, with the regression fixture in the
+  test. ⚠ **This is the scans-read-comments rule below with the sign flipped: there prose
+  MATCHES a forbidden pattern, here prose IS the delimiter the parse depends on.**
+- ⚠ **A BIG/BOLD HEURISTIC READ `fontSize` FROM NEIGHBOURING LINES.** Reading a window instead of
+  the line produced **21 false flags** in the 313-site font migration; checking each line's OWN
+  size cleared all 21. **A heuristic that reports plausible findings is worse than none** —
+  every one of them costs a verification, and a real finding hides among them.
+- ⚠ **A STYLESHEET SWEEP MATCHED ITS OWN TEST FILE.** It walks all of `src/` **including
+  itself**, so a needle spelled out in full made the test file the offender, and the first run
+  reported `bodyDefaults.test.jsx` as importing a stylesheet. Fixtures are assembled from pieces
+  now. **Reword, never exempt** — per the rule below.
+- ⚠ **`grep -oh … | grep -v test` CANNOT FILTER BY FILENAME, BECAUSE `-oh` DISCARDS IT.**
+  Matches-only output carries no path, so the second `grep` filters the MATCH TEXT and nothing
+  else. It reported **4** font-key reads in the four migrated trees where there are **0**.
+  ⚠ **A filter that silently filters nothing returns a number with no error attached** — the
+  shell-harness class arriving through a pipeline rather than through quoting.
 
 ⚠ **AND THE THIRD ROUTE A VALUE TRAVELS.** A retired tone reaches code as a HEX, as a DECIMAL
 `rgba()`, **and through a key whose VALUE is the tone**. A gear icon reached `#012854` via
 `R.navy` and the hex needle found zero. Measured at the close of the arc: of 45 retired-tone
 reaches in `src/`, the hex needle sees **23** — a bare majority, and it saw **none** of a
 twelve-instance class in one phase.
+
+⚠ **AND A FOURTH ROUTE, WHICH NONE OF THE THREE NEEDLES COUNTS: THE TONE INSIDE A NON-COLOUR
+KEY.** `R.shadowLg` is `"0 8px 32px rgba(1,40,84,0.13)"` — the retired navy as three DECIMAL
+channels inside a **shadow**. Not a hex, not a colour key, not an `R.`-keyed *colour* read: it
+passes the hex needle, the decimal needle scoped to colour properties, and the key needle
+alike. The auth migration found it only by reading the key's VALUE rather than its name, and
+the true reach for those two screens was **25, not the 22 all three needles agreed on**.
+**When a needle set agrees, ask what kind of container it cannot open.**
 
 ### Scans read test files and comments, so prose describing a forbidden pattern IS the pattern
 
@@ -1588,6 +1796,47 @@ code that GENERATES names.** A constraint, a route, a permission key or a cron i
 from a template is invisible to every search for the thing it becomes. **When a count matters,
 grep for the SUFFIX and the TEMPLATE too** — `_exactly_one_subject` finds the interpolation
 site that `pin_reset_tokens_exactly_one_subject` never will.
+
+### Sweep for the SHAPE, not the NAME — a name can claim a property it lacks
+
+**Two opposite disguises, one class, both measured in the same arc.**
+
+- ⚠ **IT HID BY *NOT* HAVING THE CANONICAL NAME.** `buildEmailHtml()`'s local escaper was called
+  `esc`, covered three characters (`& < >`) where the sanctioned `escapeHtml()` covers five, and
+  its output landed inside double-quoted `style` and `alt` attributes — a stored font name
+  carrying a `"` closed the attribute and injected new ones. **Three separate enumerations each
+  listed SIX local escapers and each searched for the name `escapeHtml`** —
+  `escapeHtmlExport.test.js`, `PRE_LAUNCH_CHECKLIST.md`, and ground truth §C5. A sweep for the
+  **replace CHAIN** finds **eight**, and the invisible one was the weakest of all eight.
+- ⚠ **AND IT HID BY *HAVING* THE NAME.** `pendingReferral.js` carried
+  `const safeLogoUrl = escapeHtml(logoUrl || '')` — escaping only, **no scheme check** —
+  interpolated into **three** `<img src>`. **The name asserted the property, so every call site
+  read as solved**, and a sweep for the name would have found it and passed it.
+
+**THE RULE: sweep for the SHAPE — a value inside a URL attribute, a replace chain, an assignment
+position — not for the identifier.** The shape sweep that found the second one covered **45**
+URL-attribute sites across 11 files in `server/`; the other 42 were system-generated, constant,
+or already checked, which is a result a name sweep cannot produce at all.
+
+*(Same family as* **A name-based search cannot find a name that is never written down**
+*directly above: there the name is never written down, here it is written differently or written
+honestly-but-falsely. In all three the identifier is the wrong thing to search for.)*
+
+### Escaping and scheme-checking are different controls, and one does not imply the other
+
+**Escaping answers whether a value can break OUT of an attribute. ⚠ IT SAYS NOTHING ABOUT
+WHETHER THE VALUE, SITTING ENTIRELY INSIDE THE ATTRIBUTE, IS EXECUTABLE.**
+
+Nothing in `javascript:alert(1)` needs escaping, so an escaped hostile scheme lands in
+`src=`/`href=` perfectly intact and is still a link that runs code. **Two commits, one lesson:**
+the first replaced a weak local escaper and closed every attribute-BREAKOUT site in the campaign
+email, deliberately leaving the URL attributes; that gap was real and had to be closed separately
+by `safeLogoUrl` / `safeWebsiteUrl` (`server/utils/safeUrl.js`).
+
+⚠ **THIS IS NOT DEFENCE IN DEPTH — IT IS A DIFFERENT CONTROL FOR A DIFFERENT HOLE**, and reading
+it as the former is exactly how the second one gets skipped. ⚠ **AND AN HTTP `Location` IS A
+THIRD CONTEXT AGAIN**: the tracking route's `res.redirect(cta_url)` is not an HTML attribute, is
+closed by neither control, and is filed separately rather than assumed covered.
 
 ### A needle that is a substring of a longer real name passes against the wrong line
 
