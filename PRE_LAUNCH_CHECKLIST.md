@@ -5563,7 +5563,7 @@ quadruples is evidence about the estimate, not about the wave:
       | 5 | **`ReferTab`'s unmeasured combos** | a harness run across the brand/mode matrix |
       | 6 | **`referral_conversions`** | its own arc |
       | 7 | **The focus-ring keyboard defect** | unblocked; the ring's tone was fixed in Palette-13, the keyboard behaviour was not |
-      | 8 | **`src/index.css`** — a CRA leftover and a standing violation of *never add CSS files*. It sets a SYSTEM font stack on `body` | removing it changes what 13 `font: inherit` sites inherit if `Screen` ever stops declaring a family. Fenced, not fixed |
+      | 8 | ~~**`src/index.css`** — a CRA leftover and a standing violation of *never add CSS files*.~~ ✅ **REMOVED 2026-09-15 (Palette-16).** See **THE LAST CSS FILE** below — ⚠ **and it was masking a referrer-facing defect rather than merely sitting there** |
       | 9 | **The mono role has no column.** Platform-fixed; a contractor cannot set it | a ruling on whether they should |
       | 10 | **`Source Sans Pro` is a retired Google name** (renamed to Source Sans 3) | a **migration, not a rename** — contractors have the old name saved, and changing the key invalidates their choice |
       | 11 | **The campaign email's font defaults diverge** (Georgia/Arial vs Montserrat/Roboto) and it loads no webfont at all | a ruling on a live outbound path |
@@ -5724,6 +5724,19 @@ quadruples is evidence about the estimate, not about the wave:
       **The PROPERTY it guarded is unchanged and is still asserted**; only its observation point
       moved. The other 8 cases in that file passed unmodified.
 
+- [x] **✅ CLOSED 2026-09-15 BY A PHOTOGRAPH — THE FACE PAINTS, AND THE INSTRUMENT WAS THE PROBLEM.**
+      Palette-16 took a screenshot of `palette-beta`'s landing headline. **It is unmistakably
+      Playfair Display** — high-contrast serif, ball terminals, strong thick/thin modulation — and
+      the body copy is Lato. Not Montserrat, not Roboto.
+      ⚠ **SO EVERY WIDTH-BASED FONT CLAIM IN THIS ARC IS RETIRED**, and the `document.fonts` load
+      status — which said `loaded` throughout — was right all along. The three width methods that
+      agreed with each other were one broken check in three hats, exactly as the entry below
+      suspected. **The entry is left intact beneath this line because its reasoning was correct
+      and its conclusion was properly withheld**; it declined to change a font stack on an
+      instrument it could not trust, and that was the right call.
+      ⚠ **AND THE REASON SCREENSHOTS SEEMED IMPOSSIBLE IS ITS OWN FINDING — see
+      THE BLACK FRAMES below.**
+
 - [ ] **⚠ THE LANDING FONT WORK'S OPEN QUESTION — WHETHER THE FACE VISIBLY PAINTS IS NOT SETTLED,
       AND THE INSTRUMENT IS THE REASON.** *(2026-09-15.)*
 
@@ -5743,7 +5756,8 @@ quadruples is evidence about the estimate, not about the wave:
       incoherent answer**, so they are not three checks but one, sharing whatever the fault is.
       ⚠ **PRODUCTION CODE WAS NOT ADJUSTED TO SATISFY IT.** The measurement indicated dropping
       `Georgia` from the serif chain; that would have been fitting the code to an instrument
-      already shown to be unreliable, which the characterization rule forbids.
+      already shown to be unreliable, which the characterization rule forbids. **That restraint
+      was vindicated: the photograph shows the stack painting Playfair exactly as written.**
       ⚠ **AND THE FINGERPRINT PREDATES THIS PHASE.** The brief's own recorded figure — *"Playfair
       420.33 vs generic serif 421.92 is 0.35 apart and separates nothing"* — is the same ~2px
       near-identity this instrument produces between a loaded webfont and the default. **That was
@@ -5759,6 +5773,87 @@ quadruples is evidence about the estimate, not about the wave:
       recording: **`window.innerWidth` reported 2560 here, not 0** as the brief stated — so that
       particular harness limitation is not currently in force, and a session that assumes it is
       will skip a check it could actually run.
+
+- [x] **✅ THE BLACK FRAMES — "SCREENSHOTS ARE IMPOSSIBLE" WAS NEVER TRUE, AND IT WAS CARRIED IN
+      FIVE CONSECUTIVE PHASE BRIEFS.** *(Palette-16, 2026-09-15.)*
+
+      `scripts/paletteHarness.js` opened with *"Screenshot capture is unusable in this
+      environment: reproduced against https://example.com — a white page with black text — the
+      capture returned a uniformly near-black frame AND REPORTED SUCCESS."* ⚠ **THE OBSERVATION
+      WAS ACCURATE AND REPRODUCES TODAY. THE DIAGNOSIS WAS WRONG.**
+
+      **The cause is a screen-dimming browser extension.** A `<screen-shader>` element is injected
+      as a direct child of `<html>` on every page, and it paints a full-viewport `<div>` at
+      `background: rgb(17,17,17)`, `opacity: 1`, `z-index: 2147483645` — the maximum. **The
+      capture pipeline was working the whole time and faithfully photographing an opaque
+      overlay.** Hiding that div in the tab and re-capturing returned example.com in full, and
+      then `palette-beta`'s landing headline in full.
+
+      ⚠ **THE SAME EXTENSION WAS VISIBLE IN PALETTE-15's OWN SWEEP AND WAS NOT CONNECTED TO THIS.**
+      That phase's first paint reading listed `html` at `rgb(17, 17, 17)` and a `<screen-shader>`
+      element, and treated both as chrome to filter out. The value in that reading and the value
+      of the black frames are the same number.
+
+      **How to take a picture:** hide any `div` whose `z-index` exceeds 2,000,000,000 and which
+      covers the viewport, then capture. It is per-tab and reversible; nothing in the extension's
+      own settings is touched.
+
+      ⚠ **AND THE GENERAL RULE, WHICH IS WHY THIS IS FILED RATHER THAN JUST FIXED: A RECORDED
+      LIMITATION IS A CLAIM, AND IT NEEDS A SOURCE LIKE ANY OTHER NUMBER.** This one was
+      reproduced faithfully five times and diagnosed never — every phase re-ran the observation
+      and inherited the conclusion. *"A mechanism that reports health it cannot observe is worse
+      than no mechanism"* is this repo's rule; **a mechanism that reports a limitation it never
+      diagnosed is the same failure with the sign flipped.**
+      ⚠ **THE `innerWidth`/`outerWidth`/`screen.width` ALL ZERO CLAIM IN THE SAME BRIEFS IS ALSO
+      FALSE** — measured 2560 in the last two phases. Both halves of that standing caveat are now
+      known wrong.
+
+      ⚠ **WHAT IS *NOT* EXPLAINED BY THE EXTENSION, AND STAYS ON THE LIST AS A CONDITION TO
+      CONTROL FOR:** the backgrounded-tab transition stall, the memoised `getComputedStyle` across
+      five brand/mode combos, and `resize_window` reporting success while changing nothing. Danny's
+      observation that he may have been *using* the browser while a session read from it would
+      account for the first of those — a tab only backgrounds when something else takes focus.
+      **Recorded as a condition to check, not as a diagnosis:** if a reading looks wrong in a way
+      that smells like the reader, ask whether the browser was contended before concluding an
+      environment limitation. **That is the question nobody asked about the black frames.**
+
+- [x] **✅ THE LAST CSS FILE — `src/index.css` IS GONE (Palette-16, 2026-09-15).**
+
+      Five declarations. **One was load-bearing, one was dead, and three were carried forward.**
+      `body { margin: 0 }` (also written imperatively by `App.jsx`'s font loader, but that runs
+      after mount — this is the first paint), the `body` font stack, and the two font-smoothing
+      hints now live in `src/utils/bodyDefaults.js`, applied from `index.jsx` at the point the
+      stylesheet used to load. ⚠ **`code { font-family: … }` WAS NOT CARRIED FORWARD: nothing in
+      `src/` renders a `<code>` element — checked, zero matches.** Preserving it would have been
+      preserving the file's contents rather than its behaviour.
+
+      ⚠ **AND IT WAS MASKING A REFERRER-FACING DEFECT.** Measured in a browser across four
+      surfaces — signup (21 visible text nodes), the admin panel (75), the legal pages (64), the
+      referrer app (72) — **exactly ONE element a real visitor can see inherited `body`'s font**:
+      `ExperiencePopup`'s "0 / 2000" character counter. Its card declares no family and its
+      ancestor chain reaches `body` **without passing through `Screen`**, so it painted
+      `-apple-system` on a contractor's surface. **Deleting the rule outright would have moved it
+      to the browser default — worse, not better.**
+
+      **So the removal was split, and the split is the whole design.** `applyBodyDefaults()`
+      reproduces the removed declarations EXACTLY, so every surface outside `ThemeProvider` — the
+      admin tree, the legal pages, the crash screen — is unchanged; verified, both at 75 and 64
+      nodes with identical family distributions before and after. `ThemeProvider` additionally
+      writes the **mounted** body font onto `document.body`, on the seam that already writes the
+      page background (Ruling 4). The referrer app went from **2 nodes on the system stack to 0**,
+      and the counter now paints `Lato` — the contractor's face.
+      ⚠ **REPAIRING `ExperiencePopup` ALONE WOULD HAVE CLOSED ONLY THE NODE A WALKTHROUGH
+      HAPPENED TO OPEN.** Setting the inherited default correctly closes the class, including the
+      modal states no browser pass reached — which is why the fix is in the provider and not in
+      the component.
+
+      **B.7's two fences were re-ruled, not deleted.** One asserted *"`src/index.css` still sets a
+      SYSTEM stack on body — recorded, not fixed"* and was **built to fail the day the file went**
+      — it did, with `ENOENT`. Deleting it would have left `body`'s font guarded by nothing, so it
+      is replaced by a pointer plus a full fence in `bodyDefaults.test.jsx`. The other — *"Screen
+      declares the body role"* — **survives, but its rationale inverted**: it justified itself on
+      the grounds that falling through to `body` meant a system stack rather than the contractor's
+      face, and that is now the opposite of true. Both old texts are quoted where they stood.
 
 - [ ] **⚠ THE LANDING PAGE CAN PRELOAD A CONTRACTOR'S FACE AND THE SPA CANNOT — AN ASYMMETRY WORTH
       USING.** *(2026-09-15, A.5.)* `useReferrerFonts()` preloads the platform defaults only, and

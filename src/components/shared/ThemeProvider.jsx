@@ -461,10 +461,37 @@ function ThemeLayer({ children, fetchStoredMode, mode: pinnedMode }) {
   // RESTORES ON UNMOUNT rather than clearing. Another provider instance may sit
   // above this one — ResetPinScreen carries its own — and clearing would leave
   // the page unpainted on the way back out.
+  // ── AND THE INHERITED FAMILY, ON THE SAME SEAM (Palette-16) ───────────────
+  //
+  // ⚠ `src/index.css` USED TO PUT A SYSTEM STACK ON `body`, and it is gone — a
+  // CRA leftover and a standing violation of "never add CSS files".
+  // `applyBodyDefaults()` reproduces its declarations exactly for surfaces
+  // OUTSIDE this provider; this line is the part that makes the removal an
+  // improvement rather than a sideways move.
+  //
+  // ⚠ ANYTHING IN THE THEMED TREE THAT INHERITS ITS FAMILY NOW GETS THE
+  // CONTRACTOR'S FACE. Measured in a browser before this change: of 232 visible
+  // text nodes across four surfaces, exactly one a real visitor sees inherited
+  // `body` — `ExperiencePopup`'s "0 / 2000" counter, whose card declares no
+  // family and whose ancestors reach `body` WITHOUT passing through `Screen`.
+  // It painted `-apple-system` on a contractor's surface.
+  //
+  // ⚠ REPAIRING THAT COMPONENT ALONE WOULD HAVE CLOSED ONLY THE NODE A
+  // WALKTHROUGH HAPPENED TO OPEN. Setting the inherited default correctly closes
+  // the class, including the modal states no browser pass reached — which is the
+  // whole reason this sits here and not in `ExperiencePopup`.
+  //
+  // RESTORES ON UNMOUNT, never clears, for the identical reason the background
+  // does: another provider instance may sit above this one.
   useEffect(() => {
-    const previous = document.body.style.background;
+    const previousBackground = document.body.style.background;
+    const previousFontFamily = document.body.style.fontFamily;
     document.body.style.background = vars[RENDER_TOKEN_VARS.bg];
-    return () => { document.body.style.background = previous; };
+    document.body.style.fontFamily = vars[FONT_VARS.body];
+    return () => {
+      document.body.style.background = previousBackground;
+      document.body.style.fontFamily = previousFontFamily;
+    };
   }, [vars]);
 
   // ── THE SETTER (C/DL-3c Phase 3-A, CD-6 / A30) ─────────────────────────────

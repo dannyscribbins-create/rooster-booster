@@ -166,21 +166,45 @@ describe('T5 — the font: inherit sites, and what src/index.css does to them', 
   });
 
   it('Screen — the universal container every referrer surface renders inside — declares the body role', () => {
-    // ⚠ THIS IS THE LINK THE INHERIT SITES HANG FROM. If it ever stops declaring
-    // a family, all 13 fall through to `body`, and `src/index.css` sets that to
-    // a SYSTEM stack (-apple-system, …) rather than the contractor's face. That
-    // file is a CRA leftover and a standing violation of "never add CSS files";
-    // removing it is its own job, and this case is what would catch the fallout.
+    // ⚠ THE FENCE SURVIVES PALETTE-16; ITS RATIONALE DID NOT, AND THE OLD ONE IS
+    // QUOTED HERE RATHER THAN OVERWRITTEN because a reader who discounts a stale
+    // sentence keeps its conclusion.
+    //
+    // IT READ: "If it ever stops declaring a family, all 13 fall through to
+    // `body`, and `src/index.css` sets that to a SYSTEM stack (-apple-system, …)
+    // rather than the contractor's face. That file is a CRA leftover and a
+    // standing violation of 'never add CSS files'; removing it is its own job,
+    // and this case is what would catch the fallout."
+    //
+    // ⚠ THAT JOB IS DONE AND THE CONSEQUENCE INVERTED. `src/index.css` is gone.
+    // `ThemeProvider` now writes the MOUNTED body font onto `document.body`, so
+    // falling through to `body` INSIDE the themed tree yields the contractor's
+    // face — the thing the old sentence said it would not.
+    //
+    // ⚠ SO WHY KEEP THE FENCE AT ALL? Because `Screen` is what carries the
+    // family in the frame BEFORE the provider's effect runs, and because the
+    // inherit sites' nearest declaring ancestor should be a component, not the
+    // document body. Inheriting from `body` is now a correct FALLBACK rather
+    // than the intended path.
     const [, screenSrc] = FILES.find(([f]) => f.endsWith('shared/Screen.jsx'));
     expect(screenSrc).toMatch(/fontFamily:\s*fontVar\('body'\)/);
   });
 
-  it('src/index.css still sets a SYSTEM stack on body — recorded, not fixed', () => {
-    // Asserted so the interaction above is a known quantity rather than a
-    // surprise. If this file is ever removed, this case fails and points at the
-    // 13 sites that would change what they inherit.
-    const css = fs.readFileSync(path.join(SRC, 'index.css'), 'utf8');
-    expect(css).toMatch(/body\s*\{[^}]*font-family:\s*-apple-system/);
+  it('the body default is carried by a MODULE now, not a stylesheet', () => {
+    // ⚠ THIS REPLACES "src/index.css still sets a SYSTEM stack on body", WHICH
+    // WAS BUILT TO FAIL THE DAY THE FILE WENT — and it did, with ENOENT. Simply
+    // deleting it would have left body's font guarded by nothing: an assertion
+    // about a removed file is an assertion about nothing, and it passes forever.
+    //
+    // The full replacement lives in bodyDefaults.test.jsx, which checks the
+    // module's values against the removed file's and pins the provider write.
+    // This case is the POINTER, so a reader of the inherit-site suite still
+    // learns where the answer moved.
+    expect(fs.existsSync(path.join(SRC, 'index.css')), 'the stylesheet is back').toBe(false);
+    const defaults = fs.readFileSync(path.join(SRC, 'utils/bodyDefaults.js'), 'utf8');
+    expect(defaults).toMatch(/-apple-system/);
+    const provider = fs.readFileSync(path.join(SRC, 'components/shared/ThemeProvider.jsx'), 'utf8');
+    expect(provider).toMatch(/document\.body\.style\.fontFamily\s*=\s*vars\[FONT_VARS\.body\]/);
   });
 });
 

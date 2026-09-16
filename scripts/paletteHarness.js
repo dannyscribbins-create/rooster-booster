@@ -3,11 +3,39 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // PALETTE-0 — THE COMPUTED-STYLE HARNESS
 //
-// ⚠ WHY THIS EXISTS RATHER THAN SCREENSHOTS. Screenshot capture is unusable in
-// this environment: reproduced against https://example.com — a white page with
-// black text — the capture returned a uniformly near-black frame AND REPORTED
-// SUCCESS. A mechanism that reports health it cannot observe is worse than no
-// mechanism, so pixels are off the table here.
+// ⚠⚠ THE SCREENSHOT CLAIM BELOW WAS WRONG, AND IT IS CORRECTED RATHER THAN
+// DELETED BECAUSE IT WAS CARRIED IN EVERY PHASE BRIEF FROM PALETTE-12 TO
+// PALETTE-16. It read:
+//
+//     "⚠ WHY THIS EXISTS RATHER THAN SCREENSHOTS. Screenshot capture is
+//      unusable in this environment: reproduced against https://example.com — a
+//      white page with black text — the capture returned a uniformly near-black
+//      frame AND REPORTED SUCCESS. A mechanism that reports health it cannot
+//      observe is worse than no mechanism, so pixels are off the table here."
+//
+// ⚠ THE OBSERVATION WAS ACCURATE AND THE DIAGNOSIS WAS NOT. Re-run against the
+// same page on 2026-09-15: the black frame reproduced exactly. The cause is a
+// SCREEN-DIMMING BROWSER EXTENSION — a `<screen-shader>` element injected as a
+// direct child of `<html>`, which paints a full-viewport `<div>` at
+// `background: rgb(17,17,17)`, `opacity: 1`, `z-index: 2147483645`. The capture
+// pipeline was working the whole time and faithfully photographing an opaque
+// overlay. Hiding that div and re-capturing returned example.com in full.
+//
+// ⚠ SO PIXELS ARE AVAILABLE, and the first thing a phase that wants one should
+// do is neutralise the overlay in its own tab. Palette-16 used a screenshot to
+// settle a question three independent width measurements had answered
+// incorrectly — see the note on the width discriminator below.
+//
+// ⚠ AND THE GENERAL LESSON IS THE ONE THIS FILE ALREADY PREACHES, TURNED ON
+// ITSELF: "a mechanism that reports health it cannot observe is worse than no
+// mechanism" — a mechanism that reports a LIMITATION it never diagnosed is the
+// same failure wearing the opposite sign. The frame was black; nobody asked
+// what was painting it.
+//
+// THIS MODULE IS STILL THE RIGHT TOOL for what it does. A screenshot cannot
+// tell a mounted custom property from its fallback, and that is the question
+// the arc actually needed answered — so the reasoning below stands on its own
+// merits rather than on screenshots being impossible.
 //
 // What DOES work, measured the same session: getComputedStyle in a real browser
 // RESOLVES var(), and distinguishes a mounted value from a fallback —

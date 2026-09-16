@@ -344,10 +344,27 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1425 server tests across 232 suites, and 1056 React tests across 64 files** (measured 2026-09-15 by the landing-page-fonts commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE LANDING-FONTS COMMIT ITSELF.** 1410 → 1425 is its 15 server
-  cases in one new file, and 225 → 232 is that file's seven `describe` blocks. The REACT numbers
-  did not move and were re-measured rather than carried — that commit touches no `src/` file.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1425 server tests across 232 suites, and 1070 React tests across 65 files** (measured 2026-09-15 by the Palette-16 commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-16 COMMIT ITSELF.** 1056 → 1070 is **+14 from a new
+  file holding 13**, and the fourteenth is the point: `adminBranding.test.jsx` WALKS `src/`
+  recursively and emits ONE CASE PER SWEPT FILE, so the new `src/utils/bodyDefaults.js` added one
+  by itself. 64 → 65 is the new test file. The SERVER numbers did not move and were re-measured
+  rather than carried.
+  ⚠ **AND THE FOURTEENTH WAS PROVEN, NOT ASSUMED** — the new util was stashed and
+  `adminBranding.test.jsx` re-run: 59 → 58, then back. **A total one higher than the new tests
+  account for is the only signal this leaves**, and CLAUDE.md already records the identical shape
+  from `fontManifest.mjs`. The breakdown is the check; the total agreeing is not.
+  ⚠ **THE COUNT IN THAT FILE'S OWN HEADER WAS WRONG TWICE** — written as "12 across 4", counted as
+  13 across 5. The suite number was never counted; the case number went stale when a case was
+  SPLIT after jsdom turned out not to model `-webkit-font-smoothing`. Four earlier slips in this
+  arc were all in the CASE count, so the habit had formed around the one number being watched.
+  **Re-count every number from the file, at the end.**
+  ⚠ **A KNOWN FLAKE COST ONE GATE RUN AND IS NOT A REGRESSION:** `webhookContractorResolution`
+  failed with `Cannot use a pool after calling end on the pool` on a commit touching only `src/`.
+  Re-running was green. That is the documented webhook tenant flake.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE LANDING-FONTS COMMIT ITSELF.* 1410 →
+  1425 is its 15 server cases in one new file, and 225 → 232 is that file's seven `describe`
+  blocks. The REACT numbers did not move and were re-measured rather than carried.
   ⚠ **15 CASES, COUNTED WITH `grep -c`, AND THE FIRST PASS PREDICTED 14 — AGAIN.** That is the
   **FOURTH** recorded estimate-instead-of-count slip in this arc **and all four were LOW**, which
   is the direction that matters: a low prediction is indistinguishable from a suite that partly
