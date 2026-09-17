@@ -20,14 +20,22 @@
 // standing convention for a graphic. Asserting 4.5 on the dot would report a
 // defect that is not one; asserting 3 on the label would miss one that is.
 //
-// ── ⚠ THE EXCEPTION IS PINNED TO ITS EXACT VALUE, NOT WAIVED ────────────────
-// `booking_pending`'s dot is FILED, not fixed — it is outside the ruling this
-// file ships under, and a phase that quietly repairs what it was not asked to
-// repair is how a surface ends up changed with nobody able to say when. But an
-// open-ended carve-out is a rubber stamp: it would let the value drift further
-// and stay green. So the exception asserts the measured ratio EXACTLY. If anyone
-// fixes it, this fires and they delete the entry. If anyone worsens it, this
-// fires. No new defect can join the list silently.
+// ── ⚠ THE EXCEPTION MECHANISM, AND WHY THE LIST IS NOW EMPTY ────────────────
+// This paragraph read "`booking_pending`'s dot is FILED, not fixed". That was
+// true when written and is now FALSE: it was repaired in its own ruled phase
+// (2026-09-16, #d97706 -> #ca6f06, 2.86 -> 3.26:1) and its entry was removed.
+// The corrected sentence is here rather than deleted because the MECHANISM still
+// governs the next entry anyone adds:
+//
+// An open-ended carve-out is a rubber stamp — it lets a value drift further and
+// stay green. So a filed entry asserts its measured ratio EXACTLY: if anyone
+// fixes it this fires and they delete the entry, and if anyone worsens it this
+// fires too.
+// ⚠ AND A PASSING KEY MAY NOT SIT ON THE LIST AT ALL. That half was NOT here
+// originally — the guard-proof found that adding `sold` (dot exactly 3.00) kept
+// the file green, because the floor test skipped it and the pin test accepted
+// it. The claim "pinned, therefore unrubber-stampable" was about a mechanism the
+// mechanism did not support until a fourth case was added.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
@@ -48,10 +56,13 @@ function ratios(cfg) {
   };
 }
 
-// ⚠ KNOWN, FILED, AND PINNED TO THE MEASURED VALUE — see the header.
-const FILED_DOT_SHORTFALLS = Object.freeze({
-  booking_pending: 2.86,
-});
+// ⚠ EMPTY, AND THAT IS THE CLOSURE HALF RATHER THAN A BROKEN LIST. It carried
+// `booking_pending: 2.86` — the defect this table found when it was written,
+// filed because it sat outside that phase's ruling. It was fixed in its own
+// ruled phase (2026-09-16), so the entry was REMOVED rather than left to sit as
+// a permanent carve-out. A list that can only grow stops being a list of open
+// work and becomes a list of things that were once true.
+const FILED_DOT_SHORTFALLS = Object.freeze({});
 
 describe('STATUS_CONFIG — every pipeline pill clears its contrast floor', () => {
 
@@ -118,6 +129,24 @@ describe('STATUS_CONFIG — every pipeline pill clears its contrast floor', () =
         `${key} is on the filed-shortfall list but ${expected}:1 clears the ${GRAPHIC_FLOOR}:1 floor — it does not belong there`
       ).toBeLessThan(GRAPHIC_FLOOR);
     }
+  });
+
+  it('the booking_pending dot is repaired at the RULED value, inside the sibling band', () => {
+    // ⚠ THE VALUE IS NAMED, NOT JUST THE FLOOR. "It clears 3:1" is satisfied by
+    // any darker amber, including one picked at random. #ca6f06 is the current
+    // hue darkened 7% — the smallest change that clears with margin — and it
+    // lands INSIDE the band its siblings occupy (3.00 / 3.08 / 3.29 / 3.32)
+    // rather than above it, so the dot does not read heavier than every other.
+    expect(STATUS_CONFIG.booking_pending.dot).toBe('#ca6f06');
+    expect(STATUS_CONFIG.booking_pending.bg).toBe('#fef3c7');
+    expect(ratios(STATUS_CONFIG.booking_pending).dot).toBeCloseTo(3.26, 2);
+
+    // ⚠ THE LABEL WAS OUT OF SCOPE AND DID NOT MOVE. It reads a DIFFERENT key
+    // (amberText), which is why this could be a dot-only repair at all; had they
+    // shared one key the label would have moved with it and that needed a ruling.
+    expect(STATUS_CONFIG.booking_pending.color).toBe('#b45309');
+    expect(ratios(STATUS_CONFIG.booking_pending).text).toBeCloseTo(4.51, 2);
+    expect(STATUS_CONFIG.booking_pending.dot).not.toBe(STATUS_CONFIG.booking_pending.color);
   });
 
   it('lead is the pair this phase repaired, and it is repaired at the RULED value', () => {

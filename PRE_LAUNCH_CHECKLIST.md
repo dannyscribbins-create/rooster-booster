@@ -5581,6 +5581,38 @@ quadruples is evidence about the estimate, not about the wave:
       `src/constants/statusConfigContrast.test.js`, so it cannot drift further or be quietly
       widened. **OWNER: unassigned.**
       → `src/constants/statusConfigContrast.test.js` · `theme.js`'s `grayText` comment
+      ✅ **CLOSED 2026-09-16 — the dot is now `#ca6f06` at 3.26:1.** *(Ruled by Danny; its own
+      small standalone phase, which is the same disposition the `lead` fix took.)*
+      **RENDERED on palette-beta, dashboard preview, `late-stages` variant: `rgb(202,111,6)` on
+      `rgb(254,243,199)` = 3.26:1, IDENTICAL in light and dark** — status pills are mode-blind,
+      so it is now above the graphic floor in both rather than below it in both.
+      ⚠ **THE HEX ABOVE IS WRONG AND IS LEFT AS WRITTEN, BECAUSE IT IS THE RECORD.** The dot was
+      **`#d97706`** (`R.amber`), not `#b45309`. `#b45309` is `R.amberText` — the LABEL — which
+      measures 4.51:1 on that fill. **The RATIO (2.86) was right and the hex beside it named the
+      wrong key**, which is the more dangerous shape: a reader following it would have edited the
+      label and wondered why the dot did not move. Corrected here rather than renumbered in
+      place.
+      ⚠ **DOT-ONLY, AND THAT WAS POSSIBLE ONLY BECAUSE THE KEYS ARE SEPARATE.** The dot reads
+      `R.amber`; the label reads `R.amberText`. Verified rendered: the label is still
+      `rgb(180,83,9)`. Had they shared one key the label would have moved with it, which the
+      ruling required be reported before changing.
+      ⚠ **`R.amber` HAS EXACTLY ONE READER IN `src/`** — this dot — with no destructured form,
+      needle validated against its own known positive first. So the value could move here rather
+      than the row being given a private one.
+      ⚠ **THE VALUE IS THE SAME HUE DARKENED 7%, NOT A NEW COLOUR, AND IT LANDS INSIDE THE
+      SIBLING BAND.** The other dots sit at 3.00 / 3.08 / 3.29 / 3.32; 3.26 sits among them.
+      Reusing `amberText` (4.51) was rejected — it would make `dot === color`, which only `lead`
+      does deliberately, and would read conspicuously heavier than every other dot.
+      ⚠ **AND `statusTheme` RECORDS THE SAME HEX `#D97706` AT "3.10:1, graphic threshold only" —
+      ON A DIFFERENT GROUND.** On `amberBg` it was 2.86 the whole time. *A token floored against
+      one ground is not safe on another*, in the live palette rather than in a rule. ⚠ The ADMIN
+      palette hit the identical hex on ITS ground too (`adminTheme.js`: *"was #D97706 — 2.93:1 on
+      linen, the only solid that failed even 3:1"*) and moved it to `#B45309`. **Three grounds,
+      three different answers, one hex.**
+      ⚠ **THE FILED-EXCEPTION LIST IS NOW EMPTY, AND THE ENTRY WAS REMOVED RATHER THAN LEFT.**
+      A list that can only grow stops being a list of open work and becomes a list of things that
+      were once true.
+      → `src/constants/statusConfigContrast.test.js` · `theme.js`'s `amber` comment
 
       ⚠ **THE REP APP's `ScreenTitle` SUBTITLE — 4.15:1 RENDERED, LIGHT ONLY.** Arithmetic said
       4.13; the rendered figure is 4.15, on `--rm-bg` (`#F4FBFA`). ⚠ **In DARK it measures

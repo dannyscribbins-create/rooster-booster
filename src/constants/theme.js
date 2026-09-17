@@ -78,7 +78,19 @@ export const R = {
   green:     "#16a34a",
   greenBg:   "#dcfce7",
   greenText: "#15803d",
-  amber:     "#d97706",
+  // ⚠ WAS "#d97706", WHICH MEASURED 2.86:1 ON amberBg AND FAILED THE 3:1 GRAPHIC
+  // FLOOR. Its only reader is STATUS_CONFIG.booking_pending's DOT — the "Booking
+  // Sent" pill — so the value could be moved here rather than given the row a
+  // private one. Ruled by Danny, 2026-09-16. Now 3.26:1.
+  // ⚠ IT IS THE SAME HUE DARKENED 7%, NOT A NEW COLOUR. The sibling dots sit at
+  // 3.00 / 3.08 / 3.29 / 3.32, so 3.26 lands inside the family band. Reusing
+  // amberText (#b45309, 4.51) was rejected: it would make dot === color, which
+  // only `lead` does deliberately, and would read conspicuously darker than every
+  // other dot.
+  // ⚠ AND statusTheme RECORDS THIS SAME HEX AT "3.10:1, graphic threshold only"
+  // — on a DIFFERENT ground. A token floored against one ground is not safe on
+  // another; on amberBg it was 2.86 the whole time.
+  amber:     "#ca6f06",
   amberBg:   "#fef3c7",
   amberText: "#b45309",
   blue:      "#2563eb",
