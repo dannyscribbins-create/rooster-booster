@@ -1969,6 +1969,12 @@ this before citing the mockup as a dated authority.
 3. Read every file that will be touched — in full, before touching it
 4. For any function being modified, search the codebase for all call sites and list them
 5. Produce a brief impact statement before proceeding
+6. **RULINGS CHECK — every build phase, before code and again before commit.** List every
+   ruling recorded for the arc or phase (checklist tables, spec amendments, dated RULING
+   lines) and state, for each, how the diff complies. **A ruling is not self-applying; it
+   binds only when checked. A test that pins a behaviour a ruling forbids is itself a
+   violation.** (Origin: Preview-1, `9b1fe59` — P2 recorded in `a2772e2`, violated one
+   commit later, and pinned by a test.)
 
 **After completing changes:**
 1. Re-read every modified file in full
@@ -1986,6 +1992,8 @@ this before citing the mockup as a dated authority.
    content for that path, bypassing the index, which can silently re-add a file you just
    removed with `git rm --cached`. Stage, verify, then commit bare.
 7. Never commit a broken or partial state
+8. Run the RULINGS CHECK again (pre-change step 6) — against the final diff this time, not
+   against the plan.
 
 ⚠ **NEVER ADD OR EDIT REPOSITORY FILES THROUGH THE GITHUB WEB UI.** Write to the local
 working tree and commit through the normal path.
