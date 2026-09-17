@@ -54,6 +54,10 @@
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import BrandingPreview from './BrandingPreview';
+// Mounted directly by the FULL-PAGE half of the body-scope pair: the preview
+// half proves the write is scoped, and that half proves production is unchanged.
+// Neither is evidence on its own — see the pair's own comments.
+import ThemeProvider from '../shared/ThemeProvider';
 import { BRANDING_THEME_DEFAULTS, resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 // B-3 reads the engine's own answer rather than restating one, so an expectation
 // here cannot drift from what the app derives.
@@ -110,38 +114,81 @@ function rgbOf(hex) {
 // `linear-gradient(...)`, and jsdom's CSS parser drops declarations it cannot
 // parse — so a login-screen assertion would read an empty string whatever the
 // component resolved.
-function resolveTokens(formData) {
-  const { container, unmount } = render(<BrandingPreview formData={formData} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
-
-  // PRECONDITION, and it guards every caller. If the Dashboard screen did not
-  // render, every token below reads undefined — which would satisfy each of the
-  // absence assertions in this file while proving absolutely nothing.
-  const avatar = screen.getByText('JD');
-  const dollar = Array.from(container.querySelectorAll('span')).find(s => s.textContent === '$');
-  if (!dollar) throw new Error('the preview did not render its balance card — nothing below is meaningful');
-
-  const styleBlob = Array.from(container.querySelectorAll('*'))
+// ── ⚠ RE-POINTED IN PREVIEW-1, AND THE OBSERVABLE CHANGED KIND ──────────────
+//
+// This helper used to probe the hand-painted `DashboardPreview` illustration for
+// three inline colours — the avatar's `color`/`backgroundColor` and a lone `$`
+// span. That illustration is GONE: the dashboard view now mounts the real
+// referrer `Dashboard` inside `PreviewFrame`, so those nodes do not exist and
+// every caller threw.
+//
+// ⚠ THE FAILURE WAS LOUD ONLY BECAUSE THE OLD HELPER HAD A PRECONDITION. It
+// threw unless the `$` span was found. Without that guard these seven tests
+// would have gone VACUOUSLY GREEN against a surface with no colours to read —
+// every absence assertion satisfied by a preview that painted nothing. The guard
+// is preserved below in the new shape, for the same reason.
+//
+// ── ⚠ WHAT IS NOW OBSERVED, AND IT IS NOT THE SAME QUANTITY ─────────────────
+// The illustration painted the STORED hexes directly. The real surface mounts
+// the DERIVED render tokens, which are contrast-nudged and CROSS OVER (B-1):
+// render `--rm-primary` comes from the stored SECONDARY colour, and render
+// `--rm-secondary` from the stored PRIMARY. The fields below are therefore named
+// `renderPrimary` / `renderSecondary` rather than `primary` / `secondary`, so a
+// later reader cannot mistake one set for the other — which is the conflation
+// CLAUDE.md records as having carried A20 wrong for weeks.
+//
+// ⚠ AND THE ACCENT SLOT HAS NO OBSERVABLE HERE AT ALL, WHICH IS A REAL COVERAGE
+// LOSS AND IS RECORDED RATHER THAN QUIETLY DROPPED. `accentColor` has no render
+// token — there is no `--rm-accent`, verified in `themeTokens.mjs` — so the real
+// mount cannot show it. The accent assertions that used to ride on the
+// illustration are re-pointed at the RESOLVER directly, which is a strictly
+// weaker claim: it proves the resolver defaults correctly, not that this
+// component consults it for that slot. Filed as owed.
+function frameStyleBlob() {
+  const frame = document.querySelector('iframe[data-preview-frame]');
+  if (!frame?.contentDocument) return '';
+  return Array.from(frame.contentDocument.querySelectorAll('*'))
     .map(el => el.getAttribute('style') || '')
     .join(' | ');
+}
+
+async function resolveTokens(formData) {
+  const { unmount } = render(<BrandingPreview formData={formData} />);
+  await screen.findByText('Live Preview');
+  fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+
+  // PRECONDITION, and it guards every caller — the direct descendant of the old
+  // `$`-span check. If the dashboard view did not mount its provider, every
+  // token below reads '' and satisfies each absence assertion while proving
+  // nothing at all.
+  const root = await waitFor(() => {
+    const el = themeRoot();
+    if (!el) throw new Error('the dashboard view did not mount a provider — nothing below is meaningful');
+    return el;
+  });
 
   return {
-    primary:   avatar.style.color,
-    secondary: dollar.style.color,
-    accent:    avatar.style.backgroundColor,
-    styleBlob,
+    renderPrimary:   root.style.getPropertyValue('--rm-primary').trim(),
+    renderSecondary: root.style.getPropertyValue('--rm-secondary').trim(),
+    styleBlob:       frameStyleBlob(),
     unmount,
   };
 }
 
-// Asserts every token came out as a real, non-empty colour. Every absence
-// assertion in this file is preceded by this: an empty or undefined token
-// contains none of Accent's literals either, so without it "Accent's navy is
-// absent" is satisfied by a preview that painted nothing at all.
+// What the engine says this draft should paint. Read from the real resolver and
+// the real derivation, so an expectation here cannot drift from what the app
+// does — the same reasoning the drift guard below is built on.
+function expectedTokens(formData, mode = 'light') {
+  return deriveThemeTokens(resolveBrandingTheme(formData), mode);
+}
+
+// Asserts both render tokens came out as real hex colours. Every absence
+// assertion in this file is preceded by this: an empty token contains none of
+// Accent's literals either, so without it "Accent's navy is absent" is satisfied
+// by a preview that painted nothing.
 function assertAllTokensPainted(t) {
-  for (const [name, value] of [['primary', t.primary], ['secondary', t.secondary], ['accent', t.accent]]) {
-    expect(value).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
-    if (!/^rgb\(\d+, \d+, \d+\)$/.test(value)) throw new Error(`${name} was not painted`);
+  for (const [name, value] of [['renderPrimary', t.renderPrimary], ['renderSecondary', t.renderSecondary]]) {
+    expect(value, `${name} was not painted`).toMatch(/^#[0-9a-fA-F]{6}$/);
   }
 }
 
@@ -149,130 +196,137 @@ describe('C/DL-2 Phase 3c — BrandingPreview resolves through src/utils/brandin
 
   // ── 1. THE DEFAULTS ────────────────────────────────────────────────────────
 
-  it('[RED] unset form state resolves the ROOFMILES defaults, not Accent Roofing\'s', () => {
+  it('[RED] unset form state resolves the ROOFMILES defaults, not Accent Roofing\'s', async () => {
     // THE CENTRAL TEST. An admin who has opened Branding and saved nothing is
-    // looking at what their live page will render — and today they are looking at
-    // a different company's brand.
-    const t = resolveTokens({});
-    assertAllTokensPainted(t);
+    // looking at what their live page will render — and once upon a time they
+    // were looking at a different company's brand.
+    //
+    // ⚠ NOT CIRCULAR, AND THAT IS WORTH STATING BECAUSE IT LOOKS IT. The
+    // expectation runs the same resolver the component runs, so on its own it
+    // would pass against any component that called the resolver at all. The
+    // HAND-WRITTEN literal pair below is what pins the actual values: if someone
+    // changed the platform defaults, `expectedTokens` would follow silently and
+    // these two lines would not.
+    expect(BRANDING_THEME_DEFAULTS.primaryColor.toUpperCase()).toBe(ROOFMILES_PRIMARY.toUpperCase());
+    expect(BRANDING_THEME_DEFAULTS.secondaryColor.toUpperCase()).toBe(ROOFMILES_SECONDARY.toUpperCase());
 
-    expect(t.primary).toBe(rgbOf(ROOFMILES_PRIMARY));
-    expect(t.secondary).toBe(rgbOf(ROOFMILES_SECONDARY));
+    const t = await resolveTokens({});
+    assertAllTokensPainted(t);
+    const expected = expectedTokens({});
+
+    expect(t.renderPrimary.toUpperCase()).toBe(expected.primary.toUpperCase());
+    expect(t.renderSecondary.toUpperCase()).toBe(expected.secondary.toUpperCase());
     t.unmount();
   });
 
   it('[RED] the accent slot falls back to the resolver\'s accent default, never to Accent Roofing\'s light blue', () => {
-    // ⚠ THIS TEST WAS TIGHTENED WHEN THE OPEN QUESTION IT RAISED WAS RULED.
-    // It was originally written as a decidable either/or, because the resolver
-    // exposed only THREE colour tokens while the preview paints FOUR slots, and
-    // the fourth (`accent`, sourced from formData.accent_color) had no home.
+    // ⚠ RE-POINTED AT THE RESOLVER IN PREVIEW-1, AND IT IS NOW A WEAKER CLAIM.
+    // This used to read the illustration's avatar `backgroundColor`, which was
+    // the accent slot painted on screen. The real surface has no accent
+    // observable — `accentColor` has NO render token, so there is no
+    // `--rm-accent` to read and nothing in the mounted tree carries it.
     //
-    // THE RULING (C/DL-2 Phase 3c): accent_color STAYS the source — it is a real
-    // column that GET/PUT /api/admin/settings already round-trips and that admins
-    // can already set, so re-pointing the slot at landing_bg_color would silently
-    // ignore a value they had saved. Its FALLBACK comes from shared code: the
-    // resolver gained an accentColor token, defaulting to #FDF0E7, a pale tint of
-    // the primary orange. The accent slot paints soft background washes, so a tint
-    // of the primary keeps the default palette internally coherent rather than
-    // introducing a fourth unrelated hue.
+    // What survives is the resolver's own behaviour: accent_color stays the
+    // source, and its fallback is the shared default rather than Accent's light
+    // blue. What is LOST is the link to this component — nothing here now proves
+    // BrandingPreview consults the resolver for that slot, because the component
+    // no longer paints it anywhere.
     //
-    // Asserted TWICE on purpose, following this file's existing convention:
-    // once against a HAND-DERIVED LITERAL (which pins the actual value) and once
-    // against the value READ FROM THE MIRROR (which is the drift guard — a re-typed
-    // constant would go on passing while the two copies diverged). Neither
-    // assertion alone is sufficient, and together they are not circular.
-    const t = resolveTokens({});
-    assertAllTokensPainted(t);
-
-    expect(t.accent).not.toBe(rgbOf('#D3E3F0'));
-    expect(t.accent).toBe(rgbOf('#FDF0E7'));
-    expect(t.accent).toBe(rgbOf(BRANDING_THEME_DEFAULTS.accentColor));
-    t.unmount();
+    // ⚠ IT IS KEPT RATHER THAN DELETED because the ruling it records (accent_color
+    // stays the source; the fallback comes from shared code) is still live and
+    // still worth a fence. It is NOT kept as evidence about this component.
+    expect(resolveBrandingTheme({}).accentColor.toUpperCase())
+      .toBe(BRANDING_THEME_DEFAULTS.accentColor.toUpperCase());
+    expect(resolveBrandingTheme({}).accentColor.toUpperCase()).not.toBe('#D3E3F0');
+    expect(resolveBrandingTheme({ accent_color: '#ABCDEF' }).accentColor.toUpperCase()).toBe('#ABCDEF');
   });
 
-  it('[RED] no hardcoded Accent Roofing literal survives into the preview\'s output', () => {
+  it('[RED] no hardcoded Accent Roofing literal survives into the preview\'s output', async () => {
     // NON-VACUITY, stated explicitly because an absence assertion is worthless
     // without it. TWO gates run before the sweep:
-    //   (a) resolveTokens throws unless the Dashboard mockup genuinely rendered —
-    //       a component that rendered nothing has no literals in it either;
-    //   (b) assertAllTokensPainted proves all three slots hold real rgb() colours,
-    //       so the sweep is looking at a fully-painted preview rather than a blank.
+    //   (a) resolveTokens throws unless the dashboard view genuinely mounted a
+    //       provider — a component that rendered nothing has no literals either;
+    //   (b) assertAllTokensPainted proves both render tokens hold real hex
+    //       colours, so the sweep looks at a painted surface rather than a blank.
     //
-    // KNOWN LIMIT OF THE SWEEP, recorded rather than glossed: jsdom drops
-    // `linear-gradient(...)` declarations it cannot parse, so a literal appearing
-    // ONLY inside a gradient would escape the blob. The three explicit token
-    // assertions below the sweep close that gap — the same three constants feed
-    // both the plain and the gradient usages, so a literal that survived anywhere
-    // is still resolved into one of these three slots.
-    const t = resolveTokens({});
+    // ⚠ THE SWEEP NOW WALKS THE FRAME'S DOCUMENT, NOT THE PARENT'S. The previewed
+    // surface lives inside the iframe; sweeping the parent would walk admin chrome
+    // and report clean about a document it never opened — the scope-gap failure
+    // this repo has shipped three times.
+    const t = await resolveTokens({});
     assertAllTokensPainted(t);
 
     for (const hex of ACCENT_LITERALS) {
       expect(t.styleBlob).not.toContain(hex);
       expect(t.styleBlob).not.toContain(rgbOf(hex));
-    }
-    for (const hex of ACCENT_LITERALS) {
-      expect([t.primary, t.secondary, t.accent]).not.toContain(rgbOf(hex));
+      expect([t.renderPrimary.toUpperCase(), t.renderSecondary.toUpperCase()])
+        .not.toContain(hex.toUpperCase());
     }
     t.unmount();
   });
 
   // ── 2. NO OVER-REACH ───────────────────────────────────────────────────────
 
-  it('[GREEN-by-design] populated form state is reflected verbatim', () => {
-    // THE COUNTERWEIGHT. A preview that painted the defaults unconditionally would
-    // satisfy every assertion above and make the live preview useless — its entire
-    // job is re-rendering from UNSAVED form state on every keystroke.
+  it('[GREEN-by-design] populated form state is reflected verbatim', async () => {
+    // THE COUNTERWEIGHT. A preview that painted the defaults unconditionally
+    // would satisfy every assertion above and make the live preview useless — its
+    // entire job is re-rendering from UNSAVED form state on every keystroke.
     //
-    // Green on arrival: the component already passes valid hex through. It is a
-    // regression fence around the rewire, and is reported as such.
-    const t = resolveTokens({
-      primary_color: '#123456', secondary_color: '#654321', accent_color: '#ABCDEF',
-    });
+    // ⚠ "VERBATIM" NOW MEANS "THROUGH THE DERIVATION", NOT "THE TYPED HEX". The
+    // render tokens are contrast-nudged and crossed over, so asserting the typed
+    // value would fail against a correct engine. The draft still has to REACH the
+    // engine, which is what the second pair of assertions pins: these tokens must
+    // differ from the platform defaults' tokens.
+    const draft = { primary_color: '#123456', secondary_color: '#654321', accent_color: '#ABCDEF' };
+    const t = await resolveTokens(draft);
     assertAllTokensPainted(t);
+    const expected = expectedTokens(draft);
+    const platform = expectedTokens({});
 
-    expect(t.primary).toBe(rgbOf('#123456'));
-    expect(t.secondary).toBe(rgbOf('#654321'));
-    expect(t.accent).toBe(rgbOf('#ABCDEF'));
+    expect(t.renderPrimary.toUpperCase()).toBe(expected.primary.toUpperCase());
+    expect(t.renderSecondary.toUpperCase()).toBe(expected.secondary.toUpperCase());
+    expect(t.renderPrimary.toUpperCase()).not.toBe(platform.primary.toUpperCase());
+    expect(t.renderSecondary.toUpperCase()).not.toBe(platform.secondary.toUpperCase());
     t.unmount();
   });
 
   // ── 3. THE SAME MALFORMED-HEX RULE AS THE SERVER ───────────────────────────
 
-  it('[RED] malformed hex resolves to the default, by the same rule the server applies', () => {
-    // The values that make this a REAL test rather than a restatement of the
-    // component's existing HEX_RE check: 'navy' and 'F26A1B' already fall back
-    // today — to Accent's navy. What changes is WHICH default they land on.
+  it('[RED] malformed hex resolves to the default, by the same rule the server applies', async () => {
+    // The values that make this a REAL test rather than a restatement of a HEX_RE
+    // check: 'navy' and 'F26A1B' already fell back before — to Accent's navy.
+    // What changed is WHICH default they land on.
     //
     // '#abc' is here deliberately: the 3-digit shorthand is legal CSS and is
     // REFUSED by the shared resolver, so this also pins that the component adopted
     // the resolver's regex rather than keeping its own near-identical one.
-    const t = resolveTokens({
-      primary_color: 'navy', secondary_color: 'F26A1B', accent_color: '#abc',
-    });
+    const draft = { primary_color: 'navy', secondary_color: 'F26A1B', accent_color: '#abc' };
+    const t = await resolveTokens(draft);
     assertAllTokensPainted(t);
+    const platform = expectedTokens({});
 
-    expect(t.primary).toBe(rgbOf(ROOFMILES_PRIMARY));
-    expect(t.secondary).toBe(rgbOf(ROOFMILES_SECONDARY));
-    expect(t.accent).not.toBe(rgbOf('#D3E3F0'));
+    expect(t.renderPrimary.toUpperCase()).toBe(platform.primary.toUpperCase());
+    expect(t.renderSecondary.toUpperCase()).toBe(platform.secondary.toUpperCase());
+    expect(resolveBrandingTheme(draft).accentColor.toUpperCase()).not.toBe('#D3E3F0');
     t.unmount();
   });
 
-  it('[RED] an empty-string colour is treated as unset, not painted as a literal empty value', () => {
+  it('[RED] an empty-string colour is treated as unset, not painted as a literal empty value', async () => {
     // A DB column reads NULL; a colour field the admin CLEARED reads ''. Same
     // intent, same answer — the equivalence the resolver's firstNonEmpty exists
     // for. The preview must not diverge from the page on it.
-    const t = resolveTokens({ primary_color: '', secondary_color: '', accent_color: '' });
+    const t = await resolveTokens({ primary_color: '', secondary_color: '', accent_color: '' });
     assertAllTokensPainted(t);
+    const platform = expectedTokens({});
 
-    expect(t.primary).toBe(rgbOf(ROOFMILES_PRIMARY));
-    expect(t.secondary).toBe(rgbOf(ROOFMILES_SECONDARY));
+    expect(t.renderPrimary.toUpperCase()).toBe(platform.primary.toUpperCase());
+    expect(t.renderSecondary.toUpperCase()).toBe(platform.secondary.toUpperCase());
     t.unmount();
   });
 
   // ── 4. THE DRIFT GUARD ─────────────────────────────────────────────────────
 
-  it('[RED] the preview\'s defaults ARE the mirror\'s, read from the mirror', () => {
+  it('[RED] the preview\'s defaults ARE the mirror\'s, read from the mirror', async () => {
     // THE IMPORTANT ONE, and the counterpart of
     // "the mapping's defaults are the server's ROOFMILES_DEFAULTS, read from the
     // server" in server/test/brandingTheme.test.js.
@@ -281,16 +335,21 @@ describe('C/DL-2 Phase 3c — BrandingPreview resolves through src/utils/brandin
     // here, because a test that re-typed them would go on passing while the two
     // drifted apart — which is exactly how this component ended up three colours
     // away from the server with nothing failing. The hand-written literals in the
-    // tests above still pin the actual values, so the pairing is not circular.
+    // first test still pin the actual values, so the pairing is not circular.
     //
     // ⚠ Satisfying this by copying BRANDING_THEME_DEFAULTS into a local constant
     // in BrandingPreview.jsx would pass this assertion and reintroduce the drift
     // in a new place. The component must CALL the mirror.
-    const t = resolveTokens({});
+    const t = await resolveTokens({});
     assertAllTokensPainted(t);
+    const fromMirror = deriveThemeTokens(
+      resolveBrandingTheme({ primary_color: BRANDING_THEME_DEFAULTS.primaryColor,
+                             secondary_color: BRANDING_THEME_DEFAULTS.secondaryColor }),
+      'light'
+    );
 
-    expect(t.primary).toBe(rgbOf(BRANDING_THEME_DEFAULTS.primaryColor));
-    expect(t.secondary).toBe(rgbOf(BRANDING_THEME_DEFAULTS.secondaryColor));
+    expect(t.renderPrimary.toUpperCase()).toBe(fromMirror.primary.toUpperCase());
+    expect(t.renderSecondary.toUpperCase()).toBe(fromMirror.secondary.toUpperCase());
     t.unmount();
   });
 
@@ -657,16 +716,27 @@ describe('B-3a — the preview gets its own viewport, so 100vh means the casing'
     expect(frame.style.transform).toContain('scale');
   });
 
-  it('B-3a — WHERE THE body BACKGROUND WRITE LANDS, recorded rather than assumed', async () => {
-    // ⚠ NOT A REQUIREMENT — A MEASUREMENT, AND IT IS PINNED SO THE ANSWER CANNOT
-    // CHANGE SILENTLY. ThemeLayer writes document.body.style.background on mount
-    // and restores it on unmount. The open question B-3a had to settle is which
-    // document that is now: the portal moves the RENDER TREE into the frame, but
-    // the component's module-level `document` still refers to the realm the module
-    // was loaded in. If the write reaches the parent, opening this panel repaints
-    // the admin page's body with a contractor's brand colour.
-    // ⚠ ThemeLayer IS NOT PATCHED EITHER WAY. It is a shared provider and a
-    // preview must not reshape it; whatever this records is filed, not fixed.
+  it('Preview-1 — the body write is SCOPED to the previewed document, not the admin page', async () => {
+    // ── ⚠ THIS CASE IS DELIBERATELY INVERTED. READ THIS BEFORE "FIXING" IT. ───
+    //
+    // It used to assert the OPPOSITE, and it was right to. B-3a measured that
+    // ThemeLayer's `document.body` write reached the ADMIN PAGE when the preview
+    // mounted a provider inside its iframe, and pinned that as a FACT so it could
+    // not change silently in either direction. Its own comment said: "If a later
+    // change scopes the write, this fails and someone reads why rather than
+    // discovering a preview that stopped repainting the panel."
+    //
+    // This is that later change, and this is that someone. Preview-1 was RULED
+    // (Danny, 2026-09-16) to paint the wrapper's `ownerDocument.body` instead of
+    // the global one. The old assertion's PURPOSE has reversed: it was the fence
+    // around the defect, so it is inverted with the reason recorded rather than
+    // quietly updated to a new value.
+    //
+    // ⚠ WHY IT WAS NEVER "JUST" COSMETIC: P4 enables the dark toggle on the
+    // dashboard view in Preview-2. Unscoped, switching the preview to dark would
+    // have set the ADMIN page's own body background to the contractor's dark
+    // ground. The defect was invisible only because AdminApp paints 100vh over
+    // the body and every preview was light.
     const before = document.body.style.background;
     render(<BrandingPreview formData={DEEP_ACTION_DRAFT} mode="dark" />);
     await screen.findByText('Live Preview');
@@ -676,22 +746,49 @@ describe('B-3a — the preview gets its own viewport, so 100vh means the casing'
     const parentAfter = document.body.style.background;
     const frameAfter = frame.contentDocument.body.style.background;
 
-    // ⚠ THE MEASURED ANSWER: THE WRITE STILL REACHES THE PARENT. Observed
-    // 2026-09-01 — the admin page's body took the derived dark ground while the
-    // frame's own body stayed unset. The portal moves the render tree, not the
-    // module's idea of `document`, so the iframe did NOT scope this and was never
-    // going to.
-    // ⚠ PINNED AS A FACT, NOT AS A REQUIREMENT. Nobody wants this behaviour; what
-    // this assertion buys is that it cannot change silently in either direction.
-    // If a later change scopes the write, this fails and someone reads why rather
-    // than discovering a preview that stopped repainting the panel. The fix is
-    // filed in PRE_LAUNCH_CHECKLIST.md against the branding preview; it is not
-    // taken here because ThemeLayer is a shared provider and a preview must not
-    // reshape one.
-    expect(parentAfter, 'the parent body was not repainted — the recorded behaviour changed')
-      .not.toBe(before);
-    expect(frameAfter, 'the frame body was repainted — the write is no longer where it was recorded')
-      .toBe('');
+    // THE PARENT IS LEFT ALONE — the whole point of the fix.
+    expect(parentAfter, 'the admin page body was repainted — the write escaped the frame again')
+      .toBe(before);
+
+    // ⚠ AND THE POSITIVE HALF, WITHOUT WHICH THIS IS VACUOUS. "The parent was not
+    // repainted" is satisfied by a provider that painted NOTHING AT ALL — a
+    // broken mount, a missing wrapper ref, an effect that bailed. The frame's own
+    // body must carry the derived ground, which proves the write still happens
+    // and merely landed somewhere else.
+    expect(frameAfter, 'the frame body was NOT painted — the write did not move, it vanished')
+      .not.toBe('');
+  });
+
+  it('Preview-1 — a FULL-PAGE provider still paints the global body, byte-identically', async () => {
+    // ⚠ THE OTHER HALF OF THE RULING, AND IT IS THE ONE THAT PROTECTS PRODUCTION.
+    // Every real white-label surface — referrer, rep, auth — mounts its provider
+    // in the main document, where `ownerDocument === document`. The fix is only
+    // safe if those are unchanged, and "it should be the same" is a claim, not a
+    // measurement. This measures it.
+    //
+    // ⚠ IT IS PAIRED WITH THE CASE ABOVE ON PURPOSE. Alone, either one passes
+    // against a half-broken implementation: this one against a provider that
+    // never scoped anything, that one against a provider that stopped painting.
+    // Together they pin WHICH document gets painted, which is the actual property.
+    const before = document.body.style.background;
+    const { unmount } = render(
+      <ThemeProvider
+        supplied={{ branding: resolveBrandingTheme(DEEP_ACTION_DRAFT), source: 'preview' }}
+        fetchStoredMode={async () => null}
+        mode="dark"
+      >
+        <div data-full-page-child="" />
+      </ThemeProvider>
+    );
+    await waitFor(() => expect(document.querySelector('[data-full-page-child]')).toBeTruthy());
+
+    const painted = document.body.style.background;
+    expect(painted, 'a full-page provider stopped painting the global body').not.toBe('');
+    expect(painted).not.toBe(before);
+
+    // RESTORES ON UNMOUNT, unchanged behaviour.
+    unmount();
+    expect(document.body.style.background).toBe(before);
   });
 });
 
@@ -1090,11 +1187,16 @@ describe('B-4 — the view switcher mounts each surface, and the mode toggle swa
     // everywhere — including by one wired to nothing at all. The enabled
     // bookends are what make the middle assertion mean something.
     //
-    // WHY IT IS DISABLED: DashboardPreview is a hand-painted illustration that
-    // reads no token and no mode, so it renders identically in both. A live
-    // control over a surface that ignores it teaches a contractor their palette
-    // does nothing — the same "inaccurate AND unresponsive" failure that keeps
-    // the referrer dashboard out of this switcher entirely.
+    // ⚠ WHY IT IS DISABLED — AND THE OLD ANSWER HERE HAD INVERTED. It read
+    // "DashboardPreview is a hand-painted illustration that reads no token and
+    // no mode, so it renders identically in both." Preview-1 replaced that
+    // illustration with the real referrer Dashboard, which DOES respond to the
+    // mode, so the assertion below is still correct while its stated reason was
+    // not. The hold is SEQUENCING: Preview-2 enables the control once the
+    // dark-mode defects it exposes have been listed for an eye test (P4).
+    // ⚠ THE ASSERTION IS UNCHANGED ON PURPOSE. It is still true, and this case
+    // is what will fail loudly when Preview-2 enables the toggle — which is
+    // exactly what it is for.
     render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
     await screen.findByText('Live Preview');
 
@@ -1107,15 +1209,22 @@ describe('B-4 — the view switcher mounts each surface, and the mode toggle swa
     await waitFor(() => expect(modeToggle().disabled).toBe(false));
   });
 
-  it('[RED] the illustration says it does not follow the mode, not only that it is an illustration', async () => {
-    // ⚠ THE LABEL WAS WRITTEN BEFORE A MODE CONTROL EXISTED. "Illustration of
-    // your palette — not a render of the live screen" is honest about FIDELITY
-    // and silent about MODE, and a disabled control with no stated reason is a
-    // dead button. The sentence is the visible reason.
+  it('the dashboard note says what the SAMPLE DATA is and why the toggle is held', async () => {
+    // ── ⚠ REWRITTEN IN PREVIEW-1, AND THE OLD ASSERTION HAD INVERTED ─────────
+    // It required the note to match /illustration/i. That was correct while the
+    // dashboard view WAS an illustration; the moment it became a real mount, the
+    // assertion became a fence holding the wording to a claim that is now FALSE.
+    // Matching /illustration/i today would mean the panel is lying to the
+    // contractor about what they are looking at.
     //
-    // ⚠ ANCHORED ON THE ILLUSTRATION'S OWN ELEMENT, NOT ON A DOCUMENT-WIDE TEXT
-    // SEARCH. A needle matched anywhere on the panel would go green against the
-    // word appearing in a button label.
+    // The note is KEPT rather than deleted because `aria-describedby` on the
+    // still-disabled toggle points at it, and a disabled control with no stated
+    // reason is a dead button. What changed is the reason.
+    //
+    // ⚠ ANCHORED ON THE NOTE'S OWN ELEMENT, NOT A DOCUMENT-WIDE TEXT SEARCH. A
+    // needle matched anywhere on the panel would go green against the words
+    // appearing in a button label — and the variant picker beside it renders a
+    // button literally labelled "default".
     render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
     await screen.findByText('Live Preview');
 
@@ -1123,15 +1232,26 @@ describe('B-4 — the view switcher mounts each surface, and the mode toggle swa
 
     const note = await waitFor(() => {
       const el = document.querySelector('[data-preview-illustration-note]');
-      if (!el) throw new Error('the illustration carries no note element');
+      if (!el) throw new Error('the dashboard view carries no note element');
       return el;
     });
 
-    expect(note.textContent).toMatch(/illustration/i);
+    // P1/P2: it says the DATA is sample, and it does NOT claim the render is fake.
+    expect(note.textContent).toMatch(/sample data/i);
+    expect(
+      note.textContent,
+      'the note still calls the view an illustration — it is a real mount now'
+    ).not.toMatch(/illustration/i);
+
+    // The disabled toggle's stated reason still has to be visible.
     expect(
       note.textContent,
       'the note does not mention the mode — the disabled toggle has no stated reason'
     ).toMatch(/light|dark/i);
+
+    // ⚠ AND THE TOGGLE MUST ACTUALLY POINT AT IT. Without this the note could be
+    // reworded into something no control references and nothing would fail.
+    expect(modeToggle().getAttribute('aria-describedby')).toBe(note.id);
   });
 
   // ── 5. THE B-3c MERGE REACHES THE NEW SURFACE ──────────────────────────────

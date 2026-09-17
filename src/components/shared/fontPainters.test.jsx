@@ -204,7 +204,22 @@ describe('T5 — the font: inherit sites, and what src/index.css does to them', 
     const defaults = fs.readFileSync(path.join(SRC, 'utils/bodyDefaults.js'), 'utf8');
     expect(defaults).toMatch(/-apple-system/);
     const provider = fs.readFileSync(path.join(SRC, 'components/shared/ThemeProvider.jsx'), 'utf8');
-    expect(provider).toMatch(/document\.body\.style\.fontFamily\s*=\s*vars\[FONT_VARS\.body\]/);
+    // ⚠ THE NEEDLE WAS `document.body.style.fontFamily` UNTIL PREVIEW-1, AND IT
+    // INVERTED RATHER THAN GOING STALE. `ThemeLayer` now paints the WRAPPER'S
+    // `ownerDocument.body` instead of the global one, so the old needle would
+    // hold the provider to the very global write that was ruled out — a fence
+    // guarding the defect. The SUBJECT of this case is unchanged and still true:
+    // the body default comes from a MODULE, and the provider writes it.
+    expect(provider).toMatch(/body\.style\.fontFamily\s*=\s*vars\[FONT_VARS\.body\]/);
+    // ⚠ AND THE SCOPE IS PINNED NEGATIVELY, BECAUSE THE POSITIVE ABOVE CANNOT
+    // SEE IT: `body.style.fontFamily` is a substring of
+    // `document.body.style.fontFamily`, so the assertion above passes against
+    // BOTH forms. This line is what distinguishes them. Stated rather than left
+    // implicit, so the next reader does not delete it as redundant.
+    expect(
+      provider,
+      'the provider went back to painting the GLOBAL document.body — the preview would repaint the admin page again'
+    ).not.toMatch(/document\.body\.style\.(fontFamily|background)\s*=/);
   });
 });
 

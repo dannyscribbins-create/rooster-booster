@@ -2806,6 +2806,41 @@ check — which is why this is a named build rather than a checklist line.
       which is a change to the provider's contract and wants its own ruling.
       **Pinned meanwhile** by a case in `BrandingPreview.test.jsx` that asserts the measured
       behaviour in both directions, so it cannot change silently either way.
+      ⚠ **RULED AND FIXED — 2026-09-16, Preview-1 (Danny). THE ENTRY ABOVE IS LEFT EXACTLY AS
+      WRITTEN**, because it is the record of what B-3a measured and a record repaired in place
+      stops being evidence. This line is the correction.
+      **THE RULING:** `ThemeLayer` paints the **wrapper's `ownerDocument.body`** — reached through
+      a ref on the element that carries the render tokens — instead of the global `document.body`.
+      The wrapper is by definition in the same document as the tree the provider owns, so it is
+      the honest handle for "which body is mine".
+      ⚠ **THE ENTRY ABOVE SAID THE FIX "BELONGS ON THE PREVIEW SIDE" AND THAT IS WHAT CHANGED.**
+      Its reasoning was that `ThemeLayer` is shared and a preview must not reshape a shared
+      provider to suit itself — correct, and the reason it was right to wait. What the ruling
+      settles is that this is **not a preview-shaped change**: a provider painting a document it
+      does not own is wrong on every surface, and scoping it asks nothing of the provider's
+      callers. The candidate the entry names — *"a provider that takes its paint target as a
+      parameter"* — was **rejected**: a parameter puts the answer in the caller's hands, where it
+      can be got wrong, and every caller would pass the same value.
+      ⚠ **FOR EVERY FULL-PAGE SURFACE `ownerDocument === document`, SO PRODUCTION IS UNCHANGED —
+      AND THAT IS MEASURED, NOT ASSERTED.** *"It should be the same"* is a claim. A second case
+      mounts a provider in the main document and pins that the global body is still painted and
+      still restored on unmount.
+      ⚠ **THE PINNED CASE WAS DELIBERATELY INVERTED, NOT UPDATED.** B-3a pinned the defect *"in
+      both directions"* and said in terms: *"If a later change scopes the write, this fails and
+      someone reads why."* It did, and this is that reading. The two cases are now a PAIR and
+      neither is evidence alone — guard-proved: reverting the scope fails only the scoped half,
+      while removing the write entirely fails **both**, which is what proves they pin *which*
+      document rather than merely *that* something was painted.
+      ⚠ **AND IT WAS NOT COSMETIC, WHICH IS WHY IT LANDED IN PREVIEW-1 RATHER THAN LATER.** P4
+      enables the dark toggle on the dashboard view in **Preview-2**. Unscoped, switching the
+      preview to dark would have set the **admin page's own** body background to the contractor's
+      dark ground. The entry above correctly called it invisible *today* — `AdminApp` paints
+      `100vh` over the body and every preview was light. **Both halves of that "invisible" were
+      about to stop being true.**
+      ⚠ **ONE DETAIL THE ENTRY DID NOT HAVE: THE WRITE HAD GROWN.** It records
+      `document.body.style.background`; Palette-16 added `document.body.style.fontFamily` beside
+      it, so the escape carried the contractor's **body font** onto the admin page as well. Both
+      are scoped now. → `CANVASS_0_REPORT.md` §3 (0b.3) · the preview arc's P1–P6 rulings
 
 **⬜ BUILD ORDER FOR THE REST OF THIS ARC — RULED 2026-09-01, AND IT EXISTED ONLY IN A CHAT
 WINDOW UNTIL NOW.**

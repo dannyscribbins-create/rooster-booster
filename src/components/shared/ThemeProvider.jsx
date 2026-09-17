@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { deriveThemeTokens, themeCssVariables, RENDER_TOKEN_KEYS, RENDER_TOKEN_VARS } from '../../utils/themeTokens.mjs';
 import { STATUS_VARS, STATUS_LIGHT, STATUS_DARK } from '../../constants/statusTheme';
 import {
@@ -404,6 +404,10 @@ function ThemeLayer({ children, fetchStoredMode, mode: pinnedMode }) {
   const { branding, source } = useAdminBranding();
   const [storedMode, setStoredMode] = useState(null);
 
+  // The element that carries the render tokens (Ruling 5). It is also how the
+  // page-ground effect below finds WHICH document to paint — see its comment.
+  const wrapperRef = useRef(null);
+
   useEffect(() => {
     // Guards against setting state after unmount — the read below is a network
     // round trip that can outlive a fast navigation.
@@ -483,14 +487,42 @@ function ThemeLayer({ children, fetchStoredMode, mode: pinnedMode }) {
   //
   // RESTORES ON UNMOUNT, never clears, for the identical reason the background
   // does: another provider instance may sit above this one.
+  // ── ⚠ IT PAINTS *ITS OWN* DOCUMENT'S body, NOT THE GLOBAL ONE (Preview-1) ──
+  //
+  // This read `document.body` and was measured by B-3a to repaint the ADMIN
+  // PAGE's body whenever the branding preview mounted a provider inside its
+  // iframe: `createPortal` moves the render TREE into the frame, but it does not
+  // move the module's `document`, which still names the realm the module was
+  // loaded in. The iframe was expected to scope this and never could.
+  //
+  // ⚠ THE WRAPPER IS THE HONEST HANDLE. The element carrying the variables is by
+  // definition in the same document as the tree this provider owns, so its
+  // `ownerDocument` is the document that should be painted. For every full-page
+  // surface — referrer, rep, auth — `ownerDocument === document` and the
+  // behaviour is byte-identical to what shipped; there is a test asserting
+  // exactly that, because "it should be the same" is a claim, not a measurement.
+  //
+  // ⚠ IT BAILS RATHER THAN FALLING BACK TO `document`. A fallback would restore
+  // the old global write on any path where the ref is unset, which is the defect
+  // wearing a safety label — and it would be invisible, because the fallback
+  // paints something plausible. Effects run after commit, so the ref is set on
+  // every real mount.
+  //
+  // RESTORES ON UNMOUNT rather than clearing (see above), and restores to the
+  // SAME body it painted.
   useEffect(() => {
-    const previousBackground = document.body.style.background;
-    const previousFontFamily = document.body.style.fontFamily;
-    document.body.style.background = vars[RENDER_TOKEN_VARS.bg];
-    document.body.style.fontFamily = vars[FONT_VARS.body];
+    const el = wrapperRef.current;
+    if (!el) return undefined;
+    const body = el.ownerDocument.body;
+    if (!body) return undefined;
+
+    const previousBackground = body.style.background;
+    const previousFontFamily = body.style.fontFamily;
+    body.style.background = vars[RENDER_TOKEN_VARS.bg];
+    body.style.fontFamily = vars[FONT_VARS.body];
     return () => {
-      document.body.style.background = previousBackground;
-      document.body.style.fontFamily = previousFontFamily;
+      body.style.background = previousBackground;
+      body.style.fontFamily = previousFontFamily;
     };
   }, [vars]);
 
@@ -571,7 +603,7 @@ function ThemeLayer({ children, fetchStoredMode, mode: pinnedMode }) {
       {/* THE ONE ELEMENT THAT CARRIES THE VARIABLES (Ruling 5). data-rm-theme is
           the handle tests and a real browser use to find it, and it names the
           active mode without a second source of truth. */}
-      <div data-rm-theme={mode} style={{ display: 'contents', ...vars }}>
+      <div ref={wrapperRef} data-rm-theme={mode} style={{ display: 'contents', ...vars }}>
         {children}
       </div>
     </ThemeContext.Provider>

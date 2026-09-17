@@ -68,7 +68,7 @@ const MONEY          = 'var(--rm-primary-text, #B1480A)';
 const MUTED = 0.72;
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals, bankStatus, onOpenBankSetup }) {
+export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals, bankStatus, onOpenBankSetup, schedules }) {
   const branding = useBranding();
   const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
@@ -616,7 +616,12 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
       {/* Reward Schedule — dynamic, driven by referral_schedules table */}
       <div style={{ padding: "16px 20px 0" }}>
         <AnimCard delay={280} screenKey="dashboard">
-          <RewardScheduleCard sessionToken={sessionToken} />
+          {/* ⚠ `schedules` IS A PASS-THROUGH AND IS `undefined` IN THE REAL APP.
+              It exists so the admin branding preview can render this card with
+              fixture data and make NO request; when it is undefined the card's
+              fetch path is exactly what it always was. Supplying it is what
+              keeps the preview silent — see previewFixture.js. */}
+          <RewardScheduleCard sessionToken={sessionToken} schedules={schedules} />
         </AnimCard>
       </div>
 

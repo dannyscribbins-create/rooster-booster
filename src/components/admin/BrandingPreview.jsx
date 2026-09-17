@@ -6,6 +6,12 @@ import { deriveThemeTokens } from '../../utils/themeTokens.mjs';
 import ThemeProvider from '../shared/ThemeProvider';
 import LoginScreen from '../auth/LoginScreen';
 import RepShell from '../rep/RepShell';
+import Dashboard from '../referrer/DashboardTab';
+import {
+  PREVIEW_FIXTURE,
+  PREVIEW_FIXTURE_VARIANTS,
+  PREVIEW_FIXTURE_DEFAULT,
+} from './previewFixture';
 
 // ─── BrandingPreview ──────────────────────────────────────────────────────────
 // Phone casing with a view switcher and a light/dark toggle, showing the login
@@ -122,8 +128,19 @@ function PreviewFrame({ children }) {
     // off input without touching a single painted pixel.
     doc.body.style.pointerEvents = 'none';
     doc.body.style.userSelect = 'none';
+    // ⚠ KEYED ON href, NOT ON id, AND THAT IS A BUG FIX (Preview-1, P5).
+    // This effect has no dependency array, so it runs on EVERY render. The
+    // dedupe read `doc.getElementById(link.id || '_')` — for a link with no id
+    // that looks up the literal '_', finds nothing, and appends another copy.
+    // Every parent stylesheet without an id was therefore re-cloned into the
+    // frame head on every render, unbounded, for as long as the panel was open.
+    // The font links this exists to copy DO carry ids (`gfont-<Family>`), so the
+    // defect was invisible on exactly the links anyone looked at.
+    // href is the right key because it needs nothing from the producer.
     for (const link of document.head.querySelectorAll('link[rel="stylesheet"]')) {
-      if (doc.getElementById(link.id || '_')) continue;
+      const href = link.getAttribute('href');
+      if (href && doc.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
+      if (!href && link.id && doc.getElementById(link.id)) continue;
       doc.head.appendChild(link.cloneNode(true));
     }
   });
@@ -168,9 +185,18 @@ function PreviewFrame({ children }) {
 export default function BrandingPreview({ formData, mode: initialMode = 'light' }) {
   const [screen, setScreen] = useState('login');
   const [mode, setMode]     = useState(initialMode);
+  // Which fixture the dashboard view renders. Only meaningful on that view;
+  // kept at this level so switching away and back does not reset it.
+  const [variant, setVariant] = useState(PREVIEW_FIXTURE_DEFAULT);
 
-  // The illustration has no mode, so the control that changes the mode is dead
-  // on it. See the toggle's own block for why disabled rather than hidden.
+  // ⚠ STILL DISABLED ON THE DASHBOARD, BUT NO LONGER FOR THE ORIGINAL REASON,
+  // AND THE OLD REASON IS NOW FALSE. It read "the illustration has no mode".
+  // The illustration is gone: this view mounts the real referrer Dashboard,
+  // which reads --rm-* and DOES respond to the mode. The hold is now purely
+  // sequencing — Preview-2 enables the control, after the dark-mode defects it
+  // would expose have been listed for an eye test (P4). Leaving the old sentence
+  // in place would have been an inverted record defending a control against a
+  // surface that can now use it.
   const modeDisabled = screen === 'dashboard';
 
   const theme     = resolveBrandingTheme(formData);
@@ -220,11 +246,18 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
   // would make an invented layout look authoritative without making it any more
   // true — confidence manufactured rather than error exposed, which is the exact
   // failure this whole run exists to end. An honest label is the smaller claim.
+  // ⚠ `primary` IS THE LAST SURVIVOR, AND THE OTHERS WENT WITH THE ILLUSTRATION.
+  // `secondary`, `accent`, `fontH` and `fontB` had exactly one consumer between
+  // them — `DashboardPreview` — so deleting it made all four dead. `primary`
+  // stays because the VIEW SWITCHER buttons paint from it, which is admin chrome
+  // reading a draft value, not a previewed surface.
+  // ⚠ THE FONT PAIR IS THE INTERESTING DELETION: those two consts were the
+  // panel's ONLY font responsiveness, and losing them is not a regression. The
+  // real mount reads the same draft fonts through the branding chain that already
+  // serves the Login and Rep app views, so the responsiveness moved rather than
+  // disappeared — which is what D-4 / R-12 predicted and what the eye test
+  // confirms.
   const primary   = theme.primaryColor;
-  const secondary = theme.secondaryColor;
-  const accent    = theme.accentColor;
-  const fontH     = formData.font_heading    || 'Montserrat';
-  const fontB     = formData.font_body       || 'Roboto';
   // The resolver supplies NO default program name on purpose — 'Rooster Booster'
   // is this platform's internal codename, not a name any contractor would choose,
   // and it is exactly as wrong on a white-labeled surface as another contractor's
@@ -236,7 +269,6 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
   // program name, so a preview that displayed one was inventing a surface. The
   // resolver's refusal to default a program name is still pinned — by the
   // company-name path, which this screen does render.
-  const reviewBtn = formData.review_button_text || 'Leave a Review';
 
   return (
     <div>
@@ -249,23 +281,17 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
         Live Preview
       </p>
 
-      {/* ⚠ THE DASHBOARD VIEW SAYS WHAT IT IS, ON SCREEN, AND THAT SENTENCE IS THE
-          POINT OF IT. The login view is the real component painting from the real
-          tokens. This one is not, and cannot be until the referrer app reads
-          --rm-* at all — it paints from the R palette today, so a faithful render
-          would sit there unchanged while a contractor edited every colour. An
-          illustration that admits it is an illustration is a smaller claim than a
-          picture that quietly implies it is a render, and it was a picture quietly
-          implying that which let a misfiled palette look plausible on save.
-          ⚠ AND IT HAS A HORIZON, WHICH THE ON-SCREEN LINE DELIBERATELY DOES NOT
-          CARRY. A placeholder with no end condition reads as a permanent design
-          decision to whoever finds it next, and this one is not: it stays an
-          illustration only until the referrer tree is migrated from the R palette
-          onto the --rm-* tokens. That migration is filed as launch-gating in
-          PRE_LAUNCH_CHECKLIST.md under the R/AD entry. The moment it lands, this
-          surface can render for real the way the login view does — and it becomes
-          a fourth entry in B-4's view switcher rather than a rewrite. The user
-          does not need the roadmap; the next person editing this file does. */}
+      {/* ⚠ THE SENTENCE HERE USED TO SAY "Illustration of your palette — not a
+          render of the live screen, and it does not change between light and
+          dark." BOTH CLAUSES ARE NOW FALSE. This view mounts the real referrer
+          Dashboard through the same PreviewFrame + ThemeProvider path as the
+          other two, so it IS a render and it DOES respond to the mode.
+          ⚠ THE NOTE IS KEPT RATHER THAN DELETED, BECAUSE THE TOGGLE IS STILL
+          DISABLED AND aria-describedby STILL POINTS HERE. A disabled control
+          with no stated reason is a dead button. What changed is the reason: it
+          is a sequencing hold (Preview-2 enables it), not a property of the
+          surface. Deleting the element would have left the control mute; leaving
+          the old words would have left it lying. */}
       {screen === 'dashboard' && (
         <p
           id={ILLUSTRATION_NOTE_ID}
@@ -275,14 +301,56 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
             color: AD.textTertiary, fontFamily: AD.fontSans, textAlign: 'center',
           }}
         >
-          {/* ⚠ THE SECOND CLAUSE IS B-4's, AND IT IS ALSO THE DISABLED TOGGLE'S
-              STATED REASON — aria-describedby on that control points here. The
-              first clause was written before a mode control existed, so it was
-              honest about FIDELITY and silent about MODE; a disabled button with
-              no visible reason is just a dead button. */}
-          Illustration of your palette — not a render of the live screen, and it
-          does not change between light and dark.
+          Sample data — your real numbers and customers are not shown. Light and
+          dark for this screen arrive in the next update.
         </p>
+      )}
+
+      {/* ── THE FIXTURE VARIANT PICKER ──────────────────────────────────────
+          ⚠ IT EXISTS FOR THE EYE TEST, AND THAT IS WHY IT IS VISIBLE RATHER
+          THAN A DEV-ONLY FLAG. P4 rules that dark-mode and contrast defects the
+          preview exposes are LISTED and looked at, not silently fixed — and a
+          defect the sample data never renders cannot be looked at. Each variant
+          puts a different set of states on screen; without the control, four of
+          the five are unreachable.
+          ⚠ IT IS RENDERED FROM PREVIEW_FIXTURE_VARIANTS, WHICH IS DERIVED FROM
+          THE FIXTURE OBJECT ITSELF. A hand-maintained list here would drift out
+          of step with the fixture silently — this repo's recurring failure, and
+          the reason the sweep files walk directories rather than iterate a typed
+          list. Adding a variant to previewFixture.js adds its button here with
+          no edit to this file.
+          ⚠ AD TOKENS THROUGHOUT: this is admin chrome OUTSIDE the casing, so it
+          must not move when a contractor edits a colour. */}
+      {screen === 'dashboard' && (
+        <div
+          data-preview-variant-picker=""
+          role="group"
+          aria-label="Sample data variant"
+          style={{
+            display: 'flex', flexWrap: 'wrap', gap: 6,
+            justifyContent: 'center', margin: '-6px 0 14px',
+          }}
+        >
+          {PREVIEW_FIXTURE_VARIANTS.map(key => (
+            <button
+              key={key}
+              type="button"
+              data-preview-variant={key}
+              aria-pressed={variant === key}
+              onClick={() => setVariant(key)}
+              style={{
+                padding: '3px 9px', borderRadius: 999, cursor: 'pointer',
+                border: `1px solid ${variant === key ? AD.textSecondary : AD.border}`,
+                background: 'transparent',
+                color: variant === key ? AD.textSecondary : AD.textTertiary,
+                fontSize: 10, fontWeight: variant === key ? 700 : 500,
+                fontFamily: AD.fontSans, letterSpacing: '0.02em',
+              }}
+            >
+              {key}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* ⚠ THE VIEW BUTTONS AND THE MODE TOGGLE ARE TWO INDEPENDENT CONTROLS
@@ -333,12 +401,18 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
             through it would produce a console warning on every click and change
             nothing. Passing the pin IS the mechanism.
 
-            ⚠ DISABLED ON THE DASHBOARD VIEW, WITH THE REASON ON SCREEN BESIDE
-            IT. DashboardPreview is a hand-painted illustration that reads no
-            token and no mode, so it renders identically either way. A live
-            control over a surface that ignores it teaches a contractor that
-            their palette does nothing — the same "inaccurate AND unresponsive"
-            failure that keeps the referrer dashboard out of this switcher.
+            ⚠ STILL DISABLED ON THE DASHBOARD VIEW, WITH THE REASON ON SCREEN
+            BESIDE IT — BUT NOT THE ORIGINAL REASON, AND THE ORIGINAL IS NOW
+            FALSE. This read "DashboardPreview is a hand-painted illustration
+            that reads no token and no mode, so it renders identically either
+            way." That illustration is GONE: Preview-1 mounts the real referrer
+            Dashboard here, which reads --rm-* and DOES respond to the mode.
+            ⚠ THE HOLD IS PURELY SEQUENCING. Preview-2 enables this control,
+            after the dark-mode defects it would expose are LISTED for an eye
+            test (P4) — a preview arc that quietly repairs contrast defects is
+            how the referrer toggle later ships against a surface nobody
+            measured. Leaving the old sentence here would have been an inverted
+            record defending a control against a surface that can now use it.
             ⚠ DISABLED RATHER THAN HIDDEN, AND RepBottomNav's ABSENT FAB IS NOT
             THE COUNTER-EXAMPLE. That control does not exist yet in its phase, so
             absence is a decision. This one exists and works on the other two
@@ -446,20 +520,30 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
               did not choose. onLogout is a no-op rather than null because the
               Sign out row IS part of the real Profile screen — omitting it would
               trim the surface being previewed. */}
-          {screen === 'dashboard' ? (
-            <DashboardPreview
-              primary={primary} secondary={secondary} accent={accent}
-              fontH={fontH} fontB={fontB} reviewBtn={reviewBtn}
-            />
-          ) : (
-            <PreviewFrame>
-              <ThemeProvider supplied={supplied} fetchStoredMode={NO_STORED_MODE} mode={mode}>
-                {screen === 'rep'
+          {/* ⚠ ONE PATH FOR ALL THREE VIEWS NOW. The dashboard used to branch
+              AROUND PreviewFrame entirely and render a hand-painted illustration
+              directly into the casing; it now goes through the same frame and the
+              same supplied provider as the other two, which is what makes it a
+              render rather than a picture.
+              ⚠ THE FIXTURE SUPPLIES DATA ONLY. Everything a contractor sees that
+              is theirs — palette, fonts, logo, company name — arrives through
+              `supplied`, exactly as it does for Login and Rep app. The fixture
+              carries no colour and no brand value; see previewFixture.js.
+              ⚠ AND `sessionToken` IS ABSENT FROM EVERY VARIANT, WHICH IS WHAT
+              MAKES THIS SILENT. Dashboard's /about effect and RewardScheduleCard's
+              /schedules effect both open with `if (!sessionToken) return`, and
+              `aboutData` — the only mount-time modal opener in the subtree — is
+              fed solely by that fetch. Zero network and no-modals are the same
+              guarantee here, not two. */}
+          <PreviewFrame>
+            <ThemeProvider supplied={supplied} fetchStoredMode={NO_STORED_MODE} mode={mode}>
+              {screen === 'dashboard'
+                ? <Dashboard {...PREVIEW_FIXTURE[variant]} />
+                : screen === 'rep'
                   ? <RepShell onLogout={NOOP} switcher={null} />
                   : <LoginScreen onAuthenticated={NOOP} />}
-              </ThemeProvider>
-            </PreviewFrame>
-          )}
+            </ThemeProvider>
+          </PreviewFrame>
         </div>
 
         {/* Home indicator */}
@@ -482,203 +566,3 @@ const MOCK_REFERRALS = [
   { initials: 'JD', name: 'John Davis',   statusLabel: 'Sold ✓',     statusColor: '#15803d', statusBg: '#dcfce7' },
   { initials: 'SM', name: 'Sara Miller',  statusLabel: 'Inspection', statusColor: '#1d4ed8', statusBg: '#dbeafe' },
 ];
-
-function DashboardPreview({ primary, secondary, accent, fontH, fontB, reviewBtn }) {
-  return (
-    <div style={{
-      width: '100%', height: '100%',
-      display: 'flex', flexDirection: 'column',
-      background: '#EEF2F7', overflow: 'hidden',
-    }}>
-      {/* Hero */}
-      <div style={{
-        background: `linear-gradient(145deg, ${primary} 0%, ${secondary} 100%)`,
-        padding: '32px 14px 14px', flexShrink: 0,
-        position: 'relative', overflow: 'hidden',
-      }}>
-        {/* Decorative circle */}
-        <div style={{
-          position: 'absolute', top: -16, right: -16,
-          width: 72, height: 72, borderRadius: '50%',
-          background: 'rgba(255,255,255,0.12)',
-        }} />
-
-        {/* Greeting */}
-        <p style={{
-          margin: '0 0 1px', fontSize: 9,
-          color: 'rgba(255,255,255,0.6)',
-          fontFamily: `'${fontB}', sans-serif`,
-        }}>
-          Hey, Danny! 👋
-        </p>
-        <p style={{
-          margin: '0 0 10px', fontSize: 13, fontWeight: 800,
-          color: '#fff', fontFamily: `'${fontH}', sans-serif`,
-          letterSpacing: '-0.02em',
-        }}>
-          Your Dashboard
-        </p>
-
-        {/* Balance card */}
-        <div style={{
-          background: '#fff', borderRadius: 12,
-          padding: '11px 12px 10px',
-          boxShadow: AD.shadowLg,
-        }}>
-          <p style={{
-            margin: '0 0 2px', fontSize: 7,
-            color: '#A0A0A0', fontFamily: "'Roboto Mono', monospace",
-            letterSpacing: '0.1em', textTransform: 'uppercase',
-          }}>
-            Available Balance
-          </p>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, margin: '2px 0 3px' }}>
-            <span style={{
-              fontSize: 13, color: secondary,
-              fontFamily: "'Roboto Mono', monospace",
-              fontWeight: 700, lineHeight: 1,
-            }}>$</span>
-            <span style={{
-              fontSize: 24, fontWeight: 900, color: primary,
-              fontFamily: `'${fontH}', sans-serif`,
-              lineHeight: 1, letterSpacing: '-0.02em',
-            }}>750</span>
-          </div>
-          <p style={{ margin: '0 0 8px', fontSize: 7, color: '#6B6B6B' }}>
-            3 sold referrals · Next:{' '}
-            <span style={{ color: secondary, fontWeight: 700 }}>$700</span>
-          </p>
-
-          {/* Cash Out button */}
-          <div style={{
-            background: `linear-gradient(135deg, ${secondary} 0%, ${secondary}bb 100%)`,
-            borderRadius: 7, padding: '7px 0',
-            textAlign: 'center', color: '#fff',
-            fontSize: 9, fontWeight: 700,
-            fontFamily: `'${fontH}', sans-serif`,
-          }}>
-            Cash Out Now
-          </div>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div style={{ flex: 1, padding: '10px 12px 0', overflow: 'hidden' }}>
-        {/* Boost Progress */}
-        <div style={{
-          background: '#fff', borderRadius: 10,
-          padding: '8px 10px', marginBottom: 8,
-          boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-        }}>
-          <p style={{
-            margin: '0 0 5px', fontSize: 7, color: '#A0A0A0',
-            fontFamily: "'Roboto Mono', monospace",
-            textTransform: 'uppercase', letterSpacing: '0.1em',
-          }}>
-            Boost Progress
-          </p>
-          <div style={{ background: accent, borderRadius: 999, height: 5, overflow: 'hidden' }}>
-            <div style={{
-              width: '43%', height: '100%',
-              background: `linear-gradient(90deg, ${secondary} 0%, ${primary} 100%)`,
-              borderRadius: 999,
-            }} />
-          </div>
-        </div>
-
-        {/* Recent Referrals */}
-        <p style={{
-          margin: '0 0 5px', fontSize: 7, color: '#A0A0A0',
-          fontFamily: "'Roboto Mono', monospace",
-          textTransform: 'uppercase', letterSpacing: '0.1em',
-        }}>
-          Recent Referrals
-        </p>
-        {MOCK_REFERRALS.map((r, i) => (
-          <div key={i} style={{
-            background: '#fff', borderRadius: 8,
-            padding: '7px 8px', marginBottom: 5,
-            display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: '50%',
-                background: accent, color: primary,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 7, fontWeight: 700,
-                fontFamily: "'Roboto Mono', monospace",
-              }}>
-                {r.initials}
-              </div>
-              <span style={{
-                fontSize: 9, fontWeight: 600, color: '#1A1A1A',
-                fontFamily: `'${fontB}', sans-serif`,
-              }}>
-                {r.name}
-              </span>
-            </div>
-            <span style={{
-              fontSize: 7, fontWeight: 600,
-              color: r.statusColor, background: r.statusBg,
-              padding: '2px 5px', borderRadius: 99,
-            }}>
-              {r.statusLabel}
-            </span>
-          </div>
-        ))}
-
-        {/* Review Banner */}
-        <div style={{
-          background: '#1a3a6b', borderRadius: 8,
-          padding: '8px 10px', marginTop: 2,
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <i className="ph ph-star-fill" style={{ fontSize: 16, color: '#fff', flexShrink: 0 }} />
-          <div style={{
-            background: `linear-gradient(135deg, ${secondary} 0%, ${secondary}bb 100%)`,
-            borderRadius: 5, padding: '4px 8px',
-            color: '#fff', fontSize: 7, fontWeight: 700,
-            fontFamily: `'${fontH}', sans-serif`,
-            display: 'inline-block',
-          }}>
-            {reviewBtn}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom nav */}
-      <div style={{
-        height: 44, background: '#fff',
-        borderTop: '1px solid rgba(0,0,0,0.08)',
-        display: 'flex', alignItems: 'center',
-        justifyContent: 'space-around',
-        padding: '0 8px', flexShrink: 0,
-      }}>
-        {[
-          { icon: 'ph-house-fill', active: true },
-          { icon: 'ph-users',      active: false },
-          { icon: 'ph-trophy',     active: false },
-          { icon: 'ph-money',      active: false },
-          { icon: 'ph-user',       active: false },
-        ].map(({ icon, active }, i) => (
-          <div key={i} style={{
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', gap: 2,
-          }}>
-            <i className={`ph ${icon}`} style={{
-              fontSize: 18, color: active ? primary : '#A0A0A0',
-            }} />
-            {active && (
-              <div style={{
-                width: 4, height: 4, borderRadius: '50%',
-                background: primary,
-              }} />
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}

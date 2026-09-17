@@ -187,14 +187,42 @@ function SchedulePane({ schedule }) {
   return null;
 }
 
-export default function RewardScheduleCard({ sessionToken }) {
-  const [schedules, setSchedules] = useState(null);
-  const [loading, setLoading]     = useState(true);
+/**
+ * The referrer's reward schedule card.
+ *
+ * @param {object}        props
+ * @param {string}       [props.sessionToken] - referrer bearer; when absent no
+ *   request is made and the card settles on its empty state.
+ * @param {object[]}     [props.schedules] - PRE-SUPPLIED schedules. When this is
+ *   an array the component makes NO network call and renders it directly. Used
+ *   by the admin branding preview, which must be silent; `undefined` in the real
+ *   app, where the fetch path is unchanged.
+ */
+export default function RewardScheduleCard({ sessionToken, schedules: suppliedSchedules }) {
+  // ⚠ THE PREDICATE MATCHES ITS OWN VALUE'S SHAPE. `Array.isArray`, not
+  // `!= null` and not truthiness: an empty array is a legitimate supplied value
+  // meaning "this contractor has no schedules", and it must suppress the fetch
+  // exactly as a populated one does. Truthiness would accept a string.
+  const isSupplied = Array.isArray(suppliedSchedules);
+
+  const [schedules, setSchedules] = useState(isSupplied ? suppliedSchedules : null);
+  const [loading, setLoading]     = useState(!isSupplied);
   const [activeTab, setActiveTab] = useState(0);
 
   useEffect(() => {
-    if (!sessionToken) return;
+    // ── ⚠ THE GUARD IS INSIDE THE IIFE, AND THAT IS THE BUG FIX ──────────────
+    // This read `if (!sessionToken) return;` OUTSIDE the async function, above
+    // the `try`. The `finally` that clears `loading` therefore could not be
+    // reached on that path, so a falsy token left `loading` true FOREVER and the
+    // card rendered three animated Skeletons for the life of the mount. Not a
+    // slow load — a permanent one, in the real app as well as in the preview.
+    //
+    // ⚠ EVERY PATH NOW REACHES A TERMINAL STATE. That is the property under
+    // test, not "the guard moved": a referrer whose token is momentarily absent
+    // gets the empty state and not an eternal skeleton.
     (async () => {
+      if (isSupplied) return;               // supplied: state already terminal
+      if (!sessionToken) { setSchedules([]); setLoading(false); return; }
       try {
         const r = await fetch(`${BACKEND_URL}/api/referrer/schedules`, {
           headers: { Authorization: `Bearer ${sessionToken}` },
