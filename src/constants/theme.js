@@ -85,7 +85,16 @@ export const R = {
   blueBg:    "#dbeafe",
   blueText:  "#1d4ed8",
   grayBg:    "#f3f4f6",
-  grayText:  "#6b7280",
+  // ⚠ WAS "#6b7280", WHICH MEASURED 4.39:1 ON grayBg AND FAILED THE 4.5:1 TEXT
+  // FLOOR. Its only reader is STATUS_CONFIG.lead — the "Lead Submitted" pill —
+  // which paints it as BOTH the label and the dot on grayBg, so the value could
+  // be moved here rather than given the row a private one. Ruled by Danny,
+  // 2026-09-16. Now 6.87:1.
+  // ⚠ #4B5563 IS NOT A FRESH CHOICE. The ADMIN palette hit this identical pair
+  // in TAG_COLORS' 'Suppressed' row, measured the same 4.39, and moved it to
+  // AD.grayMuted = #4B5563. Reusing that value makes the two trees agree instead
+  // of each holding a private answer to the same question.
+  grayText:  "#4B5563",
 
   teal:      "#0891b2",
   tealBg:    "#cffafe",

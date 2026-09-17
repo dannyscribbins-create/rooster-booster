@@ -345,7 +345,9 @@ describe('Preview-1 — the dashboard view renders the REAL component', () => {
 
     // ⚠ THE COVERAGE ASSERTION, AND IT IS THE POINT OF THE LOOP. Without it this
     // passes while the variants quietly stop covering the stages the eye test
-    // needs — including `lead`, the 4.39:1 pill this arc most needs visible.
+    // needs — including `lead`, the pill that measured 4.39:1 and was the
+    // headline defect of the arc (repaired 2026-09-16 to #4B5563 at 6.87:1;
+    // fenced in statusConfigContrast.test.js).
     for (const status of Object.keys(STATUS_CONFIG)) {
       expect(seen.has(status), `no fixture variant renders the "${status}" stage — it cannot be eye-tested`).toBe(true);
     }

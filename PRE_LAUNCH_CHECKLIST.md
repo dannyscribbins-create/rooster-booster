@@ -3301,6 +3301,22 @@ root cause, and patching them separately produces six unrelated special cases)
       premise that has gone false is worth knowing even when the conclusion survives it.
       → Canvass-0 S15 and §13 · `CANVASS_0_REPORT.md` §5 · the AD-3 prerequisite entry's dated note
 
+      ✅ **CLOSED 2026-09-16 — the pill is now `#4B5563` on `#f3f4f6` at 6.87:1, on this surface
+      and every other, in one change.** *(Ruled by Danny; its own small standalone phase.)*
+      `AdminReferrers` reads `STATUS_CONFIG.lead.bg`/`.color`/`.dot`, so it is repaired by the
+      same value change — **that was the point of fixing it in `STATUS_CONFIG` rather than at a
+      call site.**
+      ⚠ **NOT MEASURED ON THIS PAGE, AND THAT IS STATED RATHER THAN GLOSSED.** The local stack
+      HAS a `lead` row in `pipeline_cache` for palette-beta, but the Referrers table did not
+      render an `in_pipeline_lead` pill in any state reached read-only, so there was no node to
+      measure. **Seeding one was declined** — the ruling covered a colour fix, not fixture work.
+      The rendered evidence is from the dashboard preview (6.87:1, light and dark); the claim
+      about THIS page rests on it reading the same object, which is a source reading.
+      ⚠ **THE PREMISE THIS ENTRY FALSIFIED STAYS FALSIFIED.** Closing the defect does not
+      restore the admin-literal ruling's "nothing about it is broken" leg — that leg was false
+      while this shipped, and the record of it is the useful part.
+      → `src/constants/statusConfigContrast.test.js` · the preview arc's closing note
+
       **D-4 · R-12 — THE REFERRER DASHBOARD PREVIEW LANDS *AFTER* THE FONT RULING.**
       `PREVIEW_VIEWS` already has `dashboard` as its third entry, rendering a hand-painted
       illustration — so this is confirmed *"not new plumbing"*, and it is **three entries, not
@@ -5536,6 +5552,35 @@ quadruples is evidence about the estimate, not about the wave:
       colour to choose; it is whether `STATUS_CONFIG` may move under the referrer tree and the
       admin tree at once. → the AD-3 prerequisite entry's dated note · the **D-3 · R-8**
       `AdminReferrers` entry
+
+      ✅ **CLOSED 2026-09-16 — `STATUS_CONFIG.lead` is now `#4B5563` at 6.87:1.** *(Ruled by
+      Danny; shipped as its own small standalone phase, which is what the DISPOSITION above
+      asked for.)* **RENDERED on palette-beta in the dashboard preview: label 6.87:1 and dot
+      6.87:1, IDENTICAL in light and dark** — so the pair is still mode-blind, and now above the
+      floor in both rather than below it in both. Siblings undisturbed: Inspection 5.49, Sold
+      4.57.
+      ⚠ **THE VALUE WAS NOT A FRESH CHOICE, WHICH IS WHY IT WAS CHEAP.** The admin palette had
+      already met this identical pair in `TAG_COLORS`' 'Suppressed' row, measured the same 4.39,
+      and moved it to `AD.grayMuted = #4B5563`. The two trees now agree instead of each holding
+      a private answer to the same question.
+      ⚠ **THE MECHANISM WAS A VALUE CHANGE, NOT A NEW KEY, AND THAT WAS ESTABLISHED RATHER THAN
+      ASSUMED.** `R.grayText` has exactly ONE reader in all of `src/` — this row — with no
+      destructured form anywhere, verified with a needle validated against its own known
+      positive first. Every use of it is label-or-dot ON `grayBg`, so moving the value could not
+      reach anything else. Giving the row a private value would have added a divergence for no
+      benefit.
+      ⚠ **THE DOT MOVED WITH THE LABEL, DELIBERATELY.** A dot is a GRAPHIC (3:1), not text, so
+      it was never failing at 4.39. `lead` is the only row where `dot === color`; keeping them
+      equal refuses to introduce a divergence the row has never had, for a change that only
+      improves it.
+      ⚠ **AND MEASURING THE WHOLE TABLE INSTEAD OF THE ONE PAIR FOUND A SECOND DEFECT:
+      `booking_pending`'s DOT is `#b45309` on `#fef3c7` = 2.86:1, UNDER the 3:1 graphic floor.**
+      Its label passes at 4.51. **FILED, NOT FIXED** — it is outside this phase's ruling, and a
+      phase that repairs what it was not asked to repair is how a surface changes with nobody
+      able to say when. It is pinned to its exact measured value in
+      `src/constants/statusConfigContrast.test.js`, so it cannot drift further or be quietly
+      widened. **OWNER: unassigned.**
+      → `src/constants/statusConfigContrast.test.js` · `theme.js`'s `grayText` comment
 
       ⚠ **THE REP APP's `ScreenTitle` SUBTITLE — 4.15:1 RENDERED, LIGHT ONLY.** Arithmetic said
       4.13; the rendered figure is 4.15, on `--rm-bg` (`#F4FBFA`). ⚠ **In DARK it measures

@@ -64,10 +64,13 @@ const PEOPLE = Object.freeze([
 // read from the component rather than assumed: it uses `ref.id`, `ref.name`
 // (split for initials) and `ref.status` (handed to `StatusBadge`).
 //
-// ⚠ `lead` IS FIRST IN `default` ON PURPOSE. `STATUS_CONFIG.lead` is `#6b7280`
-// on `#f3f4f6` = 4.39:1 against a 4.5 floor, MODE-BLIND, and it is the single
-// defect this arc most needs visible. It must not be the one that falls off the
-// end of a slice.
+// ⚠ `lead` IS FIRST IN `default` ON PURPOSE. It was the arc's headline defect:
+// `STATUS_CONFIG.lead` measured `#6b7280` on `#f3f4f6` = 4.39:1 against a 4.5
+// floor, mode-blind. ⚠ **FIXED 2026-09-16 — the label is now `#4B5563` at
+// 6.87:1** (ruled by Danny; the value the admin palette had already moved the
+// identical pair to). It stays first anyway: it is the pair with a history, so
+// it is the one a future eye test should still be able to reach without
+// hunting, and it must not be the one that falls off the end of a slice.
 const PIPELINE_EARLY = Object.freeze([
   Object.freeze({ id: 'pf-1', name: PEOPLE[0], status: 'lead' }),
   Object.freeze({ id: 'pf-2', name: PEOPLE[1], status: 'inspection' }),
@@ -140,8 +143,14 @@ const SCHEDULES = Object.freeze([
 // The shared base. Variants below override only what they need to expose.
 //
 // ⚠ `profilePhoto: null` IS LOAD-BEARING, NOT AN OMISSION. It forces
-// `AvatarCircle`'s INITIALS path, which is where the second 4.39:1 pair was
-// alleged. A photo would hide it.
+// `AvatarCircle`'s INITIALS path.
+// ⚠ AND THE REASON GIVEN HERE WAS WRONG — it said this is "where the second
+// 4.39:1 pair was alleged". It is not: `AvatarCircle` reads neither `R.grayText`
+// nor `STATUS_CONFIG`, verified by a needle validated against its own known
+// positive. AD-3 listed "avatar initials, same pair" among six defects and that
+// entry was already mistaken; Canvass-0 S13 reached the same conclusion from the
+// other direction. The initials path is still worth rendering — it is what a
+// referrer without a photo sees — but not for the reason once written here.
 //
 // ⚠ `balance` IS DELIBERATELY NOT ROUND. A round number reads as a placeholder
 // and tells a contractor nothing about how their money tone sits on their fill.
@@ -179,8 +188,8 @@ const BASE = Object.freeze({
  */
 export const PREVIEW_FIXTURE = Object.freeze({
   // The ordinary loaded state.
-  // SHOWS: the "Lead Submitted" (4.39:1), "Inspection Completed" and "Sold ✓"
-  //        pills · the muted body copy · the card hairlines · the reward
+  // SHOWS: the "Lead Submitted" (now 6.87:1), "Inspection Completed" and
+  //        "Sold ✓" pills · the muted body copy · the card hairlines · the reward
   //        schedule TAB STRIP and the escalating table · the bank banner.
   default: BASE,
 
