@@ -2830,6 +2830,18 @@ WINDOW UNTIL NOW.**
       behind a queue, which is how the R/AD entry itself became invisible for months.
       *(The horizon is also recorded at the site, in `BrandingPreview`'s dashboard comment, so
       the next person editing that file does not read the placeholder as permanent.)*
+      ⚠ **RULING — DANNY, 2026-09-16: THE ORDER STANDS, AND IT IS NOW DATED RATHER THAN IMPLIED.**
+      **Palette → the dashboard preview (a REAL MOUNT) → Canvass (3-B → 3-C → 3-D).** The preview
+      arc runs **FIRST**, and it is not a detour around the rep work: it mounts `DashboardTab` for
+      real, which is the pattern 3-C builds rep screens against, and it closes the preview-drift
+      entry below **by construction** rather than by correcting a hex.
+      **NAMING — `Canvass`.** The remaining rep-arc phases are **`Canvass-1` … `Canvass-n`**, and
+      **`Canvass-0`** was the scoping pass, filed as `CANVASS_0_REPORT.md`. **Forward-only per
+      R-15** — nothing already shipped is renamed, and 3-B / 3-C / 3-D keep the names they have.
+      ⚠ **ANY SEARCH FOR THE ARC NAME NEEDS THE DOUBLE `s` AND A WORD BOUNDARY.** `canvas` (one
+      `s`) is live layout vocabulary in this repo, so a bare substring answers a different question
+      from the one being asked — the anchoring rule arriving through a product name.
+      → `CANVASS_0_REPORT.md` · the Canvass-0 findings block at the end of this section
 
 - [ ] ⚠ **THE LANDING PAGE CANNOT BE PREVIEWED IN THE BRANDING PROFILE, AND UNLIKE THE REFERRER
       DASHBOARD IT IS NOT WAITING ON THE R/AD MIGRATION.** *(Investigated and filed by B-4,
@@ -3233,6 +3245,22 @@ root cause, and patching them separately produces six unrelated special cases)
       ABR-class defect. ⚠ **The ABR arc's literal sweeps structurally cannot see it**: the needle
       is a hex and this file contains none, reaching both values through the needle-exempt
       `theme.js`. **The right fix is AD tokens, and it belongs to whoever owns admin chrome.**
+      ⚠ **AND A SECOND LIVE ADMIN-SURFACE DEFECT REACHES THIS SAME LIST THROUGH THE SAME HIDING
+      PLACE — FOUND BY CANVASS-0, FILED 2026-09-16: `AdminReferrers` RENDERS `STATUS_CONFIG.lead`
+      AT 4.39:1 TODAY, IN LIGHT MODE.** The table above already records that file as **`0` direct
+      `R.*`**, which is TRUE — and is exactly how this stayed invisible. `STATUS_CONFIG.lead` is
+      `{ color: R.grayText, dot: R.grayText, bg: R.grayBg }` = **`#6b7280` on `#f3f4f6` = 4.39:1**
+      against a 4.5 floor, **mode-blind**. `AdminReferrers` reads `STATUS_CONFIG.lead.bg`/`.color`
+      for its pipeline pills and `STATUS_CONFIG[ref.status]` for its rows, so **the "Lead
+      Submitted" pill is sub-floor on the admin Referrers page right now.**
+      ⚠ **IT DOES NOT REOPEN THE ADMIN-LITERAL RULING.** That ruling's only stated trigger is
+      **admin dark mode**, and this defect is **mode-blind** — it needs a better VALUE, not a
+      second mode. The trigger is untouched and option 1 is still available.
+      ⚠ **IT DOES FALSIFY THAT RULING'S "nothing about it is broken" PREMISE, FOR THIS ONE PILL.**
+      Recorded rather than argued: the ruling rests on three legs — not white-labelled, no
+      homeowner sees it, nothing is broken — and **the third is now false by one measurement.** A
+      premise that has gone false is worth knowing even when the conclusion survives it.
+      → Canvass-0 S15 and §13 · `CANVASS_0_REPORT.md` §5 · the AD-3 prerequisite entry's dated note
 
       **D-4 · R-12 — THE REFERRER DASHBOARD PREVIEW LANDS *AFTER* THE FONT RULING.**
       `PREVIEW_VIEWS` already has `dashboard` as its third entry, rendering a hand-painted
@@ -3768,6 +3796,16 @@ root cause, and patching them separately produces six unrelated special cases)
       rather than reversing it. → §10
 - [ ] `useAdminPermissions` still drops `is_attributable` and `rep_revenue_visibility`.
       Phase 5 surfaced `is_field_rep` only, deliberately. → §10
+      ⚠ **CORRECTION, 2026-09-16 (CANVASS-0 S4) — THE ENTRY ABOVE IS FALSE AT `f79f2e6`. VERIFIED
+      FROM SOURCE, NOT INHERITED.** `useAdminPermissions` carries **both** flags: they are in the
+      context default shape, in the `GET /api/admin/me` fetch mapping, and in the hook's returned
+      object — and the server supplies both from `team_members` in that route's SELECT. It also
+      exports `repCapabilitiesFrom(state)` and `RepCapabilitiesContext`, the latter created with
+      `undefined` **so it THROWS rather than defaulting** — the structural repair CLAUDE.md's
+      vacuity shape #10 prescribes, rather than a default that would make a missing provider
+      indistinguishable from a working one.
+      **The entry above is left unrewritten and unticked: it is the record of what was believed.**
+      → Canvass-0 S4 · `CANVASS_0_REPORT.md` §5
 - [x] ~~**The owner→rep surface switcher.**~~ ✅ **SHIPPED — C/DL-3c Phase 2b.**
       `surfaceFor(session, chosen)`, `chosen` as React state in `src/App.jsx`.
       ⚠ **RELAXED, NOT REVERSED, AND PROVED MECHANICALLY RATHER THAN ASSERTED:** the signature
@@ -3978,6 +4016,116 @@ none of them. **3-D's real-browser pass is owed IN FULL and this sighting does n
       ⚠ **RECORDING IS NOT SCHEDULING.** `CDL_3c_LIVE_VERIFICATION.md` exists precisely because
       *"recorded, therefore handled"* is the reading it was written to prevent. **This line is
       the schedule; that file is the record.**
+
+### Canvass-0 — what the scoping pass found (filed 2026-09-16)
+
+*Read-only pass at `f79f2e6`. Full record: `CANVASS_0_REPORT.md` at repo root. **Every contrast
+figure below is ARITHMETIC — no node was rendered**, and the preview arc runs before Canvass-1 and
+may legitimately change several of these subjects.*
+
+- [ ] ⚠ **RE-MEASURE BEFORE CANVASS-1 — EIGHT CANVASS-0 SUBJECTS ARE RECORDS OF A PAST STATE, NOT
+      FACTS ABOUT CANVASS-1's HEAD.** Marked in the report at **S3, S11, S13, S14, S15** (§5
+      scorecard) and at **0b.1, 0b.2, 0b.3** (§9 overlap table). Each is a finding whose subject
+      the preview arc can legitimately change; **none may be carried into Canvass-1 as
+      established.** → `CANVASS_0_REPORT.md` §5 and §9
+
+- [ ] ⚠ **`ScreenTitle`'s SUBTITLE IS A PROBABLE LIVE CONTRAST DEFECT ON THE SHIPPED 3-A SHELL.**
+      `opacity: 0.65`, no colour of its own, on **every rep tab and on Profile** — **4.13:1 on
+      palette-beta light** against a 4.5 floor. ⚠ **ARITHMETIC, NOT OBSERVED.**
+      **OWNER: Canvass-1 — MEASURE FIRST, do not fix from this number.**
+      ⚠ **AND THE OBVIOUS FIX IS NOT PROVEN HERE:** the candidate `MUTED = 0.72` was derived on
+      **`surface` and `recess`, NOT on `bg`**, and the rep column's ground is `--rm-bg`. *A safety
+      measure copied from a prior phase must be RE-DERIVED* — this is that case exactly.
+      → Canvass-0 §13 · correction (b) in `CANVASS_0_REPORT.md`'s header
+
+- [ ] ⚠ **`RewardScheduleCard` RENDERS SKELETONS FOREVER WHEN THE TOKEN IS FALSY.** `loading`
+      initialises `true`; the effect's `if (!sessionToken) return` fires **before** the `try`, so
+      the `setLoading(false)` in its `finally` is never reached. Not a slow load — a permanent one.
+      **OWNER: Preview-1** (a real dashboard mount is the first thing that renders this card
+      without a session). → Canvass-0 0b.1
+
+- [ ] ⚠ **`PreviewFrame` RE-CLONES EVERY id-LESS PARENT STYLESHEET LINK ON EVERY RENDER.** The
+      copying effect has **no dependency array**, and its dedupe guard reads
+      `doc.getElementById(link.id || '_')` — a link with no `id` looks up `'_'`, finds nothing, and
+      is appended again. The head grows for as long as the panel is open.
+      **OWNER: Preview-1.** → Canvass-0 0b.2
+
+- [ ] ⚠ **`BrandingProfileSettings.jsx` CARRIES SEVEN `.then()` CHAINS** — a standing violation of
+      CLAUDE.md's *no `.then()` chains*. Counted, not estimated: `grep -c` reports 7.
+      **OWNER: unassigned. Filed, not scheduled** — it is the preview arc's host file, so whoever
+      opens it for Preview-1 is the cheapest taker. → Canvass-0 §13
+
+- [ ] ⚠ **`AvatarCircle`'s `bg` PROP HAS ZERO CALL SITES IN ALL OF `src/`, AND THE COMMENT
+      DEFENDING IT CITES A USAGE THAT DOES NOT EXIST AT HEAD.** The comment says *"RankingsTab
+      passes `bg={R.navy}` on warmup rows"*; `RankingsTab`'s six `AvatarCircle` call sites pass no
+      `bg` at all. **OWNER: unassigned. ⚠ CHECK HISTORY BEFORE DELETING** — the prop's `#fff`
+      foreground defect is dormant rather than fixed, and the comment is evidence about when the
+      caller went away, which a deletion would destroy. → Canvass-0 S13, §13
+
+- [ ] ⚠ **`flagged_assignments` HAS NO REP COLUMN, SO "THIS REP'S FLAGS" IS A DESIGN QUESTION PLUS
+      A SCHEMA CHANGE — NOT A QUERY.** Only `reps_involved` **jsonb**, indexed on
+      `(contractor_id, status)`. ⚠ **Confirmed against the CREATE *plus every* `ALTER`**, per the
+      table-shape rule: the later migration adds only `status`, `resolution`, `resolved_by` and
+      `resolved_at`, and drops `reviewed`/`reviewed_at`. `resolved_by` is the actor, not the
+      subject. **OWNER: Canvass (U6).** → Canvass-0 §13
+
+- [ ] ⚠ **`RepShell`'s COLUMN PAINTS `--rm-bg` WHILE `ReferrerApp`'s PAINTS `--rm-recess`, AND
+      `Screen.jsx`'s HEADER SAYS THE TWO MUST NEVER DIVERGE.** ⚠ **AND `--rm-bg` IS IN NO
+      `TOKEN_FLOORING` ENTRY** — the six recorded tokens are `--rm-primary`, `--rm-secondary`,
+      `--rm-primary-text`, `--rm-text` and the two `-dark` partners — **so every text pair in the
+      rep column is `unproven` by the fence built to catch exactly this.** *A token floored against
+      one ground is not safe on another.*
+      **OWNER: Canvass-1 (U14). REPORT ONLY — NO RULING IS MADE HERE**, because which column is
+      right is a design question and the fence gap is a tooling one. → Canvass-0 §13
+
+- [ ] ⚠ **A REP-APP CALL TO `/api/admin/*` COLLIDES WITH A FENCE THAT IS CURRENTLY GREEN.**
+      `roleRouting.test.jsx` asserts *"the rep surface calls NO gated admin endpoint, only
+      `/api/admin/me`"*. `PATCH /api/admin/me/title` and `GET /api/admin/titles` **already exist**,
+      and `verifyAdminSession` carries **no tier predicate**, so a general-tier field rep can call
+      them — which is how Profile would reach them. **The fence may turn red the moment Profile is
+      wired.** ⚠ **UNMEASURED. This also absorbs U7, which is NOT resolved.**
+      **OWNER: Canvass-1 (U25).** → Canvass-0 §13 · correction (a) in the report's header
+
+- [ ] ⚠ **TENANCY — THE SIGNUP PATH'S `UPDATE users SET jobber_client_id` CARRIES NO
+      `contractor_id` PREDICATE.** It is **the only write of that column without one**. **Safe
+      today by CONSTRUCTION, not by GUARD** — which is the distinction worth filing, because a
+      construction that changes takes the safety with it silently and no test would move.
+      **OWNER: unassigned; belongs with the tenancy work.**
+      ⚠ **FILED HERE RATHER THAN BESIDE THE OTHER TENANCY ENTRIES DELIBERATELY:** those sit in the
+      🔴 PRE-LAUNCH block near the top of this file, and inserting there is what rotted 30
+      citations last time. → Canvass-0 §13
+
+- [ ] ⚠ **THE "793 `R.*`, ZERO `--rm-*`" CLAIM IS *INVERTED*, NOT STALE, AND IT LIVES IN AT LEAST
+      NINE PLACES — ONE OF THEM SOURCE.** Even the file count moved: 16 files then, 15 now.
+      **The copies, by document:** `EXECUTION_SEQUENCE.md` **×2** (row 1.3 and the R/AD row) ·
+      **`PRE_LAUNCH_CHECKLIST.md` ×3** (this file) · `UI_OVERHAUL_SPEC.md` ·
+      `CDL_3c_PHASE0_REPORT.md` · **`server/routes/referrer.js` — SOURCE** · plus seven more across
+      the three untracked Phase-0 reports.
+      ⚠ **THE SOURCE COPY IS THE LOAD-BEARING ONE: it is the stated justification for the 403 in
+      `PUT /api/preferences/theme-mode`.** The reason it gives is gone. **Whether the GATE goes is
+      a separate question (U2) and is NOT answered by this entry** — the comment being wrong does
+      not make the gate wrong.
+      ⚠ **THE SOURCE COMMENT IS FIXED BY A CODE SESSION, NOT BY A DOCS PASS.** Filed, not fixed.
+      → Canvass-0 S4 · `CANVASS_0_REPORT.md` §5
+
+- [ ] ⚠ **READ BEFORE ANY REP ROUTER IS WRITTEN — THE THREE INCIDENTAL WAYS A 3-B BUILD COULD OPEN
+      REFERRER DARK MODE.** *(Canvass-0 §9, quoted verbatim. The only guard keeping referrer dark
+      mode unreachable is the theme writer's own predicate. Stated plainly, NOT designed around.)*
+      1. **Factoring the inline `is_field_rep` re-read into middleware and applying it by prefix
+         rather than per-route** — a rep prefix that accidentally includes `/api/preferences/*`
+         opens the gate.
+      2. **Exporting `preferenceSubjectFor` and using it in the writer for symmetry with the
+         reader** — this replaces the hardcoded `'team_member'` with the session's own subject and
+         silently admits referrers.
+      3. **Moving the route into a rep router at all** — this detaches it from the 23-route
+         referrer count that currently notices changes there.
+
+      ⚠ **ALL THREE ARE TIDY-LOOKING REFACTORS WHOSE EFFECT IS TO UNBLOCK A STATE THAT HAS KNOWN
+      DEFECTS BEHIND IT** — the six in the AD-3 prerequisite entry, four of which are closed or
+      unreachable and one of which (`STATUS_CONFIG.lead`) is live in light mode already.
+      ⚠ **AND THE WRITER'S OWN COMMENT INVITES NUMBER 1 IN TERMS:** *"WHEN THE SECOND REP-GATED
+      ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
+      that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
 ---
 
@@ -5234,6 +5382,29 @@ quadruples is evidence about the estimate, not about the wave:
       construction; nothing needs doing before then. ⚠ **But it must not be resolved by
       "correcting" the illustration's hex** — that is a second copy of a derivation, and it drifts
       again on the next phase.
+      ⚠ **CORRECTION, 2026-09-16 (CANVASS-0) — THE TRIGGER ABOVE COULD NOT FIRE, SO THIS ENTRY WAS
+      NEVER GOING TO CLOSE ITSELF.** Palette-4 shipped as `8d7f5aa` and `31d35ae`, and **neither
+      touched `BrandingPreview.jsx`**: `git log 4ae272f..HEAD -- src/components/admin/BrandingPreview.jsx`
+      returns nothing, and `-S "PREVIEW_VIEWS"` returns nothing. The dashboard view still renders the
+      local `DashboardPreview`, which reads **zero** tokens — no `--rm-*`, no `statusVar(`, no
+      `elevationVar(` — and still hardcodes **`#EEF2F7`**, the same ground this entry measured,
+      unchanged. **A trigger naming a PHASE fires only if someone re-reads the entry during that
+      phase. Nobody did, and the phase passed.**
+      ⚠ **REPLACEMENT TRIGGER — A STATE, NOT A PHASE, SO ANYONE CAN EVALUATE IT AT ANY TIME:**
+      *"`DashboardTab` reads `--rm-*`, and the tree the preview mounts carries no live `R.` colour
+      read."* **TRUE at `f79f2e6`** — `DashboardTab` carries **46** `--rm-` reads and **zero** `R.`
+      reads, so a real mount is faithful today and this entry is **unscheduled, not blocked.**
+      ⚠ **AND THE SCOPE IS STATED BESIDE THE CLAIM, BECAUSE THE WIDER FORM OF IT IS FALSE.** Worded
+      as *"`src/components/referrer/` has zero live `R.` colour reads"* the trigger does **NOT**
+      hold: `ProfileTab` still carries **three live colour-read lines** — `R.tealText` on the
+      "Joined your network" line, and `R.greenBg`/`R.amberBg`/`R.greenText`/`R.amberText` on the
+      report pill. **Both are deliberate documented HOLDS, not residue** (A.2 is unruled since
+      Phase 0-B; the status pill's own comment records that the `R` values measure 4.57:1 and
+      4.51:1 while the token route measures 4.39:1 and 4.42:1, so the literals are currently the
+      CORRECT values). **The preview mounts `DashboardTab`, not `ProfileTab`, so neither blocks
+      this entry** — but a trigger written the wider way would never have fired either.
+      **OWNER: the preview arc, Preview-1.** The fix remains a REAL MOUNT, never a corrected hex.
+      → Canvass-0 §2 · `CANVASS_0_REPORT.md`
       → `9dc7570` · the R/AD migration entry's preview consequence · `RAD_MIGRATION_PHASE0B_REPORT.md` §6.4
 
 - [ ] **⚠ MONEY ON A BRAND FILL CANNOT BE GREEN, AND THE RULE HAS NO CLAUSE FOR IT.**
@@ -5627,6 +5798,34 @@ quadruples is evidence about the estimate, not about the wave:
       | 11 | **The campaign email's font defaults diverge** (Georgia/Arial vs Montserrat/Roboto) and it loads no webfont at all | a ruling on a live outbound path |
       | 12 | ⚠ **`BookingFormModal` and `ProfileTab` hold DIFFERENT light-reds for the same job** — `rgba(255,140,140,1)` and `#fca5a5`. Both correct-as-literals (the status set has no error-on-a-brand-fill pair); neither wrong | a colour decision, which a migration phase is the wrong place to make |
       | 13 | **The tracking redirect** — `/api/track/click/:token` still redirects to the stored `cta_url` | an HTTP `Location` is not an HTML attribute; different surface, different blast radius |
+
+      ⚠ **DATED NOTE — CANVASS-0, MEASURED AT `f79f2e6`, 2026-09-16. ROW 4 ("the six latent
+      dark-mode defects — recorded by the dark-mode pass; unblocked already") STANDS CORRECTED, AND
+      THE RULING REMAINS OWED.** This note is filed identically here and against the **AD-3
+      prerequisite entry** below, because the two say opposite things about the same six defects
+      ~500 lines apart: AD-3 says *"they are only unreachable"*, row 4 says *"unblocked already."*
+      **Measured, 4 of the 6 are closed or unreachable for reasons NEITHER entry gives:**
+      · **1 and 2** (the `#000000` borders) — the value is still `R.border`, but **no production
+        screen mounts `StateCard`**; the only live readers are `dev/PaletteHarnessRoute` and
+        `LoadingIndicator`. Unreachable by ROUTING, not by the toggle.
+      · **3** (Cash Out indicator on `#21B6B0`) — **appears closed**; that hex now survives only
+        inside a comment in `DashboardTab`.
+      · **5** (avatar initials) — **closed**; `AvatarCircle` is token-painted.
+      · **6** (disclosure caret) — **closed in the referrer and auth trees**; `R.textMuted`'s live
+        reads are `AdminSettingsNotifications` (admin, known excluded) and `LoadingIndicator`,
+        where it is now only a `var()` fallback.
+      ⚠ **AND DEFECT 4 IS LIVE TODAY, IN LIGHT MODE, ON AN ADMIN SURFACE.** `STATUS_CONFIG.lead` is
+      `{ color: R.grayText, dot: R.grayText, bg: R.grayBg }` = **`#6b7280` on `#f3f4f6` = 4.39:1**
+      against a 4.5 floor, **mode-blind**. It reaches the referrer tree through `StatusBadge` and
+      `ProfileTab`, **and the admin tree through `AdminReferrers`**, which reads
+      `STATUS_CONFIG.lead.bg`/`.color` for its pipeline pills. So AD-3's *"they are only
+      unreachable"* is **false for this one**, and this row's *"unblocked already"* is right for the
+      wrong reason — **it was never blocked by the toggle question at all.**
+      ⚠ **NEITHER ENTRY IS REWRITTEN AND NEITHER IS TICKED.** Each is the record of what a pass
+      believed, and a record repaired in place stops being evidence. **What to do about the six is
+      still UNRULED** — the evidence moved, the decision did not.
+      → Canvass-0 S15 and U2 · `CANVASS_0_REPORT.md` §5, §8 · the `AdminReferrers` entry under
+        **D-3 · R-8**
 
       ⚠ **AND ONE CLOSED HERE THAT HAD SURVIVED ELEVEN COLOUR PHASES:** `ErrorBoundary.jsx`
       painted its crash-screen button `#CC0000` — **Accent Roofing's retired red** — under a note
@@ -6138,6 +6337,34 @@ quadruples is evidence about the estimate, not about the wave:
       attributed to it. **They predate it. They are only unreachable.**
       → `CD-21`'s deferred client-app design pass · `server/routes/referrer.js`'s
         `PUT /api/preferences/theme-mode`
+
+      ⚠ **DATED NOTE — CANVASS-0, MEASURED AT `f79f2e6`, 2026-09-16. BOTH READINGS OF THESE SIX
+      STAND CORRECTED, AND THE RULING REMAINS OWED.** This note is filed identically here and
+      against **Palette-14's inventory row 4**, because the two say opposite things about the same
+      six defects ~500 lines apart: this entry says *"they are only unreachable"*, row 4 says
+      *"unblocked already."* **Measured, 4 of the 6 are closed or unreachable for reasons NEITHER
+      entry gives:**
+      · **1 and 2** (the `#000000` borders) — the value is still `R.border`, but **no production
+        screen mounts `StateCard`**; the only live readers are `dev/PaletteHarnessRoute` and
+        `LoadingIndicator`. Unreachable by ROUTING, not by the toggle.
+      · **3** (Cash Out indicator on `#21B6B0`) — **appears closed**; that hex now survives only
+        inside a comment in `DashboardTab`.
+      · **5** (avatar initials) — **closed**; `AvatarCircle` is token-painted.
+      · **6** (disclosure caret) — **closed in the referrer and auth trees**; `R.textMuted`'s live
+        reads are `AdminSettingsNotifications` (admin, known excluded) and `LoadingIndicator`,
+        where it is now only a `var()` fallback.
+      ⚠ **AND DEFECT 4 IS LIVE TODAY, IN LIGHT MODE, ON AN ADMIN SURFACE.** `STATUS_CONFIG.lead` is
+      `{ color: R.grayText, dot: R.grayText, bg: R.grayBg }` = **`#6b7280` on `#f3f4f6` = 4.39:1**
+      against a 4.5 floor, **mode-blind**. It reaches the referrer tree through `StatusBadge` and
+      `ProfileTab`, **and the admin tree through `AdminReferrers`**, which reads
+      `STATUS_CONFIG.lead.bg`/`.color` for its pipeline pills. So this entry's *"they are only
+      unreachable"* is **false for this one**, and row 4's *"unblocked already"* is right for the
+      wrong reason — **it was never blocked by the toggle question at all.**
+      ⚠ **NEITHER ENTRY IS REWRITTEN AND NEITHER IS TICKED.** Each is the record of what a pass
+      believed, and a record repaired in place stops being evidence. **What to do about the six is
+      still UNRULED** — the evidence moved, the decision did not.
+      → Canvass-0 S15 and U2 · `CANVASS_0_REPORT.md` §5, §8 · the `AdminReferrers` entry under
+        **D-3 · R-8**
 
 - [ ] **⚠ THREE OF THOSE SIX ARE A DIFFERENT DEFECT CLASS: VALUES THAT NEVER GOT A DARK VARIANT
       AT ALL, AND SO PAINT IDENTICALLY IN A MODE THEY WERE NEVER DESIGNED FOR.**

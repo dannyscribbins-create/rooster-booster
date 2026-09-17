@@ -88,6 +88,31 @@ The main acquisition channel, and where you want to be.
 | 1.6 | **Rep revenue surface** | The 3c branch that needed 1.5. |
 | 1.7 | **C/DL-3d / 3e** | Add client + roster; network constellation. ⚠ Two approved React Flow prototypes exist — **re-find them, don't re-prototype**. 3e is the most build-heavy piece in the arc. ⚠ **3d ALSO OWNS THREE ITEMS CARRIED SINCE C/DL-1:** `supersedeToken()` (never implemented — `contractor_invite_links.superseded_by` exists and nothing writes it), the peer-link double-mint race, and rep-token expiry policy. ⚠ **3e OWNS THE ROUTER DECISION (D10), DEFERRED OUT OF 3c DELIBERATELY** — focus-mode drill-down and Capacitor deep links are the forcing functions; nothing before them needs a router. **Scope when it lands: ONE session across all three surfaces** — referrer app, admin panel, rep interface. ⚠ **3c's deferral carries a BINDING CONDITION that is what makes this row cheap:** every rep screen's state lives in ONE **parameterised** object at the shell level — `{ screen: 'clientDetail', clientId: 482 }`, **never a bare string** — so the migration rewires one variable's source instead of untangling five screens. **A string-only screen state cannot express "which client," and Today's Focus (CD-10) already opens a specific client from the dashboard banner.** If 3c ships a bare string this row gets harder, not the same. → `DECISION_C_DL_BUILD_SPEC.md` §17, A24.6. |
 
+⚠ **CORRECTION TO ROW 1.3 — 2026-09-16, from Canvass-0 measured at `f79f2e6`. THE ROW IS NOT
+REWRITTEN: it is the record of what was planned, and a record repaired in place stops being
+evidence.** Four of the things it lists as owed have **SHIPPED**, and one of its measurements is
+**INVERTED rather than stale**:
+
+- **`useAdminPermissions` context plumbing — SHIPPED.** `RepCapabilitiesContext` and
+  `repCapabilitiesFrom(state)` exist, and the context is created with `undefined` so it **throws
+  rather than defaulting** (C/DL-3c Phase 2a).
+- **The owner→rep surface switcher — SHIPPED** (Phase 2b). `surfaceFor(session, chosen)`, not
+  persisted, by ruling.
+- **The theme toggle — SHIPPED** (3-A). `RepThemeToggleRow`, rep-only per CD-21.
+- **E-min — SHIPPED** (Phase 2c).
+- ⚠ **"793 `R.*` references across 16 files, zero `--rm-*`" IS INVERTED, NOT STALE.** The referrer
+  tree is migrated; `DashboardTab` alone carries **46** `--rm-` reads and **zero** `R.` reads. Even
+  the file count moved — **16 then, 15 now**. The claim survives in **at least nine places**,
+  **including this document twice** (this row and the *R/AD → CSS-variable migration* row) and
+  **including one SOURCE comment**, `server/routes/referrer.js`, where it is the stated
+  justification for the 403 in `PUT /api/preferences/theme-mode`.
+  ⚠ **Whether that GATE goes is a separate, open question (U2)** — a wrong comment does not make
+  the gate wrong. **The source comment is fixed by a code session, not by a docs pass.**
+
+**Still open in row 1.3:** the D10 router decision, R2's slug-echo security question, and the
+credential-link branding question. → `PRE_LAUNCH_CHECKLIST.md` → *Canvass-0 — what the scoping
+pass found* · `CANVASS_0_REPORT.md` §5 (S4)
+
 **Decisions owed before 1.7:** R8 (rep-side milestone checkpoint; client-portal rep-selection banner — "not yet sold," open since June) and R9 (GraphiQL confirmation that Jobber exposes a request's assigned team members — "likely resolved by S92, verify," never confirmed in writing). Both are rulings, not builds.
 
 ---
@@ -252,6 +277,16 @@ Not blocking. Recorded on `PRE_LAUNCH_CHECKLIST.md` under Named builds.
 ---
 
 ## ⚠ WHAT IS NEXT — a live pointer, not part of the dated record below
+
+**➡ THE RUNNING ORDER INSIDE WAVE 1.3, RULED 2026-09-16 (Danny): the PREVIEW ARC, then CANVASS.**
+**Palette → the referrer dashboard preview (a REAL MOUNT) → Canvass (3-B → 3-C → 3-D).** The
+Palette arc is closed. **The preview arc runs next** — it mounts `DashboardTab` for real inside
+`BrandingPreview`, which is both the pattern 3-C builds rep screens against and the thing that
+closes the preview-drift entry by construction. **Canvass follows it**: `Canvass-1 … Canvass-n`
+are the remaining rep-arc phases, and `Canvass-0` was the scoping pass
+(`CANVASS_0_REPORT.md`). Forward-only per R-15 — 3-B / 3-C / 3-D keep their names.
+⚠ **This paragraph is a POINTER and carries no verification date on purpose**, per the rule
+below: anything that tells you what to do next may not sit inside a dated sentence.
 
 **Wave 1.3 — C/DL-3c + E-min.** Wave 0 is complete; Wave 1.1 closed 2026-08-30 at `d16bc31`;
 **Wave 1.2 is VACATED (D14)** and RANK now runs as one arc after Wave 1.4. Row 1.2 is kept in
