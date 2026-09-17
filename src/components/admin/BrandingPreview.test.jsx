@@ -1181,85 +1181,131 @@ describe('B-4 — the view switcher mounts each surface, and the mode toggle swa
 
   // ── 4. THE TOGGLE IS DISABLED ON THE DASHBOARD ILLUSTRATION ────────────────
 
-  it('[RED] the toggle is DISABLED on Dashboard and RE-ENABLED on leaving it', async () => {
-    // ⚠ BOTH DIRECTIONS, IN ONE MOUNT, AND THE ENABLED STATE IS ASSERTED FIRST.
-    // "It is disabled here" is satisfied by a control that is disabled
-    // everywhere — including by one wired to nothing at all. The enabled
-    // bookends are what make the middle assertion mean something.
+  it('the toggle is ENABLED on every view, and ONE mode is shared across them', async () => {
+    // ── ⚠ DELIBERATELY FLIPPED IN PREVIEW-2. READ BEFORE "FIXING" IT. ────────
+    // This asserted the toggle was DISABLED on the dashboard and re-enabled on
+    // leaving it. That was correct twice over: first while the view was a
+    // hand-painted illustration that could not respond to a mode, then — after
+    // Preview-1 made it a real mount — as a pure sequencing hold while the
+    // dark-mode defects it exposes were listed for an eye test (P4).
     //
-    // ⚠ WHY IT IS DISABLED — AND THE OLD ANSWER HERE HAD INVERTED. It read
-    // "DashboardPreview is a hand-painted illustration that reads no token and
-    // no mode, so it renders identically in both." Preview-1 replaced that
-    // illustration with the real referrer Dashboard, which DOES respond to the
-    // mode, so the assertion below is still correct while its stated reason was
-    // not. The hold is SEQUENCING: Preview-2 enables the control once the
-    // dark-mode defects it exposes have been listed for an eye test (P4).
-    // ⚠ THE ASSERTION IS UNCHANGED ON PURPOSE. It is still true, and this case
-    // is what will fail loudly when Preview-2 enables the toggle — which is
-    // exactly what it is for.
+    // Preview-1 left the ASSERTION untouched on purpose, saying in its own
+    // comment that it "is what will fail loudly when Preview-2 enables the
+    // control, which is exactly what it is for". It did. This is that flip.
+    //
+    // ⚠ THE ENABLED BOOKENDS BECOME THE WHOLE TEST, and the mode-sharing half is
+    // what makes it more than "the control is not disabled anywhere" — an
+    // assertion a control wired to nothing would also satisfy.
     render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
     await screen.findByText('Live Preview');
 
     expect(modeToggle().disabled, 'the toggle is dead on the login view').toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
-    await waitFor(() => expect(modeToggle().disabled).toBe(true));
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+    expect(modeToggle().disabled, 'the dashboard toggle is still held disabled').toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: 'Rep app' }));
     await waitFor(() => expect(modeToggle().disabled).toBe(false));
   });
 
-  it('the dashboard note says what the SAMPLE DATA is and why the toggle is held', async () => {
-    // ── ⚠ REWRITTEN IN PREVIEW-1, AND THE OLD ASSERTION HAD INVERTED ─────────
-    // It required the note to match /illustration/i. That was correct while the
-    // dashboard view WAS an illustration; the moment it became a real mount, the
-    // assertion became a fence holding the wording to a claim that is now FALSE.
-    // Matching /illustration/i today would mean the panel is lying to the
-    // contractor about what they are looking at.
+  it('dark set on ONE view is still dark on the others, and the toggle says so', async () => {
+    // ⚠ THE CONTROL MUST NOT LIE ABOUT THE THING IT CONTROLS. `mode` is one piece
+    // of component state handed to whichever surface is mounted, so switching
+    // views cannot reset it. Before Preview-2 this was already true of the frame
+    // and NOT observable through the control, because the dashboard's toggle was
+    // disabled — a contractor could reach a dark dashboard via another view and
+    // find the switch inert.
     //
-    // The note is KEPT rather than deleted because `aria-describedby` on the
-    // still-disabled toggle points at it, and a disabled control with no stated
-    // reason is a dead button. What changed is the reason.
-    //
-    // ⚠ ANCHORED ON THE NOTE'S OWN ELEMENT, NOT A DOCUMENT-WIDE TEXT SEARCH. A
-    // needle matched anywhere on the panel would go green against the words
-    // appearing in a button label — and the variant picker beside it renders a
-    // button literally labelled "default".
+    // ⚠ ASSERTED ON BOTH HALVES AT EVERY STOP: what the CONTROL reads, and what
+    // the FRAME actually renders. Either alone is satisfiable by a control wired
+    // to nothing, or by a frame that ignores it.
     render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
     await screen.findByText('Live Preview');
 
+    // Start on Login, go dark there.
+    fireEvent.click(modeToggle());
+    await waitFor(() => expect(modeToggle().getAttribute('aria-checked')).toBe('true'));
+    await waitFor(() => expect(themeRoot()?.getAttribute('data-rm-theme')).toBe('dark'));
+
+    for (const view of ['Rep app', 'Dashboard', 'Login']) {
+      fireEvent.click(screen.getByRole('button', { name: view }));
+      await waitFor(() => expect(themeRoot()).toBeTruthy());
+      expect(
+        modeToggle().getAttribute('aria-checked'),
+        `the toggle forgot the mode on the ${view} view`
+      ).toBe('true');
+      expect(
+        themeRoot().getAttribute('data-rm-theme'),
+        `the ${view} frame rendered light while the toggle said dark`
+      ).toBe('dark');
+    }
+
+    // And back to light, from the dashboard — the view that could not do this before.
     fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
-
-    const note = await waitFor(() => {
-      const el = document.querySelector('[data-preview-illustration-note]');
-      if (!el) throw new Error('the dashboard view carries no note element');
-      return el;
-    });
-
-    // ⚠ THIS ASSERTION USED TO REQUIRE /sample data/i, AND THAT IS HOW A P2
-    // VIOLATION BECAME PERMANENT. P2 rules there is NO sample-data label on
-    // screen; the Preview-1 build wrote one anyway and then PINNED it here, so
-    // the fence was holding the defect in place rather than catching it. It
-    // reached production in `9b1fe59`. Inverted deliberately.
-    expect(
-      note.textContent,
-      'the sample-data label is back on screen — P2 forbids it'
-    ).not.toMatch(/sample|fixture|dummy|placeholder|not real/i);
-    expect(
-      note.textContent,
-      'the note still calls the view an illustration — it is a real mount now'
-    ).not.toMatch(/illustration/i);
-
-    // The disabled toggle's stated reason still has to be visible.
-    expect(
-      note.textContent,
-      'the note does not mention the mode — the disabled toggle has no stated reason'
-    ).toMatch(/light|dark/i);
-
-    // ⚠ AND THE TOGGLE MUST ACTUALLY POINT AT IT. Without this the note could be
-    // reworded into something no control references and nothing would fail.
-    expect(modeToggle().getAttribute('aria-describedby')).toBe(note.id);
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+    fireEvent.click(modeToggle());
+    await waitFor(() => expect(themeRoot().getAttribute('data-rm-theme')).toBe('light'));
+    expect(modeToggle().getAttribute('aria-checked')).toBe('false');
   });
+
+  it('the dashboard note is GONE, and the toggle points at nothing that no longer exists', async () => {
+    // ⚠ REPLACES "the dashboard note says what the SAMPLE DATA is and why the
+    // toggle is held". That note carried two sentences in its life and both went
+    // false — an illustration claim, then a P2-violating sample-data label that
+    // reached production. Its last reason to exist was describing a disabled
+    // control; the control is enabled, so the element is deleted rather than
+    // emptied.
+    // ⚠ A DANGLING aria-describedby IS WORSE THAN NONE — it points a screen
+    // reader at an id that resolves to nothing. That is the half this pins.
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+    fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+    await waitFor(() => expect(themeRoot()).toBeTruthy());
+
+    expect(document.querySelector('[data-preview-illustration-note]')).toBeNull();
+
+    const describedBy = modeToggle().getAttribute('aria-describedby');
+    if (describedBy) {
+      expect(
+        document.getElementById(describedBy),
+        `the toggle describes itself by "${describedBy}", which resolves to nothing`
+      ).toBeTruthy();
+    }
+    // The control still names itself.
+    expect(modeToggle().getAttribute('aria-label')).toBeTruthy();
+  });
+
+  it('the NOTCH sits in the bezel, not over the previewed screen', async () => {
+    // ⚠ THE DEFECT: the notch was absolutely positioned INSIDE the screen area at
+    // `zIndex: 10`, so it painted over the first ~28px of the contractor's own
+    // surface. Found by eye on the dashboard in dark — it covered the bank
+    // banner's title, which read "Connect You…".
+    //
+    // ⚠ ASSERTED STRUCTURALLY, NOT GEOMETRICALLY, AND THE REASON MATTERS. jsdom
+    // does no layout: every getBoundingClientRect here is zeros, so an overlap
+    // test would compare 0x0 boxes and pass against any arrangement whatsoever.
+    // Containment is the property jsdom CAN see, and it is the one that decides
+    // whether the notch can cover content at all. The pixel check belongs in a
+    // browser and was done there.
+    render(<BrandingPreview formData={DEEP_ACTION_DRAFT} />);
+    await screen.findByText('Live Preview');
+
+    const notch = document.querySelector('[data-preview-notch]');
+    expect(notch, 'the casing draws no notch at all — the test is not exercising anything').toBeTruthy();
+
+    const frame = document.querySelector('iframe[data-preview-frame]');
+    expect(frame).toBeTruthy();
+    const screenArea = frame.parentElement;
+
+    expect(
+      screenArea.contains(notch),
+      'the notch is inside the screen area again — it will paint over the contractor surface'
+    ).toBe(false);
+    expect(notch.style.zIndex, 'the notch carries a stacking order, which it only needs to sit ON TOP of something').toBe('');
+  });
+
+
 
   // ── 5. THE B-3c MERGE REACHES THE NEW SURFACE ──────────────────────────────
 

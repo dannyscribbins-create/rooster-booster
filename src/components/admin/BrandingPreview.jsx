@@ -97,7 +97,6 @@ const PREVIEW_VIEWS = Object.freeze([
 
 // The disabled toggle's aria-describedby target, so the control and the sentence
 // explaining it cannot drift apart by one of them being renamed.
-const ILLUSTRATION_NOTE_ID = 'branding-preview-illustration-note';
 
 // Hoisted so the props they feed are stable across renders. NO_STORED_MODE is
 // what keeps the preview from reading anybody's stored preference: the pin
@@ -189,15 +188,20 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
   // kept at this level so switching away and back does not reset it.
   const [variant, setVariant] = useState(PREVIEW_FIXTURE_DEFAULT);
 
-  // ⚠ STILL DISABLED ON THE DASHBOARD, BUT NO LONGER FOR THE ORIGINAL REASON,
-  // AND THE OLD REASON IS NOW FALSE. It read "the illustration has no mode".
-  // The illustration is gone: this view mounts the real referrer Dashboard,
-  // which reads --rm-* and DOES respond to the mode. The hold is now purely
-  // sequencing — Preview-2 enables the control, after the dark-mode defects it
-  // would expose have been listed for an eye test (P4). Leaving the old sentence
-  // in place would have been an inverted record defending a control against a
-  // surface that can now use it.
-  const modeDisabled = screen === 'dashboard';
+  // ⚠ THERE IS NO `modeDisabled` ANY MORE, AND THAT IS PREVIEW-2's SUBJECT.
+  // The toggle is live on ALL THREE views. It was held on the dashboard for one
+  // phase — first because the view was a hand-painted illustration that could not
+  // respond to a mode, then, once Preview-1 made it a real mount, purely for
+  // sequencing while the dark-mode defects it exposes were listed for an eye
+  // test (P4). That list exists and the eye test has been run, so the hold is
+  // discharged rather than forgotten.
+  //
+  // ⚠ ONE MODE, SHARED BY EVERY VIEW, AND THAT IS DELIBERATE. `mode` is this
+  // component's own state and is handed to whichever surface is mounted, so
+  // switching views never resets it and the control always reads the state it is
+  // actually showing. The alternative — per-view mode — would let the toggle say
+  // "light" over a dark frame the moment a contractor switched back, which is the
+  // control lying about the thing it controls.
 
   const theme     = resolveBrandingTheme(formData);
 
@@ -281,35 +285,19 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
         Live Preview
       </p>
 
-      {/* ⚠ THE SENTENCE HERE USED TO SAY "Illustration of your palette — not a
-          render of the live screen, and it does not change between light and
-          dark." BOTH CLAUSES ARE NOW FALSE. This view mounts the real referrer
-          Dashboard through the same PreviewFrame + ThemeProvider path as the
-          other two, so it IS a render and it DOES respond to the mode.
-          ⚠ THE NOTE IS KEPT RATHER THAN DELETED, BECAUSE THE TOGGLE IS STILL
-          DISABLED AND aria-describedby STILL POINTS HERE. A disabled control
-          with no stated reason is a dead button. What changed is the reason: it
-          is a sequencing hold (Preview-2 enables it), not a property of the
-          surface. Deleting the element would have left the control mute; leaving
-          the old words would have left it lying. */}
-      {screen === 'dashboard' && (
-        <p
-          id={ILLUSTRATION_NOTE_ID}
-          data-preview-illustration-note=""
-          style={{
-            margin: '-6px 0 14px', fontSize: 11, lineHeight: 1.4,
-            color: AD.textTertiary, fontFamily: AD.fontSans, textAlign: 'center',
-          }}
-        >
-          {/* ⚠ THE SAMPLE-DATA SENTENCE WAS REMOVED HERE — IT VIOLATED P2, AND
-              IT REACHED PRODUCTION. P2 reads "NO 'sample data' label on screen.
-              It would be clutter — the preview frame already makes the context
-              evident", and it was recorded one commit BEFORE the build that
-              broke it. What is left is the disabled toggle's stated reason,
-              which P2 does not touch and which aria-describedby needs. */}
-          Light and dark for this screen arrive in the next update.
-        </p>
-      )}
+      {/* ⚠ THE DASHBOARD NOTE IS GONE, AND SO IS ITS REASON FOR EXISTING.
+          It carried two sentences in its life and BOTH went false. B-3 wrote
+          "Illustration of your palette — not a render of the live screen, and it
+          does not change between light and dark"; Preview-1 made that a real
+          mount and replaced it with "Sample data — … Light and dark for this
+          screen arrive in the next update." The first half violated P2 and
+          reached production; the second half was the disabled toggle's stated
+          reason, and the toggle is no longer disabled.
+          ⚠ THE ELEMENT IS DELETED RATHER THAN EMPTIED, because `aria-describedby`
+          pointed at it and an id that resolves to nothing is worse than no id.
+          Nothing now describes the toggle, which is correct: it is an ordinary
+          enabled switch with an aria-label. */}
+
 
       {/* ── THE FIXTURE VARIANT PICKER ──────────────────────────────────────
           ⚠ DEV-ONLY, AND THE PREVIOUS COMMENT HERE ARGUED THE OPPOSITE AND
@@ -417,32 +405,25 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
             through it would produce a console warning on every click and change
             nothing. Passing the pin IS the mechanism.
 
-            ⚠ STILL DISABLED ON THE DASHBOARD VIEW, WITH THE REASON ON SCREEN
-            BESIDE IT — BUT NOT THE ORIGINAL REASON, AND THE ORIGINAL IS NOW
-            FALSE. This read "DashboardPreview is a hand-painted illustration
-            that reads no token and no mode, so it renders identically either
-            way." That illustration is GONE: Preview-1 mounts the real referrer
-            Dashboard here, which reads --rm-* and DOES respond to the mode.
-            ⚠ THE HOLD IS PURELY SEQUENCING. Preview-2 enables this control,
-            after the dark-mode defects it would expose are LISTED for an eye
-            test (P4) — a preview arc that quietly repairs contrast defects is
-            how the referrer toggle later ships against a surface nobody
-            measured. Leaving the old sentence here would have been an inverted
-            record defending a control against a surface that can now use it.
-            ⚠ DISABLED RATHER THAN HIDDEN, AND RepBottomNav's ABSENT FAB IS NOT
-            THE COUNTER-EXAMPLE. That control does not exist yet in its phase, so
-            absence is a decision. This one exists and works on the other two
-            views, so hiding it would make it appear and disappear as views
-            change, which reads as a glitch. A disabled control with a stated
-            reason is the honest form when the capability exists and this one
-            surface cannot use it. */}
+            ⚠ LIVE ON ALL THREE VIEWS SINCE PREVIEW-2, AND THE PARAGRAPHS THAT
+            STOOD HERE ARE GONE WITH THE STATE THEY DESCRIBED. They explained why
+            the control was DISABLED on the dashboard — first because the view was
+            a hand-painted illustration that read no token and no mode, then,
+            after Preview-1 made it a real mount, as a sequencing hold while the
+            dark-mode defects it exposes were listed for an eye test (P4). Both
+            reasons are discharged; keeping either sentence would have left an
+            inverted record defending a restriction that no longer exists.
+            ⚠ ONE MODE ACROSS THE VIEWS, and the control always reads it. `mode`
+            is this component's state, handed to whichever surface is mounted, so
+            switching views cannot reset it or leave the switch disagreeing with
+            the frame. Before Preview-2 that was already true of the FRAME and not
+            observable through the CONTROL: a contractor could reach a dark
+            dashboard from another view and find the switch inert. */}
         <button
           type="button"
           role="switch"
           aria-checked={mode === 'dark'}
           aria-label="Dark mode"
-          aria-describedby={modeDisabled ? ILLUSTRATION_NOTE_ID : undefined}
-          disabled={modeDisabled}
           data-preview-mode-toggle=""
           onClick={() => setMode(m => (m === 'dark' ? 'light' : 'dark'))}
           style={{
@@ -451,8 +432,7 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
             border: `1.5px solid ${AD.border}`, background: 'transparent',
             color: AD.textSecondary,
             fontSize: 12, fontWeight: 600, fontFamily: AD.fontSans,
-            cursor: modeDisabled ? 'default' : 'pointer',
-            opacity: modeDisabled ? 0.45 : 1,
+            cursor: 'pointer',
             transition: 'opacity 0.15s',
           }}
         >
@@ -483,22 +463,47 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
       <div style={{
         width: 260, margin: '0 auto',
         background: '#1c2333', borderRadius: 40,
-        padding: '12px 10px 10px',
+        // ⚠ THE TOP PADDING IS THE NOTCH'S HOME NOW — see the notch below.
+        padding: '30px 10px 10px',
         boxShadow: '0 24px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08)',
+        position: 'relative',
       }}>
+        {/* ── THE NOTCH SITS IN THE BEZEL, NOT OVER THE SCREEN ──────────────
+            ⚠ IT USED TO COVER THE CONTRACTOR'S OWN CONTENT. It was absolutely
+            positioned at `top: 10` INSIDE the screen area at `zIndex: 10`, so it
+            painted over the first ~28px of the rendered surface. Found by eye on
+            the dashboard in dark: it hid the bank banner's title, which read
+            "Connect You…". Every view was affected; the dashboard is simply where
+            something important sits at the very top.
+            ⚠ THE OVERLAP IS PREVIEW-ONLY, AND THAT IS WHY THE FIX IS HERE AND NO
+            APP COMPONENT IS TOUCHED. `index.html` sets
+            `width=device-width, initial-scale=1` with NO `viewport-fit=cover`, so
+            a real phone's browser already lays the app out INSIDE the safe area
+            and a hardware notch never covers content. Consistent with the app
+            handling `env(safe-area-inset-bottom)` in six places and
+            `safe-area-inset-top` in none — it has never needed one.
+            ⚠ SO THE DEFECT WAS THE CASING DRAWING A NOTCH OVER A FRAME THAT
+            RENDERS FULL-HEIGHT. Moving it into the bezel keeps the previewed
+            viewport at exactly 390x750 — the frame's own dimensions are
+            untouched, so nothing about the contractor's layout changes. Insetting
+            the frame instead would have shrunk the previewed viewport and quietly
+            changed what the app lays out against. */}
+        <div
+          data-preview-notch=""
+          style={{
+            position: 'absolute', top: 8,
+            left: '50%', transform: 'translateX(-50%)',
+            width: 70, height: 18, borderRadius: 9,
+            background: '#0f141f',
+          }}
+        />
+
         {/* Screen area */}
         <div style={{
           width: '100%', height: 500,
           borderRadius: 32, overflow: 'hidden',
           position: 'relative', background: '#fff',
         }}>
-          {/* Notch */}
-          <div style={{
-            position: 'absolute', top: 10,
-            left: '50%', transform: 'translateX(-50%)',
-            width: 70, height: 18, borderRadius: 9,
-            background: '#1c2333', zIndex: 10,
-          }} />
 
           {/* ⚠ THE REAL LOGIN SCREEN, NOT A DRAWING OF ONE. This is the whole of
               B-3. The provider below is an ordinary ThemeProvider handed the
