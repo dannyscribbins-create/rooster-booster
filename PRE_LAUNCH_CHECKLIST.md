@@ -2856,7 +2856,11 @@ WINDOW UNTIL NOW.**
       are already token-painted. Taken in the other order, 3-C builds against raw-`R` primitives
       and someone retrofits around them afterwards — and the retrofit is invisible to every test
       in this repo, because `jsdom` resolves no `var()`.
-- [ ] ⚠ **THE REFERRER DASHBOARD PREVIEW IS ADDED IMMEDIATELY AFTER THE MIGRATION, NOT DEFERRED
+- [x] ~~⚠ **THE REFERRER DASHBOARD PREVIEW IS ADDED IMMEDIATELY AFTER THE MIGRATION, NOT DEFERRED
+      ✅ **DONE — the preview arc, 2026-09-16: `9b1fe59` (real mount), `dd4a50e` (the two
+      production leaks), `9b2ce5c` (the live toggle and the notch). It was indeed "one more
+      entry in a switcher that is already built" — the dashboard view now goes through the
+      same PreviewFrame + supplied-provider path as Login and Rep app.**~~
       TO WAVE 3.** B-3 left that surface a hand-painted illustration, labelled as one on screen,
       because the referrer tree reads no `--rm-*` and a faithful render would sit unchanged while
       a contractor edited every colour. **The moment the migration lands it can render for real**,
@@ -5405,7 +5409,11 @@ quadruples is evidence about the estimate, not about the wave:
       annotated with the correction; this entry did not move.**
       → the Security G line in the **Launch Definition** above · `CLAUDE_REGISTRY.md` (the
       Multi-Contractor Security Session tracking)
-- [ ] **⚠ THE BRANDING PREVIEW'S DASHBOARD ILLUSTRATION IS DRIFTING AWAY FROM THE APP, AND IT
+- [x] ~~**⚠ THE BRANDING PREVIEW'S DASHBOARD ILLUSTRATION IS DRIFTING AWAY FROM THE APP, AND IT
+      ✅ **CLOSED 2026-09-16 — Preview-1 `9b1fe59` replaced the illustration with a REAL MOUNT,
+      which is what this entry said would resolve it by construction. The replacement STATE
+      trigger held: `DashboardTab` reads 46 `--rm-*` and zero `R.`. Preview-2 `9b2ce5c` then
+      enabled the mode toggle on the view. The record below is left exactly as written.**~~
       GETS WORSE WITH EVERY PALETTE PHASE.** *(Filed 2026-09-04 by Palette-3. Recorded in
       `9dc7570`'s commit body first, which is findable only by someone already reading that
       commit — this is the entry.)*
@@ -5492,6 +5500,91 @@ quadruples is evidence about the estimate, not about the wave:
         question plus a schema change, not a missing feature.
       → `CANVASS_0_REPORT.md` §3 (0b.1–0b.6) · `DECISION_C_DL_BUILD_SPEC.md` §22 (A33) · the
         Canvass-0 findings block in this file
+
+- [x] ~~**⚠ THE PREVIEW ARC — EYE TEST, MEASUREMENTS AND CLOSE-OUT.**~~ ✅ **CLOSED —
+      Preview-1 `9b1fe59`, Preview-2 `dd4a50e` + `9b2ce5c`.** *(Eye test by Danny, 2026-09-16,
+      on localhost against **palette-beta**, light and dark. Measurements by the same session on
+      RENDERED nodes, with transitions suppressed and the screen-dimmer hidden per-tab.)*
+
+      **PASSED BY EYE (Danny):** the real dashboard and the contractor's own brand colours ·
+      the fixture names (Sam Rivera, Casey Nguyen, Morgan Patel) · headings in **Playfair
+      Display** · every pipeline status pill readable · the stale / rate-limited / unavailable
+      banners, the empty-pipeline state and the review card legible in **light AND dark** · the
+      admin page stays light while the preview renders dark · the rep app subtitle comfortable
+      to read.
+
+      ⚠ **R-12 IS CLOSED**, and by both instruments rather than by eye alone. Inside the frame,
+      `document.fonts.status` is `loaded` with **Playfair Display** and **Lato** both reporting
+      `loaded`, and `doc.fonts.check('16px "Playfair Display"')` returns **true**; the fetch set
+      carries `playfair-display-latin.woff2` and `lato-latin-400.woff2`. The injected
+      `gfont-Playfair-Display` / `gfont-Lato` links are present in the frame head.
+      **Never width, never computed `font-family`** — the arc retired every width-based font
+      claim as one instrument wearing three hats.
+
+      ⚠ **`STATUS_CONFIG.lead` — 4.39:1 RENDERED, AND IT DOES NOT CLOSE WITH THIS ARC.**
+      `#6b7280` on `#f3f4f6`, measured at the rendered node in the preview, **identical in dark**
+      — the pills are genuinely mode-blind, which is now a measurement rather than a reading.
+      Its siblings clear: Inspection **5.49**, Sold **4.57**.
+      **Danny finds it readable by eye, and that is recorded rather than decisive.** The 4.5
+      floor exists for readers with lower vision, and **the same pill renders on the admin
+      Referrers page**, so a judgement made on one pair of eyes on one surface cannot close it.
+      **DISPOSITION: a SMALL STANDALONE FIX, deliberately not in this arc** — P4 rules that
+      defects the preview exposes are listed and then closed or deferred, never quietly repaired
+      by a preview phase.
+      ⚠ **CANDIDATE, AND IT IS NEARLY FREE: the admin palette already fixed the identical pair
+      to `#4B5563`, which measures 6.87:1 on the same ground.** So the question is not what
+      colour to choose; it is whether `STATUS_CONFIG` may move under the referrer tree and the
+      admin tree at once. → the AD-3 prerequisite entry's dated note · the **D-3 · R-8**
+      `AdminReferrers` entry
+
+      ⚠ **THE REP APP's `ScreenTitle` SUBTITLE — 4.15:1 RENDERED, LIGHT ONLY.** Arithmetic said
+      4.13; the rendered figure is 4.15, on `--rm-bg` (`#F4FBFA`). ⚠ **In DARK it measures
+      7.47:1**, so this is a light-mode-only defect and any fix must not be derived on the dark
+      ground. Danny finds it comfortable by eye — recorded, and not decisive, for the same reason
+      as the pill above. **STAYS CANVASS'S (U24)**, and the candidate `MUTED = 0.72` is still
+      unproven on `--rm-bg`.
+
+      ⚠ **TWO INTERNAL SURFACES REACHED PRODUCTION IN `9b1fe59` AND WERE LIVE FOR ROUGHLY ONE
+      HOUR.** `9b1fe59` was Ready/Production on Vercel, so both were visible to any contractor
+      who opened Settings → Branding:
+      · the **fixture-variant pill row** — `default` · `late-stages` · `closed-stage` · `stale` ·
+        `rate-limited` · `unavailable` · `empty-pipeline` — internal state names, clickable;
+      · the note **"Sample data — your real numbers and customers are not shown."**
+      **Closed by `dd4a50e`** (Vercel `rooster-booster-r2ms5qc1p`, Railway `4ce1b2e1`): the pills
+      are gated on `import.meta.env.DEV`, which `vite build` replaces with the literal `false`,
+      and the note is gone.
+      ⚠ **THE NOTE VIOLATED P2, WHICH WAS RECORDED ONE COMMIT EARLIER BY THE SAME SESSION, AND
+      THE REASON IS THE POINT.** P2 reads as a decision about whether to **ADD** a label. What
+      the build faced was an **EXISTING** note whose text had gone false, kept because
+      `aria-describedby` on the still-disabled toggle pointed at it. The question in hand was
+      *"what should this note now SAY?"* — a rewrite — so a ruling filed under *"should there be
+      a label?"* never came to mind. ⚠ **And the same commit PINNED it** with
+      `expect(note.textContent).toMatch(/sample data/i)`, so the fence held the violation in
+      place rather than catching it. **A recorded ruling is not self-applying: it binds only if
+      something makes you look, and nothing did.**
+
+      ⚠ **THE CASING'S NOTCH WAS COVERING THE CONTRACTOR'S OWN CONTENT, ON EVERY VIEW.** Found by
+      Danny's eye on the dashboard in dark, where it hid the bank banner's title ("Connect
+      You…"). The notch was absolutely positioned INSIDE the screen area at `top: 10`,
+      `zIndex: 10`, painting over the first ~28px of the rendered surface.
+      **PREVIEW-ONLY, established from source, and NO app component was touched.** `index.html`
+      sets `width=device-width, initial-scale=1` with **no `viewport-fit=cover`**, so a phone
+      browser lays the app out inside the safe area and a hardware notch never covers content —
+      consistent with the app handling `env(safe-area-inset-bottom)` in six places and
+      `safe-area-inset-top` in **none**. Fixed in `9b2ce5c` by moving the notch into the bezel.
+      ⚠ **Insetting the frame was rejected**: it would have shrunk the previewed viewport below
+      390x750 and quietly changed what the app lays out against — a fidelity change wearing a
+      cosmetic fix's clothes. **Verified rendered:** the notch now ends 4px ABOVE the frame
+      begins, and the banner title is fully visible in light and dark.
+
+      **STILL OWED, CARRIED FORWARD:**
+      · ⚠ **The accent-slot coverage loss.** `accentColor` has **no render token** — there is no
+        `--rm-accent` — so the real mount cannot show it, and the test that once proved
+        *"BrandingPreview consults the resolver for that slot"* now asserts the resolver
+        directly. **A strictly weaker claim**, recorded in the test file rather than glossed.
+      · The `STATUS_CONFIG.lead` fix and U24, per their entries above.
+      → `CANVASS_0_REPORT.md` §3 · the preview arc's P1–P6 rulings · `DECISION_C_DL_BUILD_SPEC.md`
+        §22 (A33)
 
 - [ ] **⚠ MONEY ON A BRAND FILL CANNOT BE GREEN, AND THE RULE HAS NO CLAUSE FOR IT.**
       *(Palette-6, 2026-09-06. One site; the gap is the entry.)*
