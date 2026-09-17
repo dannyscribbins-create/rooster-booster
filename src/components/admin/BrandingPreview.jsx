@@ -301,18 +301,34 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
             color: AD.textTertiary, fontFamily: AD.fontSans, textAlign: 'center',
           }}
         >
-          Sample data — your real numbers and customers are not shown. Light and
-          dark for this screen arrive in the next update.
+          {/* ⚠ THE SAMPLE-DATA SENTENCE WAS REMOVED HERE — IT VIOLATED P2, AND
+              IT REACHED PRODUCTION. P2 reads "NO 'sample data' label on screen.
+              It would be clutter — the preview frame already makes the context
+              evident", and it was recorded one commit BEFORE the build that
+              broke it. What is left is the disabled toggle's stated reason,
+              which P2 does not touch and which aria-describedby needs. */}
+          Light and dark for this screen arrive in the next update.
         </p>
       )}
 
       {/* ── THE FIXTURE VARIANT PICKER ──────────────────────────────────────
-          ⚠ IT EXISTS FOR THE EYE TEST, AND THAT IS WHY IT IS VISIBLE RATHER
-          THAN A DEV-ONLY FLAG. P4 rules that dark-mode and contrast defects the
-          preview exposes are LISTED and looked at, not silently fixed — and a
-          defect the sample data never renders cannot be looked at. Each variant
-          puts a different set of states on screen; without the control, four of
-          the five are unreachable.
+          ⚠ DEV-ONLY, AND THE PREVIOUS COMMENT HERE ARGUED THE OPPOSITE AND
+          WAS WRONG IN PRODUCTION. It read "IT EXISTS FOR THE EYE TEST, AND THAT
+          IS WHY IT IS VISIBLE RATHER THAN A DEV-ONLY FLAG." The eye test is a
+          LOCAL activity; the reasoning never established that a contractor
+          should see it, and `9b1fe59` shipped seven internal pills — `stale`,
+          `rate-limited`, `unavailable` among them — onto a live admin panel.
+          ⚠ `import.meta.env.DEV` IS THE MECHANISM, matching `App.jsx`'s palette
+          harness. Vite replaces it with the literal `false` in a production
+          build, so the branch is removed rather than merely hidden — nothing is
+          shipped to be un-hidden later.
+          ⚠ READ AT RENDER TIME, NOT CACHED INTO A MODULE CONST. A const would
+          force a test to re-import the whole module graph to change one value;
+          the property read is what lets the gate be driven END TO END in both
+          directions. Same reasoning as `isRmControlEnabled()`.
+          ⚠ WITH THE PILLS GONE, PRODUCTION RENDERS THE `default` VARIANT — the
+          initial state, unchanged. Hiding the control does not strand the view
+          on some other fixture.
           ⚠ IT IS RENDERED FROM PREVIEW_FIXTURE_VARIANTS, WHICH IS DERIVED FROM
           THE FIXTURE OBJECT ITSELF. A hand-maintained list here would drift out
           of step with the fixture silently — this repo's recurring failure, and
@@ -321,11 +337,11 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
           no edit to this file.
           ⚠ AD TOKENS THROUGHOUT: this is admin chrome OUTSIDE the casing, so it
           must not move when a contractor edits a colour. */}
-      {screen === 'dashboard' && (
+      {screen === 'dashboard' && import.meta.env.DEV && (
         <div
           data-preview-variant-picker=""
           role="group"
-          aria-label="Sample data variant"
+          aria-label="Preview fixture variant"
           style={{
             display: 'flex', flexWrap: 'wrap', gap: 6,
             justifyContent: 'center', margin: '-6px 0 14px',

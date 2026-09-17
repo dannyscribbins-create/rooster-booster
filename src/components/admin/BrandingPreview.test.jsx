@@ -1236,8 +1236,15 @@ describe('B-4 — the view switcher mounts each surface, and the mode toggle swa
       return el;
     });
 
-    // P1/P2: it says the DATA is sample, and it does NOT claim the render is fake.
-    expect(note.textContent).toMatch(/sample data/i);
+    // ⚠ THIS ASSERTION USED TO REQUIRE /sample data/i, AND THAT IS HOW A P2
+    // VIOLATION BECAME PERMANENT. P2 rules there is NO sample-data label on
+    // screen; the Preview-1 build wrote one anyway and then PINNED it here, so
+    // the fence was holding the defect in place rather than catching it. It
+    // reached production in `9b1fe59`. Inverted deliberately.
+    expect(
+      note.textContent,
+      'the sample-data label is back on screen — P2 forbids it'
+    ).not.toMatch(/sample|fixture|dummy|placeholder|not real/i);
     expect(
       note.textContent,
       'the note still calls the view an illustration — it is a real mount now'
