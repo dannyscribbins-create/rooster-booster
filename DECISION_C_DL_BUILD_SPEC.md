@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v2.0 — amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A33** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
+**Status:** LOCKED v2.1 — amended 2026-09-16, Preview-1 Part 1: the remaining rep-arc phases are named `Canvass-1`…`Canvass-n` and the build order is Palette → the referrer dashboard preview (real mount) → Canvass (§22, amendment A33). Previously v2.0, amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A34 — ⚠ **A33 WAS TAKEN 2026-09-16 by §22 / v2.1**** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -861,6 +861,11 @@ only the latter survives Security's absence. **3-C rules on Security; A30 does n
 ⚠ **NUMBERED A32, NOT A31, AND THE SKIP IS DELIBERATE.**
 ⚠ **STATUS CORRECTED 2026-09-03: `A31` / `§20` / `v1.9` IS NOW RETIRED — VOID, AND NOT REUSED.
 THE NEXT FREE AMENDMENT IS `A33`.** *(Ruled by Danny, 2026-09-03.)* The reservation described in
+⚠ **AND A33 IS NOW TAKEN — 2026-09-16, by §22 / v2.1. THE NEXT FREE AMENDMENT IS `A34`.** The
+sentence above is the 2026-09-03 ruling and is left exactly as written; **a record repaired in
+place stops being evidence.** This line is the correction, not a rewrite. *(Filed by Preview-1
+Part 1. The same claim survives in the untracked RAD Phase-0 reports, which are dated records of
+the 2026-09-03 state and are deliberately NOT edited.)*
 this paragraph was real when this section was written, hours earlier; the amendment it was held
 for **records a "pin the referrer tree to light mode" decision that was ruled against** — replaced
 by a writer-side guard on the `theme_mode` setter — **so A31's text was never written and has no
@@ -949,3 +954,69 @@ one answer across the landing page, the About Us popup and the campaign email fo
 
 **Three of the six step strings therefore stay frozen and two of the three hero strings do**; this
 amendment reaches five strings and one new row, and nothing else on the page.
+
+
+---
+
+## 22. Amendments — v2.1, 2026-09-16 (the arc name, and the build order)
+
+**Amendment A33.** *(Ruled by Danny, 2026-09-16.)*
+
+⚠ **THIS AMENDMENT RECORDS TWO ALREADY-RULED ITEMS AND SETTLES NOTHING NEW.** It is written because
+a ruling that lives only in a chat window is not a ruling anyone can find — the same reason the
+build-order box itself was filed. **Four further amendments are OWED and are deliberately NOT
+written here** (see the closing note), because each needs its own ruling first.
+
+### A33.1 — The remaining rep-arc phases are named `Canvass`
+
+The rep-app work after 3-A is **`Canvass-1` … `Canvass-n`**. **`Canvass-0`** was the scoping pass,
+and its record is `CANVASS_0_REPORT.md` at repo root.
+
+**Forward-only, per R-15.** Nothing already shipped is renamed: **3-B, 3-C and 3-D keep the names
+they have**, and every existing citation to them stays true. The name attaches to the phases that
+have not been built.
+
+⚠ **ANY SEARCH FOR THIS NAME NEEDS THE DOUBLE `s` AND A WORD BOUNDARY.** `canvas` — one `s` — is
+live layout vocabulary, so a bare substring answers a different question from the one being asked.
+**This is not a stylistic note.** The identical trap was measured in this repo when `git grep "A32"`
+returned hits that were every one of them the hex colour `#A32D2D`, and it reproduced while
+verifying that `A33` itself was free: the bare form matched `#AA3333` in eleven test files, and
+`\bA33\b` returned none. **When a search decides whether a name is taken, anchor it.**
+
+### A33.2 — The build order
+
+**Palette → the referrer dashboard preview (a REAL MOUNT) → Canvass (3-B → 3-C → 3-D).**
+
+The Palette arc is closed. **The preview arc runs next**, and it is not a detour around the rep
+work:
+
+- it mounts the real `DashboardTab` inside `BrandingPreview`, which is **the pattern 3-C builds rep
+  screens against** — so building it first means 3-C inherits a proven composition rather than an
+  imagined one;
+- it **closes the preview-drift entry by construction** rather than by correcting a hardcoded
+  ground, which is the fix that entry explicitly forbids.
+
+**Canvass follows it**, and 3-B still precedes 3-C and 3-D for the reason the build-order box
+already gives: screens before their API means building against an imagined response shape.
+
+⚠ **THE PRIOR TRIGGER COULD NOT FIRE, AND THAT IS WHY THIS IS AN AMENDMENT RATHER THAN A NOTE.**
+The drift entry read *"TRIGGER: Palette-4, when the dashboard preview becomes a REAL MOUNT — that
+resolves it by construction; nothing needs doing before then."* **Palette-4 shipped as `8d7f5aa`
+and `31d35ae` and neither touched `BrandingPreview.jsx`.** A trigger that names a PHASE fires only
+if someone re-reads the entry during it. **A trigger that can actually fire names a STATE**, and the
+replacement does. Same defect in gentler form in the build-order box's *"the moment the migration
+lands"* — no observer either.
+
+### ⚠ WHAT THIS AMENDMENT DOES NOT DO
+
+**Four amendments are owed and stay unwritten**, each because it needs a ruling this one does not
+make. Listed so the gap is known rather than discovered:
+
+| owed | question |
+|---|---|
+| **U2** | Does the theme-writer's 403 survive its justification? Its stated reason — the *"793 `R.*`, zero `--rm-*`"* claim — is **inverted**, but a wrong comment does not make the gate wrong. |
+| **U14** | `RepShell`'s column paints `--rm-bg` while `ReferrerApp`'s paints `--rm-recess`, and `Screen.jsx` says the two must never diverge. Which is correct is a design question. |
+| **`--rm-bg` flooring** | `--rm-bg` appears in no `TOKEN_FLOORING` entry, so every text pair in the rep column is `unproven` by the fence built to catch exactly that. Arguably tooling rather than spec. |
+| **U25** | `verifyAdminSession` carries no tier predicate, so a general-tier field rep can call `/api/admin/titles` and `PATCH /api/admin/me/title`. Whether a rep may call `/api/admin/*` at all is unruled. |
+
+**None of the four is settled by A33, and none may be read as settled by it.**

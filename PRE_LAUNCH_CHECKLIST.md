@@ -3344,6 +3344,14 @@ root cause, and patching them separately produces six unrelated special cases)
       guard on the `theme_mode` setter — and A31's text was never written.** The number is
       **VOID and is not reused.** `A32` (`§21`, `v2.0`) shipped past it; **the next free
       amendment is `A33`.**
+      ⚠ **AND `A33` IS NOW TAKEN — 2026-09-16, by `DECISION_C_DL_BUILD_SPEC.md` §22 / v2.1 (the
+      Canvass naming and the build order). THE NEXT FREE AMENDMENT IS `A34`.** *(Filed by
+      Preview-1 Part 1.)* **The closed entry above is left exactly as written** — it is the record
+      of the 2026-09-03 ruling, and a record repaired in place stops being evidence. ⚠ **This is
+      the fourth tracked copy of "the next free amendment is A33" and all four moved together**;
+      the surviving copies are in the **untracked** RAD Phase-0 reports, which are dated records
+      of that day's state and are deliberately not edited. *A fact written into N files costs N
+      corrections.*
       ⚠ **THE REASON FOR RETIRING RATHER THAN RELEASING, RECORDED BECAUSE OTHERWISE SOMEONE
       WILL "TIDY" THE GAP LATER.** Releasing `A31` means it gets written **out of order,
       describing something unrelated** — and anyone reading the RAD Phase 0 report would then
@@ -5406,6 +5414,49 @@ quadruples is evidence about the estimate, not about the wave:
       **OWNER: the preview arc, Preview-1.** The fix remains a REAL MOUNT, never a corrected hex.
       → Canvass-0 §2 · `CANVASS_0_REPORT.md`
       → `9dc7570` · the R/AD migration entry's preview consequence · `RAD_MIGRATION_PHASE0B_REPORT.md` §6.4
+
+- [ ] **⚠ THE PREVIEW ARC'S RULINGS — P1–P6, PLUS WHAT THIS ARC MAY WRITE TO.**
+      *(Danny, 2026-09-16. Recorded BEFORE the build, so the build is checkable against them rather
+      than explained afterwards. The entry above is what this arc closes; these are its terms.)*
+
+      | # | ruling |
+      |---|---|
+      | **P1** | **Data is an invented FIXTURE — sample numbers AND sample client names. The preview makes NO network call.** Names must be obviously generic: **no real homeowner, and no real contractor.** |
+      | **P2** | **NO "sample data" label on screen.** It would be clutter — the preview frame already makes the context evident. |
+      | **P3** | **The DASHBOARD TAB ALONE.** No `ReferrerApp`, no `BottomNav`, no popups. It sits on a **`--rm-recess` wrapper** so its composition matches the app. |
+      | **P4** | **The light/dark toggle is LIVE on the dashboard view.** The referrer app's own toggle is scheduled later; the preview may render dark now. |
+      | **P5** | **`PreviewFrame`'s id-less link re-clone is FIXED in this arc.** |
+      | **P6** | **The seven `.then()` chains in `BrandingProfileSettings.jsx` STAY FILED — out of scope.** |
+
+      ⚠ **P4's CONSEQUENCE IS A LIST, NOT A LICENCE.** Remaining dark-mode defects the preview makes
+      visible are **LISTED for Danny's eye test**, then **closed or deferred to the referrer-toggle
+      work — never silently fixed here.** A preview arc that quietly repairs contrast defects is
+      how the referrer toggle later ships against a surface nobody measured.
+      ⚠ **AND THE FIXTURE MUST MAKE EACH LISTED DEFECT VISIBLE.** *A defect the sample data never
+      renders cannot be eye-tested* — so the eye-test list and the fixture are one decision, not
+      two. (This is the shape of vacuity #1: rows prove nothing until the value exists.)
+
+      **LOCAL WRITES ARE PERMITTED FOR THIS ARC AND FOR CANVASS — against the LOCAL database
+      `roofmiles_local` ONLY, NEVER Railway.** Specifically: start the API server and the frontend
+      dev server · mint session rows · write `user_preferences` rows · run `npm run seed:local`.
+      ⚠ **This does NOT relax `server/test/setup.js`'s interlock and must not be read as doing so**
+      — that guard aborts unless `DATABASE_URL` is localhost, and it stays exactly as it is. The
+      permission is about a developer stack, not about the test gate.
+
+      **Three questions are routed rather than answered here:**
+      · **R-12 stays OPEN** until the font check passes **BY EYE** in this arc. ⚠ Canvass-0 0b.2 is
+        a **SOURCE READING** and does not close it — *a test that injects the value itself cannot
+        discover that nothing upstream supplies it*, and the font loader's missing SELECT is the
+        worked example of exactly that.
+      · **U25** (the rep app calling `/api/admin/*` vs `roleRouting.test.jsx`'s fence) → **resolved
+        inside Canvass**, not here.
+      · **U6** (flagged customers) → **worked on as needed inside Canvass**, including a look back
+        at the earlier attribution work — **FA**, `docs/ASSIGNMENT_RULES_LOCKED.md`, and the RBAC
+        spec. ⚠ **Stated precisely, because the short form is misleading: the ADMIN flagged queue
+        EXISTS.** What has no rep column is the **rep-facing read-only view** — so this is a design
+        question plus a schema change, not a missing feature.
+      → `CANVASS_0_REPORT.md` §3 (0b.1–0b.6) · `DECISION_C_DL_BUILD_SPEC.md` §22 (A33) · the
+        Canvass-0 findings block in this file
 
 - [ ] **⚠ MONEY ON A BRAND FILL CANNOT BE GREEN, AND THE RULE HAS NO CLAUSE FOR IT.**
       *(Palette-6, 2026-09-06. One site; the gap is the entry.)*
