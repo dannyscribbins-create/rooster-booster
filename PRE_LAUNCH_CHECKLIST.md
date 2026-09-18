@@ -3401,7 +3401,15 @@ root cause, and patching them separately produces six unrelated special cases)
       amendment is `A33`.**
       ⚠ **AND `A33` IS NOW TAKEN — 2026-09-16, by `DECISION_C_DL_BUILD_SPEC.md` §22 / v2.1 (the
       Canvass naming and the build order). THE NEXT FREE AMENDMENT IS `A34`.** *(Filed by
-      Preview-1 Part 1.)* **The closed entry above is left exactly as written** — it is the record
+      Preview-1 Part 1.)*
+      ⚠ **AND `A34` IS NOW TAKEN — 2026-09-17, by `DECISION_C_DL_BUILD_SPEC.md` §23 / v2.2
+      (Canvass-1's eleven rulings). THE NEXT FREE AMENDMENT IS `A35`.** *(Filed by Canvass-2.)*
+      **Verified free by BOTH a `git grep` and a working-tree grep, word-anchored — zero hits in
+      either**, which is the check A31's reservation defeated and A33.1 now requires. ⚠ **This is the
+      third correction stacked on this entry and each one is additive**; the lines above are records
+      of their own days' rulings and none of them is rewritten. **The tracked copies that moved with
+      this one:** this file, the spec's Status line, and the spec's §21 note.
+      **The closed entry above is left exactly as written** — it is the record
       of the 2026-09-03 ruling, and a record repaired in place stops being evidence. ⚠ **This is
       the fourth tracked copy of "the next free amendment is A33" and all four moved together**;
       the surviving copies are in the **untracked** RAD Phase-0 reports, which are dated records
@@ -4189,6 +4197,122 @@ may legitimately change several of these subjects.*
       ⚠ **AND THE WRITER'S OWN COMMENT INVITES NUMBER 1 IN TERMS:** *"WHEN THE SECOND REP-GATED
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
+
+### Canvass-1 — the decision brief, and what filing it found (filed 2026-09-17)
+
+*Read-only re-measure at `15b2c41`. Full record: `CANVASS_1_PART1_REPORT.md` at repo root, tracked
+2026-09-17 and **deliberately unedited** — a dated record, citations not renumbered. Unlike
+Canvass-0's, **its contrast figures were taken from RENDERED NODES** in Chrome against the local
+stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
+
+- [x] **✅ THE ELEVEN RULINGS ARE `DECISION_C_DL_BUILD_SPEC.md` §23, AMENDMENT A34** *(Danny,
+      2026-09-16; written 2026-09-17).* D1 the rep column's ground · D2 the faded-text constant ·
+      D3 the admin-route boundary · D4 app-membership display · D5 Today's Focus · D6 the
+      revenue-empty state · D7 the rep's flag scope · D8 the cross-rep 404 · D9 the Security row ·
+      D10 seeder placement · D11 the broken-logo state.
+      ⚠ **THEY ARE IN THE SPEC AND NOT IN A HANDOFF BECAUSE SEVERAL REFINE OR SUPERSEDE THINGS THAT
+      LIVE THERE** — A24.4, A24.5, A24.7, A28, A30 and CD-10. **A34 settles three of A33's four owed
+      amendments (U14, the `--rm-bg` flooring gap, U25) and leaves `U2` OWED.** **Next free
+      amendment: `A35`.** → `DECISION_C_DL_BUILD_SPEC.md` §23 · `CANVASS_1_PART1_REPORT.md` §4
+
+- [ ] ⚠ **THE BOTTOM NAV'S INACTIVE LABEL AND INACTIVE DOT ARE LIVE CONTRAST DEFECTS ON THE SHIPPED
+      3-A SHELL, AND NO DOCUMENT MENTIONED EITHER UNTIL NOW.** Rendered on palette-beta, light mode:
+      the inactive tab **label** measures **4.25:1** against a 4.5 text floor, and the inactive tab
+      **dot** measures **2.24:1** against a 3.0 graphic floor. **Three of the four tabs are inactive
+      at any moment.** Dark mode clears both.
+      ⚠ **CANVASS-0 MEASURED THIS NAV AND MISSED BOTH, BECAUSE IT MEASURED THE *ACTIVE* STATES** —
+      "nav label on surface" at 12.04 and "nav dot primary on surface" at 5.87. The inactive states
+      carry their own opacity constants and were never read. *A sweep is only as wide as the states
+      it names.*
+      ⚠ **AND THEY DO NOT SHARE A FIX.** The label is `0.65` and goes to `MUTED = 0.72` with the
+      screen subtitle; **the dot is `0.4` and answers a different floor**, so its replacement must be
+      DERIVED on its own ground rather than set to `MUTED`. The nav sits on `--rm-surface` and does
+      **not** move with A34.1.
+      **OWNER: Canvass-2 (A34.2).** → `CANVASS_1_PART1_REPORT.md` §3e, §4 D2, D-extra-1
+
+- [ ] ⚠ **`RepShell`'s HEADER HAS NO BROKEN-LOGO STATE — A SET-BUT-UNREACHABLE LOGO RENDERS A BROKEN
+      IMAGE.** Measured rendered: `naturalWidth: 0`, `complete: true`, a broken-image icon at 132×20
+      with no fallback. `BrandMark` branches on the logo being **absent**; it does not branch on the
+      logo being **set and failing to load**, which is a different state and the one a contractor
+      reaches when their own image host breaks.
+      ⚠ **TODAY'S INSTANCE IS SEEDED, NOT PRODUCTION** — the local fixture URL is deliberately
+      unreachable — **but the STATE is unhandled either way**, which is what A34.11 rules on.
+      Adjacent to U21 and sharper than it. **OWNER: Canvass-2 (A34.11).**
+      → `CANVASS_1_PART1_REPORT.md` §4 D-extra-2
+
+- [ ] ⚠ **`roleRouting.test.jsx`'s FENCE EXEMPTS ITS ALLOWED PATH BY SUBSTRING, SO IT PASSES ONE
+      ROUTE BY ACCIDENT AND WOULD FAIL ANOTHER AGAINST ITS OWN ERROR MESSAGE.** The assertion filters
+      URLs *containing* `/api/admin/me`. `PATCH /api/admin/me/title` is a different route with a
+      different handler and clears the fence **only because its path is a prefix-extension of the
+      allowed one**; `GET /api/admin/titles` would turn it **red** — while the fence's own failure
+      message already names that route as ungated. **The prose states one rule and the code enforces
+      a narrower one.**
+      ⚠ **AND THE SERVER GUARD NET HAS ALREADY RULED THE OPPOSITE WAY, DELIBERATELY:**
+      `adminRouteCoverage`'s `PUBLIC_ADMIN_ROUTES` allowlists **both** routes with a written
+      rationale. **Two guards on the same question disagree.**
+      ⚠ **THE REPAIR MUST BE PROVEN IN BOTH DIRECTIONS** — red on a genuinely gated route, green on
+      the allowlisted ones — or it proves nothing. **OWNER: Canvass-3 (A34.3).**
+      → `CANVASS_1_PART1_REPORT.md` §3d, §4 D-extra-4
+
+- [ ] ⚠ **A34.4's AMBIGUITY MEASUREMENT IS A PRECONDITION OF THE CLIENT-LIST COPY, NOT A FOLLOW-UP TO
+      IT.** A24.5 established the app-membership state space is **four**, not two, and **no single
+      column separates them** — so the state *"signed up but unmatched"* cannot be told apart from
+      *"not signed up"*. **Canvass-4 must MEASURE how many clients fall in that state and bring Danny
+      options BEFORE the copy is written.** ⚠ **A client who may have signed up must never be shown as
+      a confirmed "not signed up"** — that is the half of A34.4 a build can violate without any test
+      going red. The bridge is `users.jobber_client_id`. **OWNER: Canvass-4 (A34.4).**
+      → `DECISION_C_DL_BUILD_SPEC.md` §23 A34.4 · `CANVASS_1_PART1_REPORT.md` §4 D4
+
+- [x] **✅ CORRECTED 2026-09-17 — "E-min STILL OWES THE REACTIVATION PATH" IS *INVERTED*, NOT STALE,
+      AND IT WAS LIVE IN FOUR TRACKED GOVERNING DOCUMENTS.** `PATCH /api/admin/team/:id/reactivate`
+      exists under `requirePermission('team.manage')` and writes `UPDATE team_members SET active =
+      true` inside a transaction. **Verified in source this session, not carried from a report.**
+      **The four corrected, each named, each by a dated note that STRIKES rather than rewrites:**
+      · `DECISION_C_DL_BUILD_SPEC.md` §10's *Frozen / Offboarding* row
+      · `CDL_3c_PHASE05_RULINGS.md`'s §10 map copy of the same row
+      · `EXECUTION_SEQUENCE.md`'s Wave 1.3 row (*"E-min rides along: build the reactivation path"*)
+      · `CDL_3b_BUILD_SPEC.md`'s *DECISION E INPUT* bullet
+      **Three tracked documents were deliberately LEFT UNEDITED as dated records**, because they
+      recount a past session rather than instruct a future one: `CDL_3c_PHASE0_REPORT.md`,
+      `CDL_3b_HANDOFF.md` and `RoofMiles_Handoff_Wave1.1_CloseOut.md`.
+      ⚠ **THIS FILE WAS ALREADY RIGHT AND THAT IS THE POINT.** Both entries here closed correctly on
+      **2026-08-31** (C/DL-3c Phase 2c), with the original text preserved beneath. **The canonical
+      document closed the item and the four copies never moved with it** — *a fact written into N
+      files costs N corrections, and the closure half is the one that gets skipped.*
+      ⚠ **THE `team.js:576` CITATION CARRIED IN THOSE ROWS WAS ALSO ROTTED AND IS DELIBERATELY NOT
+      RENUMBERED.** Repairing a line number inside a sentence whose claim is false certifies the
+      wrong thing as fixed. Corrected **by role** instead. → the Decision E entries above and below
+
+- [ ] ⚠ **`activity_log` DOES HAVE A TARGET ID, AND THE THREE-PART CLAIM DENYING IT IS REPEATED
+      ACROSS THE GOVERNING SET.** `contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL` was
+      added by a later `ALTER` (`server/db.js`, the migration immediately after the `category` one).
+      **The `CREATE` alone does support the claim; the table's shape is its `CREATE` plus every
+      `ALTER`.** Verified in source this session.
+      **Where it stands, and they do not fail identically:** `DECISION_C_DL_BUILD_SPEC.md` §10's
+      *7A / 7B Activity* row states it flat, citing the `CREATE` range only. **A24.3 is worse in an
+      instructive way — it CITES THE `ALTER` BY NAME and still asserts "no target id"**, so the
+      evidence and the conclusion sit in one sentence disagreeing. `CDL_3c_PHASE05_RULINGS.md` and
+      `CDL_3c_PHASE0_REPORT.md` carry copies; this file's own activity-leak entry names `contact_id`
+      in its column list **and then says "no target id either."**
+      ⚠ **FILED, NOT REPAIRED — AND NOT REPAIRED ARITHMETICALLY UNDER ANY CIRCUMSTANCES.** The
+      citations around this claim resolve, which means a delta-based repair would certify them.
+      **The fix is re-deriving the sentence, not the line numbers.**
+      ⚠ **IT CHANGES NOTHING ABOUT A24.3's RULING** — a rep feed still should not read this table,
+      and the two claims that carry that argument (no `contractor_id`, no actor id) are **both
+      true**. This is a correctness defect in a stated fact, not a reopened decision.
+      **OWNER: unassigned. Filed by Canvass-2.** → `CANVASS_1_PART1_REPORT.md` §3b citation 4, §6
+
+- [ ] ⚠ **`CLAUDE.md` SAYS `deriveThemeTokens()` COMPUTES "THE SIX `RENDER_TOKEN_KEYS`". IT COMPUTES
+      ELEVEN.** Found incidentally while checking whether `--rm-recess` was a real token for A34.1.
+      `RENDER_TOKEN_KEYS` in `src/utils/themeTokens.mjs` is frozen at **eleven** entries — the six
+      named in *Brand Standards* plus `recess`, `primaryDark`, `secondaryDark`, `primaryText` and
+      `onSecondary`. **The six listed are correct and the count is not**, which is the shape that
+      reads as verified.
+      ⚠ **IT MATTERS BECAUSE THAT PARAGRAPH IS LOAD-BEARING FOR THE MOCKUP-PRECEDENCE SECTION**,
+      which reasons about which roles have a token to map onto and has already been corrected once
+      for getting that question wrong. ⚠ **A count in a governing document needs a source** — and
+      this one has none. **Fix by naming the file as the authority rather than by writing "eleven"**,
+      which is the number that goes stale next. **OWNER: unassigned. Filed by Canvass-2.**
 
 ---
 

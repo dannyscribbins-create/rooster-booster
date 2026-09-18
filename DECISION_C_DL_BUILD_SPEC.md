@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v2.1 — amended 2026-09-16, Preview-1 Part 1: the remaining rep-arc phases are named `Canvass-1`…`Canvass-n` and the build order is Palette → the referrer dashboard preview (real mount) → Canvass (§22, amendment A33). Previously v2.0, amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A34 — ⚠ **A33 WAS TAKEN 2026-09-16 by §22 / v2.1**** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
+**Status:** LOCKED v2.2 — amended 2026-09-17, Canvass-2: eleven Canvass-1 rulings are recorded before the build (§23, amendment A34) — the rep column's ground, the faded-text constant, the admin-route boundary, app-membership display, Today's Focus, the revenue-empty state, the rep's flag scope, the cross-rep 404, the Security row, seeder placement and the broken-logo state. ⚠ **A34 settles THREE of A33's four owed amendments — U14, the `--rm-bg` flooring gap and U25 — and leaves `U2` OWED.** ⚠ **THE NEXT FREE AMENDMENT IS `A35`** *(verified free 2026-09-17 by `git grep` and a working-tree grep, both word-anchored, zero hits in either)*. Previously v2.1, amended 2026-09-16, Preview-1 Part 1: the remaining rep-arc phases are named `Canvass-1`…`Canvass-n` and the build order is Palette → the referrer dashboard preview (real mount) → Canvass (§22, amendment A33). Previously v2.0, amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A34 — ⚠ **A33 WAS TAKEN 2026-09-16 by §22 / v2.1** — ⚠ **AND A34 WAS TAKEN 2026-09-17 by §23 / v2.2; THE NEXT FREE AMENDMENT IS `A35`**** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -263,7 +263,7 @@ Phase 0 of C/DL-3 must determine where user-level preferences live today — whe
 | 6 Profile | ~~C/DL-3~~ **3c, MINUS 2FA** | Theme toggle (CD-6) — ⚠ **three pieces, not one:** a `setPreference` writer (**zero** production callers today), a `team_member`-subject read path (`GET /api/preferences/theme-mode` is `verifyReferrerSession`-only, and a rep's token is on the admin key), and the switch. **2FA (CD-9) is not 3c's — see A24.7.** Attribution type display-only |
 | 7A / 7B Activity | ~~C/DL-3~~ **WAVE 2.3 — AND RE-SCOPED, NOT MERELY DEFERRED** | 🔴 `activity_log` has no `contractor_id`, no actor id, no target id (`server/db.js:33-37`). **A rep feed probably should not read it at all** — assignment events and pipeline movement already carry tenancy in `client_rep_assignments` and `pipeline_cache`. **A different build, not a blocked one.** → A24.3 |
 | 8 Assignment Flagged | ~~C/DL-3~~ **3c** | Read-only; resolution stays admin-only per FA. `flagged_assignments` already has a live admin queue — this is a second, read-only consumer |
-| 9 Frozen / Offboarding | ~~C/DL-3~~ ✅ **SHIPPED — 3b Phase 3** | View only; Decision E logic out of scope. ⚠ **E-min still owes the reactivation path** — `server/routes/admin/team.js:576` is the only write to `active` anywhere, and it writes `false` |
+| 9 Frozen / Offboarding | ~~C/DL-3~~ ✅ **SHIPPED — 3b Phase 3** | View only; Decision E logic out of scope. ~~⚠ **E-min still owes the reactivation path** — `server/routes/admin/team.js:576` is the only write to `active` anywhere, and it writes `false`~~ ⚠ **CORRECTED 2026-09-17 (Canvass-2): THAT CLAIM IS INVERTED, NOT MERELY STALE — THE REACTIVATION PATH SHIPPED.** `PATCH /api/admin/team/:id/reactivate` (`server/routes/admin/team.js`, `requirePermission('team.manage')`) writes `UPDATE team_members SET active = true` inside a transaction. **Verified in source, not carried from a report.** The struck sentence *instructs a reader to build something that is already there*, which is why it is corrected rather than left to age. Closed on `PRE_LAUNCH_CHECKLIST.md` 2026-08-31 as C/DL-3c Phase 2c; **this row was never updated with it.** ⚠ The `:576` citation was ALSO rotted — the `active = false` write is not at that line — and is **deliberately not renumbered**: cite the deactivate handler by role |
 | Global UI States | ~~C/DL-3~~ ✅ **SHIPPED — 3a Phase 4A** | ~~Build **first** in the session — everything else consumes it~~ **Already built.** All six primitives are in `src/components/shared/`; 3c consumes them and builds no second set |
 | — Landing page | C/DL-2 | ✅ **SHIPPED.** Not in this mockup; see LANDING_PAGE_SPEC.md. **The one row here that was never `C/DL-3`** |
 | — Roster | ~~C/DL-3~~ **3d builds · 3c SPECS its query shape** | Not in mockup; OD-4. Its columns live on the token row 3d mints — but `server/db.js:1509-1511` defers the roster indexes *"until C/DL-3 defines the roster's actual query shape"*, and that definition is cheaper to make while the schema is being read than after a query exists |
@@ -866,6 +866,12 @@ sentence above is the 2026-09-03 ruling and is left exactly as written; **a reco
 place stops being evidence.** This line is the correction, not a rewrite. *(Filed by Preview-1
 Part 1. The same claim survives in the untracked RAD Phase-0 reports, which are dated records of
 the 2026-09-03 state and are deliberately NOT edited.)*
+⚠ **AND A34 IS NOW TAKEN — 2026-09-17, by §23 / v2.2 (Canvass-1's eleven rulings). THE NEXT FREE
+AMENDMENT IS `A35`.** *(Filed by Canvass-2.)* **Both lines above are left exactly as written** — each
+is the record of its own day's ruling, and this is a third correction stacked on them rather than a
+rewrite of either. ⚠ **A35 was verified free by BOTH a `git grep` and a working-tree grep,
+word-anchored — zero hits in either**, which is the check A33.1 requires and the one A31's
+reservation defeated.
 this paragraph was real when this section was written, hours earlier; the amendment it was held
 for **records a "pin the referrer tree to light mode" decision that was ruled against** — replaced
 by a writer-side guard on the `theme_mode` setter — **so A31's text was never written and has no
@@ -1020,3 +1026,265 @@ make. Listed so the gap is known rather than discovered:
 | **U25** | `verifyAdminSession` carries no tier predicate, so a general-tier field rep can call `/api/admin/titles` and `PATCH /api/admin/me/title`. Whether a rep may call `/api/admin/*` at all is unruled. |
 
 **None of the four is settled by A33, and none may be read as settled by it.**
+
+---
+
+## 23. Amendments — v2.2, 2026-09-17 (Canvass-1: the decision brief is ruled)
+
+**Amendment A34.** *(Ruled by Danny, 2026-09-16. Written 2026-09-17, in the Canvass-2 docs commit.)*
+
+⚠ **`A34` WAS CONFIRMED FREE BY BOTH A `git grep` AND A WORKING-TREE grep, EACH WORD-ANCHORED
+(`\bA34\b`), PER A33.1's OWN WARNING AND THE A31/A32 LESSON.** Three hits, all three the *"the next
+free amendment is `A34`"* pointer itself — this file's Status line, §21's correction note, and
+`PRE_LAUNCH_CHECKLIST.md`'s Decision-E-numbering entry. **None is a reservation.** `A35` returns
+**nothing** in either search. The working-tree grep is the one that matters and is run separately
+for the reason §21 records: **a tracked-only search cannot see a reservation made in an untracked
+file**, and this repo keeps its phase reports untracked at root as a standing pattern. The untracked
+set was searched and is clean.
+
+**What this amendment is.** Eleven rulings answering the decision brief in
+`CANVASS_1_PART1_REPORT.md` §4. They are in the spec rather than in a handoff because **several
+refine or supersede rulings that live here** — A24.4, A24.5, A24.7, A28, A30 and CD-10 — and a
+refinement filed somewhere the refined thing is not is a refinement nobody will find.
+
+### ⚠ THREE OF A33's FOUR OWED AMENDMENTS ARE SETTLED HERE. **U2 IS NOT.**
+
+§22 closed by listing four owed amendments so the gap was known rather than discovered. Settling
+three of them and saying nothing about the fourth would leave that list reading as wholly
+outstanding, which is the *"a tracking mechanism needs both halves"* failure in its exact form.
+
+| owed by A33 | status after A34 |
+|---|---|
+| **U14** — which column ground is right | ✅ **SETTLED — A34.1 (D1).** `--rm-recess` |
+| **`--rm-bg` flooring** — no `TOKEN_FLOORING` entry, so every rep-column text pair is `unproven` | ✅ **SETTLED AS A CONSEQUENCE — A34.1.** With the column on `recess`, `--rm-bg` stops being a text ground in the rep tree. ⚠ **The tooling half is a Canvass-2 obligation, not a ruling:** the fence must be made to *say* so rather than fall silent |
+| **U25** — may a rep call `/api/admin/*` at all | ✅ **SETTLED — A34.3 (D3).** Yes, for the session-only routes the server already allowlists; no, for anything new |
+| **U2** — does the theme-writer's 403 survive its inverted justification | 🔴 **STILL OWED. NOT TOUCHED BY A34.** The brief did not raise it and Danny did not rule it. It remains exactly as §22 filed it: the stated reason is inverted, and *a wrong comment does not make the gate wrong* |
+
+---
+
+### A34.1 — D1 (U14): the rep column's ground is `--rm-recess`
+
+**`RepShell`'s column paints `--rm-recess`, matching `ReferrerApp` and ruling P3. The header and the
+bottom nav keep `--rm-surface`.**
+
+`Screen.jsx`'s own header states the two surfaces must never diverge, and measurement says
+`RepShell` is the one out of step. **P3 already made this choice one arc earlier**, putting the
+dashboard preview on a `--rm-recess` wrapper *"so its composition matches the app"* — the same
+decision for the same reason, which is why this is a convergence and not a new direction.
+
+**The measured argument, rendered on palette-beta and derived for palette-alpha.** On any contractor
+whose brand background is white, `--rm-bg` and `--rm-surface` are **byte-identical (1.000)** — so
+today that contractor's header and bottom bar have **no colour edge against the page at all**, held
+apart by a 1px hairline measuring 1.24:1. Moving the column to `recess` is the only one of the two
+options that gives them a chrome edge.
+
+⚠ **A34.1 AND A34.2 SHIP IN THE SAME COMMIT, AND THE ORDER IS NOT COSMETIC.** At `0.65`,
+palette-alpha's subtitle **passes** on `--rm-bg` (4.55) and **fails** on `--rm-recess` (4.29).
+Landing D1 without D2 introduces a contrast failure on a contractor that does not have one today.
+
+### A34.2 — D2 (U24): the faded text uses `MUTED = 0.72`, and the inactive nav dot is raised
+
+**Every faded-text site in the rep shell moves from `0.65` to `MUTED = 0.72` — the constant the
+referrer tree already derived for this purpose. The bottom nav's inactive DOT is a separate value
+answering a separate floor and is raised until it clears 3:1 on its own ground.**
+
+**`0.72` is now proven on all three grounds**, closing Canvass-0's standing correction that it had
+been derived on `surface` and `recess` only: it clears 4.5 on `bg`, `recess` and `surface`, on both
+seeded brands, in both modes. **So this ruling does not depend on A34.1** — contrary to how U14 and
+U24 were filed as a pair.
+
+⚠ **THE SCOPE IS THE FINDING, AND THE COUNT IS WRITTEN FROM THE FILES RATHER THAN FROM THE BRIEF.**
+U24 is filed as *"`ScreenTitle`'s 0.65 opacity"*, one site. Counted at this HEAD, the rep tree
+contains **TWO writings of `0.65`** — `RepShell`'s `ScreenTitle` and `RepBottomNav`'s inactive tab
+label — **reached through THREE call sites**, because `ScreenTitle` is called twice (every tab, and
+Profile). **The brief and the Canvass-1 report both say "three 0.65 sites"; two literals is what the
+files hold.** The distinction changes nothing about the ruling and everything about verifying it:
+**a fix that edits three literals has edited one too many.** *Recorded rather than silently
+corrected, per this repo's standing treatment of counts.*
+
+⚠ **AND THE DOT IS DELIBERATELY NOT FOLDED INTO THE SAME VALUE.** The inactive dot carries its own
+`0.4` and answers the **3:1 graphic floor**, not the 4.5 text floor. One value cannot cover both
+kinds of site, and writing `MUTED` onto the dot would be the *"a safety measure copied from a prior
+phase must be RE-DERIVED"* failure. **The replacement value is derived on the dot's actual ground
+and reported with the commit** — not carried from the brief, which observes only that `0.55` is
+already in use in this shell for the theme-toggle knob.
+
+⚠ **`MUTED` IS A PER-FILE CONVENTION IN THIS CODEBASE, NOT A SHARED EXPORT.** Seven referrer files
+each declare `const MUTED = 0.72;` locally; there is no module exporting it. *"Reuse the existing
+one"* therefore means **reuse the value and the convention** — never introduce a second number, and
+never invent a shared module as a side effect of a contrast fix.
+
+### A34.3 — D3 (U25 + U11 + U18): the rep app may call the allowlisted admin routes; new rep data gets a new prefix
+
+**The rep app MAY call the session-only admin routes the server deliberately allowlists —
+`GET /api/admin/me`, `GET /api/admin/titles`, `PATCH /api/admin/me/title`. Genuinely new rep data
+lives under a new `/api/rep/*` prefix, mounted at `'/'`, with guard coverage extended deliberately
+rather than assumed.**
+
+**This settles U25, and it settles it narrower than U25 was filed.** The question is not *"may a rep
+call an admin route"* — **the server already answered that, deliberately and in writing.** Both
+routes sit on `adminRouteCoverage`'s `PUBLIC_ADMIN_ROUTES` allowlist with a written rationale: any
+member, *including a zero-permission General*, must be able to read the title list and self-select a
+title, with the cross-tenant check inside the handler instead of on a permission gate. Measured
+live, not read: a general-tier field rep's session returned **HTTP 200** from `GET /api/admin/titles`.
+
+⚠ **THE CLIENT FENCE MUST NAME ITS ALLOWED PATHS EXACTLY, NOT BY SUBSTRING.**
+`roleRouting.test.jsx` filters URLs *containing* `/api/admin/me`. So `PATCH /api/admin/me/title` — a
+different route with a different handler — clears the fence **only because its path is a
+prefix-extension of the one allowed path**, and `GET /api/admin/titles` would turn it **red against
+the fence's own error message**, which already names that route as ungated. **The prose describes one
+rule and the assertion enforces a narrower one.** This is the needle-matching-a-longer-real-name
+class, arriving as a test exemption. **Repairing the anchor is Canvass-3's, and it is a
+ruling-compliance obligation rather than a cleanup:** the repaired fence must be proven **in both
+directions** — red on a genuinely gated route, green on the allowlisted ones — or it proves nothing.
+
+⚠ **MOVING THE TWO TITLE ROUTES IS RULED AGAINST.** It changes `EXPECTED_ADMIN_ROUTE_COUNT`, removes
+them from the admin guard net that covers them today, and buys a slogan. **A new prefix enters with
+ZERO guard coverage**: every one of the six guards protecting this API is scoped to a prefix, and the
+route collector is mount-relative — so a rep router mounted at `/api/rep` is **structurally invisible
+to every walk**, which is the hole `accountRoutes` already sits in with fifteen routes uncounted.
+**Mounted at `'/'`, per Canvass-3, and each guard extended on purpose.**
+
+### A34.4 — D4 (U3): the rep's client list SHOWS app membership — ⚠ SUPERSEDING the "not in 3c" reading of A24.5
+
+**App membership is shown. The authoritative bridge is `users.jobber_client_id`, per A24.5's join
+key. ⚠ A client who MAY have signed up must never be shown as a confirmed "not signed up".**
+
+**A24.5 is not overturned — its join key and its rejection of the email bridge carry intact.** What
+is superseded is the *reading* that membership display was out of scope for this arc. It is shown
+because it is valuable to the rep **and because 3d's roster consumes it**: resending invites to
+clients who have not signed up is the roster's purpose, and it cannot be built on a field nobody
+surfaced.
+
+⚠ **THE YES/NO FORM IS RULED OUT BY MEASUREMENT, NOT BY TASTE.** A24.5 established the state space
+is **four**, not two — linked app user · peer signup (a real app user with no job-system match,
+expected and legitimate) · a known contact who is not an app user · a contact matched at contact
+level while the user is not. **No single column separates them**, so a boolean collapses three states
+into one and labels homeowners as members of a programme they never joined.
+
+**Canvass-4 MEASURES the ambiguous population before the copy is written** — how many clients sit in
+the state that *cannot be told apart* from "not signed up" — and brings Danny options. **The
+measurement is a precondition of the copy, not a follow-up to it.**
+
+### A34.5 — D5 (U4): CD-10's Today's Focus ships the ONE-HOP version
+
+**Today's Focus ships showing the rep's OWN assigned clients furthest along the pipeline, labelled
+honestly as exactly that. The second hop — those clients' referrals — waits for the referral link.**
+
+**This refines CD-10 rather than replacing it.** CD-10 describes *"the rep's attributed clients whose
+own referrals are furthest along"*; the referral relationship today is a **name string with no
+database link**, so the second hop cannot be built accurately at all. The rep's own assignments carry
+proper tenancy and can.
+
+⚠ **THE RISK THIS RULING CARRIES IS THE LABEL, AND IT IS NAMED HERE SO IT CANNOT BE WEAKENED
+QUIETLY.** A one-hop list under two-hop copy is a lie the screen tells; the copy must say what it
+shows. **CD-10's requirement that the banner opens a SPECIFIC CLIENT is unchanged**, which means
+A24.6's condition binds the implementation: the screen state is parameterised
+(`{screen: 'clientDetail', clientId: 482}`), **never a bare screen name.**
+
+### A34.6 — D6 (U5): a permitted rep with no revenue data sees "no revenue recorded yet" — never the lock
+
+**Reps WITHOUT revenue visibility see the locked treatment. Reps WITH it, before any revenue data
+exists, see a plain "No revenue recorded yet."**
+
+**This refines A24.4 and does not re-open it.** A24.4's contract stands exactly as written: when the
+flag is **off** the **server omits the value** and sends `revenue_hidden: true`, and the client
+renders the placeholder from the field's *absence* — because a CSS-dimmed figure is still in the page
+and readable in developer tools, which is a data exposure rather than a styling question. **A34.6
+answers the case A24.4 does not reach: the flag-ON case against an empty table.**
+
+⚠ **REUSING THE LOCK FOR BOTH IS RULED AGAINST BECAUSE IT MAKES TWO DIFFERENT PAYLOADS
+INDISTINGUISHABLE ON SCREEN** — *"you may not see this"* and *"this does not exist yet"* — which is
+the defect class this codebase has recorded most expensively. **It also tells a permitted rep they
+are not permitted, which is simply untrue.**
+
+### A34.7 — D7 (U6): the rep's Flagged view shows ONLY flags naming that rep in `reps_involved`
+
+**Co-assignment flags, where `reps_involved` names the rep, are what the rep sees. Orphan flags name
+no rep and stay admin-only in team settings.**
+
+⚠ **THIS IS A DECISION TAKEN ON PURPOSE, NOT AN IMPLEMENTATION FALLING OUT OF THE SCHEMA — WHICH IS
+WHY IT IS RULED RATHER THAN LEFT TO THE BUILD.** `flagged_assignments` has exactly two reasons,
+enforced by a database CHECK: `rep_co_assignment` and `orphan`. **Exactly one code path writes
+`reps_involved`, and it is the co-assignment path — the orphan path writes none at all**, so orphan
+flags render as `[]` and are *structurally invisible* to any containment query. An orphan flag means
+*no rep was matched to this client*, which is arguably the case a rep would most want. **Danny has
+ruled that reps do not see it**, so the query's blind spot and the product's scope now agree instead
+of one silently standing in for the other.
+
+⚠ **THE FIXTURE OBLIGATION THIS CREATES IS BINDING ON CANVASS-7.** A test seeded only with
+co-assignment rows passes against an implementation that can never return an orphan — which cannot
+distinguish *"orphans are correctly excluded"* from *"orphans are unreachable."* **Both reasons go in
+the fixture, and the orphan row is the proof.** The admin queue itself is untouched: it exists, reads
+both reasons, and hydrates ids into names.
+
+### A34.8 — D8 (U12): a rep requesting another rep's client gets 404
+
+**"Not found", never "not allowed", matching the existing cross-tenant precedent.**
+
+The team routes carry that precedent in three places with its reasoning written down — *"Tenancy —
+404, never 403, so a cross-tenant probe cannot confirm an id exists."* ⚠ **It is a precedent for a
+DIFFERENT question and that is stated rather than glossed:** those sites govern *cross-tenant*
+access, and U12 asks about *same-company, different-rep*, where a rep knowing a colleague's client
+exists is a much smaller disclosure. **The precedent is directional, not dispositive — Danny has
+ruled with it.**
+
+**The negative test must assert WHY the request was refused**, not only that it was: the status code
+**and** the state proving the tenancy predicate fired. *A plausible-looking rejection is not the
+rejection you are testing for.*
+
+### A34.9 — D9 (U8): Profile's Security row waits
+
+**No Security row in this arc. It is not deferred UI — there is no self-service change-password route
+to put behind it.**
+
+Measured repo-wide: **no such route exists anywhere in this codebase** — not for reps, not for team
+members, not for homeowners. A team member's password is written in exactly two places: accepting an
+invite, and credential recovery. ⚠ **So shipping the row means shipping a new authenticated write
+path** — current-password verification, rate limiting, session invalidation on change, an audit
+entry. **A24.7 already assigns that work to the dedicated login-path session, and building a password
+writer inside a read shell is precisely what A24.7 exists to prevent.**
+
+**A30 is what makes deferring free**: the theme toggle anchors *directly above Sign out*, so the
+screen's shape does not depend on the row that is not shipping.
+
+### A34.10 — D10 (U13): test data is added inside each phase that needs it
+
+**The seeder is extended phase by phase, by the phase whose screen needs the rows. It is not its own
+phase.**
+
+No seeder change is needed to reach the rep shell at all, and the rows are only needed screen by
+screen; splitting them out produces a phase whose output nothing consumes yet.
+
+⚠ **AND THE SEEDER ADOPTS THE `team_member`-SUBJECT `user_preferences` ROW rather than rediscovering
+it.** Canvass-1 wrote the local stack's first such row through the real toggle and the real route,
+which overturns 0b.3's *"every preference row is homeowner-subject"* locally. **Canvass-2 takes this
+one**, because the rep shell's dark state is otherwise unreachable after a fresh seed — and *a
+fixture that never renders a state cannot test that state.*
+
+### A34.11 — D11: `RepShell`'s header handles a SET-BUT-UNREACHABLE logo
+
+**The header falls back exactly as it does for an absent logo when the logo URL is set and fails to
+load.**
+
+`BrandMark` branches on the logo being **absent**. It does not branch on the logo being **set and
+unreachable** — a different state, and the one a contractor reaches when their own image host
+breaks. Measured rendered in Canvass-1: `naturalWidth: 0`, `complete: true`, a broken-image icon at
+132×20 with no fallback. **The local fixture URL is deliberately unreachable, so today's instance is
+seeded rather than production — but the STATE is unhandled either way**, which is what is being
+ruled. Adjacent to U21 and sharper than it.
+
+---
+
+### ⚠ WHAT A34 DOES NOT DO
+
+- **U2 is still owed** — see the table at the top of this section. It is the one A33 item A34 leaves
+  exactly where it found it.
+- **It rules no route shapes, no copy and no schema.** A34.4's four states, A34.5's label, A34.7's
+  query and A34.11's fallback are each *decided*; none is *specified* here.
+- **It does not settle the Canvass phase count.** `CANVASS_1_PART1_REPORT.md` §5 proposes eight
+  phases; the pass's own 10–14 and the review's 12–16 both stand unoverturned, and the count moves as
+  these rulings are built rather than because they were made.
+
+**Next free amendment: `A35`.** *(Verified free by `git grep` and a working-tree grep, word-anchored,
+2026-09-17 — zero hits in either.)*

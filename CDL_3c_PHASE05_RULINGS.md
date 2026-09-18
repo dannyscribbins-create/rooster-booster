@@ -57,7 +57,7 @@ Recording the byte count.
 Both contiguous, no gaps (A1–A22, CD-1–CD-25). Highest section is **§15**. Version **v1.4**.
 
 ⚠ **But a repo-wide grep finds `A23` already reserved elsewhere:**
-`CDL_3b_BUILD_SPEC.md:634` — a heading reading **`### Documentation corrections owed (A23 amendment)`**,
+`CDL_3b_BUILD_SPEC.md:635` — a heading reading **`### Documentation corrections owed (A23 amendment)`**,
 with four bullets. **A23 is a forward reference to an amendment that was never written.**
 
 **Its four bullets, checked against source today:**
@@ -81,7 +81,7 @@ not record it LEAVING."* A23 records the finding; nothing forced the amendment.
   its own two live bullets (§5 and A20), and marking bullet 3 as discharged by the doc restructure.
 - **A24 / v1.6 / §17 — "The session decomposition is superseded"** (Ruling 4).
 
-**Skipping to A24 leaves a dangling forward reference in `CDL_3b_BUILD_SPEC.md:634` pointing at an
+**Skipping to A24 leaves a dangling forward reference in `CDL_3b_BUILD_SPEC.md:635` pointing at an
 amendment that does not exist** — a reader who follows it finds nothing and cannot tell whether it
 was written and lost, or never written. Two amendments, one commit, one version bump each.
 ⚠ **If you prefer one amendment, then A23 must be RETARGETED explicitly** ("A23 now covers both"),
@@ -128,7 +128,7 @@ from `id` is the exact mistake `db.js:1152-1155` forbids).
 > *"slug IS NULL — **the state EVERY contractor except the first is in today** — the column has no
 > DEFAULT and is deliberately not backfilled"*
 
-`CDL_3b_BUILD_SPEC.md:632` repeats it and adds the missing half:
+`CDL_3b_BUILD_SPEC.md:633` repeats it and adds the missing half:
 *"slug creation must become a required, non-skippable onboarding step."*
 
 **A2b — How many contractor rows have a NULL or empty slug?**
@@ -288,7 +288,7 @@ with no branding signal, because branding no longer comes from the token at all.
 CLAUDE.md's *"a rule applied once to a surface does not stay applied when the surface moves"*,
 and the ruling above is the decision that must be re-derived, not the code.
 
-**One more correction, and it is in the dangerous direction.** `CDL_3b_BUILD_SPEC.md:631` states
+**One more correction, and it is in the dangerous direction.** `CDL_3b_BUILD_SPEC.md:632` states
 *"**Team members have NO password reset path at all.**"* **That is INVERTED, not merely stale.**
 Wave 1.1 shipped it: `pin_reset_tokens` now carries a dual-nullable subject
 (`server/db.js:2037-2047`), `POST /api/forgot-pin` stamps `team_member_id`
@@ -530,7 +530,7 @@ prompt's table omitted) and **splits the two rows whose halves now diverge.**
 | Token table + visual language | ~~C/DL-3~~ **3c** | Theme + status vocabulary. Maps onto the CHECK enums already shipped (`provisional_source IN ('mode_a','mode_b','qr_link')`, `sticky_source` + FA's `'manual'`) — read-only, no mint path |
 | 1A Splash | ~~C/DL-3~~ ✅ **SHIPPED 3b Phase 5** | **Reworked** per CD-4 — not a FieldRepApp-branded splash |
 | 1B Login | ~~C/DL-3~~ ✅ **SHIPPED 3b Phase 5** | **Reworked** per CD-4 — unified blended entry |
-| 1C Set Password / 1D Forgot | ~~C/DL-3~~ ✅ **SHIPPED 3b + Wave 1.1-g** | Reuses existing Resend/reset-token machinery. ⚠ Wave 1.1 added the **team-member** reset path; `CDL_3b_BUILD_SPEC.md:631`'s "team members have NO password reset path at all" is INVERTED |
+| 1C Set Password / 1D Forgot | ~~C/DL-3~~ ✅ **SHIPPED 3b + Wave 1.1-g** | Reuses existing Resend/reset-token machinery. ⚠ Wave 1.1 added the **team-member** reset path; `CDL_3b_BUILD_SPEC.md:632`'s "team members have NO password reset path at all" is INVERTED |
 | 2A / 2B Home Dashboard | ~~C/DL-3~~ **SPLIT: 2A → 3c · 2B revenue variant → WAVE 1.6** | Today's Focus CD-10 is 3c. The revenue card is not: true job revenue is stored nowhere, and **Job Revenue Capture is Wave 1.5**. CD-7's flag-ON direction cannot be honestly tested against a column that does not exist |
 | 3A / 3B Add Client | ~~C/DL-3~~ **3d** | Depends on token layer from C/DL-1 **and on the rep-token MINT path, which `CDL_3a_BUILD_SPEC.md` §9 assigns to 3d.** ⚠ The SMS half is dark behind `TWILIO_10DLC_ACTIVE` |
 | 4A Catalogue · 4B Client Detail | ~~C/DL-3~~ **SPLIT: both → 3c, MINUS 4B's revenue FIELD → WAVE 1.6** | Pure reads on `(contractor_id, jobber_client_id)`. The locked-but-visible treatment is built and tested in 3c per CD-7 as amended; the value it hides arrives at 1.6 |
@@ -538,7 +538,7 @@ prompt's table omitted) and **splits the two rows whose halves now diverge.**
 | 6 Profile | ~~C/DL-3~~ **3c, MINUS 2FA** | Theme toggle (CD-6) — ⚠ **three pieces, not one**: a `setPreference` writer (zero production callers today), a `team_member`-subject read path (`GET /api/preferences/theme-mode` is `verifyReferrerSession`-only), and the switch. **2FA (CD-9) is not 3c's — see §4 item 3.** Attribution type display-only |
 | 7A / 7B Activity | ~~C/DL-3~~ **WAVE 2.3 — AND RE-SCOPED, NOT MERELY DEFERRED** | 🔴 `activity_log` has no `contractor_id`, no actor id and no target id (`server/db.js:33-37`), and is a shared audit table with live consumers. **A rep activity feed probably should not read it at all** — what a rep needs is assignment events and pipeline movement, which `client_rep_assignments` and `pipeline_cache` already carry WITH tenancy, plus the referrer's membership tier once the RANK arc lands (D14). **A different build, not a blocked one.** |
 | 8 Assignment Flagged | ~~C/DL-3~~ **3c** | Read-only; resolution stays admin-only per FA. `flagged_assignments` already has a live admin queue; this is a second, read-only consumer |
-| 9 Frozen / Offboarding | ~~C/DL-3~~ ✅ **SHIPPED 3b Phase 3** | View only; Decision E logic out of scope. ⚠ **E-min still owes the reactivation path** — `server/routes/admin/team.js:576` is the only write to `active` and it writes `false` |
+| 9 Frozen / Offboarding | ~~C/DL-3~~ ✅ **SHIPPED 3b Phase 3** | View only; Decision E logic out of scope. ~~⚠ **E-min still owes the reactivation path** — `server/routes/admin/team.js:576` is the only write to `active` and it writes `false`~~ ⚠ **CORRECTED 2026-09-17 (Canvass-2): INVERTED, NOT STALE — IT SHIPPED.** `PATCH /api/admin/team/:id/reactivate` writes `SET active = true`; verified in source. The struck sentence tells a future session to build what exists. Closed on `PRE_LAUNCH_CHECKLIST.md` 2026-08-31 (C/DL-3c Phase 2c); this row never moved with it. The `:576` citation was also rotted and is **not** renumbered — cite the deactivate handler by role |
 | Global UI States | ~~C/DL-3~~ ✅ **SHIPPED 3a Phase 4A** | ~~Build **first** in the session~~ — already built. All six primitives are in `src/components/shared/` |
 | — Landing page | C/DL-2 | ✅ **SHIPPED.** Not in this mockup; see LANDING_PAGE_SPEC.md |
 | — Roster | ~~C/DL-3~~ **3d builds · 3c specs** | Not in mockup; OD-4. Its columns live on the token row 3d mints; `server/db.js:1509-1511` waits on 3c for the query shape |
@@ -584,7 +584,7 @@ Folds in `contractors.slug` backfill and `db.js:1532`.
 ```
 **NEW:**
 ```
-Folds in **`contractors.slug` backfill AND ITS MINT PATH** and `db.js:1532`. ⚠ **"Backfill" understates it: NOTHING WRITES THE COLUMN.** Verified 2026-08-30 — no `UPDATE contractors SET slug` anywhere, and `validateSlug`/`isSlugMutable` (`server/utils/contractorSlug.js`) have **zero production callers**, only tests. `getInviteHostSlug`'s header already says NULL is *"the state EVERY contractor except the first is in today."* A backfill fixes existing rows; **a contractor onboarding tomorrow still cannot acquire one**, which fails §0's launch definition. **The mint path belongs in Wave 2.2's onboarding wizard as a required, non-skippable step** (`CDL_3b_BUILD_SPEC.md:632` says exactly this); 1.4 covers the rows that predate it.
+Folds in **`contractors.slug` backfill AND ITS MINT PATH** and `db.js:1532`. ⚠ **"Backfill" understates it: NOTHING WRITES THE COLUMN.** Verified 2026-08-30 — no `UPDATE contractors SET slug` anywhere, and `validateSlug`/`isSlugMutable` (`server/utils/contractorSlug.js`) have **zero production callers**, only tests. `getInviteHostSlug`'s header already says NULL is *"the state EVERY contractor except the first is in today."* A backfill fixes existing rows; **a contractor onboarding tomorrow still cannot acquire one**, which fails §0's launch definition. **The mint path belongs in Wave 2.2's onboarding wizard as a required, non-skippable step** (`CDL_3b_BUILD_SPEC.md:633` says exactly this); 1.4 covers the rows that predate it.
 ```
 
 #### B9 — Row 2.2, adding the slug step
@@ -978,7 +978,7 @@ only one can be scheduled, **step-up is the one that matters for 3c.**
 
 ## 8. ANYTHING IN THIS PROMPT THAT IS WRONG
 
-1. 🔴 **"probably A23" — A23 IS ALREADY TAKEN.** `CDL_3b_BUILD_SPEC.md:634` reserves it for a
+1. 🔴 **"probably A23" — A23 IS ALREADY TAKEN.** `CDL_3b_BUILD_SPEC.md:635` reserves it for a
    documentation-corrections amendment that was never written. The prompt's instruction to *"not
    assume"* is what caught it. → §2 A1.
 2. 🔴 **A2's premise: "dynamic contractor slugs already shipped, a slug is minted at account setup
