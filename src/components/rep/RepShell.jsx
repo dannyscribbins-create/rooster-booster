@@ -3,6 +3,7 @@ import { ThemeContext } from '../shared/ThemeProvider';
 import BrandMark from '../shared/BrandMark';
 import RepBottomNav, { REP_TABS } from './RepBottomNav';
 import RepThemeToggleRow from './RepThemeToggleRow';
+import RepClientsScreen from './RepClientsScreen';
 import { fontVar } from '../../constants/elevationTheme';
 
 // ─── THE FIELD REP SHELL — C/DL-3c Phase 3-A ─────────────────────────────────
@@ -283,6 +284,12 @@ function Header() {
 function Screen({ view, onLogout }) {
   if (view.screen === 'profile') {
     return <ProfileScreen onLogout={onLogout} />;
+  }
+
+  // ⚠ CLIENTS IS NO LONGER A PLACEHOLDER (Canvass-4). Home and Network still are,
+  // and the header note above still describes them — only this one tab moved.
+  if (view.screen === 'clients') {
+    return <RepClientsScreen />;
   }
 
   const tab = REP_TABS.find(t => t.id === view.screen);

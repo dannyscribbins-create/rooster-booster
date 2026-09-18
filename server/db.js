@@ -2246,6 +2246,34 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`INSERT INTO cron_job_locks (job_name) VALUES ('rep_request_sweep')
                     ON CONFLICT DO NOTHING`);
 
+  // ── CANVASS-4: THE OWN-BOOK INDEX (approved 2026-09-18, backup taken) ───────
+  //
+  // Serves the rep book's own-book predicate:
+  //   contractor_id = $1 AND COALESCE(sticky_rep_id, provisional_rep_id) = $2
+  //   ORDER BY updated_at DESC
+  //
+  // ⚠ AN EXPRESSION INDEX, AND THAT IS THE WHOLE POINT — A PLAIN COLUMN INDEX ON
+  // sticky_rep_id CANNOT SERVE A COALESCE. Postgres matches the indexed expression
+  // against the predicate's expression textually, so the COALESCE must be written
+  // here exactly as the query writes it, INCLUDING THE ARGUMENT ORDER. Swap the two
+  // columns and the index still builds, still looks right, and is silently never used.
+  //
+  // ⚠ THE ARGUMENT FOR IT IS THE SHAPE, NOT THE NUMBER. Measured before migrating, at
+  // 20,000 assignments across 40 reps on the local stack: without it the planner runs a
+  // Seq Scan with "Rows Removed by Filter: 19501" (295 buffers, 1.599 ms); with it, an
+  // Index Scan (30 buffers, 0.069 ms). 1.6 ms is not slow — but the scan is
+  // O(the tenant's entire assignment table) rather than O(this rep's book), on the rep
+  // app's primary screen, and it degrades as attribution fills in. Canvass-0 S2 recorded
+  // that nothing indexed either column; this is that gap closed.
+  //
+  // updated_at DESC is the third column so the ORDER BY is satisfied by the index too,
+  // rather than by a sort over the matched rows.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_cra_contractor_owner
+      ON client_rep_assignments
+         (contractor_id, (COALESCE(sticky_rep_id, provisional_rep_id)), updated_at DESC)
+  `);
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed

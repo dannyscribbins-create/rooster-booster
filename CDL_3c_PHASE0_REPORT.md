@@ -809,7 +809,8 @@ it would pass vacuously.**
 1. **Mount the rep router at `'/'` in `createApp()`**, like every other prefixed router. A rep
    router mounted at `'/api/rep'` collects **zero** routes and every guard passes silently.
 2. **Add `EXPECTED_REP_ROUTE_COUNT`, exact, with the measurement date and HEAD**, plus the
-   `> 0` non-vacuity floor that `sessionAuthInvariant.test.js:287-294` makes mandatory. The helper
+   `> 0` non-vacuity floor that `sessionAuthInvariant.test.js`'s
+   *"collectRoutes() returned NOTHING for &lt;prefix&gt;"* assertions make mandatory. The helper
    header states the rule outright: *"Do not add a third prefix without one — an empty collection
    must fail loudly, because it cannot fail any other way."*
 3. **State the failure mode and prove it fires before trusting the pass** — delete a rep route and

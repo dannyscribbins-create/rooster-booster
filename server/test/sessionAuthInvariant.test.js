@@ -137,7 +137,16 @@ const REP_PREFIX = '/api/rep/';
 // (GET /api/rep/me) exists so the guards have a real subject. Canvass-4 onward
 // raise this number deliberately, and the separate `> 0` floor below is what
 // distinguishes "one route" from "the walk collected nothing".
-const EXPECTED_REP_ROUTE_COUNT = 1;
+//
+// ⚠ 1 → 2 IN CANVASS-4, DELIBERATELY. One route was ADDED: GET /api/rep/clients,
+// the rep's book of business (A34.4). It is session-gated and identity-gated exactly
+// like GET /api/rep/me, so PUBLIC_REP_ROUTES stays empty and the coverage sweep in
+// repRouteGuard.test.js picks it up automatically. **The number moved because a route
+// was added, not because a walk broke** — which is the reflex this constant exists to
+// catch, so it is stated rather than quietly bumped.
+// ⚠ EXPECTED_ADMIN_ROUTE_COUNT (138) is UNAFFECTED and was checked rather than assumed:
+// that walk is prefixed '/api/admin/', and this route is under '/api/rep/'.
+const EXPECTED_REP_ROUTE_COUNT = 2;
 
 const PUBLIC_REP_ROUTES = [];
 const PUBLIC_REP_KEYS = new Set(PUBLIC_REP_ROUTES.map((r) => `${r.method} ${r.path}`));

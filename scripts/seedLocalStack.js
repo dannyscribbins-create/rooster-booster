@@ -633,6 +633,187 @@ async function seedStack(pool) {
     assignments: seededAssignments,
   };
 
+  // ── CANVASS-4: A BOOK OF BUSINESS WORTH LOOKING AT, ON palette-beta ────────
+  //
+  // ⚠ ON BETA, NOT ALPHA, AND THAT IS THE POINT RATHER THAN A COIN TOSS. Alpha is
+  // seeded with the PLATFORM DEFAULT PALETTE, so all six render tokens mount EQUAL to
+  // their fallbacks there and a correct wiring is indistinguishable from a broken one
+  // — this repo's recorded "the contractor could not make the readings vary" failure,
+  // reproduced inside our own fixture. Beta is the visibly-different brand, so it is
+  // the one any rendered measurement must be taken on.
+  //
+  // ⚠ EVERY STATE THIS SCREEN CAN RENDER IS SEEDED, BECAUSE A STATE THE FIXTURE NEVER
+  // RENDERS CANNOT BE EYE-TESTED. That is: all three assignment states (sticky,
+  // provisional, flagged), a client WITH a pipeline_cache row and one WITHOUT (A34.4's
+  // whole book), every stage in the vocabulary, several assignment sources, and ALL
+  // FOUR membership states — of which only the first renders a badge.
+  const beta = CONTRACTORS[1].id;
+
+  const betaRep = await pool.query(
+    `INSERT INTO team_members
+       (contractor_id, full_name, email, tier, is_field_rep, active, jobber_user_id, is_attributable, password_hash)
+     VALUES ($1, 'Beta Book Rep', $2, 'general', TRUE, TRUE, $3, TRUE,
+             '$2b$10$local.stack.placeholder.hash.not.a.password')
+     ON CONFLICT (email) DO UPDATE
+       SET jobber_user_id = EXCLUDED.jobber_user_id, is_attributable = TRUE,
+           is_field_rep = TRUE, active = TRUE
+     RETURNING id`,
+    [beta, `book-rep@${beta}.test`, 'jobber-user-beta-1']
+  );
+  const betaRepId = betaRep.rows[0].id;
+
+  // A second rep, so the co-assignment flag has someone to be co-assigned WITH and the
+  // own-book predicate has a colleague to exclude.
+  const betaOther = await pool.query(
+    `INSERT INTO team_members
+       (contractor_id, full_name, email, tier, is_field_rep, active, jobber_user_id, is_attributable, password_hash)
+     VALUES ($1, 'Beta Other Rep', $2, 'general', TRUE, TRUE, $3, TRUE,
+             '$2b$10$local.stack.placeholder.hash.not.a.password')
+     ON CONFLICT (email) DO UPDATE SET is_field_rep = TRUE, active = TRUE
+     RETURNING id`,
+    [beta, `other-rep@${beta}.test`, 'jobber-user-beta-2']
+  );
+  const betaOtherId = betaOther.rows[0].id;
+
+  // [jobberClientId, name, stage|null, sticky|null, provisional|null, source, membershipState]
+  // membershipState: 1 = linked users row · 4 = contact-level app user · 3 = contact,
+  // not an app user · 2 = nothing known. ⚠ ONLY STATE 1 RENDERS A BADGE — 2, 3 and 4
+  // are indistinguishable and the ruling forbids asserting anything about them. They
+  // are all seeded anyway, precisely so the screen can be EYE-CHECKED for the absence
+  // of a reserved slot: three rows that differ in the database and must look identical.
+  const BOOK = [
+    ['jc-beta-1', 'Maria Lopez',   'paid',       betaRepId, null, 'quote_salesperson',  1],
+    ['jc-beta-2', 'Allen Wade',    'sold',       betaRepId, null, 'mode_a_at_close',    4],
+    ['jc-beta-3', 'Pat Chen',      'inspection', betaRepId, null, 'manual',             3],
+    ['jc-beta-4', 'June Harris',   null,         betaRepId, null, 'mode_b_at_close',    2],
+    ['jc-beta-5', 'Sam Okafor',    null,         null, betaRepId, 'mode_a',             2],
+    ['jc-beta-6', 'Dana Whitfield','lead',       betaRepId, null, 'promoted_provisional', 1],
+    ['jc-beta-7', 'Ellis Brand',   'not_sold',   betaRepId, null, 'manual',             3],
+    // The colleague's client — must NOT appear in the book rep's list.
+    ['jc-beta-8', 'Not Mine',      'sold',       betaOtherId, null, 'mode_a_at_close',  2],
+  ];
+
+  for (const [jcId, name, stage, sticky, provisional, source, membershipState] of BOOK) {
+    const [first, ...rest] = name.split(' ');
+    await pool.query(
+      `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_name, last_synced_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE
+         SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name`,
+      [jcId, beta, first, rest.join(' ') || null]
+    );
+
+    await pool.query(
+      `INSERT INTO client_rep_assignments
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at,
+          provisional_rep_id, provisional_source, provisional_set_at, updated_at)
+       VALUES ($1, $2, $3, $4, CASE WHEN $3::int IS NULL THEN NULL ELSE NOW() END,
+               $5, $6, CASE WHEN $5::int IS NULL THEN NULL ELSE NOW() END, NOW())
+       ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE
+         SET sticky_rep_id = EXCLUDED.sticky_rep_id,
+             sticky_source = EXCLUDED.sticky_source,
+             provisional_rep_id = EXCLUDED.provisional_rep_id,
+             provisional_source = EXCLUDED.provisional_source,
+             updated_at = NOW()`,
+      [beta, jcId, sticky, sticky ? source : null, provisional, provisional ? source : null]
+    );
+
+    // ⚠ ONLY THE REFERRED CLIENTS GET A pipeline_cache ROW. The ones with a null stage
+    // are the whole-book case — an ordinary client with a request and no referral — and
+    // they are what makes "No referral record" visible on screen instead of only in a test.
+    if (stage) {
+      await pool.query(
+        `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status)
+         VALUES ($1, $2, $3, 'Seeded Referrer', $4)
+         ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET pipeline_status = EXCLUDED.pipeline_status`,
+        [beta, jcId, name, stage]
+      );
+    }
+
+    if (membershipState === 1) {
+      await pool.query(
+        `INSERT INTO users (full_name, email, pin, email_verified, contractor_id, jobber_client_id)
+         VALUES ($1, $2, '$2b$10$local.stack.placeholder.hash.not.a.password', TRUE, $3, $4)
+         ON CONFLICT (contractor_id, email) DO UPDATE SET jobber_client_id = EXCLUDED.jobber_client_id`,
+        [name, `${jcId}@${beta}.test`, beta, jcId]
+      );
+    } else if (membershipState === 4 || membershipState === 3) {
+      await pool.query(
+        `INSERT INTO contacts (contractor_id, email, name, is_app_user, jobber_client_id)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT DO NOTHING`,
+        [beta, `${jcId}-contact@${beta}.test`, name, membershipState === 4, jcId]
+      );
+    }
+    // state 2 gets nothing at all — which is the point.
+  }
+
+  // ⚠ A PEER SIGNUP WITH NO JOBBER MATCH — state (2) of A24.5's space, and the reason
+  // the absence of a badge must stay a non-claim. This person HAS an account and cannot
+  // be tied to any client, so at least one of the four unbadged rows above may well be
+  // them. Seeding it is what makes that argument checkable rather than asserted.
+  await pool.query(
+    `INSERT INTO users (full_name, email, pin, email_verified, contractor_id)
+     VALUES ('Peer Signup', $1, '$2b$10$local.stack.placeholder.hash.not.a.password', TRUE, $2)
+     ON CONFLICT (contractor_id, email) DO NOTHING`,
+    [`peer-signup@${beta}.test`, beta]
+  );
+
+  // One OPEN co-assignment flag naming the book rep — the Flagged pill. A34.7: a rep
+  // sees co-assignment flags naming them, never orphan flags.
+  const { rows: existingFlag } = await pool.query(
+    `SELECT id FROM flagged_assignments
+      WHERE contractor_id = $1 AND jobber_client_id = 'jc-beta-3'
+        AND flag_reason = 'rep_co_assignment' AND status = 'open'`,
+    [beta]
+  );
+  if (existingFlag.length === 0) {
+    await pool.query(
+      `INSERT INTO flagged_assignments (contractor_id, jobber_client_id, flag_reason, reps_involved, status)
+       VALUES ($1, 'jc-beta-3', 'rep_co_assignment', $2::jsonb, 'open')`,
+      [beta, JSON.stringify([betaRepId, betaOtherId])]
+    );
+  }
+
+  // ⚠ AN ORPHAN FLAG, SEEDED ON PURPOSE AND EXPECTED NEVER TO RENDER. It is admin-only
+  // by A34.7, and a fixture that omits it cannot tell "orphans are correctly excluded"
+  // from "orphans are unreachable" — the fixture obligation A34.7 states in terms.
+  const { rows: existingOrphan } = await pool.query(
+    `SELECT id FROM flagged_assignments
+      WHERE contractor_id = $1 AND jobber_client_id = 'jc-beta-4'
+        AND flag_reason = 'orphan' AND status = 'open'`,
+    [beta]
+  );
+  if (existingOrphan.length === 0) {
+    await pool.query(
+      `INSERT INTO flagged_assignments (contractor_id, jobber_client_id, flag_reason, status)
+       VALUES ($1, 'jc-beta-4', 'orphan', 'open')`,
+      [beta]
+    );
+  }
+
+  // ⚠ BADGE 2 ('Invited') IS NOT SEEDED, AND IT CANNOT BE. Nothing in the schema records
+  // "this rep sent this client a link": contractor_invite_links carries
+  // owner_team_member_id but NO client column and has no 'rep' writer at all, and
+  // pending_referrals carries the client but no rep and describes the REFERRAL
+  // pipeline's send. Faking a row here would seed a state production cannot reach and
+  // make the screen look finished when it is not. The badge is proved by the React
+  // test instead, which drives the component directly. → PRE_LAUNCH_CHECKLIST.md,
+  // the Canvass-4 badge-2 entry, which names exactly what 3d must write.
+
+  const { rows: betaBook } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM client_rep_assignments
+      WHERE contractor_id = $1 AND COALESCE(sticky_rep_id, provisional_rep_id) = $2`,
+    [beta, betaRepId]
+  );
+  summary.repBook = {
+    contractor: beta,
+    repId: betaRepId,
+    repEmail: `book-rep@${beta}.test`,
+    colleagueId: betaOtherId,
+    clientsInBook: betaBook[0].n,
+  };
+
   return summary;
 }
 

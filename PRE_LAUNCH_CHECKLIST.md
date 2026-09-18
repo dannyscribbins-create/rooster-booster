@@ -4198,6 +4198,151 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-4 — the Clients tab, the rep's book of business (SHIPPED 2026-09-18)
+
+- [x] **✅ PRODUCTION VERIFICATION, Danny, 2026-09-18 — THE 3.7 PIPELINE IS LIVE AND R3 HOLDS.**
+      Danny's Jobber user is mapped to a RoofMiles rep (`team_members` id 5, `is_attributable` true);
+      the `REQUEST_CREATE`/`REQUEST_UPDATE` webhooks are subscribed and delivering; assigning himself
+      to a request in Jobber produced a `client_rep_assignments` row **within moments** —
+      `sticky_rep_id` 5, `sticky_source` `mode_a_at_close` — and raised **NO flag and NO admin bell**.
+      ⚠ **THIS RETIRES THE LAST THREE UNPROVEN JOBBER FIELDS.** `Query.request(id:)`, `Request.client`
+      and `Request.updatedAt` + its filter were recorded in 3.7 as *"strong evidence, not proof"* at
+      our pinned `2026-02-17`. **A delivery that produced a correct row exercised all three at our
+      version**, so they are proven by behaviour rather than by an explorer running a newer one.
+
+- [x] **✅ RULING — MEMBERSHIP IS THREE STATES, AND ONE IS ABOUT THE REP'S ACTION (Danny, 2026-09-18).**
+      1. **CONFIRMED IN THE APP** — a badge. State 1 only: a matched app account via
+         `users.jobber_client_id`, contractor-scoped.
+      2. **INVITED, NOT YET SIGNED UP** — its own badge. ⚠ **NOT a claim about the client's account —
+         a record of what the REP did.** That is precisely why it is safe where *"no app account on
+         file"* is not.
+      3. **EVERYTHING ELSE — NOTHING.** No badge, no hedge, no placeholder.
+      ⚠ **AND NO RESERVED SPACE.** States 2/3/4 are indistinguishable, so the absence of a badge must
+      stay a non-claim — **an empty slot in a consistent position becomes a negative claim by
+      convention.** The component returns `null` and renders no element at all; two React cases pin
+      that, one asserting the container's `innerHTML` is empty rather than that a string is missing
+      (a missing string would also pass against an empty reserved box).
+
+- [x] **✅ THE MEASUREMENT, AND THE SQL FOR RAILWAY.** Local stack: **1 client in a book, state 2**,
+      against **2 unmatched peer signups and 0 matched** — so the ambiguity is real, not theoretical,
+      even on a thin fixture. ⚠ **THE CLASSIFIER WAS PROVED DISCRIMINATING BEFORE BEING BELIEVED:**
+      one client seeded into each of the four states inside a transaction, **all four buckets emitted,
+      then rolled back with zero residue verified.**
+      **The read-only SQL is committed at `docs/sql/membership_states.sql`** — replace the contractor
+      id and run it on Railway. It returns the four-state breakdown **plus the number that decides the
+      copy**: unmatched peer signups. **If that is non-zero, states 2/3/4 provably contain people who
+      did sign up.**
+
+- [ ] ⚠ **BADGE 2 IS BUILT, TESTED, AND CANNOT LIGHT UP — NOTHING RECORDS "THIS REP SENT THIS CLIENT
+      A LINK". THIS IS THE ESTABLISHED GAP, TRACED ACROSS THE WHOLE SCHEMA, NOT AN ASSUMPTION.**
+      · `contractor_invite_links` carries **`owner_team_member_id` — the rep** — and a `link_type='rep'`
+        value, but **no client column at all**, and ⚠ **nothing anywhere mints a `'rep'` row**: the
+        admin route validates `linkType` against `['contractor']` ONLY, and `referrer.js` mints
+        `'peer'` (owned by a homeowner user). The type is read by `redeemToken` and `landingResolve`
+        and **written by nobody**.
+      · `pending_referrals` carries **`jobber_client_id` AND `invite_sent_at`** — the client and the
+        send — but **no rep**, and the send is the REFERRAL pipeline's action. ⚠ **Reading it as badge
+        2 would light the badge for clients this rep never contacted**, which the ruling forbids in
+        terms: *a contractor-wide invite is not this rep's action.*
+      · `contact_send_history`, `campaign_send_log`, `campaign_contacts` — campaign-scoped and
+        contractor-wide. `users.invited_by_user_id` names a **user**, never a team member.
+        `provisional_source = 'qr_link'` is read by the engine as a precedence guard and **written by
+        nothing**, re-verified this session.
+      **So the two halves sit in different tables and neither joins: rep-without-client, and
+      client-without-rep.**
+      **WHAT 3d MUST WRITE — the designed slot with a named writer:** a per-client rep send carrying
+      `(contractor_id, jobber_client_id, owner_team_member_id, sent_at, channel)`. Cheapest shape is a
+      nullable `jobber_client_id` on `contractor_invite_links` plus a real `link_type='rep'` mint; a
+      separate send-log table is the alternative if one rep link is ever sent to many clients.
+      ⚠ **THE SCHEMA CHANGE IS DELIBERATELY NOT MADE HERE** — it is 3d's to choose, and adding an
+      unwritten column on this phase's authority would pre-commit that decision.
+      ⚠ **THE BADGE IS BUILT AND PROVED ANYWAY**, driven directly by a React case, because *a slot
+      that has never rendered cannot be trusted to render when 3d supplies the value.* It is **not
+      seeded**, because faking a row would seed a state production cannot reach and make the screen
+      look finished. **OWNER: Canvass-3d.**
+
+- [ ] ⚠ **FOLLOW-UP WITH A STATE TRIGGER, NOT A PHASE: run the existing contact-matching pass,
+      re-measure the four states, then revisit whether badge 1's coverage is honest.**
+      **TRIGGER: before the 3d roster ships an invite-resend list.** That list cannot be built on
+      *"not confirmed"* — resending to someone who already has an account is the failure it creates.
+      The SQL is committed and ready; the matching pass is `server/jobs/contactMatchingPass.js`.
+
+- [x] **✅ THE INDEX — APPROVED, BACKUP TAKEN, MIGRATED.** `idx_cra_contractor_owner` on
+      `client_rep_assignments (contractor_id, (COALESCE(sticky_rep_id, provisional_rep_id)),
+      updated_at DESC)`. ⚠ **AN EXPRESSION INDEX — A PLAIN COLUMN INDEX CANNOT SERVE A COALESCE**, and
+      the argument order must match the query's textually or the index builds, looks right, and is
+      never used. **Measured before migrating**, 20,000 assignments / 40 reps: Seq Scan with
+      *"Rows Removed by Filter: 19501"*, 295 buffers, **1.599 ms** → Index Scan, 30 buffers,
+      **0.069 ms**. ⚠ **The argument is the SHAPE, not the number** — 1.6 ms is not slow, but the scan
+      is **O(the tenant's whole assignment table)** rather than O(the rep's book), on the rep app's
+      primary screen. Closes Canvass-0 S2.
+
+- [x] **✅ THE ROW, AND WHERE IT DEPARTS FROM MOCKUP 4A — RULED, NOT IMPROVISED.**
+      Shipped: name · membership badge · pill (**Locked / Provisional / Flagged**) · metadata
+      `<stage or "No referral record"> · Assigned <date> · <source>` · 4px left border.
+      ⚠ **THE MOCKUP'S SOURCE VOCABULARY IS HALF FICTIONAL.** It shows **QR · Link · Inherited ·
+      Manual**. *"Inherited"* is referral inheritance — `docs/ASSIGNMENT_RULES_LOCKED.md`'s **V1 records
+      it as implemented NOWHERE, re-verified this session** — and *"Link"* maps to no column. Both
+      dropped. Its four stages are not our vocabulary either. A React case fences all five invented
+      strings out of the shipped label tables.
+      ⚠ **THE PILL HAS THREE STATES WHERE THE MOCKUP DREW TWO.** *Provisional* is the one it assumes
+      away: an assignment that has not passed the sticky gate is real, common, and must not read as
+      settled.
+      ⚠ **AND THE METADATA LINE WAS ALREADY FULL** (Canvass-0 §5), which is why the badge gets its own
+      slot rather than a fifth segment.
+
+- [x] **✅ A34.7 — A LEAK THE RULINGS CHECK CAUGHT, NOW FENCED.** The first draft joined
+      `flagged_assignments` on client alone, which would have surfaced an **admin-only orphan flag on
+      a rep's screen**. R3 stopped the REQUEST path writing orphans, but the REFERRAL path still does,
+      so a book client can carry one. Fixed to
+      `flag_reason = 'rep_co_assignment' AND reps_involved @> to_jsonb(<member>)`.
+      ⚠ **AND THE FIRST FENCE FOR IT WAS VACUOUS.** Deleting the `flag_reason` clause left all 22
+      cases GREEN — an ordinary orphan flag writes **no** `reps_involved`, and `NULL @> anything` is
+      NULL, so the containment clause alone was doing the work. The repair seeds a **deliberately
+      malformed orphan flag that DOES name the rep**, so the reason clause is the only thing standing
+      between it and the screen. ⚠ **A guard that depends on another module keeping its invariant is a
+      guard that silently opens when that module changes.**
+
+- [x] **✅ THE BOUNDED PAGE.** `LIMIT 100`, newest-assignment-first, with the total returned beside it
+      and an honest *"Showing 100 of N"* line rendered **only when there is more than one page**. No
+      paging UI this phase — 4A ships a **search** input, and search and paging are one design.
+
+- [ ] ⚠ **StateCard IS STILL UNMIGRATED AND THIS SCREEN DELIBERATELY DID NOT BECOME ITS FIRST
+      PRODUCTION CONSUMER.** Re-measured at this HEAD: `CARD_EDGE` still reads bare `R.border` /
+      `R.shadow`, and the only importer anywhere is `src/components/dev/PaletteHarnessRoute.jsx`.
+      **Measured RENDERED on palette-beta, transitions suppressed:** a card's fill against the column
+      is **1.08:1 light / 1.41:1 dark**, and a 1px `rgba(0,0,0,0.12)` hairline is **1.32:1 / 1.76:1** —
+      against a component whose own header says *"the edge IS the card"*. ⚠ **A CLIENT ROW SURVIVES
+      THOSE NUMBERS BECAUSE ITS 4px LEFT BORDER CARRIES THE EDGE — 5.87:1 light, 5.27:1 dark.** The
+      EMPTY state has no left border, so its card was **a box nobody can see**; the chrome was removed
+      and the text carries it (**11.16:1 / 18.45:1**, muted line **4.97:1 / 9.67:1**).
+      **WHAT I WOULD DO, NOT DONE ON THIS PHASE'S AUTHORITY:** route `CARD_EDGE` through
+      `elevationVar('border')`/`elevationVar('shadow')` like every other migrated site, and accept that
+      even then the edge is ~1.3–1.8:1 — so StateCard additionally needs a real edge decision (a
+      mid-grey rule, or a fill that differs from its ground), which is a change four components
+      inherit. **OWNER: the palette arc, not a screen phase.**
+
+- [ ] ⚠ **THE CAPTURE PIPELINE'S RECORDED DIAGNOSIS IS INCOMPLETE — THE SAME ELEMENT ALSO PAINTS A
+      WARM TINT, NOT ONLY NEAR-BLACK.** CLAUDE.md records `<screen-shader>` as a full-viewport div at
+      `rgb(17,17,17)`, `opacity: 1`, producing uniformly near-black frames. **Measured this session it
+      was `rgba(255,147,41,0.25)` with `mix-blend-mode: multiply`** — a warm cast over a correct page.
+      ⚠ **So a detector that tests for "near-black" or that hex misses it. Detect by STRUCTURE — a
+      full-viewport element with `z-index > 2e9` — never by colour.** It also **re-injects on reload**,
+      so it must be removed immediately before EVERY capture, not once per session.
+      ⚠ **AND A SECOND, SEPARATE TINT SURVIVED ITS REMOVAL**, which is why this is filed rather than
+      closed: with `<screen-shader>` gone from the DOM the frames were still warm, while
+      `getComputedStyle` reported the correct teal throughout. That is consistent with a **system-level
+      display filter** (Night Light engaging at sunset — the captures straddle ~19:00 local) and is
+      **recorded as a question to ask, not a cause established.** ⚠ **Computed-style measurements are
+      unaffected either way** — the overlay composites at paint time — so this session's contrast
+      figures stand and only the later screenshots carry the cast.
+
+- [ ] ⚠ **`CLAUDE.md` SAYS "the six `RENDER_TOKEN_KEYS`" AND THE FILE HOLDS ELEVEN.**
+      `src/utils/themeTokens.mjs` carries `primary`, `secondary`, `bg`, `surface`, `text`, `onPrimary`
+      **plus `recess`, `primaryDark`, `secondaryDark`, `primaryText`, `onSecondary`.** Directly
+      load-bearing for this phase, which relies on `recess` being a mounted token. **Filed, NOT fixed
+      — Danny ruled the documentation pass stays deferred until after Canvass.**
+
 ### Canvass-3.7 — request-driven attribution, via webhook (SHIPPED 2026-09-18)
 
 - [x] **✅ VERIFICATION RECORD — GraphiQL against Accent's LIVE Jobber account, Danny, 2026-09-18.**
@@ -4725,6 +4870,14 @@ may legitimately change several of these subjects.*
       all eleven were already wrong. **Adding this commit's delta would have certified two wrong
       numbers as repaired.** Left unrepaired on purpose: the fix is re-deriving where each subject
       lives and citing it BY ROLE, which is a larger job than a renumber.
+      ⚠ **HALF CLOSED 2026-09-18 (Canvass-4), BY RE-DERIVATION RATHER THAN BY A DELTA.** Canvass-4
+      edited `sessionAuthInvariant.test.js` (raising `EXPECTED_REP_ROUTE_COUNT` 1 → 2), which flagged
+      the first of these again — **still not that commit's doing**. The subject was then located:
+      the `> 0` floor is the pair of ***"collectRoutes() returned NOTHING for &lt;prefix&gt;"***
+      assertions, one per prefix. **`CDL_3c_PHASE0_REPORT.md`'s citation now names them BY ROLE and
+      will not rot again.** ⚠ **The `roleRouting.test.jsx:156` half is still open**, and the two
+      sentences above are **deliberately left quoting the wrong numbers** — they are the evidence,
+      and renumbering a record destroys it.
       ⚠ **AND IT IS OUT OF SCOPE BY RULING** — the documentation-vs-source pass waits until after
       Canvass. **OWNER: that pass.**
 
@@ -4812,6 +4965,12 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       the allowlisted ones — or it proves nothing. **OWNER: Canvass-3 (A34.3).**
       → `CANVASS_1_PART1_REPORT.md` §3d, §4 D-extra-4
 
+- [x] **✅ CLOSED 2026-09-18 (Canvass-4) — MEASURED, OPTIONS BROUGHT, RULED.** The four-state SQL was
+      written, run, and **proved discriminating** (all four buckets emitted, one client each, in a
+      rolled-back transaction — a classifier that only ever emits one bucket is indistinguishable
+      from a broken one). Danny ruled **THREE STATES**: *confirmed in the app* · *invited, not yet
+      signed up* · **everything else renders NOTHING**. → the Canvass-4 section for the ruling, the
+      measurement, and the Railway SQL. *The original follows, because it is what the ruling answers.*
 - [ ] ⚠ **A34.4's AMBIGUITY MEASUREMENT IS A PRECONDITION OF THE CLIENT-LIST COPY, NOT A FOLLOW-UP TO
       IT.** A24.5 established the app-membership state space is **four**, not two, and **no single
       column separates them** — so the state *"signed up but unmatched"* cannot be told apart from

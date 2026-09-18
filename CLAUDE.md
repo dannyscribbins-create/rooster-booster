@@ -344,7 +344,35 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1491 server tests across 242 suites, and 1146 React tests across 71 files** (measured 2026-09-18 by the Canvass-3.7 request-attribution commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1491 · suites 242 · pass 1491 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1515 server tests across 247 suites, and 1168 React tests across 72 files** (measured 2026-09-18 by the Canvass-4 Clients-tab commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1515 · suites 247 · pass 1515 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-4 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  ⚠ **BOTH HALVES MOVED, AND THIS IS THE FIRST ENTRY IN THE ARC WHERE THEY MOVED TOGETHER.**
+  Server 1491 → 1515 is **+24**, the `it(` lines of one new file (`repClients.test.js`); suites
+  242 → 247 is that file's **five top-level `describe` blocks**. React 1146 → 1168 is **+22**, the
+  `it(` lines of `repClientsScreen.test.jsx`, and 71 → 72 is that file.
+  ⚠ **COUNTED WITH `grep -c`, AND EVERY LOOP WAS CHECKED FOR POSITION RATHER THAN COUNTED.** The
+  server file's two `for` loops both sit INSIDE `it()` bodies (they build a 105-row fixture and a
+  three-client membership fixture), so they multiply nothing; the React file's loops likewise
+  iterate assertions inside cases.
+  ⚠ **THE REACT ARITHMETIC CLOSES EXACTLY, AND THAT WAS PREDICTED RATHER THAN RECONCILED.** Before
+  the run: does this commit add a non-test file under `src/components/admin`, `src/constants`,
+  `src/components/superAdmin` or `src/utils` — the four roots `adminBranding.test.jsx` walks, one
+  case per swept file? **It does not** — the new component is `src/components/rep/`, which is not a
+  walked root. So +22 and no phantom twenty-third.
+  ⚠ **AND THE COUNT ROSE TWICE DURING THE PHASE, BOTH TIMES BECAUSE A GUARD-PROOF FOUND A VACUOUS
+  CASE — NOT BECAUSE CASES WERE PADDED.** The server file shipped 22, then 23, then 24: deleting
+  the `flag_reason` clause left all 22 GREEN (an orphan flag writes no `reps_involved`, and
+  `NULL @> anything` is NULL, so the containment clause alone was doing the work), and deleting the
+  `contractor_id` predicate left all 23 GREEN (`team_members.id` is globally unique, so the rep-id
+  filter alone already excluded the cross-tenant row). **Each repair added the one fixture that
+  makes the clause falsifiable.** The React file went 21 → 22 the same way: its missing-stage case
+  used `NO_STAGE_LABEL` as its own needle, so changing that constant to the exact defect moved the
+  needle with the code and the test stayed green.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-3.7 REQUEST-ATTRIBUTION COMMIT.*
+  It read **1491 / 242 / 1146 / 71**, +25 server cases in one new file across five top-level
+  describes, with the React half unmoved and re-measured rather than carried. Its own note records
+  that its count moved 24 → 25 for the same reason this one moved twice: a guard-proof found a
+  vacuous anchor case and the repair split it into a discriminating pair.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-3.7 REQUEST-ATTRIBUTION COMMIT ITSELF, BECAUSE THAT
   COMMIT SHIPS TESTS.** Server 1466 → 1491 is **+25**, the `it(` lines of one new file
   (`requestAttribution.test.js`); suites 237 → 242 is that file's **five TOP-LEVEL `describe`

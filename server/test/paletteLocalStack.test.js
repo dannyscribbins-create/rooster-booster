@@ -232,7 +232,20 @@ describe('Palette-0 T1 — the seeded stack is in the states the arc needs', () 
     // The claim this case makes is CONVERGENCE, not the size of the stack — the counts
     // are what makes "it converged" falsifiable. Re-measured against the seeder, not
     // adjusted until it passed.
-    assert.deepEqual(rows[0], { c: 3, u: 4, m: 8 });
+    // ⚠ m: 8 -> 10 AND u: 4 -> 7 IN CANVASS-4 — the tripwire working again, and the
+    // breakdown is written out because a total that merely "looks bigger" is exactly
+    // what this repo records going stale.
+    //   team_members +2 : 'Beta Book Rep' (mapped + attributable, owns the seeded book)
+    //                     and 'Beta Other Rep' (the colleague whose client the own-book
+    //                     predicate must EXCLUDE, and the second name on the
+    //                     co-assignment flag).
+    //   users       +3 : two clients in membership state 1 — the only state that renders
+    //                     a badge — plus ⚠ ONE UNMATCHED PEER SIGNUP, which is not
+    //                     padding: it is the row that makes "the absence of a badge is a
+    //                     non-claim" checkable rather than asserted, because that person
+    //                     HAS an account and cannot be tied to any client.
+    // The claim this case makes is CONVERGENCE; the counts are what make it falsifiable.
+    assert.deepEqual(rows[0], { c: 3, u: 7, m: 10 });
   });
 });
 

@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 
+const { pool } = require('../db');
 const { verifyAdminSession } = require('../middleware/auth');
 const { isActiveFieldRep } = require('../utils/repAccess');
 const { logError } = require('../middleware/errorLogger');
@@ -116,6 +117,166 @@ router.get('/api/rep/me', async (req, res) => {
     });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/rep/me' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── MEMBERSHIP (Canvass-4, ruling Danny 2026-09-18; A34.4's D4 clause) ──────
+//
+// THREE STATES, AND ONLY TWO OF THEM RENDER ANYTHING:
+//   'confirmed' — a matched app account. State 1 of A24.5's four-state space, via
+//                 the authoritative bridge users.jobber_client_id, contractor-scoped.
+//   'invited'   — a link or QR was sent to THIS client by THIS rep and no account
+//                 has been confirmed since. ⚠ NOT A CLAIM ABOUT THE ACCOUNT — it is
+//                 a record of what the rep did, which is exactly why it is safe where
+//                 "no app account on file" is not.
+//   null        — everything else. NO badge, no hedge, no placeholder.
+//
+// ⚠ null MUST STAY A NON-CLAIM, AND THE CLIENT ENFORCES THAT BY RESERVING NO SPACE.
+// States 2, 3 and 4 of the four-state space are indistinguishable — a homeowner who
+// signed up as a peer and was never matched looks identical to one who never signed
+// up. Measured on the local stack: 2 unmatched peer signups against 0 matched, so the
+// ambiguity is real rather than theoretical. A34.4 forbids showing a client who MAY
+// have signed up as a confirmed "not signed up", and an empty slot in a consistent
+// position becomes that claim by convention.
+//
+// ⚠ 'invited' CANNOT BE PRODUCED TODAY, AND THIS IS THE ESTABLISHED GAP RATHER THAN
+// AN OVERSIGHT. Traced across the whole schema before this function was written:
+//   · `contractor_invite_links` carries `owner_team_member_id` — THE REP — and
+//     `link_type = 'rep'`, but **no client column at all**, and ⚠ **nothing anywhere
+//     mints a 'rep' row**: the admin route validates `linkType` against `['contractor']`
+//     only, and referrer.js mints `'peer'`. The type is read by `redeemToken` and
+//     `landingResolve` and written by nobody.
+//   · `pending_referrals` carries `jobber_client_id` AND `invite_sent_at` — the client
+//     and the send — but **no rep**, and the send is the REFERRAL pipeline's action,
+//     fired because someone referred this person. ⚠ Reading it as badge 2 would light
+//     the badge for clients this rep never contacted, which the ruling forbids in terms:
+//     a contractor-wide invite is not this rep's action.
+//   · `contact_send_history`, `campaign_send_log`, `campaign_contacts` are all
+//     campaign-scoped and contractor-wide — same objection.
+//   · `users.invited_by_user_id` names a USER (a homeowner peer), never a team member.
+//   · `provisional_source = 'qr_link'` is READ by the attribution engine as a precedence
+//     guard and written by nothing, re-verified this session.
+// So the two halves exist in different tables and neither joins: rep-without-client,
+// and client-without-rep. **Nothing records "this rep sent this client a link."**
+//
+// WHAT 3d MUST WRITE FOR THIS TO LIGHT UP — the designed slot, with a named writer:
+// a per-client rep send, carrying (contractor_id, jobber_client_id, owner_team_member_id,
+// sent_at, channel). The cheapest shape is a nullable `jobber_client_id` column on
+// `contractor_invite_links` plus a real `link_type='rep'` mint; a separate send-log table
+// is the alternative if one rep link is ever sent to many clients. ⚠ **The schema change
+// is deliberately NOT made here** — it is 3d's to choose, and adding an unwritten column
+// on this phase's authority would pre-commit that decision.
+// Until then this function returns 'confirmed' or null, never 'invited'. The CLIENT
+// renders all three and is tested on all three, so the badge is proven rather than
+// hypothetical — a slot that has never rendered cannot be trusted to render later.
+function membershipFor(row) {
+  if (row.membership_confirmed) return 'confirmed';
+  // 'invited' belongs here, behind the predicate described above. Deliberately absent
+  // rather than stubbed to false: a named constant that is always false is a mechanism
+  // reporting a state it cannot observe.
+  return null;
+}
+
+// ── GET /api/rep/clients ────────────────────────────────────────────────────
+//
+// THE REP'S BOOK OF BUSINESS (Canvass-4, amendment A34.4).
+//
+// ⚠ THE WHOLE BOOK, NOT THE REFERRED SLICE — THIS IS THE RULING'S CORE AND IT IS
+// ONE WORD OF SQL. `pipeline_cache` holds REFERRED clients only; `jobber_clients`
+// is the whole-client table. The join to pipeline_cache is a LEFT JOIN, so a client
+// with an assignment and no referral record still appears, with a null stage.
+// **An INNER JOIN here silently becomes a referral gate** — the exact thing the
+// two-pipeline ruling separated — and the diff would look identical to a reviewer.
+// `repClients.test.js` pins this with a discriminating control: measured on the real
+// fixture, switching to an inner join drops 3 of 4 rows.
+//
+// ⚠ THE ROW LIMIT IS 100 AND THE TOTAL IS RETURNED BESIDE IT, DELIBERATELY. A rep
+// with 500 clients gets the 100 most recently assigned plus an honest count, never a
+// silently truncated list that reads as a complete one. Paging and the mockup's search
+// input are one design and land together in a later phase; shipping paging without
+// search would build a control that fights the other.
+const REP_BOOK_LIMIT = 100;
+
+router.get('/api/rep/clients', async (req, res) => {
+  // Called in the handler, visibly, for sessionAuthInvariant's assertion A —
+  // see the note on GET /api/rep/me above.
+  const session = await verifyAdminSession(req, res);
+  if (!session) return;
+
+  try {
+    const allowed = await isActiveFieldRep({
+      teamMemberId: session.teamMemberId,
+      contractorId: session.contractorId,
+    });
+    if (!allowed) return res.status(403).json({ error: 'Not authorized' });
+
+    const { contractorId, teamMemberId } = session;
+
+    // ⚠ EVERY IDENTITY VALUE COMES FROM THE VERIFIED SESSION. Neither the tenant nor
+    // the rep is ever read from the request — there is no :repId parameter and no
+    // query string, by construction, so there is no cross-rep probe to defend against.
+    // A34.8's 404-not-403 precedent governs the DETAIL route (Canvass-5); here another
+    // rep's client simply is not in the result set.
+    const { rows } = await pool.query(
+      `SELECT
+         cra.jobber_client_id,
+         TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client_name,
+         pc.pipeline_status,
+         COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
+         (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
+         COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
+         (fa.id IS NOT NULL)                                   AS is_flagged,
+         (u.id IS NOT NULL)                                    AS membership_confirmed
+       FROM client_rep_assignments cra
+       JOIN jobber_clients jc
+         ON jc.contractor_id = cra.contractor_id
+        AND jc.jobber_client_id = cra.jobber_client_id
+       LEFT JOIN pipeline_cache pc
+         ON pc.contractor_id = cra.contractor_id
+        AND pc.jobber_client_id = cra.jobber_client_id
+       LEFT JOIN flagged_assignments fa
+         ON fa.contractor_id = cra.contractor_id
+        AND fa.jobber_client_id = cra.jobber_client_id
+        AND fa.status = 'open'
+        AND fa.flag_reason = 'rep_co_assignment'
+        AND fa.reps_involved @> to_jsonb($2::int)
+       LEFT JOIN users u
+         ON u.contractor_id = cra.contractor_id
+        AND u.jobber_client_id = cra.jobber_client_id
+       WHERE cra.contractor_id = $1
+         AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = $2
+       ORDER BY cra.updated_at DESC
+       LIMIT $3`,
+      [contractorId, teamMemberId, REP_BOOK_LIMIT]
+    );
+
+    const { rows: countRows } = await pool.query(
+      `SELECT COUNT(*)::int AS total
+         FROM client_rep_assignments cra
+        WHERE cra.contractor_id = $1
+          AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = $2`,
+      [contractorId, teamMemberId]
+    );
+
+    res.json({
+      clients: rows.map((r) => ({
+        jobberClientId: r.jobber_client_id,
+        // A Jobber client can legitimately have no name parts; '' would render an
+        // empty row rather than an honest one.
+        name: r.client_name || 'Unnamed client',
+        stage: r.pipeline_status,          // null = no referral record (A34.4's whole book)
+        assignmentSource: r.assignment_source,
+        isSticky: r.is_sticky,
+        assignedAt: r.assigned_at,
+        isFlagged: r.is_flagged,
+        membership: membershipFor(r),
+      })),
+      total: countRows[0].total,
+      limit: REP_BOOK_LIMIT,
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/rep/clients' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
