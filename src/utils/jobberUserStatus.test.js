@@ -30,23 +30,32 @@ describe('Canvass-3.6b — jobberUserStatusLabel', () => {
     expect(isJobberUserMarked('ACTIVATED')).toBe(false);
   });
 
-  it('[RED] DEACTIVATED is marked — the live sighting, and the ruling\'s subject', () => {
-    // Sandy Dawson, the first user returned from Accent's real account, is
-    // DEACTIVATED. This is not a hypothetical state.
-    expect(jobberUserStatusLabel('DEACTIVATED')).toBe('Deactivated');
+  it('[RED] DEACTIVATED reads "No longer active" — the label the counts earned', () => {
+    // ⚠ THE COPY IS NOW JUSTIFIED BY A MEASUREMENT, not chosen. Danny's live
+    // counts, 2026-09-17: ACTIVATED 60, DEACTIVATED 87, sum 147 = totalCount.
+    // 87 of 147 is the single largest bucket and the state the retired-user
+    // ruling is actually about. Neutral wording on purpose — it says what Jobber
+    // says and nothing about why.
+    expect(jobberUserStatusLabel('DEACTIVATED')).toBe('No longer active');
     expect(isJobberUserMarked('DEACTIVATED')).toBe(true);
   });
 
-  it('[RED] the three NEVER-SET-UP values are each marked, and each keeps its OWN words', () => {
-    // ⚠ THE CASE THAT FORBIDS COLLAPSING. NOT_INVITED, SEND_INVITE and
-    // RESEND_INVITE are not "retired" — they describe someone who was never
-    // fully set up. Mapping all four non-active values to one word would be
-    // wrong about three of them, and this asserts they stay distinguishable.
+  it('[RED] the three NEVER-SET-UP values are NOT collapsed into the DEACTIVATED label', () => {
+    // ⚠ THE CASE THAT FORBIDS COLLAPSING, AND IT MATTERS MORE NOW THAT ONE VALUE
+    // HAS A FRIENDLY LABEL. NOT_INVITED, SEND_INVITE and RESEND_INVITE describe
+    // someone never fully set up — calling them "No longer active" would be
+    // wrong about three states. They are ABSENT FROM ACCENT'S ACCOUNT (all three
+    // count zero), NOT absent from Jobber: the moment another contractor has
+    // one, this is the assertion that keeps it honest.
     expect(jobberUserStatusLabel('NOT_INVITED')).toBe('Not invited');
     expect(jobberUserStatusLabel('SEND_INVITE')).toBe('Send invite');
     expect(jobberUserStatusLabel('RESEND_INVITE')).toBe('Resend invite');
     const labels = ['DEACTIVATED', 'NOT_INVITED', 'SEND_INVITE', 'RESEND_INVITE'].map(jobberUserStatusLabel);
     expect(new Set(labels).size).toBe(4, 'two statuses produced the same label — they were collapsed');
+    // And none of the three borrowed the earned label.
+    for (const s of ['NOT_INVITED', 'SEND_INVITE', 'RESEND_INVITE']) {
+      expect(jobberUserStatusLabel(s)).not.toBe('No longer active');
+    }
   });
 
   it('[RED] every non-ACTIVATED value in the enum is marked — exactly four of five', () => {

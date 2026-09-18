@@ -344,8 +344,15 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1466 server tests across 237 suites, and 1146 React tests across 71 files** (measured 2026-09-18 by the Canvass-3.6b commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1466 · suites 237 · pass 1466 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-3.6b COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1466 server tests across 237 suites, and 1146 React tests across 71 files** (measured 2026-09-18 by the Canvass-3.7 Step-0 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1466 · suites 237 · pass 1466 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **NOT ONE OF THE FOUR NUMBERS MOVED, AND THAT IS NOT STALENESS — IT IS THE CASE THIS FILE
+  DISTINGUISHES.** The Canvass-3.7 Step-0 commit CHANGED assertions (a label's expected value) and
+  the file that holds them, but added and removed **no cases**, so the tree differs from `cb1fb90`
+  in things the gate can observe while the counts stay put. **A number that did not change still
+  has to be MEASURED to be re-armed**, and all four were read by name off this run's own log rather
+  than carried. ⚠ **DO NOT "CORRECT" THE HEAD BACK TO `cb1fb90`:** the figure is true at both, and
+  naming the commit that re-measured it is what keeps the re-arming habit visible.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-3.6b COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.*
   Server 1460 → 1466 is **+6**, a new NESTED `describe` inside an existing file; suites 236 → 237
   is that nested block — **a nested describe adds a suite exactly as a top-level one does**, which
   is the half that surprises people who expect "one file, one suite". React files 70 → 71 is one

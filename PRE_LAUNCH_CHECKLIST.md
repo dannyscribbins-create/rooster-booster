@@ -4198,6 +4198,81 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-3.7 — what establishing the trigger change found, and why it did NOT ship (filed 2026-09-18)
+
+- [ ] 🔴 **THE REQUEST TRIGGER IS NOT OBSERVABLE TODAY. THE TWO-PIPELINE RULING IS SOUND; THE PHASE
+      IS BIGGER THAN "MOVE THE GATE".** Established from source at `cb1fb90`, before changing
+      anything. **Nothing was built** — Step 0's marker copy is the only change that shipped.
+      **① THERE IS NO REQUEST WEBHOOK.** The five Jobber topics handled are `client-create`,
+      `client-update`, `invoice-paid`, `job-update`, `disconnect`. **No `request-create` /
+      `request-update`.** So *"a REQUEST is saved in Jobber"* — the ruling's trigger — has **no event
+      that tells us it happened**.
+      **② NO CLIENT PAYLOAD SELECTS `requests`.** All three (`runFullSync`, `runIncrementalSync`,
+      the webhook's `GetClient`) select `customFields`, `quotes` and `jobs` — **never `requests`**.
+      So the question *"does this client have a request?"* **cannot be answered from the object
+      `syncSingleClient` receives.** The only source today is `fetchAttributionData()`, which is
+      **one Jobber API call per client**.
+      ⚠ **A PAGE OF 25 CLIENTS ALREADY COSTS ~8055 AGAINST A 10000 BUDGET** (`pipelineSync`'s own
+      `CONSERVATIVE_REQUESTED_COST`, with pacing built around it). Adding a per-client call would
+      add **25 round trips per page** on top. **Not affordable as written.**
+      ✅ **THE CHEAP FIX EXISTS AND IS PROVEN PRESENT, NOT ASSUMED:** `client.requests` is a real
+      connection at our pinned version — `jobberIncrementalSync`'s `GetClientRelated` already
+      selects `requests(first: 20) { nodes { id requestStatus createdAt } }`. So the GATE can be
+      answered by adding `requests` to the three client payloads (no extra round trips), and
+      `fetchAttributionData` then runs **only for clients that passed the gate** — which is exactly
+      the ruling's intent: ordinary clients with no request never enter the assembly line.
+      **③ ENTRY POINTS DO REACH NON-REFERRED CLIENTS — so the trigger change is NOT futile.**
+      `runFullSync` iterates `clients(filter: createdAt after)` and `runIncrementalSync` iterates
+      `clients(filter: updatedAt between)`; **neither query filters on referral.** It is
+      `syncSingleClient`'s own line-149 gate that drops them. The webhooks are per-client and fire
+      on client create/update.
+      ⚠ **④ UNVERIFIABLE FROM SOURCE, AND IT DECIDES WHETHER ② IS ENOUGH: does saving a Request in
+      Jobber bump the CLIENT's `updatedAt`?** If it does not, the 30-minute incremental sync — which
+      filters on `clients.updatedAt` — **never re-examines that client**, and a new request stays
+      invisible until a full sync. **This is a Jobber behaviour question, not a code question.**
+      **GraphiQL for Danny:** create or note a recent request, then
+      `query($id: EncodedId!) { client(id: $id) { id updatedAt requests(first: 5) { nodes { id createdAt } } } }`
+      — **GOOD:** `client.updatedAt` is at or after the newest request's `createdAt`. **BAD:** the
+      client's `updatedAt` predates it, in which case the trigger needs a different carrier.
+
+- [ ] 🔴 **THE ANCHOR — A RULING IS OWED, AND THE PHASE CANNOT PROCEED WITHOUT IT.** Reported, not
+      decided, as instructed. Both eligibility checks derive their window from `referralAnchor` and
+      **both `return false` when it is missing** (`attributionEngine.js`, `isQuoteEligible` and
+      `isRequestEligible`). Today that anchor is `pipeline_cache.created_at` — **which an ordinary
+      client will not have.** ⚠ **So attribution with no anchor does not "run wide open"; it
+      resolves NOBODY, every time.** The options, with what each includes and excludes:
+      | option | the window becomes | includes | excludes |
+      |---|---|---|---|
+      | **A. the request's own `createdAt`** | ±7d around the triggering request | quotes approved from 7d before that request onward — the tightest, most causally honest window | a quote approved **before** the request (a client quoted first, request raised later) |
+      | **B. Jobber's `client.createdAt`** | ±7d around client creation | effectively the client's whole history — a real business event, stable, not a sync artifact | almost nothing; the grace window stops protecting anything |
+      | **C. `jobber_clients.created_at`** | ±7d around when **we** first synced them | wide, and shifts if the sync is ever rebuilt | same as B, plus it is **our clock, not Jobber's** — the same criticism `referralAnchor` already carries |
+      | **D. no window for the rep path** | all quotes/requests eligible | maximum attribution | loses `GRACE_MS` entirely — an unrelated prior visit can win attribution, which is what the window exists to prevent |
+      **Recommendation, for Danny to accept or overrule: A.** It is the only option where the anchor
+      is the same event as the trigger, which keeps "why is this client in my book" answerable. **B**
+      is the safe second if A proves too tight in practice. ⚠ **Not chosen — the ruling is Danny's.**
+
+- [ ] 🔴 **ORPHAN-FLAG VOLUME — STOPPED BEFORE SHIPPING, AS INSTRUCTED. THE FLOOD IS REAL AND ITS
+      SIZE IS GOVERNED BY ONE NUMBER.** Traced from source: the sticky gate fires when status is not
+      `lead`/`inspection`/`not_sold` — and `classifyPipelineStatus` returns **`sold` for ANY client
+      with a job**. So **every ordinary client with a job that passes the request gate enters the
+      gate.** If nothing resolves, `writeOrphanFlag` inserts a `flagged_assignments` row **and an
+      `admin_messages` bell row**, one per client.
+      ⚠ **THE GOVERNING NUMBER IS HOW MANY REPS ARE ACTUALLY MAPPED.** Every attribution lookup
+      requires `jobber_user_id = <id> AND is_attributable = true`. **On the local stack that is
+      ZERO**, and it is **unmeasured for Accent**. With zero mapped reps, *every* attribution
+      resolves to nobody and the widening produces **one orphan flag per sold client with a
+      request** — the exact flood the request trigger was chosen to avoid, arriving through a
+      different door.
+      **What to measure first, and it is cheap:** `SELECT count(*) FROM team_members WHERE
+      contractor_id = '<accent>' AND jobber_user_id IS NOT NULL AND is_attributable = true` on
+      Railway. **If it is 0, nothing should widen until reps are mapped** — Canvass-3.6/3.6b made
+      that mapping possible for all 147 users, which is why it came first.
+      **Magnitudes from Jobber, for scale:**
+      `query { clients(first: 1) { totalCount } requests(first: 1) { totalCount } jobs(first: 1) { totalCount } }`
+      ⚠ **A RULING IS OWED ON WHAT AN UNRESOLVED CLIENT SHOULD DO** — flag, or record nothing and
+      stay silent. A34.7 already rules that reps see only co-assignment flags, so an orphan flag is
+      **admin-facing only**; "record nothing" may be the honest answer for the rep pipeline.
+
 ### Canvass-3.5/3.6 — the live Jobber verification, the two-pipeline ruling, and the picker (filed 2026-09-17)
 
 - [x] **✅ VERIFICATION RECORD — GraphiQL against Accent's LIVE Jobber account, 2026-09-17.**
@@ -4321,8 +4396,25 @@ may legitimately change several of these subjects.*
       **`statusAvailable: false`** in the payload — which is what lets a reader tell *"nobody is
       deactivated"* from *"we could not ask"*.
 
-- [ ] ⚠ **THE MARKER'S COPY IS STILL OPEN, AND IT WAITS ON A COUNT — THIS IS THE HALF 3.6b DID NOT
-      DECIDE.** Only `ACTIVATED` means a working account. ⚠ **THE OTHER FOUR ARE NOT ALL "RETIRED":**
+- [x] **✅ CLOSED 2026-09-18 (Canvass-3.7 Step 0) — THE MARKER'S COPY, FOR `DEACTIVATED` ONLY.**
+      **Counts, Danny's live account 2026-09-17 (explorer 2026-05-12): `ACTIVATED` 60 ·
+      `DEACTIVATED` 87 · sum 147 = `totalCount`. ZERO in `NOT_INVITED` / `SEND_INVITE` /
+      `RESEND_INVITE`.**
+      ⚠ **AND AN INDEPENDENT CORROBORATION RATHER THAN A SECOND READING OF THE SAME FACT:** Jobber's
+      own `users` filter **accepts only `ACTIVATED` and `DEACTIVATED`** — the other three are
+      rejected as invalid filter values. **Jobber itself treats them as a different class.**
+      `DEACTIVATED` (87 of 147, the largest bucket and the state the ruling is about) now reads
+      **"No longer active"** — neutral on purpose: it says what Jobber says and nothing about why,
+      unlike "retired" (asserts a career event) or "removed" (asserts someone did it to them).
+      ⚠ **THE OTHER THREE KEEP THE PASSTHROUGH AND ARE NOT COLLAPSED INTO IT.** They are absent from
+      **Accent's** account, not from **Jobber** — the moment another contractor has one, calling it
+      "No longer active" would be wrong about a person who was never set up. **The predicate stays
+      "is it ACTIVATED", never "is it one of these four"**, so a future enum value is still marked.
+      Guard-proofed both ways: collapsing the three → 2 fail; reverting `DEACTIVATED` → 1 fail.
+
+- [ ] ~~⚠ **THE MARKER'S COPY IS STILL OPEN, AND IT WAITS ON A COUNT — THIS IS THE HALF 3.6b DID NOT
+      DECIDE.**~~ **SUPERSEDED BY THE ENTRY ABOVE 2026-09-18.** *The original follows unedited,
+      because its reasoning is what the counts were gathered to settle:* Only `ACTIVATED` means a working account. ⚠ **THE OTHER FOUR ARE NOT ALL "RETIRED":**
       `DEACTIVATED` is a person who left; `NOT_INVITED`, `SEND_INVITE` and `RESEND_INVITE` describe
       someone **never fully set up**, which is a different fact about a different person. Collapsing
       the four into one word would be **wrong about three of them**.

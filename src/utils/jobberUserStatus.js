@@ -15,19 +15,42 @@
 // different fact about a different person.
 //
 // **So this module invents no buckets and collapses nothing.** It humanises the
-// value Jobber sent and hands it back. The label decision waits on a count of
-// how Accent's 147 users actually distribute across the five — filed on
-// `PRE_LAUNCH_CHECKLIST.md` with the query — because naming a bucket that turns
-// out to be empty is how a UI acquires vocabulary nobody needed, and naming four
-// different states "Retired" would be wrong about three of them.
+// value Jobber sent and hands it back, except where a count has justified a
+// friendlier word.
 //
-// ⚠ DO NOT ADD A MAP FROM THESE VALUES TO FRIENDLIER WORDS UNTIL THOSE COUNTS
-// EXIST. That is the decision this module is deliberately not making.
+// ── ⚠ THE COUNTS LANDED (Danny, live account, 2026-09-17) ──────────────────
+//   ACTIVATED 60 · DEACTIVATED 87 · sum 147 = totalCount.
+// **ZERO users sit in NOT_INVITED, SEND_INVITE or RESEND_INVITE.** And Jobber's
+// own `users` filter accepts **only** ACTIVATED and DEACTIVATED — the other
+// three are rejected as invalid filter values, so **Jobber itself treats them as
+// a different class**, which is independent corroboration rather than a second
+// reading of the same fact.
+//
+// **So the standing note is discharged for DEACTIVATED ONLY**, which is now
+// labelled in plain words. ⚠ **THE OTHER THREE KEEP THE PASSTHROUGH AND MUST NOT
+// BE COLLAPSED INTO IT.** They are absent from *Accent's* account, not from
+// *Jobber* — the moment another contractor has one, calling it "no longer
+// active" would be wrong about a person who was never set up in the first place.
+// ⚠ **AND THE TEST STAYS "IS IT ACTIVATED", NEVER "IS IT ONE OF THESE FOUR"**, so
+// a value Jobber adds later is still marked rather than silently passing as a
+// working account.
 
 // The one value that means a live, working account. Everything else gets a
 // marker — including values this enum may gain later, which is why the test is
 // "is it ACTIVATED" and never "is it one of these four".
 const ACTIVE_STATUS = 'ACTIVATED';
+
+// ⚠ ONE ENTRY, AND THE SHAPE IS A MAP SO THE NEXT JUSTIFIED LABEL IS A LINE
+// RATHER THAN A REWRITE — but an entry may only be added once a COUNT justifies
+// it. DEACTIVATED earned its place: 87 of Accent's 147 users, the single largest
+// bucket, and the state the retired-user ruling is actually about.
+// ⚠ "No longer active" IS DELIBERATELY NEUTRAL. It says what Jobber says and
+// nothing about why — not "retired" (which asserts a career event), not
+// "removed" (which asserts someone did it to them). An admin mapping a former
+// rep to historical work does not need an opinion, only a fact.
+const FRIENDLY_LABELS = Object.freeze({
+  DEACTIVATED: 'No longer active',
+});
 
 /**
  * The marker label for a Jobber user, or null when none should be drawn.
@@ -46,11 +69,17 @@ export function jobberUserStatusLabel(status) {
   if (typeof status !== 'string') return null;
   const raw = status.trim();
   if (raw.length === 0) return null;
-  if (raw.toUpperCase() === ACTIVE_STATUS) return null;
+  const upper = raw.toUpperCase();
+  if (upper === ACTIVE_STATUS) return null;
+
+  // A justified label, where a count has earned one. Everything else falls
+  // through to the passthrough below — which is what keeps the three
+  // never-set-up values distinguishable instead of collapsed.
+  if (FRIENDLY_LABELS[upper]) return FRIENDLY_LABELS[upper];
 
   // SCREAMING_SNAKE → Sentence case. A transformation, not a translation: the
   // value that reaches the screen is still the value Jobber sent, which is what
-  // keeps this neutral to the copy decision.
+  // keeps this honest about states no count has spoken for.
   return raw
     .toLowerCase()
     .split('_')
