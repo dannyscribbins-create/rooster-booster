@@ -51,6 +51,30 @@ import { fontVar } from '../../constants/elevationTheme';
 //
 // ⚠ NO ROUTER. 3e owns that decision (A24.6, D10).
 
+// ── THE FADED-TEXT CONSTANT (Canvass-2, amendment A34.2) ────────────────────
+//
+// ⚠ 0.72 IS NOT A NEW NUMBER AND MUST NOT BECOME A SECOND ONE. It is the value
+// the referrer tree already derived for exactly this job, declared file-locally
+// in seven of its components; this is the eighth site of one convention, not a
+// new constant. `MUTED` is deliberately NOT extracted to a shared module —
+// A34.2 rules that "reuse the existing one" means the VALUE and the CONVENTION,
+// and inventing a shared export as a side effect of a contrast fix is a change
+// to eight files that nobody asked for.
+//
+// ⚠ IT REPLACED 0.65, WHICH WAS A LIVE CONTRAST DEFECT ON THE SHIPPED SHELL.
+// Measured on the rendered node in Canvass-1 and re-derived here: at 0.65 the
+// subtitle reads 4.09:1 on `--rm-recess` for palette-beta in LIGHT mode, against
+// a 4.5 floor. Dark mode cleared throughout (7.7–8.0), so the two constants
+// behave as though they had been derived against dark and never re-checked
+// against light. At 0.72 the worst case across both seeded brands, both modes
+// and all three candidate grounds is 4.95:1.
+//
+// ⚠ AND OPACITY INHERITS, WHICH IS WHY THIS SITS ON THE SUBTITLE'S OWN <p> AND
+// MUST STAY THERE. Put it on a parent and every nested figure is dimmed with it
+// — the recorded case is a payout number muted to 3.29:1 by a faded paragraph
+// it happened to sit inside.
+const MUTED = 0.72;
+
 // The default, and the only screen 3-A can be entered on.
 const ENTRY_VIEW = Object.freeze({ screen: 'home' });
 
@@ -107,7 +131,53 @@ export default function RepShell({ onLogout, switcher = null }) {
         minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: 'var(--rm-bg, #FFFFFF)',
+        // ── ⚠ THE GROUND IS `--rm-recess` (Canvass-2, amendment A34.1) ──────
+        //
+        // ⚠ THE TOKEN THIS USED TO DECLARE IS DESCRIBED BELOW AND NEVER SPELLED,
+        // AND THAT IS NOT A STYLE CHOICE. repShellPalette.test.jsx asserts that
+        // the custom property for the `bg` key appears NOWHERE in this file, and
+        // a sweep reads comments — so writing it here, even to say it is gone,
+        // IS the thing the fence forbids. This repo's rule is REWORD, NEVER
+        // EXEMPT: a comments-are-exempt carve-out would remove the sweep's reach
+        // into exactly the text the next person copies from. Call it the `bg`
+        // token and the fence stays whole.
+        //
+        // THIS DECLARED THE `bg` TOKEN, AND THAT WAS THE DIVERGENCE
+        // `Screen.jsx`'s header forbids in terms. The referrer app's render set
+        // has THREE levels — body = `bg` (ThemeLayer writes it), the column =
+        // `recess`, cards = `surface` — and this shell was painting its column
+        // on the BODY level, so the white header and the fixed nav had nothing
+        // to sit against.
+        //
+        // ⚠ THE MEASUREMENT THAT DECIDED IT: for any contractor whose brand
+        // background is white, the `bg` and `surface` tokens derive to the SAME
+        // COLOUR — 1.000:1, byte-identical — so the header and the bottom bar
+        // had NO colour edge whatsoever, held apart by a 1px hairline at
+        // 1.24:1. On `recess` that becomes 1.142:1 for palette-alpha and
+        // 1.408:1 for palette-beta dark. Ruling P3 had already made the same
+        // choice for the dashboard preview, "so its composition matches the
+        // app".
+        //
+        // ⚠ THIS DIV IS BOTH HALVES OF `ReferrerApp`'s SINGLE EDIT AT ONCE, and
+        // that is why only one value moves here while the referrer tree needed
+        // two. There, a full-width wrapper and the 430px `Screen` column each
+        // declare `recess` so the desktop gutters and the column are one colour
+        // and there is no seam; here the full-width root IS the wrapper and
+        // `<main>` below paints NOTHING, so the column shows this value. ⚠ DO
+        // NOT "FIX" main BY GIVING IT A BACKGROUND OF ITS OWN — that is how the
+        // gutter seam gets built, and it would also make this declaration look
+        // dead while still being what the gutters paint.
+        //
+        // ⚠ AND THE FLOORING CONSEQUENCE, WHICH IS THE HALF A SOURCE SWEEP
+        // CANNOT SEE: `--rm-text` is floored to 4.5:1 against `surface` AND
+        // `recess`, and against `bg` not at all. So this move takes every text
+        // pair in the rep column from `unproven` to `floored` — it closes
+        // A33's owed `bg`-flooring item BY REMOVING THE GROUND rather than by
+        // adding a table entry, which is the stronger of the two fixes: a
+        // TOKEN_FLOORING row would have to stay true, and an absent ground
+        // cannot drift. The `bg` token is no longer a text ground in this tree,
+        // and repShellPalette.test.jsx asserts it appears nowhere here.
+        backgroundColor: 'var(--rm-recess, #ECF0F8)',
         fontFamily: fontVar('body'),
         color: 'var(--rm-text, #1C2D4D)',
       }}
@@ -240,7 +310,7 @@ function ScreenTitle({ title, subtitle }) {
       >
         {title}
       </h1>
-      <p style={{ margin: 0, fontSize: 15, opacity: 0.65 }}>{subtitle}</p>
+      <p style={{ margin: 0, fontSize: 15, opacity: MUTED }}>{subtitle}</p>
     </div>
   );
 }

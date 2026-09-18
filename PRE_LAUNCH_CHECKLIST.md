@@ -4215,8 +4215,21 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       amendments (U14, the `--rm-bg` flooring gap, U25) and leaves `U2` OWED.** **Next free
       amendment: `A35`.** → `DECISION_C_DL_BUILD_SPEC.md` §23 · `CANVASS_1_PART1_REPORT.md` §4
 
-- [ ] ⚠ **THE BOTTOM NAV'S INACTIVE LABEL AND INACTIVE DOT ARE LIVE CONTRAST DEFECTS ON THE SHIPPED
-      3-A SHELL, AND NO DOCUMENT MENTIONED EITHER UNTIL NOW.** Rendered on palette-beta, light mode:
+- [x] **✅ CLOSED 2026-09-17 (Canvass-2) — THE REP SHELL'S GROUND, ITS FADED TEXT AND ITS BROKEN
+      LOGO.** A34.1, A34.2, A34.10 and A34.11 all shipped in one commit. `RepShell`'s column moved to
+      `--rm-recess` (header and nav kept `--rm-surface`); the two `0.65` writings became `MUTED =
+      0.72`; the inactive nav dot went `0.4` → `0.55`, **derived on its own ground** — the lowest
+      alpha clearing 3:1 across four palettes in both modes is **0.525**, so 0.55 has margin and the
+      worst case is 3.25:1; `BrandMark` gained a set-but-unreachable branch; the seeder took the
+      `team_member`-subject preference row. Fenced by `src/components/rep/repShellPalette.test.jsx`
+      (21 cases) and two cases in `server/test/paletteLocalStack.test.js`, **both proven RED first.**
+      ⚠ **CLOSING THE ITEMS BELOW IS THIS ENTRY'S OTHER HALF.** *Deferring is R14; completing is the
+      rule R14 does not cover* — an entry that can only be opened becomes a list of things that were
+      once true. The three that follow are struck because this commit closed them.
+
+- [x] ~~⚠ **THE BOTTOM NAV'S INACTIVE LABEL AND INACTIVE DOT ARE LIVE CONTRAST DEFECTS ON THE SHIPPED
+      3-A SHELL, AND NO DOCUMENT MENTIONED EITHER UNTIL NOW.**~~ **CLOSED 2026-09-17 — see above.**
+      *The original entry follows unedited, because the measurement is the evidence:* Rendered on palette-beta, light mode:
       the inactive tab **label** measures **4.25:1** against a 4.5 text floor, and the inactive tab
       **dot** measures **2.24:1** against a 3.0 graphic floor. **Three of the four tabs are inactive
       at any moment.** Dark mode clears both.
@@ -4230,8 +4243,15 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       **not** move with A34.1.
       **OWNER: Canvass-2 (A34.2).** → `CANVASS_1_PART1_REPORT.md` §3e, §4 D2, D-extra-1
 
-- [ ] ⚠ **`RepShell`'s HEADER HAS NO BROKEN-LOGO STATE — A SET-BUT-UNREACHABLE LOGO RENDERS A BROKEN
-      IMAGE.** Measured rendered: `naturalWidth: 0`, `complete: true`, a broken-image icon at 132×20
+- [x] ~~⚠ **`RepShell`'s HEADER HAS NO BROKEN-LOGO STATE — A SET-BUT-UNREACHABLE LOGO RENDERS A BROKEN
+      IMAGE.**~~ **CLOSED 2026-09-17 (Canvass-2, A34.11).** Handled in **`BrandMark`**, not at the
+      call site: the absence rule lives in one place by construction, and a second copy in `RepShell`
+      is the drift that component exists to end — so "falls back exactly as the absent case" is
+      guaranteed by falling INTO that branch rather than reproducing it. ⚠ **The other five BrandMark
+      sites inherit it**, which is the consequence of one rule in one place and is not a second
+      decision. The failure is remembered as a **URL, not a boolean**, so a contractor who fixes their
+      image host is not stuck on the text fallback until someone reloads the tab.
+      *The original entry follows unedited:* Measured rendered: `naturalWidth: 0`, `complete: true`, a broken-image icon at 132×20
       with no fallback. `BrandMark` branches on the logo being **absent**; it does not branch on the
       logo being **set and failing to load**, which is a different state and the one a contractor
       reaches when their own image host breaks.
@@ -4301,6 +4321,31 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       and the two claims that carry that argument (no `contractor_id`, no actor id) are **both
       true**. This is a correctness defect in a stated fact, not a reopened decision.
       **OWNER: unassigned. Filed by Canvass-2.** → `CANVASS_1_PART1_REPORT.md` §3b citation 4, §6
+
+- [x] **✅ CLOSED 2026-09-17 (Canvass-2) — A33's OWED `--rm-bg` FLOORING ITEM, CLOSED BY REMOVING THE
+      GROUND RATHER THAN BY ADDING A TABLE ROW.** The item was: `--rm-bg` appears in no
+      `TOKEN_FLOORING` entry, so every text pair in the rep column read `unproven` by the fence built
+      to catch exactly that. A34.1 moves the column to `--rm-recess`, and **`--rm-text` is already
+      floored to 4.5:1 against `surface` AND `recess`** — so every rep text pair is now `floored`.
+      ⚠ **THE REMOVAL IS THE STRONGER FIX AND THE REASON IS WORTH KEEPING: a `TOKEN_FLOORING` row
+      would have to STAY TRUE, and an absent ground cannot drift.** `repShellPalette.test.jsx` asserts
+      the token appears nowhere in either rep-tree file — including in prose, which is why
+      `RepShell`'s own comment calls it "the `bg` token" and never spells it. ⚠ **That fence fired on
+      this commit's first draft, against a comment explaining the change. It was REWORDED, not
+      exempted** — a comments-are-exempt carve-out removes a sweep's reach into exactly the text the
+      next person copies from.
+
+- [ ] ⚠ **THE `composite()` / `pxOf()` CONTRAST HELPER IS NOW COPIED INTO ELEVEN TEST FILES.**
+      Ten palette suites carried it before Canvass-2; that phase's fence is the eleventh, added
+      **deliberately as a copy** because extracting it is a change to eleven files that does not
+      belong inside a contrast fix. **Standing violation of CLAUDE.md's *"duplicate logic written in
+      more than one file must be extracted to a shared utility"*, and it predates this phase.**
+      ⚠ **FILED RATHER THAN DONE QUIETLY, WHICH IS THE POINT OF THE SILENT-AUDIT RULE** — the rule
+      says report and ask, not fix in passing. ⚠ **AND THE EXTRACTION IS NOT FREE:** these helpers
+      are the instrument the contrast fences measure with, so a shared copy becomes a single point
+      whose failure is a silently wrong number in eleven suites at once. Whoever takes it should read
+      *"a figure derived from the instrument cannot validate the instrument"* first.
+      **OWNER: unassigned. Filed by Canvass-2.**
 
 - [ ] ⚠ **`CLAUDE.md` SAYS `deriveThemeTokens()` COMPUTES "THE SIX `RENDER_TOKEN_KEYS`". IT COMPUTES
       ELEVEN.** Found incidentally while checking whether `--rm-recess` was a real token for A34.1.

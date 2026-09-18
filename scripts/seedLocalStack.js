@@ -299,6 +299,53 @@ async function seedStack(pool) {
     }
   }
 
+  // ── THE REP'S DARK-MODE PREFERENCE (Canvass-2, amendment A34.10) ──────────
+  //
+  // ⚠ WITHOUT THIS ROW THE REP SHELL'S DARK STATE IS UNREACHABLE FROM A FRESH
+  // SEED, and that is the whole reason it is here rather than in a phase of its
+  // own. A fixture that never renders a state cannot test that state — the same
+  // argument the money-surface block above makes, and the shape this repo has
+  // recorded as "a mechanism reporting health it cannot observe", arriving as
+  // absence: a dark-mode sweep against a stack with no dark preference reports a
+  // clean light surface and never says the mode was never entered.
+  //
+  // ⚠ IT IS THE STACK'S ONLY `team_member`-SUBJECT PREFERENCE ROW, AND THAT IS
+  // THE POINT RATHER THAN A DETAIL. Every other row in `user_preferences` is
+  // homeowner-subject (`user_id`). Canvass-1 created the first team-member one by
+  // hand through the real toggle and the real route; A34.10 makes the seeder own
+  // it, because a hand-worked stack is a stack that is throwaway by the next
+  // phase.
+  //
+  // ⚠ BETA, NOT ALPHA, AND NOT THE SPARSE ONE. The rep shell must be verified on
+  // a contractor whose palette DIFFERS from the platform default — on the unset
+  // contractor all six render tokens equal their fallbacks, so a correct wiring
+  // and a broken one are indistinguishable. Alpha's palette IS the platform
+  // default pair. Beta's teal/magenta is the one that can tell them apart.
+  //
+  // ⚠ ON CONFLICT NAMES THE PARTIAL INDEX'S OWN PREDICATE, VERBATIM. The unique
+  // index is `(team_member_id, pref_key) WHERE team_member_id IS NOT NULL`, and
+  // Postgres cannot INFER a partial index without repeating its WHERE clause —
+  // omit it and this is a plain INSERT that raises on the second run and aborts
+  // the entire seed. That is the same contract `setPreference()` documents.
+  //
+  // ⚠ pref_value IS JSONB, SO THE STRING IS JSON-ENCODED. `'dark'` would be
+  // invalid JSON and `to_jsonb($1::text)` is how the value becomes the JSON
+  // string the reader expects — not the bare word, which is a parse error rather
+  // than a silently wrong row, and so fails loudly if this is ever "simplified".
+  {
+    const rep = summary.accounts.find((a) => a.contractor === 'palette-beta' && a.role === 'rep');
+    if (rep) {
+      await pool.query(
+        `INSERT INTO user_preferences (team_member_id, contractor_id, pref_key, pref_value)
+         VALUES ($1, 'palette-beta', 'theme_mode', to_jsonb($2::text))
+         ON CONFLICT (team_member_id, pref_key) WHERE team_member_id IS NOT NULL
+         DO UPDATE SET pref_value = EXCLUDED.pref_value, updated_at = NOW()`,
+        [rep.id, 'dark']
+      );
+      summary.repThemePreference = { teamMemberId: rep.id, contractor: 'palette-beta', mode: 'dark' };
+    }
+  }
+
   // ── THE MONEY SURFACE (Palette-5, C.1) ───────────────────────────────────
   //
   // ⚠ WITHOUT THESE ROWS EVERY MONEY FIGURE IN THE APP RENDERS NOT AT ALL, and a

@@ -167,6 +167,55 @@ describe('Palette-0 T1 — the seeded stack is in the states the arc needs', () 
     assert.equal(m[0].is_field_rep, true);
   });
 
+  // ── CANVASS-2, amendment A34.10 (D10) ────────────────────────────────────
+  //
+  // ⚠ THESE TWO CASES LIVE INSIDE T1's describe DELIBERATELY, AND THE REASON IS
+  // A RECORDED DEFECT RATHER THAN TIDINESS. `initTestDb()` returns the
+  // `server/db.js` pool SINGLETON. A second describe in this file with its own
+  // `before`/`after` pair would end the pool T1 is still using, and the symptom
+  // is not a failure — it is a CANCELLED suite, which contributes to neither the
+  // pass nor the fail column. One pool per test FILE.
+  //
+  // WHAT THEY FENCE: the rep shell's DARK state is unreachable after a fresh
+  // seed unless the stack carries a `team_member`-subject preference row.
+  // Canvass-1 created the local stack's first one by hand, through the real
+  // toggle; A34.10 requires the seeder to own it, because a fixture that never
+  // renders a state cannot test that state.
+  test('[RED] the seeder writes a team_member-subject theme_mode row for the beta rep', async () => {
+    const { rows } = await pool.query(
+      `SELECT p.pref_value, p.contractor_id, p.user_id, p.team_member_id
+         FROM user_preferences p
+         JOIN team_members t ON t.id = p.team_member_id
+        WHERE t.email = 'rep@palette-beta.test' AND p.pref_key = 'theme_mode'`
+    );
+    assert.equal(rows.length, 1, 'no team_member-subject theme_mode row for the beta rep');
+    // ⚠ THE SUBJECT IS ASSERTED, NOT INFERRED FROM THE JOIN. The row's whole
+    // point is that it is the FIRST non-homeowner subject in this stack, and
+    // `user_id IS NULL` is the half that makes it one — `user_preferences`'
+    // exactly_one_subject CHECK is what would otherwise be doing the arguing,
+    // and a CHECK that has never been violated proves nothing about this row.
+    assert.equal(rows[0].user_id, null, 'the row is homeowner-subject, not team_member-subject');
+    assert.ok(rows[0].team_member_id, 'team_member_id is not set');
+    assert.equal(rows[0].contractor_id, 'palette-beta');
+    // Dark, so the rep shell's dark state is REACHABLE from a fresh seed. A row
+    // holding 'light' would satisfy every assertion above and leave the state
+    // the row exists to make reachable exactly as unreachable as before.
+    assert.equal(rows[0].pref_value, 'dark');
+  });
+
+  test('[RED] re-seeding does not duplicate the preference row', async () => {
+    // The partial unique index is on (team_member_id, pref_key) WHERE
+    // team_member_id IS NOT NULL — a plain INSERT would raise on the second run
+    // and abort the whole seed, so "it did not duplicate" and "it did not throw"
+    // are two different claims and this case makes both.
+    await seedStack(pool);
+    const { rows } = await pool.query(
+      `SELECT count(*)::int AS n FROM user_preferences
+        WHERE team_member_id IS NOT NULL AND pref_key = 'theme_mode'`
+    );
+    assert.equal(rows[0].n, 1, 're-seeding duplicated the team_member preference row');
+  });
+
   test('re-seeding converges rather than duplicating', async () => {
     await seedStack(pool);
     const { rows } = await pool.query(

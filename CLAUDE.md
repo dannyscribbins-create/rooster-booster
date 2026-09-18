@@ -344,8 +344,30 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1425 server tests across 232 suites, and 1070 React tests across 65 files** (measured 2026-09-15 by the Palette-16 commit, by running the gate; the log's own `EXIT=` line read 0, and all four server numbers were read by name: `fail 0 · cancelled 0 · skipped 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PALETTE-16 COMMIT ITSELF.** 1056 → 1070 is **+14 from a new
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1427 server tests across 232 suites, and 1118 React tests across 69 files** (measured 2026-09-17 by the Canvass-2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1427 · suites 232 · pass 1427 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-2 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  **BOTH HALVES MOVED.** Server 1425 → 1427 is its two new cases, added to an **EXISTING** `describe`
+  in `paletteLocalStack.test.js` — so suites stay 232, and **a file count and a suite count answer
+  different questions.** React 1097 → 1118 is its 21 cases in one new file, and 68 → 69 is that file.
+  ⚠ **THE REACT FIGURE THIS REPLACES WAS THREE FILES AND 27 TESTS STALE, AND THE STALENESS WAS
+  FOUND BY A SESSION THAT DECLINED TO FIX IT — CORRECTLY.** It read *1070 across 65*, while
+  `e0c596f`'s own commit body already reported **1097 across 68**. Canvass-1 measured the gap and
+  deliberately did **not** re-arm, because it never ran the gate, and *a figure carried from someone
+  else's report is exactly what this tripwire forbids.* **It flagged it for the next session that
+  did run one. That is this commit.** Declining to re-arm from a second-hand number and declining to
+  re-arm at all are different acts; the first is the rule working.
+  ⚠ **21 WAS COUNTED FROM THE FILE WITH `grep -c`, WITH THE LOOP ARITHMETIC SHOWN.** It reports
+  **17** `it(` lines. The file has **six** loops and ⚠ **only ONE wraps an `it()`** — the five-entry
+  `SITES` table; the other five sit inside `it()` bodies or inside the `eachBrandMode`/`composite`
+  helpers and emit nothing. So 17 − 1 + 5 = 21. **Reading "six loops" as six multipliers, or "17
+  lines" as 17 cases, both give the wrong answer, and only the breakdown separates them.**
+  ⚠ **AND THE FOURTEENTH-CASE TRAP WAS CHECKED FOR AND DOES NOT APPLY HERE, WHICH IS WHY THE
+  ARITHMETIC CLOSES EXACTLY.** `adminBranding.test.jsx` walks `src/` recursively and emits one case
+  per swept file — but its walker carries `if (/\.test\.(js|jsx|mjs)$/.test(entry.name)) continue;`,
+  so a new TEST file adds nothing there, and this commit adds no new non-test file to a walked root.
+  **Read the walker's exclusions before predicting; the entry below records the commit where a new
+  UTIL file did add a fourteenth case, and the difference is the file's extension, not the sweep.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PALETTE-16 COMMIT ITSELF.* 1056 → 1070 is **+14 from a new
   file holding 13**, and the fourteenth is the point: `adminBranding.test.jsx` WALKS `src/`
   recursively and emits ONE CASE PER SWEPT FILE, so the new `src/utils/bodyDefaults.js` added one
   by itself. 64 → 65 is the new test file. The SERVER numbers did not move and were re-measured

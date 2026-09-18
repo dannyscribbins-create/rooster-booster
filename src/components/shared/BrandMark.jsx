@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { ThemeContext } from './ThemeProvider';
 import BrandLogo from './BrandLogo';
 import roofMilesLogo from '../../assets/images/roofmiles_logo_png.png';
@@ -88,18 +88,61 @@ import { fontVar } from '../../constants/elevationTheme';
 // mark slot and does not brand the lockup. FrozenAccountScreen prints it in the
 // line directly beneath — which is how this was found, by that screen's own test
 // reporting the name twice.
+// ── ⚠ A FOURTH STATE: SET BUT UNREACHABLE (Canvass-2, amendment A34.11) ──────
+//
+// The three prongs above branch on whether a contractor RESOLVED and whether
+// they HAVE a logo. Neither question can see the state where a contractor has a
+// logo url and the image DOES NOT LOAD — a dead CDN, a deleted object, a
+// typo'd host, an expired signed url. It is not the absent case and it was not
+// handled: the browser drew its own broken-image glyph, 132×20, in the rep
+// shell's header. Measured rendered in Canvass-1: `naturalWidth: 0` with
+// `complete: true`, which is precisely how a failed image reports itself.
+//
+// ⚠ IT IS HANDLED HERE RATHER THAN IN RepShell, AND THE RULING IS SCOPED TO
+// RepShell's HEADER. Writing it at the call site would put a SECOND copy of the
+// absence rule in the tree — the drift this component exists to end, and the
+// reason its own header says a rule written six times drifts. A34.11 says the
+// header must "fall back exactly as it does for an absent logo"; the way to
+// guarantee "exactly" is to fall INTO that branch rather than to reproduce it.
+// The other five BrandMark sites inherit the same handling, which is the
+// consequence of putting a rule in one place and is not a second decision.
+//
+// ⚠ THE FAILURE IS REMEMBERED AS A URL, NOT AS A BOOLEAN, AND THAT IS
+// LOAD-BEARING. A boolean would mean "this contractor's logo is broken" and
+// would survive the contractor fixing it — they would stay on the text fallback
+// until someone reloaded the tab, with nothing anywhere reporting why. Keying on
+// the url makes the state self-clearing: a new url has not failed, so it is
+// tried. It also needs no effect and no dependency array, so there is no
+// stale-closure hazard and no eslint-disable.
 export default function BrandMark({ width = 120, marginBottom = 20, branding: supplied, nameAlreadyShown = false }) {
   const ctx = useContext(ThemeContext);
+  const [failedLogoUrl, setFailedLogoUrl] = useState(null);
 
   const branding = supplied ?? ctx.branding;
   const companyName = branding?.companyName || '';
   const resolved = supplied != null || (ctx.source != null && ctx.source !== 'neutral');
 
-  // A2 / A3, first branch: the contractor has a mark of their own. BrandLogo
-  // carries the dark-mode plate treatment — the decision lives here, the
-  // presentation stays there.
-  if (branding?.logoUrl) {
-    return <BrandLogo src={branding.logoUrl} alt={companyName} width={width} marginBottom={marginBottom} />;
+  const logoUrl = branding?.logoUrl;
+  const logoUsable = Boolean(logoUrl) && logoUrl !== failedLogoUrl;
+
+  // A2 / A3, first branch: the contractor has a mark of their own AND it loads.
+  // BrandLogo carries the dark-mode plate treatment — the decision lives here,
+  // the presentation stays there, and now so does the load failure it reports.
+  if (logoUsable) {
+    return (
+      <BrandLogo
+        // ⚠ KEYED ON THE URL so a changed logo remounts rather than reusing the
+        // element that already errored. Without it React keeps the same <img>
+        // and a src swap on a node that has already failed is not guaranteed to
+        // re-fire onError — the state would be right and the DOM stale.
+        key={logoUrl}
+        src={logoUrl}
+        alt={companyName}
+        width={width}
+        marginBottom={marginBottom}
+        onError={() => setFailedLogoUrl(logoUrl)}
+      />
+    );
   }
 
   // A1: nobody is resolved. The platform's own door, so the platform's own mark.

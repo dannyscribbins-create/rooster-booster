@@ -49,6 +49,46 @@ import { fontVar } from '../../constants/elevationTheme';
 // LABEL stays on --rm-text and signals active by WEIGHT. The tab still reads as
 // selected, in both modes, for any brand the resolver can produce.
 
+// ── ⚠ THE INACTIVE STATES WERE NEVER MEASURED UNTIL CANVASS-2 ───────────────
+//
+// The header above measures the ACTIVE label and the ACTIVE dot and rules on
+// both. Neither inactive state was ever read, and BOTH were below their floors
+// on the shipped shell — in light mode, on the ground this nav actually has.
+// THREE OF THE FOUR TABS ARE INACTIVE AT ANY MOMENT, so the unmeasured state was
+// the common one. *A sweep is only as wide as the states it names.*
+//
+// ── THE TWO CONSTANTS ANSWER TWO DIFFERENT FLOORS, AND THAT IS THE POINT ────
+// `MUTED` is TEXT and answers 4.5:1. `DOT_INACTIVE` is a GRAPHIC and answers
+// 3:1. They are deliberately separate numbers: a single value cannot serve both,
+// and setting the dot to MUTED because the label moved to MUTED is exactly the
+// "a safety measure copied from a prior phase must be RE-DERIVED" failure, with
+// the two floors one line apart. repShellPalette.test.jsx asserts they DIFFER.
+
+// Amendment A34.2. The referrer tree's constant, reused by value and convention
+// — RepShell declares the same one, and the two must not drift apart.
+// ⚠ WAS 0.65, MEASURED AT 4.24:1 ON `--rm-surface` FOR palette-beta LIGHT
+// against a 4.5 floor. At 0.72 the worst case across both seeded brands and both
+// modes is 5.21:1.
+const MUTED = 0.72;
+
+// ⚠ DERIVED ON THIS NAV'S OWN GROUND, NOT COPIED FROM THE KNOB THAT SHARES ITS
+// VALUE. The dot is `--rm-text` faded over `--rm-surface`, which is what this
+// bar paints — NOT over the column, which A34.1 moved to `--rm-recess`. Run
+// through this repo's own deriveThemeTokens()/contrastRatio() across Gamma
+// (unset), palette-alpha, palette-beta and an Accent-shaped palette, in both
+// modes, the LOWEST alpha clearing 3:1 is 0.525 — palette-beta light, the worst
+// case. 0.55 clears everywhere, worst case 3.25:1.
+//
+// ⚠ WAS 0.4, WHICH MEASURED 2.24:1 — the worst pair anywhere in this shell, and
+// the one no document mentioned.
+//
+// ⚠ THAT 0.55 IS ALSO RepThemeToggleRow's KNOB VALUE IS A COINCIDENCE WORTH
+// NAMING RATHER THAN RELYING ON. It was derived here independently and happens
+// to land on a number already in this shell; it is NOT imported from there, and
+// if that knob's value ever moves this one must not follow it — the knob sits on
+// a different ground and answers the floor for a different element.
+const DOT_INACTIVE = 0.55;
+
 // Tab ids are also the entry SCREEN ids the shell opens — see RepShell's
 // TAB_FOR_SCREEN, which is what lets a sub-screen keep its parent tab lit.
 export const REP_TABS = Object.freeze([
@@ -111,7 +151,7 @@ export default function RepBottomNav({ activeTab, onSelect, centreSlot = null })
           style={{
             width: 6, height: 6, borderRadius: '50%',
             background: active ? 'var(--rm-primary, #F26A1B)' : 'var(--rm-text, #1C2D4D)',
-            opacity: active ? 1 : 0.4,
+            opacity: active ? 1 : DOT_INACTIVE,
             transition: 'opacity 200ms ease',
           }}
         />
@@ -121,7 +161,7 @@ export default function RepBottomNav({ activeTab, onSelect, centreSlot = null })
             fontSize: 13,
             fontWeight: active ? 700 : 500,
             color: 'var(--rm-text, #1C2D4D)',
-            opacity: active ? 1 : 0.65,
+            opacity: active ? 1 : MUTED,
             letterSpacing: '0.01em',
           }}
         >

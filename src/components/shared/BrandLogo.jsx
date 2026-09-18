@@ -54,6 +54,13 @@ import { LIGHT_SURFACE_HEX } from '../../utils/themeTokens.mjs';
 // That is the correct fallback by statusTheme.js's rule: the fallback is the
 // value that is right where the component actually renders with nothing mounted,
 // and a component with no --rm-* above it is on a light surface.
+// ── ⚠ `onError` IS A REPORT, NOT A DECISION (Canvass-2, amendment A34.11) ────
+// This component knows the mark FAILED TO LOAD; it does not know what should be
+// drawn instead, because that is the absence rule and the absence rule lives in
+// BrandMark — one place, deliberately, after the codebase drifted to three
+// mutually inconsistent NULL-logo behaviours. So this reports upward and renders
+// nothing different itself. ⚠ Do NOT add a fallback here: a second site deciding
+// what an absent mark looks like is the exact drift BrandMark was written to end.
 export default function BrandLogo({
   src,
   alt,
@@ -61,6 +68,7 @@ export default function BrandLogo({
   // Matches the margin the four call sites already used, so adopting this
   // component is not also a layout change. FrozenAccountScreen passes 16.
   marginBottom = 20,
+  onError,
 }) {
   const { mode } = useContext(ThemeContext);
 
@@ -68,6 +76,7 @@ export default function BrandLogo({
     <img
       src={src}
       alt={alt}
+      onError={onError}
       style={{ width, height: 'auto', display: 'block' }}
     />
   );
@@ -80,6 +89,7 @@ export default function BrandLogo({
       <img
         src={src}
         alt={alt}
+        onError={onError}
         style={{ width, height: 'auto', display: 'block', margin: `0 auto ${marginBottom}px` }}
       />
     );
