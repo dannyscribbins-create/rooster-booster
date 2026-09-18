@@ -441,4 +441,138 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
   return { requests: sorted, assessments };
 }
 
-module.exports = { refreshTokenIfNeeded, getContractorAccessToken, getFreshContractorAccessToken, fetchPipelineForReferrer, discoverJobberFields, fetchAttributionData };
+// ── REQUEST-DRIVEN ATTRIBUTION (Canvass-3.7, ruling R1) ──────────────────────
+// ⚠ WHAT IS PROVEN AT OUR PINNED VERSION AND WHAT IS NOT — READ BEFORE WIDENING EITHER
+// QUERY BELOW. The top-level `Query.requests` field, `RequestFilterAttributes`,
+// `RequestsSortInput`, and the selection `id createdAt salesperson { id } assessment { id
+// assignedUsers { nodes { id } } }` are ALL proven at 2026-02-17 — ATTRIBUTION_QUERY above
+// uses every one of them in production and was verified live in GraphiQL on 2026-07-06.
+// THREE things these two queries add are NOT proven at our version, and each is listed
+// because the 3.6b lesson is that an unknown field fails the WHOLE query, not just itself:
+//   1. `Query.request(id:)`        — the singular field. Siblings client(id:)/invoice(id:)/
+//                                    job(id:) are all proven in this codebase; this one is
+//                                    inferred from that pattern, not observed.
+//   2. `Request.client`            — needed to get from a request id to a client id.
+//   3. `Request.updatedAt`, and `RequestFilterAttributes.updatedAt` — observed by Danny in
+//      the explorer at version 2026-05-12 on 2026-09-18, which is STRONG EVIDENCE AND NOT
+//      PROOF for what our 2026-02-17 client receives.
+// ⚠ NEITHER FUNCTION FALLS BACK TO AN UNFILTERED QUERY ON FAILURE. A request fetch that
+// cannot name its field degrades to "nothing is written, the failure is recorded" — never to
+// a wider query. An unfiltered `requests` sweep would be unbounded, and silently trading a
+// missing filter for a full-history scan is the shape this repo files under "a plausible
+// wrong answer with no error attached".
+
+// Fetches ONE request by its Jobber id, for the REQUEST_CREATE / REQUEST_UPDATE webhooks.
+// Input:  requestId (Jobber EncodedId, the webhook's itemId), token
+// Output: { id, createdAt, client: { id } } — or throws.
+// ⚠ DELIBERATELY MINIMAL. salesperson and assessment are NOT selected here even though the
+// attribution needs them: they arrive through fetchAttributionData(), which is the proven
+// client-scoped query. Selecting them twice would put two unproven fields beside three
+// proven ones in the same query and make a failure impossible to attribute to a field.
+const REQUEST_BY_ID_QUERY = `
+  query GetRequestById($id: EncodedId!) {
+    request(id: $id) {
+      id
+      createdAt
+      client { id }
+    }
+  }
+`;
+
+async function fetchRequestById(requestId, token, _httpPost = null) {
+  const post = _httpPost || axios.post;
+
+  const response = await retryWithBackoff(
+    () => post(
+      'https://api.getjobber.com/api/graphql',
+      { query: REQUEST_BY_ID_QUERY, variables: { id: requestId } },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'Content-Type': 'application/json',
+        },
+      }
+    ),
+    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+  );
+
+  // ⚠ Jobber answers a GraphQL failure with HTTP 200 + an `errors` array, and
+  // jobberShouldRetry reads only error.response.status — so retryWithBackoff resolves
+  // happily on a schema error. This check is the only thing that sees it. (Same defect
+  // shape as the Canvass-3.6 user picker's `if (!usersData) break`.)
+  if (response.data?.errors?.length) {
+    const err = new Error(
+      `fetchRequestById: GraphQL errors for request ${requestId}: ` +
+      response.data.errors.map(e => e.message).join('; ')
+    );
+    err.jobberSchemaError = true;
+    throw err;
+  }
+
+  const request = response.data?.data?.request;
+  if (!request) throw new Error(`fetchRequestById: no request returned for id ${requestId}`);
+  return request;
+}
+
+// Fetches one page of requests updated since `since`, for the backfill sweep.
+// Input:  since (ISO8601 string), token, cursor (String|null)
+// Output: { nodes: [{ id, createdAt, updatedAt, client: { id } }], hasNextPage, endCursor }
+// Sorted newest-first by REQUESTED_AT, matching ATTRIBUTION_QUERY's proven sort shape.
+const REQUESTS_UPDATED_SINCE_QUERY = `
+  query GetRequestsUpdatedSince($since: ISO8601DateTime!, $after: String) {
+    requests(
+      first: 50
+      after: $after
+      filter: { updatedAt: { after: $since } }
+      sort: [{ key: REQUESTED_AT, direction: DESCENDING }]
+    ) {
+      nodes {
+        id
+        createdAt
+        updatedAt
+        client { id }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+`;
+
+async function fetchRequestsUpdatedSince(since, token, cursor = null, _httpPost = null) {
+  const post = _httpPost || axios.post;
+
+  const response = await retryWithBackoff(
+    () => post(
+      'https://api.getjobber.com/api/graphql',
+      { query: REQUESTS_UPDATED_SINCE_QUERY, variables: { since, after: cursor } },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'Content-Type': 'application/json',
+        },
+      }
+    ),
+    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+  );
+
+  if (response.data?.errors?.length) {
+    const err = new Error(
+      'fetchRequestsUpdatedSince: GraphQL errors: ' +
+      response.data.errors.map(e => e.message).join('; ')
+    );
+    err.jobberSchemaError = true;
+    throw err;
+  }
+
+  const connection = response.data?.data?.requests;
+  if (!connection) throw new Error('fetchRequestsUpdatedSince: null requests connection');
+
+  return {
+    nodes: connection.nodes || [],
+    hasNextPage: !!connection.pageInfo?.hasNextPage,
+    endCursor: connection.pageInfo?.endCursor || null,
+  };
+}
+
+module.exports = { refreshTokenIfNeeded, getContractorAccessToken, getFreshContractorAccessToken, fetchPipelineForReferrer, discoverJobberFields, fetchAttributionData, fetchRequestById, fetchRequestsUpdatedSince };

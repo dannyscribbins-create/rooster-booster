@@ -26,7 +26,9 @@ const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { applyTag } = require('../../utils/tags');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
-const { refreshTokenIfNeeded, getFreshContractorAccessToken } = require('../../crm/jobber');
+const { refreshTokenIfNeeded, getFreshContractorAccessToken, fetchRequestById, fetchAttributionData } = require('../../crm/jobber');
+const { attributeFromRequest } = require('../../utils/requestAttribution');
+const { fetchFullClient } = require('../../utils/jobberClientFetch');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -60,44 +62,11 @@ function verifyJobberWebhookSignature(req, res) {
 // Fetches complete client data from Jobber by ID, including quotes/jobs/invoices
 // needed for accurate pipeline status classification. Called from webhook handlers
 // so classifyPipelineStatus gets full data rather than the sparse webhook payload.
-async function fetchFullClient(clientId, token) {
-  const response = await retryWithBackoff(
-    () => axios.post(
-      'https://api.getjobber.com/api/graphql',
-      {
-        query: `query GetClient($id: EncodedId!) {
-          client(id: $id) {
-            id firstName lastName createdAt isArchived
-            customFields { ... on CustomFieldText { label valueText } }
-            phones { number description }
-            emails { address description }
-            quotes(first: 10) { nodes { id quoteStatus lastTransitioned { approvedAt } salesperson { id } } }
-            jobs(first: 10) {
-              nodes {
-                id jobStatus
-                invoices(first: 5) { nodes { invoiceStatus } }
-              }
-            }
-          }
-        }`,
-        variables: { id: clientId },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-        },
-      }
-    ),
-    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-  );
-
-  if (!response.data?.data?.client) {
-    throw new Error(`fetchFullClient: no client returned for id ${clientId}`);
-  }
-  return response.data.data.client;
-}
+//
+// ⚠ MOVED TO server/utils/jobberClientFetch.js IN CANVASS-3.7, VERBATIM. The cron
+// sweep (server/cron/jobs/repRequestSweep.js) needs the same fetch, and a cron job
+// importing a route file is the wrong direction. Imported at the top of this file;
+// the _fetchFullClient test seam below is unchanged and still wraps it.
 
 // ── INVOICE + JOBS FETCH (Referral Rules Engine) ──────────────────────────────
 // Fetches a single invoice with full job data, custom fields, and invoice amounts.
@@ -249,6 +218,8 @@ let _fetchClientRelatedData       = fetchClientRelatedData;
 let _fetchClientJobsForJobUpdate  = fetchClientJobsForJobUpdate;
 let _refreshTokenIfNeeded         = refreshTokenIfNeeded;
 let _getFreshContractorAccessToken = getFreshContractorAccessToken;
+let _fetchRequestById             = fetchRequestById;
+let _fetchAttributionData         = fetchAttributionData;
 let _sendEmail                    = (...args) => resend.emails.send(...args);
 
 // test seam — inert in production, never called outside server/test/
@@ -260,6 +231,8 @@ function _setTestOverrides({
   fetchClientJobsForJobUpdate: e,
   refreshTokenIfNeeded: f,
   getFreshContractorAccessToken: g,
+  fetchRequestById: h,
+  fetchAttributionData: i,
 } = {}) {
   if (a !== undefined) _fetchInvoiceWithJobs        = a;
   if (b !== undefined) _fetchFullClient              = b;
@@ -268,6 +241,8 @@ function _setTestOverrides({
   if (e !== undefined) _fetchClientJobsForJobUpdate  = e;
   if (f !== undefined) _refreshTokenIfNeeded         = f;
   if (g !== undefined) _getFreshContractorAccessToken = g;
+  if (h !== undefined) _fetchRequestById             = h;
+  if (i !== undefined) _fetchAttributionData         = i;
 }
 
 // test seam — inert in production, never called outside server/test/
@@ -278,6 +253,8 @@ function _resetTestOverrides() {
   _fetchClientJobsForJobUpdate = fetchClientJobsForJobUpdate;
   _refreshTokenIfNeeded        = refreshTokenIfNeeded;
   _getFreshContractorAccessToken = getFreshContractorAccessToken;
+  _fetchRequestById            = fetchRequestById;
+  _fetchAttributionData        = fetchAttributionData;
   _sendEmail                   = (...args) => resend.emails.send(...args);
 }
 
@@ -1408,6 +1385,152 @@ router.post('/jobber/job-update', async (req, res) => {
       console.error('[job-update]', err.message);
     }
   })();
+});
+
+// ── REQUEST-DRIVEN REP ATTRIBUTION (Canvass-3.7, rulings R1/R2/R3) ───────────
+//
+// Two topics, two routes, alongside the existing four. Both drive the SAME path —
+// attributeFromRequest() — because REQUEST_CREATE and REQUEST_UPDATE differ only in
+// which real-world moment fired them, never in what should happen next.
+//
+// ⚠ REQUEST_UPDATE IS NOT AN AFTERTHOUGHT, IT IS HALF THE DESIGN. Measured live on
+// Accent's account 2026-09-18: scheduling an assessment and assigning a rep moved the
+// request's updatedAt 15:41:20Z -> 20:05:17Z while `salesperson` stayed NULL throughout.
+// So the "a rep was assigned later" case — which under R3 is the ONLY way a client that
+// recorded nothing on create ever gets attributed — arrives exclusively on this topic.
+//
+// ⚠ AND NEVER TREAT A NULL salesperson AS "NO REP" (finding 4). Accent's salesperson
+// field auto-fills with whoever CREATED the request — an office person, not the rep —
+// and the rep is attached through the ASSESSMENT instead. That is Mode A, it is how
+// Accent operates, and the engine's resolveModeAMatch is what reads it.
+
+// Reads the webhook's event timestamp, tolerating BOTH spellings.
+// ⚠ JOBBER SHIPS TWO. Apps created before 2023-12-08 receive `occuredAt` — one r — and
+// newer apps receive `occurredAt`. WHICH ONE THIS APP RECEIVES COULD NOT BE ESTABLISHED
+// FROM SOURCE: no production code anywhere in this repo has ever read either spelling,
+// so the only occurrences are comments and our own test fixtures, and a fixture we wrote
+// is evidence about us rather than about Jobber. Reading both costs one `??` and removes
+// the question; picking one would make the dedupe key silently absent on half the guesses.
+function webhookOccurredAt(payload) {
+  const ev = payload?.data?.webHookEvent;
+  return ev?.occurredAt ?? ev?.occuredAt ?? null;
+}
+
+// Claims one webhook delivery. Returns true if this process should do the work, false if
+// an earlier delivery already claimed it.
+// ⚠ FAILS OPEN, DELIBERATELY, AND SAYS SO RATHER THAN DOING IT QUIETLY. With no usable
+// occurred_at there is no key that distinguishes a duplicate delivery from a legitimate
+// second update, and the two must not be collapsed — swallowing the second REQUEST_UPDATE
+// would break the "a rep was assigned later" case above, which is the worse failure by a
+// long way. Processing twice is idempotent by write shape (see the table comment in
+// db.js); skipping the real second event is not recoverable at all.
+async function claimWebhookDelivery(contractorId, topic, itemId, occurredAt) {
+  if (!occurredAt) return { claimed: true, keyed: false };
+  const { rowCount } = await pool.query(
+    `INSERT INTO jobber_webhook_events (contractor_id, topic, item_id, occurred_at)
+     VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+    [contractorId, topic, itemId, occurredAt]
+  );
+  return { claimed: rowCount > 0, keyed: true };
+}
+
+// The shared body of both request routes.
+// ⚠ RESPONDS BEFORE ANY OF THIS RUNS — see the routes below. Jobber requires a response
+// within 1 SECOND or it may disable the app's webhooks, and this function makes up to two
+// Jobber round trips plus several queries. It is called from inside a detached async IIFE
+// exactly as the four existing handlers are, and never awaited by the route.
+async function handleRequestWebhook(req, topic) {
+  let payload;
+  try {
+    payload = JSON.parse(req.body.toString());
+  } catch (parseErr) {
+    await logError({ req, error: parseErr, source: `POST /webhooks/jobber/${topic} — payload parse` });
+    return;
+  }
+
+  const itemId = payload?.data?.webHookEvent?.itemId;
+
+  // ── TENANCY ─────────────────────────────────────────────────────────────────
+  // ⚠ NO fallbackLookup IS PASSED, AND THAT IS NOT AN OVERSIGHT. client-update's
+  // defensive local lookup keys on a jobber_clients row for the client in the payload;
+  // here the payload's itemId is a REQUEST id, which appears in no local table, so there
+  // is nothing to look up. An unknown accountId is refused, typed and quarantined — every
+  // write below is contractor-scoped and there is no safe guess.
+  let contractorId;
+  try {
+    contractorId = await resolveWebhookContractorId(payload);
+  } catch (err) {
+    await logWebhookResolutionFailure(req, topic, itemId, payload, err);
+    return;
+  }
+
+  try {
+    if (!itemId) throw new Error(`${topic} webhook: missing request id (itemId) in payload`);
+
+    const claim = await claimWebhookDelivery(contractorId, topic, itemId, webhookOccurredAt(payload));
+    if (!claim.claimed) {
+      console.log(`[${topic}] duplicate delivery for request ${itemId} — already claimed, skipping`);
+      return;
+    }
+    if (!claim.keyed) {
+      // Recorded once per delivery rather than never: an absent occurred_at means the
+      // dedupe above is inert, and that is exactly the kind of silently-disabled mechanism
+      // this codebase files under "reports health it cannot observe".
+      await logError({
+        req: null,
+        contractorId,
+        error: new Error(`[${topic}] webhook carried no occurredAt/occuredAt — delivery dedupe inert for request ${itemId}`),
+        source: `POST /webhooks/jobber/${topic} — dedupe key`,
+        alert: false,
+      });
+    }
+
+    let token;
+    let request;
+    try {
+      token   = await _getFreshContractorAccessToken(contractorId);
+      request = await _fetchRequestById(itemId, token);
+    } catch (fetchErr) {
+      // Skip-and-log, the established semantics of the four handlers above. The request id
+      // goes in the message so logError's dedup key sees one row per request rather than
+      // one row per topic. alert:false keeps a schema-version failure out of the inbox at
+      // per-request cardinality — it will be one row per request, loudly, in error_log.
+      await logError({
+        req,
+        contractorId,
+        error: new Error(`[${topic}] skipped request ${itemId} — could not fetch from Jobber: ${fetchErr.message}`),
+        source: `POST /webhooks/jobber/${topic} — fetchRequestById`,
+        alert: false,
+      });
+      return;
+    }
+
+    const outcome = await attributeFromRequest(pool, {
+      contractorId,
+      request,
+      fetchFullClient: _fetchFullClient,
+      fetchAttributionData: _fetchAttributionData,
+      token,
+    });
+    console.log(`[${topic}] request ${itemId} -> ${outcome} (contractor: ${contractorId})`);
+  } catch (err) {
+    await logError({ req, error: err, contractorId, source: `POST /webhooks/jobber/${topic}` });
+    console.error(`[${topic}]`, err.message);
+  }
+}
+
+// POST /webhooks/jobber/request-create — Jobber topic REQUEST_CREATE
+router.post('/jobber/request-create', async (req, res) => {
+  if (!verifyJobberWebhookSignature(req, res)) return;
+  res.status(200).json({ received: true });
+  handleRequestWebhook(req, 'request-create');
+});
+
+// POST /webhooks/jobber/request-update — Jobber topic REQUEST_UPDATE
+router.post('/jobber/request-update', async (req, res) => {
+  if (!verifyJobberWebhookSignature(req, res)) return;
+  res.status(200).json({ received: true });
+  handleRequestWebhook(req, 'request-update');
 });
 
 module.exports = router;

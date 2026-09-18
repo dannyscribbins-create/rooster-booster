@@ -5,6 +5,7 @@ const { startEngagementCadenceJob } = require('./jobs/engagementCadence');
 const { startDynamicAudiencesJob } = require('./jobs/dynamicAudiences');
 const { startPostJobSequenceJob } = require('./jobs/postJobSequence');
 const { startJobberIncrementalSyncJob } = require('./jobs/jobberIncrementalSync');
+const { startRepRequestSweepJob } = require('./jobs/repRequestSweep');
 
 function startCronJobs() {
   console.log('[cron] Starting cron job scheduler...');
@@ -15,6 +16,7 @@ function startCronJobs() {
   startDynamicAudiencesJob();
   startPostJobSequenceJob();
   startJobberIncrementalSyncJob();
+  startRepRequestSweepJob();
   console.log('[cron] All cron jobs registered.');
 }
 

@@ -2197,6 +2197,55 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     await pool.query(`ALTER TABLE contractor_settings DROP COLUMN IF EXISTS ${col}`);
   }
 
+  // ── CANVASS-3.7: REQUEST-DRIVEN ATTRIBUTION ─────────────────────────────────
+  // Appended at the END of initDB() on purpose. CLAUDE.md's citation-rot mitigation:
+  // the highest citation anywhere into this file sits around :1672, so a block landing
+  // below that moves nothing anyone points at. Nothing here has an ordering constraint
+  // that would force it higher — contractor_crm_settings and cron_job_locks are both
+  // created far above.
+
+  // Delivery-level dedupe for Jobber webhooks. Jobber gives AT-LEAST-ONCE delivery, and
+  // a single user action can fire the same topic twice about a second apart.
+  //
+  // ⚠ THE ENGINE IS ALREADY IDEMPOTENT BY WRITE SHAPE AND THIS TABLE IS NOT A SUBSTITUTE
+  // FOR THAT — it is a cheaper short-circuit in front of it. writeSticky carries
+  // `WHERE sticky_rep_id IS NULL`, writeProvisional is an upsert of the same value, and
+  // writeCoAssignmentFlag returns early on an existing open flag, so a SEQUENTIAL double
+  // delivery already produces one outcome. What this adds is (a) skipping two Jobber API
+  // round trips per duplicate, and (b) closing the check-then-insert race in
+  // writeCoAssignmentFlag when two deliveries land genuinely concurrently.
+  //
+  // ⚠ THE KEY INCLUDES occurred_at, AND THAT IS WHAT MAKES IT A DUPLICATE-DELIVERY KEY
+  // RATHER THAN A ONE-EVENT-PER-REQUEST KEY. A real second REQUEST_UPDATE for the same
+  // request — which is exactly the "a rep was assigned later" case R1 depends on — carries
+  // a LATER occurred_at and must be processed. Keying on (contractor, topic, item) alone
+  // would swallow it, and the symptom would be attribution that silently stops working
+  // after the first event per request.
+  await pool.query(`CREATE TABLE IF NOT EXISTS jobber_webhook_events (
+    contractor_id TEXT        NOT NULL,
+    topic         TEXT        NOT NULL,
+    item_id       TEXT        NOT NULL,
+    occurred_at   TIMESTAMPTZ NOT NULL,
+    received_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (contractor_id, topic, item_id, occurred_at)
+  )`);
+  // Lets the retention sweep find old rows without scanning the whole table.
+  await pool.query(`CREATE INDEX IF NOT EXISTS jobber_webhook_events_received_at_idx
+                    ON jobber_webhook_events (received_at)`);
+
+  // Watermark for the request backfill sweep (Canvass-3.7 safety net).
+  // ⚠ NULLABLE, AND THE NULL IS MEANINGFUL: it means "this contractor has never had a
+  // successful sweep", which the job reads as "start from INITIAL_LOOKBACK_DAYS ago",
+  // not as "start from the epoch". A failed run must never write this column — a
+  // watermark advanced on failure loses every request in the window it skipped, silently.
+  await pool.query(`ALTER TABLE contractor_crm_settings
+                    ADD COLUMN IF NOT EXISTS request_sweep_watermark TIMESTAMPTZ`);
+
+  // Eighth cron lock. Seeded here rather than beside the other seven so the INSERT above
+  // (~:1068) keeps its line numbers — same citation reasoning as the block header.
+  await pool.query(`INSERT INTO cron_job_locks (job_name) VALUES ('rep_request_sweep')
+                    ON CONFLICT DO NOTHING`);
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed

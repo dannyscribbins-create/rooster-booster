@@ -223,7 +223,16 @@ describe('Palette-0 T1 — the seeded stack is in the states the arc needs', () 
               (SELECT count(*)::int FROM users WHERE contractor_id LIKE 'palette-%') u,
               (SELECT count(*)::int FROM team_members WHERE contractor_id LIKE 'palette-%') m`
     );
-    assert.deepEqual(rows[0], { c: 3, u: 4, m: 7 });
+    // ⚠ m: 7 -> 8 IN CANVASS-3.7, AND THIS IS THE TRIPWIRE WORKING RATHER THAN A
+    // NUMBER GOING STALE. The seeder gained one team_members row — 'Mapped Rep', the
+    // first row on this stack carrying jobber_user_id with is_attributable = true.
+    // That mapping is not padding: EVERY attribution lookup requires it, so with zero
+    // mapped reps a correct engine and a completely unwired one both produce nothing,
+    // and no fixture on this stack could tell them apart.
+    // The claim this case makes is CONVERGENCE, not the size of the stack — the counts
+    // are what makes "it converged" falsifiable. Re-measured against the seeder, not
+    // adjusted until it passed.
+    assert.deepEqual(rows[0], { c: 3, u: 4, m: 8 });
   });
 });
 

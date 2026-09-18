@@ -523,6 +523,116 @@ async function seedStack(pool) {
     teamMemberId: dualMember.rows[0].id,
   };
 
+  // ── CANVASS-3.7: AN ATTRIBUTABLE REP, AND AN ASSIGNMENT THE ENGINE MADE ────
+  //
+  // ⚠ THE GOVERNING NUMBER FOR THE WHOLE REQUEST-ATTRIBUTION ARC IS HOW MANY REPS
+  // ARE ACTUALLY MAPPED, AND ON THIS STACK IT WAS ZERO. Every attribution lookup
+  // requires `jobber_user_id = <id> AND is_attributable = true`; with no such row
+  // EVERY request resolves to nobody, so a correct engine and a completely unwired
+  // one produce identical output — nothing. That is this repo's recorded
+  // "the fixture could not make the readings vary" shape, arriving as absence.
+  //
+  // ⚠ is_field_rep MUST BE TRUE ALONGSIDE is_attributable. `team_members_rep_coherence`
+  // (db.js) is CHECK (is_field_rep OR (NOT is_attributable AND NOT rep_revenue_visibility)) —
+  // added by a later ALTER and invisible in the table's CREATE. Seeding without it
+  // aborts on the constraint, which is how the test fixture for this phase failed first.
+  const attributableRep = await pool.query(
+    `INSERT INTO team_members
+       (contractor_id, full_name, email, tier, is_field_rep, active, jobber_user_id, is_attributable, password_hash)
+     VALUES ($1, 'Mapped Rep', $2, 'general', TRUE, TRUE, $3, TRUE,
+             '$2b$10$local.stack.placeholder.hash.not.a.password')
+     ON CONFLICT (email) DO UPDATE
+       SET jobber_user_id = EXCLUDED.jobber_user_id,
+           is_attributable = TRUE, is_field_rep = TRUE, active = TRUE
+     RETURNING id`,
+    [alpha, `mapped-rep@${alpha}.test`, 'jobber-user-local-1']
+  );
+  const mappedRepId = attributableRep.rows[0].id;
+
+  // Two Jobber clients: one the engine will attribute, one it will leave alone.
+  for (const [jcId, name] of [['jc-local-attributed', 'Attributed Client'], ['jc-local-unresolved', 'Unresolved Client']]) {
+    await pool.query(
+      `INSERT INTO jobber_clients
+         (jobber_client_id, contractor_id, first_name, last_name, email, phone, last_synced_at)
+       VALUES ($1, $2, $3, NULL, NULL, NULL, NOW())
+       ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET first_name = EXCLUDED.first_name`,
+      [jcId, alpha, name]
+    );
+  }
+
+  // ⚠ THE ASSIGNMENT IS PRODUCED BY THE ENGINE, NOT WRITTEN DIRECTLY, and that is the
+  // whole point of seeding it this way. A hand-written client_rep_assignments row proves
+  // a row can exist; driving the real engine proves the engine can produce one, which is
+  // the only claim worth making from a fixture. The fetcher below is a local double
+  // returning the Mode A shape — no Jobber call is made, and none may be: this script
+  // must never reach a contractor's production CRM.
+  //
+  // ⚠ THE DOUBLE THROWS ON AN UNEXPECTED CLIENT RATHER THAN RETURNING AN EMPTY SHAPE.
+  // A double that can also stand in for "no answer" is indistinguishable from the
+  // failure it is meant to exclude — an empty `{ requests: [] }` would silently make
+  // this seed a no-op that still reports success.
+  const { runAttributionEngine } = require('../server/utils/attributionEngine');
+  const REQUEST_CREATED_AT = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+  const localAttributionDouble = async (jobberClientId) => {
+    if (jobberClientId === 'jc-local-attributed') {
+      return {
+        requests: [{
+          id: 'req-local-1',
+          createdAt: REQUEST_CREATED_AT,
+          salesperson: null,           // Accent's real shape — the rep is on the assessment
+          assessment: { id: 'assess-local-1', assignedUsers: { nodes: [{ id: 'jobber-user-local-1' }] } },
+        }],
+        assessments: [],
+      };
+    }
+    if (jobberClientId === 'jc-local-unresolved') {
+      return {
+        requests: [{
+          id: 'req-local-2',
+          createdAt: REQUEST_CREATED_AT,
+          salesperson: null,
+          assessment: { id: 'assess-local-2', assignedUsers: { nodes: [{ id: 'jobber-user-NOT-mapped' }] } },
+        }],
+        assessments: [],
+      };
+    }
+    throw new Error(`seedLocalStack attribution double: unexpected client ${jobberClientId}`);
+  };
+
+  // A client with a job and no paid invoice classifies as 'sold' — not in the engine's
+  // GATE_EXCLUSIONS, so the sticky gate fires. That is the only path on which the
+  // request pipeline's R3 silence is observable at all.
+  const soldShell = (id) => ({
+    id, quotes: { nodes: [] },
+    jobs: { nodes: [{ id: `job-${id}`, jobStatus: 'active', invoices: { nodes: [] } }] },
+  });
+
+  for (const jcId of ['jc-local-attributed', 'jc-local-unresolved']) {
+    await runAttributionEngine(pool, {
+      contractorId: alpha,
+      jobberClientId: jcId,
+      currentStatus: 'sold',
+      client: soldShell(jcId),
+      fetchAttributionData: localAttributionDouble,
+      token: 'local-stack-not-a-real-token',
+      referralAnchor: REQUEST_CREATED_AT,   // R2 — the request's own createdAt
+      writeOrphanOnMiss: false,             // R3 — the request path records nothing on a miss
+      logError: async () => {},             // no error_log noise from a seeder
+    });
+  }
+
+  const { rows: seededAssignments } = await pool.query(
+    `SELECT jobber_client_id, sticky_rep_id, sticky_source FROM client_rep_assignments
+     WHERE contractor_id = $1 ORDER BY jobber_client_id`,
+    [alpha]
+  );
+  summary.repAttribution = {
+    contractor: alpha,
+    mappedRepId,
+    mappedJobberUserId: 'jobber-user-local-1',
+    assignments: seededAssignments,
+  };
+
   return summary;
 }
 

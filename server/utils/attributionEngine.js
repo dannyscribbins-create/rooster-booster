@@ -193,8 +193,22 @@ async function writeOrphanFlag(pool, contractorId, jobberClientId, triggeringQuo
 //                          REQUIRED in production; omit only in tests that don't reach
 //                          the provisional step
 //   token             — Jobber access token passed to fetchAttributionData
-//   referralAnchor    — timestamp (Date or ISO string) this client was first seen as referred;
-//                       pipeline_cache.created_at in production. Missing/null fails closed.
+//   referralAnchor    — timestamp (Date or ISO string) the eligibility window centres on.
+//                       REFERRAL path: pipeline_cache.created_at (first seen as referred).
+//                       REQUEST path: the triggering request's own createdAt (ruling R2,
+//                       2026-09-18). Missing/null fails closed either way.
+//   writeOrphanOnMiss — true (default) writes a flagged_assignments 'orphan' row plus its
+//                       admin_messages bell when the sticky gate resolves nobody. FALSE
+//                       records nothing at all on a miss.
+//                       ⚠ THE DEFAULT IS TRUE BECAUSE THE REFERRAL PIPELINE'S ORPHAN FLAG IS
+//                       A MONEY QUESTION — a referral that resolves to no rep is an incident,
+//                       and ruling R3 (2026-09-18) leaves that behaviour explicitly unchanged.
+//                       The REQUEST-driven path passes false: an ordinary client with no
+//                       identifiable rep is not an incident, and flagging one per sold client
+//                       would flood the admin queue. R3 is scoped to the request path ONLY,
+//                       and this parameter is how the two are separated inside one engine.
+//                       ⚠ Do NOT flip the default to false "for symmetry" — that silently
+//                       un-flags the referral pipeline, which is the half R3 does not touch.
 //   logError          — injectable; defaults to real logError for production
 //
 // Order of operations (contractual — do not reorder):
@@ -214,6 +228,7 @@ async function runAttributionEngine(pool, {
   fetchAttributionData,
   token,
   referralAnchor,
+  writeOrphanOnMiss = true,
   logError = realLogError,
 }) {
   // 1. Guard — fail closed on missing identity
@@ -288,7 +303,7 @@ async function runAttributionEngine(pool, {
     // client. Fall through to Mode A/B before giving up — a matching assessment/request
     // still in the grace window counts, even with no quote or prior provisional to promote.
     if (skipProvisional) {
-      await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
+      if (writeOrphanOnMiss) await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
       return;
     }
 
@@ -302,14 +317,14 @@ async function runAttributionEngine(pool, {
       } else if (match.type === 'multiple') {
         await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId);
       } else {
-        await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
+        if (writeOrphanOnMiss) await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
       }
     } else {
       const match = await resolveModeBMatch(pool, contractorId, requests, referralAnchor);
       if (match.type === 'single') {
         await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_b_at_close');
       } else {
-        await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
+        if (writeOrphanOnMiss) await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
       }
     }
     return;

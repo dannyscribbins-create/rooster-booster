@@ -4198,8 +4198,194 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
-### Canvass-3.7 — what establishing the trigger change found, and why it did NOT ship (filed 2026-09-18)
+### Canvass-3.7 — request-driven attribution, via webhook (SHIPPED 2026-09-18)
 
+- [x] **✅ VERIFICATION RECORD — GraphiQL against Accent's LIVE Jobber account, Danny, 2026-09-18.**
+      ⚠ **RUN IN THE EXPLORER AT VERSION `2026-05-12`; OUR CLIENT PINS `2026-02-17`. STRONG
+      EVIDENCE, NOT PROOF, FOR WHAT OUR CLIENT RECEIVES.** Recorded as a dated record — **do not
+      renumber or "update" it**; re-run rather than amend if the question returns.
+      1. ⚠ **SAVING A REQUEST DOES NOT BUMP THE CLIENT'S `updatedAt`.** Client stayed
+         `2026-09-14T14:48:58Z` while a request created `2026-09-18T15:41:20Z` appeared. **This is
+         the finding that decided the architecture** — the client-driven incremental sync filters on
+         `clients.updatedAt`, so it can never see a new request, and a gate inside the existing
+         client query would never have run. It answers the ④ question the previous pass left open,
+         and the answer is the BAD branch it named.
+      2. A Request carries its **OWN `updatedAt`** — *"the last time the work request was changed in
+         a way that is meaningful to the Service Provider"*.
+      3. ⚠ **ASSIGNING A REP BUMPS IT:** scheduling an assessment and self-assigning moved it
+         `15:41:20Z → 20:05:17Z`. **This is what makes REQUEST_UPDATE carry the "a rep was assigned
+         later" case**, which under R3 is the only way a client that recorded nothing on create ever
+         gets attributed.
+      4. ⚠ **`salesperson` STAYED NULL THROUGH THAT ASSIGNMENT** — he assigned via the ASSESSMENT.
+         **This is Mode A and it is how Accent operates:** their salesperson field auto-fills with
+         whoever CREATED the request, an office person, not the rep. ⚠ **NEVER TREAT A NULL
+         `salesperson` AS "NO REP".**
+      5. The top-level `requests` query accepts `filter: { updatedAt: { after: <ISO8601> } }` and
+         returns newest first. Introspection confirms `requests` takes `filter`
+         (`RequestFilterAttributes`), `searchTerm`, `sort` (`RequestsSortInput`), `timezone` and
+         standard pagination.
+      6. ⚠ **THE APP ALREADY HAS REQUESTS READ SCOPE**, and the Developer Center offers
+         `REQUEST_CREATE`, `REQUEST_UPDATE` and `REQUEST_DESTROY` as webhook topics.
+      7. Accent has **ZERO** team members with `jobber_user_id` set and `is_attributable` true.
+         Danny is mapping himself.
+
+- [x] **✅ THE RULINGS (Danny, 2026-09-18).**
+      **R1 — THE TRIGGER IS THE `REQUEST_CREATE` + `REQUEST_UPDATE` WEBHOOKS**, not the client's
+      `updatedAt` and not polling.
+      **R2 — THE ANCHOR IS THE REQUEST'S OWN `createdAt`.** Client `createdAt` is the recorded
+      fallback. → the anchor entry below.
+      **R3 — AN UNRESOLVED CLIENT RECORDS NOTHING**, scoped to the request-driven path only. → the
+      orphan-flag entry below.
+
+- [x] **✅ WHAT STEP 1 ESTABLISHED, INCLUDING WHERE IT CONTRADICTED THE PLAN.**
+      · ⚠ **THE BIGGEST FINDING IS THAT THE VERSION RISK WAS MOSTLY ALREADY RETIRED, AND THE
+        PREVIOUS PASS DID NOT KNOW IT.** `ATTRIBUTION_QUERY` in `server/crm/jobber.js` **already
+        uses the top-level `Query.requests` field with `filter: { clientId }` and
+        `sort: [{ key: REQUESTED_AT, direction: DESCENDING }]` in production, at our pinned
+        2026-02-17**, verified live in GraphiQL 2026-07-06 — and already selects
+        `id createdAt salesperson { id } assessment { id assignedUsers { nodes { id } } }`. **Every
+        field Step 1(c) asked about except two is therefore PROVEN at our version, not inferred.**
+      · **Only three things are unproven at 2026-02-17**, each named in the code that uses it:
+        `Query.request(id:)` (inferred from the proven `client(id:)`/`invoice(id:)`/`job(id:)`
+        siblings), `Request.client`, and `Request.updatedAt` + `RequestFilterAttributes.updatedAt`
+        (finding 5, at the explorer's version). ⚠ **The by-id fetch is deliberately MINIMAL for this
+        reason** — it selects only `id createdAt client { id }`, and the rest arrives through the
+        proven client-scoped query, so a failure cannot be ambiguous about which field caused it.
+      · ⚠ **THE `occurredAt` SPELLING COULD NOT BE ESTABLISHED FROM SOURCE, AND THAT IS THE HONEST
+        ANSWER RATHER THAN A GAP.** Apps created before 2023-12-08 receive `occuredAt` (one r). **No
+        production code anywhere in this repo has ever read EITHER spelling** — the only occurrences
+        are comments and our own test fixtures, and a fixture we wrote is evidence about us, not
+        about Jobber. **Both are read** (`occurredAt ?? occuredAt`), and a test pins the one-r form.
+      · ⚠ **THE EXISTING HANDLERS HAVE NO DELIVERY-LEVEL DEDUPE AT ALL.** They are idempotent by
+        WRITE SHAPE — `ON CONFLICT` upserts, `WHERE sticky_rep_id IS NULL`, an existing-open-flag
+        check — which already makes a sequential double delivery produce one outcome.
+      · **Ack pattern, reused not reinvented:** verify HMAC → `res.status(200)` → detached async
+        IIFE. Jobber requires a response within **1 second** or it may disable the app's webhooks.
+      · **Tenancy:** `data.webHookEvent.accountId` → `contractor_crm_settings.jobber_account_id`.
+        ⚠ **No `fallbackLookup` is passed for the request topics, deliberately** — client-update's
+        fallback keys on a local `jobber_clients` row, and a request id appears in no local table,
+        so there is nothing to look up. Unknown accountId → acked, typed, quarantined, nothing
+        written.
+      · **V1/V2 (`docs/ASSIGNMENT_RULES_LOCKED.md`) re-verified and BOTH STILL HOLD.** V1: no
+        referral-inheritance logic in the engine. V2: `flag_resolved` / `flag_resolved_at` /
+        `flag_resolved_note` still have zero readers. ⚠ **V1's supporting sentence is now stale in
+        one respect and it is corrected here rather than silently:** it says the engine's *"only
+        caller is `server/crm/pipelineSync.js`"*. **There is now a second caller**,
+        `server/utils/requestAttribution.js`. V1's CONCLUSION is unaffected — neither caller
+        implements inheritance — but the evidence sentence is not.
+
+- [x] **✅ WHAT SHIPPED — IDEMPOTENCY, THE HMAC PATH, AND THE FENCE.**
+      **Routes:** `POST /webhooks/jobber/request-create` and `/request-update`, alongside the
+      existing four, same HMAC verification (`x-jobber-hmac-sha256`, HMAC-SHA256 of the raw body
+      against `JOBBER_CLIENT_SECRET`, base64).
+      **Idempotency:** a new `jobber_webhook_events` table keyed
+      **`(contractor_id, topic, item_id, occurred_at)`**. ⚠ **`occurred_at` IS IN THE KEY ON
+      PURPOSE, AND LEAVING IT OUT IS THE TRAP.** A key of `(contractor, topic, item)` alone would
+      swallow the *real* second `REQUEST_UPDATE` — finding 3's "a rep was assigned later" case — and
+      the symptom would be attribution silently ceasing after the first event per request. A paired
+      test proves a later `occurredAt` is processed.
+      ⚠ **IT FAILS OPEN WHEN NO TIMESTAMP IS PRESENT, AND SAYS SO IN `error_log` RATHER THAN DOING
+      IT QUIETLY.** With no usable key there is nothing that separates a duplicate from a legitimate
+      update, and processing twice is idempotent by write shape while dropping a real event is not
+      recoverable at all.
+      **The fence:** the request path is a **separate module** (`server/utils/requestAttribution.js`)
+      that never calls `syncSingleClient` and has no import path to Resend, Twilio, `pendingReferral`
+      or the notifications table. ⚠ **The separation is STRUCTURAL, not conditional** — it cannot
+      send because there is nothing there to send with. **Tested with its positive control** (a
+      referred client still produces its outreach through the referral path), and **guard-proofed**:
+      making the request path call `syncSingleClient` takes the fence RED while the positive control
+      stays green.
+      ⚠ **THE FENCE FIXTURE'S CLIENT CARRIES A "Referred by" VALUE, DELIBERATELY.** A fence tested
+      against a client with no referrer name passes because the referral pipeline's own gate
+      declined it — which proves the gate works, not that the paths are separate.
+      ⚠ **ONE NAMED EXCEPTION TO "NO ADMIN ALERT", STATED SO IT IS NOT READ AS A BREACH:** a
+      **co-assignment flag still writes its `admin_messages` bell**. That is required behaviour
+      (2+ attributable assignees), not outreach; the fence's target list names the **#25 new-referral
+      alert**, which is a different thing.
+
+- [x] **✅ THE BACKFILL SWEEP AND ITS WATERMARK.** `server/cron/jobs/repRequestSweep.js`, lock
+      `rep_request_sweep` (the **eighth** `cron_job_locks` seed row — seeded at the END of `initDB()`
+      so the original INSERT keeps its line numbers). **Cadence: hourly at :20**, off the top of the
+      hour so it does not contend with the 30-minute pipeline sync. It exists because webhooks can be
+      missed and **Accent has existing requests that will never fire one**.
+      **Watermark:** `contractor_crm_settings.request_sweep_watermark`, nullable. ⚠ **NULL MEANS
+      "NEVER SWEPT", NOT "SWEEP FROM THE EPOCH"** — a null reads as `INITIAL_LOOKBACK_DAYS` (30) ago.
+      ⚠ **IT ADVANCES ON EXACTLY ONE CONDITION: the paging loop ran to exhaustion AND every request
+      processed without throwing.** A GraphQL schema error, a lost token, the page cap, or a single
+      failed request all return with the column **untouched**. **A watermark advanced on failure
+      loses every request in the skipped window, silently and permanently**; re-covering a window
+      costs duplicated idempotent work and nothing else. It advances to the run's start instant minus
+      a **10-minute overlap**, because our clock and Jobber's are not the same clock and the filter is
+      evaluated against theirs.
+      ⚠ **HITTING THE PAGE CAP (20 pages / 1000 requests) IS TREATED AS A FAILURE, NOT A CLEAN STOP** —
+      advancing past requests never looked at is the same silent loss. **Guard-proofed:** making the
+      failure paths advance the watermark takes two tests RED.
+      ⚠ **IT DOES NOT FALL BACK TO AN UNFILTERED QUERY** if the `updatedAt` filter is unsupported at
+      our version. An unfiltered `requests` sweep is unbounded, and trading a missing filter for a
+      full-history scan is a plausible wrong answer with no error attached.
+
+- [ ] ⚠ **`REQUEST_DESTROY` IS NOT SUBSCRIBED, AND HERE IS WHAT A DELETED REQUEST LEAVES BEHIND.**
+      Deliberate — the topic exists in the Developer Center and was not added.
+      **What persists:** a `client_rep_assignments` row whose `sticky_rep_id` was set from a request
+      that no longer exists. ⚠ **The sticky rule means it would persist even WITH the topic
+      subscribed** — *existing-wins*, and only an Owner/Admin manual reassignment supersedes it — so
+      subscribing `REQUEST_DESTROY` would NOT automatically undo an attribution, and anyone adding it
+      expecting that will be wrong. **A rep keeps a client whose triggering request was deleted.**
+      **Also left behind:** any `jobber_webhook_events` rows for that request id (inert, and swept by
+      retention), and the sweep will simply stop returning it.
+      **Not built because the correct behaviour is a ruling, not an implementation** — "delete the
+      assignment", "flag it for review" and "leave it, a rep worked that client" are all defensible.
+      **OWNER: a future phase, once Canvass-4's client list makes the state visible to anyone.**
+
+- [ ] ⚠ **EIGHTEEN CODE CITATIONS INTO THE TWO `jobber.js` FILES NEED RE-DERIVING, AND THIS IS
+      RECORDED RATHER THAN IMPROVISED BECAUSE A SAMPLE FOUND HALF OF THEM ALREADY WRONG.**
+      `npm run citecheck -- --changed-files` reported **32 LIKELY ROTTED** on this commit. Triaged:
+      · **14 are PRE-RULED RECORDS and must NOT be repaired.** Twelve cite `CLAUDE.md:436-438`,
+        `:501` and `:502` — `CDL_3c_PHASE05_RULINGS.md` states in terms that these are *"quotations
+        of their pre-edit content … Any future edit to `CLAUDE.md` will flag them LIKELY ROTTED,
+        correctly and permanently. **They are not to be repaired.**"* Two more are in
+        `docs/GROUND_TRUTH_2026-08-21.md`, the dated snapshot CLAUDE.md names by name. **This
+        commit's CLAUDE.md edit shifted them by exactly +25 and changed nothing about their status.**
+      · **18 are code citations** into `server/routes/webhooks/jobber.js` (−23 lines, the
+        `fetchFullClient` extraction) and `server/crm/jobber.js` (+134 lines, the two new queries),
+        spread across `MEMBER_RANK_ECONOMY_SPEC.md`, `SECURITY_HARDENING_SPEC.md`,
+        `TENANT_RESOLUTION_REBUILD_SPEC.md`, `PRE_LAUNCH_CHECKLIST.md` and `CLAUDE_REGISTRY.md`.
+      ⚠ **A FOUR-CITATION SAMPLE SPLIT TWO AND TWO, WHICH IS WHY ADDING THE DELTA WAS REJECTED.**
+      Verified at `b75fbea` against each citing sentence: `webhooks/jobber.js:1118`
+      (`MEMBER_RANK_ECONOMY_SPEC.md:481`, *"both writers stamp `NOW()`"*) resolved to a
+      `VALUES (… NOW() …)` line — **correct, and moved by this commit**. `:330`
+      (`PRE_LAUNCH_CHECKLIST.md:645`, a phone-normalisation site) resolved to
+      `fullClient.phones?.[0]?.number` — **correct, and moved**. But `:392`
+      (`TENANT_RESOLUTION_REBUILD_SPEC.md:425`, cited as the **`disconnect` handler**) resolved to a
+      **comment**, while `router.post('/jobber/disconnect'` sat at `:449` — **ALREADY WRONG before
+      this commit**. And `:958` (`SECURITY_HARDENING_SPEC.md:383`) resolved to a
+      `SELECT id FROM experience_prompts`, which its citing sentence does not describe — **ALREADY
+      WRONG**.
+      ⚠ **SO ADDING −23 TO ALL EIGHTEEN WOULD HAVE MOVED THE TWO CORRECT ONES AND CERTIFIED THE TWO
+      WRONG ONES AS REPAIRED**, under a commit message saying citations were fixed — the exact move
+      `db209f3` is recorded here for making.
+      **THE JOB: re-derive all eighteen BY ROLE** — a handler, a function, a constraint — not by
+      number, so they stop rotting. ⚠ **AND THE UNIT IS THE SET, NOT THE FLAGGED MEMBERS:** the
+      sample above is a sample, and this file's own rule is that a spot-check of the suspicious ones
+      finds one of five. The other citations into these two files must be read too, not only the
+      ones `--changed-files` flagged, because an already-rotted citation into an untouched region is
+      invisible to it. **OWNER: unassigned. Not urgent, and not to be done halfway.**
+
+- [ ] ⚠ **`jobber_webhook_events` HAS NO RETENTION SWEEP — A LIST THAT CAN ONLY GROW.** One row per
+      distinct webhook delivery, forever. It is small and indexed on `received_at` **precisely so a
+      retention sweep can be added cheaply**, and saying so is not the same as having one.
+      ⚠ **FILED UNDER THIS FILE'S OWN CLOSURE RULE:** a mechanism needs both halves, and the thing
+      that REMOVES these rows does not exist yet. Rows older than ~30 days are dead weight — no
+      duplicate delivery arrives a month late. **OWNER: unassigned; cheap, and not urgent.**
+
+- [x] **✅ SUPERSEDED 2026-09-18 — THE TRIGGER IS NOW OBSERVABLE, VIA WEBHOOK RATHER THAN VIA THE
+      CLIENT QUERY.** ⚠ **THE PREVIOUS PASS'S ① AND ② WERE BOTH TRUE AND ITS PROPOSED FIX WAS
+      WRONG.** It recommended adding `requests` to the three client payloads so the gate could be
+      answered without extra round trips — sound reasoning, and **finding 1 kills it**: saving a
+      request does not bump the client's `updatedAt`, so the incremental sync never re-examines the
+      client and the gate would never have run. **The cheap fix was cheap and unreachable.** Its ③
+      stands and is now moot; its ④ was the right question and is answered. *The original follows
+      unedited, because its reasoning is what the live verification was run to settle.*
 - [ ] 🔴 **THE REQUEST TRIGGER IS NOT OBSERVABLE TODAY. THE TWO-PIPELINE RULING IS SOUND; THE PHASE
       IS BIGGER THAN "MOVE THE GATE".** Established from source at `cb1fb90`, before changing
       anything. **Nothing was built** — Step 0's marker copy is the only change that shipped.
@@ -4235,6 +4421,20 @@ may legitimately change several of these subjects.*
       — **GOOD:** `client.updatedAt` is at or after the newest request's `createdAt`. **BAD:** the
       client's `updatedAt` predates it, in which case the trigger needs a different carrier.
 
+- [x] **✅ RULED 2026-09-18 — R2: THE ANCHOR IS THE REQUEST'S OWN `createdAt` (option A).** Danny's
+      ruling, taking the recommendation. Anchor and trigger are then the same real-world event, so
+      *"why is this client in my book"* stays answerable. **Option B — Jobber's `client.createdAt` —
+      is the RECORDED FALLBACK if A proves too tight in practice**, and it is recorded here rather
+      than in a handoff because switching to it is a one-line change that would otherwise look
+      arbitrary. **C and D are rejected**, on the reasoning in the table below.
+      ⚠ **THE TEST THAT PINS THIS WAS VACUOUS ON ITS FIRST WRITING, AND THE WAY THAT SURFACED IS
+      WORTH MORE THAN THE RULING.** A guard-proof swapped the anchor from A to B and the whole suite
+      stayed **green at 24/24** — the fixture's dates sat inside the ±7-day `GRACE_MS` window under
+      BOTH anchors, so the assertion could not tell the ruling from its own runner-up. **It is now a
+      discriminating pair**: a negative whose dates make the two anchors disagree (client created
+      2026-06-01, triggering request 2026-09-18, attribution request 2026-07-01 — outside A, inside
+      B), and its positive on the same fixture. A→B now fails exactly one test, and the positive
+      stays green. *The original follows, because the table is what the ruling chose from.*
 - [ ] 🔴 **THE ANCHOR — A RULING IS OWED, AND THE PHASE CANNOT PROCEED WITHOUT IT.** Reported, not
       decided, as instructed. Both eligibility checks derive their window from `referralAnchor` and
       **both `return false` when it is missing** (`attributionEngine.js`, `isQuoteEligible` and
@@ -4251,6 +4451,24 @@ may legitimately change several of these subjects.*
       is the same event as the trigger, which keeps "why is this client in my book" answerable. **B**
       is the safe second if A proves too tight in practice. ⚠ **Not chosen — the ruling is Danny's.**
 
+- [x] **✅ CLOSED 2026-09-18 (Canvass-3.7) BY RULING R3 — AN UNRESOLVED CLIENT RECORDS NOTHING.**
+      The flood this entry measured cannot occur on the request-driven path: no assignment, no
+      `flagged_assignments` row, no `admin_messages` bell. **An ordinary client with no identifiable
+      rep is not an incident.** When a rep is assigned later, REQUEST_UPDATE fires and it attributes
+      then.
+      ⚠ **THE GOVERNING NUMBER THIS ENTRY NAMED IS STILL ZERO FOR ACCENT AND THAT NO LONGER BLOCKS
+      ANYTHING** — which is the actual effect of R3. With zero mapped reps every attribution
+      resolves to nobody, and under R3 that now writes nothing at all rather than one flag per sold
+      client. Danny is mapping himself (finding 7); the count is still worth knowing, and is no
+      longer a precondition.
+      ⚠ **SCOPED TO THE REQUEST PATH ONLY. THE REFERRAL PIPELINE'S ORPHAN FLAG IS UNCHANGED**, and
+      the two were established from source to share one code path — `runAttributionEngine`, whose
+      only caller was `pipelineSync.js`. **They are separated by an explicit named parameter**,
+      `writeOrphanOnMiss`, defaulting to `true` so the referral path is byte-identical. A referral
+      resolving to no rep is still an incident, because a referral's credit is a money question.
+      **Guard-proofed:** flipping that option to `true` takes three R3 tests RED while the paired
+      referral-positive stays green — so the tests distinguish "R3 is honoured" from "flagging is
+      broken everywhere". *The original measurement follows, because it is what the ruling answers.*
 - [ ] 🔴 **ORPHAN-FLAG VOLUME — STOPPED BEFORE SHIPPING, AS INSTRUCTED. THE FLOOD IS REAL AND ITS
       SIZE IS GOVERNED BY ONE NUMBER.** Traced from source: the sticky gate fires when status is not
       `lead`/`inspection`/`not_sold` — and `classifyPipelineStatus` returns **`sold` for ANY client
@@ -4346,6 +4564,9 @@ may legitimately change several of these subjects.*
       referrer pipeline; *"has a request?"* gates rep attribution. **Neither is nested inside the
       other, and neither early-returns out of the other.**
 
+- [x] **✅ CLOSED 2026-09-18 (Canvass-3.7) — REPORTED, THEN RULED.** The four options were filed
+      with what each includes and excludes; Danny ruled **A — the request's own `createdAt`** (R2).
+      The report did not pick one, which is what this entry asked for. *The original follows.*
 - [ ] ⚠ **CANVASS-3.7 MUST REPORT, NOT DECIDE — THE ELIGIBILITY ANCHOR.** Both eligibility checks
       (`isQuoteEligible`, `isRequestEligible`) derive their window from `referralAnchor`, which is
       **`pipeline_cache.created_at`** — read back from the upsert at `syncSingleClient`'s

@@ -344,7 +344,32 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1466 server tests across 237 suites, and 1146 React tests across 71 files** (measured 2026-09-18 by the Canvass-3.7 Step-0 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1466 · suites 237 · pass 1466 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1491 server tests across 242 suites, and 1146 React tests across 71 files** (measured 2026-09-18 by the Canvass-3.7 request-attribution commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1491 · suites 242 · pass 1491 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-3.7 REQUEST-ATTRIBUTION COMMIT ITSELF, BECAUSE THAT
+  COMMIT SHIPS TESTS.** Server 1466 → 1491 is **+25**, the `it(` lines of one new file
+  (`requestAttribution.test.js`); suites 237 → 242 is that file's **five TOP-LEVEL `describe`
+  blocks**. ⚠ **COUNTED WITH `grep -c`, AND THE ONE `.map` IN THE FILE WAS CHECKED AND WRAPS NO
+  `it()`** — it builds assignedUsers nodes inside a fixture helper, so the count is 25, not 25 ×
+  anything.
+  ⚠ **THE PREDICTION WAS 24 AND THE FILE SHIPPED 25, AND THE EXTRA CASE IS THE POINT RATHER THAN A
+  MISCOUNT.** 24 was counted correctly from the file as first written and the run reported 24. A
+  **guard-proof then found one of those 24 to be VACUOUS**: swapping the anchor from the request's
+  `createdAt` (ruling R2, option A) to the client's `createdAt` (option B, the recorded fallback)
+  left the whole suite **green at 24/24**, because the fixture's dates sat inside the grace window
+  under BOTH anchors. Repairing it split one case into a discriminating **pair** — a negative whose
+  dates make the two anchors disagree, and its positive on the same fixture. **The count moved
+  because the coverage did**, and it was re-counted from the file afterwards rather than adjusted.
+  ⚠ **THE REACT HALF DID NOT MOVE, AND THAT IS NOT STALENESS.** This commit adds no React test and
+  **no non-test file under `src/components/admin`, `src/constants`, `src/components/superAdmin` or
+  `src/utils`** — the four roots `adminBranding.test.jsx` walks — so the one-case-per-swept-file
+  effect recorded three times below does not apply here. That was **asked before the run**, per the
+  rule two entries down, rather than reconciled after it. 1146 / 71 was read by name off this run's
+  own log.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-3.7 STEP-0 COMMIT.* It read
+  **1466 / 237 / 1146 / 71**, and recorded that *NOT ONE OF THE FOUR NUMBERS MOVED* — a commit that
+  changed assertions and no cases, re-measured rather than carried. ⚠ **Its instruction not to
+  "correct" the head back to `cb1fb90` applied to that figure and is spent; this entry supersedes
+  it rather than contradicting it.**
   ⚠ **NOT ONE OF THE FOUR NUMBERS MOVED, AND THAT IS NOT STALENESS — IT IS THE CASE THIS FILE
   DISTINGUISHES.** The Canvass-3.7 Step-0 commit CHANGED assertions (a label's expected value) and
   the file that holds them, but added and removed **no cases**, so the tree differs from `cb1fb90`

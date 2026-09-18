@@ -376,10 +376,20 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
   const SELECTS_IS_ARCHIVED = /\bisArchived\b/;
 
   it('T11b — _fetchFullClient must request isArchived (RED: its selection set is "id firstName lastName createdAt" plus customFields/phones/emails/quotes/jobs — isArchived, isCompany and isLead are all absent)', () => {
+    // ⚠ RE-ANCHORED IN CANVASS-3.7, AND THE PROPERTY UNDER TEST IS UNCHANGED.
+    // fetchFullClient MOVED, verbatim, from routes/webhooks/jobber.js to
+    // utils/jobberClientFetch.js, because the request-sweep cron needs the same fetch
+    // and a cron job importing a route file is the wrong direction. This test then
+    // failed with "harness: could not locate /async function fetchFullClient\(/ — the
+    // test needs re-anchoring", which is the harness working exactly as designed: it
+    // failed LOUDLY on a moved target rather than slicing to EOF and going vacuous,
+    // which is the precise failure T11c below records and was built to prevent.
+    // Only the FILE changed here. The assertion, the needle and the non-vacuity checks
+    // are untouched.
     const body = sliceBetween(
-      read('routes/webhooks/jobber.js'),
+      read('utils/jobberClientFetch.js'),
       /async function fetchFullClient\(/,
-      /\n\/\/ ── INVOICE \+ JOBS FETCH/
+      /\nmodule\.exports/
     );
     assert.ok(body.length > 200, 'harness: the fetchFullClient slice is too short to be the real body');
     assert.ok(/client\(id: \$id\)/.test(body), 'harness: the slice must contain the GraphQL query');

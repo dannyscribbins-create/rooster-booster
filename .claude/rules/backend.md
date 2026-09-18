@@ -35,7 +35,7 @@ DB `'paid'` → frontend `'complete'`) stayed resident, because a resident rule 
 - `paid_at` on pipeline_cache — written once when pipeline_status first transitions to `'paid'`, never overwritten. Source of truth for cadence timing.
 - Webhook security — `/webhooks/*` uses `express.raw()` before `express.json()`. Never remove this — HMAC verification requires the raw buffer.
 - Payout safety — cashout approval wrapped in BEGIN/COMMIT/ROLLBACK. Stripe ACH slot is inside the transaction before COMMIT.
-- Cron locks — 7 seed rows in cron_job_locks: pipeline_sync, session_cleanup, admin_cache_expiry, engagement_cadence, dynamic_audiences, post_job_sequence, jobber_incremental_sync.
+- Cron locks — 8 seed rows in cron_job_locks: pipeline_sync, session_cleanup, admin_cache_expiry, engagement_cadence, dynamic_audiences, post_job_sequence, jobber_incremental_sync, rep_request_sweep. ⚠ **The eighth is seeded at the END of `initDB()`, not beside the other seven**, so the original `INSERT` keeps its line numbers (Canvass-3.7). **Count these BY NAME, never by number** — a `COUNT(*)` check would look right against a wrong set, and the number in this sentence is the kind of hand-maintained figure this repo has found stale five times.
 - Error monitoring — all errors through `logError()` into error_log. Resend alert on first occurrence and every 10th recurrence. Severity auto-classified by route path. Never delete error_log rows — use `resolved=true`.
 - Rate limiting — referrerLoginLimiter 10/15min, forgotPinLimiter 3/15min, resetPinLimiter 10/15min, signupLimiter 5/60min, verifyEmailLimiter 10/15min, cashoutLimiter 3/60min, bookingLimiter 3/60min, clientErrorLimiter 20/60min, pipelineLimiter 10/5min, adminLoginLimiter 5/15min.
 
