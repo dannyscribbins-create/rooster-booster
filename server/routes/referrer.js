@@ -3554,19 +3554,48 @@ router.get('/api/preferences/theme-mode', async (req, res) => {
 // ⚠ WHEN THE SECOND REP-GATED ROUTE ARRIVES (3c builds rep surfaces), this
 // becomes shared middleware. It is inline while there is exactly one caller,
 // because an abstraction with one consumer is a guess about the second.
+//
+// ⚠ THE SECOND CALLER ARRIVED IN CANVASS-3, AND THIS IS THAT EXTRACTION —
+// MADE AT THE MOMENT THE PARAGRAPH ABOVE NAMED, WHICH IS LEFT UNEDITED AS THE
+// RECORD OF WHY IT WAS EVER INLINE. The query now lives once, in
+// `server/utils/repAccess.js`, and `GET /api/rep/me` is the other caller.
+// ⚠ IT IS A PREDICATE THIS HANDLER CALLS, **NOT** router.use() MIDDLEWARE, AND
+// NOT APPLIED BY PREFIX. `PRE_LAUNCH_CHECKLIST.md` records prefix-mounting this
+// exact re-read as the FIRST of three incidental ways a rep-router build opens
+// referrer dark mode — "a rep prefix that accidentally includes
+// /api/preferences/*". ⚠ AND THIS ROUTE DELIBERATELY DID NOT MOVE INTO THE REP
+// ROUTER: that is the THIRD of those three, because it would detach this route
+// from the 23-route referrer count that currently notices changes here.
 router.put('/api/preferences/theme-mode', async (req, res) => {
   const session = await verifyAnySession(req, res);
   if (!session) return;
 
   try {
-    let isFieldRep = false;
-    if (session.role === 'team') {
-      const { rows } = await pool.query(
-        'SELECT is_field_rep FROM team_members WHERE id = $1 AND contractor_id = $2 AND active = true',
-        [session.member.id, session.contractorId]
-      );
-      isFieldRep = rows[0]?.is_field_rep === true;
-    }
+    // ⚠ REQUIRED HERE RATHER THAN IN THE HEADER, AND THE REASON IS MEASURED
+    // RATHER THAN STYLISTIC. Adding a line to this file's import block shifts
+    // every line below it, and **131 tracked citations point into
+    // `server/routes/referrer.js`** — a three-line import rotted all 131 at
+    // once. Measured at this HEAD: ZERO of those citations point below this
+    // line, so requiring at the point of use rots NOTHING. CLAUDE.md names
+    // insertion position as "the cheapest mitigation, which costs nothing to
+    // get right"; this is that, applied to a route file instead of to db.js.
+    // ⚠ `require` is memoised by Node, so this is a cache lookup per request,
+    // not a re-read — and `referrer.js:752` already does exactly this for
+    // `matchPendingReferral`, so it is this file's own precedent rather than a
+    // new pattern.
+    const { isActiveFieldRep } = require('../utils/repAccess');
+
+    // ⚠ THE `role === 'team'` GUARD IS LOAD-BEARING AND IS NOT INSIDE THE
+    // PREDICATE. A referrer session has no team_member_id at all, and handing
+    // the predicate a referrer's `user` id would ask whether a HOMEOWNER id
+    // happens to match a team_members row — a question with a plausible wrong
+    // answer. The shape check stays where the session's shape is known.
+    const isFieldRep = session.role === 'team'
+      ? await isActiveFieldRep({
+        teamMemberId: session.member.id,
+        contractorId: session.contractorId,
+      })
+      : false;
     if (!isFieldRep) return res.status(403).json({ error: 'Not authorized' });
 
     // Strict equality against the two known modes. pref_value is JSONB with no

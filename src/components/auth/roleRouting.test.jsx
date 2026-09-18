@@ -73,6 +73,103 @@ const repSurface = () => document.querySelector('[data-rep-shell]');
 const unifiedDoor      = () => screen.queryByText(/Welcome back/i);
 const legacyAdminForm  = () => screen.queryByPlaceholderText(/admin email/i);
 
+// ─── THE ADMIN-CALL ALLOWLIST (Canvass-3, amendment A34.3) ───────────────────
+//
+// ⚠ WHAT THIS REPLACED, AND WHY A SUBSTRING WAS NOT A NEAR-MISS BUT A DIFFERENT
+// RULE. The fence filtered `adminCalls.filter(u => !u.includes('/api/admin/me'))`
+// and asserted the remainder was empty. That is "no admin URL CONTAINING the
+// text /api/admin/me", which is not the rule anybody meant, and it was wrong in
+// BOTH directions at once:
+//   · TOO PERMISSIVE — `PATCH /api/admin/me/title` passed because its path is a
+//     prefix-EXTENSION of the allowed one. A different route, a different
+//     handler, allowed by an accident of string containment rather than by any
+//     decision. `/api/admin/members` and `/api/admin/me/anything` would pass the
+//     same way.
+//   · TOO RESTRICTIVE — `GET /api/admin/titles` would have turned it RED, even
+//     though the fence's OWN ERROR MESSAGE named that route as ungated and the
+//     server's PUBLIC_ADMIN_ROUTES allowlists it deliberately. The prose
+//     described one rule and the assertion enforced a narrower one.
+// Both halves are the same defect: the needle's edge landed exactly where the
+// ambiguity lived. CLAUDE.md records this shape as "a needle that is a substring
+// of a longer real name", and as `toContain`-on-a-bare-value in another costume.
+//
+// ⚠ ENTRIES ARE [method, path, reason] AND NEVER A BARE PATH. Same rule, and the
+// same reason, as server/test/sessionAuthInvariant.test.js's
+// PUBLIC_REFERRER_ROUTES: "a route that is public for GET must not become
+// accidentally public for POST". The reason lives IN the entry so it cannot be
+// separated from what it justifies.
+//
+// ⚠ ADDING AN ENTRY HERE IS A DELIBERATE DECISION ABOUT THE REP SURFACE'S
+// BOUNDARY, NOT A WAY TO GET GREEN. A34.3 rules that genuinely NEW rep data
+// lives under /api/rep/* with its own guards — not on an admin route that
+// happens to answer.
+const ALLOWED_ADMIN_CALLS = [
+  {
+    method: 'GET',
+    path: '/api/admin/me',
+    reason:
+      'SESSION-ONLY BY DESIGN, and on the server guard net\'s PUBLIC_ADMIN_ROUTES ' +
+      'allowlist. It carries no requirePermission(), so a general-tier field rep with an ' +
+      'empty permissions JSONB gets a 200. It is what feeds the rep capabilities context ' +
+      '(C/DL-3c Phase 2a), so "no admin fetch at all" was never the rule.',
+  },
+  {
+    method: 'GET',
+    path: '/api/admin/titles',
+    reason:
+      'A34.3. On PUBLIC_ADMIN_ROUTES with a written server-side rationale: ANY member, ' +
+      'INCLUDING A ZERO-PERMISSION GENERAL, must be able to read the contractor\'s title ' +
+      'list in order to self-select one (A28 — a select over seeded rows, never free ' +
+      'text). The cross-tenant check lives inside the handler rather than on a permission ' +
+      'gate. ⚠ THE OLD FENCE WOULD HAVE TURNED RED ON THIS, against its own error message.',
+  },
+  {
+    method: 'PATCH',
+    path: '/api/admin/me/title',
+    reason:
+      'A34.3. Identity SELF-SERVICE on the member\'s own row, also on ' +
+      'PUBLIC_ADMIN_ROUTES with the same rationale. ⚠ IT PASSED THE OLD FENCE BY ' +
+      'SUBSTRING ACCIDENT, not by decision — its path merely extends /api/admin/me. It is ' +
+      'allowed here on purpose, and only for PATCH.',
+  },
+];
+
+const ALLOWED_ADMIN_KEYS = new Set(ALLOWED_ADMIN_CALLS.map(e => `${e.method} ${e.path}`));
+
+// Normalises vi.fn() call tuples into { method, path, key } for every /api/admin/*
+// request. ⚠ PATHNAME, NOT THE RAW URL: the calls carry an absolute BACKEND_URL
+// and may carry a query string, and an allowlist compared against raw URLs would
+// treat '/api/admin/titles' and '/api/admin/titles?all=1' as different routes.
+// ⚠ A MISSING OPTIONS OBJECT MEANS GET — `fetch(url)` is a GET, and reading it as
+// undefined would key every plain fetch as 'undefined /path', which matches no
+// entry and reads as a refusal.
+function adminCallsFrom(mockCalls) {
+  return (mockCalls || []).map((c) => {
+    const raw = String(c[0]);
+    let path = raw;
+    try { path = new URL(raw, 'http://local.test').pathname; } catch { /* keep raw */ }
+    const method = String(c[1]?.method || 'GET').toUpperCase();
+    return { method, path, key: `${method} ${path}` };
+  }).filter(c => c.path.startsWith('/api/admin/'));
+}
+
+// The classifier, as its own function so the controls below can drive it over
+// synthetic inputs. A fence that can only be exercised by the real tree can
+// never be shown to refuse anything.
+const disallowedAdminCalls = (calls) => calls.filter(c => !ALLOWED_ADMIN_KEYS.has(c.key));
+
+const fenceMessage = (disallowed) =>
+  `the rep surface requested ${disallowed.length} admin endpoint(s) that are not on ` +
+  `A34.3's allowlist: ${disallowed.map(c => c.key).join(', ') || '(none)'}.\n` +
+  `EXACTLY THREE ARE ALLOWED, by METHOD AND FULL PATH — not by substring:\n` +
+  ALLOWED_ADMIN_CALLS.map(e => `  · ${e.method} ${e.path}`).join('\n') + '\n' +
+  `Every OTHER /api/admin/* route carries requirePermission(), and a general-tier rep holds ` +
+  `an empty permissions JSONB — so each of these is a guaranteed 403 on every load.\n` +
+  `⚠ A PATH THAT MERELY EXTENDS AN ALLOWED ONE IS NOT ALLOWED. That was the old fence's ` +
+  `accident and it is now a failure.\n` +
+  `If a rep genuinely needs this data it belongs on a /api/rep/* route with an active-field-rep ` +
+  `guard and an own-book predicate (A34.3), not on an admin route that happens to answer.`;
+
 const TEAM_SESSION = (tier, isFieldRep) => ({
   role: 'team',
   contractorId: 'tnt-routing',
@@ -211,7 +308,7 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
   // ⚠ KEPT PERMANENTLY. It is the fence against anyone later wiring a GATED admin
   // fetch above the surface split — which is the only way the storm could ever
   // become real on this surface.
-  it('[RED] FENCE — the rep surface calls NO gated admin endpoint, only /api/admin/me', async () => {
+  it('[RED] FENCE — the rep surface calls only the EXACTLY allowlisted admin routes', async () => {
     localStorage.setItem(ADMIN_TOKEN_KEY, 'team-token');
     installFetch(TEAM_SESSION('general', true));
 
@@ -219,29 +316,107 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
 
     await waitFor(() => expect(repSurface()).toBeTruthy());
 
-    const adminCalls = global.fetch.mock.calls
-      .map(c => String(c[0]))
-      .filter(u => u.includes('/api/admin/'));
-    const gated = adminCalls.filter(u => !u.includes('/api/admin/me'));
+    const adminCalls = adminCallsFrom(global.fetch.mock.calls);
+    const disallowed = disallowedAdminCalls(adminCalls);
 
-    expect(
-      gated,
-      `the rep surface requested ${gated.length} gated admin endpoint(s): ${gated.join(', ')}. ` +
-      'Every /api/admin/* route except /api/admin/me, /api/admin/titles, /api/admin/notifications ' +
-      'and the login/invite pair carries requirePermission(), and a general-tier rep holds an ' +
-      'empty permissions JSONB — so each of these is a guaranteed 403 on every load. If a rep ' +
-      'genuinely needs this data, it belongs on a rep-prefixed route with an own-book predicate, ' +
-      'not on an admin route that happens to answer.'
-    ).toEqual([]);
+    expect(disallowed, fenceMessage(disallowed)).toEqual([]);
 
     // NON-VACUITY: the filter above returns [] just as happily when nothing was
     // fetched at all — a broken mock, a tree that never rendered, a renamed
     // property on vi.fn(). The seam's own call must be present.
     expect(
-      adminCalls.some(u => u.includes('/api/admin/me')),
-      'the rep surface made NO /api/admin/me call, so the empty gated-call list above is ' +
+      adminCalls.some(c => c.key === 'GET /api/admin/me'),
+      'the rep surface made NO GET /api/admin/me call, so the empty disallowed list above is ' +
       'evidence about nothing. Either the capabilities context is unwired or this mock is.'
     ).toBe(true);
+  });
+
+  // ── CONTROLS FOR THE FENCE (Canvass-3) ──────────────────────────────────────
+  //
+  // ⚠ THE FENCE ABOVE RUNS AGAINST THE REAL TREE, WHICH TODAY CALLS EXACTLY ONE
+  // ADMIN ROUTE. That makes it a good regression guard and a USELESS proof that
+  // the classifier can refuse anything — "no disallowed calls" is satisfiable by
+  // a classifier that allows everything, and that is precisely the defect being
+  // fixed here. These controls drive the SAME classifier over synthetic call
+  // lists, which is the only way to observe its failure mode.
+  //
+  // Same pattern as server/test/sessionAuthInvariant.test.js's "control:
+  // assertion A fires on a deliberate violation".
+  describe('Canvass-3 — the fence classifier, in both directions', () => {
+    const call = (method, path) => ({ 0: `http://api.test${path}`, 1: { method } });
+
+    it('[RED] each of the three A34.3 routes is ALLOWED, by exact method AND path', () => {
+      for (const entry of ALLOWED_ADMIN_CALLS) {
+        const found = disallowedAdminCalls(adminCallsFrom([call(entry.method, entry.path)]));
+        expect(found, `${entry.method} ${entry.path} is allowlisted but the classifier refused it`).toEqual([]);
+      }
+    });
+
+    it('[RED] GET /api/admin/titles is ALLOWED — the route the old substring fence turned red', () => {
+      // ⚠ THIS IS THE HALF THE OLD FENCE GOT WRONG IN THE *RESTRICTIVE*
+      // DIRECTION, and it disagreed with its own error message, which already
+      // named this route as ungated. The server's PUBLIC_ADMIN_ROUTES allowlists
+      // it deliberately so a zero-permission General can read the title list.
+      expect(disallowedAdminCalls(adminCallsFrom([call('GET', '/api/admin/titles')]))).toEqual([]);
+    });
+
+    it('[RED] a GATED admin route is REFUSED — the property the fence exists for', () => {
+      // If this ever returns [], the fence allows everything and every green run
+      // above is evidence about nothing.
+      for (const path of ['/api/admin/team', '/api/admin/stats', '/api/admin/cashouts', '/api/admin/settings']) {
+        const found = disallowedAdminCalls(adminCallsFrom([call('GET', path)]));
+        expect(found.map(c => c.key), `GET ${path} should be refused`).toEqual([`GET ${path}`]);
+      }
+    });
+
+    it('[RED] a path that merely EXTENDS an allowed one is REFUSED — the accident, pinned', () => {
+      // ⚠ THE DEFECT THIS PHASE FIXES, AS AN ASSERTION. The old fence filtered
+      // on `!u.includes('/api/admin/me')`, so ANY path containing that substring
+      // passed — `/api/admin/me/title` did, by accident rather than by decision,
+      // and so would `/api/admin/members`, `/api/admin/me/anything-at-all` and a
+      // future gated route someone happened to nest under /me.
+      for (const path of ['/api/admin/me/secrets', '/api/admin/members', '/api/admin/metrics']) {
+        const found = disallowedAdminCalls(adminCallsFrom([call('GET', path)]));
+        expect(found.map(c => c.key), `GET ${path} extends an allowed path and must NOT be allowed`).toEqual([`GET ${path}`]);
+      }
+    });
+
+    it('[RED] an allowed PATH on a DIFFERENT METHOD is REFUSED', () => {
+      // ⚠ THE REASON ENTRIES ARE [method, path, reason] AND NEVER A BARE PATH,
+      // carried from PUBLIC_REFERRER_ROUTES' own header: "a route that is public
+      // for GET must not become accidentally public for POST". PATCH
+      // /api/admin/me/title is allowlisted; DELETE on the same path is not.
+      for (const [method, path] of [['DELETE', '/api/admin/me/title'], ['POST', '/api/admin/me'], ['POST', '/api/admin/titles']]) {
+        const found = disallowedAdminCalls(adminCallsFrom([call(method, path)]));
+        expect(found.map(c => c.key), `${method} ${path} is not allowlisted and must be refused`).toEqual([`${method} ${path}`]);
+      }
+    });
+
+    it('a fetch with no options object is read as GET, not skipped', () => {
+      // GUARD-PROOF for the classifier's own defaulting. `fetch(url)` with no
+      // second argument is a GET; if that were read as `undefined` the key would
+      // be 'undefined /api/admin/team' and would never match an allowlist entry
+      // — refused, which LOOKS right. But the same bug would make the ALLOWED
+      // GETs fail too, so the direction that matters is this one.
+      expect(disallowedAdminCalls(adminCallsFrom([{ 0: 'http://api.test/api/admin/me' }]))).toEqual([]);
+      expect(disallowedAdminCalls(adminCallsFrom([{ 0: 'http://api.test/api/admin/team' }])).map(c => c.key))
+        .toEqual(['GET /api/admin/team']);
+    });
+
+    it('a query string does not smuggle a path past the allowlist', () => {
+      // The classifier compares PATHNAMES. Without that, '/api/admin/team?x=1'
+      // is a different string from '/api/admin/team' and an allowlist built on
+      // raw URLs would behave differently for the two.
+      expect(disallowedAdminCalls(adminCallsFrom([call('GET', '/api/admin/team?contractor=1')])).map(c => c.key))
+        .toEqual(['GET /api/admin/team']);
+      expect(disallowedAdminCalls(adminCallsFrom([call('GET', '/api/admin/titles?all=1')]))).toEqual([]);
+    });
+
+    it('non-admin calls are not the fence\'s business', () => {
+      // Scope, asserted rather than assumed: this fence is about /api/admin/*.
+      // A rep-prefixed call is governed by the server-side guards, not here.
+      expect(adminCallsFrom([call('GET', '/api/rep/me'), call('GET', '/api/session')])).toEqual([]);
+    });
   });
 
   it('[RED] GUARD — general tier WITHOUT the field-rep flag → the admin panel, not the rep surface', async () => {

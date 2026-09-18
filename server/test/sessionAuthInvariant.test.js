@@ -109,6 +109,39 @@ const REFERRER_PREFIX = '/api/referrer/';
 // Measured 2026-08-29 by walking createApp()'s real router stack at HEAD ae70e50.
 const EXPECTED_REFERRER_ROUTE_COUNT = 23;
 
+// ─── THE REP PREFIX (Canvass-3, amendment A34.3) ─────────────────────────────
+//
+// ⚠ COUNTED AND FENCED FROM ITS FIRST ROUTE, ON PURPOSE. The condition Canvass-3
+// was given was that this prefix must not become a second `accountRoutes` —
+// fifteen routes that no walk has ever seen, because that router is mounted at
+// '/api/account' and collectRoutes() matches a MOUNT-RELATIVE path. `repRoutes`
+// is mounted at '/' in createApp() precisely so this prefix is collectable, and
+// the floor below is what proves the collection is real rather than empty.
+//
+// ⚠ AND THE ALLOWLIST IS EMPTY, WHICH IS A STATEMENT RATHER THAN AN OMISSION.
+// There is no rep route that can legitimately skip a session verifier: every
+// one of them is, by definition, answering a question about a rep who is
+// already signed in. `PUBLIC_REFERRER_ROUTES` has an entry because a signup-flow
+// route genuinely precedes any token; nothing here does.
+// ⚠ Adding an entry would be a deliberate security decision needing a written
+// reason IN the entry, exactly as on the referrer list — and it would be the
+// first time anyone claimed a rep route needs no session.
+const REP_PREFIX = '/api/rep/';
+
+// ⚠ EXACT, NOT A FLOOR — same reasoning as EXPECTED_REFERRER_ROUTE_COUNT above:
+// an exact number is falsifiable in BOTH directions and forces a deliberate
+// decision on every change. Measured 2026-09-17 by walking createApp()'s real
+// router stack at HEAD ab0e1e3, the commit this prefix was created in.
+// ⚠ ONE IS A LEGITIMATE VALUE HERE AND WILL LOOK WRONG TO SOMEONE LATER.
+// Canvass-3 ships the BOUNDARY, not the screens: exactly one route
+// (GET /api/rep/me) exists so the guards have a real subject. Canvass-4 onward
+// raise this number deliberately, and the separate `> 0` floor below is what
+// distinguishes "one route" from "the walk collected nothing".
+const EXPECTED_REP_ROUTE_COUNT = 1;
+
+const PUBLIC_REP_ROUTES = [];
+const PUBLIC_REP_KEYS = new Set(PUBLIC_REP_ROUTES.map((r) => `${r.method} ${r.path}`));
+
 // ─── ASSERTION A'S ALLOWLIST ─────────────────────────────────────────────────
 // ⚠ ADDING AN ENTRY HERE IS A DELIBERATE SECURITY DECISION, NOT A WAY TO GET
 // GREEN. The reason lives in the DATA, not in a comment above the list, so it
@@ -288,15 +321,57 @@ function buildProbeApp() {
   return app;
 }
 
+// The same probe, on the REP prefix (Canvass-3).
+//
+// ⚠ A SEPARATE APP RATHER THAN THREE MORE ROUTES ON THE ONE ABOVE. The referrer
+// probe is consumed by a control that asserts an EXACT violation list; adding
+// rep routes to it would change that list and couple two controls that answer
+// different questions. ⚠ AND MOUNTED AT '/' FOR THE SAME REASON THE REAL ROUTER
+// IS: a probe mounted elsewhere would collect zero and the control would pass
+// while proving nothing — the control's own version of the defect it guards.
+function buildRepProbeApp() {
+  const app = express();
+  const router = express.Router();
+
+  // VIOLATION — a rep route with no session call anywhere.
+  router.get('/api/rep/__probe_no_session', async (req, res) => {
+    res.json({ ok: true });
+  });
+
+  // VIOLATION — the only mention of a verifier is in a COMMENT. stripComments()
+  // is what makes this a violation rather than a pass.
+  router.get('/api/rep/__probe_comment_only', async (req, res) => {
+    // the session would come from verifyAdminSession(req, res) here
+    res.json({ ok: true });
+  });
+
+  // CLEAN — calls a verifier for real, in the handler, the way GET /api/rep/me
+  // does. If this is ever reported, the checker is over-firing.
+  // ⚠ The name must be EXACT: SESSION_VERIFIER_RE requires `\s*\(` immediately
+  // after the verifier name, so a `verifyAdminSessionStub(` would correctly NOT
+  // match and this control would go red for the wrong reason.
+  const verifyAdminSession = async () => ({ contractorId: 'probe', teamMemberId: 1 });
+  router.get('/api/rep/__probe_clean', async (req, res) => {
+    const s = await verifyAdminSession(req, res);
+    if (!s) return;
+    res.json({ ok: true });
+  });
+
+  app.use('/', router);
+  return app;
+}
+
 describe('session-auth invariant — the referrer surface, and the raw-lookup sweep', () => {
   let pool;
   let referrerRoutes;
+  let repRoutes;
   let serverFiles;
 
   before(async () => {
     pool = await initTestDb();
     const app = createApp();
     referrerRoutes = collectRoutes(app._router.stack, REFERRER_PREFIX);
+    repRoutes = collectRoutes(app._router.stack, REP_PREFIX);
     serverFiles = collectServerSourceFiles();
   });
 
@@ -557,6 +632,99 @@ describe('session-auth invariant — the referrer surface, and the raw-lookup sw
         `why no session can exist at that point — and, if the route is exempt but not ` +
         `clean, saying THAT too. The fastest path to green on a red guard is adding a ` +
         `line; that is how a fence becomes a formality.\n\n` +
+        violations.map((v) => `  • ${v}`).join('\n')
+    );
+  });
+
+  // ── ASSERTION A, EXTENDED TO THE REP PREFIX (Canvass-3, A34.3) ────────────
+  //
+  // ⚠ THE FLOOR IS NOT A DUPLICATE OF THE COUNT, AND MERGING THEM WOULD REMOVE
+  // THE ONLY THING THAT CAN SEE AN EMPTY WALK. `assert.equal(len, 1)` fails on
+  // 0 too — but it fails saying "expected 1, got 0", which reads as "somebody
+  // deleted a route". The floor fails saying "the prefix collected NOTHING and
+  // everything below is vacuous", which is a different diagnosis and the one
+  // that is true if the router is ever re-mounted at '/api/rep'. Two failures
+  // that look alike and mean different things need two messages.
+  it('router walk: /api/rep/* route count matches the recorded number exactly', () => {
+    assert.ok(
+      repRoutes.length > 0,
+      `collectRoutes() returned NOTHING for '${REP_PREFIX}'. Either the walk is broken, or ` +
+        `repRoutes has been re-mounted away from '/' — collectRoutes() matches a ` +
+        `MOUNT-RELATIVE path, so a router mounted at '/api/rep' surfaces as 'GET /me' and ` +
+        `this prefix collects zero. EVERYTHING BELOW THIS LINE WOULD PASS VACUOUSLY, and ` +
+        `the rep surface would be exactly as unguarded as /api/account/* is today. ` +
+        `Do not "fix" this by relaxing an assertion — fix the mount.`
+    );
+    assert.equal(
+      repRoutes.length,
+      EXPECTED_REP_ROUTE_COUNT,
+      `Router walk found ${repRoutes.length} /api/rep/* route/method combinations; ` +
+        `EXPECTED_REP_ROUTE_COUNT is ${EXPECTED_REP_ROUTE_COUNT}.\n` +
+        `If you ADDED or REMOVED a rep route, this is correct and expected — update the ` +
+        `constant deliberately and say so in the commit.\n` +
+        `If you did NOT change any route, the walk is broken. Do NOT read a low number as ` +
+        `"all rep routes are verified".`
+    );
+  });
+
+  it('allowlist: every PUBLIC_REP_ROUTES entry exists in the walk and carries a reason', () => {
+    // ⚠ PUBLIC_REP_ROUTES IS EMPTY TODAY, SO THIS LOOP RUNS ZERO TIMES AND THE
+    // CASE PASSES WITHOUT ASSERTING ANYTHING. That is stated rather than left to
+    // be discovered: this case is ARMED FOR THE FUTURE, and the thing actually
+    // protecting the rep prefix today is the count floor above plus assertion A
+    // below. A reader must not count this as coverage.
+    for (const entry of PUBLIC_REP_ROUTES) {
+      const found = repRoutes.some((r) => r.method === entry.method && r.path === entry.path);
+      assert.ok(found, `Allowlist entry '${entry.method} ${entry.path}' was not found in the rep walk.`);
+      assert.ok(
+        typeof entry.reason === 'string' && entry.reason.trim().length > 0,
+        `Allowlist entry '${entry.method} ${entry.path}' carries no written reason.`
+      );
+    }
+  });
+
+  it('control: a rep route with no session call IS reported (assertion A, rep prefix)', () => {
+    // The same control the referrer prefix carries, and for the same reason: an
+    // empty violations list is the PASS condition, so without a deliberate
+    // violation this assertion is indistinguishable from one that can never
+    // fire. Built on the rep prefix specifically, because a control that only
+    // ever exercised '/api/referrer/' would prove nothing about this walk.
+    const probe = collectRoutes(buildRepProbeApp()._router.stack, REP_PREFIX);
+    assert.ok(probe.length >= 2, `the rep probe app yielded ${probe.length} routes — expected at least 2`);
+
+    const violations = findUnverifiedRoutes(probe, PUBLIC_REP_KEYS);
+    assert.deepEqual(
+      violations.sort(),
+      ['GET /api/rep/__probe_comment_only', 'GET /api/rep/__probe_no_session'],
+      'assertion A did not report the deliberate rep violations — the checker is not firing. ' +
+        `Got: ${JSON.stringify(violations)}`
+    );
+    // AND IT DOES NOT OVER-FIRE: the clean route must be absent from the list.
+    assert.ok(
+      !violations.includes('GET /api/rep/__probe_clean'),
+      'assertion A reported a rep route that DOES call a verifier — it is over-firing, which ' +
+        'a violations-only assertion would never reveal.'
+    );
+  });
+
+  it('every /api/rep/* route calls a verify*Session', () => {
+    const violations = findUnverifiedRoutes(repRoutes, PUBLIC_REP_KEYS);
+
+    assert.deepEqual(
+      violations,
+      [],
+      `The following /api/rep/* routes never call a verify*Session.\n` +
+        `Each is an UNAUTHENTICATED rep endpoint on a surface whose whole premise is an ` +
+        `identified, active field rep.\n` +
+        `⚠ THE FIX IS A verify*Session CALL IN THE HANDLER ITSELF, not a helper that makes ` +
+        `one. This assertion reads the handler's OWN SOURCE TEXT, so a route delegating auth ` +
+        `to a wrapper reads as a violation even when it is correct — see this file's header. ` +
+        `GET /api/rep/me calls verifyAdminSession inline for exactly this reason and delegates ` +
+        `only the is_field_rep half to server/utils/repAccess.js.\n` +
+        `⚠ AND A SESSION CALL IS NOT THE WHOLE GUARD. It proves "a live team session on this ` +
+        `tenant" and nothing about is_field_rep — an owner, an admin and office staff are all ` +
+        `indistinguishable to it. server/test/repRouteGuard.test.js is what fences the ` +
+        `identity half.\n\n` +
         violations.map((v) => `  • ${v}`).join('\n')
     );
   });

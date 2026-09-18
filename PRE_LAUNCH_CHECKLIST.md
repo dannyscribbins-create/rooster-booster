@@ -4198,6 +4198,55 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-3 — the rep prefix, and what establishing it found (filed 2026-09-17)
+
+- [x] **✅ THE `/api/rep/*` PREFIX IS COUNTED AND FENCED FROM ITS FIRST ROUTE.** Mounted at `'/'`
+      in `createApp()` — mandatory, not conventional: `collectRoutes()` matches a MOUNT-RELATIVE
+      path, so a `/api/rep` mount would surface as `GET /me` and the prefix would collect **zero**,
+      passing every assertion vacuously. **Measured live at this HEAD: `/api/rep/` collects
+      `["GET /api/rep/me"]`, and `/api/account/` collects `[]`** — the documented hole, reproduced
+      rather than quoted. Three guards now watch the prefix: an exact `EXPECTED_REP_ROUTE_COUNT`
+      **plus a separate `> 0` floor** (two messages, because "somebody deleted a route" and "the
+      walk collected nothing" are different diagnoses), assertion A extended in
+      `sessionAuthInvariant.test.js`, and a rep-side coverage sweep asserting every rep route calls
+      `isActiveFieldRep` — **the half assertion A structurally cannot see.**
+
+- [ ] ⚠ **THE DECISION A NET STILL SEES NOTHING UNDER `/api/rep/*`, AND THAT IS CORRECT TODAY FOR A
+      REASON THAT EXPIRES.** All five guards (`adminRouteCoverage`, `adminRouteInvariant`,
+      `registryReconciliation`, `crossTenantCredentialWrites`, `ownerParity`) enforce properties of
+      the **permission model**, and per Danny's 2026-09-17 ruling the registry stays
+      permission-only — rep routes are guarded by identity, carry no flag, and are structurally
+      skipped exactly as the three public admin routes are.
+      ⚠ **THE ONE THAT ACQUIRES A SUBJECT LATER IS `crossTenantCredentialWrites`.** It is
+      inapplicable **only because Canvass-3 ships no rep route that writes anything**. **TRIGGER,
+      written as a STATE and not as a phase: the first `/api/rep/*` route that performs a write, or
+      that reads another tenant's row.** At that moment its cross-tenant argument becomes live and
+      the guard must be extended deliberately. *A trigger naming a phase fires only if someone
+      re-reads the entry during it — this one names a condition.*
+      **OWNER: whoever writes the first rep write-route (Canvass-4 at the earliest).**
+
+- [ ] ⚠ **TWO CITATIONS IN `CDL_3c_PHASE0_REPORT.md` WERE ALREADY ROTTED BEFORE CANVASS-3 TOUCHED
+      ANYTHING — VERIFIED AT THEIR OLD LINES IN THE OLD REVISION, NOT ASSUMED.**
+      · `sessionAuthInvariant.test.js:287-294`, cited as *"the `> 0` non-vacuity floor"* — at
+      `ab0e1e3` those lines hold `app.use('/', router); return app; }` and a `describe(` opening.
+      · `roleRouting.test.jsx:156`, cited as one of *"the two GUARD cases"* — at `ab0e1e3` line 156
+      is `});`.
+      ⚠ **BOTH WERE FLAGGED BY `--changed-files` AS THIS COMMIT'S DOING, AND NEITHER WAS.** That is
+      the recorded pattern exactly — the commit that shipped the mode flagged eleven of its own and
+      all eleven were already wrong. **Adding this commit's delta would have certified two wrong
+      numbers as repaired.** Left unrepaired on purpose: the fix is re-deriving where each subject
+      lives and citing it BY ROLE, which is a larger job than a renumber.
+      ⚠ **AND IT IS OUT OF SCOPE BY RULING** — the documentation-vs-source pass waits until after
+      Canvass. **OWNER: that pass.**
+
+- [ ] ⚠ **`PUT /api/preferences/theme-mode` DID NOT MOVE INTO THE REP ROUTER, AND THE REASON IS A
+      FILED HAZARD RATHER THAN INERTIA.** It is the third of the three recorded ways a rep-router
+      build opens referrer dark mode: moving it detaches the route from the 23-route referrer count
+      that currently notices changes there. The first hazard — factoring its `is_field_rep` re-read
+      into **prefix** middleware — was also avoided: the extraction to
+      `server/utils/repAccess.js` is a **predicate a handler calls**, never `router.use()`.
+      **Filed so the next session does not "finish" the refactor by prefix-mounting it.**
+
 ### Canvass-1 — the decision brief, and what filing it found (filed 2026-09-17)
 
 *Read-only re-measure at `15b2c41`. Full record: `CANVASS_1_PART1_REPORT.md` at repo root, tracked

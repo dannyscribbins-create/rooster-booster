@@ -12,6 +12,7 @@ const stripeRoutes = require('./routes/stripe');
 const jobberWebhooks = require('./routes/webhooks/jobber');
 const resendWebhookRouter = require('./routes/resendWebhook');
 const accountRoutes = require('./routes/account');
+const repRoutes = require('./routes/rep');
 const unsubscribeRoutes = require('./routes/unsubscribe');
 const { expressErrorHandler } = require('./middleware/errorLogger');
 const helmet = require('helmet');
@@ -100,7 +101,20 @@ function createApp() {
   app.use('/', adminRoutes);
   app.use('/', superAdminRoutes);
   app.use('/', stripeRoutes);
+  // ── THE REP SURFACE'S PREFIX (Canvass-3, A34.3) ──────────────────────────
+  // ⚠ '/' IS MANDATORY, NOT CONVENTIONAL, AND THE LINE BELOW IT IS WHY.
+  // collectRoutes() matches a MOUNT-RELATIVE path, so a router mounted at
+  // '/api/rep' would surface from every guard walk as 'GET /me' and a
+  // '/api/rep/' prefix would collect ZERO routes — every assertion over it
+  // passing vacuously. accountRoutes on the very next line is that defect,
+  // live: fifteen routes no walk has ever seen. Mounting rep routes at '/'
+  // is what keeps this prefix countable from its first route.
+  app.use('/', repRoutes);
   // Manage Account routes
+  // ⚠ THE MOUNT ABOVE IS THE FIX FOR THE HOLE THIS LINE IS. Not repaired here —
+  // threading the mount path through collectRoutes()'s recursion is the real
+  // fix and is filed; this comment exists so the next reader sees the two lines
+  // as the same subject rather than as unrelated mounts.
   app.use('/api/account', accountRoutes);
   // Unsubscribe / email preferences — public, no auth middleware
   app.use('/', unsubscribeRoutes);

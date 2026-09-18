@@ -344,8 +344,25 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1427 server tests across 232 suites, and 1118 React tests across 69 files** (measured 2026-09-17 by the Canvass-2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1427 · suites 232 · pass 1427 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-2 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1446 server tests across 235 suites, and 1126 React tests across 69 files** (measured 2026-09-17 by the Canvass-3 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1446 · suites 235 · pass 1446 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-3 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  **BOTH HALVES MOVED, AND THE SERVER HALF CAME FROM TWO FILES RATHER THAN ONE.** Server 1427 →
+  1446 is **+19 = 15 + 4**: fifteen cases in the new `repRouteGuard.test.js`, and four added to an
+  **EXISTING** `describe` in `sessionAuthInvariant.test.js` (the rep-prefix count, its allowlist
+  case, its control, and assertion A for the rep prefix). Suites 232 → 235 is **+3 from
+  `repRouteGuard.test.js`'s three `describe` blocks ONLY** — the four sessionAuthInvariant cases
+  landed inside a describe that already existed, so they add cases without adding a suite.
+  React 1118 → 1126 is **+8 in an EXISTING FILE**: `roleRouting.test.jsx` went 12 → 20 cases when
+  the substring fence was replaced by an exact allowlist plus its controls. **The FILE count does
+  not move, and that is the tell worth keeping** — a React figure that rises while the file count
+  holds means an existing suite grew, which is a different event from a new suite arriving.
+  ⚠ **COUNTED WITH `grep -c`, WITH THE LOOP ARITHMETIC CHECKED IN BOTH FILES.**
+  `repRouteGuard.test.js`: 15 `it(` lines; its two `.map`/`.filter` calls sit inside the
+  `unguarded()` helper and wrap no `it()`. `roleRouting.test.jsx`: 20 `it(` lines and **four `for`
+  loops, every one of them INSIDE an `it()` body** — they iterate assertions, not cases, so the
+  count is 20 and not 20 × anything. **Both files had to be checked separately; a loop's position
+  is a property of the file, not of the arc.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-2 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.*
   **BOTH HALVES MOVED.** Server 1425 → 1427 is its two new cases, added to an **EXISTING** `describe`
   in `paletteLocalStack.test.js` — so suites stay 232, and **a file count and a suite count answer
   different questions.** React 1097 → 1118 is its 21 cases in one new file, and 68 → 69 is that file.
