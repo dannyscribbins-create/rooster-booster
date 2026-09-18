@@ -6,6 +6,7 @@ import LockedSection from '../shared/LockedSection';
 import { usePermissions } from '../../hooks/useAdminPermissions';
 import { REGISTRY_SECTIONS, FINANCE_WALL_FLAGS, PERM_GROUPS } from '../../constants/registrySections.mjs';
 import AdminFlaggedAssignmentsQueue from './AdminFlaggedAssignmentsQueue';
+import { filterJobberUsers } from '../../utils/jobberUserSearch';
 import { getAdminToken } from '../../utils/authStorage';
 
 // ── PRESET DEFINITIONS (§8.1) ─────────────────────────────────────────────────
@@ -754,12 +755,10 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
     setJobberSearch('');
   }
 
-  const filteredJobberUsers = jobberSearch.trim().length === 0
-    ? jobberUsers
-    : jobberUsers.filter(u => {
-        const q = jobberSearch.toLowerCase();
-        return (u.name?.full || '').toLowerCase().includes(q) || (u.email?.raw || '').toLowerCase().includes(q);
-      });
+  // Canvass-3.6: extracted to src/utils/jobberUserSearch.js so the ruling's
+  // "searchable by name AND email" is a tested property rather than an inline
+  // expression no test could reach. Behaviour unchanged.
+  const filteredJobberUsers = filterJobberUsers(jobberUsers, jobberSearch);
   const mappedJobberUser = localJobberUserId ? (jobberUsers.find(u => u.id === localJobberUserId) ?? null) : null;
 
   const availablePresets = PRESETS.filter(p => p.tier === localTier);

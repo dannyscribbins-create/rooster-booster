@@ -1099,11 +1099,90 @@ router.delete('/api/admin/titles/:id', requirePermission('team.manage'), async (
 //   lands, jobber_user_id on team_members is the primary key, not request.salesperson.
 //   Open question: does Accent's workflow populate salesperson with the closer or the
 //   scheduler? Must be confirmed before building the consumption engine.
+// ── CANVASS-3.6 — THE PICKER MUST BE ABLE TO REACH EVERY USER ───────────────
+//
+// RULING (Danny, 2026-09-17): an admin must be able to select ANY existing
+// Jobber user, INCLUDING retired/inactive ones — people leave, and their
+// historical attribution still matters. The answer is SEARCH, not a longer
+// dropdown: 147 names, most of them former staff, is worse unpaged than paged.
+//
+// ⚠ WHAT WAS ACTUALLY BROKEN WAS NOT THE 50. Measured at this HEAD before any
+// edit: this handler ALREADY paged to exhaustion (`do … while (cursor)` on
+// `pageInfo.hasNextPage`), so `first: 50` is a PAGE SIZE and never a cap, and
+// the client ALREADY filtered on name AND email. Accent's 147 users were
+// reachable. **Three real defects sat underneath that, and they are what this
+// phase closes:** an UNBOUNDED loop against a remote API; a `break` on a missing
+// payload that returned **200 with a truncated list**; and no cache, so every
+// drawer open cost three round trips.
+//
+// Page size stays 50 — it is what the live account was measured against, and
+// raising it changes the query cost profile for no gain when the loop is
+// correct.
+const JOBBER_USER_PAGE_SIZE = 50;
+
+// 40 × 50 = 2000 users. Far above any plausible contractor (Accent: 147) and far
+// below "spins forever". ⚠ This bounds the LOOP, not the account — see the
+// handler for why hitting it is an error rather than a shorter list.
+const JOBBER_USER_MAX_PAGES = 40;
+
+const JOBBER_USERS_CACHE_KEY = 'jobber_users';
+
+// Ten minutes. Staff lists change rarely, and the cost of being stale is that a
+// newly-added Jobber user is unmappable for a few minutes; the cost of no cache
+// is three Jobber calls every time a drawer opens.
+// ⚠ REUSES `admin_cache`, THE PATTERN ALREADY IN THIS REPO for Jobber-adjacent
+// reference data (see GET /api/referrer/about's google_rating block) — same
+// table, same (contractor_id, cache_key) primary key, same
+// `cached_at > NOW() - INTERVAL` freshness test, same ON CONFLICT upsert. Not a
+// second caching mechanism invented alongside the first.
+const JOBBER_USERS_TTL_SECONDS = 600;
+
 router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res) => {
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
   try {
+    // ── CACHE READ ─────────────────────────────────────────────────────────
+    // `?refresh=1` bypasses it, so an admin who has just added someone in
+    // Jobber has a way through that does not involve waiting out the TTL.
+    // ⚠ TENANT-SCOPED BY THE PRIMARY KEY, not by convention: the row is keyed
+    // (contractor_id, cache_key), and contractorId comes from the verified
+    // session and from nowhere else.
+    if (req.query.refresh !== '1') {
+      const cached = await pool.query(
+        `SELECT data FROM admin_cache
+          WHERE contractor_id = $1 AND cache_key = $2
+            AND cached_at > NOW() - ($3 || ' seconds')::interval`,
+        [contractorId, JOBBER_USERS_CACHE_KEY, String(JOBBER_USERS_TTL_SECONDS)]
+      );
+      if (cached.rows.length > 0 && Array.isArray(cached.rows[0].data?.users)) {
+        return res.json({ ...cached.rows[0].data, cached: true });
+      }
+    }
+
+    // ── ⚠ THE EXISTENCE CHECK COMES FIRST, AND IT IS A FIX RATHER THAN A
+    //    REORDERING FOR NEATNESS. FOUND BY THIS PHASE'S OWN TEST.
+    // This handler called `refreshTokenIfNeeded()` BEFORE looking for a token
+    // row. That function THROWS — "no access token found for contractor X" —
+    // when the row is absent, so the throw landed in this route's catch and the
+    // client received **500 Internal server error**. The `503 'Jobber not
+    // connected'` branch below was therefore UNREACHABLE for the only case it
+    // was written for: a contractor who has never connected Jobber. It could
+    // fire only for a row that existed with a null access_token.
+    // ⚠ IT IS USER-VISIBLE. `AdminTeamSettings` branches on `status === 503` to
+    // say "Jobber not connected." and falls back to the generic "Could not load
+    // Jobber users." — so the admin who most needed the accurate message was the
+    // one guaranteed not to get it.
+    // The refresh still runs BEFORE the token is read, so the value used below
+    // is the fresh one; only the existence question moved ahead of it.
+    const tokenExists = await pool.query(
+      'SELECT 1 FROM tokens WHERE contractor_id = $1',
+      [contractorId]
+    );
+    if (!tokenExists.rows.length) {
+      return res.status(503).json({ error: 'Jobber not connected' });
+    }
+
     await refreshTokenIfNeeded(contractorId);
     const tokenResult = await pool.query(
       'SELECT access_token FROM tokens WHERE contractor_id = $1',
@@ -1117,10 +1196,30 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
     const allUsers = [];
     let cursor = null;
     let totalCount = null;
+    let pages = 0;
 
     do {
+      // ⚠ THE BOUND IS ON THE LOOP, NOT ON THE RESULT, AND IT IS NOT A CAP ON
+      // HOW MANY USERS AN ACCOUNT MAY HAVE. `JOBBER_USER_MAX_PAGES` exists so a
+      // cursor that never stops advancing — a Jobber bug, a schema change, a
+      // `hasNextPage` that stays true — cannot spin this handler forever against
+      // a remote API. Hitting it is a FAILURE, answered below; it is never a
+      // quietly shorter list.
+      if (pages >= JOBBER_USER_MAX_PAGES) {
+        await logError({
+          req,
+          error: new Error(
+            `jobber-users paging exceeded ${JOBBER_USER_MAX_PAGES} pages ` +
+            `(${allUsers.length} users so far, totalCount ${totalCount})`
+          ),
+          source: 'GET /api/admin/jobber-users',
+        });
+        return res.status(502).json({ error: 'Jobber user list is larger than expected' });
+      }
+      pages += 1;
+
       const afterArg = cursor ? `, after: "${cursor}"` : '';
-      const query = `{ users(first: 50${afterArg}) { nodes { id name { full } email { raw } } pageInfo { hasNextPage endCursor } totalCount } }`;
+      const query = `{ users(first: ${JOBBER_USER_PAGE_SIZE}${afterArg}) { nodes { id name { full } email { raw } } pageInfo { hasNextPage endCursor } totalCount } }`;
 
       const response = await retryWithBackoff(
         () => axios.post(
@@ -1130,6 +1229,10 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
             headers: {
               Authorization: `Bearer ${accessToken}`,
               'Content-Type': 'application/json',
+              // ⚠ PINNED. CLAUDE.md, Never Break → Jobber API. Do not change
+              // without verifying the changelog — and note that a newer version
+              // in someone's GraphiQL explorer can return fields this client
+              // would never receive.
               'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
             },
           }
@@ -1138,16 +1241,78 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
       );
 
       const usersData = response.data?.data?.users;
-      if (!usersData) break;
 
-      if (totalCount === null) totalCount = usersData.totalCount;
+      // ⚠ THIS WAS `if (!usersData) break;` AND THAT WAS A SILENT PARTIAL
+      // SUCCESS — THE DEFECT THIS PHASE EXISTS TO CLOSE.
+      // Jobber answers a GraphQL failure with **HTTP 200** and an `errors` array,
+      // so `jobberShouldRetry` — which reads only `error.response.status` — never
+      // sees it, `retryWithBackoff` resolves happily, and `data.users` is
+      // undefined. The old `break` then returned **200 with whatever had been
+      // collected so far**: a truncated list on page 2 of 3, or an EMPTY list if
+      // page 1 failed, indistinguishable from an account with no users. An admin
+      // would search for a colleague, not find them, and conclude that person is
+      // not in Jobber. Failing loudly is the whole point of the ruling: any user
+      // must be selectable, and a list that quietly lost people cannot honour it.
+      if (!usersData) {
+        const gqlErrors = response.data?.errors;
+        await logError({
+          req,
+          error: new Error(
+            `jobber-users page ${pages} returned no users payload` +
+            (gqlErrors ? `: ${JSON.stringify(gqlErrors).slice(0, 400)}` : '')
+          ),
+          source: 'GET /api/admin/jobber-users',
+        });
+        // 502, not 500: the failure is upstream, and the body says nothing about
+        // why — CLAUDE.md, error responses never expose internals.
+        return res.status(502).json({ error: 'Could not load the full Jobber user list' });
+      }
+
+      if (totalCount === null) totalCount = usersData.totalCount ?? null;
       allUsers.push(...(usersData.nodes || []));
 
       const pageInfo = usersData.pageInfo;
       cursor = pageInfo?.hasNextPage ? pageInfo.endCursor : null;
     } while (cursor);
 
-    res.json({ users: allUsers, totalCount: totalCount ?? allUsers.length });
+    // ⚠ A SHORTFALL AGAINST Jobber'S OWN COUNT IS A TRUNCATION WE WOULD
+    // OTHERWISE SHIP AS SUCCESS. Measured against Accent's live account on
+    // 2026-09-17: `users(first: 50) { totalCount }` returned **147**, and
+    // totalCount is the CONNECTION total rather than the page's — which is what
+    // makes this comparison meaningful at all.
+    // ⚠ DELIBERATELY ASYMMETRIC. Fewer than promised is a real loss and fails.
+    // MORE than promised is odd but loses nobody, so it is logged and served —
+    // a strict equality here would turn a harmless upstream quirk into an
+    // outage on a live admin screen, which is the wrong trade for a count we do
+    // not control.
+    if (totalCount != null && allUsers.length < totalCount) {
+      await logError({
+        req,
+        error: new Error(`jobber-users collected ${allUsers.length} of ${totalCount} users across ${pages} page(s)`),
+        source: 'GET /api/admin/jobber-users',
+      });
+      return res.status(502).json({ error: 'Could not load the full Jobber user list' });
+    }
+    if (totalCount != null && allUsers.length > totalCount) {
+      await logError({
+        req,
+        error: new Error(`jobber-users collected ${allUsers.length} users but totalCount was ${totalCount}`),
+        source: 'GET /api/admin/jobber-users',
+      });
+    }
+
+    const payload = { users: allUsers, totalCount: totalCount ?? allUsers.length };
+
+    // Cache AFTER every integrity check above, so a partial list can never be
+    // stored and then served as fresh for the next ten minutes.
+    await pool.query(
+      `INSERT INTO admin_cache (contractor_id, cache_key, data, cached_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (contractor_id, cache_key) DO UPDATE SET data = EXCLUDED.data, cached_at = NOW()`,
+      [contractorId, JOBBER_USERS_CACHE_KEY, JSON.stringify(payload)]
+    );
+
+    res.json({ ...payload, cached: false });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/jobber-users' });
     res.status(500).json({ error: 'Internal server error' });

@@ -4198,6 +4198,140 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-3.5/3.6 — the live Jobber verification, the two-pipeline ruling, and the picker (filed 2026-09-17)
+
+- [x] **✅ VERIFICATION RECORD — GraphiQL against Accent's LIVE Jobber account, 2026-09-17.**
+      ⚠ **RUN IN THE EXPLORER AT VERSION `2026-05-12`; OUR CLIENT PINS `2026-02-17`. THIS IS
+      STRONG EVIDENCE, NOT PROOF, FOR WHAT OUR CLIENT RECEIVES** — a newer version can return
+      fields and shapes ours never sees. Recorded as a dated record; **do not renumber or "update"
+      it**, and re-run rather than amend if the question returns.
+      **Established:**
+      · quote **`salesperson` is populated** — real names and ids;
+      · approved quotes carry **`lastTransitioned.approvedAt`** (an approved quote dated
+        2026-09-17), so `isQuoteEligible`'s path **can** fire;
+      · request **`salesperson` AND `assessment.assignedUsers` are BOTH populated** — and one real
+        request carried **TWO assigned users**, which is `resolveModeAMatch`'s `type: 'multiple'`
+        branch, i.e. **the co-assignment flag case exists in live data**;
+      · **"Referred by" is `CustomFieldText`**, and an unfilled value returns **`""`** rather than
+        being absent from the array — so `getReferredByValue`'s `.trim() || null` is correct, and
+        ⚠ **the Text-only inline fragment in `pipelineSync` and the client webhook is SAFE** (the
+        Text/Dropdown inconsistency raised in Canvass-3.5 Q5a is **closed, not a defect**);
+      · **`quoteStatus` is lowercase** (`approved`, `archived`, `awaiting_response`), so the
+        existing `!== 'archived'` comparison is **correct** — the casing risk is closed;
+      · **`users.totalCount` = 147** against a 50-per-page fetch.
+      ⚠ **WHAT WAS NOT ESTABLISHED, SAID SO IT IS NOT READ AS COVERED:**
+      · **Q3 — whether a plain Job carries a person — was NOT run**, because the request-trigger
+        ruling below made it unnecessary. **It remains unknown**, and any future design that wants
+        to attribute a client with no request at all must answer it first.
+      · **`customFieldConfigurations` returns a PERMISSIONS ERROR for this app's scope** — the
+        field type was confirmed via a client's own `customFields` instead. So
+        `discoverFields()` in `server/crm/jobber.js` cannot work for this app today. **Filed, not
+        fixed.**
+
+- [x] **✅ RULING — TWO PIPELINES, ONE OVERLAP (Danny, 2026-09-17). Widening attribution must not
+      widen outreach.**
+      **REFERRER PIPELINE — UNCHANGED.** Trigger: the client's **"Referred by"** custom field
+      carries a name. It alone drives `pipeline_cache`, automated outreach, pending-referral
+      records and referrer rewards. **No client without a referrer name receives RoofMiles outreach
+      by default.** No Canvass work changes this.
+      **REP ATTRIBUTION PIPELINE — WIDENED (Canvass-3.7).** Trigger: **a REQUEST is saved in
+      Jobber** — not the creation of a client profile, and not the "Referred by" field. It writes
+      `client_rep_assignments` only. **It sends NOTHING**: no outreach, no referrer record, no
+      pending invite. It answers one question — *whose book is this client in?*
+      **Rationale:** a rep is first attached to a client in Jobber at the request/appointment
+      stage, as salesperson or assigned user. Triggering at client-profile creation would flood the
+      admin queue with orphan flags for every client who never had a request.
+      **THE OVERLAP IS A JOIN, NOT A MERGE.** The rep's client list shows referral facts for
+      clients that carry them, because both records key on the same client. **Three states are
+      expected and all correct:** in both · rep-only (ordinary client with a request) ·
+      referrer-only (referred, but no request ever attached a rep).
+      ⚠ **THE FENCE CANVASS-3.7 MUST CARRY: no outreach, referrer record or pending invite may be
+      created by the request-triggered path.** Today **both pipelines run inside one function**
+      (`syncSingleClient`), so a careless widening sends messages to every client with a request.
+      **This is a TEST, not a note, and it needs a POSITIVE CONTROL — a referred client must still
+      produce its outreach**, or "nothing was sent" passes against a path that sends nothing to
+      anybody.
+      **RULED — SEPARATE CHECKS, NOT A SHARED BRANCH.** Each pipeline gets its own trigger and its
+      own check, each running independently. They are separate moments of progress in real life — a
+      client may be referred weeks before an appointment, or get an appointment having never been
+      referred — so they stay separate in code and mesh only by time and sequence, when both
+      records happen to exist for the same client. Concretely: *"has a referrer name?"* gates the
+      referrer pipeline; *"has a request?"* gates rep attribution. **Neither is nested inside the
+      other, and neither early-returns out of the other.**
+
+- [ ] ⚠ **CANVASS-3.7 MUST REPORT, NOT DECIDE — THE ELIGIBILITY ANCHOR.** Both eligibility checks
+      (`isQuoteEligible`, `isRequestEligible`) derive their window from `referralAnchor`, which is
+      **`pipeline_cache.created_at`** — read back from the upsert at `syncSingleClient`'s
+      referral-pipeline step — and **both FAIL CLOSED when it is missing** (`if (!referralAnchor)
+      return false`). With separate checks there may be **no referral record at all**, so the
+      request-triggered path needs its own anchor. The request's own `createdAt` is the obvious
+      candidate, **but the choice changes which quotes and requests fall inside the ±7-day
+      `GRACE_MS` window.** ⚠ **Establish the options from source, say what each includes or
+      excludes, and BRING IT BACK FOR A RULING — do not pick one.**
+      **OWNER: Canvass-3.7, as a report.**
+
+- [x] **✅ CLOSED 2026-09-17 (Canvass-3.6) — THE JOBBER USER PICKER.**
+      ⚠ **THE STATED PROBLEM WAS NOT THE REAL ONE, AND THAT IS WORTH KEEPING.** The phase opened on
+      *"`users(first: 50)` caps the list, so ~97 of Accent's 147 users are unreachable."* **Measured
+      at `4df9e90` before any edit, that was false** — the handler already paged to exhaustion on
+      `pageInfo.hasNextPage`, and the client already filtered on name **and** email. **50 is a page
+      size.** Three real defects sat underneath, and those are what shipped:
+      · **the paging loop was UNBOUNDED** — now capped at 40 pages (2000 users) with a typed 502;
+      · 🔴 **`if (!usersData) break;` RETURNED 200 WITH A TRUNCATED LIST.** Jobber answers a GraphQL
+        failure with **HTTP 200 + an `errors` array**, and `jobberShouldRetry` reads only
+        `error.response.status`, so `retryWithBackoff` resolved happily. Page 2 failing gave a short
+        list; **page 1 failing gave an EMPTY list, indistinguishable from an account with no
+        users.** Now a typed 502, and **the failure is never cached**;
+      · **no cache** — now `admin_cache`, `cache_key = 'jobber_users'`, 600s, `?refresh=1` bypass,
+        reusing the pattern `GET /api/referrer/about` already uses rather than inventing a second.
+      **Plus a pre-existing defect the new tests surfaced:** `refreshTokenIfNeeded()` ran **before**
+      the token lookup and **throws** when no row exists, so the catch returned **500** and the
+      handler's own `503 'Jobber not connected'` was **unreachable dead code** — and
+      `AdminTeamSettings` branches on 503 to say *"Jobber not connected."*, so **the admin who most
+      needed the accurate message was guaranteed the generic one.** Fixed.
+
+- [ ] ⚠ **THE PICKER CANNOT MARK RETIRED/INACTIVE USERS, AND THE RULING REQUIRES IT.** Danny's
+      ruling is that retired users must be **selectable** — they are, since the list is unfiltered —
+      **and visibly marked**, which they are not. ⚠ **NOT BUILT, DELIBERATELY: whether `User`
+      carries a status/active/archived field AT OUR PINNED VERSION `2026-02-17` could not be
+      established.** Introspection needs a token, the local stack has **zero** rows in `tokens`, and
+      calling Accent's production account from a build environment is forbidden.
+      ⚠ **AND GUESSING IS NOT SAFE HERE: GraphQL has no optional field.** A selection naming a
+      field that does not exist fails the WHOLE query, so a wrong guess would take the picker from
+      "no marker" to "completely broken".
+      **THE QUERY TO RUN (explorer, and note the version it used):**
+      `query { __type(name: "User") { fields { name type { name kind ofType { name kind } } } } }`
+      **GOOD:** a field like `status`, `isActive`, `archived` or `deactivatedAt`. **BAD:** none —
+      then retired users cannot be distinguished at all and the marker half of the ruling is
+      unbuildable, which is itself the answer. **OWNER: whoever has the live account.**
+
+- [ ] ⚠ **THREE CITATIONS INTO `AdminTeamSettings.jsx` WERE ALREADY ROTTED BEFORE CANVASS-3.6 —
+      VERIFIED AT THEIR OLD LINES IN THE OLD REVISION, NOT ASSUMED.** `--changed-files` flagged
+      them as this commit's doing; none was.
+      · `:804` ← `CDL_3a_BUILD_SPEC.md` — cited as *"keys the Attributable toggle off
+        `member.is_field_rep`"*; at `4df9e90` that line is `{member.full_name || member.email}`.
+        ⚠ **And the rewire it instructs has since HAPPENED** (the toggle reads `localIsAttributable`),
+        so it is an inverted record as well as a rotted number.
+      · `:915` ← `CLAUDE_REGISTRY.md` — listed among *"13 further code sites citing #13 or #2a"*;
+        that line is the picker's own `{jobberSearch.trim().length > 0 && (`.
+      · `:1833` ← `CDL_3b_BUILD_SPEC.md` — cited as *"gates the deactivate control on `m.active`"*;
+        that line is `{m.full_name || m.email}`. **Same bullet Canvass-2 already corrected** for its
+        inverted reactivation claim.
+      ⚠ **A FOURTH, `docs/GROUND_TRUTH_2026-08-21.md`, IS EXEMPT BY NAME** — CLAUDE.md lists that
+      dated snapshot as one whose citations must never be shifted.
+      **Adding this commit's delta would have certified three wrong numbers as repaired.** Left
+      unrepaired; the fix is re-deriving each subject and citing it BY ROLE.
+      ⚠ **THIRD CONSECUTIVE PHASE IN WHICH EVERY FLAGGED CITATION WAS ALREADY WRONG** — which is
+      the measurement CLAUDE.md already records, reproducing. **OWNER: the post-Canvass
+      documentation-vs-source pass**, which is out of scope by ruling.
+
+- [ ] ⚠ **`server.js` HARDCODES `app.listen(4000)` — `PORT` IS IGNORED.** Found while trying to run
+      a second local instance for verification: it bound 4000, hit `EADDRINUSE`, and the
+      process-level handler exited it. Harmless in production (Railway routes to it) and a real
+      constraint locally — **you cannot run two instances, so a code change cannot be verified
+      end-to-end without restarting the one that is running.** Filed, not fixed: the port binding is
+      deploy-adjacent and `server.js` is a deliberately lean entry point.
+
 ### Canvass-3 — the rep prefix, and what establishing it found (filed 2026-09-17)
 
 - [x] **✅ THE `/api/rep/*` PREFIX IS COUNTED AND FENCED FROM ITS FIRST ROUTE.** Mounted at `'/'`

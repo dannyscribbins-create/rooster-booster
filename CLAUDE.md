@@ -344,8 +344,22 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1446 server tests across 235 suites, and 1126 React tests across 69 files** (measured 2026-09-17 by the Canvass-3 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1446 · suites 235 · pass 1446 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-3 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1460 server tests across 236 suites, and 1137 React tests across 70 files** (measured 2026-09-17 by the Canvass-3.6 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1460 · suites 236 · pass 1460 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-3.6 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  Server 1446 → 1460 is **+14**, the `it(` lines of one new file (`jobberUserPicker.test.js`);
+  suites 235 → 236 is that file's single `describe`. React files 69 → 70 is one new test file.
+  ⚠ **REACT WENT +11 WHILE THE NEW TEST FILE HOLDS 10, AND THE ELEVENTH IS THE POINT — THE SAME
+  SHAPE THIS FILE ALREADY RECORDS TWICE.** `adminBranding.test.jsx` walks four roots recursively
+  and emits ONE CASE PER SWEPT FILE; its walker **excludes `.test.` files but not ordinary ones**,
+  and **`src/utils` is one of the four roots**. This commit adds
+  `src/utils/jobberUserSearch.js` — a non-test file in a walked root — so the sweep gained a case
+  by itself. **10 + 1 = 11.**
+  ⚠ **AND IT WAS PROVEN, NOT INFERRED:** the util was moved aside and `adminBranding.test.jsx`
+  re-run — **61 → 60 → 61**. *A total one higher than the new tests account for is the only signal
+  this leaves*, and the breakdown is the only thing that can explain it. **Read the walker's roots
+  AND its exclusions before predicting** — the previous entry's arithmetic closed exactly because
+  its new file was a `.test.` file and was skipped; this one's did not.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-3 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.*
   **BOTH HALVES MOVED, AND THE SERVER HALF CAME FROM TWO FILES RATHER THAN ONE.** Server 1427 →
   1446 is **+19 = 15 + 4**: fifteen cases in the new `repRouteGuard.test.js`, and four added to an
   **EXISTING** `describe` in `sessionAuthInvariant.test.js` (the rep-prefix count, its allowlist
