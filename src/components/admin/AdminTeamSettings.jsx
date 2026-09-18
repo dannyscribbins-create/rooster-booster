@@ -7,6 +7,7 @@ import { usePermissions } from '../../hooks/useAdminPermissions';
 import { REGISTRY_SECTIONS, FINANCE_WALL_FLAGS, PERM_GROUPS } from '../../constants/registrySections.mjs';
 import AdminFlaggedAssignmentsQueue from './AdminFlaggedAssignmentsQueue';
 import { filterJobberUsers } from '../../utils/jobberUserSearch';
+import { jobberUserStatusLabel } from '../../utils/jobberUserStatus';
 import { getAdminToken } from '../../utils/authStorage';
 
 // ── PRESET DEFINITIONS (§8.1) ─────────────────────────────────────────────────
@@ -934,8 +935,35 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
                               onMouseEnter={e => { if (localJobberUserId !== u.id) e.currentTarget.style.background = AD.bgCard; }}
                               onMouseLeave={e => { if (localJobberUserId !== u.id) e.currentTarget.style.background = 'transparent'; }}
                             >
-                              <div style={{ fontSize: 13, fontWeight: localJobberUserId === u.id ? 500 : 400, color: localJobberUserId === u.id ? AD.blueText : AD.textPrimary }}>
-                                {u.name?.full || '—'}
+                              <div style={{ fontSize: 13, fontWeight: localJobberUserId === u.id ? 500 : 400, color: localJobberUserId === u.id ? AD.blueText : AD.textPrimary, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span>{u.name?.full || '—'}</span>
+                                {/* ⚠ THE MARKER INFORMS. IT DOES NOT FILTER AND IT DOES NOT
+                                    DISABLE — Canvass-3.6's ruling, because people leave and
+                                    their historical attribution still matters. This row keeps
+                                    its onClick, its cursor and its full opacity; the only thing
+                                    that changes is that a pill appears beside the name.
+                                    ⚠ DO NOT "TIDY" THIS BY GREYING THE ROW OR SKIPPING IT IN
+                                    filteredJobberUsers — a deactivated rep who closed jobs last
+                                    year is exactly who an admin comes here to map.
+                                    ⚠ AND THE LABEL IS THE VALUE JOBBER SENT, humanised and not
+                                    translated: DEACTIVATED, NOT_INVITED, SEND_INVITE and
+                                    RESEND_INVITE are four different situations, and naming them
+                                    all "Retired" would be wrong about three. The copy decision
+                                    waits on a count of how the 147 actually distribute — filed
+                                    on PRE_LAUNCH_CHECKLIST.md. */}
+                                {jobberUserStatusLabel(u.status) && (
+                                  <span
+                                    data-jobber-user-status={u.status}
+                                    style={{
+                                      fontSize: 10, lineHeight: 1.6, padding: '0 6px',
+                                      borderRadius: AD.radiusSm, whiteSpace: 'nowrap',
+                                      background: AD.bgCardTint, color: AD.textSecondary,
+                                      border: `1px solid ${AD.border}`,
+                                    }}
+                                  >
+                                    {jobberUserStatusLabel(u.status)}
+                                  </span>
+                                )}
                               </div>
                               {u.email?.raw && (
                                 <div style={{ fontSize: 11, color: AD.textTertiary }}>{u.email.raw}</div>

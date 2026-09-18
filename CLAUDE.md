@@ -344,8 +344,21 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1460 server tests across 236 suites, and 1137 React tests across 70 files** (measured 2026-09-17 by the Canvass-3.6 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1460 · suites 236 · pass 1460 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-3.6 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1466 server tests across 237 suites, and 1146 React tests across 71 files** (measured 2026-09-18 by the Canvass-3.6b commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1466 · suites 237 · pass 1466 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-3.6b COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  Server 1460 → 1466 is **+6**, a new NESTED `describe` inside an existing file; suites 236 → 237
+  is that nested block — **a nested describe adds a suite exactly as a top-level one does**, which
+  is the half that surprises people who expect "one file, one suite". React files 70 → 71 is one
+  new test file.
+  ⚠ **REACT WENT +9 FOR AN 8-CASE FILE, AND THIS TIME THE NINTH WAS PREDICTED BEFORE THE RUN
+  RATHER THAN RECONCILED AFTER IT.** `adminBranding.test.jsx` walks four roots and **`src/utils` is
+  one**; its walker skips `.test.` files but not ordinary ones, so the new
+  `src/utils/jobberUserStatus.js` adds a case by itself. **8 + 1 = 9**, and it was proven the same
+  way as last time — the util moved aside, `adminBranding` re-run: **62 → 61 → 62**.
+  ⚠ **TWO COMMITS RUNNING NOW. THE RULE IS NOT "REMEMBER THIS FILE" — IT IS: BEFORE PREDICTING A
+  REACT COUNT, ASK WHETHER THE COMMIT ADDS A NON-TEST FILE UNDER `src/components/admin`,
+  `src/constants`, `src/components/superAdmin` OR `src/utils`.** If it does, add one per file.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-3.6 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.*
   Server 1446 → 1460 is **+14**, the `it(` lines of one new file (`jobberUserPicker.test.js`);
   suites 235 → 236 is that file's single `describe`. React files 69 → 70 is one new test file.
   ⚠ **REACT WENT +11 WHILE THE NEW TEST FILE HOLDS 10, AND THE ELEVENTH IS THE POINT — THE SAME

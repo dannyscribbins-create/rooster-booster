@@ -302,6 +302,113 @@ describe('Canvass-3.6 — the Jobber user picker reaches every user, or fails lo
     assert.equal(Number(rows[0].n), 1);
   });
 
+  // ── 4b. THE `status` FIELD AND ITS DEGRADATION (Canvass-3.6b) ────────────
+  //
+  // ⚠ THE RISK THIS SECTION EXISTS FOR. `User.status` was introspected live on
+  // 2026-09-17 — but in an explorer running **2026-05-12**, while this client
+  // pins **2026-02-17**. GraphQL has no optional field: if `status` does not
+  // exist at our version the WHOLE query fails, which reaches the handler as
+  // `data.users === undefined` and — under the 502 rule this file already
+  // fences — would take the picker from "no marker" to **"no picker at all"**,
+  // on every contractor, permanently.
+  //
+  // The handler therefore requests `status` and retries ONCE without it on a
+  // FIRST-PAGE failure. These cases pin both halves and the boundary between
+  // them.
+  describe('the status field, requested optimistically', () => {
+    it('[RED] status is SELECTED in the query, and passed through to the client', async () => {
+      axios.post = async (url, body) => {
+        calls.push(body.query);
+        return page(
+          [{ ...user(1), status: 'DEACTIVATED' }, { ...user(2), status: 'ACTIVATED' }],
+          { hasNextPage: false, totalCount: 2 }
+        );
+      };
+      const { status, body } = await readJson(await get(token));
+      assert.equal(status, 200);
+      assert.match(calls[0], /status/, 'the query did not select status');
+      assert.equal(body.statusAvailable, true);
+      // ⚠ BOTH USERS ARE PRESENT. The ruling is that a deactivated user stays
+      // SELECTABLE — the route must never filter on this field, and a test that
+      // only checked the value passed through would not notice if it did.
+      assert.equal(body.users.length, 2);
+      assert.equal(body.users.find(u => u.id === 'usr_1').status, 'DEACTIVATED');
+      assert.equal(body.users.find(u => u.id === 'usr_2').status, 'ACTIVATED');
+    });
+
+    it('[RED] a first-page failure WITH status retries WITHOUT it and serves the full list', async () => {
+      // The degradation. Failing here instead would be the "no picker" outcome.
+      let n = 0;
+      axios.post = async (url, body) => {
+        n += 1;
+        calls.push(body.query);
+        if (/status/.test(body.query)) return gqlError("Field 'status' doesn't exist on type 'User'");
+        return page([user(1), user(2)], { hasNextPage: false, totalCount: 2 });
+      };
+
+      const { status, body } = await readJson(await get(token));
+      assert.equal(status, 200, 'an unknown status field took the whole picker down');
+      assert.equal(body.users.length, 2, 'the fallback did not return the full list');
+      // ⚠ REPORTED, NOT SILENT. Without this the admin cannot tell "nobody is
+      // deactivated" from "we could not ask".
+      assert.equal(body.statusAvailable, false);
+      assert.equal(n, 2, 'expected exactly one retry');
+      assert.match(calls[0], /status/);
+      assert.ok(!/status/.test(calls[1]), 'the retry still selected status');
+    });
+
+    it('[RED] the retry happens ONCE — a second failure is still a 502', async () => {
+      // Guard-proof for the case above: a fallback that swallowed every failure
+      // would reintroduce the silent-truncation defect this file exists to close.
+      axios.post = async (url, body) => { calls.push(body.query); return gqlError('Throttled'); };
+      const { status } = await readJson(await get(token));
+      assert.equal(status, 502);
+      assert.equal(calls.length, 2, 'expected one attempt with status and one without, then failure');
+    });
+
+    it('[RED] a failure on page TWO is a 502 — it does NOT retry without status', async () => {
+      // ⚠ THE BOUNDARY, AND IT IS THE CASE MOST LIKELY TO BE GOT WRONG. Once page
+      // one has succeeded WITH status, the field demonstrably exists — so a later
+      // failure is a real failure. Retrying mid-paging would also produce a list
+      // where some users carry a status and others do not, with nothing saying so.
+      let n = 0;
+      axios.post = async (url, body) => {
+        n += 1;
+        calls.push(body.query);
+        if (n === 1) return page([{ ...user(1), status: 'ACTIVATED' }], { hasNextPage: true, endCursor: '50', totalCount: 60 });
+        return gqlError('Throttled');
+      };
+      const { status } = await readJson(await get(token));
+      assert.equal(status, 502);
+      assert.equal(n, 2, 'page two was retried when it should have failed');
+      assert.ok(/status/.test(calls[1]), 'page two dropped status — it should not have');
+    });
+
+    it('[RED] every one of the five enum values survives the round trip unaltered', async () => {
+      // The route must not normalise, map or bucket these — the copy decision is
+      // open and belongs to the client. Four of the five are non-active.
+      const ENUM = ['ACTIVATED', 'DEACTIVATED', 'NOT_INVITED', 'RESEND_INVITE', 'SEND_INVITE'];
+      axios.post = async () => page(
+        ENUM.map((s, i) => ({ ...user(i + 1), status: s })),
+        { hasNextPage: false, totalCount: 5 }
+      );
+      const { body } = await readJson(await get(token));
+      assert.deepEqual(body.users.map(u => u.status), ENUM);
+    });
+
+    it('a cached response preserves statusAvailable', async () => {
+      axios.post = async (url, body) => {
+        if (/status/.test(body.query)) return gqlError('nope');
+        return page([user(1)], { hasNextPage: false, totalCount: 1 });
+      };
+      const first = await readJson(await get(token));
+      assert.equal(first.body.statusAvailable, false);
+      const second = await readJson(await get(token));
+      assert.equal(second.body.cached, true);
+      assert.equal(second.body.statusAvailable, false, 'the cache lost the flag');
+    });
+  });
+
   // ── 5. THE PINNED VERSION ─────────────────────────────────────────────────
   it('every Jobber request carries the PINNED API version, on every page', async () => {
     // CLAUDE.md, Never Break → Jobber API. Asserted on EVERY page rather than

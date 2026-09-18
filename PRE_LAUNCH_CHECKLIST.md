@@ -4227,6 +4227,18 @@ may legitimately change several of these subjects.*
         field type was confirmed via a client's own `customFields` instead. So
         `discoverFields()` in `server/crm/jobber.js` cannot work for this app today. **Filed, not
         fixed.**
+      **⚠ EXTENDED 2026-09-17 — `User.status` (introspection, same session, same caveat).**
+      `User` **HAS** a `status` field of type **`UserStatusEnum`**, with **five** values:
+      **`ACTIVATED` · `DEACTIVATED` · `NOT_INVITED` · `RESEND_INVITE` · `SEND_INVITE`**.
+      **Live proof the data is real:** the first user returned — Sandy Dawson — is **`DEACTIVATED`**.
+      `totalCount` = **147**. Also present on `User` and **deliberately not requested**:
+      `isAccountAdmin`, `isAccountOwner` (both Boolean) — out of scope, recorded so a later session
+      knows they exist rather than re-introspecting.
+      ⚠ **THE VERSION CAVEAT BINDS HARDER HERE THAN ANYWHERE ELSE IN THIS RECORD.** The explorer ran
+      **2026-05-12**; our client pins **2026-02-17**. **GraphQL has no optional field** — a selection
+      naming a field absent at our version fails the WHOLE query, so a naive `status` selection would
+      have taken the picker from *no marker* to **no picker at all**, permanently, for every
+      contractor. See the marker entry below for the shape chosen instead.
 
 - [x] **✅ RULING — TWO PIPELINES, ONE OVERLAP (Danny, 2026-09-17). Widening attribution must not
       widen outreach.**
@@ -4290,20 +4302,44 @@ may legitimately change several of these subjects.*
       `AdminTeamSettings` branches on 503 to say *"Jobber not connected."*, so **the admin who most
       needed the accurate message was guaranteed the generic one.** Fixed.
 
-- [ ] ⚠ **THE PICKER CANNOT MARK RETIRED/INACTIVE USERS, AND THE RULING REQUIRES IT.** Danny's
-      ruling is that retired users must be **selectable** — they are, since the list is unfiltered —
-      **and visibly marked**, which they are not. ⚠ **NOT BUILT, DELIBERATELY: whether `User`
-      carries a status/active/archived field AT OUR PINNED VERSION `2026-02-17` could not be
-      established.** Introspection needs a token, the local stack has **zero** rows in `tokens`, and
-      calling Accent's production account from a build environment is forbidden.
-      ⚠ **AND GUESSING IS NOT SAFE HERE: GraphQL has no optional field.** A selection naming a
-      field that does not exist fails the WHOLE query, so a wrong guess would take the picker from
-      "no marker" to "completely broken".
-      **THE QUERY TO RUN (explorer, and note the version it used):**
-      `query { __type(name: "User") { fields { name type { name kind ofType { name kind } } } } }`
-      **GOOD:** a field like `status`, `isActive`, `archived` or `deactivatedAt`. **BAD:** none —
-      then retired users cannot be distinguished at all and the marker half of the ruling is
-      unbuildable, which is itself the answer. **OWNER: whoever has the live account.**
+- [x] **✅ SHIPPED 2026-09-18 (Canvass-3.6b) — THE RETIRED-USER MARKER.** `status` is selected, passed
+      through, and rendered as a neutral pill beside any user who is not `ACTIVATED`.
+      ⚠ **THE MARKER INFORMS; IT NEVER FILTERS AND NEVER DISABLES** — the 3.6 ruling, because a
+      deactivated rep who closed jobs last year is exactly who an admin comes here to map. The row
+      keeps its `onClick`, its cursor and its full opacity. **No sorting and no grouping were added**:
+      the route returns Jobber's own order across pages, re-sorting would make the list unstable
+      between a cached and a fresh fetch (an existing test pins order), and a collapsed group can
+      hide someone — which the ruling forbids.
+      **THE VERSION RISK, AND THE SHAPE CHOSEN FOR IT.** `status` is requested **optimistically**,
+      and on a **FIRST-PAGE** failure the route retries **once without it**. So an absent field
+      degrades to *a full, correct, selectable list with no marker* rather than to an error page.
+      ⚠ **FIRST PAGE ONLY, DELIBERATELY:** once page one succeeds WITH `status` the field
+      demonstrably exists, so a later failure is a real failure and still 502s — and retrying
+      mid-paging would yield a list where an arbitrary subset carries a status and nothing says so.
+      ⚠ **THE TRADE, STATED:** a transient first-page throttle also triggers the fallback, so the
+      list is served unmarked and cached that way for the TTL. That is **logged**, and reported as
+      **`statusAvailable: false`** in the payload — which is what lets a reader tell *"nobody is
+      deactivated"* from *"we could not ask"*.
+
+- [ ] ⚠ **THE MARKER'S COPY IS STILL OPEN, AND IT WAITS ON A COUNT — THIS IS THE HALF 3.6b DID NOT
+      DECIDE.** Only `ACTIVATED` means a working account. ⚠ **THE OTHER FOUR ARE NOT ALL "RETIRED":**
+      `DEACTIVATED` is a person who left; `NOT_INVITED`, `SEND_INVITE` and `RESEND_INVITE` describe
+      someone **never fully set up**, which is a different fact about a different person. Collapsing
+      the four into one word would be **wrong about three of them**.
+      **So 3.6b ships copy-neutral:** the value Jobber sent is humanised and passed through
+      (`DEACTIVATED` → "Deactivated", `NOT_INVITED` → "Not invited"). It is a transformation, not a
+      translation, and it invents no buckets. `src/utils/jobberUserStatus.js` carries a standing
+      note forbidding a friendlier map until the counts exist.
+      **THE QUERY FOR DANNY — count the 147 by status.** Try (1); if `users` rejects a `filter`
+      argument, (2) always works.
+      **(1) one request, five totals — only if the filter is supported:**
+      `query { activated: users(first: 1, filter: { status: ACTIVATED }) { totalCount } deactivated: users(first: 1, filter: { status: DEACTIVATED }) { totalCount } notInvited: users(first: 1, filter: { status: NOT_INVITED }) { totalCount } resend: users(first: 1, filter: { status: RESEND_INVITE }) { totalCount } send: users(first: 1, filter: { status: SEND_INVITE }) { totalCount } }`
+      **(2) fetch-all and tally — two pages at 100, id and status only:**
+      `query Q($after: String) { users(first: 100, after: $after) { totalCount nodes { id status } pageInfo { hasNextPage endCursor } } }`
+      ⚠ **DO NOT INVENT LABELS FOR BUCKETS THAT MAY BE EMPTY.** If all 146 non-Sandy users are
+      `ACTIVATED`, the marker is a rarity and needs no vocabulary at all; if a third are
+      `NOT_INVITED`, that is a different UI question and possibly a different conversation about
+      Jobber hygiene. **OWNER: Danny runs it; the copy ruling follows.**
 
 - [ ] ⚠ **THREE CITATIONS INTO `AdminTeamSettings.jsx` WERE ALREADY ROTTED BEFORE CANVASS-3.6 —
       VERIFIED AT THEIR OLD LINES IN THE OLD REVISION, NOT ASSUMED.** `--changed-files` flagged
@@ -4317,8 +4353,14 @@ may legitimately change several of these subjects.*
       · `:1833` ← `CDL_3b_BUILD_SPEC.md` — cited as *"gates the deactivate control on `m.active`"*;
         that line is `{m.full_name || m.email}`. **Same bullet Canvass-2 already corrected** for its
         inverted reactivation claim.
+      · `:1512` ← `PRE_LAUNCH_CHECKLIST.md` — cited as having *"the same shape as the referral
+        deeplink"*; at `f04e9b1` that line is `}}`. **Added by Canvass-3.6b, verified the same way.**
       ⚠ **A FOURTH, `docs/GROUND_TRUTH_2026-08-21.md`, IS EXEMPT BY NAME** — CLAUDE.md lists that
-      dated snapshot as one whose citations must never be shifted.
+      dated snapshot as one whose citations must never be shifted. ⚠ **AND A FIFTH IS EXEMPT AS A
+      RECORD OF A ROT:** this file's own *"`CDL_3b_BUILD_SPEC.md:577` cites
+      `AdminTeamSettings.jsx:1833` — HEAD holds a style"* is **a sentence whose subject is that a
+      citation is wrong**, which CLAUDE.md exempts explicitly. Repairing it would destroy the
+      evidence it exists to hold.
       **Adding this commit's delta would have certified three wrong numbers as repaired.** Left
       unrepaired; the fix is re-deriving each subject and citing it BY ROLE.
       ⚠ **THIRD CONSECUTIVE PHASE IN WHICH EVERY FLAGGED CITATION WAS ALREADY WRONG** — which is

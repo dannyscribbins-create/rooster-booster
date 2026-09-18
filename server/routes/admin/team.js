@@ -1198,6 +1198,63 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
     let totalCount = null;
     let pages = 0;
 
+    // ── ⚠ THE `status` FIELD IS REQUESTED OPTIMISTICALLY AND FALLS BACK ─────
+    //
+    // Danny introspected Jobber on 2026-09-17 and `User.status` exists, typed
+    // `UserStatusEnum` with five values (ACTIVATED · DEACTIVATED · NOT_INVITED ·
+    // RESEND_INVITE · SEND_INVITE). ⚠ **BUT THE EXPLORER RAN 2026-05-12 AND WE
+    // PIN 2026-02-17.** That is evidence, not proof, for what OUR client
+    // receives — and the cost of being wrong is not a missing marker.
+    //
+    // ⚠ GRAPHQL HAS NO OPTIONAL FIELD. A selection naming a field that does not
+    // exist at our version fails the WHOLE query, which reaches this handler as
+    // `data.users === undefined` — indistinguishable from a throttle — and the
+    // integrity check below would answer **502**. The picker would go from "no
+    // marker" to **"no picker at all"**, on every contractor, permanently.
+    //
+    // THE CHOICE: request `status`, and on a FIRST-PAGE failure retry ONCE
+    // without it. Degrades to a full unmarked list rather than to an error, and
+    // costs nothing on the happy path — no introspection call, no version
+    // sniffing, no dependency on Jobber's error codes, which we would also be
+    // guessing at.
+    //
+    // ⚠ FIRST PAGE ONLY, AND THAT IS DELIBERATE. Once page one has succeeded WITH
+    // `status`, the field demonstrably exists — so a later page failing is a real
+    // failure and must still be a 502. Retrying mid-paging would also produce a
+    // list where some users carry a status and others do not, which is worse than
+    // failing: the marker would be absent for an arbitrary subset and nothing
+    // would say so.
+    //
+    // ⚠ THE TRADE, STATED RATHER THAN DISCOVERED: a TRANSIENT first-page error (a
+    // throttle) also triggers the fallback, so the list is served unmarked and
+    // cached that way for the TTL. That is a full, correct, selectable list
+    // missing one decoration — the right way to fail — and it is LOGGED and
+    // reported as `statusAvailable: false` rather than being silent.
+    let includeStatus = true;
+    let statusFellBack = false;
+
+    const fetchUsersPage = (afterArg, withStatus) => retryWithBackoff(
+      () => axios.post(
+        'https://api.getjobber.com/api/graphql',
+        {
+          query: `{ users(first: ${JOBBER_USER_PAGE_SIZE}${afterArg}) { nodes { id name { full } email { raw }${withStatus ? ' status' : ''} } pageInfo { hasNextPage endCursor } totalCount } }`,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            // ⚠ PINNED. CLAUDE.md, Never Break → Jobber API. Do not change
+            // without verifying the changelog — and note that a newer version
+            // in someone's GraphiQL explorer can return fields this client
+            // would never receive. That gap is the entire reason for the
+            // fallback above.
+            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          },
+        }
+      ),
+      { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+    );
+
     do {
       // ⚠ THE BOUND IS ON THE LOOP, NOT ON THE RESULT, AND IT IS NOT A CAP ON
       // HOW MANY USERS AN ACCOUNT MAY HAVE. `JOBBER_USER_MAX_PAGES` exists so a
@@ -1219,28 +1276,28 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
       pages += 1;
 
       const afterArg = cursor ? `, after: "${cursor}"` : '';
-      const query = `{ users(first: ${JOBBER_USER_PAGE_SIZE}${afterArg}) { nodes { id name { full } email { raw } } pageInfo { hasNextPage endCursor } totalCount } }`;
 
-      const response = await retryWithBackoff(
-        () => axios.post(
-          'https://api.getjobber.com/api/graphql',
-          { query },
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-              // ⚠ PINNED. CLAUDE.md, Never Break → Jobber API. Do not change
-              // without verifying the changelog — and note that a newer version
-              // in someone's GraphiQL explorer can return fields this client
-              // would never receive.
-              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
-            },
-          }
-        ),
-        { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-      );
+      let response = await fetchUsersPage(afterArg, includeStatus);
+      let usersData = response.data?.data?.users;
 
-      const usersData = response.data?.data?.users;
+      // THE ONE-SHOT DEGRADATION. See the block above the loop for why this is
+      // first-page-only and why it is not conditioned on Jobber's error shape.
+      if (!usersData && includeStatus && pages === 1) {
+        await logError({
+          req,
+          error: new Error(
+            'jobber-users: first page failed WITH `status` selected — retrying once without it. ' +
+            'If this recurs, `User.status` is probably absent at API version 2026-02-17 and the ' +
+            'marker cannot ship until the version moves. ' +
+            (response.data?.errors ? JSON.stringify(response.data.errors).slice(0, 300) : '')
+          ),
+          source: 'GET /api/admin/jobber-users',
+        });
+        includeStatus = false;
+        statusFellBack = true;
+        response = await fetchUsersPage(afterArg, false);
+        usersData = response.data?.data?.users;
+      }
 
       // ⚠ THIS WAS `if (!usersData) break;` AND THAT WAS A SILENT PARTIAL
       // SUCCESS — THE DEFECT THIS PHASE EXISTS TO CLOSE.
@@ -1301,7 +1358,17 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
       });
     }
 
-    const payload = { users: allUsers, totalCount: totalCount ?? allUsers.length };
+    // ⚠ `statusAvailable` IS REPORTED, NOT INFERRED FROM THE ROWS. "Did any user
+    // come back with a status?" is a different question — an account whose users
+    // are all ACTIVATED still has the field, and an account that fell back has
+    // none. The flag says which QUERY succeeded, which is the thing a reader
+    // actually needs in order to tell "no marker because nobody is deactivated"
+    // from "no marker because the field is unavailable at our version".
+    const payload = {
+      users: allUsers,
+      totalCount: totalCount ?? allUsers.length,
+      statusAvailable: !statusFellBack,
+    };
 
     // Cache AFTER every integrity check above, so a partial list can never be
     // stored and then served as fresh for the next ten minutes.
