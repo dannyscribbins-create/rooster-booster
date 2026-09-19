@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v2.2 — amended 2026-09-17, Canvass-2: eleven Canvass-1 rulings are recorded before the build (§23, amendment A34) — the rep column's ground, the faded-text constant, the admin-route boundary, app-membership display, Today's Focus, the revenue-empty state, the rep's flag scope, the cross-rep 404, the Security row, seeder placement and the broken-logo state. ⚠ **A34 settles THREE of A33's four owed amendments — U14, the `--rm-bg` flooring gap and U25 — and leaves `U2` OWED.** ⚠ **THE NEXT FREE AMENDMENT IS `A35`** *(verified free 2026-09-17 by `git grep` and a working-tree grep, both word-anchored, zero hits in either)*. Previously v2.1, amended 2026-09-16, Preview-1 Part 1: the remaining rep-arc phases are named `Canvass-1`…`Canvass-n` and the build order is Palette → the referrer dashboard preview (real mount) → Canvass (§22, amendment A33). Previously v2.0, amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A34 — ⚠ **A33 WAS TAKEN 2026-09-16 by §22 / v2.1** — ⚠ **AND A34 WAS TAKEN 2026-09-17 by §23 / v2.2; THE NEXT FREE AMENDMENT IS `A35`**** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
+**Status:** LOCKED v2.3 — amended 2026-09-19, Canvass-attribution-model: **the attribution model is ruled and filed before it is built** (§24, amendment A35) — the governing principle that entry path and credit are independent, the seven entry paths, referral inheritance, rep-linked provisional signups, floaters, and the inbound-referral notice; **eight edges named and deliberately NOT resolved**; the prerequisites that block all of it; and ⚠ **seven recorded COLLISIONS with what is already built or ruled — chief among them C1, that the shipped engine attributes from CRM work artifacts and not from a referral chain at all.** ⚠ **THE NEXT FREE AMENDMENT IS `A36`** *(verified free 2026-09-19 by `git grep` and a working-tree grep, both word-anchored, zero hits in either — and zero even unanchored)*. Previously v2.2, amended 2026-09-17, Canvass-2: eleven Canvass-1 rulings are recorded before the build (§23, amendment A34) — the rep column's ground, the faded-text constant, the admin-route boundary, app-membership display, Today's Focus, the revenue-empty state, the rep's flag scope, the cross-rep 404, the Security row, seeder placement and the broken-logo state. ⚠ **A34 settles THREE of A33's four owed amendments — U14, the `--rm-bg` flooring gap and U25 — and leaves `U2` OWED.** ⚠ **THE NEXT FREE AMENDMENT IS `A35`** *(verified free 2026-09-17 by `git grep` and a working-tree grep, both word-anchored, zero hits in either)*. ⚠ **SUPERSEDED 2026-09-19 — `A35` WAS TAKEN BY §24 / v2.3; the live pointer is the v2.3 clause at the head of this line. The sentence before this one is the dated record of 2026-09-17 and is deliberately not repaired in place.** Previously v2.1, amended 2026-09-16, Preview-1 Part 1: the remaining rep-arc phases are named `Canvass-1`…`Canvass-n` and the build order is Palette → the referrer dashboard preview (real mount) → Canvass (§22, amendment A33). Previously v2.0, amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A34 — ⚠ **A33 WAS TAKEN 2026-09-16 by §22 / v2.1** — ⚠ **AND A34 WAS TAKEN 2026-09-17 by §23 / v2.2; THE NEXT FREE AMENDMENT IS `A35` — ⚠ **AND A35 WAS TAKEN 2026-09-19 by §24 / v2.3; THE NEXT FREE AMENDMENT IS `A36`** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -872,6 +872,14 @@ is the record of its own day's ruling, and this is a third correction stacked on
 rewrite of either. ⚠ **A35 was verified free by BOTH a `git grep` and a working-tree grep,
 word-anchored — zero hits in either**, which is the check A33.1 requires and the one A31's
 reservation defeated.
+⚠ **AND A35 IS NOW TAKEN — 2026-09-19, by §24 / v2.3 (the attribution model: how credit is
+decided). THE NEXT FREE AMENDMENT IS `A36`.** *(Filed by the Canvass-attribution-model pass.)*
+**All three lines above are left exactly as written** — each is the record of its own day's ruling,
+and this is a fourth correction stacked on them rather than a rewrite of any. ⚠ **`A36` was verified
+free by BOTH a `git grep` and a working-tree grep, word-anchored — zero hits in either, and zero
+even UNANCHORED**, which is what distinguishes it from `A35`: an unanchored search for `A35` returns
+a `package-lock.json` integrity hash, **the A32 / `#A32D2D` trap reproducing itself one amendment
+along.**
 this paragraph was real when this section was written, hours earlier; the amendment it was held
 for **records a "pin the referrer tree to light mode" decision that was ruled against** — replaced
 by a writer-side guard on the `theme_mode` setter — **so A31's text was never written and has no
@@ -1288,3 +1296,256 @@ ruled. Adjacent to U21 and sharper than it.
 
 **Next free amendment: `A35`.** *(Verified free by `git grep` and a working-tree grep, word-anchored,
 2026-09-17 — zero hits in either.)*
+⚠ **AND `A35` IS NOW TAKEN — 2026-09-19, by §24 / v2.3 (the attribution model). THE NEXT FREE
+AMENDMENT IS `A36`.** *(Filed by the Canvass-attribution-model pass.)* **The line above is left
+exactly as written** — it is the record of A34's own day, and a record repaired in place stops being
+evidence. This is the correction, not a rewrite.
+
+---
+
+## 24. Amendments — v2.3, 2026-09-19 (the attribution model: how credit is decided)
+
+**Amendment A35.** *(Ruled by Danny, 2026-09-18. Written 2026-09-19, in the Canvass-attribution-model
+docs commit. No code, no schema, no tests — this amendment files a model the built system does not
+implement.)*
+
+⚠ **`A35` WAS CONFIRMED FREE BY BOTH A `git grep` AND A WORKING-TREE grep, EACH WORD-ANCHORED, PER
+A33.1's OWN WARNING AND THE A31/A32 LESSON.** Seven hits, every one of them the *"the next free
+amendment is `A35`"* pointer itself — this file's Status line, §21's correction stack, §23's
+free-check note, §23's closing pointer, and two entries in `PRE_LAUNCH_CHECKLIST.md`. **None is a
+reservation.** ⚠ **AND THE A32 / `#A32D2D` TRAP REPRODUCED ITSELF ONE AMENDMENT ALONG, WHICH IS WHY
+THE ANCHOR IS NOT OPTIONAL:** a bare-substring search for `A35` returns an **eighth** hit —
+`package-lock.json`'s integrity hash `sha512-tD40eHxA35h0PEIZNeIjkHoDR4YjjJp34biM0mDvplBe...`. **A
+base64 hash reads as a reservation from a distance and is not one.** `A36` returns **nothing at
+all**, in either search and even unanchored.
+
+### ⚠ WHY THIS IS FILED BEFORE ANYTHING IS BUILT
+
+Danny has ruled a **complete attribution model that the built system does not implement**. It is in
+the spec rather than in a handoff because **a ruling that lives only in a chat window is not a
+ruling anyone can find** — and because, as the collision table below records, several of its clauses
+**disagree with rules already locked or already shipped**. A model filed only where the collisions
+are invisible is a model that gets half-built twice.
+
+**3d and 3e build from this. Nothing here is built by it.**
+
+---
+
+### A35.1 — the governing principle: entry path and credit are independent
+
+**How a client ENTERS the system is independent of WHO GETS CREDIT. Credit follows one rule: the
+referral chain leads back to a rep, and that rep owns everyone below them in the chain. Entry path
+only determines how the chain is DISCOVERED.**
+
+⚠ **THIS IS A DIFFERENT RULE FROM THE ONE THE ENGINE IMPLEMENTS TODAY, AND THE DIFFERENCE IS NOT
+COSMETIC — SEE C1.** The shipped engine attributes from **CRM work artifacts**, not from a chain: an
+eligible quote's salesperson, then an assessment's assigned users, then a request's salesperson.
+**Credit currently follows whoever did the work in Jobber. A35.1 says credit follows the chain.** On
+a client where those two disagree, they name different reps and different money.
+
+### A35.2 — the seven entry paths, each to be accounted for with no blind spots
+
+Recorded in Danny's words, because the value of the enumeration is that it is **his** and complete:
+
+| # | entry path |
+|---|---|
+| **1** | **Traditional.** They call the office and book an appointment, and may or may not mention a referral. |
+| **2** | **Referred by an account holder.** Referred by someone with a RoofMiles referrer account; they book an inspection through the app, are called by the office, and added to Jobber. |
+| **3** | **Rep self-generated.** A rep's own self-generated lead, introduced to the app by that rep. |
+| **4** | **In Jobber, not in the app.** Already in Jobber, not using the RoofMiles app. |
+| **5** | **In Jobber, onboarded by a salesperson.** Already in Jobber, then onboarded to the app by a salesperson. |
+| **6** | **In Jobber, onboarded by automation.** Already in Jobber, then onboarded by automated outreach ahead of the assessment. |
+| **7** | **In Jobber, bought, unfinished signup, onboarded on project day.** Already in Jobber, has bought, did not finish signup via a salesperson's link, then onboarded on project day by a **NON-ATTRIBUTABLE** field rep. |
+
+⚠ **PATH 7's "NON-ATTRIBUTABLE" IS A COLUMN, NOT AN ADJECTIVE.** `team_members.is_attributable` is
+real and is already a hard predicate in the sticky gate's salesperson lookup — a quote's salesperson
+who is not attributable resolves **nobody**, and the gate falls through. So path 7's onboarding rep
+is, today, structurally incapable of receiving credit through any built path. **Edge (f) is what
+that leaves open.**
+
+### A35.3 — referral inheritance
+
+**A referral is attributed to the same rep as their referrer. The chain always credits back to the
+referrer's rep.**
+
+### A35.4 — rep-linked signups are provisional on the rep's action
+
+**A person who enters through a rep's own link or QR code is provisionally assigned to that rep
+immediately — a fact about the rep's ACTION, not about the client's outcome — firming up when an
+appointment is set and they are assigned in the CRM.**
+
+⚠ **THIS CLAUSE DESCRIBES SCHEMA THAT ALREADY EXISTS, AND HALF OF IT IS ALREADY BUILT AND FENCED.**
+`client_rep_assignments` carries a **two-stage** assignment — `provisional_rep_id` /
+`provisional_source` / `provisional_set_at` alongside `sticky_rep_id` / `sticky_source` /
+`sticky_set_at`. `provisional_source`'s CHECK is `('mode_a', 'mode_b', 'qr_link')` and
+`sticky_source` includes **`promoted_provisional`**, which is exactly the firming-up step this
+clause names. **The attribution engine already READS `qr_link` and gives it PRECEDENCE over both
+`mode_a` and `mode_b`**, in two places, with four tests pinning it. **What is missing is only the
+WRITE.** *That reframes the `qr_link` prerequisite below from "an unbuilt feature" to "a built path
+with no producer" — and proving a value is ignored is not proving nothing depended on it. Here a
+great deal already does.*
+
+### A35.5 — floaters belong to nobody, and that is correct
+
+**A person in the app with no chain leading to a rep belongs to nobody. That is correct, not a
+gap.**
+
+⚠ **THE SHIPPED ENGINE DISAGREES ON THE REFERRAL PATH, DELIBERATELY AND IN WRITING — SEE C4.**
+
+### A35.6 — the inbound-referral notice (a SURFACE, not a card)
+
+**When a referral enters the network without reaching their rep directly — they booked through the
+referrer's app link, or called the office saying they were referred, possibly without naming anyone
+— the rep is notified in Today's Focus and can see: the client's relationship to their referral
+network, whether they are in the app, their progress in their REFERRER's pipeline, their own
+progress if any, and can send or resend links to them.**
+
+⚠ **SCOPED HONESTLY, BECAUSE THE WORD "NOTICE" UNDERSELLS IT BY AN ORDER OF MAGNITUDE.** This is
+**nearer the Network tab's weight than a card**. It composes a relationship view, an app-membership
+state (A34.4's FOUR states, not a boolean), two separate pipeline positions, and a send/resend
+action. **Link sending is 3d's mint path and does not exist.** ⚠ **And "their progress in their
+REFERRER's pipeline" is the SECOND HOP that A34.5 deferred** — see C2. A35.6 does not re-open
+A34.5; it is blocked by the same prerequisite and must not be read as shipping ahead of it.
+
+---
+
+### ⚠ THE EDGES — NAMED, NOT RESOLVED
+
+**Danny has not ruled these and is deliberately not presented with a default.** Each is filed
+against **3d / 3e** with what makes it hard. ⚠ **TWO OF THE EIGHT TURNED OUT TO BE ALREADY RULED
+RATHER THAN OPEN, AND THEY ARE MARKED AS SUCH RATHER THAN QUIETLY ANSWERED** — presenting a locked
+rule as a blank invites re-deciding it by accident.
+
+| # | the edge | what makes it hard |
+|---|---|---|
+| **a** | A caller says they were referred but **cannot name the referrer**. | No chain exists, so A35.1 has nothing to follow. The open half is whether one can be **attached later by the office** — which means a retroactive write to an assignment that may already be sticky, plus a second question about whether attaching it moves money already booked. |
+| **b** | **The referrer's rep has left the company.** | Both rep FKs on `client_rep_assignments` are `ON DELETE SET NULL`, so a departed rep silently nulls the assignment rather than raising anything. **Inheriting from a null is indistinguishable from never having inherited.** |
+| **c** | **The referrer is themselves a floater.** | A35.3 says inherit from the referrer's rep; A35.5 says a floater has none. The chain terminates in nobody, and whether that makes the referral a floater too, or promotes the search one hop further up, is unruled. |
+| **d** | **A rep's self-generated lead with no referrer above them** (path 3). | The rep's claim comes from their ACTION, not from a chain — the one case A35.1's single rule does not cover. A35.4 is the nearest thing and it is about links, not about self-generated leads in general. |
+| **e** | ⚠ **A client ALREADY in one rep's book is onboarded to the app by a DIFFERENT rep** (path 7's shape). | **Two reps have a genuine claim and sticky is existing-wins.** ⚠ **PARTLY ALREADY RULED — SEE C3:** the locked Sticky rule already says a later conflicting event never overwrites, it **flags**, and `flagged_assignments.flag_reason` already carries `rep_co_assignment` as one of exactly two CHECK-enforced values. **The mechanism exists.** What is open is whether the onboarding rep's action is a conflicting event at all, and — given A34.7 — whether the resulting flag should be visible to the rep who raised it. |
+| **f** | **Path 7 specifically: the onboarding rep is NON-ATTRIBUTABLE. Does their action create any record at all?** | `is_attributable = false` is a hard predicate in the built gate, so today the answer is structurally "no record anywhere". If it is to become "yes, some record", that record cannot be an assignment row without changing what `is_attributable` means — **and that column gates money.** |
+| **g** | **Does inheritance CHAIN? One hop or unbounded?** | ⚠ **ALREADY RULED, AND RULED UNBOUNDED — SEE C5. THIS IS A CONFIRM-OR-OVERTURN, NOT A BLANK.** `docs/ASSIGNMENT_RULES_LOCKED.md`, assignment source #1's second clause: *"Inheritance fills ONLY currently-unassigned clients, at infinite depth down the referral chain."* Filed here because the model restates it as open; **if Danny rules one hop, that document is amended rather than merely supplemented.** |
+| **h** | **Does inheritance write PROVISIONAL or STICKY?** | ⚠ **THE PREMISE THAT MAKES THIS URGENT IS FALSE AS BUILT — SEE C6.** *"Sticky can never be corrected later"* is not true: the locked rules make Owner/Admin manual reassignment **source #4, the one path that supersedes sticky by design**, and `sticky_source = 'manual'` is already written by the resolve-assign surface. The question stays open and stays consequential, but for a **different and sharper reason**: the sticky gate **prefers an eligible quote's salesperson above a provisional**, so an inherited PROVISIONAL can be beaten by a quote salesperson and an inherited STICKY cannot. **The two answers pay different people.** |
+
+---
+
+### ⚠ WHAT BLOCKS ALL OF IT — THE PREREQUISITES, EACH WITH ITS EVIDENCE
+
+- ⚠ **THE REFERRAL LINK IS A NAME STRING.** `pipeline_cache.referred_by` is `VARCHAR(255)` with **no
+  foreign key**, and every consumer matches it as `LOWER(pipeline_cache.referred_by) =
+  LOWER(users.full_name)` — the pipeline sync, the admin referrer list's four status branches, the
+  referrer routes, and the rules engine. **A chain cannot be computed reliably on it.**
+  ⚠ **AND IT IS WORSE THAN "NO FK", WHICH IS THE PART THAT CHANGES THE DESIGN:**
+  `server/referralRules.js`'s referrer lookup resolves with **`LIMIT 1`**. Two referrers sharing a
+  full name do not produce a conflict, an error or a flag — **one of them is silently chosen, and
+  the row it chooses is written straight into `referral_conversions` with a `bonus_amount`.** A
+  chain built on this inherits that silent ambiguity **at every hop**. **Inheritance needs a real
+  relationship first**: a referrer id on the referred row, with an FK, written at the moment the
+  referral is made. **What that implies is that A35.3 is not a feature that can be scheduled — it is
+  downstream of a schema change nobody has specified.**
+- **Referral inheritance is recorded NOT IMPLEMENTED**, and the record is explicit rather than
+  inferred. `docs/ASSIGNMENT_RULES_LOCKED.md`'s FA-session verification **V1** states that source
+  #1's second clause *"is NOT implemented anywhere"*, that `server/utils/attributionEngine.js`
+  carries no `referred_by` / referrer / inheritance logic, and that this was confirmed by full-repo
+  grep. ⚠ **Re-verified twice this month, and the engine still carries none** — it reads
+  `referralAnchor` as a **timestamp** for grace-window arithmetic and never as a **relationship**.
+  That document's closing line already anticipates this amendment: *"If a future session finds V1 has
+  changed … the branch-cascade behavior of resolve-assign must be revisited."*
+- **`qr_link` is written by nothing; the mint path is 3d's.** The value exists in the
+  `provisional_source` CHECK, is read for precedence by the attribution engine, is labelled in the
+  rep client list, and is hand-seeded by tests. **No production code writes it**, and
+  `RepClientsScreen.jsx` already says so at the site. ⚠ **Per A35.4, this is a built path with no
+  producer rather than an unbuilt feature** — which makes it the cheapest of the prerequisites to
+  close, and the only one needing no schema change.
+- **CONV on Home — NOT "never", and the reason is scheduled to change.** Danny measured **2 rows in
+  `referral_conversions` for `accent-roofing-dev` on 2026-09-18**, so the table is **not empty** and
+  Canvass-6's open measurement is answered. Under A35.3 a conversion **would** have an honest rep.
+  ⚠ **AND THE BLOCKER MAY NOT BE THE ONE STATED — FILED AS AN OPEN QUESTION, NOT RESOLVED HERE.** A
+  rep-facing conversion count needs the **referrer's** rep, and a candidate join already exists
+  without any inheritance write: `referral_conversions.user_id` → `users.jobber_client_id` (A24.5's
+  own bridge) → `client_rep_assignments`. **Whether that column is populated for referrers has never
+  been measured**, and `users.jobber_client_id` is a nullable ALTER-added column, so it cannot be
+  assumed either way. **Measure before building, and before declaring it blocked.**
+
+---
+
+### ⚠ WHERE THIS MODEL COLLIDES WITH WHAT IS ALREADY BUILT OR RULED
+
+**This is the most valuable part of the amendment and it is deliberately not softened.** Each row is
+a real disagreement between A35 and something already locked, shipped, or ruled — found by reading
+the built engine and the locked rules against the model, **not by searching for a phrase**.
+
+**C1 — ⚠ THE ENGINE ATTRIBUTES FROM CRM WORK, NOT FROM A CHAIN. THIS IS THE DEEPEST COLLISION.**
+A35.1 says credit follows the referral chain. `server/utils/attributionEngine.js` resolves credit in
+a fixed order: an **eligible quote's salesperson** (`quote_salesperson`), then **promote the existing
+provisional** (`promoted_provisional`), then **Mode A's assessment assigned-users** or **Mode B's
+request salesperson** (`mode_a_at_close` / `mode_b_at_close`), then an **orphan flag**. ⚠ **Not one
+of those five paths consults a referral relationship.** So for a client referred by a homeowner whose
+rep is Rep A, but whose approved quote names Rep B as salesperson, **the built system credits Rep B
+and A35.3 credits Rep A.** Both are defensible rules; they are not the same rule, and the spec now
+contains both. **Which governs when they disagree is unruled, and is the single most consequential
+open question this amendment raises.**
+
+**C2 — A35.6's notice shows the SECOND HOP that A34.5 deferred, on a surface Canvass-6 just
+settled.** A34.5 ruled Today's Focus ships the **one-hop** version, with the second hop — the
+clients' own referrals — waiting for the referral link, and named the LABEL as the risk it carries.
+A35.6 puts the referral's *"progress in their REFERRER's pipeline"* into Today's Focus, which is
+second-hop data. ⚠ **And Canvass-6 shipped that surface as exactly TWO sections under ruling ④,
+deliberately NOT reproducing the mockup's two-hop banner copy**, on the grounds that it would put
+two-hop copy over one-hop data. **A35.6 adds a third element to a surface settled three days ago at
+two.** Not a contradiction of A34.5's reasoning — both are blocked by the same missing link — but
+**A35.6 must not be read as authorising the second hop before the link exists.**
+
+**C3 — edge (e)'s mechanism already exists, and edge (e) is filed as though it does not.** The locked
+Sticky rule already governs it: *"Existing-wins. The first assignment a client receives is sticky.
+Later conflicting events never overwrite it — they flag instead."* And the flag vocabulary is already
+CHECK-enforced at exactly two values, `orphan` and `rep_co_assignment`. ⚠ **A34.7 then ruled that
+reps see ONLY co-assignment flags naming them in `reps_involved`** — so if (e) resolves as a
+co-assignment flag, **the onboarding rep sees the flag they caused**, which A34.7 neither
+contemplated nor forbade.
+
+**C4 — ⚠ A35.5 SAYS A FLOATER IS CORRECT. THE SHIPPED ENGINE CALLS THAT SAME STATE AN INCIDENT, ON
+PURPOSE, AND RULING R3 LEFT IT THAT WAY ON 2026-09-18.** `runAttributionEngine`'s `writeOrphanOnMiss`
+**defaults to TRUE**, and its own comment gives the reason: *"the referral pipeline's orphan flag is
+a money question — a referral that resolves to no rep is an incident."* It writes a
+`flagged_assignments` orphan row **and an admin bell**. The request-driven path passes `false`; the
+referral path does not, and the comment explicitly forbids flipping the default *"for symmetry"*.
+**So on the referral path, A35.5's "correct, not a gap" is today an admin alert.** Whether A35.5
+narrows that default is unruled and **must not be inferred** — that comment is a fence against
+exactly this edit.
+
+**C5 — edge (g) is already ruled, and ruled the opposite way from "open".** Assignment source #1's
+second clause reads *"at infinite depth down the referral chain"*. **Unbounded, in a document marked
+LOCKED.** Filing (g) as a blank would invite a one-hop answer that silently amends a locked rule.
+
+**C6 — edge (h)'s stated premise is false, and the true reason it matters is sharper.** *"Sticky can
+never be corrected later"* is contradicted by the locked rules, which make Owner/Admin manual
+reassignment **source #4 — the one path that supersedes sticky by design** — and by
+`server/migrations/widen_sticky_source_check.js`, which added `'manual'` to the CHECK precisely so
+the resolve-assign surface could write it. ⚠ **The real consequence is ORDERING, not permanence:**
+the sticky gate tries an eligible quote's salesperson **before** promoting a provisional, so an
+inherited PROVISIONAL is beaten by any attributable quote salesperson while an inherited STICKY is
+not — the engine short-circuits on a set `sticky_rep_id` before the gate runs at all.
+
+**C7 — A35.4's two-stage model is already the schema's. A confirmation rather than a conflict, and
+recorded so nobody rebuilds it.** See A35.4: the provisional/sticky pair, `qr_link`'s precedence and
+`promoted_provisional` all exist and are tested. ⚠ **A session reading A35.4 as greenfield would
+design a second mechanism beside a working one.**
+
+---
+
+### ⚠ WHAT A35 DOES NOT DO
+
+- **It rules none of the eight edges.** They are named so the gaps are known rather than discovered —
+  the *"a tracking mechanism needs both halves"* obligation applied to a model.
+- **It rules no schema, no route shapes and no copy.** A35.3's relationship, A35.4's mint, A35.6's
+  surface and the CONV join are each **described**; none is **specified** here.
+- **It does not resolve C1.** The spec now carries two attribution rules that disagree, and saying so
+  is the whole point of filing this before 3d.
+- **It does not amend `docs/ASSIGNMENT_RULES_LOCKED.md`.** That document stands as written; C5 and C6
+  record where the model and the locked rules meet, and any actual amendment is a separate,
+  deliberate act.
+- **It builds nothing.** No `src/`, no `server/`, no tests, no schema.
+
+**Next free amendment: `A36`.** *(Verified free 2026-09-19 by `git grep` and a working-tree grep,
+word-anchored — zero hits in either, and zero even unanchored.)*

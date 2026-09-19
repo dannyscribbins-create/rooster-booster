@@ -3404,6 +3404,14 @@ root cause, and patching them separately produces six unrelated special cases)
       Preview-1 Part 1.)*
       ⚠ **AND `A34` IS NOW TAKEN — 2026-09-17, by `DECISION_C_DL_BUILD_SPEC.md` §23 / v2.2
       (Canvass-1's eleven rulings). THE NEXT FREE AMENDMENT IS `A35`.** *(Filed by Canvass-2.)*
+      ⚠ **AND `A35` IS NOW TAKEN — 2026-09-19, by `DECISION_C_DL_BUILD_SPEC.md` §24 / v2.3 (the
+      attribution model). THE NEXT FREE AMENDMENT IS `A36`.** *(Filed by the
+      Canvass-attribution-model pass.)* **`A36` was verified free by BOTH a `git grep` and a
+      working-tree grep, word-anchored — zero hits in either, AND ZERO EVEN UNANCHORED.** ⚠ **That
+      last clause is the one that matters: an UNANCHORED search for `A35` returns a
+      `package-lock.json` integrity hash, which is the `A32` / `#A32D2D` trap reproducing itself one
+      amendment along.** This is the fourth correction stacked on this entry; every line above is a
+      record of its own day and none is rewritten.
       **Verified free by BOTH a `git grep` and a working-tree grep, word-anchored — zero hits in
       either**, which is the check A31's reservation defeated and A33.1 now requires. ⚠ **This is the
       third correction stacked on this entry and each one is additive**; the lines above are records
@@ -4198,6 +4206,79 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-attribution-model — the credit rule is FILED, not built (docs only, 2026-09-19)
+
+- [x] **✅ A35 IS FILED — `DECISION_C_DL_BUILD_SPEC.md` §24 / v2.3.** Danny's complete attribution
+      model (ruled 2026-09-18): **A35.1** entry path and credit are independent, credit follows the
+      referral chain · **A35.2** the seven entry paths · **A35.3** referral inheritance · **A35.4**
+      rep-linked signups are provisional on the rep's action · **A35.5** floaters belong to nobody and
+      that is correct · **A35.6** the inbound-referral notice. **Eight edges are NAMED AND DELIBERATELY
+      NOT RESOLVED** (a–h), each with what makes it hard. **Next free amendment: `A36`.**
+      ⚠ **NOTHING WAS BUILT AND NOTHING MAY BE READ AS AUTHORISED BY IT.** No `src/`, no `server/`, no
+      tests, no schema. **3d and 3e build from it.**
+      → `DECISION_C_DL_BUILD_SPEC.md` §24 · `docs/ASSIGNMENT_RULES_LOCKED.md`
+
+- [ ] 🔴 **C1 — THE MODEL AND THE SHIPPED ENGINE ATTRIBUTE BY DIFFERENT RULES, AND BOTH ARE NOW IN THE
+      SPEC. THIS IS THE OPEN QUESTION THAT MATTERS MOST.** A35.1 says credit follows the referral
+      chain. `runAttributionEngine`'s sticky gate resolves credit from **CRM work artifacts** in a
+      fixed order — an eligible quote's salesperson, then promote the existing provisional, then Mode
+      A's assessment assigned-users or Mode B's request salesperson, then an orphan flag — and **not
+      one of those five paths consults a referral relationship.** On a client referred by a homeowner
+      whose rep is Rep A, whose approved quote names Rep B as salesperson, **the built system credits
+      Rep B and A35.3 credits Rep A.** ⚠ **Both rules are defensible; they are not the same rule, and
+      which governs when they disagree is UNRULED.** **OWNER: Danny, before 3d writes anything to
+      `client_rep_assignments`.**
+
+- [ ] 🔴 **C4 — A35.5 CALLS A FLOATER CORRECT; THE ENGINE CALLS THAT SAME STATE AN INCIDENT, ON
+      PURPOSE.** `runAttributionEngine`'s `writeOrphanOnMiss` **defaults TRUE**, writing a
+      `flagged_assignments` orphan row **and an admin bell**, because *"a referral that resolves to no
+      rep is a money question."* Ruling R3 (2026-09-18) left that explicitly unchanged, and the
+      parameter's own comment forbids flipping the default *"for symmetry"*. **Whether A35.5 narrows
+      it is unruled and must NOT be inferred** — that comment is a fence against exactly this edit.
+
+- [x] **✅ TWO OF THE EIGHT EDGES WERE ALREADY RULED, AND ARE FILED AS CONFIRM-OR-OVERTURN RATHER
+      THAN AS BLANKS.** **(g) does inheritance chain?** — already ruled **UNBOUNDED** by
+      `docs/ASSIGNMENT_RULES_LOCKED.md`'s assignment source #1, second clause, in a document marked
+      LOCKED. **(h) provisional or sticky?** — its stated premise (*"sticky can never be corrected
+      later"*) is **false as built**: the locked Sticky rule makes Owner/Admin manual reassignment the
+      one path that supersedes sticky by design, and `'manual'` is already a permitted
+      `sticky_source`. ⚠ **PRESENTING A LOCKED RULE AS AN OPEN QUESTION INVITES RE-DECIDING IT BY
+      ACCIDENT**, which is why both are marked in place.
+
+- [ ] ⚠ **A PATTERN WORTH RECOGNISING, RECORDED ONCE AND BY ROLE: `team_members.id` IS GLOBALLY
+      UNIQUE, AND THAT HAS NOW TWICE MADE A TENANCY ASSERTION LOOK TESTED WHEN IT WAS NOT.** Because
+      the id is unique across every contractor, **a rep-id filter already excludes an ordinary
+      cross-tenant row on its own** — so a `contractor_id` predicate sitting beside it can be doing no
+      work at all while every test stays green.
+      **Both instances, each found by a guard-proof and not by reading:**
+      · **Canvass-4** — deleting the `contractor_id` predicate from the rep-clients query left the
+      whole suite GREEN; the repair added the one fixture that makes the clause falsifiable.
+      · **Canvass-6** — the own-book predicate's own comment claimed all four per-screen result
+      assertions caught both halves. **A guard-proof showed that was false: breaking the contractor
+      half takes exactly ONE case red** (the mis-tenanted row), while breaking the rep-id half takes
+      five across three screens. The comment now says so.
+      ⚠ **THE GENERAL FORM: a tenancy clause guarded only by a globally-unique key is UNFALSIFIABLE
+      unless the fixture is a row naming one tenant while pointing at another tenant's rep** — a shape
+      the schema permits and nothing else produces. **Whenever a query gains a `contractor_id`
+      predicate beside a `team_members.id` one, guard-proof the contractor half separately, or it is
+      not fenced.** → `server/utils/repBook.js`'s own-book predicate comment
+
+- [ ] ⚠ **`ROLE_ONLY_BASELINE` HAS BEEN BREACHED AT HEAD FOR SOME TIME, AND THIS PASS MEASURED IT
+      RATHER THAN INHERITING THE NUMBER.** `npm run citecheck -- --role-only` reports **counted 807
+      against a baseline of 782 (+25)**. ⚠ **THE BREACH IS NOT THIS COMMIT'S.** Measured both ways:
+      with this commit's two files stashed, HEAD `3f715c2` reports **the identical 807**, and the new
+      §24 section contains **zero** line citations by direct grep. **This commit cites entirely by
+      role.**
+      ⚠ **AND THE BASELINE'S OWN COMMENT IS THE TELL:** *"measured 2026-08-31, HEAD `255f1b3` + this
+      commit"* — the whole Palette and Canvass arcs have landed since, so **a tripwire that fires on
+      every run stops being read**, which is the failure mode this repo has recorded for the test-count
+      floor three separate times.
+      ⚠ **DO NOT RAISE THE BASELINE TO SILENCE IT** — the script's own header forbids exactly that,
+      and raising it would certify 25 unlocated citations as intentional. **The job is to LOCATE the
+      25, then either repair them to role form or wrap the genuine records in
+      `citecheck:record` markers, and only then re-measure.** **OWNER: unassigned — a standalone docs
+      pass, not a rider on a build phase.**
+
 ### Canvass-6 — the Home tab: Today's Focus and the stats (SHIPPED 2026-09-18)
 
 - [x] **✅ RULING ④ — TWO HONEST SECTIONS (Danny, 2026-09-18).** *Furthest along* ranks clients that
@@ -4247,6 +4328,19 @@ may legitimately change several of these subjects.*
       of Danny's own instruction is the one taken. **Re-adding it is one entry in `STAT_CARDS` plus
       one `COUNT(*) FILTER` in the Home query.** `referral_conversions` is 0 rows on the local
       stack, for what that is worth. **OWNER: Danny runs the count; trivially reversible either way.**
+      ⚠ **MEASURED 2026-09-18 BY DANNY: `referral_conversions` HOLDS 2 ROWS FOR `accent-roofing-dev`.
+      THE TABLE IS NOT EMPTY, AND THE "always reads 0" GROUND FOR DROPPING THE CARD IS GONE.**
+      ⚠ **BUT THE CARD IS STILL NOT BUILDABLE TODAY, FOR A REASON THAT IS SCHEDULED TO CHANGE RATHER
+      THAN A PERMANENT ONE — FILE IT THAT WAY, NOT AS "never".** A rep-facing conversion count has to
+      credit a conversion to a rep, and under A35.3 the honest answer is **the REFERRER's rep**.
+      ⚠ **AND THE BLOCKER MAY NOT BE THE ONE EVERYONE HAS ASSUMED, WHICH IS WHY THIS STAYS OPEN
+      RATHER THAN BEING CLOSED EITHER WAY.** "Referral inheritance does not exist" is true and may be
+      beside the point: crediting the *referrer's* rep needs no inheritance WRITE at all, and a
+      candidate join already exists — `referral_conversions.user_id` → `users.jobber_client_id`
+      (A24.5's own bridge) → `client_rep_assignments`. **`users.jobber_client_id` is a nullable
+      ALTER-added column and its population for referrers has never been measured.** **OWNER: whoever
+      builds CONV — measure that column's coverage FIRST, and do not declare the card blocked on
+      inheritance until that measurement says so.** → `DECISION_C_DL_BUILD_SPEC.md` §24 (A35)
 
 - [x] **✅ THE SHARED PREDICATE EXTRACTED — `server/utils/repBook.js`.** Three copies existed before
       this phase and Home would have made four or five. ⚠ **The risk is not repetition, it is a fix
@@ -5265,6 +5359,10 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       LIVE THERE** — A24.4, A24.5, A24.7, A28, A30 and CD-10. **A34 settles three of A33's four owed
       amendments (U14, the `--rm-bg` flooring gap, U25) and leaves `U2` OWED.** **Next free
       amendment: `A35`.** → `DECISION_C_DL_BUILD_SPEC.md` §23 · `CANVASS_1_PART1_REPORT.md` §4
+      ⚠ **AND `A35` IS NOW TAKEN — 2026-09-19, by `DECISION_C_DL_BUILD_SPEC.md` §24 / v2.3 (the
+      attribution model). THE NEXT FREE AMENDMENT IS `A36`.** *(Filed by the
+      Canvass-attribution-model pass; the line above is the record of A34's own day and is not
+      repaired in place.)*
 
 - [x] **✅ CLOSED 2026-09-17 (Canvass-2) — THE REP SHELL'S GROUND, ITS FADED TEXT AND ITS BROKEN
       LOGO.** A34.1, A34.2, A34.10 and A34.11 all shipped in one commit. `RepShell`'s column moved to
