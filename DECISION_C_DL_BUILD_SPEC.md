@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v2.4 — amended 2026-09-19, Canvass-attribution-model-2: **§24's C1 and C4 are SETTLED, and the visibility layer is ruled** (§25, amendment A36). **A36.1** the chain determines initial ownership, from the moment the relationship exists · **A36.2** the CRM precedence order is unchanged and applies where the chain does not — ⚠ **C1 WAS NEVER A CONTRADICTION, ONLY A MISSING LAYER** · **A36.3** admin manual reassignment overrides both, which is what makes the chain's STICKY write safe · **A36.4** C4 is two audiences, not one fence — A35.5 is rep-facing and `writeOrphanOnMiss` keeps its `true` default · **A36.5** the visibility layer, because attribution decides who is CREDITED and cannot decide who is SENT: ⚠ **RoofMiles NEVER writes to a contractor's CRM (a PRODUCT PRINCIPLE, also recorded in `CLAUDE.md`'s Never-Break set; the Jobber write-back is RULED OUT, not deferred)**, the office reached through the existing booking email plus a second notification to the same destination, the admin dashboard, and the rep's home as both a statistic and a Today's Focus entry. **Edges (g) and (h) are CORRECTED and CLOSED; (a)–(f) stay open.** ⚠ **THE NEXT FREE AMENDMENT IS `A37`** *(verified free 2026-09-19 by `git grep` and a working-tree grep, both word-anchored, zero hits in either — and zero even unanchored)*. Previously v2.3, amended 2026-09-19, Canvass-attribution-model: **the attribution model is ruled and filed before it is built** (§24, amendment A35) — the governing principle that entry path and credit are independent, the seven entry paths, referral inheritance, rep-linked provisional signups, floaters, and the inbound-referral notice; **eight edges named and deliberately NOT resolved**; the prerequisites that block all of it; and ⚠ **seven recorded COLLISIONS with what is already built or ruled — chief among them C1, that the shipped engine attributes from CRM work artifacts and not from a referral chain at all.** ⚠ **THE NEXT FREE AMENDMENT IS `A36`** *(verified free 2026-09-19 by `git grep` and a working-tree grep, both word-anchored, zero hits in either — and zero even unanchored)*. ⚠ **SUPERSEDED LATER THE SAME DAY — `A36` WAS TAKEN BY §25 / v2.4; the live pointer is the v2.4 clause at the head of this line. The sentence before this one is v2.3's own dated record and is deliberately not repaired in place.** Previously v2.2, amended 2026-09-17, Canvass-2: eleven Canvass-1 rulings are recorded before the build (§23, amendment A34) — the rep column's ground, the faded-text constant, the admin-route boundary, app-membership display, Today's Focus, the revenue-empty state, the rep's flag scope, the cross-rep 404, the Security row, seeder placement and the broken-logo state. ⚠ **A34 settles THREE of A33's four owed amendments — U14, the `--rm-bg` flooring gap and U25 — and leaves `U2` OWED.** ⚠ **THE NEXT FREE AMENDMENT IS `A35`** *(verified free 2026-09-17 by `git grep` and a working-tree grep, both word-anchored, zero hits in either)*. ⚠ **SUPERSEDED 2026-09-19 — `A35` WAS TAKEN BY §24 / v2.3; the live pointer is the v2.3 clause at the head of this line. The sentence before this one is the dated record of 2026-09-17 and is deliberately not repaired in place.** Previously v2.1, amended 2026-09-16, Preview-1 Part 1: the remaining rep-arc phases are named `Canvass-1`…`Canvass-n` and the build order is Palette → the referrer dashboard preview (real mount) → Canvass (§22, amendment A33). Previously v2.0, amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A34 — ⚠ **A33 WAS TAKEN 2026-09-16 by §22 / v2.1** — ⚠ **AND A34 WAS TAKEN 2026-09-17 by §23 / v2.2; THE NEXT FREE AMENDMENT IS `A35` — ⚠ **AND A35 WAS TAKEN 2026-09-19 by §24 / v2.3; THE NEXT FREE AMENDMENT IS `A36` — ⚠ **AND A36 WAS TAKEN LATER THE SAME DAY by §25 / v2.4; THE NEXT FREE AMENDMENT IS `A37`** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
+**Status:** LOCKED v2.4 — amended 2026-09-19, Canvass-attribution-model-2: **§24's C1 and C4 are SETTLED, and the visibility layer is ruled** (§25, amendment A36). **A36.1** the chain determines initial ownership, from the moment the relationship exists · **A36.2** the CRM precedence order is unchanged and applies where the chain does not — ⚠ **C1 WAS NEVER A CONTRADICTION, ONLY A MISSING LAYER** · **A36.3** admin manual reassignment overrides both, which is what makes the chain's STICKY write safe · **A36.4** C4 is two audiences, not one fence — A35.5 is rep-facing and `writeOrphanOnMiss` keeps its `true` default · **A36.5** the visibility layer, because attribution decides who is CREDITED and cannot decide who is SENT: ⚠ **RoofMiles NEVER writes to a contractor's CRM (a PRODUCT PRINCIPLE, also recorded in `CLAUDE.md`'s Never-Break set; the Jobber write-back is RULED OUT, not deferred)**, the office reached through the existing booking email plus a second notification to the same destination, the admin dashboard, and the rep's home as both a statistic and a Today's Focus entry. **Edges (g) and (h) are CORRECTED and CLOSED; (a)–(f) stay open.** ⚠ **A36.5.b.1 WAS ITSELF CORRECTED BY DANNY THE SAME DAY — the first writing had the ROLES INVERTED, calling the booking submitter "the referrer" when they are the person who WAS REFERRED. The inverted paragraph is left in place, quoted, with the correction beneath it. The accreditation link is `users.invited_by_user_id`, written BY USER ID at signup and carrying none of `referred_by`'s name-match ambiguity; the worked case is Danny's Tom → Maria example.** ⚠ **THE NEXT FREE AMENDMENT IS `A37`** *(verified free 2026-09-19 by `git grep` and a working-tree grep, both word-anchored, zero hits in either — and zero even unanchored)*. Previously v2.3, amended 2026-09-19, Canvass-attribution-model: **the attribution model is ruled and filed before it is built** (§24, amendment A35) — the governing principle that entry path and credit are independent, the seven entry paths, referral inheritance, rep-linked provisional signups, floaters, and the inbound-referral notice; **eight edges named and deliberately NOT resolved**; the prerequisites that block all of it; and ⚠ **seven recorded COLLISIONS with what is already built or ruled — chief among them C1, that the shipped engine attributes from CRM work artifacts and not from a referral chain at all.** ⚠ **THE NEXT FREE AMENDMENT IS `A36`** *(verified free 2026-09-19 by `git grep` and a working-tree grep, both word-anchored, zero hits in either — and zero even unanchored)*. ⚠ **SUPERSEDED LATER THE SAME DAY — `A36` WAS TAKEN BY §25 / v2.4; the live pointer is the v2.4 clause at the head of this line. The sentence before this one is v2.3's own dated record and is deliberately not repaired in place.** Previously v2.2, amended 2026-09-17, Canvass-2: eleven Canvass-1 rulings are recorded before the build (§23, amendment A34) — the rep column's ground, the faded-text constant, the admin-route boundary, app-membership display, Today's Focus, the revenue-empty state, the rep's flag scope, the cross-rep 404, the Security row, seeder placement and the broken-logo state. ⚠ **A34 settles THREE of A33's four owed amendments — U14, the `--rm-bg` flooring gap and U25 — and leaves `U2` OWED.** ⚠ **THE NEXT FREE AMENDMENT IS `A35`** *(verified free 2026-09-17 by `git grep` and a working-tree grep, both word-anchored, zero hits in either)*. ⚠ **SUPERSEDED 2026-09-19 — `A35` WAS TAKEN BY §24 / v2.3; the live pointer is the v2.3 clause at the head of this line. The sentence before this one is the dated record of 2026-09-17 and is deliberately not repaired in place.** Previously v2.1, amended 2026-09-16, Preview-1 Part 1: the remaining rep-arc phases are named `Canvass-1`…`Canvass-n` and the build order is Palette → the referrer dashboard preview (real mount) → Canvass (§22, amendment A33). Previously v2.0, amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A34 — ⚠ **A33 WAS TAKEN 2026-09-16 by §22 / v2.1** — ⚠ **AND A34 WAS TAKEN 2026-09-17 by §23 / v2.2; THE NEXT FREE AMENDMENT IS `A35` — ⚠ **AND A35 WAS TAKEN 2026-09-19 by §24 / v2.3; THE NEXT FREE AMENDMENT IS `A36` — ⚠ **AND A36 WAS TAKEN LATER THE SAME DAY by §25 / v2.4; THE NEXT FREE AMENDMENT IS `A37`** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -1752,10 +1752,142 @@ is the only one that fires BEFORE the office acts.**
 **What it currently contains:** the referred person's name, phone, email, address, notes, and a
 submission timestamp.
 
-⚠ **IT NEVER SAYS WHO THE REFERRER IS — AND THAT HALF IS ESSENTIALLY FREE.** The submitting
-referrer is the authenticated session's own `userId`; the handler already writes it to
-`booking_requests.submitted_by_user_id` **in the same request**. **The referrer's identity needs no
-new data, no new join and no schema change** — it is in scope and discarded.
+⚠ **CORRECTED 2026-09-19 BY DANNY, THE SAME DAY THIS SECTION WAS WRITTEN. THE PARAGRAPH BELOW HAS
+THE ROLES INVERTED, AND IT IS LEFT IN PLACE BECAUSE A RECORD SILENTLY REPAIRED STOPS BEING EVIDENCE
+THE ERROR HAPPENED.** It reads:
+
+> *"IT NEVER SAYS WHO THE REFERRER IS — AND THAT HALF IS ESSENTIALLY FREE. The submitting **referrer**
+> is the authenticated session's own `userId`; the handler already writes it to
+> `booking_requests.submitted_by_user_id` in the same request."*
+
+⚠ **WHAT IS WRONG: `booking_requests.submitted_by_user_id` IS THE PERSON WHO WAS REFERRED, NOT THE
+REFERRER.** They are the one submitting the booking request; **being referred is HOW THEY GOT INTO
+THE APP.** Shipping that id as *"the referrer"* would tell the office **the exact opposite of what it
+needs, in a message that looks correct** — ⚠ **the failure A36.5 exists to prevent, arriving inside
+the fix for it.** The original sentence's *mechanism* is right (the id is in scope and discarded);
+only its *role label* is wrong, which is precisely why it read as obviously true.
+
+### A36.5.b.1 (corrected) — the worked case, in Danny's own example
+
+**Rep A has a client, Tom. Tom refers Maria directly to the app via his link or QR code. Maria signs
+up and is IMMEDIATELY ACCREDITED TO TOM, entering his pipeline data. Later Maria submits a booking
+request through the app with her basic info. The email the office receives carries: MARIA'S DETAILS,
+TOM AS THE REFERRER, AND REP A'S NAME.**
+
+⚠ **IF NO REP IS ATTACHED TO TOM AND/OR MARIA, ATTRIBUTION TO A REP SIMPLY BEGINS WHEN A REP IS
+ASSIGNED TO THE REQUEST, AS NORMAL. AN ABSENT REP IS NOT AN ERROR STATE** — not a warning, not an
+empty slot demanding explanation.
+
+#### ⚠ THIS IS NOT THE NAME-STRING PROBLEM, AND THAT IS THE LOAD-BEARING FACT
+
+**The Tom → Maria link is recorded BY USER ID at signup, at the moment Maria is accredited to Tom.
+It is never reconstructed later from a name, so it carries NONE of
+`pipeline_cache.referred_by`'s `LOWER(full_name)` / `LIMIT 1` ambiguity.** Established from source:
+
+- **The column** is **`users.invited_by_user_id`** — `INTEGER REFERENCES users(id) ON DELETE SET
+  NULL`. **A real foreign key to a real row, on both ends.**
+- **The writer** is **`POST /api/signup`**, in its single hoisted `SIGNUP_USER_INSERT` statement.
+- **The timing** is **account creation itself** — the value is a column in the INSERT, not a later
+  update. ⚠ **It is WRITE-ONCE: nothing in this codebase ever UPDATEs it**, which the signup
+  branch's own comment states in terms while recording that re-attribution is not built.
+- **The value** is `link.created_by_user_id`, read from the resolved invite token — **the peer who
+  owns the link Maria arrived through.**
+
+⚠ **AND THE SCHEMA ENFORCES WHICH LINKS MAY CARRY A PERSON.** `chk_invite_links_owner` is a
+fail-closed CHECK: `peer` links may carry `created_by_user_id`; **`rep` and `contractor` links must
+have it NULL.** So a user-id accreditation exists **only** for a `peer` link — by construction, not
+by convention.
+
+#### TWO SEPARATE HOPS. THEY HAVE DIFFERENT RELIABILITY AND MUST NOT BE COLLAPSED
+
+**HOP 1 — booker → referrer, by ID.** `users.invited_by_user_id` on the booking submitter.
+**Reliable where present**: a foreign key, written at signup, never rewritten, resolved by
+`WHERE id = $1 AND contractor_id = $2` — the exact contractor-scoped pattern `loadReferrerChip`
+already uses for the landing chip, so the lookup has a working precedent.
+
+**HOP 2 — referrer → rep.** ⚠ **NO DIRECT PATH EXISTS. A repo-wide search finds no join from
+`users` to `client_rep_assignments` anywhere.** The only available route is the referrer's own
+`users.jobber_client_id` into `client_rep_assignments` — A24.5's bridge, nullable, and the same one
+CONV depends on.
+
+⚠ **AND HOP 2 IS MOSTLY EMPTY TODAY, FOR A REASON THAT IS MEASURED RATHER THAN SUSPECTED.**
+`users.jobber_client_id` is set at signup only when the new user matches a Jobber client — and that
+lookup is a **flagged MVP shortcut that fetches only the FIRST 100 CLIENTS with no pagination**,
+against a book Canvass-5 measured at **47,065 clients**. The branch's own `else` log reads *"No
+Jobber client match found at signup — **expected for peer signups**."* **Tom is a peer signup.** The
+other writer is an admin match action, run by hand. **So hop 2 resolves for very few referrers
+today**, and that is a property of the bridge, not of this feature.
+
+#### WHAT THE EMAIL RENDERS, IN EVERY COMBINATION
+
+| hop 1 (booker → referrer) | hop 2 (referrer → rep) | the email renders |
+|---|---|---|
+| resolves | resolves | **Maria's details · "Referred by Tom" · "Tom's rep: Rep A"** — the full worked case |
+| resolves | empty | **Maria's details · "Referred by Tom"** · **no rep line at all** — ⚠ not "no rep assigned", not an empty slot. **An absent rep is not an error state**, and a line saying so invites the office to treat it as one. **This is the COMMON case today.** |
+| empty | n/a | **Maria's details only** — ⚠ **and NO referral claim of any kind.** Hop 2 is unreachable without hop 1: a rep resolved from a referrer you could not identify would be an invention. |
+
+⚠ **THE EMAIL MUST NEVER ASSERT A REFERRER IT IS NOT SURE OF. AN UNCERTAIN CLAIM IS WORSE THAN
+NONE** — the office acts on it, and a wrong referrer sends the wrong rep, which is the failure this
+whole amendment exists to prevent.
+
+#### COVERAGE OF HOP 1 — NOT EVERY BOOKER HAS ONE, AND THE POPULATIONS ARE NAMED
+
+**`invited_by_user_id` is NULL for every one of these, and each is a legitimate account:**
+- **`signup_source = 'contractor_link'`** — a marketing QR or the bare subdomain's auto-minted
+  default. ⚠ **The signup branch names this population explicitly as the re-attribution class:**
+  *"Some of those homeowners WERE genuinely referred by a peer and simply arrived through the
+  marketing path instead of their friend's link."* **They were referred and the system cannot prove
+  it.**
+- **`signup_source = 'rep_link'`** — the CHECK forbids a user owner on a rep link, so a rep-link
+  signup records **no peer accreditation at all**.
+- **`signup_source = 'admin'`** — the column default; admin-created accounts.
+- ⚠ **AND EVEN A `peer` LINK CAN BE OWNERLESS.** The constraint deliberately does **not** require
+  `created_by_user_id NOT NULL` on peer rows, and the comment says why: **production carries 2 peer
+  rows with a NULL owner**, so the NOT NULL form *"would have failed on arrival against real
+  data."* **A peer signup is therefore strong evidence of an accreditation, not a guarantee of one.**
+- ⚠ **AND A DELETED REFERRER NULLS IT SILENTLY** — `ON DELETE SET NULL` on both
+  `users.invited_by_user_id` and `contractor_invite_links.created_by_user_id`. **Inheriting from a
+  null is indistinguishable from never having inherited**, which is §24's edge (b) reaching this
+  path.
+
+**For all of them the email shows Maria's details and says nothing about a referral.** That is the
+correct output, not a degraded one.
+
+#### ⚠ IS `pipeline_cache.referred_by` INVOLVED IN THIS PATH AT ALL? NO — AND THAT IS ASSERTED FROM SOURCE, NOT ASSUMED
+
+**Neither hop touches it.** Hop 1 is `users.invited_by_user_id`, a foreign key. Hop 2 is
+`users.jobber_client_id` into `client_rep_assignments`, also an id join. **The booking handler reads
+neither `referred_by` nor `pipeline_cache`** — checked directly across the whole handler.
+
+⚠ **SO THE `LOWER(full_name)` / `LIMIT 1` AMBIGUITY DOES NOT REACH THIS EMAIL.** It remains live and
+severe on the **bonus / pipeline** path, where `referred_by` is genuinely the link — **two different
+mechanisms for what reads in English as the same relationship.** ⚠ **Do not "unify" them on the
+grounds that both mean "who referred this person": one is a foreign key and the other is a name
+match, and collapsing them would import the ambiguity into the path that does not have it.**
+
+#### THE CORRECTED RECOMMENDATION
+
+**SHIPS NOW — hop 1 only.** Maria's details plus *"Referred by Tom"*, resolved from
+`users.invited_by_user_id` by id, contractor-scoped. **No schema change, no new join beyond one
+id lookup, and no name matching.** **Rendered only when the id resolves; silent otherwise.**
+
+**GATED — hop 2, the rep line.** It needs `users.jobber_client_id` populated for referrers, which
+today it mostly is not. ⚠ **GATED ON THE DATA, NOT ON A PHASE:** render the rep line when the join
+returns a rep and omit it entirely when it does not, so the line **starts appearing on its own** as
+the bridge fills, with no second build and no relabelling. *(Same degrades-correctly shape as
+Canvass-6's ruling ④.)*
+
+⚠ **AND THE PREREQUISITE IS UNCHANGED AND NOW SHARPER: the `resolveNotificationRecipient` tenancy
+defect must be fixed FIRST.** §24's version of this note said an enriched email delivered to the
+wrong tenant makes the leak worse. **With the roles corrected it is worse still: the leaked content
+would name a real person AND their referral relationship** — who referred whom, across a tenant
+boundary, to a contractor with no right to it.
+
+**The superseded recommendation, kept as the record:** *"ship the referrer's identity immediately
+and gate the rep line on the chain."* ⚠ **The shape was right and the subject was wrong** — what
+ships now is the BOOKER's referrer, resolved by id, not the submitter relabelled as a referrer.
+
+<!-- The original A36.5.b.1 closing sentences follow, unrepaired, per the record rule. -->
 
 ⚠ **THE REP HALF IS NOT FREE, AND THE DIFFERENCE IS THE WHOLE POINT.** *Which rep is tied to them in
 the chain* requires resolving the referrer to a rep, and the referral link is a **name string** —

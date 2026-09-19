@@ -4252,14 +4252,76 @@ may legitimately change several of these subjects.*
       office created them and after scheduling.** By then the failure has happened. **The booking
       email is the only one that fires BEFORE the office acts.**
       **What it carries today:** name, phone, email, address, notes, timestamp.
-      ⚠ **IT NEVER SAYS WHO THE REFERRER IS — AND THAT HALF IS FREE.** The submitting referrer is the
-      authenticated session's `userId`, and the handler already writes it to
-      `booking_requests.submitted_by_user_id` **in the same request.** No new data, no new join, no
-      schema change. **The REP half is not free** — it needs the chain, and the only route today is
-      the referrer's nullable `users.jobber_client_id` into `client_rep_assignments`, the same
-      never-measured bridge CONV depends on.
-      **RECOMMENDATION (not a ruling): ship the referrer's identity now and gate the rep line on the
-      chain.** A named referrer with no rep line is useful to the office; nothing is not.
+      ⚠ **THE NEXT TWO SENTENCES HAD THE ROLES INVERTED AND ARE LEFT IN PLACE, QUOTED, WITH THE
+      CORRECTION BENEATH — a record silently repaired stops being evidence the error happened.**
+      ~~"IT NEVER SAYS WHO THE REFERRER IS — AND THAT HALF IS FREE. The submitting **referrer** is
+      the authenticated session's `userId`, and the handler already writes it to
+      `booking_requests.submitted_by_user_id` in the same request." … "RECOMMENDATION: ship the
+      referrer's identity now and gate the rep line on the chain."~~
+      ⚠ **CORRECTED 2026-09-19 BY DANNY: `booking_requests.submitted_by_user_id` IS THE PERSON WHO
+      WAS REFERRED, NOT THE REFERRER.** They submit the booking; **being referred is how they got
+      into the app.** Shipping that id labelled "referrer" would tell the office **the exact opposite
+      of what it needs, in a message that looks correct** — the failure A36.5 exists to prevent,
+      arriving inside the fix for it.
+
+- [x] **✅ THE ID-BASED ACCREDITATION LINK — ESTABLISHED FROM SOURCE. IT IS NOT THE NAME-STRING
+      PROBLEM.** **Column `users.invited_by_user_id`** — `INTEGER REFERENCES users(id) ON DELETE SET
+      NULL`, a real FK on both ends. **Writer: `POST /api/signup`**, in its hoisted
+      `SIGNUP_USER_INSERT`. **Timing: account creation itself** — a column in the INSERT, never
+      reconstructed later, and ⚠ **WRITE-ONCE: nothing in this codebase ever UPDATEs it.** **Value:**
+      `link.created_by_user_id` from the resolved invite token — the peer who owns the link.
+      ⚠ **AND THE SCHEMA ENFORCES WHICH LINKS MAY CARRY A PERSON:** `chk_invite_links_owner` is a
+      fail-closed CHECK — `peer` links may carry a user owner; **`rep` and `contractor` links must
+      have it NULL.** So user-id accreditation exists for peer links **by construction**.
+      **Danny's worked case:** Rep A has Tom; Tom refers Maria via his link/QR; Maria signs up and is
+      immediately accredited to Tom; Maria later books; **the office email carries Maria's details,
+      Tom as referrer, and Rep A's name.** ⚠ **If no rep is attached, attribution begins when a rep
+      is assigned to the request, as normal — AN ABSENT REP IS NOT AN ERROR STATE.**
+
+- [ ] ⚠ **TWO HOPS, DIFFERENT RELIABILITY — DO NOT COLLAPSE THEM.**
+      **HOP 1 booker → referrer (by ID): reliable where present.** An FK, contractor-scoped lookup;
+      `loadReferrerChip` already uses exactly that pattern for the landing chip.
+      **HOP 2 referrer → rep: NO DIRECT PATH EXISTS** — a repo-wide search finds no join from `users`
+      to `client_rep_assignments`. The only route is `users.jobber_client_id` → A24.5's bridge.
+      ⚠ **AND HOP 2 IS MOSTLY EMPTY TODAY, MEASURED NOT SUSPECTED:** `users.jobber_client_id` is set
+      at signup only on a Jobber match, and that lookup is a **flagged MVP shortcut fetching only the
+      FIRST 100 CLIENTS with no pagination** against a book Canvass-5 measured at **47,065**. The
+      branch's own else-log reads *"No Jobber client match found at signup — expected for peer
+      signups."* **Tom is a peer signup.** The other writer is a by-hand admin match.
+      **WHAT THE EMAIL RENDERS:** both hops → Maria's details · "Referred by Tom" · "Tom's rep: Rep
+      A". Hop 1 only → Maria's details · "Referred by Tom" · **no rep line at all** (not "no rep
+      assigned", not an empty slot) — **the common case today.** Neither → **Maria's details and no
+      referral claim of any kind.** ⚠ **Hop 2 is unreachable without hop 1: a rep resolved from an
+      unidentified referrer is an invention.**
+
+- [ ] ⚠ **COVERAGE OF HOP 1 — NOT EVERY BOOKER HAS ONE, AND THE EMAIL MUST NOT GUESS.**
+      `invited_by_user_id` is NULL for: **`contractor_link`** signups (the branch's own comment names
+      these as the re-attribution population — *"some of those homeowners WERE genuinely referred by
+      a peer and simply arrived through the marketing path"*); **`rep_link`** signups (the CHECK
+      forbids a user owner); **`admin`** signups (the column default). ⚠ **AND EVEN A `peer` LINK CAN
+      BE OWNERLESS** — the constraint deliberately does not require NOT NULL because **production
+      carries 2 peer rows with a NULL owner**, so a peer signup is strong evidence of an
+      accreditation, **not a guarantee**. ⚠ **AND A DELETED REFERRER NULLS IT SILENTLY**
+      (`ON DELETE SET NULL` on both ends) — §24's edge (b) reaching this path.
+      **For all of them the email shows the booker's details and says nothing about a referral. That
+      is the correct output, not a degraded one.** ⚠ **AN UNCERTAIN CLAIM IS WORSE THAN NONE.**
+
+- [x] **✅ `pipeline_cache.referred_by` IS NOT INVOLVED IN THIS PATH AT ALL — ASSERTED FROM SOURCE.**
+      Hop 1 is an FK; hop 2 is an id join; **the booking handler reads neither `referred_by` nor
+      `pipeline_cache`**, checked across the whole handler. **So the `LOWER(full_name)` / `LIMIT 1`
+      ambiguity does not reach this email.** It remains live and severe on the **bonus / pipeline**
+      path, where `referred_by` genuinely is the link.
+      ⚠ **TWO DIFFERENT MECHANISMS FOR WHAT READS IN ENGLISH AS THE SAME RELATIONSHIP. Do not
+      "unify" them** — one is a foreign key and the other is a name match, and collapsing them
+      imports the ambiguity into the path that does not have it.
+
+- [ ] **THE CORRECTED RECOMMENDATION.** **SHIPS NOW — hop 1 only:** the booker's details plus
+      *"Referred by {referrer}"*, resolved from `users.invited_by_user_id` by id, contractor-scoped.
+      No schema change, one id lookup, no name matching, **rendered only when the id resolves.**
+      **GATED — hop 2, the rep line:** ⚠ **gated on the DATA, not on a phase** — render it when the
+      join returns a rep, omit it entirely when it does not, so the line **starts appearing on its
+      own** as the bridge fills, with no second build and no relabelling. *(Same degrades-correctly
+      shape as Canvass-6's ruling ④.)*
 
 - [ ] 🔴 **A LIVE TENANCY DEFECT FOUND WHILE CONFIRMING THAT DESTINATION — REPORTED, NOT FIXED (docs
       commit).** `resolveNotificationRecipient(pool, type, contractorId)` defaults `contractorId` to
@@ -4271,6 +4333,11 @@ may legitimately change several of these subjects.*
       IT.** ⚠ **THIS IS A PREREQUISITE FOR A36.5.b.1, NOT A PARALLEL CLEANUP** — enriching an email
       with referrer identity while it is delivered to the wrong tenant's inbox makes the leak worse,
       not better. **OWNER: whoever builds A36.5.b.1, first.**
+      ⚠ **STILL RULED A PREREQUISITE, AND SHARPER AFTER THE ROLE CORRECTION (Danny, 2026-09-19).**
+      The §24 wording said an enriched email delivered to the wrong tenant makes the leak worse.
+      **With the roles corrected the leaked content would name a REAL PERSON AND THEIR REFERRAL
+      RELATIONSHIP** — who referred whom, across a tenant boundary, to a contractor with no right to
+      it. **It is not a parallel cleanup and must not be scheduled as one.**
 
 - [ ] ⚠ **THE DESTINATION FIELD EXISTS AND IS THE RIGHT ONE — DO NOT ADD A SECOND.**
       `server/utils/notificationEmail.js` resolves three types: **`booking`** →
@@ -4305,7 +4372,11 @@ may legitimately change several of these subjects.*
       email still sends from a hardcoded `'Rooster Booster <noreply@roofmiles.com>'`, but the handler
       builds a dynamic sender from `email_sender_name` / `company_name`. **The booking half was
       migrated and the document still asks for it.** *(The other three it names were not checked.)*
-      **OWNER: unassigned — regenerate from source rather than editing the list.**
+      ⚠ **FILE IT; DO NOT REPAIR IT — Danny, 2026-09-19. The documentation pass stays DEFERRED until
+      after Canvass**, and fixing this inventory mid-arc is exactly the "rider on a build phase" that
+      deferral exists to prevent. **When it is taken: regenerate from source rather than editing the
+      list** — a hand-maintained inventory that went wrong once will go wrong again.
+      **OWNER: unassigned, after Canvass.**
 
 - [ ] ⚠ **A DOCUMENTED SHELL-HARNESS FAILURE REPRODUCED, WITH A SHARPER DIAGNOSIS THAN THE ONE ON
       RECORD.** `CLAUDE.md` records *"`grep -c $'\r'` returned full line counts on LF-only files."*
