@@ -5,6 +5,7 @@ import RepBottomNav, { REP_TABS } from './RepBottomNav';
 import RepThemeToggleRow from './RepThemeToggleRow';
 import RepClientsScreen from './RepClientsScreen';
 import RepClientDetailScreen from './RepClientDetailScreen';
+import RepHomeScreen from './RepHomeScreen';
 import { fontVar } from '../../constants/elevationTheme';
 
 // ─── THE FIELD REP SHELL — C/DL-3c Phase 3-A ─────────────────────────────────
@@ -101,7 +102,7 @@ function tabForScreen(screen) {
  * @param {React.ReactNode} switcher - SurfaceSwitcher for a rep who is also an
  *        owner or admin; null for a general-tier rep, who has one destination.
  */
-export default function RepShell({ onLogout, switcher = null }) {
+export default function RepShell({ onLogout, switcher = null, preview = false }) {
   const { branding } = useContext(ThemeContext);
 
   // ⚠ ONE PIECE OF STATE, NOT ONE PER SCREEN. `screen` names the destination and
@@ -227,7 +228,7 @@ export default function RepShell({ onLogout, switcher = null }) {
           boxSizing: 'border-box',
         }}
       >
-        <Screen view={view} onLogout={onLogout} onNavigate={(next) => { setView(next); window.scrollTo(0, 0); }} />
+        <Screen view={view} onLogout={onLogout} preview={preview} onNavigate={(next) => { setView(next); window.scrollTo(0, 0); }} />
       </main>
 
       <RepBottomNav activeTab={activeTab} onSelect={selectTab} />
@@ -286,13 +287,20 @@ function Header() {
 // and found nothing; this is a screen that does not exist yet, and saying so
 // with an empty state would be a claim about data. It also keeps the known
 // StateCard dark-border defect off a surface 3-D is about to inspect by eye.
-function Screen({ view, onLogout, onNavigate }) {
+function Screen({ view, onLogout, onNavigate, preview = false }) {
   if (view.screen === 'profile') {
     return <ProfileScreen onLogout={onLogout} />;
   }
 
-  // ⚠ CLIENTS IS NO LONGER A PLACEHOLDER (Canvass-4). Home and Network still are,
-  // and the header note above still describes them — only this one tab moved.
+  // ⚠ HOME IS NO LONGER A PLACEHOLDER (Canvass-6). Only Network still is.
+  // Today's Focus opens a client through the SAME parameterised screen state the
+  // Clients tab uses — A24.6 requires one mechanism, not a second one per entry point.
+  if (view.screen === 'home') {
+    return <RepHomeScreen preview={preview} onOpenClient={(clientId) => onNavigate({ screen: 'clientDetail', clientId })} />;
+  }
+
+  // ⚠ CLIENTS IS NO LONGER A PLACEHOLDER (Canvass-4). Network still is, and the header
+  // note above still describes it — only these tabs moved.
   if (view.screen === 'clients') {
     return <RepClientsScreen onOpenClient={(clientId) => onNavigate({ screen: 'clientDetail', clientId })} />;
   }

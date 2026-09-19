@@ -866,3 +866,258 @@ describe('Canvass-5 — paging the book', () => {
     assert.deepEqual(res.body.clients.map((c) => c.jobberClientId), ['pg-mine']);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Canvass-6 — GET /api/rep/home (A34.5 ruling ④, A34.6, A34.7)', () => {
+
+  const home = (token) => request('/api/rep/home', token);
+
+  // Seeds a client with an optional stage and an explicit assignment instant, so a
+  // fixture can make stage-order and recency-order DISAGREE.
+  async function book(me, id, { stage = null, minutesAgo = 0, name = null } = {}) {
+    await seedClient(TENANT, id, name || id);
+    await pool.query(
+      `INSERT INTO client_rep_assignments
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+       VALUES ($1, $2, $3, 'mode_a_at_close', NOW() - ($4 || ' minutes')::interval,
+               NOW() - ($4 || ' minutes')::interval)`,
+      [TENANT, id, me, String(minutesAgo)]
+    );
+    if (stage) {
+      await pool.query(
+        `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status)
+         VALUES ($1, $2, $3, 'Someone', $4)`,
+        [TENANT, id, name || id, stage]
+      );
+    }
+  }
+
+  it('[RED] Home — Today\'s Focus contains only this rep\'s clients', async () => {
+    // ⚠ ONE OF THE FOUR PER-SCREEN RESULT ASSERTIONS the shared-predicate extraction
+    // is conditioned on. It asserts WHAT THIS REP SEES, not that a helper was called —
+    // so a bug inside OWN_BOOK_PREDICATE cannot pass here merely because every screen
+    // shares it.
+    const me = await seedRep(TENANT, 'me@a.test');
+    const colleague = await seedRep(TENANT, 'colleague@a.test');
+    await seedSession('tok-h1', { contractorId: TENANT, teamMemberId: me });
+    await book(me, 'h-mine', { stage: 'sold' });
+    await book(colleague, 'h-theirs', { stage: 'paid' });
+
+    const res = await home('tok-h1');
+    assert.equal(res.status, 200);
+    const ids = [...res.body.focus.furthestAlong, ...res.body.focus.recentlyAssigned]
+      .map((c) => c.jobberClientId);
+    assert.deepEqual(ids, ['h-mine'], 'the colleague\'s client must be absent from both sections');
+    assert.equal(res.body.stats.clients, 1, 'and absent from the stats too');
+  });
+
+  it('[RED] ⚠ THE DISCRIMINATING CASE — ruling ④\'s order differs from ②\'s (recency)', async () => {
+    // ⚠ THE FIXTURE IS BUILT SO THE TWO CANDIDATE RULINGS CANNOT BOTH PASS.
+    // Under ② (rank everything by assignment recency) the order would be
+    //   fresh-lead, old-paid, unstaged-newest …
+    // Under ④ the staged clients form section 1 ordered BY STAGE — old-paid FIRST,
+    // fresh-lead second — and the unstaged ones form a separate section.
+    // A fixture where both orders agree would prove nothing, which is the Canvass-3.7
+    // anchor lesson applied to a ranking instead of a window.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h2', { contractorId: TENANT, teamMemberId: me });
+    await book(me, 'h-old-paid',   { stage: 'paid', minutesAgo: 5000 });  // furthest along, OLDEST
+    await book(me, 'h-fresh-lead', { stage: 'lead', minutesAgo: 1 });     // least along, NEWEST
+    await book(me, 'h-unstaged',   { stage: null,  minutesAgo: 0 });      // no stage at all, newest of all
+
+    const res = await home('tok-h2');
+    const s1 = res.body.focus.furthestAlong.map((c) => c.jobberClientId);
+    const s2 = res.body.focus.recentlyAssigned.map((c) => c.jobberClientId);
+
+    // ④: stage order inside section 1 — the OLDEST client comes FIRST.
+    assert.deepEqual(s1, ['h-old-paid', 'h-fresh-lead'],
+      'section 1 must order by STAGE, not recency — under ② h-fresh-lead would lead');
+    // ② would have put h-unstaged at the very top of one combined list.
+    assert.deepEqual(s2, ['h-unstaged'], 'the unstaged client belongs to section 2 only');
+    assert.notEqual(s1[0], 'h-fresh-lead', 'recency ordering inside section 1 would be ②, not ④');
+  });
+
+  it('[RED] every client appears in exactly ONE section — the sections are complements', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h3', { contractorId: TENANT, teamMemberId: me });
+    await book(me, 'h-a', { stage: 'sold' });
+    await book(me, 'h-b', { stage: null });
+    await book(me, 'h-c', { stage: 'lead' });
+    await book(me, 'h-d', { stage: null });
+
+    const res = await home('tok-h3');
+    const s1 = res.body.focus.furthestAlong.map((c) => c.jobberClientId);
+    const s2 = res.body.focus.recentlyAssigned.map((c) => c.jobberClientId);
+    assert.equal(s1.filter((i) => s2.includes(i)).length, 0, 'no client may be in both');
+    assert.deepEqual([...s1, ...s2].sort(), ['h-a', 'h-b', 'h-c', 'h-d'], 'and none is lost between them');
+  });
+
+  it('[RED] not_sold HAS a stage, so it ranks LAST rather than being hidden', async () => {
+    // Excluding it would make the label "furthest along" true by removing its
+    // counterexample. It is least far along, and it says so by position.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h4', { contractorId: TENANT, teamMemberId: me });
+    await book(me, 'h-notsold', { stage: 'not_sold', minutesAgo: 1 });
+    await book(me, 'h-insp',    { stage: 'inspection', minutesAgo: 500 });
+
+    const res = await home('tok-h4');
+    assert.deepEqual(res.body.focus.furthestAlong.map((c) => c.jobberClientId),
+      ['h-insp', 'h-notsold']);
+    assert.equal(res.body.focus.recentlyAssigned.length, 0, 'not_sold is staged, so not in section 2');
+  });
+
+  it('[RED] the stats match a direct count over the same predicate', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    const other = await seedRep(TENANT, 'other@a.test');
+    await seedSession('tok-h5', { contractorId: TENANT, teamMemberId: me });
+    await book(me, 'h-s1', { stage: 'sold' });
+    await book(me, 'h-s2', { stage: null });
+    // A provisional-only assignment, so locked/provisional can differ.
+    await seedClient(TENANT, 'h-s3', 'Prov');
+    await assign(TENANT, 'h-s3', { provisional: me });
+    // An open co-assignment flag naming this rep.
+    await pool.query(
+      `INSERT INTO flagged_assignments (contractor_id, jobber_client_id, flag_reason, reps_involved, status)
+       VALUES ($1,'h-s1','rep_co_assignment',$2::jsonb,'open')`, [TENANT, JSON.stringify([me, other])]);
+
+    const res = await home('tok-h5');
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int c,
+              COUNT(*) FILTER (WHERE sticky_rep_id IS NOT NULL)::int l,
+              COUNT(*) FILTER (WHERE sticky_rep_id IS NULL)::int p
+         FROM client_rep_assignments
+        WHERE contractor_id = $1 AND COALESCE(sticky_rep_id, provisional_rep_id) = $2`,
+      [TENANT, me]);
+    assert.equal(res.body.stats.clients, rows[0].c);
+    assert.equal(res.body.stats.locked, rows[0].l);
+    assert.equal(res.body.stats.provisional, rows[0].p);
+    assert.equal(res.body.stats.flagged, 1);
+    assert.equal(res.body.stats.locked + res.body.stats.provisional, res.body.stats.clients,
+      'the split must account for the whole book');
+  });
+
+  it('[RED] ⚠ a stat and the list cannot disagree — the book size covers both sections', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h6', { contractorId: TENANT, teamMemberId: me });
+    for (let i = 0; i < 3; i += 1) await book(me, `h-x${i}`, { stage: i === 0 ? 'sold' : null });
+
+    const res = await home('tok-h6');
+    const shown = res.body.focus.furthestAlong.length + res.body.focus.recentlyAssigned.length;
+    assert.equal(res.body.stats.clients, 3);
+    assert.equal(shown, 3, 'with a book under the focus limit, the sections show all of it');
+  });
+
+  it('[RED] A34.7 — an ORPHAN flag is not counted, a co-assignment flag naming this rep is', async () => {
+    // Reuses the discriminating orphan fixture: it DELIBERATELY carries reps_involved,
+    // because a plain orphan writes none and would be excluded by the containment
+    // clause alone — passing vacuously.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h7', { contractorId: TENANT, teamMemberId: me });
+    await book(me, 'h-orph', { stage: null });
+    await pool.query(
+      `INSERT INTO flagged_assignments (contractor_id, jobber_client_id, flag_reason, reps_involved, status)
+       VALUES ($1,'h-orph','orphan',$2::jsonb,'open')`, [TENANT, JSON.stringify([me])]);
+    assert.equal((await home('tok-h7')).body.stats.flagged, 0, 'orphan flags are admin-only');
+
+    await book(me, 'h-co', { stage: null });
+    await pool.query(
+      `INSERT INTO flagged_assignments (contractor_id, jobber_client_id, flag_reason, reps_involved, status)
+       VALUES ($1,'h-co','rep_co_assignment',$2::jsonb,'open')`, [TENANT, JSON.stringify([me])]);
+    assert.equal((await home('tok-h7')).body.stats.flagged, 1, 'the positive control');
+  });
+
+  it('[RED] A34.6 — no revenue key anywhere in the payload, in either flag state', async () => {
+    // ⚠ BOTH STATES ASSERTED ON THE SAME SHAPE. The revenue NUMBER does not exist for
+    // anyone until Wave 1.5/1.6, so the flag is not why it is absent — and a test that
+    // only checked the flag-off rep would pass against a build that leaks it to a
+    // permitted one.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h8a', { contractorId: TENANT, teamMemberId: me });
+    await book(me, 'h-rev', { stage: 'paid' });
+    const off = await home('tok-h8a');
+
+    const permitted = await seedRep(TENANT, 'permitted@a.test');
+    await pool.query(`UPDATE team_members SET rep_revenue_visibility = TRUE WHERE id = $1`, [permitted]);
+    await seedSession('tok-h8b', { contractorId: TENANT, teamMemberId: permitted });
+    const on = await home('tok-h8b');
+
+    for (const [label, res] of [['flag off', off], ['flag ON', on]]) {
+      const json = JSON.stringify(res.body);
+      assert.equal(/revenue/i.test(json), false, `${label}: no revenue key may appear`);
+      assert.equal(/\brevenue_hidden\b/.test(json), false, `${label}: not even the hidden marker`);
+    }
+  });
+
+  it('[RED] a first-run rep with NO book gets zeroed stats and two empty sections', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h9', { contractorId: TENANT, teamMemberId: me });
+    const res = await home('tok-h9');
+    assert.equal(res.status, 200, 'an empty book is not an error');
+    assert.deepEqual(res.body.stats, { clients: 0, locked: 0, provisional: 0, flagged: 0 });
+    assert.deepEqual(res.body.focus.furthestAlong, []);
+    assert.deepEqual(res.body.focus.recentlyAssigned, []);
+  });
+
+  it('[RED] section 1 empty while section 2 is full is a NORMAL state, not an error', async () => {
+    // Measured: the seeded book is 5 staged of 268, and production is 3 of 39. This is
+    // the common case, not an edge one.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h10', { contractorId: TENANT, teamMemberId: me });
+    for (let i = 0; i < 3; i += 1) await book(me, `h-n${i}`, { stage: null });
+    const res = await home('tok-h10');
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.focus.furthestAlong, []);
+    assert.equal(res.body.focus.recentlyAssigned.length, 3);
+  });
+
+  it('[RED] both sections are bounded, and the stats still report the whole book', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h11', { contractorId: TENANT, teamMemberId: me });
+    for (let i = 0; i < 8; i += 1) await book(me, `h-p${i}`, { stage: 'sold', minutesAgo: i });
+    for (let i = 0; i < 8; i += 1) await book(me, `h-q${i}`, { stage: null, minutesAgo: i });
+
+    const res = await home('tok-h11');
+    assert.equal(res.body.focus.furthestAlong.length, 5, 'section 1 is bounded');
+    assert.equal(res.body.focus.recentlyAssigned.length, 5, 'section 2 is bounded');
+    assert.equal(res.body.stats.clients, 16, 'the stat still counts the whole book');
+  });
+
+  it('[RED] a referrer session and a frozen rep are refused; a non-rep gets a typed 403', async () => {
+    await pool.query(`INSERT INTO users (id, full_name, email, pin, contractor_id) VALUES (900003,'R','r3@a.test','x',$1)`, [TENANT]);
+    await pool.query(
+      `INSERT INTO sessions (token, role, contractor_id, user_id, expires_at, created_at)
+       VALUES ('tok-h-ref','referrer',$1,900003,NOW() + INTERVAL '1 day', NOW())`, [TENANT]);
+    assert.equal((await home('tok-h-ref')).status, 401);
+
+    const frozen = await seedRep(TENANT, 'frozen@a.test', { active: false });
+    await seedSession('tok-h-frozen', { contractorId: TENANT, teamMemberId: frozen });
+    assert.equal((await home('tok-h-frozen')).status, 401);
+
+    const notRep = await seedRep(TENANT, 'notrep@a.test', { isFieldRep: false });
+    await seedSession('tok-h-notrep', { contractorId: TENANT, teamMemberId: notRep });
+    const res = await home('tok-h-notrep');
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error, 'Not authorized');
+  });
+
+  it('[RED] an OWNER-rep by the switcher gets their own Home', async () => {
+    const ownerRep = await seedRep(TENANT, 'ownerrep@a.test', { tier: 'owner' });
+    await seedSession('tok-h-owner', { contractorId: TENANT, teamMemberId: ownerRep });
+    await book(ownerRep, 'h-owner', { stage: 'sold' });
+    const res = await home('tok-h-owner');
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.focus.furthestAlong.map((c) => c.jobberClientId), ['h-owner']);
+  });
+
+  it('[RED] a client with no jobber_clients row still appears, flagged nameUnavailable', async () => {
+    // 4b's state, on Home: the book is the whole book here too.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h-nomirror', { contractorId: TENANT, teamMemberId: me });
+    await assign(TENANT, 'h-nomirror', { sticky: me });
+    const res = await home('tok-h-nomirror');
+    assert.equal(res.body.focus.recentlyAssigned.length, 1);
+    assert.equal(res.body.focus.recentlyAssigned[0].nameUnavailable, true);
+    assert.equal(res.body.focus.recentlyAssigned[0].name, null);
+    assert.equal(res.body.stats.clients, 1);
+  });
+});

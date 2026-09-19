@@ -147,13 +147,15 @@ const REP_PREFIX = '/api/rep/';
 // ⚠ EXPECTED_ADMIN_ROUTE_COUNT (138) is UNAFFECTED and was checked rather than assumed:
 // that walk is prefixed '/api/admin/', and this route is under '/api/rep/'.
 //
-// ⚠ 2 → 3 IN CANVASS-5, DELIBERATELY. One route was ADDED:
-// GET /api/rep/clients/:jobberClientId, the client detail view (A34.8/A34.6/A34.7).
-// Session-gated and identity-gated exactly like its two siblings, so
-// PUBLIC_REP_ROUTES stays empty and repRouteGuard's coverage sweep picks it up
+// ⚠ EVERY RISE SINCE IS LISTED, AND EACH NAMES THE ROUTE IT ADDED — the reasoning
+// above applies unchanged to all of them, so it is not restated per line:
+//   2 → 3  Canvass-5  GET /api/rep/clients/:jobberClientId  (A34.8/A34.6/A34.7)
+//   3 → 4  Canvass-6  GET /api/rep/home                     (A34.5 ④ + the stats)
+// All are session- AND identity-gated exactly like their siblings, so
+// PUBLIC_REP_ROUTES stays empty and repRouteGuard's coverage sweep picks each up
 // automatically. **The number moved because a route was added, not because a walk
-// broke.**
-const EXPECTED_REP_ROUTE_COUNT = 3;
+// broke** — which is the reflex this constant exists to catch.
+const EXPECTED_REP_ROUTE_COUNT = 4;
 
 const PUBLIC_REP_ROUTES = [];
 const PUBLIC_REP_KEYS = new Set(PUBLIC_REP_ROUTES.map((r) => `${r.method} ${r.path}`));

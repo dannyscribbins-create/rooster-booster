@@ -7,6 +7,7 @@ const { pool } = require('../db');
 const { verifyAdminSession } = require('../middleware/auth');
 const { isActiveFieldRep } = require('../utils/repAccess');
 const { logError } = require('../middleware/errorLogger');
+const { OWN_BOOK_PREDICATE, STAGE_RANK_SQL } = require('../utils/repBook');
 
 // ─── THE REP SURFACE'S OWN PREFIX (Canvass-3, amendment A34.3) ───────────────
 //
@@ -331,8 +332,7 @@ router.get('/api/rep/clients', async (req, res) => {
        LEFT JOIN users u
          ON u.contractor_id = cra.contractor_id
         AND u.jobber_client_id = cra.jobber_client_id
-       WHERE cra.contractor_id = $1
-         AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = $2
+       WHERE ${OWN_BOOK_PREDICATE}
          -- The keyset. When no cursor is supplied $4/$5 are NULL and the clause is
          -- inert, so page 1 and page N run the same statement.
          AND ($4::timestamptz IS NULL
@@ -349,8 +349,7 @@ router.get('/api/rep/clients', async (req, res) => {
     const { rows: countRows } = await pool.query(
       `SELECT COUNT(*)::int AS total
          FROM client_rep_assignments cra
-        WHERE cra.contractor_id = $1
-          AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = $2`,
+        WHERE ${OWN_BOOK_PREDICATE}`,
       [contractorId, teamMemberId]
     );
 
@@ -466,8 +465,7 @@ router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
        LEFT JOIN users u
          ON u.contractor_id = cra.contractor_id
         AND u.jobber_client_id = cra.jobber_client_id
-       WHERE cra.contractor_id = $1
-         AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = $2
+       WHERE ${OWN_BOOK_PREDICATE}
          AND cra.jobber_client_id = $3`,
       [contractorId, teamMemberId, jobberClientId]
     );
@@ -513,6 +511,148 @@ router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
     res.json(body);
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/rep/clients/:jobberClientId' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /api/rep/home ───────────────────────────────────────────────────────
+//
+// THE HOME TAB — mockup 2A/2B, on ruling ④ (Danny, 2026-09-18).
+//
+// ⚠ ONE ROUTE, NOT TWO, AND THE REASON IS THE PREDICATE RATHER THAN THE ROUND TRIP.
+// The stats and both focus sections answer questions about the SAME set of rows. Two
+// routes would mean two places asserting "which clients are this rep's", and the whole
+// point of `OWN_BOOK_PREDICATE` is that there is exactly one. A single route also makes
+// "the stat and the list disagree" structurally impossible to ship unnoticed, because
+// they are computed in the same request against the same predicate.
+//
+// ── TODAY'S FOCUS: TWO SECTIONS, TWO HONEST LABELS (ruling ④) ───────────────
+// **furthestAlong** — clients that HAVE a pipeline stage, ordered by that stage.
+// **recentlyAssigned** — the rest, ordered by assignment date.
+// ⚠ NEITHER SECTION IMPLIES THE OTHER, AND NEITHER BORROWS THE OTHER'S LABEL. They are
+// two orderings, not one ranking split in half — a client in the second is not "behind"
+// one in the first, it simply has no referral record to place it on the pipeline.
+// ⚠ AND THE FIRST SECTION MAY BE EMPTY, WHICH IS CORRECT RATHER THAN A GAP. Measured
+// 2026-09-18: Danny's production book is 3 staged of 39, and the seeded book is 5 of
+// 268 — because `pipeline_cache` holds REFERRED clients only. **A true statement about
+// few rows beats a false one about many**, which is why ① and ② were both rejected:
+// ① ignores 36 of 39, and ② calls assignment recency "furthest along" for 92% of the
+// list, which is exactly the risk A34.5 names.
+// ⚠ IT DEGRADES CORRECTLY AND THAT IS PART OF THE DESIGN: as the historical backfill
+// and referral coverage grow, section 1 fills and becomes the real focus with NO code
+// change and NO relabelling.
+//
+// ⚠ NO REVENUE ANYWHERE ON THIS SCREEN, IN EITHER FLAG STATE (A34.6 + CD-7, and mockup
+// 2B which already draws it). Not a locked card, not an empty slot, not a reserved
+// grid cell — the remaining cards reflow. **The flag is not why**: the revenue NUMBER
+// does not exist for anyone until Wave 1.5/1.6, and "drop any stat that would need a
+// number nobody has" applies to a permitted rep too. That is why this route returns no
+// revenue key at all and does not read `rep_revenue_visibility`.
+const FOCUS_LIMIT = 5;
+
+router.get('/api/rep/home', async (req, res) => {
+  // Called in the handler, visibly, for sessionAuthInvariant's assertion A.
+  const session = await verifyAdminSession(req, res);
+  if (!session) return;
+
+  try {
+    const allowed = await isActiveFieldRep({
+      teamMemberId: session.teamMemberId,
+      contractorId: session.contractorId,
+    });
+    if (!allowed) return res.status(403).json({ error: 'Not authorized' });
+
+    const { contractorId, teamMemberId } = session;
+    const params = [contractorId, teamMemberId];
+
+    // ── THE STATS ────────────────────────────────────────────────────────────
+    // ⚠ EVERY ONE COUNTS OVER THE SAME PREDICATE AS THE LISTS BELOW, IN THE SAME
+    // REQUEST. A stat computed from a different query is a second answer to the same
+    // question, and the two drift silently.
+    // ⚠ CHAINS IS ABSENT AND THAT IS A DATA FACT, NOT AN OMISSION: the mockup's CHAINS
+    // card counts referral chains, and the referral link is a name string with no
+    // foreign key — the same reason 4b's chain card was not built.
+    const { rows: statRows } = await pool.query(
+      `SELECT
+         COUNT(*)::int                                                          AS clients,
+         COUNT(*) FILTER (WHERE cra.sticky_rep_id IS NOT NULL)::int             AS locked,
+         COUNT(*) FILTER (WHERE cra.sticky_rep_id IS NULL)::int                 AS provisional,
+         COUNT(*) FILTER (WHERE fa.id IS NOT NULL)::int                         AS flagged
+       FROM client_rep_assignments cra
+       -- A34.7, scoped exactly as the list and the detail scope it: only OPEN
+       -- co-assignment flags naming THIS rep. Orphan flags are admin-only.
+       LEFT JOIN flagged_assignments fa
+         ON fa.contractor_id = cra.contractor_id
+        AND fa.jobber_client_id = cra.jobber_client_id
+        AND fa.status = 'open'
+        AND fa.flag_reason = 'rep_co_assignment'
+        AND fa.reps_involved @> to_jsonb($2::int)
+       WHERE ${OWN_BOOK_PREDICATE}`,
+      params
+    );
+
+    // ── SECTION 1 — FURTHEST ALONG ───────────────────────────────────────────
+    // Only clients with a stage. Ordered by the pipeline's own progression, then by
+    // recency as a tiebreak, then by id so the order is TOTAL — the same discipline
+    // the keyset cursor needs, for the same reason: a partial order is unstable.
+    const { rows: furthest } = await pool.query(
+      `SELECT
+         cra.jobber_client_id,
+         TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client_name,
+         (jc.jobber_client_id IS NULL)                                          AS client_row_missing,
+         pc.pipeline_status,
+         COALESCE(cra.sticky_set_at, cra.provisional_set_at)                    AS assigned_at
+       FROM client_rep_assignments cra
+       LEFT JOIN jobber_clients jc
+         ON jc.contractor_id = cra.contractor_id AND jc.jobber_client_id = cra.jobber_client_id
+       JOIN pipeline_cache pc
+         ON pc.contractor_id = cra.contractor_id AND pc.jobber_client_id = cra.jobber_client_id
+       WHERE ${OWN_BOOK_PREDICATE}
+         AND pc.pipeline_status IS NOT NULL
+       ORDER BY ${STAGE_RANK_SQL} DESC, cra.updated_at DESC, cra.jobber_client_id DESC
+       LIMIT $3`,
+      [...params, FOCUS_LIMIT]
+    );
+
+    // ── SECTION 2 — RECENTLY ASSIGNED ────────────────────────────────────────
+    // ⚠ THE COMPLEMENT, NOT A SECOND PAGE. `pipeline_cache` row absent is the
+    // condition — so every client appears in exactly one section and none in both.
+    const { rows: recent } = await pool.query(
+      `SELECT
+         cra.jobber_client_id,
+         TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client_name,
+         (jc.jobber_client_id IS NULL)                                          AS client_row_missing,
+         COALESCE(cra.sticky_set_at, cra.provisional_set_at)                    AS assigned_at
+       FROM client_rep_assignments cra
+       LEFT JOIN jobber_clients jc
+         ON jc.contractor_id = cra.contractor_id AND jc.jobber_client_id = cra.jobber_client_id
+       LEFT JOIN pipeline_cache pc
+         ON pc.contractor_id = cra.contractor_id AND pc.jobber_client_id = cra.jobber_client_id
+       WHERE ${OWN_BOOK_PREDICATE}
+         AND pc.jobber_client_id IS NULL
+       ORDER BY COALESCE(cra.sticky_set_at, cra.provisional_set_at) DESC NULLS LAST,
+                cra.jobber_client_id DESC
+       LIMIT $3`,
+      [...params, FOCUS_LIMIT]
+    );
+
+    const shape = (r) => ({
+      jobberClientId: r.jobber_client_id,
+      name: r.client_row_missing ? null : (r.client_name || 'Unnamed client'),
+      nameUnavailable: r.client_row_missing,
+      assignedAt: r.assigned_at,
+    });
+
+    res.json({
+      stats: statRows[0],
+      focus: {
+        furthestAlong: furthest.map((r) => ({ ...shape(r), stage: r.pipeline_status })),
+        recentlyAssigned: recent.map(shape),
+      },
+      limit: FOCUS_LIMIT,
+    });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/rep/home' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -344,7 +344,27 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1534 server tests across 249 suites, and 1191 React tests across 73 files** (measured 2026-09-18 by the Canvass-5 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1534 · suites 249 · pass 1534 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1548 server tests across 250 suites, and 1207 React tests across 74 files** (measured 2026-09-18 by the Canvass-6 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1548 · suites 250 · pass 1548 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-6 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  Server 1534 → 1548 is **+14**, one new `describe` appended to the EXISTING `repClients.test.js`;
+  suites 249 → 250 is that single block. React 1191 → 1207 is **+16** in one new file
+  (`repHomeScreen.test.jsx`), and 73 → 74 is that file.
+  ⚠ **COUNTED WITH `grep -c`, LOOPS CHECKED FOR POSITION** — the server file's `for` loops all
+  sit inside `it()` bodies (they seed books), so they multiply nothing.
+  ⚠ **AND THE REACT FILE GREW 13 → 16 MID-PHASE FOR A REASON WORTH THE LINE: AN EXISTING FENCE IN
+  A FILE THIS PHASE NEVER OPENED WENT RED, AND IT WAS RIGHT.** `BrandingPreview.test.jsx`'s B-4
+  case asserts the admin branding preview fires **no request**; that preview mounts the REAL
+  `RepShell`, and Canvass-6 turned its entry screen into one that fetches on mount. **The preview's
+  own safety note said "the entry screen is Home" — an argument that held only while Home was a
+  placeholder.** Fixed at the cause with a `preview` prop whose effect returns on its FIRST line,
+  plus three new cases here including the paired positive (without `preview` it DOES fetch).
+  ⚠ **THAT IS THE "a safety argument resting on another component's current behaviour is a
+  coincidence with a comment beside it" SHAPE** — and it was caught only because the test asserted
+  the PROPERTY (no request fired) rather than the coincidence.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-5 COMMIT ITSELF.* It read
+  **1534 / 249 / 1191 / 73**, +16 server across two new describes and +19 React in one new file,
+  and it records the `BrandLogo` hoist that fixed a timing flake at its cause rather than its
+  threshold.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-5 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
   Server 1518 → 1534 is **+16** — the `it(` lines of two new `describe` blocks appended to the
   EXISTING `repClients.test.js`; suites 247 → 249 is those **two** blocks. React 1172 → 1191 is

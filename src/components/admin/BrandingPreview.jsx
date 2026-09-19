@@ -524,6 +524,21 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
               reach Profile is under the pointer-events block above. Both are
               fenced in BrandingPreview.test.jsx, and the second is guard-proofed
               by removing the block and watching the frame become clickable.
+              ⚠ AND THE FIRST HALF OF THAT SENTENCE STOPPED BEING SUFFICIENT IN
+              CANVASS-6, WHICH IS WHY THE `preview` PROP BELOW EXISTS. "The entry
+              screen is Home" protected this casing only while Home was a
+              PLACEHOLDER; Canvass-6 made Home a real screen that fetches
+              /api/rep/home on mount, and B-4's fence caught it on the first full
+              run. **The argument is no longer "Home happens to be inert" — it is
+              "preview mode cannot reach the network".** RepShell now takes
+              `preview` and passes it down, and RepHomeScreen's effect returns on
+              its FIRST LINE rather than choosing not to fetch, so there is no
+              branch a later edit can invert by accident.
+              ⚠ THE LESSON IS ONE THIS REPO KEEPS RECORDING: a safety argument that
+              rests on ANOTHER component's current behaviour is not a fence, it is
+              a coincidence with a comment beside it. This casing survived because
+              the test asserted the PROPERTY — no request fired — rather than the
+              coincidence.
 
               ⚠ ONE FRAME FOR BOTH REAL SURFACES, AND THE PROVIDER IS ABOVE THE
               SWAP RATHER THAN INSIDE IT. That is what makes "switching views
@@ -561,7 +576,7 @@ export default function BrandingPreview({ formData, mode: initialMode = 'light' 
               {screen === 'dashboard'
                 ? <Dashboard {...PREVIEW_FIXTURE[variant]} />
                 : screen === 'rep'
-                  ? <RepShell onLogout={NOOP} switcher={null} />
+                  ? <RepShell onLogout={NOOP} switcher={null} preview />
                   : <LoginScreen onAuthenticated={NOOP} />}
             </ThemeProvider>
           </PreviewFrame>

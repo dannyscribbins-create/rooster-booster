@@ -4198,6 +4198,92 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-6 — the Home tab: Today's Focus and the stats (SHIPPED 2026-09-18)
+
+- [x] **✅ RULING ④ — TWO HONEST SECTIONS (Danny, 2026-09-18).** *Furthest along* ranks clients that
+      HAVE a stage; *Recently assigned* ranks the rest by assignment date. **Neither section implies
+      the other and neither borrows the other's label.**
+      ⚠ **WHY NOT ① OR ②, RECORDED SO IT IS NOT "SIMPLIFIED" BACK.** ① (rank only staged clients)
+      makes the hero element show **3 of 39** in production and **5 of 268** on the seeded stack —
+      uninformative about a book that is not empty. ② (rank everything by recency) covers the book
+      but calls assignment recency *"furthest along"*, which is false for ~92% of the list and is
+      **the exact risk A34.5 names**. ④ is the only option where every label is true about its own
+      rows.
+      ⚠ **AND IT DEGRADES CORRECTLY, BY DESIGN RATHER THAN BY LUCK:** as the backfill and referral
+      coverage grow, section 1 fills and becomes the real focus with **no code change and no
+      relabelling**. It is therefore **not** styled as subordinate while it is small — a test
+      asserts both headings are the same element, size and weight, so making it secondary later
+      would be a visible change rather than a quiet one.
+      **Discriminating fixture, per the ruling:** a `paid` client assigned ~4 days ago and a `lead`
+      assigned 2 minutes ago. ④ puts the OLD one first; ② would put the NEW one first. **The test
+      cannot pass under both**, and guard-proofing section 1 to recency takes it red.
+
+- [x] **✅ THE STATS, AND WHAT IS DELIBERATELY ABSENT.** CLIENTS · LOCKED · PROVISIONAL · FLAGGED,
+      every one counted over the SAME predicate as the lists, in the same request — so "the stat and
+      the list disagree" is structurally impossible to ship. FLAGGED reuses A34.7's scoping exactly
+      (open co-assignment flags naming this rep; orphans stay admin-only), with 4b's discriminating
+      orphan fixture.
+      ⚠ **CHAINS DROPPED — the referral link it counts does not exist.** Same reason 4B's chain card
+      was not built: a name string with no foreign key.
+      ⚠ **REVENUE DROPPED IN BOTH FLAG STATES, AND THE FLAG IS NOT THE REASON.** The revenue NUMBER
+      exists for nobody until Wave 1.5/1.6, so *"drop any stat that would need a number nobody has"*
+      applies to a permitted rep too. No lock, no hole, no reserved cell — the cards reflow, which
+      §b records as a layout decision **the mockup settles and no document states**. ⚠ The absence
+      must not read as a lock by omission; a test sweeps the rendered text for revenue wording and
+      for `$`.
+      ⚠ **AND THE MOCKUP'S TODAY'S-FOCUS BANNER COPY IS NOT REPRODUCED** — 2A/2B read *"Two referral
+      chains are one step from conversion"*, which is about the referral CHAIN, the very thing A34.5
+      replaced with the one-hop version. Reproducing it would put two-hop copy over one-hop data.
+
+- [ ] ⚠ **CONV WAS DROPPED WITHOUT ITS MEASUREMENT, AND THAT IS STATED RATHER THAN GLOSSED.** Danny's
+      instruction was to run `SELECT COUNT(*) FROM referral_conversions WHERE contractor_id =
+      'accent-roofing-dev'` first and drop the card if it is zero. ⚠ **THE COUNT COULD NOT BE RUN
+      FROM THIS ENVIRONMENT.** `railway run` injects `DATABASE_URL` but it resolves to
+      `postgres.railway.internal` — private networking, `ENOTFOUND` from outside — and the service
+      exposes **no `DATABASE_PUBLIC_URL`**. That is the limitation CLAUDE.md already records as
+      *"Local environment cannot connect to Railway PostgreSQL."*
+      **What I did, and why:** dropped the card. The standing rule is not to ship one that always
+      reads 0, and an unmeasurable count cannot be shown to be non-zero — so the conservative side
+      of Danny's own instruction is the one taken. **Re-adding it is one entry in `STAT_CARDS` plus
+      one `COUNT(*) FILTER` in the Home query.** `referral_conversions` is 0 rows on the local
+      stack, for what that is worth. **OWNER: Danny runs the count; trivially reversible either way.**
+
+- [x] **✅ THE SHARED PREDICATE EXTRACTED — `server/utils/repBook.js`.** Three copies existed before
+      this phase and Home would have made four or five. ⚠ **The risk is not repetition, it is a fix
+      landing in one copy and not the others** — a rep seeing one book on the Clients tab, a
+      different count beside it, and a third answer on tapping a row.
+      ⚠ **DANNY'S CONDITION WAS MET, AND MEASURING IT CORRECTED A CLAIM I HAD WRITTEN INTO THE
+      HELPER'S OWN COMMENT.** The comment first said deleting the predicate's contractor clause
+      takes all four per-screen result assertions red. **A guard-proof showed that is FALSE: it
+      takes exactly ONE red.** The other three cannot see it, because `team_members.id` is globally
+      unique so the rep-id filter already excludes an ordinary cross-tenant row.
+      **The two halves are fenced by different tests, measured:** breaking the **rep-id** half takes
+      the list, detail and home result assertions red **independently** (5 failures across three
+      screens); breaking the **contractor** half takes only the mis-tenanted case red (1 failure).
+      **Both halves are covered — they are simply not covered by the same tests**, and the comment
+      now says so.
+
+- [x] **✅ ⚠ AN EXISTING FENCE IN A FILE THIS PHASE NEVER OPENED WENT RED, AND IT WAS RIGHT.**
+      `BrandingPreview.test.jsx`'s B-4 case asserts the admin branding preview **fires no request**.
+      That preview mounts the **real** `RepShell` so a contractor's palette shows on the real
+      component — and Canvass-6 turned its entry screen into one that fetches on mount.
+      ⚠ **THE PREVIEW'S OWN SAFETY NOTE SAID "the entry screen is Home"** — an argument that held
+      only while Home was a placeholder. **A safety argument resting on another component's current
+      behaviour is not a fence; it is a coincidence with a comment beside it.**
+      **Fixed at the cause:** `RepShell` takes `preview`, threaded to the data screens, and
+      `RepHomeScreen`'s effect returns on its **first line** rather than choosing not to fetch — so
+      there is no branch a later edit can invert. The preview renders a populated SAMPLE rather than
+      zeros, because an all-zero dashboard demonstrates a palette on almost no ink.
+      **Paired positive added:** without `preview` it DOES fetch — otherwise "no request" passes
+      against a component that never fetches at all. Guard-proofed: removing the guard takes three
+      cases red, including B-4's original.
+
+- [x] **✅ FIRST RUN, VERIFIED IN A BROWSER.** A newly mapped rep sees the greeting, **zeros in
+      every stat**, and both empty states — *"None of your clients has a referral record yet…"* and
+      *"Clients appear here once a request in Jobber is assigned to you."* ⚠ **No `alert` role and
+      no warning treatment**: an empty section 1 is the common case, not an error. Canvass-0
+      recorded that the mockups are never drawn empty; at launch this is what most reps see.
+
 ### Canvass-5 — client detail, and paging the book (SHIPPED 2026-09-18)
 
 - [x] **✅ ACCENT'S VOLUME, MEASURED BY DANNY 2026-09-18 AT THE PINNED VERSION.**

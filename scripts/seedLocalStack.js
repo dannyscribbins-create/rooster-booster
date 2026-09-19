@@ -864,6 +864,56 @@ async function seedStack(pool) {
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET sticky_rep_id = EXCLUDED.sticky_rep_id`,
     [beta, betaRevRepId]);
 
+  // ── CANVASS-6: A HOME TAB WHERE ④'s ORDER AND ②'s DISAGREE ────────────────
+  //
+  // ⚠ THE WHOLE POINT OF THESE FOUR ROWS IS THAT THEY DISCRIMINATE. Ruling ④ orders
+  // section 1 BY STAGE; the rejected option ② would order everything by assignment
+  // RECENCY. A fixture where both orders agree proves nothing — the Canvass-3.7 anchor
+  // lesson, applied to a ranking instead of a window.
+  //   home-paid-old   paid       assigned LONGEST ago  -> ④ ranks it FIRST,  ② LAST
+  //   home-lead-new   lead       assigned MOST recently -> ④ ranks it LAST,   ② FIRST
+  // So section 1 reading [paid, lead] can only be ④, and [lead, paid] can only be ②.
+  // The two unstaged rows below then prove section 2 is the complement rather than a
+  // second page of the same list.
+  const HOME_FIXTURE = [
+    ['home-paid-old',  'Ada Sterling',   'paid',       6000],
+    ['home-lead-new',  'Boris Vance',    'lead',          2],
+    ['home-unstaged1', 'Cleo Marchetti', null,            1],
+    ['home-unstaged2', 'Dev Okonkwo',    null,         4000],
+  ];
+  for (const [jcId, name, stage, minutesAgo] of HOME_FIXTURE) {
+    const [first, ...rest] = name.split(' ');
+    await pool.query(
+      `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_name, last_synced_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET first_name = EXCLUDED.first_name`,
+      [jcId, beta, first, rest.join(' ')]
+    );
+    await pool.query(
+      `INSERT INTO client_rep_assignments
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+       VALUES ($1, $2, $3, 'mode_a_at_close',
+               NOW() - ($4 || ' minutes')::interval, NOW() - ($4 || ' minutes')::interval)
+       ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE
+         SET sticky_rep_id = EXCLUDED.sticky_rep_id, sticky_set_at = EXCLUDED.sticky_set_at,
+             updated_at = EXCLUDED.updated_at`,
+      [beta, jcId, betaRepId, String(minutesAgo)]
+    );
+    if (stage) {
+      await pool.query(
+        `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status)
+         VALUES ($1, $2, $3, 'Seeded Referrer', $4)
+         ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET pipeline_status = EXCLUDED.pipeline_status`,
+        [beta, jcId, name, stage]
+      );
+    }
+  }
+
+  // ⚠ THE FIRST-RUN REP IS KEPT DELIBERATELY EMPTY — rep@palette-beta.test has no
+  // assignments at all, so Home's zeroed stats and BOTH empty states are reachable by
+  // eye. **A state the fixture never renders cannot be eye-tested**, and a first-run
+  // rep is the common case at launch rather than an edge one.
+
   // ⚠ BADGE 2 ('Invited') IS NOT SEEDED, AND IT CANNOT BE. Nothing in the schema records
   // "this rep sent this client a link": contractor_invite_links carries
   // owner_team_member_id but NO client column and has no 'rep' writer at all, and
