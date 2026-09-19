@@ -4200,6 +4200,25 @@ may legitimately change several of these subjects.*
 
 ### Canvass-4b — the dropped rows, the count line, and the historical pass (filed 2026-09-18)
 
+- [x] **✅ MEASURED ON RAILWAY 2026-09-18 (Danny) — THE PARTITION CAME BACK CLEAN, AND THE
+      DROPPED-ROW DIAGNOSIS DID NOT APPLY.** All **39** assignments render; **zero** dropped.
+      Mis-tenanted **0**, clients with multiple open flags **0**, duplicate mirror rows **0**. Danny
+      recounted the screen at **39**, and the count line renders as **"39 clients"**.
+      ⚠ **SO THE ~30 WAS A MISCOUNT, AND THE CAVEAT RAISED AT THE TIME WAS THE THING THAT KEPT THE
+      TWO OBSERVATIONS FROM BEING FORCED INTO ONE STORY.** The 4b report noted that with rows
+      genuinely dropping the old count line *would* have rendered (`39 > 30` is true), so the two
+      reported symptoms were not mutually consistent — and said so rather than inventing a single
+      cause. **The measurement is what settled it, not the argument.**
+      ⚠ **BOTH 4b FIXES STAND ON THEIR OWN MERITS AND ARE NOT ROLLED BACK.** The count line was
+      genuinely invisible whenever a book fits on one page — that defect was real and is the one
+      Danny actually hit. And the inner join is a **latent** defect rather than an imagined one: the
+      state is reachable by construction (the request path writes `client_rep_assignments` and never
+      `jobber_clients`), it simply had not been reached yet on this account. **A guard placed before
+      the data arrives is the cheap version of the same fix.**
+      ⚠ **AND THE ENTRY BELOW IS LEFT UNEDITED, INCLUDING ITS "~30 rows" FRAMING** — it is the record
+      of what was believed and why, and correcting it in place would destroy the evidence that the
+      caveat was raised before the measurement existed.
+
 - [x] **✅ FIXED — AN INNER JOIN ON `jobber_clients` WAS DROPPING ROWS, AND IT IS THE DEFECT CLASS
       CANVASS-4 SPENT ITS LENGTH GUARDING AGAINST, ONE TABLE ALONG.** Canvass-4 was careful that
       `pipeline_cache` must not gate the book — and left `jobber_clients` as an **inner** join, so an
