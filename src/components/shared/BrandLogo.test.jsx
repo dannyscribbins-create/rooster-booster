@@ -43,6 +43,20 @@ import BrandLogo from './BrandLogo';
 import ThemeProvider from './ThemeProvider';
 import { LIGHT_SURFACE_HEX } from '../../utils/themeTokens.mjs';
 
+// ⚠ STATIC, NOT `() => import(...)` INSIDE THE CASE — HOISTED IN CANVASS-5, AT THE
+// CAUSE RATHER THAN AT THE THRESHOLD. These four were lazy thunks awaited inside each
+// test body, so every screen's module-load cost was charged against the per-test 5s
+// budget. When RepShell gained a transitive dependency on @phosphor-icons/react (the
+// client-detail screen), the RepShell case began timing out UNDER FULL-SUITE LOAD while
+// passing in isolation at 2.23s — which reads exactly like a flake and is not one.
+// CLAUDE.md records this precise shape and its fix: hoist, so the cost lands at module
+// load and is paid once. **Raising the timeout would have been fitting the check to the
+// failure.**
+import LoginScreen from '../auth/LoginScreen';
+import ResetPinScreen from '../auth/ResetPinScreen';
+import FrozenAccountScreen from '../auth/FrozenAccountScreen';
+import RepShell from '../rep/RepShell';
+
 const SRC = 'https://cdn.example.com/acme-roofing.png';
 const ALT = 'Acme Roofing';
 
@@ -155,9 +169,9 @@ describe('BrandLogo — the dark-mode plate (C/DL-3c Phase 1a, Ruling 3)', () =>
 // ─────────────────────────────────────────────────────────────────────────────
 describe('BrandLogo — the four sites that render on var(--rm-surface)', () => {
   const CASES = [
-    ['LoginScreen',         () => import('../auth/LoginScreen'),   { onAuthenticated: () => {} }],
-    ['ResetPinScreen',      () => import('../auth/ResetPinScreen'), { token: 'tok' }],
-    ['FrozenAccountScreen', () => import('../auth/FrozenAccountScreen'),
+    ['LoginScreen',         LoginScreen,   { onAuthenticated: () => {} }],
+    ['ResetPinScreen',      ResetPinScreen, { token: 'tok' }],
+    ['FrozenAccountScreen', FrozenAccountScreen,
       { branding: { companyName: 'Frozen Co', logoUrl: 'https://cdn.example.com/frozen.png' }, onBack: () => {} }],
     // ⚠ RE-POINTED IN C/DL-3c PHASE 3-A, NOT DROPPED. RepPlaceholder was deleted
     // and RepShell took its place as the rep surface's logo site — the mark moved
@@ -167,7 +181,7 @@ describe('BrandLogo — the four sites that render on var(--rm-surface)', () => 
     // useRepCapabilities(). That hook throws outside its provider by design;
     // RepSurface calls it one level up so this table can keep mounting the shell
     // with a ThemeProvider and nothing else. Both files say so at their own site.
-    ['RepShell',            () => import('../rep/RepShell'), { onLogout: () => {} }],
+    ['RepShell',            RepShell, { onLogout: () => {} }],
   ];
 
   beforeEach(() => {
@@ -176,8 +190,7 @@ describe('BrandLogo — the four sites that render on var(--rm-surface)', () => 
     global.fetch = () => Promise.reject(new Error('no network in this suite'));
   });
 
-  it.each(CASES)('%s renders, and plates its logo in dark mode', async (name, load, props) => {
-    const { default: Screen } = await load();
+  it.each(CASES)('%s renders, and plates its logo in dark mode', async (name, Screen, props) => {
 
     const { unmount } = render(
       <ThemeProvider mode="dark" context={{ hostname: 'app.roofmiles.com', search: '', storage: null }}>
@@ -193,11 +206,10 @@ describe('BrandLogo — the four sites that render on var(--rm-surface)', () => 
     unmount();
   });
 
-  it.each(CASES)('%s renders its logo UNplated in light mode', async (name, load, props) => {
+  it.each(CASES)('%s renders its logo UNplated in light mode', async (name, Screen, props) => {
     // THE PAIRED FLAG-OFF SIBLING, per site rather than only on the unit. Without
     // it, "plated in dark" is satisfied by a component that plates always — and
     // the four sites are exactly where that would ship.
-    const { default: Screen } = await load();
 
     const { unmount } = render(
       <ThemeProvider mode="light" context={{ hostname: 'app.roofmiles.com', search: '', storage: null }}>

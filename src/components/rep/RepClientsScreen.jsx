@@ -168,7 +168,7 @@ function MembershipBadge({ membership }) {
 // the warning colour when flagged. ⚠ The colour comes from the tokens, never from
 // the mockup's literal orange — that PNG is RoofMiles-branded and this surface is
 // white-label.
-function ClientRow({ client }) {
+function ClientRow({ client, onOpen }) {
   const stage = client.stage ? (STAGE_LABELS[client.stage] || client.stage) : NO_STAGE_LABEL;
   const source = SOURCE_LABELS[client.assignmentSource] || client.assignmentSource || null;
   const assigned = formatAssignedAt(client.assignedAt);
@@ -179,8 +179,13 @@ function ClientRow({ client }) {
 
   return (
     <li
+      onClick={onOpen ? () => onOpen(client.jobberClientId) : undefined}
+      onKeyDown={onOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(client.jobberClientId); } } : undefined}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
       style={{
         listStyle: 'none',
+        cursor: onOpen ? 'pointer' : undefined,
         background: 'var(--rm-surface, #FFFFFF)',
         border: elevationVar('border') ? `1px solid ${elevationVar('border')}` : undefined,
         borderLeft: `4px solid ${client.isFlagged ? statusVar('warning') : 'var(--rm-primary, #F26A1B)'}`,
@@ -268,8 +273,9 @@ function EmptyBook() {
   );
 }
 
-export default function RepClientsScreen() {
-  const [state, setState] = useState({ status: 'loading', clients: [], total: 0, limit: 0 });
+export default function RepClientsScreen({ onOpenClient = null }) {
+  const [state, setState] = useState({ status: 'loading', clients: [], total: 0, limit: 0, nextCursor: null });
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -293,6 +299,7 @@ export default function RepClientsScreen() {
           clients: Array.isArray(data.clients) ? data.clients : [],
           total: Number.isFinite(data.total) ? data.total : 0,
           limit: Number.isFinite(data.limit) ? data.limit : 0,
+          nextCursor: typeof data.nextCursor === 'string' ? data.nextCursor : null,
         });
       } catch {
         if (live) setState((s) => ({ ...s, status: 'error' }));
@@ -300,6 +307,40 @@ export default function RepClientsScreen() {
     }, 'RepClientsScreen/load')();
     return () => { live = false; };
   }, []);
+
+  // ── LOAD THE NEXT PAGE ────────────────────────────────────────────────────
+  // ⚠ APPENDS, AND IS GUARDED AGAINST A DOUBLE-TAP. Two in-flight requests with the
+  // same cursor would append the same page twice — the duplicate-row failure the
+  // keyset exists to prevent, reintroduced on the client. The guard is the flag, not
+  // a disabled attribute, because a disabled button still fires from a keyboard
+  // repeat before React re-renders.
+  const loadMore = () => {
+    if (loadingMore || !state.nextCursor) return;
+    setLoadingMore(true);
+    safeAsync(async () => {
+      try {
+        const token = getAdminToken();
+        const res = await fetch(
+          `${BACKEND_URL}/api/rep/clients?cursor=${encodeURIComponent(state.nextCursor)}`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+        );
+        if (!res.ok) throw new Error(`rep clients page: HTTP ${res.status}`);
+        const data = await res.json();
+        setState((prev) => ({
+          ...prev,
+          clients: [...prev.clients, ...(Array.isArray(data.clients) ? data.clients : [])],
+          total: Number.isFinite(data.total) ? data.total : prev.total,
+          nextCursor: typeof data.nextCursor === 'string' ? data.nextCursor : null,
+        }));
+      } catch {
+        // ⚠ THE PAGE STAYS PUT AND THE CURSOR IS NOT CLEARED. Clearing it on failure
+        // would make a transient error look like the end of the book, permanently.
+        setState((prev) => ({ ...prev, pageError: true }));
+      } finally {
+        setLoadingMore(false);
+      }
+    }, 'RepClientsScreen/loadMore')();
+  };
 
   const { status, clients, total, limit } = state;
 
@@ -338,7 +379,7 @@ export default function RepClientsScreen() {
       {status === 'ready' && clients.length > 0 && (
         <>
           <ul style={{ margin: 0, padding: 0 }}>
-            {clients.map((c) => <ClientRow key={c.jobberClientId} client={c} />)}
+            {clients.map((c) => <ClientRow key={c.jobberClientId} client={c} onOpen={onOpenClient} />)}
           </ul>
           {/* ⚠ THE COUNT ALWAYS RENDERS — CANVASS-4b. It used to render only when
               `total > clients.length`, i.e. only when the page was truncated, so a rep
@@ -355,6 +396,29 @@ export default function RepClientsScreen() {
               ? `Showing ${clients.length} of ${total} — most recently assigned first.`
               : `${total} ${total === 1 ? 'client' : 'clients'}`}
           </p>
+          {state.pageError && (
+            <p role="alert" style={{ margin: '6px 0 0', fontSize: 13, color: statusVar('dangerText'), fontFamily: fontVar('body') }}>
+              Could not load more. Tap to try again.
+            </p>
+          )}
+          {state.nextCursor && (
+            <button
+              type="button"
+              onClick={loadMore}
+              style={{
+                display: 'block', width: '100%', marginTop: 12, padding: '11px 14px',
+                background: 'transparent',
+                border: `1px solid ${elevationVar('border')}`,
+                borderRadius: 10,
+                color: 'var(--rm-text, #1C2D4D)',
+                fontFamily: fontVar('body'), fontSize: 15, fontWeight: 600,
+                cursor: loadingMore ? 'default' : 'pointer',
+                opacity: loadingMore ? MUTED : 1,
+              }}
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          )}
         </>
       )}
     </>

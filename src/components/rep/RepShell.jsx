@@ -4,6 +4,7 @@ import BrandMark from '../shared/BrandMark';
 import RepBottomNav, { REP_TABS } from './RepBottomNav';
 import RepThemeToggleRow from './RepThemeToggleRow';
 import RepClientsScreen from './RepClientsScreen';
+import RepClientDetailScreen from './RepClientDetailScreen';
 import { fontVar } from '../../constants/elevationTheme';
 
 // ─── THE FIELD REP SHELL — C/DL-3c Phase 3-A ─────────────────────────────────
@@ -85,7 +86,11 @@ const ENTRY_VIEW = Object.freeze({ screen: 'home' });
 // ⚠ THIS IS THE SEAM THAT LETS 3-C ADD A SCREEN WITHOUT TOUCHING THE STATE'S
 // SHAPE. `clientDetail: 'clients'` is one line here and nothing else changes;
 // the mockup's 4b keeps Clients lit exactly that way.
-const TAB_FOR_SCREEN = Object.freeze({});
+const TAB_FOR_SCREEN = Object.freeze({
+  // ⚠ THE FIRST SUB-SCREEN, AND IT LANDED EXACTLY AS THIS TABLE PREDICTED — one line,
+  // and nothing about the state's SHAPE changed. Canvass-5.
+  clientDetail: 'clients',
+});
 
 function tabForScreen(screen) {
   return TAB_FOR_SCREEN[screen] ?? screen;
@@ -222,7 +227,7 @@ export default function RepShell({ onLogout, switcher = null }) {
           boxSizing: 'border-box',
         }}
       >
-        <Screen view={view} onLogout={onLogout} />
+        <Screen view={view} onLogout={onLogout} onNavigate={(next) => { setView(next); window.scrollTo(0, 0); }} />
       </main>
 
       <RepBottomNav activeTab={activeTab} onSelect={selectTab} />
@@ -281,7 +286,7 @@ function Header() {
 // and found nothing; this is a screen that does not exist yet, and saying so
 // with an empty state would be a claim about data. It also keeps the known
 // StateCard dark-border defect off a surface 3-D is about to inspect by eye.
-function Screen({ view, onLogout }) {
+function Screen({ view, onLogout, onNavigate }) {
   if (view.screen === 'profile') {
     return <ProfileScreen onLogout={onLogout} />;
   }
@@ -289,7 +294,19 @@ function Screen({ view, onLogout }) {
   // ⚠ CLIENTS IS NO LONGER A PLACEHOLDER (Canvass-4). Home and Network still are,
   // and the header note above still describes them — only this one tab moved.
   if (view.screen === 'clients') {
-    return <RepClientsScreen />;
+    return <RepClientsScreen onOpenClient={(clientId) => onNavigate({ screen: 'clientDetail', clientId })} />;
+  }
+
+  // ⚠ PARAMETERISED, NOT A BARE STRING — A24.6's binding condition for deferring the
+  // router to 3e. `{ screen: 'clientDetail', clientId }` is what lets CD-10's Today's
+  // Focus open a SPECIFIC client later without untangling this screen first.
+  if (view.screen === 'clientDetail') {
+    return (
+      <RepClientDetailScreen
+        clientId={view.clientId}
+        onBack={() => onNavigate({ screen: 'clients' })}
+      />
+    );
   }
 
   const tab = REP_TABS.find(t => t.id === view.screen);

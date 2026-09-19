@@ -344,7 +344,27 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1518 server tests across 247 suites, and 1172 React tests across 72 files** (measured 2026-09-18 by the Canvass-4b commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1518 · suites 247 · pass 1518 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1534 server tests across 249 suites, and 1191 React tests across 73 files** (measured 2026-09-18 by the Canvass-5 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1534 · suites 249 · pass 1534 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-5 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  Server 1518 → 1534 is **+16** — the `it(` lines of two new `describe` blocks appended to the
+  EXISTING `repClients.test.js`; suites 247 → 249 is those **two** blocks. React 1172 → 1191 is
+  **+19** in one new file (`repClientDetail.test.jsx`), and 72 → 73 is that file.
+  ⚠ **COUNTED WITH `grep -c`, AND EVERY LOOP CHECKED FOR POSITION.** The server file's loops all
+  sit inside `it()` bodies (they seed 250-row books); the React file's `it.each` is in
+  `BrandLogo.test.jsx`, not here.
+  ⚠ **A REACT CASE COUNT ROSE WITHOUT A NEW CASE BEING WRITTEN, AND IT IS WORTH THE LINE:**
+  `BrandLogo.test.jsx` was EDITED but not extended — its four `it.each` rows are unchanged. The
+  file's totals do not move; only where its cost is paid does.
+  ⚠ **AND THE ONE FAILURE THIS GATE PRODUCED WAS FIXED AT ITS CAUSE, NOT ITS THRESHOLD.**
+  `BrandLogo.test.jsx`'s RepShell case timed out at 5000ms under full-suite load while passing in
+  isolation at 2.23s — the exact shape recorded under *Fix a timing flake at its cause*. Cause: the
+  four screens were `() => import(...)` thunks awaited INSIDE each test body, so module-load cost
+  was charged to the per-test budget, and RepShell had just gained a transitive dependency on
+  `@phosphor-icons/react`. **Hoisted to static imports: `tests` fell 2.23s → 0.12s and `import`
+  rose 0.18s → 2.26s** — the cost moved out of the budget rather than the budget moving.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-4b COMMIT ITSELF.* It read
+  **1518 / 247 / 1172 / 72**, +3 server and +4 React, all into existing describes and an existing
+  file — which is why its suite and file counts held still.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-4b COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
   Server 1515 → 1518 is **+3** and React 1168 → 1172 is **+4**, all added to **EXISTING `describe`
   blocks and an EXISTING file** — which is why **`suites` stays 247 and the React FILE count stays

@@ -245,7 +245,15 @@ describe('Palette-0 T1 — the seeded stack is in the states the arc needs', () 
     //                     non-claim" checkable rather than asserted, because that person
     //                     HAS an account and cannot be tied to any client.
     // The claim this case makes is CONVERGENCE; the counts are what make it falsifiable.
-    assert.deepEqual(rows[0], { c: 3, u: 7, m: 10 });
+    // ⚠ m: 10 -> 11 IN CANVASS-5. ONE team member: 'Beta Revenue Rep', the first row
+    // on this stack with rep_revenue_visibility TRUE. It is not padding — A34.6 has
+    // TWO states (locked / "no revenue recorded yet") and a fixture carrying only one
+    // of them cannot tell them apart, which is the shape this repo files as "a state
+    // the fixture never renders cannot be eye-tested".
+    // ⚠ users and contractors DO NOT MOVE, and that was predicted rather than
+    // discovered: Canvass-5's other 261 seeded rows are jobber_clients and
+    // client_rep_assignments, neither of which this assertion counts.
+    assert.deepEqual(rows[0], { c: 3, u: 7, m: 11 });
   });
 });
 

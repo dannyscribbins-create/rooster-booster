@@ -218,6 +218,58 @@ function membershipFor(row) {
 // search would build a control that fights the other.
 const REP_BOOK_LIMIT = 100;
 
+// ── THE PAGE CURSOR (Canvass-5) ─────────────────────────────────────────────
+//
+// KEYSET, NOT OFFSET, AND IT IS A CORRECTNESS CHOICE BEFORE IT IS A SPEED ONE.
+// `client_rep_assignments` is written mid-scroll by the REQUEST_CREATE /
+// REQUEST_UPDATE webhooks and the hourly sweep, and an OFFSET page re-numbers
+// every row below an insertion — so a rep scrolling while the sweep runs sees
+// rows twice or not at all, with nothing to signal it. A keyset cursor names a
+// POSITION IN THE ORDER rather than a distance from the top, so an insertion
+// above the cursor cannot move what comes after it.
+// Speed agrees, measured at 20,000 assignments / 40 reps on the local stack:
+// page 2 by keyset is an Index Scan at **66 buffers / 0.115 ms**, the same page
+// by `OFFSET 400` is **312 buffers / 0.379 ms** — and the offset cost grows with
+// depth while the keyset cost is flat.
+//
+// ⚠ THE TIEBREAKER IS LOAD-BEARING, NOT TIDINESS. `updated_at` is NOT unique:
+// the sweep writes a whole page of assignments in one burst, and the same
+// measurement found **99 `updated_at` values shared by more than one row**. A
+// cursor on a non-unique key skips or duplicates across every tie boundary.
+// `jobber_client_id` completes the order — it is UNIQUE per contractor by
+// constraint — so `(updated_at, jobber_client_id)` is a TOTAL order.
+//
+// ⚠⚠ AND THE TIMESTAMP TRAVELS AS TEXT, WHICH IS THE ONE THING IN THIS FILE
+// MOST LIKELY TO BE "SIMPLIFIED" BACK INTO A BUG. `timestamptz` carries
+// MICROSECOND precision; a JavaScript `Date` carries MILLISECONDS. node-postgres
+// parses `timestamptz` into a `Date`, so a cursor round-tripped through JS loses
+// up to 999 microseconds — measured: `21:00:09.846133` comes back `21:00:09.846`.
+// The comparison then lands in the wrong place.
+// **MEASURED CONSEQUENCE, on a 2,000-row book with 40 tied timestamps: the Date
+// cursor SILENTLY SKIPPED 49 OF THE 100 ROWS on page 2 — no duplicates, no error,
+// no signal of any kind.** Selecting `updated_at::text` and comparing against
+// `$n::timestamptz` preserves every digit. **Do not "clean this up" by passing the
+// Date.**
+function encodeCursor(updatedAtText, jobberClientId) {
+  return Buffer.from(JSON.stringify({ t: updatedAtText, i: jobberClientId }), 'utf8').toString('base64url');
+}
+
+// Returns { t, i } or null. ⚠ NEVER THROWS ON GARBAGE — a cursor arrives from the
+// request, so a malformed one is a client error, not a 500, and it must not be
+// able to reach the query. Tenancy does not depend on it either way: the
+// contractor and owner predicates are applied from the SESSION regardless, so a
+// forged cursor can only move a reader around inside their own book.
+function decodeCursor(raw) {
+  if (typeof raw !== 'string' || raw === '') return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+    if (!parsed || typeof parsed.t !== 'string' || typeof parsed.i !== 'string') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 router.get('/api/rep/clients', async (req, res) => {
   // Called in the handler, visibly, for sessionAuthInvariant's assertion A —
   // see the note on GET /api/rep/me above.
@@ -233,6 +285,15 @@ router.get('/api/rep/clients', async (req, res) => {
 
     const { contractorId, teamMemberId } = session;
 
+    // ⚠ A MALFORMED CURSOR IS A CLIENT ERROR, NOT A 500, AND NOT A SILENT PAGE 1.
+    // Silently restarting at the top would make a corrupted cursor look like the end
+    // of the book — the reader would simply never see the rest and nothing would say so.
+    const rawCursor = req.query.cursor;
+    const cursor = decodeCursor(rawCursor);
+    if (rawCursor !== undefined && cursor === null) {
+      return res.status(400).json({ error: 'Invalid cursor' });
+    }
+
     // ⚠ EVERY IDENTITY VALUE COMES FROM THE VERIFIED SESSION. Neither the tenant nor
     // the rep is ever read from the request — there is no :repId parameter and no
     // query string, by construction, so there is no cross-rep probe to defend against.
@@ -246,6 +307,8 @@ router.get('/api/rep/clients', async (req, res) => {
          -- DIFFERENT STATES AND MUST NOT COLLAPSE INTO ONE LABEL. Both produce an empty
          -- client_name above, so the presence of the ROW is what separates them.
          (jc.jobber_client_id IS NULL) AS client_row_missing,
+         -- The cursor's timestamp, as TEXT so microseconds survive the round trip.
+         cra.updated_at::text                                  AS cursor_ts,
          pc.pipeline_status,
          COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
@@ -270,9 +333,17 @@ router.get('/api/rep/clients', async (req, res) => {
         AND u.jobber_client_id = cra.jobber_client_id
        WHERE cra.contractor_id = $1
          AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = $2
-       ORDER BY cra.updated_at DESC
+         -- The keyset. When no cursor is supplied $4/$5 are NULL and the clause is
+         -- inert, so page 1 and page N run the same statement.
+         AND ($4::timestamptz IS NULL
+              OR (cra.updated_at, cra.jobber_client_id) < ($4::timestamptz, $5))
+       -- ⚠ BOTH KEYS, ALWAYS. updated_at alone is not unique (99 tied values measured
+       -- in a 20k-row book), and a cursor on a partial order skips rows at every tie.
+       ORDER BY cra.updated_at DESC, cra.jobber_client_id DESC
+       -- LIMIT+1: the extra row is how "is there another page" is known without a
+       -- second COUNT. It is sliced off before the response.
        LIMIT $3`,
-      [contractorId, teamMemberId, REP_BOOK_LIMIT]
+      [contractorId, teamMemberId, REP_BOOK_LIMIT + 1, cursor ? cursor.t : null, cursor ? cursor.i : null]
     );
 
     const { rows: countRows } = await pool.query(
@@ -283,8 +354,13 @@ router.get('/api/rep/clients', async (req, res) => {
       [contractorId, teamMemberId]
     );
 
+    // The sentinel row proves another page exists; it is never sent.
+    const hasMore = rows.length > REP_BOOK_LIMIT;
+    const pageRows = hasMore ? rows.slice(0, REP_BOOK_LIMIT) : rows;
+    const lastRow = pageRows[pageRows.length - 1];
+
     res.json({
-      clients: rows.map((r) => ({
+      clients: pageRows.map((r) => ({
         jobberClientId: r.jobber_client_id,
         // A Jobber client can legitimately have no name parts; '' would render an
         // empty row rather than an honest one.
@@ -301,9 +377,142 @@ router.get('/api/rep/clients', async (req, res) => {
       })),
       total: countRows[0].total,
       limit: REP_BOOK_LIMIT,
+      // null when this is the last page — the client uses its ABSENCE to stop, so
+      // "no more pages" and "the server forgot to send one" cannot look alike.
+      nextCursor: hasMore && lastRow ? encodeCursor(lastRow.cursor_ts, lastRow.jobber_client_id) : null,
     });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/rep/clients' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /api/rep/clients/:jobberClientId ────────────────────────────────────
+//
+// ONE CLIENT FROM THE REP'S OWN BOOK (Canvass-5, amendments A34.8 / A34.6 / A34.7).
+//
+// ⚠ A34.8 — 404, NEVER 403, AND THE SAME 404 FOR ALL THREE MISSES. A client
+// belonging to another rep, a client belonging to another contractor, and an id
+// that exists nowhere at all must be INDISTINGUISHABLE in the response. Anything
+// that told them apart — a 403 for "exists but not yours", a different message, a
+// different shape — would confirm an id exists to someone who may not know it.
+// That falls out of the query rather than being asserted by a branch: the
+// contractor and owner predicates are part of the WHERE, so all three produce zero
+// rows and one code path.
+// ⚠ AND THE BODY IS TYPED. C/DL-3c Phase 2c's lesson: a negative test that accepts
+// Express's own 404 page is asserting that a route does not exist, which is true of
+// every path in the world.
+//
+// ⚠ A34.6 + A24.4 — THE REVENUE CONTRACT IS THE SERVER'S, NOT THE CLIENT'S.
+// A24.4 requires the SERVER to OMIT the value when the flag is off and send
+// `revenue_hidden: true`; the client draws its locked treatment from the field's
+// ABSENCE, because a CSS-dimmed figure is still in the page and readable in
+// developer tools. A34.6 then answers the case A24.4 does not reach — a rep WITH
+// the flag, before any revenue exists, sees "no revenue recorded yet" and NEVER the
+// lock, because a lock tells a permitted rep they are not permitted.
+// ⚠ THE FLAG IS RE-READ FROM `team_members` HERE AND NOT TAKEN FROM THE SESSION OR
+// FROM RepCapabilities. `useAdminPermissions.js` states the rule in terms —
+// *"EVERYTHING HERE IS A RENDERING HINT. THE ROUTE DOES ITS OWN READ."* — and the
+// re-read is also what makes the decision CURRENT, so a rep whose visibility was
+// revoked a minute ago cannot still receive the value.
+// ⚠ NO REVENUE VALUE EXISTS ANYWHERE YET (Wave 1.5/1.6). So the flag-ON branch sends
+// `revenue: null`, which is A34.6's "no revenue recorded yet" — not a placeholder
+// standing in for a number we have.
+router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
+  // Called in the handler, visibly, for sessionAuthInvariant's assertion A.
+  const session = await verifyAdminSession(req, res);
+  if (!session) return;
+
+  try {
+    const allowed = await isActiveFieldRep({
+      teamMemberId: session.teamMemberId,
+      contractorId: session.contractorId,
+    });
+    if (!allowed) return res.status(403).json({ error: 'Not authorized' });
+
+    const { contractorId, teamMemberId } = session;
+    const { jobberClientId } = req.params;
+
+    const { rows } = await pool.query(
+      `SELECT
+         cra.jobber_client_id,
+         TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client_name,
+         (jc.jobber_client_id IS NULL)                         AS client_row_missing,
+         jc.email,
+         jc.phone,
+         pc.pipeline_status,
+         pc.referred_by,
+         COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
+         (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
+         COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
+         (fa.id IS NOT NULL)                                   AS is_flagged,
+         (u.id IS NOT NULL)                                    AS membership_confirmed
+       FROM client_rep_assignments cra
+       LEFT JOIN jobber_clients jc
+         ON jc.contractor_id = cra.contractor_id
+        AND jc.jobber_client_id = cra.jobber_client_id
+       LEFT JOIN pipeline_cache pc
+         ON pc.contractor_id = cra.contractor_id
+        AND pc.jobber_client_id = cra.jobber_client_id
+       -- ⚠ A34.7, REUSED EXACTLY AS THE LIST SCOPES IT. Orphan flags are admin-only
+       -- and must not reach a rep; only a co-assignment flag NAMING this rep does.
+       -- The list's first draft joined on client alone and would have leaked one.
+       LEFT JOIN flagged_assignments fa
+         ON fa.contractor_id = cra.contractor_id
+        AND fa.jobber_client_id = cra.jobber_client_id
+        AND fa.status = 'open'
+        AND fa.flag_reason = 'rep_co_assignment'
+        AND fa.reps_involved @> to_jsonb($2::int)
+       LEFT JOIN users u
+         ON u.contractor_id = cra.contractor_id
+        AND u.jobber_client_id = cra.jobber_client_id
+       WHERE cra.contractor_id = $1
+         AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = $2
+         AND cra.jobber_client_id = $3`,
+      [contractorId, teamMemberId, jobberClientId]
+    );
+
+    // All three misses land here, identically.
+    if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
+
+    const r = rows[0];
+
+    const { rows: flagRows } = await pool.query(
+      `SELECT rep_revenue_visibility FROM team_members WHERE id = $1 AND contractor_id = $2`,
+      [teamMemberId, contractorId]
+    );
+    const revenueVisible = flagRows[0]?.rep_revenue_visibility === true;
+
+    const body = {
+      jobberClientId: r.jobber_client_id,
+      name: r.client_row_missing ? null : (r.client_name || 'Unnamed client'),
+      nameUnavailable: r.client_row_missing,
+      email: r.email ?? null,
+      phone: r.phone ?? null,
+      stage: r.pipeline_status,
+      referredBy: r.referred_by ?? null,
+      assignmentSource: r.assignment_source,
+      isSticky: r.is_sticky,
+      assignedAt: r.assigned_at,
+      isFlagged: r.is_flagged,
+      membership: membershipFor(r),
+    };
+
+    // ⚠ THE KEY IS ADDED ONLY ON THE PERMITTED BRANCH. `revenue: undefined` would
+    // serialise away and look identical, but writing it explicitly here keeps the
+    // two branches visibly different at the one place someone would "simplify" them
+    // into one line with a ternary — which is how the omission stops being an
+    // omission and becomes a null the client cannot distinguish from a real absence.
+    if (revenueVisible) {
+      body.revenue_hidden = false;
+      body.revenue = null;          // A34.6: permitted, and nothing recorded yet.
+    } else {
+      body.revenue_hidden = true;   // A24.4: the value is not in the response at all.
+    }
+
+    res.json(body);
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/rep/clients/:jobberClientId' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -579,3 +579,290 @@ describe('Canvass-4 — the guard, and the bounded page', () => {
     assert.equal(res.body.total, 0);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Canvass-5 — GET /api/rep/clients/:jobberClientId (A34.8 / A34.6 / A34.7)', () => {
+
+  function detail(token, id) {
+    return request(`/api/rep/clients/${encodeURIComponent(id)}`, token);
+  }
+
+  it('[RED] returns a client that is in the rep book', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-d1', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-d1', 'Maria', 'Lopez');
+    await assign(TENANT, 'jc-d1', { sticky: me });
+
+    const res = await detail('tok-d1', 'jc-d1');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.name, 'Maria Lopez');
+    assert.equal(res.body.isSticky, true);
+    assert.equal(res.body.assignmentSource, 'mode_a_at_close');
+  });
+
+  it('[RED] A34.8 — all THREE not-in-my-book cases return an IDENTICAL typed 404', async () => {
+    // ⚠ IDENTICAL IS THE ASSERTION, NOT MERELY "each is a 404". A different status,
+    // message or shape for "exists but is not yours" would confirm an id exists to
+    // someone who may not know it — exactly what 404-not-403 exists to prevent.
+    const me = await seedRep(TENANT, 'me@a.test');
+    const colleague = await seedRep(TENANT, 'colleague@a.test');
+    const stranger = await seedRep(OTHER_TENANT, 'stranger@b.test');
+    await seedSession('tok-d404', { contractorId: TENANT, teamMemberId: me });
+
+    await seedClient(TENANT, 'jc-colleague', 'Colleague Client');
+    await assign(TENANT, 'jc-colleague', { sticky: colleague });
+    await seedClient(OTHER_TENANT, 'jc-other-tenant', 'Other Tenant Client');
+    await assign(OTHER_TENANT, 'jc-other-tenant', { sticky: stranger });
+
+    const a = await detail('tok-d404', 'jc-colleague');       // another rep's
+    const b = await detail('tok-d404', 'jc-other-tenant');    // another contractor's
+    const c = await detail('tok-d404', 'jc-does-not-exist');  // nowhere at all
+
+    for (const [label, res] of [['another rep', a], ['another contractor', b], ['nonexistent', c]]) {
+      assert.equal(res.status, 404, `${label} must be 404, never 403`);
+      // ⚠ A TYPED BODY, NOT EXPRESS'S HTML. Accepting the framework's default page
+      // asserts only that a route does not exist, which is true of every path.
+      assert.deepEqual(res.body, { error: 'Not found' }, `${label} body must be the handler's`);
+    }
+    assert.deepEqual(a.body, b.body);
+    assert.deepEqual(b.body, c.body);
+    assert.equal(a.status, c.status);
+  });
+
+  it('[RED] a referrer session is refused', async () => {
+    await pool.query(`INSERT INTO users (id, full_name, email, pin, contractor_id) VALUES (900002,'R','r2@a.test','x',$1)`, [TENANT]);
+    await pool.query(
+      `INSERT INTO sessions (token, role, contractor_id, user_id, expires_at, created_at)
+       VALUES ('tok-d-ref','referrer',$1,900002,NOW() + INTERVAL '1 day', NOW())`, [TENANT]);
+    const res = await detail('tok-d-ref', 'jc-anything');
+    assert.equal(res.status, 401);
+  });
+
+  it('[RED] a frozen rep is refused, and a non-rep gets a typed 403', async () => {
+    const frozen = await seedRep(TENANT, 'frozen@a.test', { active: false });
+    await seedSession('tok-d-frozen', { contractorId: TENANT, teamMemberId: frozen });
+    assert.equal((await detail('tok-d-frozen', 'jc-x')).status, 401);
+
+    const notRep = await seedRep(TENANT, 'notrep@a.test', { isFieldRep: false });
+    await seedSession('tok-d-notrep', { contractorId: TENANT, teamMemberId: notRep });
+    const res = await detail('tok-d-notrep', 'jc-x');
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error, 'Not authorized');
+  });
+
+  it('[RED] an OWNER-rep arriving by the switcher can open their own client', async () => {
+    const ownerRep = await seedRep(TENANT, 'ownerrep@a.test', { tier: 'owner' });
+    await seedSession('tok-d-owner', { contractorId: TENANT, teamMemberId: ownerRep });
+    await seedClient(TENANT, 'jc-owner-d', 'Owner Client');
+    await assign(TENANT, 'jc-owner-d', { sticky: ownerRep });
+    const res = await detail('tok-d-owner', 'jc-owner-d');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.name, 'Owner Client');
+  });
+
+  it('[RED] A24.4 — WITHOUT the flag the server OMITS revenue and sends revenue_hidden', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-rev-off', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-rev1', 'No Rev');
+    await assign(TENANT, 'jc-rev1', { sticky: me });
+
+    const res = await detail('tok-rev-off', 'jc-rev1');
+    assert.equal(res.body.revenue_hidden, true);
+    // ⚠ THE KEY MUST BE ABSENT, NOT NULL. A24.4's point is that the value is not in
+    // the response to leak — `revenue: null` would be a different contract and
+    // indistinguishable on screen from A34.6's permitted-but-empty case.
+    assert.equal('revenue' in res.body, false, 'the revenue key must not be present at all');
+  });
+
+  it('[RED] A34.6 — WITH the flag, a permitted rep gets revenue_hidden FALSE, never the lock', async () => {
+    // ⚠ A34.6 IS ENTIRELY ABOUT THIS DISTINCTION. A lock shown to a permitted rep
+    // tells them they are not permitted, which is untrue. The two payloads must be
+    // distinguishable, or the screen cannot tell "you may not see this" from "this
+    // does not exist yet".
+    const me = await seedRep(TENANT, 'me@a.test');
+    await pool.query(`UPDATE team_members SET rep_revenue_visibility = TRUE WHERE id = $1`, [me]);
+    await seedSession('tok-rev-on', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-rev2', 'Has Rev Perm');
+    await assign(TENANT, 'jc-rev2', { sticky: me });
+
+    const res = await detail('tok-rev-on', 'jc-rev2');
+    assert.equal(res.body.revenue_hidden, false, 'a permitted rep must NEVER be sent the hidden flag');
+    assert.equal('revenue' in res.body, true, 'and the key must be present');
+    assert.equal(res.body.revenue, null, 'null = A34.6 no revenue recorded yet');
+  });
+
+  it('[RED] the revenue flag is re-read from team_members, not carried from the session', async () => {
+    // Revoking mid-session must take effect on the next request. The rule
+    // useAdminPermissions states — "EVERYTHING HERE IS A RENDERING HINT. THE ROUTE
+    // DOES ITS OWN READ." — asserted rather than trusted.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await pool.query(`UPDATE team_members SET rep_revenue_visibility = TRUE WHERE id = $1`, [me]);
+    await seedSession('tok-rev-revoke', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-rev3', 'Revoked');
+    await assign(TENANT, 'jc-rev3', { sticky: me });
+
+    assert.equal((await detail('tok-rev-revoke', 'jc-rev3')).body.revenue_hidden, false);
+    await pool.query(`UPDATE team_members SET rep_revenue_visibility = FALSE WHERE id = $1`, [me]);
+    const after = await detail('tok-rev-revoke', 'jc-rev3');
+    assert.equal(after.body.revenue_hidden, true, 'the same session must now be refused the value');
+    assert.equal('revenue' in after.body, false);
+  });
+
+  it('[RED] A34.7 — a co-assignment flag naming this rep shows; an ORPHAN on the same client does not', async () => {
+    // Reuses 4b's discriminating fixture: the orphan DELIBERATELY carries
+    // reps_involved naming the rep, because a plain orphan writes none and would be
+    // excluded by the containment clause alone — passing vacuously.
+    const me = await seedRep(TENANT, 'me@a.test');
+    const other = await seedRep(TENANT, 'other@a.test');
+    await seedSession('tok-d-flag', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-orph', 'Orphan Only');
+    await assign(TENANT, 'jc-orph', { sticky: me });
+    await pool.query(
+      `INSERT INTO flagged_assignments (contractor_id, jobber_client_id, flag_reason, reps_involved, status)
+       VALUES ($1,'jc-orph','orphan',$2::jsonb,'open')`, [TENANT, JSON.stringify([me])]);
+    assert.equal((await detail('tok-d-flag', 'jc-orph')).body.isFlagged, false, 'orphan flags are admin-only');
+
+    await seedClient(TENANT, 'jc-co-d', 'Co Assigned');
+    await assign(TENANT, 'jc-co-d', { sticky: me });
+    await pool.query(
+      `INSERT INTO flagged_assignments (contractor_id, jobber_client_id, flag_reason, reps_involved, status)
+       VALUES ($1,'jc-co-d','rep_co_assignment',$2::jsonb,'open')`, [TENANT, JSON.stringify([me, other])]);
+    assert.equal((await detail('tok-d-flag', 'jc-co-d')).body.isFlagged, true, 'the positive control');
+  });
+
+  it('[RED] membership renders the ruled states, and asserts no negative', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-d-mem', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-mem1', 'Linked');
+    await assign(TENANT, 'jc-mem1', { sticky: me });
+    await pool.query(
+      `INSERT INTO users (full_name,email,pin,contractor_id,jobber_client_id)
+       VALUES ('L','l@a.test','x',$1,'jc-mem1')`, [TENANT]);
+    await seedClient(TENANT, 'jc-mem2', 'Unknown');
+    await assign(TENANT, 'jc-mem2', { sticky: me });
+
+    assert.equal((await detail('tok-d-mem', 'jc-mem1')).body.membership, 'confirmed');
+    assert.equal((await detail('tok-d-mem', 'jc-mem2')).body.membership, null,
+      'the indistinguishable states stay a non-claim');
+  });
+
+  it('[RED] a client with no jobber_clients row opens, flagged nameUnavailable', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-d-nomirror', { contractorId: TENANT, teamMemberId: me });
+    await assign(TENANT, 'jc-d-nomirror', { sticky: me });
+    const res = await detail('tok-d-nomirror', 'jc-d-nomirror');
+    assert.equal(res.status, 200, '4b: it is in the book, so it must open');
+    assert.equal(res.body.nameUnavailable, true);
+    assert.equal(res.body.name, null);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Canvass-5 — paging the book', () => {
+
+  async function seedBook(me, n) {
+    for (let i = 0; i < n; i += 1) {
+      const id = `pg-${String(i).padStart(4, '0')}`;
+      await seedClient(TENANT, id, `Client ${i}`);
+      await assign(TENANT, id, { sticky: me });
+    }
+  }
+
+  it('[RED] page 2 contains exactly what page 1 omitted — no duplicates, no skips', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-pg', { contractorId: TENANT, teamMemberId: me });
+    await seedBook(me, 250);
+
+    const p1 = await request('/api/rep/clients', 'tok-pg');
+    assert.equal(p1.body.clients.length, 100);
+    assert.equal(p1.body.total, 250);
+    assert.ok(p1.body.nextCursor, 'a full page must offer a cursor');
+
+    const p2 = await request(`/api/rep/clients?cursor=${encodeURIComponent(p1.body.nextCursor)}`, 'tok-pg');
+    const p3 = await request(`/api/rep/clients?cursor=${encodeURIComponent(p2.body.nextCursor)}`, 'tok-pg');
+
+    const ids1 = p1.body.clients.map((c) => c.jobberClientId);
+    const ids2 = p2.body.clients.map((c) => c.jobberClientId);
+    const ids3 = p3.body.clients.map((c) => c.jobberClientId);
+    assert.equal(ids2.length, 100);
+    assert.equal(ids3.length, 50, 'the last page is short');
+    assert.equal(p3.body.nextCursor, null, 'and offers no cursor');
+
+    const all = [...ids1, ...ids2, ...ids3];
+    assert.equal(new Set(all).size, 250, 'every id appears exactly once — no duplicates');
+    assert.equal(all.length, 250, 'and none are skipped');
+  });
+
+  it('[RED] ⚠ a row INSERTED between pages does not shift the page boundary', async () => {
+    // ⚠ THE DISCRIMINATING CASE, AND THE REASON THIS IS A CURSOR AND NOT AN OFFSET.
+    // The webhook and the hourly sweep write assignments mid-scroll. Under OFFSET a
+    // row inserted above the cursor renumbers everything below it, so page 2 repeats
+    // one row of page 1 and silently drops one from the end. A keyset names a position
+    // in the order, so an insertion above it cannot move what follows.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-pg-ins', { contractorId: TENANT, teamMemberId: me });
+    await seedBook(me, 150);
+
+    const p1 = await request('/api/rep/clients', 'tok-pg-ins');
+    const ids1 = p1.body.clients.map((c) => c.jobberClientId);
+
+    // A brand-new assignment lands at the TOP of the ordering, between the two reads.
+    await seedClient(TENANT, 'pg-INSERTED', 'Inserted Mid Scroll');
+    await assign(TENANT, 'pg-INSERTED', { sticky: me });
+
+    const p2 = await request(`/api/rep/clients?cursor=${encodeURIComponent(p1.body.nextCursor)}`, 'tok-pg-ins');
+    const ids2 = p2.body.clients.map((c) => c.jobberClientId);
+
+    assert.equal(ids1.filter((i) => ids2.includes(i)).length, 0, 'no row repeats across the boundary');
+    assert.equal(ids2.includes('pg-INSERTED'), false, 'the new row is above the cursor, so not on page 2');
+    assert.equal(new Set([...ids1, ...ids2]).size, 150, 'and nothing between the pages was skipped');
+    assert.equal(p2.body.total, 151, 'the count reflects the insert immediately');
+  });
+
+  it('[RED] the total is unaffected by paging and is counted without the client join', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-pg-total', { contractorId: TENANT, teamMemberId: me });
+    await seedBook(me, 120);
+    // 4b: an assignment with no mirror row still counts, and still renders.
+    await assign(TENANT, 'pg-nomirror', { sticky: me });
+
+    const p1 = await request('/api/rep/clients', 'tok-pg-total');
+    const p2 = await request(`/api/rep/clients?cursor=${encodeURIComponent(p1.body.nextCursor)}`, 'tok-pg-total');
+    assert.equal(p1.body.total, 121);
+    assert.equal(p2.body.total, 121, 'the total does not change as you page');
+    const all = [...p1.body.clients, ...p2.body.clients].map((c) => c.jobberClientId);
+    assert.equal(all.length, 121, 'and every assignment is reachable across the pages');
+    assert.ok(all.includes('pg-nomirror'));
+  });
+
+  it('[RED] a malformed cursor is a typed 400, never a silent page 1', async () => {
+    // ⚠ SILENTLY RESTARTING AT THE TOP WOULD MAKE A CORRUPTED CURSOR LOOK LIKE THE
+    // END OF THE BOOK to a client that stops on familiar rows — the reader would never
+    // see the rest and nothing would say so.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-pg-bad', { contractorId: TENANT, teamMemberId: me });
+    await seedBook(me, 3);
+    const res = await request('/api/rep/clients?cursor=not-a-real-cursor', 'tok-pg-bad');
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error, 'Invalid cursor');
+  });
+
+  it('[RED] a forged cursor cannot reach another rep or another tenant', async () => {
+    // The cursor comes from the request, so it is untrusted. Tenancy does not depend
+    // on it: the contractor and owner predicates are applied from the SESSION either
+    // way, so a forged cursor can only move a reader inside their own book.
+    const me = await seedRep(TENANT, 'me@a.test');
+    const colleague = await seedRep(TENANT, 'colleague@a.test');
+    await seedSession('tok-pg-forge', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'pg-mine', 'Mine');
+    await assign(TENANT, 'pg-mine', { sticky: me });
+    await seedClient(TENANT, 'pg-theirs', 'Theirs');
+    await assign(TENANT, 'pg-theirs', { sticky: colleague });
+
+    // A cursor positioned far in the future, so nothing is excluded by it.
+    const forged = Buffer.from(JSON.stringify({ t: '2099-01-01 00:00:00+00', i: 'zzzz' }), 'utf8').toString('base64url');
+    const res = await request(`/api/rep/clients?cursor=${encodeURIComponent(forged)}`, 'tok-pg-forge');
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.clients.map((c) => c.jobberClientId), ['pg-mine']);
+  });
+});

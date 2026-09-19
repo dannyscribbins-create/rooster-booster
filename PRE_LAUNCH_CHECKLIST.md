@@ -4198,6 +4198,106 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-5 — client detail, and paging the book (SHIPPED 2026-09-18)
+
+- [x] **✅ ACCENT'S VOLUME, MEASURED BY DANNY 2026-09-18 AT THE PINNED VERSION.**
+      **36,462 requests · 36,452 quotes · 47,065 clients · ~6,600 requests/year steady since 2020.**
+      ⚠ **THE VERSION HEADER APPLIED, AND THAT WAS CHECKED RATHER THAN ASSUMED** — `users` returned
+      **147**, the figure already measured at `2026-02-17`, which is the control H0 built into the
+      query for exactly this purpose. A count that differed by version would itself have been a
+      finding.
+      ⚠ **AND THE PER-PERSON FILTER WORKS, PROVEN WITH A CONTROL RATHER THAN A SINGLE READING:** one
+      user returns **3,756** requests, another **901**, unfiltered **36,462**. Three different
+      numbers from one instrument is what separates "the filter works" from "the filter is ignored
+      and every call returns the same total". **This closes H0's open question (a): the exact
+      per-user distribution is obtainable, so the historical pass does NOT need sampling.**
+      → `docs/sql/membership_states.sql` · H0's query set
+
+- [x] **✅ PAGING SHIPPED, AND THE 3,756 IS WHY IT IS IN THIS PHASE RATHER THAN A LATER ONE.** One
+      real rep's book will be thousands of clients once the historical backfill runs; the list
+      capped at 100 with no way past it. **Keyset cursor, not offset.**
+      ⚠ **THE CHOICE IS CORRECTNESS BEFORE SPEED.** `client_rep_assignments` is written mid-scroll by
+      the webhooks and the hourly sweep, and an OFFSET page renumbers every row below an insertion —
+      so a rep scrolling while the sweep runs sees rows twice or not at all, with nothing to signal
+      it. Speed agrees: measured at 20,000 assignments / 40 reps, page 2 by keyset is an Index Scan
+      at **66 buffers / 0.115 ms** against **312 buffers / 0.379 ms** for `OFFSET 400` — and the
+      offset cost grows with depth while the keyset cost is flat.
+      ✅ **`idx_cra_contractor_owner` SERVES IT — no schema change was needed**, which was measured
+      before anything was built precisely because a schema change is a Backblaze gate.
+
+- [x] **✅ ⚠ THE MICROSECOND CURSOR — A SILENT ROW-SKIPPING BUG, CAUGHT BY MEASUREMENT BEFORE IT
+      SHIPPED, AND THE SHARPEST FINDING OF THIS PHASE.** `timestamptz` carries **microsecond**
+      precision; a JavaScript `Date` carries **milliseconds**. node-postgres parses `timestamptz`
+      into a `Date`, so a cursor round-tripped through JS loses up to 999µs — measured
+      `21:00:09.846133` coming back as `21:00:09.846`.
+      ⚠ **MEASURED CONSEQUENCE on a 2,000-row book with 40 tied timestamps: the Date cursor SILENTLY
+      SKIPPED 49 OF THE 100 ROWS on page 2 — no duplicates, no error, no signal of any kind.** The
+      page looks complete and is half missing. **Fixed by carrying the timestamp as TEXT**
+      (`updated_at::text` out, `$n::timestamptz` in), which preserves every digit.
+      ⚠ **AND THE TIEBREAKER IS LOAD-BEARING FOR THE SAME FAMILY OF REASON.** `updated_at` is not
+      unique — the sweep writes a page of assignments in one burst, and the same measurement found
+      **99 `updated_at` values shared by more than one row**. `(updated_at, jobber_client_id)` is a
+      TOTAL order because the second key is unique per contractor by constraint.
+      **Guard-proofed: reverting to a Date cursor takes exactly the three paging tests RED.**
+
+- [x] **✅ A34.6 + A24.4 — BOTH BRANCHES BUILT, AND PROVEN IN A BROWSER ON TWO REAL REPS.**
+      The SERVER omits the value and sends `revenue_hidden: true` when the flag is off (A24.4 — a
+      CSS-dimmed figure is still in the page and readable in developer tools); a permitted rep gets
+      `revenue_hidden: false` and `revenue: null`, which renders **"No revenue recorded yet."** and
+      **never the lock** (A34.6 — a lock tells a permitted rep they are not permitted).
+      ⚠ **THE FLAG IS RE-READ FROM `team_members` IN THE ROUTE**, never taken from the session or
+      from RepCapabilities — `useAdminPermissions.js` states the rule in terms: *"EVERYTHING HERE IS
+      A RENDERING HINT. THE ROUTE DOES ITS OWN READ."* A test revokes mid-session and asserts the
+      next request is refused the value.
+      ⚠ **AND `shared/LockedSection` IS DELIBERATELY NOT REUSED.** It is an ADMIN primitive: `AD`
+      tokens throughout, and its `var(--rm-bg, #012854)` scrim is built for a tree where **no custom
+      property is mounted** — its own header says the admin panel *"has no code path that emits a
+      custom property"*. The rep surface renders INSIDE `ThemeProvider`, so that fallback would
+      resolve to the mounted value and the admin palette would paint a white-label screen. **That is
+      the "a rule applied once to a surface does not stay applied when the surface moves" failure,
+      with the surface already moved.** The locked treatment is built here from render tokens.
+
+- [x] **✅ A34.8 — ALL THREE MISSES ARE ONE 404, AND *IDENTICAL* IS THE ASSERTION.** Another rep's
+      client, another contractor's client, and an id that exists nowhere return the same status and
+      the same typed body. Anything that told them apart would confirm an id exists to someone who
+      may not know it. **It falls out of the query rather than a branch** — the contractor and owner
+      predicates are in the WHERE, so all three produce zero rows and one code path.
+
+- [x] **✅ MOCKUP 4B — WHAT WAS BUILT AND WHAT WAS NOT, WITH REASONS.**
+      ⚠ **"Referral relationship" — the three-node chain `Danny → Sarah K. → Maria Lopez` — NOT
+      BUILT, BECAUSE THERE IS NO DATA BEHIND IT.** Canvass-0 §5 recorded it and it is still true: the
+      referral link is a NAME STRING in `pipeline_cache.referred_by` with no foreign key. A single
+      hop cannot be resolved to a person, let alone a chain. **The one honest fragment — the
+      referrer's name — is shown in the stage card**, and a test asserts no arrow is drawn.
+      ⚠ **The mockup's subtitle "Sticky assignment record" is NOT reproduced**: it is false of a
+      PROVISIONAL assignment, a state the mockup assumes away entirely. It reads "Assignment record"
+      and the pill carries which kind.
+      · Screen 8's flagged card is built — it is 4b plus a fifth card, and it appears only when a
+        co-assignment flag names this rep (A34.7, reusing 4b's scoping and its discriminating
+        orphan fixture exactly).
+      · **Revenue VALUE and the invite/QR affordance are out of scope** — Wave 1.5/1.6 and 3d.
+
+- [ ] ⚠ **SEARCH DID NOT LAND WITH PAGING, AND WHAT THAT COSTS IS STATED RATHER THAN LEFT IMPLIED.**
+      Mockup 4A ships a search input, and Canvass-4 shipped neither on the grounds they are one
+      design. This phase shipped paging alone. **The cost: a rep with 3,756 clients looking for one
+      specific client must page through up to 38 pages.** For daily use the ordering carries it —
+      newest-assignment-first puts recent work on page 1 — but **lookup of an older client is not
+      served.**
+      ⚠ **IT WAS JUDGED NOT TO BLOCK THIS PHASE, AND THE REASON IS THAT 3,756 IS NOT TODAY'S NUMBER.**
+      Danny's book is 39; the thousands arrive only when the historical backfill runs. Paging is
+      strictly better than a hard cap of 100 either way. **But search MUST land before or with that
+      backfill** — the moment a book is thousands, a list without search is not usable for lookup.
+      **OWNER: its own phase, and it is a named prerequisite of the historical pass.**
+
+- [ ] ⚠ **StateCard REMAINS UNTOUCHED AND THIS SCREEN DID NOT BECOME ITS FIRST CONSUMER.** The detail
+      cards are local, built from render tokens. Re-measured rendered on palette-beta: a card's fill
+      against the column is **1.08:1 light / 1.41:1 dark** and its hairline **1.32:1 / 1.76:1** —
+      unchanged from 4b, because the same values are in play. The header card carries a **4px left
+      accent at 5.27:1 dark / 5.87:1 light**; the stage, value and flag cards do not, and rely on the
+      uppercase card titles and spacing for structure. **That is a deliberate acceptance, not an
+      oversight** — and the shared primitive's own repair is still the palette arc's, not a screen
+      phase's.
+
 ### Canvass-4b — the dropped rows, the count line, and the historical pass (filed 2026-09-18)
 
 - [x] **✅ MEASURED ON RAILWAY 2026-09-18 (Danny) — THE PARTITION CAME BACK CLEAN, AND THE

@@ -805,6 +805,65 @@ async function seedStack(pool) {
     );
   }
 
+  // ── CANVASS-5: A BOOK BIG ENOUGH TO PAGE, AND A REVENUE-PERMITTED REP ──────
+  //
+  // ⚠ 260 FILLER ASSIGNMENTS, SO THE SECOND PAGE IS REACHABLE BY EYE. The route
+  // pages at 100, so a 268-row book has three pages and the "Load more" control has
+  // somewhere to go. **A state the fixture never renders cannot be eye-tested** —
+  // which is exactly how the inner join shipped in Canvass-4.
+  // ⚠ AND THEY ARE WRITTEN WITH DISTINCT updated_at VALUES IN DESCENDING ORDER, not
+  // all NOW(). A fixture where every row shares a timestamp cannot exercise the
+  // keyset's tiebreaker at all, and would make a broken cursor look correct.
+  for (let i = 0; i < 260; i += 1) {
+    const jcId = `jc-beta-fill-${String(i).padStart(3, '0')}`;
+    await pool.query(
+      `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_name, last_synced_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET first_name = EXCLUDED.first_name`,
+      [jcId, beta, 'Filler', `Client ${i}`]
+    );
+    await pool.query(
+      `INSERT INTO client_rep_assignments
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW() - ($5 || ' minutes')::interval)
+       ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE
+         SET sticky_rep_id = EXCLUDED.sticky_rep_id, updated_at = EXCLUDED.updated_at`,
+      // A spread of sources so the detail screen's vocabulary is exercised, and a
+      // descending clock so the ordering is meaningful.
+      [beta, jcId, betaRepId,
+       ['mode_a_at_close', 'mode_b_at_close', 'manual', 'quote_salesperson', 'promoted_provisional'][i % 5],
+       String(i + 10)]
+    );
+  }
+
+  // ⚠ TWO REPS, ONE WITH REVENUE VISIBILITY AND ONE WITHOUT — A34.6 HAS TWO STATES
+  // AND A FIXTURE WITH ONE OF THEM CANNOT TELL THEM APART. The book rep sees the
+  // locked treatment; this one sees "No revenue recorded yet."
+  const betaRevRep = await pool.query(
+    `INSERT INTO team_members
+       (contractor_id, full_name, email, tier, is_field_rep, active, jobber_user_id,
+        is_attributable, rep_revenue_visibility, password_hash)
+     VALUES ($1, 'Beta Revenue Rep', $2, 'general', TRUE, TRUE, $3, TRUE, TRUE,
+             '$2b$10$local.stack.placeholder.hash.not.a.password')
+     ON CONFLICT (email) DO UPDATE
+       SET rep_revenue_visibility = TRUE, is_field_rep = TRUE, active = TRUE
+     RETURNING id`,
+    [beta, `revenue-rep@${beta}.test`, 'jobber-user-beta-3']
+  );
+  const betaRevRepId = betaRevRep.rows[0].id;
+
+  // One client in the revenue rep's book, so the permitted branch has something to open.
+  await pool.query(
+    `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_name, last_synced_at)
+     VALUES ('jc-beta-rev', $1, 'Revenue', 'Visible', NOW())
+     ON CONFLICT (jobber_client_id, contractor_id) DO NOTHING`, [beta]);
+  await pool.query(
+    `INSERT INTO client_rep_assignments
+       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+     VALUES ($1, 'jc-beta-rev', $2, 'manual', NOW(), NOW())
+     ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET sticky_rep_id = EXCLUDED.sticky_rep_id`,
+    [beta, betaRevRepId]);
+
   // ⚠ BADGE 2 ('Invited') IS NOT SEEDED, AND IT CANNOT BE. Nothing in the schema records
   // "this rep sent this client a link": contractor_invite_links carries
   // owner_team_member_id but NO client column and has no 'rep' writer at all, and
@@ -822,6 +881,8 @@ async function seedStack(pool) {
   summary.repBook = {
     contractor: beta,
     repId: betaRepId,
+    revenueRepId: betaRevRepId,
+    revenueRepEmail: `revenue-rep@${beta}.test`,
     repEmail: `book-rep@${beta}.test`,
     colleagueId: betaOtherId,
     clientsInBook: betaBook[0].n,
