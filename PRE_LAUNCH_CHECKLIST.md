@@ -4210,6 +4210,55 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-attribution-model-3 — CONV measured-first, and one open question scoped (docs only, 2026-09-19)
+
+- [ ] 🔵 **OPEN QUESTION — CLIENT MATCHING AND THE REP RELATIONSHIP. A QUESTION, NOT A DEFECT.**
+      ⚠ **FOR A READ-ONLY INVESTIGATION PHASE AFTER CANVASS-9. DO NOT INVESTIGATE IT INSIDE A BUILD
+      PHASE, AND DO NOT FIX ANYTHING UNDER IT.**
+      ⚠ **THIS ENTRY SUPERSEDES A FILING THAT WAS MADE AND THEN WITHDRAWN IN THE SAME BREATH, AND
+      THE WITHDRAWAL IS THE POINT.** The 100-client signup fetch was first framed as *"its own small
+      fix, with three consumers named"*. **Danny withdrew that framing immediately**, on the grounds
+      that pagination may already have been addressed on the matching engine and that matching is
+      likely **fuzzy name + email + phone** rather than a straight list walk. **A small fix and an
+      open question are different artifacts with different costs** — filing this as a fix would have
+      sent someone to repair a fast path that may be working as designed.
+      **What is established, and it is deliberately only the naming:** `contactMatchingPass` resolves
+      — `server/jobs/contactMatchingPass.js` — and is referenced from five other files **including
+      the signup route and the Jobber webhook**. ⚠ **That is a NAMING check so this entry cites
+      something real. NOTHING ELSE WAS READ, on purpose.**
+      **THE THREE PARTS, to be answered by that phase:**
+      **(a) How many distinct client-matching paths exist?** A fast lookup at signup and a separate
+      background pass may be **two different mechanisms with different coverage**. ⚠ **If the
+      background pass catches what the signup lookup misses, the 100-cap is a deliberate fast path,
+      not a defect — say WHICH IT IS**, rather than reporting the cap and leaving the reader to
+      infer.
+      **(b) What each path actually matches on, and its real coverage.** Exact predicates, and
+      whether "fuzzy name + email + phone" is what the code does or what it is remembered to do.
+      **(c) ⚠ THE SHARPER QUESTION, AND DANNY'S — AND IT MAY BE THE REAL FINDING RATHER THAN THE
+      PAGINATION.** If a person already has an account **and** is already attributed to a rep, **that
+      relationship exists in the database.** So when they refer someone, finding their rep should be
+      **a lookup on existing records, not a match through a CRM identifier.** But this arc measured
+      that there is **no direct path from `users` to `client_rep_assignments`** — only the
+      `users.jobber_client_id` bridge. ⚠ **So the rep relationship is reachable ONLY through a CRM id
+      when it could be recorded on the person directly.** Establish **whether that is true, what it
+      would cost, and what it means for A36.1's chain**, which depends on resolving referrer → rep
+      **at every hop** — so a bridge that is empty for most referrers is not a CONV problem, it is a
+      problem for the whole model.
+      ⚠ **AND WHY (c) OUTRANKS (a) AND (b) IF THEY DISAGREE:** (a) and (b) ask whether a lookup is
+      well built. (c) asks whether the codebase is **reaching a relationship the long way round**. A
+      correct answer to (a) and (b) does not settle (c).
+      **CONSUMERS THAT DEPEND ON THE ANSWER, named so the scope is visible:** hop 2 of the A36.5.b
+      office email · the *"has an app account"* membership badge (A34.4) · 3d's roster · **CONV** ·
+      and **A36.1's inheritance chain itself**.
+      **OWNER: a dedicated read-only investigation phase, after Canvass-9.**
+
+- [x] **✅ CONV PART 1 IS NOW "MEASURE FIRST" AND THE MEASUREMENT IS WRITTEN OUT.** Three read-only
+      queries for Danny to run on Railway — a coverage funnel, a per-rep distribution, and a row-by-row
+      listing — filed at the CONV entry in the Canvass-6 block rather than duplicated here.
+      ⚠ **AND THE HARD CONSTRAINT THAT SURVIVES WHATEVER THEY RETURN: DO NOT SHIP A CONTRACTOR-WIDE
+      NUMBER ON A PERSONAL SCREEN.** Two reps each seeing the company's `2` is **two wrong beliefs
+      from one true number.**
+
 ### Canvass-attribution-model-2 — C1 and C4 settled, the visibility layer filed (docs only, 2026-09-19)
 
 - [x] **✅ A36 IS FILED — `DECISION_C_DL_BUILD_SPEC.md` §25 / v2.4.** C1 settled (A36.1–A36.3), C4
@@ -4288,6 +4337,13 @@ may legitimately change several of these subjects.*
       FIRST 100 CLIENTS with no pagination** against a book Canvass-5 measured at **47,065**. The
       branch's own else-log reads *"No Jobber client match found at signup — expected for peer
       signups."* **Tom is a peer signup.** The other writer is a by-hand admin match.
+      ⚠ **THE OBSERVATION ABOVE STANDS; ITS FRAMING AS A SHORTCUT-TO-BE-FIXED IS SUSPENDED
+      (2026-09-19).** The 100-row fetch is real and is in the code. **Whether it is a DEFECT is now
+      an open question** — Danny believes pagination was already addressed on the matching engine and
+      that matching is fuzzy name + email + phone rather than a list walk, which would make the
+      signup lookup a **deliberate fast path** with a background pass behind it rather than a gap.
+      **Do not act on this entry as a fix.** → the open question filed in the
+      Canvass-attribution-model-3 block.
       **WHAT THE EMAIL RENDERS:** both hops → Maria's details · "Referred by Tom" · "Tom's rep: Rep
       A". Hop 1 only → Maria's details · "Referred by Tom" · **no rep line at all** (not "no rep
       assigned", not an empty slot) — **the common case today.** Neither → **Maria's details and no
@@ -4545,6 +4601,101 @@ may legitimately change several of these subjects.*
       ALTER-added column and its population for referrers has never been measured.** **OWNER: whoever
       builds CONV — measure that column's coverage FIRST, and do not declare the card blocked on
       inheritance until that measurement says so.** → `DECISION_C_DL_BUILD_SPEC.md` §24 (A35)
+      ⚠ **CONV PART 1 IS NOW "MEASURE FIRST", NOT "BLOCKED" — AND THE MEASUREMENT IS WRITTEN OUT
+      BELOW SO IT CAN ACTUALLY BE RUN (2026-09-19).** The reason it is measure-first rather than
+      buildable: since that note was written, `users.jobber_client_id` was found to be **set at
+      signup only on a Jobber match, by a lookup that fetches the FIRST 100 CLIENTS of 47,065 with no
+      pagination**, whose own else-log says a miss is *"expected for peer signups"*. **The bridge the
+      candidate join depends on is probably mostly empty, and "probably" is not good enough to build
+      or to drop on.**
+
+- [ ] 🔴 **CONV PART 1 — THE READ-ONLY MEASUREMENT FOR DANNY TO RUN ON RAILWAY.** Reports how many
+      `referral_conversions` rows resolve to a rep through the candidate path and how many do not.
+      ⚠ **SELECT-ONLY. It writes nothing, locks nothing, and is safe to run on production.**
+      **Query 1 — the coverage funnel. This is the one that answers the question:**
+      ```sql
+      SELECT
+        COUNT(*)                                                             AS conversions_total,
+        COUNT(u.id)                                                          AS referrer_row_found,
+        COUNT(u.jobber_client_id)                                            AS referrer_has_jobber_id,
+        COUNT(cra.jobber_client_id)                                          AS assignment_row_found,
+        COUNT(COALESCE(cra.sticky_rep_id, cra.provisional_rep_id))           AS resolves_to_a_rep
+      FROM referral_conversions rc
+      LEFT JOIN users u
+        ON u.id = rc.user_id
+       AND u.contractor_id = rc.contractor_id
+      LEFT JOIN client_rep_assignments cra
+        ON cra.contractor_id    = rc.contractor_id
+       AND cra.jobber_client_id = u.jobber_client_id
+      WHERE rc.contractor_id = 'accent-roofing-dev';
+      ```
+      ⚠ **READ IT AS A FUNNEL, NOT AS FIVE NUMBERS.** Each column can only be ≤ the one before it,
+      so **the first place the number drops is where coverage actually dies** — and that is the
+      finding, not `resolves_to_a_rep` on its own. A drop at `referrer_has_jobber_id` means the
+      bridge is the blocker; a drop at `assignment_row_found` means referrers are not in any rep's
+      book; a drop at the last column means assignment rows exist but carry no rep.
+      **Query 2 — the per-rep distribution, because the card is PER REP and a total cannot tell you
+      whether one rep owns everything:**
+      ```sql
+      SELECT COALESCE(tm.full_name, '(no rep resolved)') AS rep,
+             COUNT(*)                                    AS conversions
+      FROM referral_conversions rc
+      LEFT JOIN users u
+        ON u.id = rc.user_id
+       AND u.contractor_id = rc.contractor_id
+      LEFT JOIN client_rep_assignments cra
+        ON cra.contractor_id    = rc.contractor_id
+       AND cra.jobber_client_id = u.jobber_client_id
+      LEFT JOIN team_members tm
+        ON tm.id = COALESCE(cra.sticky_rep_id, cra.provisional_rep_id)
+      WHERE rc.contractor_id = 'accent-roofing-dev'
+      GROUP BY 1
+      ORDER BY conversions DESC;
+      ```
+      **Query 3 — the whole population, row by row. Danny measured 2 rows, so this is cheap and is
+      the most informative of the three at this size:**
+      ```sql
+      SELECT rc.id,
+             rc.converted_at,
+             u.full_name                                        AS referrer,
+             u.jobber_client_id                                 AS referrer_jobber_id,
+             COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) AS rep_id,
+             tm.full_name                                       AS rep_name
+      FROM referral_conversions rc
+      LEFT JOIN users u
+        ON u.id = rc.user_id
+       AND u.contractor_id = rc.contractor_id
+      LEFT JOIN client_rep_assignments cra
+        ON cra.contractor_id    = rc.contractor_id
+       AND cra.jobber_client_id = u.jobber_client_id
+      LEFT JOIN team_members tm
+        ON tm.id = COALESCE(cra.sticky_rep_id, cra.provisional_rep_id)
+      WHERE rc.contractor_id = 'accent-roofing-dev'
+      ORDER BY rc.converted_at DESC;
+      ```
+      ⚠ **NOTES ON READING IT, SO A NUMBER IS NOT TRUSTED FOR THE WRONG REASON.**
+      · `COUNT(col)` counts **non-NULL** values, which is what makes the funnel work — do not
+      "correct" any of them to `COUNT(*)`.
+      · **Deleted referrers are NOT filtered out.** `users.deleted_at` is ignored deliberately: a
+      conversion by a since-deleted referrer is still a conversion, and filtering it would understate
+      the total while looking tidier. **If `referrer_row_found` is below `conversions_total`, that is
+      a `user_id` that no longer resolves at all**, which is a different and more interesting fact.
+      · **Both joins are contractor-scoped on every leg.** `team_members.id` is globally unique, so
+      the `tm` join needs no contractor predicate — **and that is exactly the property that has twice
+      made a tenancy assertion look tested when it was not**, so it is stated rather than assumed.
+      · **The sample is 2 rows.** ⚠ **A percentage computed from two rows is not a coverage figure.**
+      Query 3 is the honest instrument at this size; Queries 1 and 2 become meaningful as the table
+      grows.
+
+- [ ] 🔴 **AND THE DECISION RULE, RULED 2026-09-19 — WHAT THE MEASUREMENT AUTHORISES.**
+      **Build the card ONLY IF the coverage is honest AND the label says what it counts. Otherwise
+      leave it dropped, with the measurement filed — "measure first", NOT "blocked".**
+      ⚠ **AND A HARD CONSTRAINT THAT SURVIVES WHATEVER THE MEASUREMENT SAYS: DO NOT SHIP A
+      CONTRACTOR-WIDE NUMBER ON A PERSONAL SCREEN.** Danny measured **2 rows company-wide**; a card
+      showing `2` on the rep Home would be read by **every rep as their own two**. **Two reps each
+      seeing "2" is two wrong beliefs from one true number** — the count must be scoped to the
+      viewing rep or not shipped at all. *(Same family as Canvass-6's rule that a stat and its list
+      must be computed over the same predicate — here the predicate is the viewer.)*
 
 - [x] **✅ THE SHARED PREDICATE EXTRACTED — `server/utils/repBook.js`.** Three copies existed before
       this phase and Home would have made four or five. ⚠ **The risk is not repetition, it is a fix
