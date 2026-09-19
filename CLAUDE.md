@@ -2226,6 +2226,23 @@ missing the standard trailers** — which is how you can spot the others, if the
 - Jobber API version: `2026-02-17`. Do not change without verifying changelog.
 - `ClientFilterAttributes` does NOT support name/firstName/lastName filtering — always filter locally in JS.
 - Jobber GraphQL is read-only. Never add mutations without explicit instruction.
+- ⚠ **ROOFMILES NEVER WRITES TO A CONTRACTOR'S CRM. THIS IS A PRODUCT PRINCIPLE, NOT A TECHNICAL
+  LIMITATION, AND IT IS THE REASON THE LINE ABOVE EXISTS** — ruled by Danny 2026-09-19, amendment
+  A36.5.a (`DECISION_C_DL_BUILD_SPEC.md` §25). **RoofMiles READS from the CRM and is ADDITIVE, NOT
+  INVASIVE. That is part of what makes it adoptable.** ⚠ **The specific proposal this forecloses is
+  the obvious one: writing a note or a custom field onto a Jobber client to tell the office about a
+  referral. It is RULED OUT — not deferred, not "when we have the scope".** A36.5.b and A36.5.c rule
+  the sanctioned channels instead: the contractor's own notification email, and the admin dashboard.
+  ⚠ **WHY THIS IS RESIDENT RATHER THAN ONLY IN THE SPEC:** *"Jobber GraphQL is read-only"* reads as a
+  constraint awaiting a good enough reason, and the write-back is a genuinely good idea on its
+  merits — so a session that meets only that line will propose it, and will be right to, having
+  never opened §25. **Meet the answer before writing the proposal.**
+  ⚠ **AND WHAT THE REPO CANNOT TELL YOU: there is NO scope declaration in this codebase.** The only
+  OAuth call is a refresh-token exchange carrying no scope parameter; the authorize step that grants
+  scopes lives in the Jobber developer console, outside this repo and unchecked. **So read-only is
+  enforced here by the absence of mutations and by this rule — not by anything a grep can confirm**,
+  and enabling a write scope is a product decision taken elsewhere rather than a build detail
+  reachable by editing a query.
 - OAuth token refresh handled by `refreshTokenIfNeeded(contractorId, {force})` — never bypass. Token access is contractor-scoped: never read or write the `tokens` table without a `contractor_id` predicate. Use `getContractorAccessToken(contractorId)` for reads — it is the only sanctioned way to read a contractor's access token. `tokens.id` is inert (sequence-filled default, never referenced by application code) — `contractor_id` is the real key.
 - `getPrimaryEmail`/`getPrimaryPhone` handle both GraphQL array shape and flat-string fallback — never simplify.
 - phones/emails absent from bulk allClients sync query intentionally (API load). Only in fetchFullClient and targeted lookups.

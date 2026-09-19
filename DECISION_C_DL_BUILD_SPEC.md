@@ -1,6 +1,6 @@
 # Field Rep Arc — Decision C + DL + LP + FieldRepApp — Build Specification ("C/DL")
 
-**Status:** LOCKED v2.3 — amended 2026-09-19, Canvass-attribution-model: **the attribution model is ruled and filed before it is built** (§24, amendment A35) — the governing principle that entry path and credit are independent, the seven entry paths, referral inheritance, rep-linked provisional signups, floaters, and the inbound-referral notice; **eight edges named and deliberately NOT resolved**; the prerequisites that block all of it; and ⚠ **seven recorded COLLISIONS with what is already built or ruled — chief among them C1, that the shipped engine attributes from CRM work artifacts and not from a referral chain at all.** ⚠ **THE NEXT FREE AMENDMENT IS `A36`** *(verified free 2026-09-19 by `git grep` and a working-tree grep, both word-anchored, zero hits in either — and zero even unanchored)*. Previously v2.2, amended 2026-09-17, Canvass-2: eleven Canvass-1 rulings are recorded before the build (§23, amendment A34) — the rep column's ground, the faded-text constant, the admin-route boundary, app-membership display, Today's Focus, the revenue-empty state, the rep's flag scope, the cross-rep 404, the Security row, seeder placement and the broken-logo state. ⚠ **A34 settles THREE of A33's four owed amendments — U14, the `--rm-bg` flooring gap and U25 — and leaves `U2` OWED.** ⚠ **THE NEXT FREE AMENDMENT IS `A35`** *(verified free 2026-09-17 by `git grep` and a working-tree grep, both word-anchored, zero hits in either)*. ⚠ **SUPERSEDED 2026-09-19 — `A35` WAS TAKEN BY §24 / v2.3; the live pointer is the v2.3 clause at the head of this line. The sentence before this one is the dated record of 2026-09-17 and is deliberately not repaired in place.** Previously v2.1, amended 2026-09-16, Preview-1 Part 1: the remaining rep-arc phases are named `Canvass-1`…`Canvass-n` and the build order is Palette → the referrer dashboard preview (real mount) → Canvass (§22, amendment A33). Previously v2.0, amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A34 — ⚠ **A33 WAS TAKEN 2026-09-16 by §22 / v2.1** — ⚠ **AND A34 WAS TAKEN 2026-09-17 by §23 / v2.2; THE NEXT FREE AMENDMENT IS `A35` — ⚠ **AND A35 WAS TAKEN 2026-09-19 by §24 / v2.3; THE NEXT FREE AMENDMENT IS `A36`** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
+**Status:** LOCKED v2.4 — amended 2026-09-19, Canvass-attribution-model-2: **§24's C1 and C4 are SETTLED, and the visibility layer is ruled** (§25, amendment A36). **A36.1** the chain determines initial ownership, from the moment the relationship exists · **A36.2** the CRM precedence order is unchanged and applies where the chain does not — ⚠ **C1 WAS NEVER A CONTRADICTION, ONLY A MISSING LAYER** · **A36.3** admin manual reassignment overrides both, which is what makes the chain's STICKY write safe · **A36.4** C4 is two audiences, not one fence — A35.5 is rep-facing and `writeOrphanOnMiss` keeps its `true` default · **A36.5** the visibility layer, because attribution decides who is CREDITED and cannot decide who is SENT: ⚠ **RoofMiles NEVER writes to a contractor's CRM (a PRODUCT PRINCIPLE, also recorded in `CLAUDE.md`'s Never-Break set; the Jobber write-back is RULED OUT, not deferred)**, the office reached through the existing booking email plus a second notification to the same destination, the admin dashboard, and the rep's home as both a statistic and a Today's Focus entry. **Edges (g) and (h) are CORRECTED and CLOSED; (a)–(f) stay open.** ⚠ **THE NEXT FREE AMENDMENT IS `A37`** *(verified free 2026-09-19 by `git grep` and a working-tree grep, both word-anchored, zero hits in either — and zero even unanchored)*. Previously v2.3, amended 2026-09-19, Canvass-attribution-model: **the attribution model is ruled and filed before it is built** (§24, amendment A35) — the governing principle that entry path and credit are independent, the seven entry paths, referral inheritance, rep-linked provisional signups, floaters, and the inbound-referral notice; **eight edges named and deliberately NOT resolved**; the prerequisites that block all of it; and ⚠ **seven recorded COLLISIONS with what is already built or ruled — chief among them C1, that the shipped engine attributes from CRM work artifacts and not from a referral chain at all.** ⚠ **THE NEXT FREE AMENDMENT IS `A36`** *(verified free 2026-09-19 by `git grep` and a working-tree grep, both word-anchored, zero hits in either — and zero even unanchored)*. ⚠ **SUPERSEDED LATER THE SAME DAY — `A36` WAS TAKEN BY §25 / v2.4; the live pointer is the v2.4 clause at the head of this line. The sentence before this one is v2.3's own dated record and is deliberately not repaired in place.** Previously v2.2, amended 2026-09-17, Canvass-2: eleven Canvass-1 rulings are recorded before the build (§23, amendment A34) — the rep column's ground, the faded-text constant, the admin-route boundary, app-membership display, Today's Focus, the revenue-empty state, the rep's flag scope, the cross-rep 404, the Security row, seeder placement and the broken-logo state. ⚠ **A34 settles THREE of A33's four owed amendments — U14, the `--rm-bg` flooring gap and U25 — and leaves `U2` OWED.** ⚠ **THE NEXT FREE AMENDMENT IS `A35`** *(verified free 2026-09-17 by `git grep` and a working-tree grep, both word-anchored, zero hits in either)*. ⚠ **SUPERSEDED 2026-09-19 — `A35` WAS TAKEN BY §24 / v2.3; the live pointer is the v2.3 clause at the head of this line. The sentence before this one is the dated record of 2026-09-17 and is deliberately not repaired in place.** Previously v2.1, amended 2026-09-16, Preview-1 Part 1: the remaining rep-arc phases are named `Canvass-1`…`Canvass-n` and the build order is Palette → the referrer dashboard preview (real mount) → Canvass (§22, amendment A33). Previously v2.0, amended 2026-09-03, BR-2 Phase 2: LP §2's step copy becomes overridable and a social row is added to the landing footer (§21, amendment A32). ⚠ **§20 / v1.9 / A31 is RETIRED — VOID, not reused; the next free amendment is A34 — ⚠ **A33 WAS TAKEN 2026-09-16 by §22 / v2.1** — ⚠ **AND A34 WAS TAKEN 2026-09-17 by §23 / v2.2; THE NEXT FREE AMENDMENT IS `A35` — ⚠ **AND A35 WAS TAKEN 2026-09-19 by §24 / v2.3; THE NEXT FREE AMENDMENT IS `A36` — ⚠ **AND A36 WAS TAKEN LATER THE SAME DAY by §25 / v2.4; THE NEXT FREE AMENDMENT IS `A37`** *(ruled 2026-09-03; it had been RESERVED by the RAD migration arc, and the amendment it was held for was ruled against and never written)* — see §21's opening note. Previously v1.8, amended 2026-09-01, five Phase 3 rulings recorded before the build (§19, amendments A26–A30). Previously v1.7, amended 2026-09-01, a citation to a section that does not exist (§18, amendment A25); v1.6, amended 2026-08-30, the session decomposition superseded (§17, amendment A24); v1.5, amended 2026-08-30 with the documentation corrections C/DL-3b reserved and never wrote (§16, amendment A23); v1.4, amended 2026-08-08 with pre-auth branding resolution and URL topology (§15, amendment A22); v1.3, amended 2026-08-02 during C/DL-2 polish (§14, amendment A21); v1.2, amended 2026-08-02 after C/DL-2 Phase 3d Phase 0 findings (§13, amendments A8–A20); v1.1, amended 2026-07-27 after C/DL-1 Phase 0 findings (§12, amendments A1–A7). Originally locked v1.0 on 2026-07-24. ⚠ **GOVERNS SEVEN BUILD SESSIONS, NOT THREE — see §17.** The arc split into C/DL-1 · 2 · 3a · 3b · 3c · 3d · 3e; **§4 and §10 were written when it was three, so every "C/DL-3" in them means "somewhere in 3a–3e" while reading as "this session."** Both are marked in place. Changes require a spec amendment.
 
 **What this is:** the unified spec for the arc that gives field reps a working surface. It folds together four previously-separate documents because they turned out to be one build:
 
@@ -1300,6 +1300,9 @@ ruled. Adjacent to U21 and sharper than it.
 AMENDMENT IS `A36`.** *(Filed by the Canvass-attribution-model pass.)* **The line above is left
 exactly as written** — it is the record of A34's own day, and a record repaired in place stops being
 evidence. This is the correction, not a rewrite.
+⚠ **AND `A36` IS NOW TAKEN — 2026-09-19, by §25 / v2.4 (C1 and C4 settled; the visibility layer).
+THE NEXT FREE AMENDMENT IS `A37`.** *(Filed by Canvass-attribution-model-2. Both lines above stand
+as written; this is a second correction stacked on them.)*
 
 ---
 
@@ -1318,6 +1321,10 @@ THE ANCHOR IS NOT OPTIONAL:** a bare-substring search for `A35` returns an **eig
 `package-lock.json`'s integrity hash `sha512-tD40eHxA35h0PEIZNeIjkHoDR4YjjJp34biM0mDvplBe...`. **A
 base64 hash reads as a reservation from a distance and is not one.** `A36` returns **nothing at
 all**, in either search and even unanchored.
+⚠ **AND `A36` WAS TAKEN LATER THE SAME DAY — 2026-09-19, by §25 / v2.4. THE NEXT FREE AMENDMENT IS
+`A37`**, likewise verified free in both searches and unanchored. *(Filed by
+Canvass-attribution-model-2; this is a fifth correction stacked on this block, and every line above
+stands as its own day's record.)*
 
 ### ⚠ WHY THIS IS FILED BEFORE ANYTHING IS BUILT
 
@@ -1390,7 +1397,18 @@ great deal already does.*
 **A person in the app with no chain leading to a rep belongs to nobody. That is correct, not a
 gap.**
 
-⚠ **THE SHIPPED ENGINE DISAGREES ON THE REFERRAL PATH, DELIBERATELY AND IN WRITING — SEE C4.**
+⚠ **AMENDED 2026-09-19 BY A36.4 (§25), AND THE AMENDMENT IS A SCOPE, NOT A REVERSAL. THIS CLAUSE IS
+REP-FACING: it governs what a REP IS SHOWN — a rep is not shown unclaimed people as a problem. IT
+DOES NOT GOVERN WHAT THE SERVER RECORDS.** The orphan flag and its admin bell are **ADMIN-FACING and
+UNCHANGED**; an unclaimed referral is still a money question, exactly as ruling R3 left it on
+2026-09-18. ⚠ **`writeOrphanOnMiss` KEEPS ITS `true` DEFAULT ON THE REFERRAL PATH, AND NOTHING IN
+A35.5 MAY BE READ AS FLIPPING IT.** Neither audience's rule narrows the other's.
+
+⚠ **THE ORIGINAL SENTENCE BELOW IS LEFT EXACTLY AS WRITTEN — it is this section's own record of
+2026-09-19's first ruling, and the amendment stacks on it rather than rewriting it.** *"THE SHIPPED
+ENGINE DISAGREES ON THE REFERRAL PATH, DELIBERATELY AND IN WRITING — SEE C4."* ⚠ **That framing is
+what A36.4 corrects: the engine was never disagreeing, because it was answering for a different
+audience.** → §25, A36.4
 
 ### A35.6 — the inbound-referral notice (a SURFACE, not a card)
 
@@ -1428,6 +1446,14 @@ rule as a blank invites re-deciding it by accident.
 | **h** | **Does inheritance write PROVISIONAL or STICKY?** | ⚠ **THE PREMISE THAT MAKES THIS URGENT IS FALSE AS BUILT — SEE C6.** *"Sticky can never be corrected later"* is not true: the locked rules make Owner/Admin manual reassignment **source #4, the one path that supersedes sticky by design**, and `sticky_source = 'manual'` is already written by the resolve-assign surface. The question stays open and stays consequential, but for a **different and sharper reason**: the sticky gate **prefers an eligible quote's salesperson above a provisional**, so an inherited PROVISIONAL can be beaten by a quote salesperson and an inherited STICKY cannot. **The two answers pay different people.** |
 
 ---
+
+⚠ **(g) AND (h) ARE CLOSED — 2026-09-19, BY §25. THEY ARE NOT OPEN QUESTIONS AND MUST NOT BE
+PRESENTED AS ANY.** **(g)** is **CONFIRMED UNBOUNDED** — the locked rule stands unoverturned.
+**(h)'s premise was FALSE** (sticky *is* correctable, by manual reassignment), and **its real
+substance — ordering — is ANSWERED: the chain writes STICKY**, because a provisional any later quote
+salesperson can overwrite is not the ownership A36.1 describes. ⚠ **A36.3's manual override is what
+makes the strong form safe; the two are one mechanism and neither ships without the other.**
+**Rows (a)–(f) remain genuinely open and A36 rules none of them.** → §25
 
 ### ⚠ WHAT BLOCKS ALL OF IT — THE PREREQUISITES, EACH WITH ITS EVIDENCE
 
@@ -1475,6 +1501,14 @@ rule as a blank invites re-deciding it by accident.
 a real disagreement between A35 and something already locked, shipped, or ruled — found by reading
 the built engine and the locked rules against the model, **not by searching for a phrase**.
 
+⚠ **C1 IS SETTLED — 2026-09-19, BY A36.1 / A36.2 / A36.3 (§25), AND IT WAS NEVER A CONTRADICTION.**
+The chain determines **initial ownership**; the CRM precedence order decides among **CRM signals**
+and applies **where the chain does not**; admin manual reassignment overrides both. **The locked
+order was written when CRM signals were the only inputs and was never asked whether a referral
+relationship beats a Jobber field.** ⚠ **The paragraph below is this section's record of the
+collision as first found — its analysis of the engine is accurate and its FRAMING as a conflict is
+what A36 corrects.** The Rep A / Rep B example resolves to **Rep A**. → §25, A36.1
+
 **C1 — ⚠ THE ENGINE ATTRIBUTES FROM CRM WORK, NOT FROM A CHAIN. THIS IS THE DEEPEST COLLISION.**
 A35.1 says credit follows the referral chain. `server/utils/attributionEngine.js` resolves credit in
 a fixed order: an **eligible quote's salesperson** (`quote_salesperson`), then **promote the existing
@@ -1503,6 +1537,12 @@ CHECK-enforced at exactly two values, `orphan` and `rep_co_assignment`. ⚠ **A3
 reps see ONLY co-assignment flags naming them in `reps_involved`** — so if (e) resolves as a
 co-assignment flag, **the onboarding rep sees the flag they caused**, which A34.7 neither
 contemplated nor forbade.
+
+⚠ **C4 IS SETTLED — 2026-09-19, BY A36.4 (§25). TWO AUDIENCES, NOT ONE FENCE:** A35.5 is REP-FACING
+and the orphan flag is ADMIN-FACING and unchanged, so **`writeOrphanOnMiss` keeps its `true`
+default**. The paragraph below is this section's own record of the collision as first found and is
+deliberately not repaired in place — **but it must not be read as authorising a change to that
+default.**
 
 **C4 — ⚠ A35.5 SAYS A FLOATER IS CORRECT. THE SHIPPED ENGINE CALLS THAT SAME STATE AN INCIDENT, ON
 PURPOSE, AND RULING R3 LEFT IT THAT WAY ON 2026-09-18.** `runAttributionEngine`'s `writeOrphanOnMiss`
@@ -1548,4 +1588,276 @@ design a second mechanism beside a working one.**
 - **It builds nothing.** No `src/`, no `server/`, no tests, no schema.
 
 **Next free amendment: `A36`.** *(Verified free 2026-09-19 by `git grep` and a working-tree grep,
+word-anchored — zero hits in either, and zero even unanchored.)*
+⚠ **AND `A36` WAS TAKEN THE SAME DAY — 2026-09-19, by §25 / v2.4, which settles this section's C1
+and C4 and rules the visibility layer. THE NEXT FREE AMENDMENT IS `A37`.** *(Filed by
+Canvass-attribution-model-2. The line above is §24's own record and is not repaired in place.)*
+
+---
+
+## 25. Amendments — v2.4, 2026-09-19 (C1 and C4 settled; the visibility layer ruled)
+
+**Amendment A36.** *(Ruled by Danny, 2026-09-19. Written the same day, in the
+Canvass-attribution-model-2 docs commit. No code, no schema, no tests.)*
+
+⚠ **`A36` WAS RE-CONFIRMED FREE BY BOTH A `git grep` AND A WORKING-TREE grep, EACH WORD-ANCHORED,
+IMMEDIATELY BEFORE USE RATHER THAN CARRIED FROM §24's CHECK.** Ten hits, every one of them the
+*"the next free amendment is `A36`"* pointer written by §24 itself — this file's Status line, §21's
+correction stack, §23's and §24's closing pointers, and three entries in
+`PRE_LAUNCH_CHECKLIST.md`. **None is a reservation.** `A37` returns **zero** in both searches and
+**zero unanchored**, which `A36` also did and `A35` did not — §24 records why that distinction is
+worth stating.
+
+### ⚠ WHAT THIS AMENDMENT IS
+
+**§24 filed a model and recorded seven collisions with what is built. This settles the two that
+mattered — C1 and C4 — and rules the layer §24 could not see, because §24 was asking who gets
+CREDITED and the real failure is about who gets SENT.**
+
+---
+
+### A36.1 — the chain determines INITIAL ownership
+
+**Where a referral relationship leads to a rep, that rep owns the referral from the moment the
+relationship exists — before any quote, request or assessment.**
+
+### A36.2 — the CRM precedence order is UNCHANGED
+
+**Quote salesperson over request/assessment assignment, exactly as `docs/ASSIGNMENT_RULES_LOCKED.md`
+has it. It decides among CRM SIGNALS. It applies where the chain does not.**
+
+⚠ **C1 WAS NEVER A CONTRADICTION. IT WAS A MISSING LAYER, AND §24 FILED IT AS A CONFLICT BECAUSE IT
+COULD NOT SEE THAT.** The locked precedence order was written when **CRM signals were the only
+inputs**, and it answers *"of these Jobber fields, trust which?"* — **it was never asked whether a
+referral relationship beats a Jobber field.** The two rules do not compete for the same question.
+The chain answers *who owns this person*; the precedence order answers *which Jobber field names the
+rep* **when no chain does**. §24's Rep A / Rep B example resolves to **Rep A**, and the gate's
+preference for a quote salesperson is untouched everywhere the chain is silent.
+
+### A36.3 — admin manual reassignment remains the override
+
+**As the locked Sticky rule already has it: Owner/Admin manual reassignment supersedes both.**
+
+### ⚠ THE KNOWN CONSEQUENCE, FILED SO NOBODY LATER READS IT AS A DEFECT
+
+**Rep B may quote, sell and run a job while Rep A owns the client, because Rep A grew the network.
+That is CORRECT under this model, and it will feel wrong to Rep B.** A36.3 is the remedy where it is
+genuinely wrong. ⚠ **Build nothing for it** — no split-credit field, no "contested" state, no
+notification to Rep B. **A rule that produces an uncomfortable-but-correct outcome does not need a
+feature; it needs to be written down**, which is what this paragraph is.
+
+### ⚠ TWO CORRECTIONS TO §24's OWN FRAMING, RECORDED AS CORRECTIONS RATHER THAN LEFT AS OPEN QUESTIONS
+
+§24 filed edges (g) and (h) as open. **Both were already settled, and Danny has ruled that the
+record say so plainly rather than leave two locked rules looking re-openable.**
+
+- **(g) — inheritance chaining is ALREADY RULED UNBOUNDED**, in `docs/ASSIGNMENT_RULES_LOCKED.md`'s
+  assignment source #1, second clause, in a document marked LOCKED. ⚠ **It is not an open question
+  and must not be presented as one.** §24 marked it confirm-or-overturn; **A36 closes it as
+  confirmed.**
+- **(h) — its premise was FALSE.** *"Sticky can never be corrected later"* is wrong: sticky **is**
+  correctable, by Owner/Admin manual reassignment, which the locked Sticky rule makes the one path
+  that supersedes sticky by design and which already writes `sticky_source = 'manual'`.
+
+⚠ **BUT (h)'s REAL SUBSTANCE SURVIVES BOTH CORRECTIONS, AND A36.1 ANSWERS IT.** The substance was
+never permanence — it was **ordering**: the sticky gate prefers an eligible quote's salesperson
+**above** promoting a provisional, so an inherited PROVISIONAL is beaten by a quote salesperson and
+an inherited STICKY is not.
+
+**So: which does the chain write? STICKY — and A36.1 is why.** A36.1 says the chain's rep owns the
+referral **from the moment the relationship exists, before any quote, request or assessment**. A
+provisional that any later quote salesperson can overwrite is not ownership; it is a placeholder
+that expires the first time someone else does paperwork. **Writing provisional would make A36.1
+false in exactly the case A36.1 exists to govern**, and would silently re-open C1 through the back
+door — the gate would keep preferring the Jobber field, which A36.2 scopes to *where the chain does
+not apply*.
+
+⚠ **AND THIS IS WHY A36.3 IS LOAD-BEARING RATHER THAN DECORATIVE.** Sticky-from-the-chain is only
+safe **because** manual reassignment can correct it. The two rulings are one mechanism: **the chain
+writes the strong form, and a human holds the override.** Neither may be built without the other.
+
+---
+
+### A36.4 — C4 SETTLED: two audiences, not one fence
+
+**A35.5's floater rule is REP-FACING: a rep is not shown unclaimed people as a problem. The orphan
+flag and its admin bell are ADMIN-FACING and UNCHANGED — an unclaimed referral is still a money
+question, exactly as ruling R3 left it on 2026-09-18. Neither narrows the other.**
+
+⚠ **`writeOrphanOnMiss` KEEPS ITS `true` DEFAULT ON THE REFERRAL PATH. A36.4 IS NOT A LICENCE TO
+FLIP IT**, and §24's C4 must not be read as one. **A35.5's wording is amended in §24 accordingly**,
+so the clause cannot be read as scoping a server-side default it never governed.
+
+**The general form, because this is the second time in two amendments that one sentence was read as
+governing two audiences:** *a rule about what a SURFACE shows is not a rule about what the SERVER
+records.* Say which audience a rule binds, in the rule.
+
+---
+
+### A36.5 — THE RULES CANNOT PREVENT THE FAILURE THEY CORRECT
+
+**Attribution decides who is CREDITED. It cannot decide who is SENT.**
+
+**The failure, in full:** Tom is referred by Maria, who belongs to Rep A. Tom calls the office and is
+scheduled with Rep B before anyone knows there was a referral. Rep B goes out, quotes, and wins.
+**Attribution may credit Rep A perfectly correctly and the wrong rep has still done the job.**
+
+⚠ **NO ATTRIBUTION RULE CAN FIX THIS, WHICH IS WHY IT IS RULED SEPARATELY AND NOT AS AN EDGE OF
+A36.1.** By the time attribution runs, the visit has happened. **This is a VISIBILITY problem with
+two audiences — the office, who schedule, and the rep, who can claim.** Danny has ruled all three
+channels.
+
+#### A36.5.a — ⚠ ROOFMILES NEVER WRITES TO A CONTRACTOR'S CRM
+
+**Ruled as a PRODUCT PRINCIPLE, not a technical limitation. RoofMiles READS from the CRM and is
+ADDITIVE, NOT INVASIVE. That is part of what makes it adoptable.** The Jobber write-back option — a
+note or a custom field on the client, which is the obvious way to tell the office — is **RULED OUT.
+Not deferred.**
+
+⚠ **THIS IS RECORDED IN `CLAUDE.md`'s NEVER-BREAK SET AS WELL AS HERE**, under *Jobber API*, because
+a principle that lives only in a spec is one a future session will propose against before it ever
+opens the spec. The resident line already said *"Jobber GraphQL is read-only. Never add mutations
+without explicit instruction."* **That reads as a technical constraint awaiting a good enough
+reason.** It now also carries the principle and the ruling, so the next session meets the answer
+before it writes the proposal.
+
+⚠ **AND WHAT THE REPO CAN AND CANNOT PROVE ABOUT SCOPES, STATED RATHER THAN ASSUMED.** Danny's
+ruling describes the app's Jobber scopes as read-only by design. **This repository contains no scope
+declaration at all** — the only OAuth call in it is a refresh-token exchange against
+`api.getjobber.com/api/oauth/token`, which carries no scope parameter, and the authorize step that
+grants scopes is not in this codebase. **So the read-only posture is enforced here by the ABSENCE OF
+MUTATIONS plus the resident rule, and the scope grant itself lives in the Jobber developer console,
+which was not checked.** ⚠ **Enabling a write scope is therefore a PRODUCT decision taken outside
+this repo, not a build detail someone can reach by editing a query** — which is the more important
+half, and the half a session reading only the code would get wrong.
+
+#### A36.5.b — the office is reached through channels they already use
+
+**Two pieces, both extending what exists.**
+
+**1. THE EXISTING EMAIL, ENRICHED.** ⚠ **IDENTIFIED FROM SOURCE, AND IT IS NOT ONE OF THE SIX
+NUMBERS THE BRIEF NAMED.** The email that fires when a referred person submits a book-inspection
+request is the **Booking request** email from `POST /api/referrer/booking` in
+`server/routes/referrer.js`, subject *"New Inspection Booking Request — {name}"*.
+
+⚠ **#1, #2, #3, #5, #6 AND #33 ARE ALL REFERRER-FACING PIPELINE-STAGE EMAILS AND NONE OF THEM GOES
+TO THE OFFICE.** They fire from `server/crm/pipelineSync.js` to `referrerAccount.email` on stage
+transitions. **The one office-facing referral email in that file is `#25`, *"New referral detected —
+{client} via {referrer}"*** — and ⚠ **`#25` CANNOT SERVE A36.5's PURPOSE, BECAUSE OF WHEN IT
+FIRES.** It fires on the first insert of a `pipeline_cache` row, which means **the client is already
+in Jobber with a "Referred by" value** — *after* the office has created them, which is **after
+scheduling**. By then the visit is booked and the failure has already happened. **The booking email
+is the only one that fires BEFORE the office acts.**
+
+**What it currently contains:** the referred person's name, phone, email, address, notes, and a
+submission timestamp.
+
+⚠ **IT NEVER SAYS WHO THE REFERRER IS — AND THAT HALF IS ESSENTIALLY FREE.** The submitting
+referrer is the authenticated session's own `userId`; the handler already writes it to
+`booking_requests.submitted_by_user_id` **in the same request**. **The referrer's identity needs no
+new data, no new join and no schema change** — it is in scope and discarded.
+
+⚠ **THE REP HALF IS NOT FREE, AND THE DIFFERENCE IS THE WHOLE POINT.** *Which rep is tied to them in
+the chain* requires resolving the referrer to a rep, and the referral link is a **name string** —
+so today the only available route is the referrer's own `users.jobber_client_id` into
+`client_rep_assignments`, which is the same nullable, never-measured bridge §24 filed for CONV.
+**Recommendation, not a ruling: ship the referrer's identity immediately and gate the rep line on
+the chain, rather than holding both until the chain exists.** A named referrer with no rep line is
+useful to the office; nothing is not.
+
+**2. A SECOND NOTIFICATION, to the SAME destination, when a referral comes in through other
+channels.** **Recommended content, with reasons, and NOT built:**
+- **whether the person has signed up** — ruled in by Danny, and it is what tells the office whether
+  the referral is already in the system or needs a pending-referral path;
+- **who the referrer is, and their rep if the chain resolves** — the same pair as piece 1, for the
+  same reason: it is what makes the office able to route rather than merely informed;
+- **that a referral exists AT ALL, with no referrer named** — ⚠ **this is the case worth designing
+  for rather than the tidy one.** Edge (a) is a caller who says they were referred and cannot name
+  anyone; a notification that only fires when the chain resolves is silent in exactly the situation
+  the office most needs to slow down and ask;
+- **a link into the admin surface** — per A36.5.c, so the notification is a route to the work and
+  not a dead end.
+⚠ **NOT recommended: a rep name presented as authoritative when it was inferred from a name-string
+match.** That is the `LIMIT 1` ambiguity reaching the office as a confident wrong answer, and the
+office will act on it.
+
+**THE DESTINATION — FOUND, NAMED, AND IT IS ALREADY THE RIGHT ONE.**
+`resolveNotificationRecipient(pool, type, contractorId)` in `server/utils/notificationEmail.js`
+resolves three types. The booking email uses type **`booking`** → **`contractor_about.booking_email`**,
+falling back to `contractor_settings.company_email`, then the platform default. The admin alerts use
+**`general`** → **`contractor_settings.notification_email_general`**. **Both are admin-settings
+fields and are surfaced in Notification Settings.** ⚠ **The second notification should use the SAME
+`booking` destination as piece 1 and NOT introduce a third field** — the office already watches it,
+and a new field is a new thing to leave unset.
+
+⚠ **AND A LIVE DEFECT FOUND WHILE CONFIRMING THAT DESTINATION — REPORTED, NOT FIXED HERE.** Three of
+the four call sites **omit the `contractorId` argument**, and the parameter defaults to the literal
+`'accent-roofing'`. `referrer.js`'s booking handler, its bank-connection alert and its
+missing-referral alert all resolve **Accent Roofing's** configured address regardless of which
+tenant's referrer acted; only `pipelineSync.js`'s `#25` passes the id. **The booking handler reads
+`session.contractorId` on the very next line and does not pass it.** Filed on
+`PRE_LAUNCH_CHECKLIST.md`; **it is a prerequisite for piece 1, because enriching an email that is
+delivered to the wrong tenant's inbox makes the leak worse.**
+
+#### A36.5.c — the admin dashboard
+
+**Referrals surface on the dashboard as notifications and banners when someone is referred. Danny
+rules this a CORNERSTONE dashboard element, not a side panel.**
+
+**What exists today, established from source:** the **Missing Referrals** page is
+`src/components/admin/AdminReferralReview.jsx`, subtitled *"Pending invites, missing referral
+reports, and flagged records"*, with the three tabs Canvass-0 recorded — **pending · missing ·
+flagged**.
+
+⚠ **AND THE DASHBOARD-TO-PAGE PATTERN A36.5.c DESCRIBES IS ALREADY BUILT AND PROVEN, FOR A DIFFERENT
+COUNT.** `AdminDashboard` already takes `flaggedUnresolvedCount` and renders a clickable banner
+whose handler sets the Referral Review tab to `flagged` and navigates to `missing-referrals`.
+**A36.5.c is therefore an extension of a working pattern, not a new mechanism** — which changes the
+size of the job and is why it is recorded here rather than left to be rediscovered.
+
+**Reported, not decided, per the brief:**
+- **Missing Referrals is the right home.** Its subtitle already claims this subject, it already
+  holds the three states a referral can be in, and the inbound-referral population is the same
+  population its `pending` tab serves.
+- **The dashboard should surface a summary that links into it**, reusing the flagged-banner pattern
+  rather than inventing a second one. ⚠ **"Cornerstone, not a side panel" is a real constraint on
+  this**: the existing banner is a thin amber strip, and a cornerstone element is not that. **Whether
+  the banner is promoted or a distinct element is added is a design question this amendment does not
+  answer.**
+- **It is NOT a different job**, with one caveat: the *rep-facing* half (A36.5.d) shares no surface
+  with it and must not be folded in.
+
+#### A36.5.d — the rep's home
+
+**A35.6's notice appears BOTH as a statistic AND in Today's Focus.**
+
+**The rationale, filed because it is the reason the duplication is correct rather than redundant:**
+**a rep who does not open the app sees nothing**, so a count on the main screen is the nudge that
+makes the notice actionable. **The rep's action is to contact the office and claim the referral
+before scheduling happens** — which is the entire point of A36.5, and the only one of the three
+channels where the rep can act on their own behalf.
+
+⚠ **THE STAT IS A FIFTH CARD AND THE EXISTING TESTS FOLLOW IT AUTOMATICALLY.** `RepHomeScreen`'s
+`STAT_CARDS` is an exported frozen array of four — CLIENTS · LOCKED · PROVISIONAL · FLAGGED — and
+its tests iterate the constant rather than hardcoding labels or a count. **Adding a card is one
+entry**, and Canvass-6 already recorded that the row reflows by design rather than by a fixed grid.
+
+⚠ **LATER ATTACHED TO A PUSH NOTIFICATION — A DIRECTION, NOT A SCHEDULE.** Noted so **whoever
+designs the notice leaves room for it**: a notice whose only representation is a screen region
+cannot become a push payload without being redesigned. **Nothing is scheduled and nothing is built.**
+
+---
+
+### ⚠ WHAT A36 DOES NOT DO
+
+- **It does not build the visibility layer.** A36.5.a is a prohibition; b, c and d are rulings about
+  channels, with recommended content and no specification.
+- **It does not resolve edges (a)–(f).** §24 filed six genuinely open edges and A36 rules none of
+  them. (g) and (h) are corrected above rather than answered.
+- **It does not narrow `writeOrphanOnMiss`,** and A36.4 exists partly to say so.
+- **It does not fix the `resolveNotificationRecipient` tenancy defect** it found. That is a code
+  change and this is a docs commit.
+- **It builds nothing.** No `src/`, no `server/`, no tests, no schema.
+
+**Next free amendment: `A37`.** *(Verified free 2026-09-19 by `git grep` and a working-tree grep,
 word-anchored — zero hits in either, and zero even unanchored.)*

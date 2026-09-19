@@ -3412,6 +3412,10 @@ root cause, and patching them separately produces six unrelated special cases)
       `package-lock.json` integrity hash, which is the `A32` / `#A32D2D` trap reproducing itself one
       amendment along.** This is the fourth correction stacked on this entry; every line above is a
       record of its own day and none is rewritten.
+      ⚠ **AND `A36` IS NOW TAKEN — 2026-09-19, LATER THE SAME DAY, by `DECISION_C_DL_BUILD_SPEC.md`
+      §25 / v2.4 (C1 and C4 settled; the visibility layer). THE NEXT FREE AMENDMENT IS `A37`**,
+      verified free in both searches **and unanchored**. *(Filed by Canvass-attribution-model-2 — the
+      fifth correction stacked here, and the second in one day.)*
       **Verified free by BOTH a `git grep` and a working-tree grep, word-anchored — zero hits in
       either**, which is the check A31's reservation defeated and A33.1 now requires. ⚠ **This is the
       third correction stacked on this entry and each one is additive**; the lines above are records
@@ -4206,6 +4210,114 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-attribution-model-2 — C1 and C4 settled, the visibility layer filed (docs only, 2026-09-19)
+
+- [x] **✅ A36 IS FILED — `DECISION_C_DL_BUILD_SPEC.md` §25 / v2.4.** C1 settled (A36.1–A36.3), C4
+      settled (A36.4), the visibility layer ruled (A36.5). **Next free amendment: `A37`**, verified
+      in both searches and unanchored. **Nothing built: no `src/`, no `server/`, no tests, no
+      schema.**
+
+- [ ] 🔴 **A36.5 — THE VISIBILITY LAYER. ATTRIBUTION DECIDES WHO IS CREDITED; IT CANNOT DECIDE WHO IS
+      SENT.** Tom is referred by Maria (Rep A's), calls the office, and is scheduled with Rep B before
+      anyone knows there was a referral. **Attribution may credit Rep A perfectly and the wrong rep
+      has still done the job.** No attribution rule can fix this. Three channels, all ruled, **none
+      built**:
+      · **a — ⚠ ROOFMILES NEVER WRITES TO A CONTRACTOR'S CRM.** A product principle, not a technical
+      limitation. The Jobber write-back (a note or custom field on the client) is **RULED OUT, not
+      deferred.** **Also recorded in `CLAUDE.md`'s Never-Break set under *Jobber API***, because the
+      resident line read as a constraint awaiting a good reason and the write-back is a good idea on
+      its merits — a session meeting only that line would propose it.
+      · **b — the office, through channels they already use.** The existing booking email enriched,
+      plus a second notification to the same destination. See the two entries below.
+      · **c — the admin dashboard**, a cornerstone element. See below.
+      · **d — the rep's home**, as BOTH a statistic AND a Today's Focus entry. Rationale: **a rep who
+      does not open the app sees nothing**, so the count is the nudge that makes the notice
+      actionable; the rep's action is to contact the office and claim before scheduling.
+      ⚠ **The stat is a FIFTH card and the existing tests follow automatically** — `RepHomeScreen`'s
+      `STAT_CARDS` is an exported frozen array of four and its tests iterate the constant rather than
+      hardcoding labels or a count, and Canvass-6 already made the row reflow by design.
+      ⚠ **Later attached to a PUSH NOTIFICATION — a DIRECTION, not a schedule.** Filed so whoever
+      designs the notice leaves room for it: a notice whose only representation is a screen region
+      cannot become a push payload without redesign.
+
+- [ ] ⚠ **A36.5.b.1 — THE EMAIL TO ENRICH IS THE BOOKING REQUEST EMAIL, AND IT IS NOT ONE OF THE SIX
+      NUMBERS THE BRIEF NAMED.** Established from source: `POST /api/referrer/booking` in
+      `server/routes/referrer.js`, subject *"New Inspection Booking Request — {name}"*, destination
+      type `booking`.
+      ⚠ **#1, #2, #3, #5, #6 AND #33 ARE ALL REFERRER-FACING PIPELINE-STAGE EMAILS.** They fire from
+      `server/crm/pipelineSync.js` to the referrer's own address on stage transitions. **The one
+      office-facing referral email there is `#25`** — *"New referral detected — {client} via
+      {referrer}"* — ⚠ **and `#25` CANNOT SERVE THIS PURPOSE BECAUSE OF WHEN IT FIRES:** on first
+      insert of a `pipeline_cache` row, meaning **the client is already in Jobber**, i.e. **after the
+      office created them and after scheduling.** By then the failure has happened. **The booking
+      email is the only one that fires BEFORE the office acts.**
+      **What it carries today:** name, phone, email, address, notes, timestamp.
+      ⚠ **IT NEVER SAYS WHO THE REFERRER IS — AND THAT HALF IS FREE.** The submitting referrer is the
+      authenticated session's `userId`, and the handler already writes it to
+      `booking_requests.submitted_by_user_id` **in the same request.** No new data, no new join, no
+      schema change. **The REP half is not free** — it needs the chain, and the only route today is
+      the referrer's nullable `users.jobber_client_id` into `client_rep_assignments`, the same
+      never-measured bridge CONV depends on.
+      **RECOMMENDATION (not a ruling): ship the referrer's identity now and gate the rep line on the
+      chain.** A named referrer with no rep line is useful to the office; nothing is not.
+
+- [ ] 🔴 **A LIVE TENANCY DEFECT FOUND WHILE CONFIRMING THAT DESTINATION — REPORTED, NOT FIXED (docs
+      commit).** `resolveNotificationRecipient(pool, type, contractorId)` defaults `contractorId` to
+      the literal `'accent-roofing'`, and **three of its four call sites omit the argument.**
+      `server/routes/referrer.js`'s **booking handler**, its **bank-connection alert** and its
+      **missing-referral alert** therefore resolve **Accent Roofing's** configured address regardless
+      of which tenant's referrer acted. Only `pipelineSync.js`'s `#25` passes the id.
+      ⚠ **THE BOOKING HANDLER READS `session.contractorId` ON THE VERY NEXT LINE AND DOES NOT PASS
+      IT.** ⚠ **THIS IS A PREREQUISITE FOR A36.5.b.1, NOT A PARALLEL CLEANUP** — enriching an email
+      with referrer identity while it is delivered to the wrong tenant's inbox makes the leak worse,
+      not better. **OWNER: whoever builds A36.5.b.1, first.**
+
+- [ ] ⚠ **THE DESTINATION FIELD EXISTS AND IS THE RIGHT ONE — DO NOT ADD A SECOND.**
+      `server/utils/notificationEmail.js` resolves three types: **`booking`** →
+      `contractor_about.booking_email` → `contractor_settings.company_email` → platform default;
+      **`general`** → `contractor_settings.notification_email_general` → `company_email`;
+      **`payouts`** → `notification_email_payouts`. All are admin-settings fields surfaced in
+      Notification Settings. **A36.5.b's second notification uses the SAME `booking` destination** —
+      the office already watches it, and a new field is a new thing to leave unset.
+
+- [ ] ⚠ **A36.5.c — MISSING REFERRALS IS THE RIGHT HOME, AND THE DASHBOARD PATTERN IS ALREADY
+      BUILT.** `src/components/admin/AdminReferralReview.jsx`, subtitled *"Pending invites, missing
+      referral reports, and flagged records"*, with the three tabs Canvass-0 recorded — **pending ·
+      missing · flagged**. ⚠ **AND `AdminDashboard` ALREADY TAKES `flaggedUnresolvedCount` AND
+      RENDERS A CLICKABLE BANNER** whose handler sets the Referral Review tab to `flagged` and
+      navigates to `missing-referrals`. **So A36.5.c extends a proven pattern rather than inventing a
+      mechanism**, which changes the size of the job.
+      **Reported, not decided:** the page is the right home (its subtitle already claims the subject;
+      its `pending` tab already serves this population); the dashboard should surface a summary
+      linking into it, reusing that banner; **it is NOT a different job**, except that the rep-facing
+      half (A36.5.d) shares no surface with it and must not be folded in.
+      ⚠ **"Cornerstone, not a side panel" IS A REAL CONSTRAINT ON THIS:** the existing banner is a
+      thin amber strip, and a cornerstone element is not that. **Whether it is promoted or a distinct
+      element is added is a design question A36 does not answer.**
+
+- [ ] ⚠ **`server/docs/email-triggers.md` CALLS ITSELF AN "AUTHORITATIVE INVENTORY" AND IS
+      INCOMPLETE — THE HAND-MAINTAINED-LIST DEFECT, ARRIVING AS AN EMAIL INVENTORY.** It lists no
+      `pipelineSync.js` trigger at all: **`#25` is absent from its Admin-facing table, and `#1`,
+      `#2`, `#3`, `#5`, `#6`, `#33` are absent from its Referrer-facing table.** Anyone answering
+      *"which email goes to the office when a referral arrives?"* from that document gets the wrong
+      answer — **which is exactly the question A36.5.b asked.**
+      ⚠ **AND ONE OF ITS "Known gaps" IS INVERTED RATHER THAN STALE:** it says the booking request
+      email still sends from a hardcoded `'Rooster Booster <noreply@roofmiles.com>'`, but the handler
+      builds a dynamic sender from `email_sender_name` / `company_name`. **The booking half was
+      migrated and the document still asks for it.** *(The other three it names were not checked.)*
+      **OWNER: unassigned — regenerate from source rather than editing the list.**
+
+- [ ] ⚠ **A DOCUMENTED SHELL-HARNESS FAILURE REPRODUCED, WITH A SHARPER DIAGNOSIS THAN THE ONE ON
+      RECORD.** `CLAUDE.md` records *"`grep -c $'\r'` returned full line counts on LF-only files."*
+      This pass hit it — **and got `0` from the identical check one file earlier.** The difference is
+      the quoting context: inside `"$( … )"` command substitution the `$'…'` ANSI-C quoting does not
+      apply, so the needle reaches grep as an **empty pattern**, which matches every line. **The same
+      command is right in one context and wrong in the other, which is worse than always wrong** — it
+      invites the conclusion that one file is clean and another is not.
+      **The check that cannot lie, used here:** count `0d` bytes via `od -An -tx1 | tr ' ' '\n' |
+      grep -c '^0d'`. Both files returned **0**. **Worth adding to the shell-harness section next
+      time that file is edited for another reason.**
+
 ### Canvass-attribution-model — the credit rule is FILED, not built (docs only, 2026-09-19)
 
 - [x] **✅ A35 IS FILED — `DECISION_C_DL_BUILD_SPEC.md` §24 / v2.3.** Danny's complete attribution
@@ -4214,27 +4326,48 @@ may legitimately change several of these subjects.*
       rep-linked signups are provisional on the rep's action · **A35.5** floaters belong to nobody and
       that is correct · **A35.6** the inbound-referral notice. **Eight edges are NAMED AND DELIBERATELY
       NOT RESOLVED** (a–h), each with what makes it hard. **Next free amendment: `A36`.**
+      ⚠ **SUPERSEDED THE SAME DAY BY A36 (§25 / v2.4): C1 and C4 are SETTLED, (g) and (h) are
+      CORRECTED AND CLOSED, and the visibility layer is ruled. (a)–(f) stay open. Next free
+      amendment: `A37`.**
       ⚠ **NOTHING WAS BUILT AND NOTHING MAY BE READ AS AUTHORISED BY IT.** No `src/`, no `server/`, no
       tests, no schema. **3d and 3e build from it.**
       → `DECISION_C_DL_BUILD_SPEC.md` §24 · `docs/ASSIGNMENT_RULES_LOCKED.md`
 
-- [ ] 🔴 **C1 — THE MODEL AND THE SHIPPED ENGINE ATTRIBUTE BY DIFFERENT RULES, AND BOTH ARE NOW IN THE
-      SPEC. THIS IS THE OPEN QUESTION THAT MATTERS MOST.** A35.1 says credit follows the referral
-      chain. `runAttributionEngine`'s sticky gate resolves credit from **CRM work artifacts** in a
-      fixed order — an eligible quote's salesperson, then promote the existing provisional, then Mode
-      A's assessment assigned-users or Mode B's request salesperson, then an orphan flag — and **not
-      one of those five paths consults a referral relationship.** On a client referred by a homeowner
-      whose rep is Rep A, whose approved quote names Rep B as salesperson, **the built system credits
-      Rep B and A35.3 credits Rep A.** ⚠ **Both rules are defensible; they are not the same rule, and
-      which governs when they disagree is UNRULED.** **OWNER: Danny, before 3d writes anything to
-      `client_rep_assignments`.**
+- [x] **✅ C1 — SETTLED 2026-09-19 BY A36.1 / A36.2 / A36.3. THERE WAS NO CONTRADICTION, ONLY A
+      MISSING LAYER.** The **chain determines initial ownership**, from the moment the relationship
+      exists and before any quote, request or assessment. The **CRM precedence order is unchanged**
+      and decides among **CRM signals**, applying **where the chain does not**. **Admin manual
+      reassignment overrides both.**
+      ⚠ **WHY §24 READ IT AS A CONFLICT, RECORDED BECAUSE THE MISTAKE IS REUSABLE:** the locked
+      precedence order was written when **CRM signals were the only inputs**. It answers *"of these
+      Jobber fields, trust which?"* and **was never asked whether a referral relationship beats a
+      Jobber field.** Two rules answering different questions look like a contradiction only if you
+      assume they answer the same one. §24's Rep A / Rep B example resolves to **Rep A**.
+      ⚠ **THE KNOWN CONSEQUENCE, FILED SO IT IS NEVER READ AS A DEFECT: Rep B may quote, sell and run
+      a job while Rep A owns the client, because Rep A grew the network.** That is correct, it will
+      feel wrong to Rep B, A36.3 is the remedy where it is genuinely wrong, and **nothing is built
+      for it** — no split credit, no contested state, no notification to Rep B.
+      → `DECISION_C_DL_BUILD_SPEC.md` §25, A36.1–A36.3
 
-- [ ] 🔴 **C4 — A35.5 CALLS A FLOATER CORRECT; THE ENGINE CALLS THAT SAME STATE AN INCIDENT, ON
-      PURPOSE.** `runAttributionEngine`'s `writeOrphanOnMiss` **defaults TRUE**, writing a
-      `flagged_assignments` orphan row **and an admin bell**, because *"a referral that resolves to no
-      rep is a money question."* Ruling R3 (2026-09-18) left that explicitly unchanged, and the
-      parameter's own comment forbids flipping the default *"for symmetry"*. **Whether A35.5 narrows
-      it is unruled and must NOT be inferred** — that comment is a fence against exactly this edit.
+- [x] **✅ AND (h) IS ANSWERED BY A36.1: THE CHAIN WRITES STICKY, NOT PROVISIONAL.** A provisional
+      that any later quote salesperson can overwrite is not the ownership A36.1 describes — the gate
+      prefers a quote salesperson **above** promoting a provisional, so writing provisional would
+      make A36.1 false in exactly the case it exists to govern, and would re-open C1 through the back
+      door. ⚠ **A36.3 IS WHAT MAKES THE STRONG FORM SAFE: the chain writes sticky and a human holds
+      the override. They are one mechanism and neither ships without the other.**
+
+- [x] **✅ C4 — SETTLED 2026-09-19 BY A36.4. TWO AUDIENCES, NOT ONE FENCE.** A35.5 is **REP-FACING**
+      (a rep is not shown unclaimed people as a problem); the orphan flag and its admin bell are
+      **ADMIN-FACING and UNCHANGED**, exactly as R3 left them. **Neither narrows the other, and
+      `writeOrphanOnMiss` KEEPS ITS `true` DEFAULT.** A35.5's wording is amended in §24 so it cannot
+      be read as flipping it.
+      ⚠ **THE GENERAL FORM, BECAUSE THIS WAS THE SECOND SUCH MISREADING IN TWO AMENDMENTS: a rule
+      about what a SURFACE shows is not a rule about what the SERVER records.** Say which audience a
+      rule binds, inside the rule. **The original C4 finding below is left as the record of how it
+      was first read.**
+      ~~`runAttributionEngine`'s `writeOrphanOnMiss` **defaults TRUE**, writing a
+      `flagged_assignments` orphan row **and an admin bell** … **Whether A35.5 narrows it is unruled
+      and must NOT be inferred.**~~ → `DECISION_C_DL_BUILD_SPEC.md` §25, A36.4
 
 - [x] **✅ TWO OF THE EIGHT EDGES WERE ALREADY RULED, AND ARE FILED AS CONFIRM-OR-OVERTURN RATHER
       THAN AS BLANKS.** **(g) does inheritance chain?** — already ruled **UNBOUNDED** by
@@ -5363,6 +5496,9 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       attribution model). THE NEXT FREE AMENDMENT IS `A36`.** *(Filed by the
       Canvass-attribution-model pass; the line above is the record of A34's own day and is not
       repaired in place.)*
+      ⚠ **AND `A36` IS NOW TAKEN — 2026-09-19, by `DECISION_C_DL_BUILD_SPEC.md` §25 / v2.4 (C1 and
+      C4 settled; the visibility layer). THE NEXT FREE AMENDMENT IS `A37`.** *(Filed by
+      Canvass-attribution-model-2.)*
 
 - [x] **✅ CLOSED 2026-09-17 (Canvass-2) — THE REP SHELL'S GROUND, ITS FADED TEXT AND ITS BROKEN
       LOGO.** A34.1, A34.2, A34.10 and A34.11 all shipped in one commit. `RepShell`'s column moved to
