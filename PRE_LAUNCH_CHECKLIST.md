@@ -4286,6 +4286,62 @@ may legitimately change several of these subjects.*
       could mean a large number of `admin_messages` rows in one run. **Whether a historical pass
       should raise bells at all is a ruling, not an implementation detail.** **NEEDS DANNY.**
 
+- [ ] 🔴 **THE MAPPING TRIGGER — WHAT HAPPENS WHEN AN ADMIN MAPS A REP. NEEDS DANNY, EXCEPT FOR ONE
+      OPTION THE EVIDENCE RULES OUT.** Danny's ruling is that mapping a rep later is what makes their
+      book appear, so the trigger is the mapping, not the import. Three shapes:
+      | option | what the rep sees, and when | cost at Accent's volume |
+      |---|---|---|
+      | **A. attribute synchronously on save** | book appears immediately | ⚠ a scan of all stored history for that Jobber user **inside an HTTP request** — thousands of rows, and the admin's save is what times out |
+      | **B. queue it** | book appears within minutes | needs a job row + a worker; **resumable, and the cost lands off the request path**. The existing cron+`withLock` pattern already does this |
+      | **C. resolve lazily at read time** | book appears immediately, nothing written | ⚠ **RULED OUT BY EVIDENCE — see below** |
+      ⚠ **C IS NOT A VIABLE OPTION AND THAT IS A FINDING RATHER THAN A PREFERENCE.** An assignment is
+      **stateful**: `sticky_set_at`, `sticky_source`, the existing-wins rule, the co-assignment flag,
+      and an admin's manual reassignment (source #4) are all *stored facts about a decision*. A lazy
+      join from history to `team_members` can express none of them — it would either bypass the
+      assignment model or duplicate it, and **"an admin manually moved this client" is precisely the
+      fact it cannot represent.** A and B remain, and **B is the only one that survives thousands of
+      clients** — but the choice between them is Danny's. **NEEDS DANNY.**
+      ⚠ **UNMAPPING / TURNING `is_attributable` OFF — A34's PROPERTY STILL HOLDS, CONFIRMED FROM
+      SOURCE RATHER THAN QUOTED.** **Nothing in production code deletes a `client_rep_assignments`
+      row at all** (repo-wide grep), and `is_attributable` is written in exactly one place —
+      `admin/team.js`'s flag update — with no cascade. So an existing assignment survives the flag
+      being turned off, which is A34's *"attribution immutability"* exactly. ⚠ **Under a mapping
+      trigger this becomes a question worth asking OUT LOUD: mapping is now retroactive, but
+      unmapping is not.** That asymmetry is defensible — you cannot un-know who worked a job — but it
+      should be a ruling rather than a side effect of nothing having a delete path.
+
+- [ ] ⚠ **COST AND DURATION — CANNOT BE ESTIMATED YET, AND THE MISSING NUMBER IS ONE QUERY AWAY.**
+      What IS known, measured and recorded: the Jobber budget is **maximumAvailable 10,000 with
+      restoreRate 500/s** (measured 2026-08-23), `pipelineSync` pages against a
+      `CONSERVATIVE_REQUESTED_COST` of ~8055 per 25-client page, and Accent has **147 Jobber users**.
+      ⚠ **WHAT IS NOT KNOWN IS THE ONLY INPUT THAT MATTERS: HOW MANY REQUESTS AND QUOTES ACCENT HAS.**
+      The magnitudes query was filed in Canvass-3.7 and **has never been run**, so any duration here
+      would be invented. It is one query:
+      `query { clients(first: 1) { totalCount } requests(first: 1) { totalCount } quotes(first: 1) { totalCount } }`
+      ⚠ **AND THE PER-PAGE COST MUST BE READ FROM `extensions.cost` ON A REAL QUERY, NOT DERIVED.**
+      `jobberIncrementalSync` already logs `actualQueryCost` and `currentlyAvailable` per page for
+      exactly this reason — *"keeps the per-page cost MEASURED rather than assumed"*. A selection set
+      that adds `salesperson` and `assessment { assignedUsers }` costs more than one that does not,
+      and by how much is a measurement.
+      **Resumability shape, which does NOT need those numbers to design:** the same watermark
+      discipline as `repRequestSweep` — a cursor persisted per contractor, advanced **only** on a
+      fully successful page, never on failure, so a failed run re-covers rather than skips. **A failed
+      run must leave the watermark where it was and nothing half-written.**
+
+- [ ] ⚠ **THE HISTORICAL PASS — PHASE ESTIMATE, AND EVERY QUESTION THAT NEEDS A RULING.**
+      **Phase H0 — measure.** Run the magnitudes query and the per-page cost probe. Cheap, and every
+      later estimate depends on it. **No schema change, no backup needed.**
+      **Phase H1 — the schema.** ⚠ **BACKBLAZE GATE.** Where the person on a quote/request/assessment
+      is stored. **NEEDS DANNY: the table or column shape.**
+      **Phase H2 — the import captures the person.** Extend `fullJobberImport`'s four queries and
+      persist. ⚠ **This changes a job that already runs against production data.**
+      **Phase H3 — the mapping trigger.** Whichever of A/B Danny rules.
+      **Phase H4 — the bulk fence proof.** The counting fence with its positive control, at volume.
+      **QUESTIONS NEEDING DANNY, collected:** the storage shape (H1) · sync-vs-queue (H3) · whether a
+      historical pass may raise co-assignment bells at all, or must suppress them · whether unmapping
+      should ever retract (the asymmetry above) · whether the pass runs before reps are mapped (which
+      the sticky rule argues for — history is the older fact and cannot correct a later assignment).
+
 - [x] **✅ THE STICKY RULE HOLDS FOR A HISTORICAL PASS, CONFIRMED FROM SOURCE — IT CANNOT OVERWRITE.**
       `runAttributionEngine` returns at step 3 when `sticky_rep_id` is already set, and `writeSticky`
       additionally carries `WHERE client_rep_assignments.sticky_rep_id IS NULL`, so the guard is both
