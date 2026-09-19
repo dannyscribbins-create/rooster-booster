@@ -515,6 +515,61 @@ describe('Canvass-4 — the guard, and the bounded page', () => {
     assert.equal(res.body.limit, 100);
   });
 
+  it('[RED] an assignment whose client has NO jobber_clients row still appears', async () => {
+    // ⚠ CANVASS-4b. This shipped broken: the list INNER JOINed jobber_clients, so an
+    // assignment with no mirror row was dropped while the separate COUNT still counted
+    // it. Observed in production — 39 assignments, ~30 rows.
+    // ⚠ AND THE STATE IS REACHABLE BY CONSTRUCTION: the request-driven path writes
+    // client_rep_assignments and never jobber_clients, so every client the hourly sweep
+    // attributes is in exactly this state until the daily sync catches it.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-nomirror', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-named', 'Named', 'Client');
+    await assign(TENANT, 'jc-named', { sticky: me });
+    // NO seedClient() for this one — the assignment exists, the mirror row does not.
+    await assign(TENANT, 'jc-no-mirror', { sticky: me });
+
+    const res = await request('/api/rep/clients', 'tok-nomirror');
+    const ids = res.body.clients.map((c) => c.jobberClientId).sort();
+    assert.deepEqual(ids, ['jc-named', 'jc-no-mirror'], 'the unmirrored assignment must not vanish');
+    const row = res.body.clients.find((c) => c.jobberClientId === 'jc-no-mirror');
+    assert.equal(row.nameUnavailable, true, 'and it must be flagged, not silently blank');
+    assert.equal(row.name, null, 'the name is absent, never invented');
+  });
+
+  it('[RED] "no mirror row" and "mirror row with no name parts" stay DIFFERENT states', async () => {
+    // ⚠ THE PAIRED CONTROL. Both produce an empty client_name in SQL, so a fix that
+    // collapsed them would pass the case above and still be wrong — a client we hold
+    // with no name parts is not a client we hold nothing about.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-blank', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-blank', null, null);   // mirror row exists, no name parts
+    await assign(TENANT, 'jc-blank', { sticky: me });
+    await assign(TENANT, 'jc-absent', { sticky: me });  // no mirror row at all
+
+    const res = await request('/api/rep/clients', 'tok-blank');
+    const byId = Object.fromEntries(res.body.clients.map((c) => [c.jobberClientId, c]));
+    assert.equal(byId['jc-blank'].nameUnavailable, false);
+    assert.equal(byId['jc-blank'].name, 'Unnamed client');
+    assert.equal(byId['jc-absent'].nameUnavailable, true);
+    assert.equal(byId['jc-absent'].name, null);
+  });
+
+  it('[RED] the TOTAL counts assignments, not displayable rows', async () => {
+    // 1(c): the total must be the rep's real assignment count. If it were computed over
+    // the display join it would inherit that join's omissions and report "N of N" against
+    // a database holding more — a lie of a different kind from the dropped rows.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-total', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-t1', 'One');
+    await assign(TENANT, 'jc-t1', { sticky: me });
+    for (const id of ['jc-t2', 'jc-t3', 'jc-t4']) await assign(TENANT, id, { sticky: me });
+
+    const res = await request('/api/rep/clients', 'tok-total');
+    assert.equal(res.body.total, 4, 'four assignments exist');
+    assert.equal(res.body.clients.length, 4, 'and all four are displayable after the fix');
+  });
+
   it('[RED] an empty book returns an empty list and a zero total, not an error', async () => {
     const me = await seedRep(TENANT, 'me@a.test');
     await seedSession('tok-empty', { contractorId: TENANT, teamMemberId: me });

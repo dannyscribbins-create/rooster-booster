@@ -344,7 +344,22 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1515 server tests across 247 suites, and 1168 React tests across 72 files** (measured 2026-09-18 by the Canvass-4 Clients-tab commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1515 · suites 247 · pass 1515 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1518 server tests across 247 suites, and 1172 React tests across 72 files** (measured 2026-09-18 by the Canvass-4b commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1518 · suites 247 · pass 1518 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-4b COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  Server 1515 → 1518 is **+3** and React 1168 → 1172 is **+4**, all added to **EXISTING `describe`
+  blocks and an EXISTING file** — which is why **`suites` stays 247 and the React FILE count stays
+  72.** ⚠ **A suite count that does not move while the case count does is the expected shape here,
+  not a miss**: a file count and a suite count answer different questions, and neither answers "how
+  many cases".
+  ⚠ **THE REACT DELTA IS +4 AGAINST FIVE CASES TOUCHED, AND THE ARITHMETIC IS WORTH WRITING DOWN.**
+  One existing case was **inverted rather than added** — Canvass-4's *"stays silent when the page IS
+  the whole book"* asserted the count line was ABSENT when nothing was truncated. That assertion
+  passed and was wrong: it pinned the very defect production reported. It became *"the count STILL
+  renders"*, so it contributes 0 to the delta while four genuinely new cases contribute 4.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-4 COMMIT ITSELF.* It read
+  **1515 / 247 / 1168 / 72**, +24 server cases across five new top-level describes and +22 React
+  cases in one new file, with the count rising twice mid-phase because guard-proofs found vacuous
+  cases.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-4 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
   ⚠ **BOTH HALVES MOVED, AND THIS IS THE FIRST ENTRY IN THE ARC WHERE THEY MOVED TOGETHER.**
   Server 1491 → 1515 is **+24**, the `it(` lines of one new file (`repClients.test.js`); suites

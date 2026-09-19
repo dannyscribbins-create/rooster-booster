@@ -689,19 +689,32 @@ async function seedStack(pool) {
     ['jc-beta-5', 'Sam Okafor',    null,         null, betaRepId, 'mode_a',             2],
     ['jc-beta-6', 'Dana Whitfield','lead',       betaRepId, null, 'promoted_provisional', 1],
     ['jc-beta-7', 'Ellis Brand',   'not_sold',   betaRepId, null, 'manual',             3],
+    // ⚠ NO CLIENT MIRROR ROW — name null means the jobber_clients INSERT is skipped.
+    // The Canvass-4b state: a real assignment for a client we cannot yet name.
+    ['jc-beta-9', null,            null,         betaRepId, null, 'mode_a_at_close',    2],
     // The colleague's client — must NOT appear in the book rep's list.
     ['jc-beta-8', 'Not Mine',      'sold',       betaOtherId, null, 'mode_a_at_close',  2],
   ];
 
   for (const [jcId, name, stage, sticky, provisional, source, membershipState] of BOOK) {
-    const [first, ...rest] = name.split(' ');
-    await pool.query(
-      `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_name, last_synced_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE
-         SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name`,
-      [jcId, beta, first, rest.join(' ') || null]
-    );
+    // ⚠ `name === null` MEANS "SEED NO jobber_clients ROW AT ALL" (Canvass-4b), and it
+    // is the one fixture state this screen had no way to render before. An assignment
+    // whose client has no mirror row was silently dropped by an inner join — 39
+    // assignments showing ~30 rows in production. The state is reachable by
+    // construction: the request-driven path writes client_rep_assignments and never
+    // jobber_clients, so every client the hourly sweep attributes looks like this until
+    // the 2am sync catches it. **A state the fixture never renders cannot be eye-tested**,
+    // which is exactly why the defect shipped.
+    if (name !== null) {
+      const [first, ...rest] = name.split(' ');
+      await pool.query(
+        `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_name, last_synced_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE
+           SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name`,
+        [jcId, beta, first, rest.join(' ') || null]
+      );
+    }
 
     await pool.query(
       `INSERT INTO client_rep_assignments
@@ -735,14 +748,14 @@ async function seedStack(pool) {
         `INSERT INTO users (full_name, email, pin, email_verified, contractor_id, jobber_client_id)
          VALUES ($1, $2, '$2b$10$local.stack.placeholder.hash.not.a.password', TRUE, $3, $4)
          ON CONFLICT (contractor_id, email) DO UPDATE SET jobber_client_id = EXCLUDED.jobber_client_id`,
-        [name, `${jcId}@${beta}.test`, beta, jcId]
+        [name || jcId, `${jcId}@${beta}.test`, beta, jcId]
       );
     } else if (membershipState === 4 || membershipState === 3) {
       await pool.query(
         `INSERT INTO contacts (contractor_id, email, name, is_app_user, jobber_client_id)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT DO NOTHING`,
-        [beta, `${jcId}-contact@${beta}.test`, name, membershipState === 4, jcId]
+        [beta, `${jcId}-contact@${beta}.test`, name || jcId, membershipState === 4, jcId]
       );
     }
     // state 2 gets nothing at all — which is the point.

@@ -193,10 +193,34 @@ describe('Canvass-4 — the list', () => {
     expect(await screen.findByText(/Showing 100 of 250/)).toBeTruthy();
   });
 
-  it('⚠ and stays silent when the page IS the whole book', async () => {
+  it('⚠ the count STILL renders when the page is the whole book — Canvass-4b', async () => {
+    // ⚠ THIS CASE IS INVERTED FROM WHAT CANVASS-4 SHIPPED, DELIBERATELY. It previously
+    // asserted the line was ABSENT when nothing was truncated. That passed, and it was
+    // wrong: a rep whose book fits on one page saw no count anywhere, which is what was
+    // reported from production. "How big is my book" and "the list is cut off" are two
+    // different jobs; the old condition served only the second.
     mount({ clients: [client()], total: 1, limit: 100 });
     await screen.findByText('Maria Lopez');
-    expect(screen.queryByText(/Showing/)).toBeNull();
+    expect(screen.getByText('1 client')).toBeTruthy();
+  });
+
+  it('⚠ the count pluralises, and never reads "1 clients"', async () => {
+    const two = [client(), client({ jobberClientId: 'jc-2', name: 'Second' })];
+    mount({ clients: two, total: 2, limit: 100 });
+    await screen.findByText('Second');
+    expect(screen.getByText('2 clients')).toBeTruthy();
+  });
+
+  it('⚠ the total is the ASSIGNMENT count even when a row cannot be named', async () => {
+    // Pins 1(c): the displayed total must not be reduced to what happens to be
+    // displayable. Both rows render here, and the count agrees with the database.
+    mount({
+      clients: [client(), client({ jobberClientId: 'jc-x', name: null, nameUnavailable: true })],
+      total: 2, limit: 100,
+    });
+    await screen.findByText('Maria Lopez');
+    expect(screen.getByText('2 clients')).toBeTruthy();
+    expect(screen.getByText('Details not available yet')).toBeTruthy();
   });
 
   it('a flagged row shows the Flagged pill', async () => {
@@ -208,6 +232,38 @@ describe('Canvass-4 — the list', () => {
     mount({ clients: [client({ membership: 'confirmed' })], total: 1, limit: 100 });
     expect(await screen.findByText('In app')).toBeTruthy();
     expect(screen.getByText('Locked')).toBeTruthy();
+  });
+
+  it('⚠ a row with no client record renders honestly, and is NOT called "Unnamed client"', async () => {
+    // Three name states, three labels. Collapsing the third into 'Unnamed client' would
+    // claim we hold a client record that we do not.
+    mount({
+      clients: [
+        client({ jobberClientId: 'jc-a', name: 'Real Name' }),
+        client({ jobberClientId: 'jc-b', name: 'Unnamed client' }),
+        client({ jobberClientId: 'jc-c', name: null, nameUnavailable: true }),
+      ],
+      total: 3, limit: 100,
+    });
+    await screen.findByText('Real Name');
+    expect(screen.getByText('Unnamed client')).toBeTruthy();
+    expect(screen.getByText('Details not available yet')).toBeTruthy();
+    // ⚠ And it must not render the literal "null" — the JSX trap where a null name
+    // reaches the DOM as text.
+    expect(screen.queryByText('null')).toBeNull();
+  });
+
+  it('⚠ an unnamed-record row still carries its assignment metadata', async () => {
+    // The evidence for rendering these rather than dropping them: the stage, date and
+    // source are present and useful even when the name is not.
+    mount({
+      clients: [client({ jobberClientId: 'jc-c', name: null, nameUnavailable: true, stage: 'sold' })],
+      total: 1, limit: 100,
+    });
+    await screen.findByText('Details not available yet');
+    const meta = screen.getByText(/Sold/);
+    expect(meta.textContent).toContain('Assigned');
+    expect(meta.textContent).toContain('Assessment');
   });
 
   it('a failed load reports an error rather than an empty book', async () => {

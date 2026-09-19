@@ -191,15 +191,24 @@ function ClientRow({ client }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* ⚠ THREE NAME STATES, AND THEY ARE NOT INTERCHANGEABLE (Canvass-4b).
+            a real name · 'Unnamed client' (we hold the client, it has no name parts) ·
+            NAME UNAVAILABLE (we hold no client record at all, only the assignment).
+            The third is the one this phase added: those rows used to be dropped by an
+            inner join. Its copy states what is true of OUR data and makes no claim about
+            the client, and it is rendered at MUTED so it reads as incomplete rather than
+            as somebody's name. */}
         <span
           style={{
             flex: 1, minWidth: 0,
             fontSize: 16, fontWeight: 700,
             color: 'var(--rm-text, #1C2D4D)',
+            opacity: client.nameUnavailable ? MUTED : 1,
+            fontStyle: client.nameUnavailable ? 'italic' : 'normal',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}
         >
-          {client.name}
+          {client.nameUnavailable ? 'Details not available yet' : client.name}
         </span>
         <MembershipBadge membership={client.membership} />
         <StatusPill isFlagged={client.isFlagged} isSticky={client.isSticky} />
@@ -331,16 +340,21 @@ export default function RepClientsScreen() {
           <ul style={{ margin: 0, padding: 0 }}>
             {clients.map((c) => <ClientRow key={c.jobberClientId} client={c} />)}
           </ul>
-          {/* ⚠ THE HONEST COUNT. A bounded page that does not say it is bounded reads
-              as a complete list, which is the "reports health it cannot observe" shape
-              arriving as a silently truncated list. Rendered ONLY when there is more
-              than one page, so a rep with nine clients is not told about paging that
-              does not affect them. */}
-          {total > clients.length && (
-            <p style={{ margin: '4px 0 0', fontSize: 13, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)', fontFamily: fontVar('body') }}>
-              Showing {clients.length} of {total} — most recently assigned first.
-            </p>
-          )}
+          {/* ⚠ THE COUNT ALWAYS RENDERS — CANVASS-4b. It used to render only when
+              `total > clients.length`, i.e. only when the page was truncated, so a rep
+              whose book fits on one page saw no count anywhere. That was reported from
+              production as a missing feature, and it was: "tell me how big my book is"
+              and "warn me the list is cut off" are two different jobs, and the condition
+              served only the second.
+              ⚠ THE TOTAL IS THE REP'S REAL ASSIGNMENT COUNT, counted WITHOUT the client
+              join, so it cannot inherit a join's omissions. "Showing 30 of 30" against a
+              database holding 39 would be a lie of a different kind — and with the LEFT
+              JOIN above the two now agree for the right reason rather than by luck. */}
+          <p style={{ margin: '4px 0 0', fontSize: 13, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)', fontFamily: fontVar('body') }}>
+            {total > clients.length
+              ? `Showing ${clients.length} of ${total} — most recently assigned first.`
+              : `${total} ${total === 1 ? 'client' : 'clients'}`}
+          </p>
         </>
       )}
     </>

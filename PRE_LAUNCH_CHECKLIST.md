@@ -4198,6 +4198,105 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-4b — the dropped rows, the count line, and the historical pass (filed 2026-09-18)
+
+- [x] **✅ FIXED — AN INNER JOIN ON `jobber_clients` WAS DROPPING ROWS, AND IT IS THE DEFECT CLASS
+      CANVASS-4 SPENT ITS LENGTH GUARDING AGAINST, ONE TABLE ALONG.** Canvass-4 was careful that
+      `pipeline_cache` must not gate the book — and left `jobber_clients` as an **inner** join, so an
+      assignment whose client has no mirror row was dropped silently while the separate `COUNT`
+      still counted it. Observed in production: **39 assignments for team member 5, ~30 rows.**
+      ⚠ **THE STATE IS REACHABLE BY CONSTRUCTION, ESTABLISHED FROM SOURCE — NOT A DATA ANOMALY.**
+      The request-driven path (the `REQUEST_CREATE`/`REQUEST_UPDATE` webhooks and the hourly sweep)
+      writes `client_rep_assignments` and **never writes `jobber_clients`**; the only writers are the
+      **daily 2am** incremental sync, the full import, and the client webhooks. So every client the
+      sweep attributes is unnameable to this screen until one of those next touches it — and for a
+      client the sync filters out, potentially forever. **That is exactly the shape of Danny's book:
+      freshly backfilled by the sweep, dated almost entirely "Assigned Sep 18".**
+      **Fixed to a LEFT JOIN.** Guard-proofed: reverting it takes three cases RED.
+      → `docs/sql/rep_book_partition.sql` partitions the 39 into renders / does-not-because-X, and
+      rules the other candidates in or out by measurement rather than assuming them away.
+
+- [x] **✅ RULED — AN UNNAMEABLE ROW RENDERS; IT IS NOT DROPPED AND NOT A PLACEHOLDER NAME.** The
+      three options were drop · placeholder name · surface a count of unnameable rows. **The evidence
+      is one-sided for rendering:** the assignment is real, and its metadata — stage, source, date —
+      is present and useful even when the name is not; dropping makes the book undercount with no
+      signal, which is the failure this arc keeps recording. The row shows **"Details not available
+      yet"**, which states what is true of OUR data and makes no claim about the client.
+      ⚠ **AND IT IS A THIRD STATE, NOT A REUSE OF `'Unnamed client'`.** *"We hold no client record"*
+      and *"we hold a client record carrying no name parts"* both produce an empty name in SQL, so
+      the presence of the ROW is what separates them. Collapsing them would claim we hold a record we
+      do not. The server sends `name: null` + `nameUnavailable: true`; both server and React cases
+      pin the pair, and collapsing them takes them RED.
+
+- [x] **✅ FIXED — THE COUNT LINE NOW ALWAYS RENDERS.** It was conditioned on
+      `total > clients.length` — i.e. only when the page was **truncated** — so a rep whose book fits
+      on one page saw no count anywhere. ⚠ **"How big is my book" and "the list is cut off" are two
+      different jobs and the condition served only the second.** Now: `Showing N of M` when
+      truncated, `M clients` otherwise (pluralised).
+      ⚠ **THE TOTAL IS COUNTED WITHOUT THE CLIENT JOIN, DELIBERATELY**, so it cannot inherit a join's
+      omissions — *"showing 30 of 30"* against a database holding 39 is a lie of a different kind.
+      Guard-proofed: computing the total over the display join takes that case RED.
+      ⚠ **A CANVASS-4 TEST WAS PINNING THE DEFECT.** *"stays silent when the page IS the whole book"*
+      passed, and asserted precisely the behaviour production reported as broken. **A green test can
+      be the thing holding a defect in place**; it was inverted, openly, rather than deleted.
+
+- [ ] ⚠ **THE WRITE-SIDE GAP, FILED RATHER THAN FIXED: THE REQUEST PATH SHOULD MIRROR THE CLIENT.**
+      `attributeFromRequest` **already fetches the full client** (it needs the quotes for the sticky
+      gate) and then discards the name. Writing a minimal `jobber_clients` row there would remove the
+      unnameable state at its source rather than rendering around it.
+      ⚠ **NOT DONE HERE BECAUSE IT TOUCHES THE 3.7 PATH AND RAISES A FENCE QUESTION THAT DESERVES AN
+      ANSWER RATHER THAN AN ASSUMPTION.** `jobber_clients` is a mirror table and is **not** on the
+      TWO-PIPELINES fence's target list — but the obvious helper, `upsertAndTagClient`, also writes
+      `contact_tags` (`jobber_client`, `tier_1`), and the fence's list does name a tag. **A bare
+      upsert is almost certainly right and "almost certainly" is not the standard for a fence.**
+      **OWNER: unassigned; small, and it makes the LEFT JOIN a belt rather than the only brace.**
+
+- [ ] 🔴 **THE HISTORICAL PASS — SCOPED, NOT BUILT, AND IT NEEDS A SCHEMA RULING BEFORE ANYTHING
+      ELSE. ⚠ THE DECISIVE FINDING: `jobs/fullJobberImport.js` CAPTURES NO PERSON AT ALL.**
+      Read field by field, in **both** the per-client and the bulk variants of all four queries:
+      · quotes → `id quoteStatus createdAt` — **no `salesperson`**
+      · requests → `id requestStatus createdAt` — **no `salesperson`, no `assessment`**
+      · jobs → `id jobStatus jobType completedAt createdAt customFields` — no person
+      · invoices → `id invoiceStatus createdAt amounts` — no person
+      ⚠ **AND IT PERSISTS NONE OF THEM ANYWAY.** The import holds quotes/requests/jobs/invoices **in
+      memory only**, joins them by client, and writes exactly three things: `jobber_clients`,
+      `contact_tags`, and one `notifications` row. **There is no table anywhere in the schema that
+      stores a quote, a request or an assessment** — not the person, not even the id. So option (c),
+      *"attribution could run over stored data"*, **does not exist today.**
+      **CONSEQUENCE FOR DANNY'S RULING.** *"One import that captures who was on each quote and each
+      assessment, whether or not that person is mapped"* is the right design **and it requires both a
+      new selection set and a new place to put it.** A schema change is a **Backblaze gate**, so the
+      proposal stops here for a ruling rather than being designed in this entry: the values needed are
+      the quote's `salesperson.id`, the request's `salesperson.id`, and the assessment's
+      `assignedUsers` ids, each against a `(contractor_id, jobber_client_id)` and the source object's
+      id and date. **OWNER: its own phase. NEEDS DANNY: the table/column shape, and the backup.**
+
+- [ ] ⚠ **THE HISTORICAL PASS — THE FENCES, AND WHY THEY NEED A DIFFERENT PROOF AT VOLUME.**
+      It inherits R3 (an unresolved client records nothing) and the TWO-PIPELINES fence (no outreach,
+      no referrer record, no pending invite, no admin alert). **A single leak in a one-off webhook is
+      one message; in a bulk run over thousands of clients it is thousands.**
+      **How to prove it at volume, rather than per call:** the per-call fence already exists and is
+      structural — the request path has **no import path** to Resend, Twilio, `pendingReferral` or the
+      notifications table, which is a property of the module graph rather than of a branch. **The bulk
+      proof is therefore a COUNTING fence, not another behavioural one:** run the pass over a seeded
+      book of N clients with the mail/SMS seams counted, and assert the counters are **exactly zero**
+      while a positive control in the same run proves the seams can fire at all. ⚠ **Without that
+      control, "zero sends" passes against a harness that could never have sent anything.**
+      ⚠ **AND THE CO-ASSIGNMENT BELL IS THE ONE THING THAT *MAY* FIRE**, which at historical volume
+      could mean a large number of `admin_messages` rows in one run. **Whether a historical pass
+      should raise bells at all is a ruling, not an implementation detail.** **NEEDS DANNY.**
+
+- [x] **✅ THE STICKY RULE HOLDS FOR A HISTORICAL PASS, CONFIRMED FROM SOURCE — IT CANNOT OVERWRITE.**
+      `runAttributionEngine` returns at step 3 when `sticky_rep_id` is already set, and `writeSticky`
+      additionally carries `WHERE client_rep_assignments.sticky_rep_id IS NULL`, so the guard is both
+      a short-circuit and a write predicate — a concurrent race cannot defeat it either.
+      **When history disagrees with a current assignment, the current assignment wins and the
+      historical one is discarded silently.** ⚠ **That is existing-wins working as ruled, and it is
+      also a reason a historical pass should run BEFORE reps are mapped rather than after** — history
+      is the older fact, and once a later event has stickied a client, history can never correct it.
+      ⚠ **An admin can still override at any time** — resolve-assign is source #4, the one path that
+      supersedes sticky by design. **Flagged as a consequence worth Danny's eye, not as a defect.**
+
 ### Canvass-4 — the Clients tab, the rep's book of business (SHIPPED 2026-09-18)
 
 - [x] **✅ PRODUCTION VERIFICATION, Danny, 2026-09-18 — THE 3.7 PIPELINE IS LIVE AND R3 HOLDS.**

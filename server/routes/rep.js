@@ -191,6 +191,26 @@ function membershipFor(row) {
 // `repClients.test.js` pins this with a discriminating control: measured on the real
 // fixture, switching to an inner join drops 3 of 4 rows.
 //
+// ⚠ AND THE JOIN TO `jobber_clients` IS ALSO A LEFT JOIN — CANVASS-4b, AND THIS ONE
+// SHIPPED WRONG. Canvass-4 was careful that `pipeline_cache` must not gate the book and
+// left `jobber_clients` as an INNER JOIN, which is the SAME DEFECT CLASS one table
+// along: an assignment whose client has no mirror row was dropped, silently, while the
+// separate COUNT query still counted it. Observed in production 2026-09-18 — 39
+// assignments for one rep, ~30 rows on screen.
+// ⚠ THE STATE IS REACHABLE BY CONSTRUCTION, NOT AN ANOMALY, WHICH IS WHY A LEFT JOIN IS
+// THE FIX RATHER THAN A DATA REPAIR. The request-driven path — the REQUEST_CREATE /
+// REQUEST_UPDATE webhooks and the hourly sweep — writes `client_rep_assignments` and
+// **never writes `jobber_clients`**; the only writers of that table are the daily 2am
+// incremental sync, the full import, and the client webhooks. So every client the sweep
+// attributes is unnameable here until one of those next touches it, which for a client
+// the sync filters out may be never.
+// ⚠ RULED: THESE ROWS RENDER. Dropping them makes the rep's book undercount with no
+// signal, which is the failure this arc keeps recording; and the assignment metadata —
+// stage, source, date — is present and useful even when the name is not. The name comes
+// back as `null` with `nameUnavailable: true` so the client can say something honest,
+// and so it CANNOT be confused with 'Unnamed client', which means a mirror row that
+// exists and carries no name parts. Two states, two labels.
+//
 // ⚠ THE ROW LIMIT IS 100 AND THE TOTAL IS RETURNED BESIDE IT, DELIBERATELY. A rep
 // with 500 clients gets the 100 most recently assigned plus an honest count, never a
 // silently truncated list that reads as a complete one. Paging and the mockup's search
@@ -222,6 +242,10 @@ router.get('/api/rep/clients', async (req, res) => {
       `SELECT
          cra.jobber_client_id,
          TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client_name,
+         -- ⚠ "WE HAVE NO MIRROR ROW" AND "THE MIRROR ROW HAS NO NAME PARTS" ARE TWO
+         -- DIFFERENT STATES AND MUST NOT COLLAPSE INTO ONE LABEL. Both produce an empty
+         -- client_name above, so the presence of the ROW is what separates them.
+         (jc.jobber_client_id IS NULL) AS client_row_missing,
          pc.pipeline_status,
          COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
@@ -229,7 +253,7 @@ router.get('/api/rep/clients', async (req, res) => {
          (fa.id IS NOT NULL)                                   AS is_flagged,
          (u.id IS NOT NULL)                                    AS membership_confirmed
        FROM client_rep_assignments cra
-       JOIN jobber_clients jc
+       LEFT JOIN jobber_clients jc
          ON jc.contractor_id = cra.contractor_id
         AND jc.jobber_client_id = cra.jobber_client_id
        LEFT JOIN pipeline_cache pc
@@ -264,7 +288,10 @@ router.get('/api/rep/clients', async (req, res) => {
         jobberClientId: r.jobber_client_id,
         // A Jobber client can legitimately have no name parts; '' would render an
         // empty row rather than an honest one.
-        name: r.client_name || 'Unnamed client',
+        // ⚠ null WHEN WE HOLD NO MIRROR ROW AT ALL — the client decides the copy, and
+        // it must not reuse 'Unnamed client', which means something else entirely.
+        name: r.client_row_missing ? null : (r.client_name || 'Unnamed client'),
+        nameUnavailable: r.client_row_missing,
         stage: r.pipeline_status,          // null = no referral record (A34.4's whole book)
         assignmentSource: r.assignment_source,
         isSticky: r.is_sticky,
