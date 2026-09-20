@@ -4210,6 +4210,108 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-9b Part 2 — the overlay fixes, and a BLOCKER on the conversions definition (2026-09-20)
+
+- [ ] 🔴🔴 **THE NEW CONVERSIONS DEFINITION IS NOT COMPUTABLE TODAY, AND THE REASON IS THE
+      POPULATION RATHER THAN THE STAGE.** Danny ruled: *conversions = clients who have turned into
+      a SOLD JOB*, with the main card showing the TOTAL and the overlay splitting it into REFERRAL
+      and DIRECT. ⚠ **The total cannot be computed, and DIRECT is structurally always zero.**
+      **Established from source, not inferred:** the only column carrying a pipeline stage is
+      `pipeline_cache.pipeline_status`, and the ONLY writer of it is `syncSingleClient()`
+      (`server/crm/pipelineSync.js`), whose **first statement** is
+      `const referredBy = getReferredByValue(client); if (!referredBy) return;`. All four call
+      sites — two in `pipelineSync`, two in the Jobber webhook — go through it. **A client with no
+      CRM Referred-By value never receives a pipeline status from any path.**
+      **Measured, and it agrees:** every `pipeline_cache` row in the local stack has a
+      `referred_by` (**0** without), and only **8 of 274** assignments in a rep's book have a
+      pipeline row at all.
+      ⚠ **SO THE SPLIT WOULD BE VACUOUS IN THE EXACT WAY THE BRIEF WARNS AGAINST.** "Referral +
+      Direct = Total" would hold **trivially and forever**, because Direct is unreachable and Total
+      silently equals Referral. **The discriminating test Danny asked for would pass against a
+      product that is wrong** — the vacuity shape this repo records most often, arriving through
+      the data layer rather than the assertion.
+      ⚠ **THE APP-LINK SOURCE DOES NOT RESCUE IT.** `users.invited_by_user_id` signups get a
+      `pipeline_cache` row via `referrer.js` with `pipeline_status = 'app_user'` — **not a pipeline
+      stage** — under a synthetic `jobber_client_id` of `'app_user_<id>'`, which matches no
+      `client_rep_assignments` row. That source can mark *referred*, never *sold*.
+      ⚠ **AND `job_completed_at` IS NOT A SUBSTITUTE, THOUGH IT IS TEMPTING BECAUSE IT IS THE ONE
+      UNGATED WRITER.** It fires only on a job-update webhook with `jobStatus === 'COMPLETED'` and
+      `jobTotal > 0`, only for the client's largest job, with a 60-day cooldown, and only going
+      forward — it is the post-job-review trigger. Using it would be the *"a condition whose
+      meaning changed without its text changing"* failure, repurposing one event as another.
+      **WHAT WOULD UNBLOCK IT:** a pipeline status for every client in a rep's book, i.e. widening
+      or bypassing the referral gate in `syncSingleClient` (or a parallel classifier pass).
+      ⚠ **That is a Jobber-sync change, not a UI one** — it means writing `pipeline_cache` rows for
+      all ~47,065 of Accent's clients, with real API-load and full-sync consequences, and it needs
+      its own testing. **Not something to do inside a UI phase, and not something to guess at.**
+
+- [x] **✅ WHAT "SOLD" MEANS, ESTABLISHED FROM `classifyPipelineStatus` — AND DANNY'S BELIEF IS
+      WRONG.** He expected Sold = quote approval. The classifier, in order:
+      | result | condition |
+      |---|---|
+      | `paid` | a job has an invoice with `invoiceStatus === 'paid'` — **invoice completion** |
+      | `sold` | **a JOB EXISTS** (and no paid invoice yet) |
+      | `inspection` | active (non-archived) quotes, **no job** |
+      | `not_sold` | all quotes archived, no job |
+      | `lead` | no jobs and no quotes |
+      ⚠ **SO QUOTE APPROVAL ALONE IS `inspection`, NOT `sold`.** A quote can be approved in Jobber
+      without anyone converting it to a job; until the job record exists the client reads as
+      `inspection`. Danny's mental model is close — a job is usually created *from* an approved
+      quote — but the marker is the **job's existence**, not the quote's status.
+      ⚠ **AND `paid` IS WHAT THE FRONTEND CALLS "Complete"**, the mapping CLAUDE.md keeps resident.
+      ⚠ **THE COUNT MUST THEREFORE BE `IN ('sold','paid')`, NOT `= 'sold'`.** `classifyPipelineStatus`
+      returns a SINGLE CURRENT stage, not a history, so a client who progressed to `paid` no longer
+      matches `'sold'`. **Counting `'sold'` alone would make the number SHRINK as jobs got paid —
+      the most successful conversions would silently leave the count.** Once sold, always converted.
+
+- [x] **✅ THE SPLIT IS COMPUTABLE — IT IS ONLY THE TOTAL THAT IS NOT.** Danny's correction stands:
+      referred-vs-direct does not wait on A36, because the inheritance chain answers *which rep
+      owns* a referral rather than *whether someone was referred*. Both ruled sources are readable
+      today — `pipeline_cache.referred_by` (the CRM field) and `users.invited_by_user_id` (app-link
+      and QR signups) — and a UNION over them, counting each client once, is straightforward.
+      **The blocker is the denominator, not the numerator.**
+
+- [x] **✅ THE THREE OVERLAY FIXES THAT DO NOT DEPEND ON THE DATA — SHIPPED.**
+      **Fix 1 — the transition was too abrupt.** The panel now opens on `MOTION.settle` (280ms),
+      not `base` (200ms). It is a settle, and the motion rule says a settle eases; `pressIn` stays
+      0, so this is one value for one case rather than a relaxation of "swift".
+      **Fix 2 — the blur read as unintentional.** ⚠ **The cause was `opacity: 0.98` ON THE PANEL,
+      and it is this repo's own rule biting me: OPACITY INHERITS.** The revealed text was
+      translucent too, so the card's own number showed through the words meant to cover it — the
+      same defect as the payout figure muted by a paragraph it sat inside, **which I had written
+      into `RepInfoIcon` in this same phase and then broke here.** The translucency now lives on a
+      dedicated frost element and the content is its SIBLING, so the text is opaque by construction.
+      **Fix 3 — no way back.** An outside tap closes it, and the listener is attached only while
+      open and only in an effect — so the opening gesture cannot close it on arrival. The caret
+      remains the other route, and an INSIDE tap deliberately does not close.
+
+- [ ] 🔴 **FIX 2 TOOK TWO ATTEMPTS, AND THE SECOND FAILURE IS THE ONE WORTH RECORDING: EVERY
+      DECLARATION-LEVEL READING SAID IT WAS FIXED AND A SCREENSHOT SAID IT WAS NOT.** After moving
+      the translucency to a frost child, the measurements were all correct — panel opacity 1, frost
+      0.72, `backdrop-filter: blur(14px)` present, revealed value at effective alpha 1 — **and the
+      card's text was still crisp and fully legible behind the panel.**
+      ⚠ **CAUSE: `backdrop-filter` IS POSITIONAL, NOT DECORATIVE.** The panel carries an
+      `animation`, which creates a stacking context, so a `backdrop-filter` on a DESCENDANT
+      resolves its backdrop against the panel — whose own background is transparent — rather than
+      against the card behind it. **It blurred nothing.** On the panel itself the backdrop IS the
+      card, which is where it had worked before the refactor moved it.
+      **Fixed by putting the blur back on the panel and raising the tint 0.72 → 0.86** (blur alone
+      was not enough behind large bold type). ⚠ **The fence now asserts the blur's POSITION, not
+      merely its presence**, because the position is what broke.
+      ⚠ **FILED BECAUSE THE CLASS IS WIDER THAN THIS COMPONENT:** `backdrop-filter`,
+      `position: fixed`, `mix-blend-mode` and `filter` all change meaning when an ancestor creates
+      a stacking context, and **nothing in this repo's React suite can observe a stacking context**.
+      The browser pass is the only instrument that sees it, and it is not run per-commit.
+
+- [ ] **⏳ FIXES 4 AND 5 ARE DELIBERATELY NOT BUILT, AND BOTH WAIT ON THE BLOCKER ABOVE.**
+      **Fix 4 — rename the card to "Conversions".** The rename is only honest if the number is a
+      TOTAL. While the figure is referral-only, calling it "Conversions" would be **a one-hop
+      number under total copy — the precise lie A34.5 names**, on the screen a rep reads most.
+      **Fix 5 — move the description behind an info icon.** Danny's stated reason is that *the
+      rename* makes the definition line redundant. Without the rename the line is not redundant: it
+      is what keeps "Referral conversions" unambiguous, and removing it would strip the one sentence
+      making the current label honest. **5 depends on 4; 4 depends on the data.**
+
 ### Canvass-9b — info icons, the long-press reveal, and the CONV standout (SHIPPED 2026-09-20)
 
 - [x] **✅ THE FILTER WORK IS DEFERRED TO 3d — RULED BY DANNY, 2026-09-20.** Both the badge/filter

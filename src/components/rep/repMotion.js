@@ -60,6 +60,14 @@ export const MOTION = Object.freeze({
   fast: 140,
   /** A screen or a section arriving. */
   base: 200,
+  // ⚠ SLOWER THAN `base`, AND THE BRIEF IS WHY RATHER THAN TASTE. Danny eye-tested
+  // the reveal in production: *"the whiteout takes the card too suddenly."* A panel
+  // that covers content someone is already reading is the one case where arriving
+  // fast reads as a snatch rather than as swiftness — the eye has to re-acquire the
+  // card. **This is a SETTLE, and the motion rule says a settle eases.**
+  // ⚠ IT DOES NOT MAKE THE SYSTEM SLOWER GENERALLY. `pressIn` is still 0 and `fast`
+  // is still 140; this is one value for one case, not a relaxation of "swift".
+  settle: 280,
 
   // ⚠ A DECELERATION CURVE, WHICH IS WHAT "BUTTERY" MEANS MECHANICALLY: fast
   // departure, soft arrival. An ease-in-out on an ENTRANCE is what makes motion
@@ -197,12 +205,12 @@ export function prefersReducedMotion() {
 // service, a prerenderer, or a harness like the one that measures this app. It bit
 // the same contrast sweep twice. That is an operational fact about measurement, not
 // a defect in the page, and the two must not be filed as one.
-export function entrance({ delay = 0, fadeOnly = false } = {}) {
+export function entrance({ delay = 0, fadeOnly = false, duration = MOTION.base } = {}) {
   injectRepMotion();
   if (prefersReducedMotion()) return {};
   const name = fadeOnly ? 'rmRepFade' : 'rmRepRise';
   return {
-    animation: `${name} ${MOTION.base}ms ${MOTION.out} ${delay}ms`,
+    animation: `${name} ${duration}ms ${MOTION.out} ${delay}ms`,
   };
 }
 

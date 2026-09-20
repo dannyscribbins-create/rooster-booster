@@ -26,6 +26,7 @@ import RepInfoIcon from './RepInfoIcon';
 import RepRevealCard from './RepRevealCard';
 import { REP_GLOSSARY, glossary } from './repGlossary';
 import { LONG_PRESS_MS } from './RepRevealCard';
+import { MOTION } from './repMotion';
 import RepHomeScreen from './RepHomeScreen';
 import { ADMIN_TOKEN_KEY } from '../../utils/authStorage';
 
@@ -244,16 +245,80 @@ describe('Canvass-9b — the long-press reveal', () => {
     expect(panel.textContent).not.toMatch(/Total\s*0/);
   });
 
-  it('⚠ the panel does NOT rely on backdrop-filter alone to be readable', () => {
-    // `backdrop-filter` is unsupported or disabled in more places than is fashionable
-    // to admit. Without a ground of its own the panel's text would render over the
-    // card's text — both legible, together unreadable. ⚠ DECLARATION-LEVEL: that the
-    // blur BLURS is a browser claim and is not asserted here.
+  it('⚠ the frost is a SEPARATE layer and the panel carries NO opacity of its own', () => {
+    // ⚠ THIS IS THE FENCE FOR THE DEFECT DANNY EYE-TESTED. The first writing put
+    // `opacity: 0.98` on the PANEL, and **opacity INHERITS** — so the revealed text
+    // was translucent too and the card's own number showed through the words meant to
+    // cover it. The fix is structural: the translucency lives on a dedicated frost
+    // element and the content is its SIBLING, so the text has no ancestor carrying an
+    // opacity to inherit.
     const { container } = mountReveal();
     fireEvent.click(container.querySelector('[data-rep-reveal-toggle]'));
     const panel = container.querySelector('[data-rep-reveal-panel]');
-    expect(panel.style.backdropFilter, 'the blur is missing').toContain('blur');
-    expect(panel.style.background, 'the panel has no ground of its own').toContain('--rm-surface');
+    const frost = container.querySelector('[data-rep-reveal-frost]');
+
+    expect(frost, 'there is no dedicated frost layer').toBeTruthy();
+    // ⚠ THE ASSERTION THAT WOULD HAVE CAUGHT THE ORIGINAL DEFECT: nothing between the
+    // text and the panel may be translucent.
+    expect(panel.style.opacity, 'the panel carries an opacity, which its text inherits').toBe('');
+    // The frost is where the translucency and the blur live.
+    expect(Number(frost.style.opacity)).toBeGreaterThan(0);
+    expect(Number(frost.style.opacity)).toBeLessThan(1);
+    expect(frost.style.background, 'the frost has no ground of its own').toContain('--rm-surface');
+    // ⚠ THE BLUR IS ON THE PANEL, NOT ON THE FROST, AND THIS ASSERTS THE POSITION
+    // RATHER THAN MERELY ITS PRESENCE — because the position is what broke.
+    // `backdrop-filter` on the frost CHILD resolved its backdrop against the panel
+    // (which carries an `animation`, creating a stacking context) instead of against
+    // the card behind it, so it blurred nothing and the card's text stayed crisp.
+    // **Every declaration-level reading looked correct; only a screenshot showed it.**
+    expect(panel.style.backdropFilter, 'the blur is not on the panel').toContain('blur');
+    expect(frost.style.backdropFilter || '', 'the blur is back on the frost, where it sees nothing').toBe('');
+    // ⚠ AND THE FROST IS NOT AN ANCESTOR OF THE TEXT — the whole point.
+    const figureText = [...panel.querySelectorAll('p')].find((el) => el.textContent === 'Referral');
+    expect(figureText, 'the figure titles are missing').toBeTruthy();
+    expect(frost.contains(figureText), 'the text is INSIDE the frost, so it inherits its opacity').toBe(false);
+  });
+
+  it('⚠ the frost goes near-opaque when backdrop-filter is unsupported', () => {
+    // jsdom implements no `CSS.supports`, which the component treats as NOT
+    // supported — so this environment exercises the FALLBACK tint, and that is the
+    // branch where "two legible layers" would actually happen. **The fallback
+    // direction is the readable one.**
+    const { container } = mountReveal();
+    fireEvent.click(container.querySelector('[data-rep-reveal-toggle]'));
+    const frost = container.querySelector('[data-rep-reveal-frost]');
+    expect(Number(frost.style.opacity)).toBeGreaterThanOrEqual(0.95);
+  });
+
+  it('⚠ FIX 1 — the panel opens on the SETTLE duration, not the faster base', () => {
+    // Danny: "the whiteout takes the card too suddenly." A panel that covers what
+    // someone is reading is the one case where arriving fast reads as a snatch.
+    const { container } = mountReveal();
+    fireEvent.click(container.querySelector('[data-rep-reveal-toggle]'));
+    const panel = container.querySelector('[data-rep-reveal-panel]');
+    expect(panel.style.animation).toContain(`${MOTION.settle}ms`);
+    expect(panel.style.animation).not.toContain(`${MOTION.base}ms`);
+  });
+
+  it('⚠ FIX 3 — tapping OUTSIDE the card closes it', () => {
+    // Ruled by Danny. The second half of his reasoning is the real one: it makes the
+    // panel read as a temporary window rather than a fixed state.
+    const { container } = mountReveal();
+    fireEvent.click(container.querySelector('[data-rep-reveal-toggle]'));
+    expect(container.querySelector('[data-rep-reveal-panel]')).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(container.querySelector('[data-rep-reveal-panel]'), 'an outside tap did not close it').toBeNull();
+  });
+
+  it('⚠ and a tap INSIDE the card does NOT close it — the paired negative', () => {
+    // Without this, "an outside tap closes" is satisfied by a panel that closes on
+    // ANY pointerdown, which would make the caret un-tappable while open and would
+    // close the moment a rep touched the card to read it.
+    const { container } = mountReveal();
+    fireEvent.click(container.querySelector('[data-rep-reveal-toggle]'));
+    const panel = container.querySelector('[data-rep-reveal-panel]');
+    fireEvent.pointerDown(panel);
+    expect(container.querySelector('[data-rep-reveal-panel]'), 'a tap inside closed it').toBeTruthy();
   });
 
   it('⚠ haptics are GUARDED — an absent navigator.vibrate must not throw', () => {

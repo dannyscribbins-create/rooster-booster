@@ -344,9 +344,14 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1319 React tests across 79 files** (measured 2026-09-20 by the Canvass-9b info/reveal commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9b INFO/REVEAL COMMIT ITSELF, BECAUSE THAT COMMIT
-  SHIPS TESTS.** React 1299 → 1319 is **+20**, the `it(` lines of ONE new file
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1323 React tests across 79 files** (measured 2026-09-20 by the Canvass-9b Part 2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9b PART 2 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
+  TESTS.** React 1319 → 1323 is **+4**, all appended to the EXISTING
+  `repInfoAndReveal.test.jsx` for the three overlay fixes — so **the FILE count stays 79** and the
+  server numbers do not move. One existing case was REWRITTEN rather than added to (the frost
+  layering), contributing 0.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-9b INFO/REVEAL COMMIT ITSELF, BECAUSE THAT COMMIT
+  SHIPS TESTS.* React 1299 → 1319 is **+20**, the `it(` lines of ONE new file
   (`repInfoAndReveal.test.jsx`); 78 → 79 is that file. **The server numbers do not move** — the
   info affordance and the reveal have no server surface.
   ⚠ **TWO EXISTING CASES WERE EDITED AND NEITHER ADDS TO THE COUNT**, which is the shape worth
