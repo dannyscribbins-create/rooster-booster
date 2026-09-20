@@ -153,9 +153,20 @@ describe('Canvass-5 — A34.6: the lock and the empty state are different answer
   });
 
   it('a permitted rep never renders a lock glyph', async () => {
-    // Declaration-level: asserts the SVG the lock icon renders is absent, not its colour.
+    // Declaration-level: asserts the lock icon is absent, not its colour.
+    //
+    // ⚠ THE NEEDLE NAMES ITS SUBJECT SINCE 9b. It was `querySelector('svg')` — "no
+    // icon at all" — which was correct only while the lock was the ONLY icon on this
+    // card. 9b added the reveal's caret, a legitimate non-lock SVG, and the old
+    // needle went red without the behaviour changing. **A bare needle standing in
+    // for a specific subject is this repo's most-recorded trap, and this is an
+    // instance of it in an existing test rather than a new one.**
     const { container } = render(<ThemeProvider><RevenueCard revenueHidden={false} /></ThemeProvider>);
-    expect(container.querySelector('svg')).toBeNull();
+    expect(container.querySelector('[data-rep-revenue-lock]')).toBeNull();
+    // ⚠ AND THE PAIRED POSITIVE, so the handle is proven to exist at all — without
+    // it, a renamed attribute would make this assertion permanently satisfied.
+    const locked = render(<ThemeProvider><RevenueCard revenueHidden /></ThemeProvider>);
+    expect(locked.container.querySelector('[data-rep-revenue-lock]')).toBeTruthy();
   });
 
   it('an end-to-end permitted payload shows the empty state, not the lock', async () => {

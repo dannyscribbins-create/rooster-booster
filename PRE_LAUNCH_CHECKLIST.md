@@ -4210,6 +4210,122 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-9b — info icons, the long-press reveal, and the CONV standout (SHIPPED 2026-09-20)
+
+- [x] **✅ THE FILTER WORK IS DEFERRED TO 3d — RULED BY DANNY, 2026-09-20.** Both the badge/filter
+      system and referrals-as-a-filter move to 3d, where their siblings get built.
+      ⚠ **THE RATIONALE, FILED SO 3d INHERITS IT RATHER THAN RE-DERIVING IT.** The brief asked for
+      referrals *"alongside the in-app / link-sent / needs-resend filters"* — **and those do not
+      exist**; they are 3d's roster work. Shipping referrals alone means a one-filter control that
+      3d must rework into a group, and a lone filter reads oddly on its own. **The badges have the
+      same shape:** *"invited, not signed up"* cannot light until 3d writes the invite record, so
+      two of three states would ship dark.
+      ⚠ **THE RULINGS THEMSELVES ARE UNCHANGED AND CARRY FORWARD INTACT:** a badge when in-app is
+      confirmed, a badge when invited-but-not-signed-up, and **NOTHING otherwise** — A34.4's D4
+      clause, under which the screen never asserts that someone has not signed up. Flagged stays a
+      pill on relevant rows with no explanatory language anywhere in the app.
+
+- [ ] 🔴 **FOR 3d TO ANSWER, NOT TO DISCOVER: CAN A "NOT IN APP" FILTER EXIST AT ALL?** It is
+      exactly the negative D4 forbids asserting — A24.5 established the state space is **four**, and
+      three of those four are indistinguishable from "not signed up". A filter named for that
+      negative would make the screen assert, as a selectable category, the very claim the badge
+      rule refuses to make about a single row. ⚠ **"IT CANNOT EXIST" IS AN ACCEPTABLE ANSWER** and
+      is recorded as such here so 3d does not treat the filter as a given.
+- [ ] 🔴 **AND FOR 3d: HOW DO THE FILTERS COMPOSE WITH THE TIMEFRAME BAR?** The bar already filters
+      the WHOLE Clients page — list, total and both stat cards — by Danny's 9b Part 0 ruling. So a
+      filter group is a SECOND narrowing on the same screen, and 3d must say: do they intersect,
+      what does the count line say when both are narrow, and **what does an empty result read like
+      when two independent controls could each be the cause?** ⚠ The empty state already
+      distinguishes "no clients yet" from "nothing in this timeframe"; a third cause makes that a
+      three-way distinction, not a fourth sentence bolted on.
+
+- [x] **✅ WHICH CARDS GET AN INFO ICON, AND WHICH DELIBERATELY DO NOT.** The answer is DATA, in
+      `STAT_CARDS`, so it is readable in one place rather than inferred from scattered JSX.
+      **WITH an icon:** CLIENTS, LOCKED, PROVISIONAL, and Attribution type. All four are vocabulary
+      a rep can reasonably get wrong — "locked" in particular sounds like a restriction on THEM and
+      is the opposite.
+      **WITHOUT one, each for its own reason:**
+      · **FLAGGED** — Danny's ruling: no explanatory language about it anywhere in the app. ⚠ A
+        fence asserts no glossary term or body contains the word, because adding a friendly
+        one-liner is the obvious helpful move and is forbidden.
+      · **REFERRAL CONVERSIONS** — it already explains itself. Its definition line IS the sentence
+        an icon would have opened; a second route to it is clutter. **Its caret opens the
+        BREAKDOWN, which is different content.**
+
+- [x] **✅ CANVASS-8's THREE QUESTIONS, ANSWERED WHERE EACH IS OBSERVABLE.**
+      **Q1 — one copy source.** `repGlossary.js`. Every explanation is defined once and the card,
+      the popup and the tests read the SAME binding; the test asserts the rendered text EQUALS
+      `REP_GLOSSARY.locked.body`, so a second copy pasted into a component would pass a `toContain`
+      and fail this. ⚠ The precedent is `preset_2`, a byte-identical TRIPLET whose drift was the
+      defect.
+      **Q2 — the graphic floor, measured on the rendered node, both modes, both brands.** The icon
+      is a GRAPHIC at the **3:1** floor, not the 4.5 text floor:
+      | | beta light | beta dark | alpha light | alpha dark |
+      |---|---|---|---|---|
+      | info icon | **12.04** | **13.10** | **13.71** | **15.41** |
+      | reveal caret | — | — | — | **17.96** |
+      ⚠ **The icon is NOT faded.** `RowChevron` is 0.55 because a chevron repeats on every row;
+      this is a CONTROL a rep is meant to find, and `opacity` INHERITS — putting it inside the
+      muted label would have dimmed it to match decoration.
+      **Q3 — do reps and admins share the explanation? NO, and it was checked rather than assumed.**
+      The admin tree does not mention "provisional" **anywhere**. So there is nothing to share with,
+      and the glossary stays in the rep tree: a `src/constants` module for a single consumer would
+      be the "never introduce a shared export as a side effect" failure *and* would imply a sharing
+      that does not exist. **If 3d gives the admin panel these terms, that is the moment to
+      promote it.**
+
+- [x] **✅ THE LONG-PRESS REVEAL — AND THE TWO THINGS DANNY SAID TO SOLVE RATHER THAN ASSUME.**
+      **Does the card hint it is holdable?** ⚠ **It hints that it holds MORE, and does not advertise
+      the gesture.** A caret in the heading row is a plain tap target that opens the same panel.
+      Advertising the gesture would cost a line of copy on the most-read screen to teach a
+      shortcut; hinting costs a caret.
+      **Is the content reachable another way?** ⚠ **Yes, and that is the point rather than a
+      concession.** The caret opens it, so **the long-press is a SHORTCUT to something already
+      reachable** — Danny's constraint that neither affordance may be the only route to a fact. The
+      card's face also still carries the headline number and its definition.
+      **Verified RENDERED, because none of it is assertable in jsdom:** the panel's rect is
+      IDENTICAL to the card's (it covers it), `backdrop-filter` computes to `blur(6px)` and the
+      card's own content is visibly blurred behind it, `transform-origin` is top-centre so it opens
+      downward, and the two figures sit side by side with their titles above their numbers.
+      ⚠ **THE BLUR IS THE FINISH, NOT THE CONTRACT.** `backdrop-filter` is unsupported or disabled
+      in more places than is fashionable to admit, and without a ground of its own the panel's text
+      would render over the card's text — both legible, together unreadable. The panel carries a
+      near-opaque background AND the blur; a fence fails if the background is removed.
+      ⚠ **HAPTICS ARE GUARDED AND SUPPRESSED UNDER REDUCED MOTION.** `navigator.vibrate` does not
+      exist on iOS Safari at all; it confirms the hold registered, so its absence must cost nothing.
+      A buzz is a non-essential sensory effect, and the OS reduce-motion setting is the nearest
+      signal we have of a request not to receive one.
+
+- [ ] 🔴 **THE REVEAL'S SECOND FIGURE HAS NO SOURCE FOR CONVERSIONS, AND IT IS NOT FAKED.** Danny's
+      spec is "referral and total side by side". The referral figure is real — `stats.conversions`,
+      which the server computes. ⚠ **There is no total-conversions figure anywhere in the payload or
+      the schema**, and every candidate is wrong: the contractor's total would disclose other reps'
+      numbers, and the rep's client count is a different unit entirely. It renders **"Not recorded
+      yet."**, the same honest treatment Revenue gets, rather than a number nobody computed.
+      **What would close it:** a decision on what "total" means for a rep's conversions, and then a
+      field for it. **"There is no meaningful total, drop the pair for this card" is an acceptable
+      answer** and would leave the reveal to Revenue alone.
+      ⚠ **REVENUE'S BOTH HALVES ARE EMPTY TODAY AND THAT IS CORRECT** — no populated column until
+      Wave 1.5/1.6 — and the card's own face still says "No revenue recorded yet", which is A34.6's
+      required copy for a permitted rep and is NEVER the lock. **The locked card gets no caret at
+      all**: advertising a breakdown behind a permission the rep does not have is a worse version
+      of the lock A34.6 already forbids reusing.
+
+- [x] **✅ THE CONV STANDOUT — WHAT I CHOSE AND WHAT I REJECTED.** 9a's own finding was that the
+      card "reads as another box". **Chosen: an accent EDGE plus a recess ground** — a 3px left
+      border in the action colour, which is the device the client rows already use to carry state,
+      so it is this app's existing vocabulary rather than a new one, and the card sits on
+      `--rm-recess` while its neighbours sit on `--rm-surface`.
+      ⚠ **IT DIFFERS IN TWO INDEPENDENT CHANNELS — EDGE AND GROUND — SO IT STILL READS AS DISTINCT
+      FOR ANYONE WHO CANNOT SEPARATE THE ACCENT HUE FROM THE TEXT.** A treatment carried only by
+      hue is a treatment some readers do not get.
+      **Rejected, and each for a reason rather than taste:** a brand-primary FILL (that colour is
+      the ACTION colour — a filled non-interactive card reads as tappable, and it would force
+      `--rm-on-primary` onto a 13px sentence, a pair floored for a button label); a LARGER NUMBER
+      (already the largest figure on the screen at 28px and still read as another box — size was
+      not the problem); a SHADOW (the shadow tokens measure sub-3:1 against these grounds in light
+      mode, so it would be a treatment that only exists in dark).
+
 ### Canvass-9b — the motion system (SHIPPED 2026-09-20)
 
 - [x] **✅ DANNY'S BRIEF IS RECORDED VERBATIM IN `repMotion.js` BECAUSE THE WORDS ARE THE

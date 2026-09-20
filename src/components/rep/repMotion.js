@@ -161,12 +161,48 @@ export function prefersReducedMotion() {
  * @param {{ delay?: number, fadeOnly?: boolean }} [opts]
  * @returns {object} an inline style fragment
  */
+// ── ⚠ NO `fill-mode`, AND AN OVERSTATED DIAGNOSIS CORRECTED IN PLACE ─────────
+//
+// **THE OBSERVATION WAS RIGHT AND MY FIRST DIAGNOSIS WAS WRONG, AND BOTH ARE KEPT
+// BECAUSE THIS REPO'S MOST EXPENSIVE RECORDED MISTAKE IS EXACTLY THAT PAIR** — an
+// accurate reading promoted to a confident wrong cause, then inherited for five
+// phases.
+//
+// **Observed, on the rendered node:** with `document.visibilityState === 'hidden'`,
+// the screen wrapper computes to `opacity: 0` while every descendant is 1, and its
+// animation reports `playState: "running"` with **`currentTime: 0`** — begun and
+// never ticked. My contrast sweep consequently read every info icon at **1:1, ink
+// identical to ground**, twice.
+//
+// **What I first concluded, and it was wrong:** that `animation-fill-mode: both` was
+// stranding content at zero opacity and *"a rep who opens the app in a background tab
+// would find a blank column"*. ⚠ **Removing the fill mode did not change the reading
+// at all** — which is the evidence that killed the theory: the from-state applies
+// during the ACTIVE phase regardless of fill, and the animation is in that phase.
+//
+// **What is actually true, measured rather than reasoned:** `finish()` takes the
+// element to `opacity: 1`, and `cancel()` also leaves it at `opacity: 1`. **The
+// element's natural style is visible and the animation completes to visible.** The
+// zero exists only while the tab is HIDDEN and the animation has not ticked — i.e.
+// only while nobody is looking — and resolves the moment the tab is foregrounded.
+// **There is no blank column.**
+//
+// ⚠ SO THE FILL MODE IS NOT WHAT GOVERNS THIS, AND ITS REMOVAL IS NOT A FIX. It is
+// kept off because the post-animation state is then the element's OWN style rather
+// than a held keyframe, which is the smaller claim — **not because it rescues
+// anything.** Restoring `both` would behave identically; do not expect otherwise.
+//
+// ⚠ THE RESIDUAL THAT IS REAL AND IS WORTH THE LINE: **an opacity entrance means
+// this content reads as blank to anything measuring a HIDDEN tab** — a screenshot
+// service, a prerenderer, or a harness like the one that measures this app. It bit
+// the same contrast sweep twice. That is an operational fact about measurement, not
+// a defect in the page, and the two must not be filed as one.
 export function entrance({ delay = 0, fadeOnly = false } = {}) {
   injectRepMotion();
   if (prefersReducedMotion()) return {};
   const name = fadeOnly ? 'rmRepFade' : 'rmRepRise';
   return {
-    animation: `${name} ${MOTION.base}ms ${MOTION.out} ${delay}ms both`,
+    animation: `${name} ${MOTION.base}ms ${MOTION.out} ${delay}ms`,
   };
 }
 

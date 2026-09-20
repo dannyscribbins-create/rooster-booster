@@ -6,6 +6,7 @@ import { BACKEND_URL } from '../../config/contractor';
 import { getAdminToken } from '../../utils/authStorage';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import { STAGE_LABELS, SOURCE_LABELS, NO_STAGE_LABEL, MembershipBadge, StatusPill } from './RepClientsScreen';
+import RepRevealCard from './RepRevealCard';
 
 // ─── CLIENT DETAIL — mockup 4b, on the dated rulings (Canvass-5) ────────────
 //
@@ -148,21 +149,49 @@ function Field({ label, children }) {
 // is no figure to dim.
 function RevenueCard({ revenueHidden }) {
   if (revenueHidden) {
+    // ⚠ NO REVEAL ON THE LOCKED CARD, AND THAT IS A24.4 RATHER THAN A LAYOUT CHOICE.
+    // The server OMITS the value entirely when the flag is off, so there is nothing
+    // here to reveal — and a caret on this card would advertise a breakdown behind a
+    // permission the rep does not have, which is a worse version of the lock A34.6
+    // already forbids reusing. **An absent control is a decision.**
     return (
       <Card>
         <CardTitle>Value</CardTitle>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Lock size={18} weight="fill" color={statusVar('warningText')} aria-hidden="true" />
+          {/* ⚠ AN EXPLICIT HANDLE, ADDED IN 9b BECAUSE THE CARD GAINED A SECOND ICON.
+              `repClientDetail.test.jsx` asserted the lock's absence with
+              `querySelector('svg')` — a needle meaning "no icon at all", which was
+              correct only while this was the only icon here. The reveal's caret is a
+              legitimate non-lock SVG and made that needle wrong without making the
+              behaviour wrong. Naming the subject is the fix. */}
+          <Lock data-rep-revenue-lock="" size={18} weight="fill" color={statusVar('warningText')} aria-hidden="true" />
           <Line>Revenue is not shown for your account.</Line>
         </div>
       </Card>
     );
   }
+  // ── THE PERMITTED REP'S CARD, WITH THE REVEAL (Canvass-9b) ─────────────────
+  //
+  // ⚠ BUILT CORRECT FOR WHEN THE NUMBER ARRIVES, AND FAKING NOTHING NOW. Danny's
+  // instruction in terms. True job revenue is stored in no populated column until
+  // Wave 1.5/1.6, so BOTH figures render the honest empty state — and the card's own
+  // face still says "No revenue recorded yet", which is A34.6's required copy for a
+  // permitted rep and is NEVER the lock.
+  // ⚠ THE PAIR IS THE POINT OF BUILDING IT NOW: "referral" and "total" side by side
+  // is the shape that answers *how much of my revenue came through referrals*, which
+  // is the question this card exists to answer once there is a number. Wiring the
+  // pair now means 1.5/1.6 supplies two values rather than designing a panel.
   return (
-    <Card>
-      <CardTitle>Value</CardTitle>
-      <Line>No revenue recorded yet.</Line>
-    </Card>
+    <RepRevealCard
+      revealLabel="Revenue breakdown"
+      left={{ title: 'Referral', empty: 'Not recorded yet.' }}
+      right={{ title: 'Total', empty: 'Not recorded yet.' }}
+    >
+      <Card>
+        <CardTitle>Value</CardTitle>
+        <Line>No revenue recorded yet.</Line>
+      </Card>
+    </RepRevealCard>
   );
 }
 

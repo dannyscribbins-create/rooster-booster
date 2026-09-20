@@ -344,8 +344,27 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1299 React tests across 78 files** (measured 2026-09-20 by the Canvass-9b motion commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9b MOTION COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1319 React tests across 79 files** (measured 2026-09-20 by the Canvass-9b info/reveal commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9b INFO/REVEAL COMMIT ITSELF, BECAUSE THAT COMMIT
+  SHIPS TESTS.** React 1299 → 1319 is **+20**, the `it(` lines of ONE new file
+  (`repInfoAndReveal.test.jsx`); 78 → 79 is that file. **The server numbers do not move** — the
+  info affordance and the reveal have no server surface.
+  ⚠ **TWO EXISTING CASES WERE EDITED AND NEITHER ADDS TO THE COUNT**, which is the shape worth
+  naming: one was INVERTED (the Attribution-type slot went from "empty by design" to "filled by
+  9b", contributing 0) and one gained a paired positive INSIDE its own body (the revenue lock,
+  still one case). **A count that moves by exactly one file's worth while two other files changed
+  is the expected shape here, not a miss.**
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN.** The three new source files — `repGlossary.js`,
+  `RepInfoIcon.jsx`, `RepRevealCard.jsx` — are all in `src/components/rep/`, which is **not** one
+  of `adminBranding.test.jsx`'s four walked roots, so the arithmetic closes at exactly 20.
+  ⚠ **AND A BARE NEEDLE IN AN EXISTING TEST WENT RED FOR THE RIGHT REASON.**
+  `repClientDetail.test.jsx` asserted the revenue lock's absence with
+  `container.querySelector('svg')` — a needle meaning *"no icon at all"*, which was correct only
+  while the lock was the ONLY icon on that card. The reveal's caret is a legitimate non-lock SVG
+  and broke it **without the behaviour being wrong**. Repaired by naming the subject
+  (`data-rep-revenue-lock`) and adding the paired positive, so the needle can no longer be
+  satisfied by a renamed attribute.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-9b MOTION COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.*
   React 1280 → 1299 is **+19 = 18 + 1**: eighteen in one new file (`repMotion.test.jsx`, which is
   77 → 78) and **one net** in `repTimeframeAndRows.test.jsx`, where a single 9a fence was **SPLIT
   INTO TWO** rather than extended. The server numbers do not move — motion has no server surface.

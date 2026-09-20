@@ -315,27 +315,38 @@ describe('Canvass-9a Part 6 — Profile’s chrome', () => {
     expect(h1.parentElement.children.length).toBe(1);
   });
 
-  it('⚠ Part 6b — the Attribution type LABEL has room for 9b’s info icon, and no control today', async () => {
-    // A29 already ruled this exact shape for the bottom nav's FAB slot: a control that is
-    // present but inert — disabled, greyed, tooltipped, wired to a no-op — reads as an
-    // oversight, and the next person to see it enables it. An absent control is a
-    // decision. The slot is a LAYOUT property, not a placeholder.
+  it('⚠ Part 6b — the Attribution type LABEL slot is now FILLED by 9b’s info icon', async () => {
+    // ⚠ INVERTED IN 9b, NOT DELETED, AND THE INVERSION IS THE RECORD. In 9a this case
+    // asserted the slot was EMPTY — *"nothing is rendered into it … no button, no
+    // svg"* — on A29's reasoning that an inert control reads as an oversight. **That
+    // was correct for a phase that reserved room and built nothing.** 9b built the
+    // mechanism, so the slot is now filled with a real, working control, which is what
+    // A29's reasoning was waiting for rather than something it forbids.
+    //
+    // ⚠ THE PREDICTION 9a MADE IS WHAT THIS NOW CHECKS: *"an icon becomes one child
+    // here and nothing reflows."* One child became two, and the label is unchanged.
     mount({ is_attributable: true });
     const row = await screen.findByTestId('rep-attribution');
     const labelBox = row.querySelector('[data-rep-info-slot="true"]');
     expect(labelBox, 'the attribution label has no info slot').toBeTruthy();
     expect(labelBox.textContent).toBe('Attribution type');
-    // ⚠ NOTHING IS RENDERED INTO IT. One child — the label — and no button, no svg, no
-    // reserved empty box.
-    expect(labelBox.children.length).toBe(1);
-    expect(labelBox.querySelector('button')).toBeNull();
-    expect(labelBox.querySelector('svg')).toBeNull();
+    expect(labelBox.children.length).toBe(2);
 
-    // ⚠ AND THE PAIRED NEGATIVE: a row that did NOT ask for the slot must not have one,
-    // or `data-rep-info-slot` is decoration rather than a switch.
+    const icon = labelBox.querySelector('[data-rep-info-icon]');
+    expect(icon, 'the info icon is not in the slot').toBeTruthy();
+    expect(icon.getAttribute('data-rep-info-icon')).toBe('attributionType');
+    // ⚠ IT IS A REAL CONTROL, NOT A DECORATIVE GLYPH — A29's distinction exactly.
+    expect(icon.tagName).toBe('BUTTON');
+    expect(icon.hasAttribute('disabled')).toBe(false);
+    expect(icon.getAttribute('aria-expanded')).toBe('false');
+
+    // ⚠ AND THE PAIRED NEGATIVE SURVIVES THE INVERSION: a row that did NOT ask for the
+    // slot must still not have one, or `data-rep-info-slot` is decoration rather than
+    // a switch — and the icon must not appear there either.
     const titleRow = screen.getByTestId('rep-title');
     expect(titleRow.querySelector('[data-rep-info-slot="true"]')).toBeNull();
     expect(titleRow.querySelector('[data-rep-info-slot="false"]')).toBeTruthy();
+    expect(titleRow.querySelector('[data-rep-info-icon]')).toBeNull();
   });
 
   it('⚠ Part 6b — the pill is TRUE ON ITS OWN, without the popup 9b will add', async () => {

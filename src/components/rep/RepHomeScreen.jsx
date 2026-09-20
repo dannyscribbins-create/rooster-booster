@@ -7,6 +7,8 @@ import { safeAsync } from '../../utils/clientErrorReporter';
 import { greetingLine } from '../../utils/greeting';
 import RepTimeframeBar, { TIMEFRAME_PHRASES } from './RepTimeframeBar';
 import { useRowPress, RowChevron } from './repRowAffordance';
+import RepInfoIcon from './RepInfoIcon';
+import RepRevealCard from './RepRevealCard';
 import { STAGE_LABELS } from './RepClientsScreen';
 
 // ─── THE HOME TAB — mockups 2A/2B, on ruling ④ (Canvass-6) ──────────────────
@@ -117,17 +119,23 @@ const MUTED = 0.72;
 // already a pair — and they pair there for a structural reason rather than a visual one:
 // `sticky_rep_id IS NULL` and `IS NOT NULL` partition the rows, so those two always sum
 // to this one. The layout now says what the data means.
+// ⚠ `info` NAMES THE GLOSSARY ENTRY, AND ITS ABSENCE IS A DECISION RATHER THAN A
+// GAP. Which cards get an icon is DATA here, in one table, so the answer is readable
+// in one place instead of being inferred from scattered JSX. All three of these are
+// vocabulary a rep can reasonably get wrong — see `repGlossary` for what each says
+// and for the two things that deliberately have NO entry at all (FLAGGED, by
+// Danny's ruling, and REFERRAL CONVERSIONS, which already explains itself).
 const STAT_CARDS = Object.freeze([
-  { key: 'clients', label: 'CLIENTS', wide: true },
-  { key: 'locked', label: 'LOCKED' },
-  { key: 'provisional', label: 'PROVISIONAL' },
+  { key: 'clients', label: 'CLIENTS', wide: true, info: 'clients' },
+  { key: 'locked', label: 'LOCKED', info: 'locked' },
+  { key: 'provisional', label: 'PROVISIONAL', info: 'provisional' },
 ]);
 
 // ⚠ `alert` IS GONE, NOT DISABLED. It tinted a value with `warningText` when the
 // count was above zero, and FLAGGED was its ONLY consumer — removed above by ruling.
 // A prop with no caller is dead code, and CLAUDE.md requires it to go in the same
 // session it is identified rather than be left for a reader to wonder about.
-function StatCard({ label, value, wide = false }) {
+function StatCard({ label, value, wide = false, info = null }) {
   return (
     <div
       style={{
@@ -153,12 +161,23 @@ function StatCard({ label, value, wide = false }) {
       }}>
         {value}
       </p>
-      <p style={{
-        margin: '2px 0 0', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
-        color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
-      }}>
-        {label}
-      </p>
+      {/* ⚠ A FLEX ROW WITH `wrap`, WHICH IS WHAT LETS THE PANEL TAKE ITS OWN LINE
+          without being positioned — `RepInfoIcon`'s panel sets `flexBasis: 100%` and
+          wraps beneath the label. No absolute positioning means no overflow maths and
+          nothing to clip at a width nobody tested. */}
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+        <p style={{
+          margin: 0, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+          color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
+        }}>
+          {label}
+        </p>
+        {/* ⚠ THE ICON IS NOT FADED WITH THE LABEL. `opacity` INHERITS, so putting the
+            icon inside the muted <p> would dim a CONTROL to match decoration — the
+            recorded defect where a payout figure was muted by the paragraph it sat
+            inside. It is a sibling, at full strength. */}
+        {info && <RepInfoIcon termKey={info} label={label} />}
+      </div>
     </div>
   );
 }
@@ -185,45 +204,96 @@ function StatCard({ label, value, wide = false }) {
 // the label on one side and nothing on the other, so an icon slots in without a
 // reflow. The popup MECHANISM is not built here, and Danny's note that this card may
 // deserve a standout outline is a UI-pass direction, not this phase's work.
+// ── ⚠ THE STANDOUT TREATMENT (Canvass-9b, part c) ───────────────────────────
+//
+// 9a's own finding was that this card "reads as another box", and Danny wants it
+// visually distinct given what it means to the product: **it is the only number on
+// this screen that measures the thing RoofMiles exists to do.** CLIENTS, LOCKED and
+// PROVISIONAL all describe a rep's book, which would exist without this product;
+// a referral conversion would not.
+//
+// ⚠ WHAT I CHOSE, AND WHAT I REJECTED — BECAUSE THE REJECTED ONES ARE WHAT A READER
+// WILL SUGGEST:
+//   · **A BRAND-PRIMARY FILL.** Rejected: `--rm-primary` is the ACTION colour — it is
+//     what this app fills buttons and the selected timeframe chip with — and a
+//     filled non-interactive card would read as a tappable thing that does nothing.
+//     It would also force `--rm-on-primary` onto a paragraph, and that pair is
+//     floored for a button label, not for a sentence at 13px.
+//   · **A LARGER NUMBER ALONE.** Rejected: it was already the largest figure on the
+//     screen at 28px and still read as another box. Size was not the problem.
+//   · **A SHADOW.** Rejected: `elevationVar('shadow')` on a recess ground measures
+//     almost nothing in light mode — the repo already records the shadow/border
+//     tokens as sub-3:1 against these grounds — so it would be a treatment that only
+//     exists in dark mode.
+//
+// **CHOSEN: an accent EDGE plus a recess ground.** A 3px left border in the action
+// colour — the same device the client rows already use to carry state, so it is this
+// app's existing vocabulary rather than a new one — and the card sits on
+// `--rm-recess` while its neighbours sit on `--rm-surface`. **It differs from the
+// cards around it in two independent channels (edge and ground), so it still reads
+// as distinct for anyone who cannot separate the accent hue from the text.**
+//
+// ⚠ AND THE GROUND SWAP IS THE HALF THAT SURVIVES A COLOUR-VISION DIFFERENCE, which
+// is why it is not decoration on top of the border. A treatment carried only by hue
+// is a treatment some readers do not get.
 function ConversionsCard({ value }) {
   return (
-    <section
-      data-testid="rep-conversions"
-      data-rep-conversions=""
-      style={{
-        background: 'var(--rm-surface, #FFFFFF)',
-        border: `1px solid ${elevationVar('border')}`,
-        borderRadius: 12,
-        padding: '14px 16px',
-        marginBottom: 22,
-        fontFamily: fontVar('body'),
-      }}
+    <RepRevealCard
+      testId="rep-conversions"
+      revealLabel="Referral conversions breakdown"
+      // ⚠ THE LEFT FIGURE IS REAL AND THE RIGHT ONE HAS NO SOURCE TODAY — SAID
+      // PLAINLY RATHER THAN FILLED WITH A PLAUSIBLE NUMBER. Danny's spec is
+      // "referral and total side by side". The referral figure is `stats.conversions`,
+      // which the server computes. **There is no total-conversions figure anywhere in
+      // the payload or the schema**, and the candidates are all wrong: the
+      // contractor's total would disclose other reps' numbers, and the rep's client
+      // count is a different unit entirely. Inventing either would be exactly the
+      // "do not fake one" this phase was told to avoid. Filed as a data question.
+      left={{ title: 'Referral', value }}
+      right={{ title: 'Total', empty: 'Not recorded yet.' }}
     >
-      <p style={{
-        margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.1,
-        color: 'var(--rm-text, #1C2D4D)',
-      }}>
-        {value}
-      </p>
-      {/* The heading row — label left, the UI pass's info icon will sit right. */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <h2 style={{
-          margin: '2px 0 0', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
-          color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body'),
+      <section
+        data-rep-conversions=""
+        style={{
+          // See the header for what this is and what it is not.
+          background: 'var(--rm-recess, #ECF0F8)',
+          border: `1px solid ${elevationVar('border')}`,
+          borderLeft: '3px solid var(--rm-primary, #F26A1B)',
+          borderRadius: 12,
+          padding: '14px 16px',
+          marginBottom: 22,
+          fontFamily: fontVar('body'),
+        }}
+      >
+        <p style={{
+          margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.1,
+          color: 'var(--rm-text, #1C2D4D)',
         }}>
-          REFERRAL CONVERSIONS
-        </h2>
-      </div>
-      {/* ⚠ THE DEFINITION LINE IS PART OF THE LABEL, NOT DECORATION. It is what makes
-          the number unambiguous without the info popup: whose referrals, and what
-          happened to them. It renders in every state, including zero. */}
-      <p style={{
-        margin: '6px 0 0', fontSize: 13, lineHeight: 1.5,
-        color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
-      }}>
-        People your clients referred who have become customers.
-      </p>
-    </section>
+          {value}
+        </p>
+        {/* ⚠ NO INFO ICON HERE, AND THAT IS A DECISION. The definition line below IS
+            the explanation an icon would have opened — a second route to the same
+            sentence is clutter, not help. The caret `RepRevealCard` draws opens the
+            BREAKDOWN, which is different content. */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <h2 style={{
+            margin: '2px 0 0', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+            color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body'),
+          }}>
+            REFERRAL CONVERSIONS
+          </h2>
+        </div>
+        {/* ⚠ THE DEFINITION LINE IS PART OF THE LABEL, NOT DECORATION. It is what makes
+            the number unambiguous without the info popup: whose referrals, and what
+            happened to them. It renders in every state, including zero. */}
+        <p style={{
+          margin: '6px 0 0', fontSize: 13, lineHeight: 1.5, maxWidth: '88%',
+          color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
+        }}>
+          People your clients referred who have become customers.
+        </p>
+      </section>
+    </RepRevealCard>
   );
 }
 
@@ -476,7 +546,7 @@ export default function RepHomeScreen({ onOpenClient = null, preview = false, ca
 
             <div data-rep-stats="" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
               {STAT_CARDS.map((c) => (
-                <StatCard key={c.key} label={c.label} value={stats[c.key] ?? 0} wide={c.wide === true} />
+                <StatCard key={c.key} label={c.label} value={stats[c.key] ?? 0} wide={c.wide === true} info={c.info ?? null} />
               ))}
             </div>
 

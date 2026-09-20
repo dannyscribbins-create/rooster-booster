@@ -5,6 +5,7 @@ import { BACKEND_URL } from '../../config/contractor';
 import { getAdminToken } from '../../utils/authStorage';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import RepThemeToggleRow from './RepThemeToggleRow';
+import RepInfoIcon from './RepInfoIcon';
 
 // ─── THE PROFILE SCREEN — mockup 6, completed in Canvass-8 ──────────────────
 //
@@ -86,7 +87,10 @@ function Row({ label, children, testId, infoSlot = false }) {
         <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)' }}>
           {label}
         </span>
-        {/* 9b's info icon mounts HERE. Nothing else changes when it does. */}
+        {/* ⚠ 9b'S ICON MOUNTS HERE, EXACTLY AS 9a PREDICTED — one child into a slot
+            that already existed, and nothing else reflowed. The copy is Danny's own,
+            verbatim, and is the one string in the glossary already approved. */}
+        {infoSlot && <RepInfoIcon termKey="attributionType" label={label} />}
       </div>
       <div style={{ minWidth: 0, textAlign: 'right' }}>{children}</div>
     </div>
