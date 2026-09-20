@@ -239,7 +239,7 @@ function ConversionsCard({ value }) {
 // records that `--rm-text` is floored to 4.5:1 against BOTH `surface` and `recess`,
 // which is exactly what makes a ground swap safe without a per-brand measurement.
 function FocusRow({ client, onOpen, trailing }) {
-  const { pressed, pressHandlers } = useRowPress();
+  const { pressed, pressHandlers, pressStyle } = useRowPress();
   return (
     <li
       onClick={onOpen ? () => onOpen(client.jobberClientId) : undefined}
@@ -256,6 +256,10 @@ function FocusRow({ client, onOpen, trailing }) {
         cursor: onOpen ? 'pointer' : undefined,
         fontFamily: fontVar('body'),
         background: onOpen && pressed ? 'var(--rm-surface, #FFFFFF)' : 'transparent',
+        // ⚠ LAST, AND A TRANSITION ONLY — see ClientRow's note. Same helper on both
+        // rows, so the two grounds settle at the same speed even though they swap in
+        // opposite directions.
+        ...(onOpen ? pressStyle : {}),
       }}
     >
       <span style={{

@@ -316,14 +316,39 @@ describe('C/DL-3b Phase 5 — the authenticated identity chooses the surface', (
 
     await waitFor(() => expect(repSurface()).toBeTruthy());
 
+    // ⚠ WAIT FOR THE SEAM'S OWN CALL, NOT MERELY FOR THE SURFACE TO RENDER — AND THIS
+    // IS A FIX AT THE CAUSE OF A LATENT RACE RATHER THAN A THRESHOLD BEING RAISED.
+    // `GET /api/admin/me` is fired by `useAdminPermissions` from an EFFECT, so the rep
+    // surface can be in the document a tick before the call has been made. Reading
+    // `fetch.mock.calls` synchronously after waiting for the SURFACE therefore samples
+    // a list that may still be filling.
+    //
+    // ⚠ THE RACE IS PRE-EXISTING AND WAS MADE OBSERVABLE BY SUITE GROWTH, NOT CAUSED BY
+    // IT. This passed in isolation (20/20) and failed under full-suite load once
+    // Canvass-9b added `repMotion.test.jsx`, which imports RepShell and ThemeProvider
+    // — the contention shape CLAUDE.md records, where isolated cost is unchanged and
+    // only the scheduling moved. **Raising a timeout would have been fitting the check
+    // to the failure.**
+    //
+    // ⚠ AND WAITING HERE STRENGTHENS THE DISALLOWED CHECK RATHER THAN MERELY
+    // STABILISING IT: the filter below now runs against a SETTLED call list instead of
+    // a possibly-partial one, so a disallowed call that happened to be issued late can
+    // no longer slip past it.
+    await waitFor(() => expect(
+      adminCallsFrom(global.fetch.mock.calls).some(c => c.key === 'GET /api/admin/me'),
+      'the rep surface made NO GET /api/admin/me call, so the empty disallowed list ' +
+      'below would be evidence about nothing. Either the capabilities context is ' +
+      'unwired or this mock is.'
+    ).toBe(true));
+
     const adminCalls = adminCallsFrom(global.fetch.mock.calls);
     const disallowed = disallowedAdminCalls(adminCalls);
 
     expect(disallowed, fenceMessage(disallowed)).toEqual([]);
 
-    // NON-VACUITY: the filter above returns [] just as happily when nothing was
-    // fetched at all — a broken mock, a tree that never rendered, a renamed
-    // property on vi.fn(). The seam's own call must be present.
+    // NON-VACUITY, RE-ASSERTED ON THE SETTLED LIST: the filter above returns [] just as
+    // happily when nothing was fetched at all — a broken mock, a tree that never
+    // rendered, a renamed property on vi.fn(). The seam's own call must be present.
     expect(
       adminCalls.some(c => c.key === 'GET /api/admin/me'),
       'the rep surface made NO GET /api/admin/me call, so the empty disallowed list above is ' +

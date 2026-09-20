@@ -206,7 +206,7 @@ function MembershipBadge({ membership }) {
 // failed to load would show an empty meta line; this one shows a date, which is the
 // distinction the brief is asking about.
 function ClientRow({ client, onOpen }) {
-  const { pressed, pressHandlers } = useRowPress();
+  const { pressed, pressHandlers, pressStyle } = useRowPress();
   const stage = client.stage ? (STAGE_LABELS[client.stage] || client.stage) : null;
   const assigned = formatAssignedAt(client.assignedAt);
 
@@ -239,6 +239,10 @@ function ClientRow({ client, onOpen }) {
         padding: '12px 14px',
         marginBottom: 10,
         fontFamily: fontVar('body'),
+        // ⚠ LAST, SO IT CANNOT BE OVERWRITTEN by a property above it — and it is a
+        // TRANSITION only. `pressStyle` never sets a colour; the ground swap above is
+        // still what changes, and this decides only how it settles.
+        ...(onOpen ? pressStyle : {}),
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

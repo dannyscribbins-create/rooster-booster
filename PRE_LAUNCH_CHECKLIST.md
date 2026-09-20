@@ -4210,6 +4210,78 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-9b — the motion system (SHIPPED 2026-09-20)
+
+- [x] **✅ DANNY'S BRIEF IS RECORDED VERBATIM IN `repMotion.js` BECAUSE THE WORDS ARE THE
+      SPECIFICATION.** Motion should feel *"clean, buttery, tactile, empowering, informative, and
+      swift"*, and interacting should *"feel like a decision when you click without friction"*.
+      ⚠ **THE SECOND SENTENCE DECIDED THE WHOLE SHAPE, AND IT IS A DIRECTION RATHER THAN A
+      DURATION.** A control that eases INTO its pressed state has already added friction — the app
+      visibly deciding whether you pressed it. **So the response is INSTANT and only the SETTLE is
+      eased:** `pressIn` is 0ms and is not a placeholder to be tuned. A symmetric transition, which
+      is the default thing anyone would write, fails the fence.
+
+- [x] **✅ THE 3,756-ROW CONSTRAINT RULES OUT THE OBVIOUS FLOURISH, AND IT IS NOW A PERMANENT
+      FENCE.** `REP_BOOK_LIMIT` is 100, so Load more appends **one hundred rows in a single
+      commit**. A per-row entrance animation — staggered or not — is the most common "polish"
+      instinct and is exactly what produces 100 simultaneous animations on the mid-range phone
+      Danny named. **Ruled: sections and screens animate; their contents never do.** The surviving
+      half of 9a's fence asserts it, and animating a row breaks it.
+
+- [x] **✅ REDUCED MOTION IS STRUCTURAL, NOT PER-COMPONENT — WHICH IS WHAT "FROM THE START RATHER
+      THAN RETROFIT" HAS TO MEAN.** A per-component opt-in is a retrofit by construction: it covers
+      what its author remembered. The injected block is scoped to `[data-rep-shell]` and therefore
+      covers transitions this system never heard of — **including the three that already shipped
+      and honoured no preference at all**: `RepBottomNav`'s `opacity 200ms` and
+      `RepThemeToggleRow`'s two.
+      ⚠ **VERIFIED IN THE BROWSER AS A RULE, NOT AS A HOPE.** The rule parses (`conditionText`
+      correct), carries `!important` on both durations — load-bearing, because every style here is
+      inline and an inline declaration beats a stylesheet rule without it — and its selector
+      **matches the bottom-nav button** as well as the screen wrapper, while **not** matching
+      `body`. The retrofit claim is checkable rather than asserted.
+      ⚠ **`0.01ms`, NOT `0s`:** a zeroed duration means some engines never fire
+      `transitionend`/`animationend`, so anything awaiting one waits forever.
+
+- [ ] 🔴 **A DEFECT SHIPPED GREEN THROUGH THE REACT SUITE AND WAS CAUGHT ONLY IN THE BROWSER.**
+      `pressTransition` emitted `background-color, transform 140ms cubic-bezier(...)`. **The CSS
+      `transition` shorthand does not distribute a duration across a comma list.** The browser
+      parsed it as `background-color` at the DEFAULT **0s** and `transform` at 140ms — measured on
+      a rendered row as `transition-duration: 0s, 0.14s`. **So the ground swap, the only property
+      that actually changes, never eased; `transform`, which nothing sets, did.** The release
+      settle was completely inert while the source read correctly.
+      ⚠ **THE ASSERTION THAT MISSED IT WAS `toContain('140ms')` — AND THE MALFORMED STRING CONTAINS
+      '140ms'.** This is the bare-value `toContain` trap in a new costume: the needle landed
+      exactly where the ambiguity lives. jsdom stores a shorthand verbatim and computes nothing, so
+      **no declaration-level assertion can see a shorthand that parses into the wrong thing.**
+      **Fixed at the cause** — the property list is an array and each entry gets its own duration —
+      and fenced by a SHAPE check (every top-level segment must carry a duration), which is what
+      survives having no CSS engine. Re-emitting the original form breaks it.
+      ⚠ **AND THE FENCE'S OWN FIRST WRITING HAD THE SAME CLASS OF BUG**: a bare `split(',')`, which
+      shatters `cubic-bezier(0.22, 1, 0.36, 1)` into five fragments and failed against CORRECT
+      code. A comma list parsed without regard to what the commas belong to — **in the checker this
+      time**. Recorded because *"the test was wrong"* is the conclusion reached too fast, and here
+      the reader was genuinely at fault twice.
+      ⚠ **FILED RATHER THAN CLOSED, BECAUSE THE CLASS IS WIDER THAN THIS ONE CALL.** Any inline
+      SHORTHAND — `transition`, `animation`, `background`, `font`, `border`, `grid` — can parse
+      into something other than what it reads as, and **every assertion in this repo's React suite
+      is declaration-level**. There is no sweep for it. The browser pass is the only thing that
+      sees a computed value, and it is not run per-commit.
+
+- [x] **✅ WHAT ANIMATES, AND WHAT DELIBERATELY DOES NOT.** The SCREEN wrapper carries an entrance
+      (`rmRepRise`, 200ms, a deceleration curve — verified resolving in the browser as
+      `animationName: rmRepRise`, not `none`). It is **keyed on the screen** so the animation
+      replays: a CSS animation only runs on mount, so without the key the first screen would
+      animate and every later one would appear instantly. ⚠ **The key adds no remount that was not
+      already happening** — each tab renders a different component. **The header and the bottom nav
+      do NOT animate**: chrome does not arrive, and a nav that animates on every screen change
+      draws the eye to the thing that did not change.
+
+- [x] **✅ KEYFRAMES ARE NAMESPACED, AND THE HAZARD IS MEASURED RATHER THAN CONVENTIONAL.** CSS
+      keyframes are global and last-definition-wins, and **`spin` is defined in SEVENTEEN places in
+      this repo**. A shared primitive claiming a plain name silently redefines every one of them
+      depending on injection order. `LoadingIndicator.jsx` records the same hazard and took
+      `rmSpin`; these are `rmRepRise` / `rmRepFade`, verified unused repo-wide.
+
 ### Canvass-9b Part 0 — the header finished, and the switcher moved to Profile (SHIPPED 2026-09-20)
 
 - [x] **✅ 9a's TWO OPEN QUESTIONS ARE RULED, BOTH AS SHIPPED — NO CODE CHANGED FOR EITHER.**
@@ -4492,8 +4564,9 @@ may legitimately change several of these subjects.*
 
 - [ ] 🔴 **`citecheck --changed-files` FLAGGED 21 LIKELY ROTTED AND *ZERO* NEEDED REPAIR — AND
       VERIFYING THAT IS THE WHOLE ENTRY.** The breakdown, because the totals alone are useless:
-      **17 are the documented must-not-repair set.** They cite `CLAUDE.md:436-438`, `:501` and
-      `:502` as **quotations of pre-edit content**, and `CDL_3c_PHASE05_RULINGS.md` predicts this
+      **17 are the documented must-not-repair set.** They cite **three points inside CLAUDE.md's
+      test-count tripwire block** as **quotations of pre-edit content**, and
+      `CDL_3c_PHASE05_RULINGS.md` predicts this
       exact flag in terms: *"Any future edit to `CLAUDE.md` will flag them LIKELY ROTTED, correctly
       and permanently. They are not to be repaired."* **This commit edits CLAUDE.md's test-count
       tripwire, +31 lines above them, so all 17 fired precisely as that document said they would.**
@@ -4501,17 +4574,42 @@ may legitimately change several of these subjects.*
       changed — and ALL FOUR WERE ALREADY WRONG AT `a2f595a`, BEFORE THE EDIT.** Verified by
       reading the cited content at the OLD line in the OLD revision, which is the procedure
       CLAUDE.md prescribes and the only thing that separates these two groups:
-      · `AdminDashboard.jsx:63` (`ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md:240`) and `:62`
-        (`CDL_3b_BUILD_SPEC.md:596`) are both described as rendering *"Rooster Booster · Accent
-        Roofing"*. At HEAD those lines are a `headers:` object and a `fetch(` call. ⚠ **The literal
-        does not exist anywhere in the file any more** — it was retired to
-        `platformIdentityLine(branding)`. **So the repair is rewriting the sentence, not the
-        number**, and both specs now describe a state of the code that is gone.
-      · `AdminDashboard.jsx:83` (`PRE_LAUNCH_CHECKLIST.md:6880`) describes `pipelineTotal` as
+      <!-- citecheck:record -->
+      · `AdminDashboard.jsx:63` — cited in **`ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md`'s D-I
+        literal-fix list** — and `:62`, cited in **`CDL_3b_BUILD_SPEC.md`'s Phase-6 retirement
+        list**, are both described as rendering *"Rooster Booster · Accent Roofing"*. At HEAD those
+        lines are a `headers:` object and a `fetch(` call. ⚠ **The literal does not exist anywhere
+        in the file any more** — it was retired to `platformIdentityLine(branding)`. **So the
+        repair is rewriting the sentence, not the number**, and both specs now describe a state of
+        the code that is gone.
+      ⚠ **THE `AdminDashboard.jsx:NN` NUMBERS IN THIS BLOCK ARE EVIDENCE AND ARE QUOTED ON
+      PURPOSE — they are the wrong numbers, and removing them would destroy the finding.** The
+      LOCATIONS that carry them are named BY ROLE instead, which is the split CLAUDE.md
+      prescribes: *quote the wrong number, give the correction by role.* ⚠ **The marker below
+      covers the quoted numbers only. It is not a licence to leave a live citation unfixed** —
+      that is the rubber-stamp failure this repo names, and the two spec pointers above were
+      converted rather than marked.
+      · `AdminDashboard.jsx:83` — cited in **this file's NaN-source enumeration, inside the
+        superseded "Dependency pass" record under *Named builds*** — describes `pipelineTotal` as
         `stats ? sum-of-four : 0`. That expression is at **`:79`** at HEAD; `:83` is a comment
         four lines below it. Already off by four.
-      · `AdminDashboard.jsx:131` (`PRE_LAUNCH_CHECKLIST.md:2600`) records a stack trace through
-        that line. At HEAD it is `</div>`.
+      · `AdminDashboard.jsx:131` — cited in **this file's load-dependent-flake note**, which
+        records a stack trace through that line. At HEAD it is `</div>`.
+      <!-- citecheck:record -->
+      ⚠ **THE TWO POINTERS ABOVE WERE WRITTEN AS `PRE_LAUNCH_CHECKLIST.md:6880` AND `:2600` WHEN
+      THIS ENTRY LANDED IN 9a, AND THE VERY NEXT COMMIT FALSIFIED ONE OF THEM.** Inserting the 9b
+      entries pushed 81 lines above `:6880` and `citecheck --changed-files` flagged it — **a
+      record OF a rot, written AS a line number, rotting.** CLAUDE.md records exactly this hole in
+      the record exemption and prescribes the fix: *quote the wrong number as evidence, and give
+      the location BY ROLE.* The wrong numbers are quoted here; the locations are now named. ⚠ **Do
+      not "restore" the line numbers — they are what went wrong, and this is the second measured
+      instance of that shape in this repo.**
+      ⚠ **THIS PARAGRAPH IS INSIDE A RECORD MARKER AND THE TWO NUMBERS IN IT ARE EVIDENCE, NOT
+      POINTERS.** Without the marker this file's own rule would count them as violations of
+      itself — which is how the mechanism gets switched off within a month. **The marker says
+      "this is a record"; it does NOT say "these numbers are correct." They are not, and that is
+      the entire point of quoting them.**
+      <!-- /citecheck:record -->
       ⚠ **NOTHING WAS RENUMBERED, AND ADDING THE DELTA WOULD HAVE BEEN THE DEFECT.** CLAUDE.md
       records the measured precedent: a commit flagged eleven of its own citations and **all eleven
       had already been wrong beforehand**; adding the delta would have produced eleven

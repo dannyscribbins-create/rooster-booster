@@ -355,16 +355,51 @@ describe('Canvass-9a Part 3e — the rows read as tappable', () => {
     expect(li.getAttribute('data-rep-row-pressed')).toBe('false');
   });
 
-  it('⚠ there is NO transition declared — motion is 9b', async () => {
-    // Scoped away from this phase in terms. An instant ground swap is also correct under
-    // `prefers-reduced-motion` by construction rather than by a media query, so 9b
-    // inherits a working baseline instead of carving an exception.
+  // ⚠ THIS CASE WAS INVERTED IN 9b, NOT DELETED, AND THE HALF THAT SURVIVES IS THE
+  // IMPORTANT ONE. In 9a it read *"there is NO transition declared — motion is 9b"*
+  // and asserted both `transition` and `animation` were empty. 9b built the motion
+  // system, so the transition half is superseded by design. **The ANIMATION half is
+  // not, and it is now permanent**: a list row must never animate in.
+  it('⚠ the press is INSTANT and only the SETTLE eases — the asymmetry is the ruling', async () => {
+    // Danny's brief: interacting should "feel like a decision when you click without
+    // friction". Easing INTO the pressed state is friction. So press-down is 0ms and
+    // the release eases — and a SYMMETRIC transition, which is what anyone would write
+    // by default, fails this.
     installFetch(clientsPayload({ clients: [row()], total: 1 }));
     const { container } = wrap(<RepClientsScreen onOpenClient={() => {}} />);
     await screen.findByText('Maria Lopez');
     const li = container.querySelector('li');
-    expect(li.style.transition).toBe('');
-    expect(li.style.animation).toBe('');
+
+    // At rest: the settle is eased.
+    expect(li.style.transition).toContain('140ms');
+
+    // Pressed: instant, so the state lands on the same frame as the pointer event.
+    fireEvent.pointerDown(li);
+    expect(li.style.transition, 'the press-down eases, which is the friction the ruling forbids')
+      .toContain('0ms');
+    expect(li.style.transition).not.toContain('140ms');
+
+    fireEvent.pointerUp(li);
+    expect(li.style.transition).toContain('140ms');
+  });
+
+  it('⚠ A LIST ROW NEVER ANIMATES IN — the 3,756-row rule, and it is permanent', async () => {
+    // ⚠ THE SURVIVING HALF OF 9a's FENCE, AND THE REASON IT OUTLIVED THE OTHER HALF.
+    // `REP_BOOK_LIMIT` is 100, so tapping Load more appends ONE HUNDRED ROWS IN A
+    // SINGLE COMMIT. A per-row entrance animation — staggered or not — is the single
+    // most common "polish" instinct and is exactly what would produce 100 simultaneous
+    // animations on the mid-range phone Danny named as the test case.
+    // **Sections and screens animate; their contents do not.**
+    installFetch(clientsPayload({
+      clients: [row(), row({ jobberClientId: 'jc-2', name: 'Allen Wade' })],
+      total: 2,
+    }));
+    const { container } = wrap(<RepClientsScreen onOpenClient={() => {}} />);
+    await screen.findByText('Maria Lopez');
+    for (const li of container.querySelectorAll('li')) {
+      expect(li.style.animation, 'a list row declares an entrance animation').toBe('');
+      expect(li.style.animationName || '').toBe('');
+    }
   });
 });
 

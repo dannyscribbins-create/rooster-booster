@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CaretRight } from '@phosphor-icons/react';
+import { pressTransition } from './repMotion';
 
 // ─── "THIS ROW OPENS SOMETHING" — Canvass-9a, Part 3e ────────────────────────
 //
@@ -15,14 +16,24 @@ import { CaretRight } from '@phosphor-icons/react';
 // this app. `cursor: pointer` has the same problem — it is a desktop-only signal
 // that has been present the whole time and communicated nothing.
 //
-// ⚠ AND THE MOTION SYSTEM IS 9b. This is the MINIMUM that says "this responded": an
-// immediate ground swap on pointer-down. **No transition, no duration, no easing, no
-// transform** — those are 9b's, along with the reduce-motion contract that Danny has
-// already accepted as a from-the-start requirement rather than a retrofit. Adding a
-// transition here would be starting that system inside a phase scoped away from it.
-// ⚠ WHICH ALSO MEANS THE FEEDBACK IS CORRECT UNDER `prefers-reduced-motion` TODAY,
-// by construction rather than by a media query: an instant colour change is not
-// motion. 9b inherits a working baseline instead of having to carve an exception.
+// ── ⚠ 9b: THE SETTLE IS EASED, THE PRESS IS NOT ─────────────────────────────
+// 9a shipped this as an instant ground swap in both directions, and said so:
+// *"the motion system is 9b … adding a transition here would be starting that
+// system inside a phase scoped away from it."* 9b is here, and it adds **one
+// half** of a transition.
+//
+// ⚠ THE ASYMMETRY IS THE RULING, NOT A TUNING CHOICE. Danny's brief says
+// interacting should *"feel like a decision when you click without friction"*.
+// Easing INTO the pressed state is friction — the app visibly deciding whether
+// you pressed it. So press-down stays at 0ms and only the RELEASE eases. See
+// `repMotion.js` for the whole argument; `pressTransition()` is where it lives, so
+// the two halves cannot drift apart into two different numbers.
+//
+// ⚠ AND THE 9a NOTE'S CLAIM STILL HOLDS RATHER THAN BEING SUPERSEDED: the feedback
+// is correct under `prefers-reduced-motion` because `pressTransition()` returns NO
+// transition at all in that case, so the behaviour falls back to exactly what 9a
+// shipped — an instant swap. **The reduced path is the old path**, which is why
+// this is a safe thing to add.
 
 // ── PRESS STATE ─────────────────────────────────────────────────────────────
 //
@@ -41,6 +52,10 @@ export function useRowPress() {
   const [pressed, setPressed] = useState(false);
   return {
     pressed,
+    // ⚠ SPREAD ONTO THE ROW'S STYLE BY THE CALLER, not applied here — these rows
+    // build their own style objects and a component that returned a finished style
+    // would have to know about grounds, borders and radii that are the row's own.
+    pressStyle: pressTransition(pressed),
     pressHandlers: {
       onPointerDown: () => setPressed(true),
       onPointerUp: () => setPressed(false),

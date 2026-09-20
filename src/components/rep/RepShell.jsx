@@ -7,6 +7,7 @@ import RepClientDetailScreen from './RepClientDetailScreen';
 import RepHomeScreen from './RepHomeScreen';
 import RepProfileScreen from './RepProfileScreen';
 import { fontVar } from '../../constants/elevationTheme';
+import { entrance, injectRepMotion } from './repMotion';
 
 // ─── THE FIELD REP SHELL — C/DL-3c Phase 3-A ─────────────────────────────────
 //
@@ -121,6 +122,14 @@ export default function RepShell({ onLogout, switcher = null, preview = false, c
   // opposite direction from the one the chain was built to prevent. BrandMark
   // makes that a BRANCH on whether a contractor resolved at all; see its header.
 
+  // ⚠ INJECTED AT THE SHELL, NOT LAZILY AT THE FIRST ANIMATED ELEMENT. The
+  // reduced-motion block is scoped to `[data-rep-shell]` and must be in the document
+  // BEFORE anything inside it paints — otherwise a viewer who asked for reduced
+  // motion gets one unsuppressed frame of whatever mounts first. Injecting here
+  // makes the contract a property of the shell rather than of whoever happens to
+  // animate first.
+  injectRepMotion();
+
   const activeTab = tabForScreen(view.screen);
 
   // Selecting a tab enters that tab at its OWN entry screen, with no parameters
@@ -229,7 +238,20 @@ export default function RepShell({ onLogout, switcher = null, preview = false, c
           boxSizing: 'border-box',
         }}
       >
-        <Screen view={view} onLogout={onLogout} switcher={switcher} preview={preview} caps={caps} onNavigate={(next) => { setView(next); window.scrollTo(0, 0); }} />
+        {/* ── ⚠ THE SCREEN ENTRANCE, AND WHY IT IS KEYED (Canvass-9b) ────────
+            `key` is `view.screen`, so React tears this wrapper down and builds a new
+            one whenever the screen changes — which REPLAYS the CSS animation. A CSS
+            animation only runs on mount, so without the key the first screen would
+            animate and every later one would appear instantly.
+            ⚠ THE KEY CHANGES NOTHING ABOUT REMOUNTING THAT WAS NOT ALREADY TRUE:
+            each tab renders a DIFFERENT component, so switching tabs already
+            unmounted the old one and refetched on the new one. This wrapper keys on
+            the same value, so it adds no fetch that was not already happening.
+            ⚠ AND IT IS ONE ELEMENT ANIMATING, NOT ITS CONTENTS — see repMotion's
+            header. A 100-row page appended by Load more animates nothing at all. */}
+        <div key={view.screen} style={entrance()}>
+          <Screen view={view} onLogout={onLogout} switcher={switcher} preview={preview} caps={caps} onNavigate={(next) => { setView(next); window.scrollTo(0, 0); }} />
+        </div>
       </main>
 
       <RepBottomNav activeTab={activeTab} onSelect={selectTab} />

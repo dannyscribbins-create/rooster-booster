@@ -344,8 +344,36 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1280 React tests across 77 files** (measured 2026-09-20 by the Canvass-9b Part 0 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9b PART 0 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1299 React tests across 78 files** (measured 2026-09-20 by the Canvass-9b motion commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9b MOTION COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  React 1280 → 1299 is **+19 = 18 + 1**: eighteen in one new file (`repMotion.test.jsx`, which is
+  77 → 78) and **one net** in `repTimeframeAndRows.test.jsx`, where a single 9a fence was **SPLIT
+  INTO TWO** rather than extended. The server numbers do not move — motion has no server surface.
+  ⚠ **THE SPLIT IS WORTH THE LINE BECAUSE ONE HALF WAS SUPERSEDED AND THE OTHER BECAME
+  PERMANENT.** 9a's *"there is NO transition declared — motion is 9b"* asserted `transition` AND
+  `animation` were both empty. 9b built the motion system, so the transition half is superseded by
+  design; **the animation half is not** — a list row must never animate in, because
+  `REP_BOOK_LIMIT` is 100 and Load more appends a hundred rows in one commit. Inverting one case
+  into two is why the delta is +1 against two cases touched.
+  ⚠ **AND A DEFECT SHIPPED GREEN THROUGH THIS SUITE AND WAS CAUGHT ONLY IN THE BROWSER, WHICH IS
+  THE ENTRY THAT MATTERS.** `pressTransition` emitted
+  `background-color, transform 140ms cubic-bezier(...)`. The CSS shorthand **does not distribute a
+  duration across a comma list**: the browser parsed that as `background-color` at the DEFAULT
+  **0s** and `transform` at 140ms — computed on a real row as `transition-duration: 0s, 0.14s`.
+  **The ground swap, which is the only property that actually changes, never eased; `transform`,
+  which nothing sets, did.** The release settle was inert while the source looked right.
+  ⚠ **THE ASSERTION THAT MISSED IT WAS `toContain('140ms')`, AND THE MALFORMED STRING CONTAINS
+  '140ms'.** jsdom stores a shorthand verbatim and computes nothing, so **no declaration-level
+  assertion can see a shorthand that parses into the wrong thing.** The fence now requires every
+  top-level segment to carry its own duration — a SHAPE check, which is what survives having no
+  CSS engine — and re-emitting the original form breaks it.
+  ⚠ **AND THE FENCE'S OWN FIRST WRITING HAD THE SAME CLASS OF BUG**: it used a bare
+  `split(',')`, which shatters `cubic-bezier(0.22, 1, 0.36, 1)` into five fragments and failed
+  against CORRECT code. A comma list parsed without regard to what the commas belong to — in the
+  checker this time. **Both directions are now guard-proofed.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-9b PART 0 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.*
+  It read **1574 / 254 / 1280 / 77**, +9 React across two existing files with no new file and no
+  phantom, and it records the guard-proof that found `row-reverse` invisible to a DOM-order fence.
   React 1271 → 1280 is **+9 = 5 + 4**, both appended to EXISTING files — five cases in
   `repProfileScreen.test.jsx` (the switcher's new home) and four in `repTimeframeAndRows.test.jsx`
   (its absence from the other three screens). **The FILE count stays 77 and the SERVER numbers do
