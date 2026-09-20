@@ -245,13 +245,48 @@ export default function RepShell({ onLogout, switcher = null, preview = false, c
 // ⚠ TAKES NO PROPS. It read `{ companyName, logoSrc }` and both are now
 // BrandMark's business, read from the context where the answer already lives.
 // Threading them through was how the platform mark reached six screens.
+// ── ⚠ THE HEADER'S HEIGHT MUST NOT DEPEND ON THE MODE (Canvass-9a) ──────────
+//
+// MEASURED, on the rendered node, palette-beta, one route, one scroll position,
+// with the fonts confirmed loaded in BOTH runs: the dark header was **87.59px and
+// the light header 67.59px**, and that 20px displaced `main` and every element
+// under it by exactly the same amount. Danny has been seeing it since the first rep
+// screen shipped.
+//
+// ⚠ THE CAUSE IS `BrandLogo`'s DARK PLATE — its `10px 14px` padding — AND NOT
+// ANYTHING IN THIS FILE. Proven rather than inferred: zeroing only that padding on
+// the rendered node collapsed the dark header to 67.59 and `main` to 125.59,
+// matching light exactly. Everything else in this header is mode-invariant; the
+// borders and shadows that DO change with the mode change only in COLOUR, and a
+// colour cannot move a box.
+//
+// ⚠ AND IT IS INVISIBLE ON THE SEEDED LOCAL STACK, WHICH IS WHY IT SURVIVED. That
+// fixture points every `logo_url` at `example.invalid`, so the image fails, BrandMark
+// takes its A2 TEXT branch, and no plate renders in EITHER mode — 53px both ways, no
+// shift. **The defect needs a logo that actually loads**, which is every real
+// contractor and no local fixture. A session measuring the stock stack would have
+// concluded the hypothesis was wrong.
+//
+// THE FIX IS `stableBox`, which makes light reserve the same box the plate occupies,
+// so the two modes produce one geometry BY CONSTRUCTION rather than by two numbers
+// somebody has to keep equal. See BrandLogo's own note for why it is opt-in.
+//
+// ── ⚠ AND THE LOGO IS HALF THE SIZE IT WAS — 132 → 66 (Canvass-9a, Part 2a) ──
+// Danny's screenshots show the header and the switcher consuming roughly a third of
+// a phone viewport before anything useful appears. The vertical padding comes down
+// with it, 14 → 10. Measured consequence, both modes now identical:
+//     header height  59.8  (was 67.59 light / 87.59 dark)
+// ⚠ NO CONTRAST PAIR MOVES WITH THIS. The mark is an IMAGE, which has no text
+// contrast requirement; the only measured pairs in this header are the hairline
+// against the surface and the plate against the surface, and neither is a function
+// of the logo's width. Re-measured rendered anyway, per the brief, and reported.
 function Header() {
   return (
     <header
       style={{
         position: 'relative',
         background: 'var(--rm-surface, #FFFFFF)',
-        padding: '14px 20px',
+        padding: '10px 20px',
         display: 'flex',
         alignItems: 'center',
       }}
@@ -261,7 +296,7 @@ function Header() {
           for the four card surfaces it was built for; inside a shrink-to-fit
           box the auto margins have nothing to distribute and it sits left. */}
       <div style={{ width: 'fit-content' }}>
-        <BrandMark width={132} marginBottom={0} />
+        <BrandMark width={66} marginBottom={0} stableBox />
       </div>
       <div
         aria-hidden="true"
@@ -301,7 +336,11 @@ function Screen({ view, onLogout, onNavigate, preview = false, caps = null }) {
   // Today's Focus opens a client through the SAME parameterised screen state the
   // Clients tab uses — A24.6 requires one mechanism, not a second one per entry point.
   if (view.screen === 'home') {
-    return <RepHomeScreen preview={preview} onOpenClient={(clientId) => onNavigate({ screen: 'clientDetail', clientId })} />;
+    // ⚠ caps REACHES HOME NOW TOO, AND FOR THE SAME REASON PROFILE HAS IT: the
+    // greeting needs the rep's own name (Canvass-9a, Part 3a). Same nullable
+    // contract — a bare shell mount passes nothing and Home greets without a name
+    // rather than throwing, which is `firstNameOf()`'s documented null return.
+    return <RepHomeScreen preview={preview} caps={caps} onOpenClient={(clientId) => onNavigate({ screen: 'clientDetail', clientId })} />;
   }
 
   // ⚠ CLIENTS IS NO LONGER A PLACEHOLDER (Canvass-4). Network still is, and the header

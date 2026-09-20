@@ -7,7 +7,13 @@ const { pool } = require('../db');
 const { verifyAdminSession } = require('../middleware/auth');
 const { isActiveFieldRep } = require('../utils/repAccess');
 const { logError } = require('../middleware/errorLogger');
-const { OWN_BOOK_PREDICATE, STAGE_RANK_SQL } = require('../utils/repBook');
+const {
+  OWN_BOOK_PREDICATE,
+  STAGE_RANK_SQL,
+  parseTimeframe,
+  timeframeClause,
+  conversionTimeframeClause,
+} = require('../utils/repBook');
 
 // ─── THE REP SURFACE'S OWN PREFIX (Canvass-3, amendment A34.3) ───────────────
 //
@@ -295,6 +301,26 @@ router.get('/api/rep/clients', async (req, res) => {
       return res.status(400).json({ error: 'Invalid cursor' });
     }
 
+    // ── THE TIMEFRAME WINDOW (Canvass-9a, Part 4b) ───────────────────────────
+    //
+    // ⚠ ON THIS SCREEN THE WINDOW FILTERS THE LIST AS WELL AS THE CARDS, AND THAT IS A
+    // DECISION RATHER THAN A READING OF THE BRIEF. Danny's brief says the bar "filters
+    // the stats"; on Home that IS everything under the bar, but here the LIST is the
+    // dominant element, and a control at the top of this screen that windowed two small
+    // cards while leaving the list untouched would put two different windows on one
+    // screen. One control on one screen means one thing.
+    //
+    // ⚠ AND IT MUST REACH ALL THREE STATEMENTS OR THE SCREEN CONTRADICTS ITSELF: the
+    // page, the total behind "30 of 272", and the locked/provisional split. A window on
+    // the rows but not the total produces "Showing 8 of 272" over eight rows, which is
+    // not a smaller truth — it is a wrong sentence.
+    //
+    // ⚠ NOTE THE PARAMETER POSITION MOVES THE KEYSET'S. `since` is $6 here, appended
+    // AFTER the existing five, precisely so $4/$5 keep meaning what every comment in
+    // this handler already says they mean. Inserting it at $4 would have silently
+    // re-bound the cursor to a timestamp — a mis-bound parameter that still runs.
+    const { since } = parseTimeframe(req.query.timeframe);
+
     // ⚠ EVERY IDENTITY VALUE COMES FROM THE VERIFIED SESSION. Neither the tenant nor
     // the rep is ever read from the request — there is no :repId parameter and no
     // query string, by construction, so there is no cross-rep probe to defend against.
@@ -333,6 +359,7 @@ router.get('/api/rep/clients', async (req, res) => {
          ON u.contractor_id = cra.contractor_id
         AND u.jobber_client_id = cra.jobber_client_id
        WHERE ${OWN_BOOK_PREDICATE}
+         ${timeframeClause(6)}
          -- The keyset. When no cursor is supplied $4/$5 are NULL and the clause is
          -- inert, so page 1 and page N run the same statement.
          AND ($4::timestamptz IS NULL
@@ -343,14 +370,28 @@ router.get('/api/rep/clients', async (req, res) => {
        -- LIMIT+1: the extra row is how "is there another page" is known without a
        -- second COUNT. It is sliced off before the response.
        LIMIT $3`,
-      [contractorId, teamMemberId, REP_BOOK_LIMIT + 1, cursor ? cursor.t : null, cursor ? cursor.i : null]
+      [contractorId, teamMemberId, REP_BOOK_LIMIT + 1, cursor ? cursor.t : null, cursor ? cursor.i : null, since]
     );
 
+    // ⚠ THE TOTAL AND THE LOCKED/PROVISIONAL SPLIT COME FROM ONE STATEMENT, OVER ONE
+    // PREDICATE. Part 4a puts Locked and Provisional cards at the top of this screen,
+    // and computing them in a second query would be a second answer to the same
+    // question — the exact divergence `OWN_BOOK_PREDICATE` was extracted to prevent,
+    // reintroduced one level up. `locked + provisional` is therefore `total` BY
+    // CONSTRUCTION rather than by two queries that ought to agree.
+    // ⚠ AND THE SPLIT IS EXHAUSTIVE, WHICH IS WHY NO THIRD CARD IS POSSIBLE HERE:
+    // `sticky_rep_id IS NOT NULL` and `IS NULL` partition the rows. A flagged row is
+    // one of the two, not a third state — which is a second, structural reason the
+    // FLAGGED card could not have belonged in this pair even had it not been ruled out.
     const { rows: countRows } = await pool.query(
-      `SELECT COUNT(*)::int AS total
+      `SELECT
+         COUNT(*)::int                                              AS total,
+         COUNT(*) FILTER (WHERE cra.sticky_rep_id IS NOT NULL)::int AS locked,
+         COUNT(*) FILTER (WHERE cra.sticky_rep_id IS NULL)::int     AS provisional
          FROM client_rep_assignments cra
-        WHERE ${OWN_BOOK_PREDICATE}`,
-      [contractorId, teamMemberId]
+        WHERE ${OWN_BOOK_PREDICATE}
+          ${timeframeClause(3)}`,
+      [contractorId, teamMemberId, since]
     );
 
     // The sentinel row proves another page exists; it is never sent.
@@ -375,6 +416,13 @@ router.get('/api/rep/clients', async (req, res) => {
         membership: membershipFor(r),
       })),
       total: countRows[0].total,
+      // ⚠ NESTED UNDER `counts` RATHER THAN FLATTENED BESIDE `total`, so the client can
+      // tell "the server did not send the split" from "the split is two zeros". A rep
+      // with no assignments in the selected window legitimately has 0 and 0, and a
+      // flattened pair of missing keys would read as exactly that — the "absent is not
+      // zero" defect this codebase already shipped once on the admin money surface,
+      // where an admin was told affirmatively there was nothing to review.
+      counts: { locked: countRows[0].locked, provisional: countRows[0].provisional },
       limit: REP_BOOK_LIMIT,
       // null when this is the last page — the client uses its ABSENCE to stop, so
       // "no more pages" and "the server forgot to send one" cannot look alike.
@@ -563,7 +611,26 @@ router.get('/api/rep/home', async (req, res) => {
     if (!allowed) return res.status(403).json({ error: 'Not authorized' });
 
     const { contractorId, teamMemberId } = session;
+
+    // ── THE TIMEFRAME WINDOW (Canvass-9a, Part 3b) ───────────────────────────
+    //
+    // ⚠ ONE `since` FOR EVERY STATEMENT IN THIS REQUEST. Computed once in
+    // parseTimeframe() rather than as `NOW()` inside each query, so the stats and the
+    // conversions count cannot land on different instants — see that function's note.
+    //
+    // ⚠ EVERY STAT UNDER THE BAR OBEYS IT. Danny's brief asked which stats the window
+    // filters and the ruling is "all of them": a grid where some cards respond and
+    // others do not needs a per-card marker before any number can be trusted, so the
+    // window is stated once in the section's subtitle and no card is exempt.
+    //
+    // ⚠ THE FOCUS LISTS ARE DELIBERATELY *NOT* WINDOWED — the two queries at the bottom
+    // of this handler take no `since`. Those lists answer "what should I do now", which
+    // is not a question about a date range: a client assigned in March sitting at `sold`
+    // is exactly what belongs there in September. **If you add the window to them, you
+    // have changed what the section means, not just what it shows.**
+    const { since } = parseTimeframe(req.query.timeframe);
     const params = [contractorId, teamMemberId];
+    const windowed = [contractorId, teamMemberId, since];
 
     // ── THE STATS ────────────────────────────────────────────────────────────
     // ⚠ EVERY ONE COUNTS OVER THE SAME PREDICATE AS THE LISTS BELOW, IN THE SAME
@@ -587,8 +654,9 @@ router.get('/api/rep/home', async (req, res) => {
         AND fa.status = 'open'
         AND fa.flag_reason = 'rep_co_assignment'
         AND fa.reps_involved @> to_jsonb($2::int)
-       WHERE ${OWN_BOOK_PREDICATE}`,
-      params
+       WHERE ${OWN_BOOK_PREDICATE}
+         ${timeframeClause(3)}`,
+      windowed
     );
 
     // ── CONVERSIONS (Canvass-8) — A36.1's credit rule, READ rather than written ──
@@ -633,8 +701,9 @@ router.get('/api/rep/home', async (req, res) => {
            ON cra.contractor_id    = rc.contractor_id
           AND cra.jobber_client_id = u.jobber_client_id
         WHERE rc.contractor_id = $1
-          AND ${OWN_BOOK_PREDICATE}`,
-      params
+          AND ${OWN_BOOK_PREDICATE}
+          ${conversionTimeframeClause(3)}`,
+      windowed
     );
 
     // ── SECTION 1 — FURTHEST ALONG ───────────────────────────────────────────

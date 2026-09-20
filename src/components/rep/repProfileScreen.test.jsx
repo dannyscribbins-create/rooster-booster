@@ -10,7 +10,7 @@
 // whose failure handling has never run.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, cleanup } from '@testing-library/react';
 import ThemeProvider from '../shared/ThemeProvider';
 import RepProfileScreen from './RepProfileScreen';
 import { ADMIN_TOKEN_KEY } from '../../utils/authStorage';
@@ -172,22 +172,63 @@ describe('Canvass-8 — the title control (A28), the only write on the rep surfa
 });
 
 describe('Canvass-8 — attribution type (display only)', () => {
-  it('an attributable rep is told their work can be credited to them', async () => {
+  // ⚠ THE COPY CHANGED IN CANVASS-9a AND THE WORD "attributable" IS DELIBERATELY GONE
+  // FROM THE RENDERED PILL. Part 6b replaced a sentence up to 54 characters long — which
+  // wrapped to three lines in a right-aligned value column — with a pill, and the pill's
+  // copy had to be TRUE ON ITS OWN because 9b's info popup must add depth rather than
+  // rescue an overstated label. "Attributable" is the jargon the old sentence existed to
+  // explain, so the pill says what happens instead: "Matches credited to you".
+  //
+  // ⚠ SO THESE TWO CASES NOW ASSERT THE PILL'S OWN STATE ATTRIBUTE, NOT ITS PROSE, and
+  // that is the stronger fence rather than a looser one: `data-attributable` cannot be
+  // satisfied by a reworded sentence, and the copy is free to improve without a test
+  // pinning a phrase. The positive/negative DISTINCTION — the thing that actually
+  // matters — is what is pinned.
+  it('an attributable rep is told their matches are credited to them', async () => {
     mount({ is_attributable: true });
     const row = await screen.findByTestId('rep-attribution');
-    const text = row.textContent.toLowerCase();
-    expect(text).toContain('attributable');
-    expect(text).toContain('credited');
+    const pill = row.querySelector('[data-rep-attribution-pill]');
+    expect(pill).toBeTruthy();
+    expect(pill.getAttribute('data-attributable')).toBe('true');
+    expect(pill.textContent.toLowerCase()).toContain('credited to you');
+    // ⚠ AND IT MUST NOT READ AS A DENIAL. The negative copy is the positive's with
+    // "not" inserted, so a state mix-up would be invisible to a `toContain('credited')`
+    // — "not credited to you" contains "credited to you". This is the bare-value
+    // `toContain` trap, and the needle is anchored to exclude it.
+    expect(pill.textContent.toLowerCase()).not.toContain('not credited');
   });
 
   it('a NON-attributable rep is told plainly, without blame or a lock', async () => {
     mount({ is_attributable: false });
     const row = await screen.findByTestId('rep-attribution');
+    const pill = row.querySelector('[data-rep-attribution-pill]');
+    expect(pill).toBeTruthy();
+    expect(pill.getAttribute('data-attributable')).toBe('false');
+    expect(pill.textContent.toLowerCase()).toContain('not credited to you');
     const text = row.textContent.toLowerCase();
-    expect(text).toContain('not attributable');
     for (const forbidden of ['locked', 'denied', 'no permission', 'restricted']) {
       expect(text).not.toContain(forbidden);
     }
+  });
+
+  it('⚠ the NEGATIVE state is NOT filled in the brand primary — a restriction is not an affirmation', async () => {
+    // Part 6b specifies the brand primary for this pill. It is applied to the POSITIVE
+    // state only: a brand-primary badge is what this app uses for the thing that is
+    // true, and announcing a limitation in it would read as a feature. The negative
+    // takes StatusPill's unfilled treatment so the two surfaces agree about what an
+    // unfilled pill means.
+    mount({ is_attributable: false });
+    const row = await screen.findByTestId('rep-attribution');
+    const pill = row.querySelector('[data-rep-attribution-pill]');
+    expect(pill.style.background).toBe('transparent');
+    // ⚠ THE PAIRED POSITIVE, ON A SEPARATE MOUNT, IS WHAT MAKES THE ABOVE FALSIFIABLE.
+    // Without it "the background is transparent" would pass against a pill that is
+    // never filled in either state — an absence assertion proving the presence first.
+    cleanup();
+    mount({ is_attributable: true });
+    const onRow = await screen.findByTestId('rep-attribution');
+    const onPill = onRow.querySelector('[data-rep-attribution-pill]');
+    expect(onPill.style.background).toContain('--rm-primary');
   });
 
   it('⚠ REVENUE VISIBILITY GETS NO ROW, IN EITHER STATE — A34.6 and CD-7', async () => {
@@ -246,5 +287,109 @@ describe('Canvass-8 — what does NOT ship, and A30\'s anchor', () => {
     const avatar = await screen.findByTestId('rep-avatar');
     expect(avatar.textContent).toBe('');
     expect(avatar.textContent).not.toContain('null');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CANVASS-9a PART 6 — THE SUBTITLE, THE INFO SLOT, AND SIGN OUT'S ISOLATION
+describe('Canvass-9a Part 6 — Profile’s chrome', () => {
+  it('⚠ Part 6a — there is NO subtitle under the Profile title', async () => {
+    // It read "Self-service settings". Danny: the title already says it. It was also the
+    // weaker kind of subtitle — a description of the screen's CATEGORY rather than a fact
+    // about its contents. Home's and Clients' subtitles survive because they now carry
+    // the timeframe window, which is information a heading cannot give.
+    mount({});
+    await screen.findByText('Profile');
+    expect(screen.queryByText('Self-service settings')).toBeNull();
+    // ⚠ THE PAIRED POSITIVE: the heading itself must still be there. "The subtitle is
+    // absent" would pass against a screen that failed to render its header at all.
+    const h1 = document.querySelector('h1');
+    expect(h1.textContent).toBe('Profile');
+    // And nothing else sits in the header block beside the h1.
+    expect(h1.parentElement.children.length).toBe(1);
+  });
+
+  it('⚠ Part 6b — the Attribution type LABEL has room for 9b’s info icon, and no control today', async () => {
+    // A29 already ruled this exact shape for the bottom nav's FAB slot: a control that is
+    // present but inert — disabled, greyed, tooltipped, wired to a no-op — reads as an
+    // oversight, and the next person to see it enables it. An absent control is a
+    // decision. The slot is a LAYOUT property, not a placeholder.
+    mount({ is_attributable: true });
+    const row = await screen.findByTestId('rep-attribution');
+    const labelBox = row.querySelector('[data-rep-info-slot="true"]');
+    expect(labelBox, 'the attribution label has no info slot').toBeTruthy();
+    expect(labelBox.textContent).toBe('Attribution type');
+    // ⚠ NOTHING IS RENDERED INTO IT. One child — the label — and no button, no svg, no
+    // reserved empty box.
+    expect(labelBox.children.length).toBe(1);
+    expect(labelBox.querySelector('button')).toBeNull();
+    expect(labelBox.querySelector('svg')).toBeNull();
+
+    // ⚠ AND THE PAIRED NEGATIVE: a row that did NOT ask for the slot must not have one,
+    // or `data-rep-info-slot` is decoration rather than a switch.
+    const titleRow = screen.getByTestId('rep-title');
+    expect(titleRow.querySelector('[data-rep-info-slot="true"]')).toBeNull();
+    expect(titleRow.querySelector('[data-rep-info-slot="false"]')).toBeTruthy();
+  });
+
+  it('⚠ Part 6b — the pill is TRUE ON ITS OWN, without the popup 9b will add', async () => {
+    // The popup adds DEPTH and must never rescue an overstated label — the same
+    // principle the conversions card records. So the pill names WHOSE and WHAT without
+    // relying on the mechanism the popup explains, and it must not use the jargon the
+    // old sentence existed to define.
+    mount({ is_attributable: true });
+    const row = await screen.findByTestId('rep-attribution');
+    const pill = row.querySelector('[data-rep-attribution-pill]');
+    expect(pill.textContent).toBe('Matches credited to you');
+    expect(pill.textContent.toLowerCase()).not.toContain('attributable');
+  });
+
+  it('⚠ Part 6c — Sign out is isolated from the divider above it', async () => {
+    // It was touching the theme row's bottom hairline — `padding: 0`, no margin, directly
+    // under a `borderBottom` — so it read as one more row in the list rather than as the
+    // one destructive action on the screen.
+    mount({});
+    const signout = await screen.findByText('Sign out');
+    // Vertical padding on the control itself, not only space above it.
+    expect(signout.style.paddingTop).not.toBe('');
+    expect(signout.style.paddingTop).not.toBe('0px');
+    expect(signout.style.paddingBottom).toBe(signout.style.paddingTop);
+
+    // ⚠ AND A SPACER SEPARATES IT FROM THE ROW ABOVE. Asserted structurally rather than
+    // by a pixel total, because what matters is that SOMETHING holds them apart — a
+    // future change to the amount should not fail this.
+    const spacer = signout.previousElementSibling;
+    expect(spacer.getAttribute('aria-hidden')).toBe('true');
+    expect(parseInt(spacer.style.height, 10)).toBeGreaterThan(20);
+  });
+
+  it('⚠ A30 still holds — the theme row is directly above Sign out, spacer notwithstanding', async () => {
+    // A30's anchor is ORDER, not proximity: nothing may be INSERTED between the theme
+    // row and Sign out. Part 6c added a spacer, and this is the case that proves the
+    // spacer did not become an insertion — no interactive control, and no row, came
+    // between them.
+    mount({});
+    const signout = await screen.findByText('Sign out');
+    const spacer = signout.previousElementSibling;
+    // The spacer carries nothing at all.
+    expect(spacer.children.length).toBe(0);
+    expect(spacer.textContent).toBe('');
+    // And the element before the spacer is the theme toggle row.
+    const themeRow = spacer.previousElementSibling;
+    expect(themeRow.textContent.toLowerCase()).toMatch(/dark mode|theme|appearance/);
+  });
+
+  it('⚠ Sign out uses the sanctioned status token, not a hand-written custom property', async () => {
+    // It read `var(--rm-danger-text, #B91C1C)` — a second copy of a value statusTheme.js
+    // already owns, and the exact shape behind the recorded 1.34:1 login-screen defect
+    // where a fallback was a plausible tint rather than the value that mounts.
+    mount({});
+    const signout = await screen.findByText('Sign out');
+    expect(signout.style.color).toContain('--rm-danger-text');
+    // ⚠ THE POINT IS THE HELPER, AND A DECLARATION-LEVEL TEST CANNOT SEE A CALL — so
+    // this asserts the OBSERVABLE consequence instead: whatever the helper emits, the
+    // fallback must be the one statusTheme.js defines rather than one retyped here.
+    // `themeKeyIntegrity.test.js` owns the value itself and names it when it fires.
+    expect(signout.style.color).toMatch(/^var\(--rm-danger-text, #[0-9A-Fa-f]{6}\)$/);
   });
 });

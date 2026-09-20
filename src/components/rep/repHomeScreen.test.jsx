@@ -57,7 +57,7 @@ describe('Canvass-6 — the two sections are two orderings, not one ranking', ()
       furthestAlong: [client('a', { stage: 'sold' })],
       recentlyAssigned: [client('b')],
     }));
-    expect(await screen.findByText('Furthest along')).toBeTruthy();
+    expect(await screen.findByText('Referral progress')).toBeTruthy();
     expect(screen.getByText('Recently assigned')).toBeTruthy();
     expect(screen.getByText(/by pipeline stage/)).toBeTruthy();
     expect(screen.getByText(/newest assignment first/)).toBeTruthy();
@@ -72,14 +72,14 @@ describe('Canvass-6 — the two sections are two orderings, not one ranking', ()
       furthestAlong: [client('a', { stage: 'sold' })],
       recentlyAssigned: [client('b')],
     }));
-    await screen.findByText('Furthest along');
+    await screen.findByText('Referral progress');
     const text = container.textContent.toLowerCase();
     for (const forbidden of ['behind', 'less advanced', 'lower priority', 'least', 'ranked below', 'also-ran']) {
       expect(text.includes(forbidden)).toBe(false);
     }
-    // And "furthest along" must not appear as a description of the SECOND section.
+    // And "referral progress" must not appear as a description of the SECOND section.
     const second = screen.getByText('Recently assigned').parentElement;
-    expect(second.textContent.toLowerCase().includes('furthest along')).toBe(false);
+    expect(second.textContent.toLowerCase().includes('referral progress')).toBe(false);
   });
 
   it('⚠ the staged client appears ONLY in section 1 and the unstaged ONLY in section 2', async () => {
@@ -88,7 +88,7 @@ describe('Canvass-6 — the two sections are two orderings, not one ranking', ()
       recentlyAssigned: [client('unstaged')],
     }));
     await screen.findByText('Client staged');
-    const s1 = screen.getByText('Furthest along').closest('section');
+    const s1 = screen.getByText('Referral progress').closest('section');
     const s2 = screen.getByText('Recently assigned').closest('section');
     expect(s1.textContent).toContain('Client staged');
     expect(s1.textContent).not.toContain('Client unstaged');
@@ -123,7 +123,7 @@ describe('Canvass-6 — the two sections are two orderings, not one ranking', ()
       furthestAlong: [client('a', { stage: 'sold' })],
       recentlyAssigned: [client('b')],
     }));
-    const h1 = await screen.findByText('Furthest along');
+    const h1 = await screen.findByText('Referral progress');
     const h2 = screen.getByText('Recently assigned');
     expect(h1.tagName).toBe(h2.tagName);
     expect(h1.style.fontSize).toBe(h2.style.fontSize);
@@ -183,7 +183,7 @@ describe('Canvass-6 — the stats, and what is deliberately absent', () => {
     });
     render(<ThemeProvider><RepHomeScreen /></ThemeProvider>);
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
-    expect(screen.queryByText('Furthest along')).toBeNull();
+    expect(screen.queryByText('Referral progress')).toBeNull();
   });
 });
 
@@ -195,7 +195,7 @@ describe('Canvass-6 — preview mode is inert, and its paired positive', () => {
     const fetchMock = vi.fn(() => Promise.reject(new Error('preview must not fetch')));
     global.fetch = fetchMock;
     render(<ThemeProvider><RepHomeScreen preview /></ThemeProvider>);
-    await screen.findByText('Furthest along');
+    await screen.findByText('Referral progress');
     const repCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('/api/rep/'));
     expect(repCalls).toHaveLength(0);
   });

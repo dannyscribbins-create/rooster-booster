@@ -150,25 +150,52 @@ describe('Canvass-4 — the vocabulary is ours, not the mockup\'s', () => {
 });
 
 describe('Canvass-4 — the list', () => {
-  it('renders a client row with its stage, date and source', async () => {
+  // ⚠ RENAMED AND NARROWED IN CANVASS-9a: THE SOURCE IS NO LONGER ON A LIST ROW.
+  // Part 4c removed it by ruling — redundant, since the source appears on the detail
+  // screen, and not what Danny wants at a glance. The two `toContain('Assessment')`
+  // assertions this case carried are DELETED rather than inverted, because the source's
+  // absence gets its own case below: an assertion that a string is gone belongs with the
+  // ruling that removed it, not hidden inside a case about what a row shows.
+  it('renders a client row with its stage and assignment date', async () => {
     mount({ clients: [client()], total: 1, limit: 100 });
     expect(await screen.findByText('Maria Lopez')).toBeTruthy();
     const meta = screen.getByText(/Sold/);
     expect(meta.textContent).toContain('Sold');
-    expect(meta.textContent).toContain('Assessment');
     expect(meta.textContent).toContain('Assigned');
   });
 
-  it('⚠ a client with NO referral record says so rather than inventing a stage', async () => {
-    // A34.4's whole book reaching the copy. "Lead" here would be a fabricated claim
-    // about a client we simply have no referral view of.
+  it('⚠ Part 4c — the SOURCE is absent from a list row, and its label still exists', async () => {
+    // ⚠ TWO ASSERTIONS, AND THE SECOND IS WHAT STOPS THIS GOING VACUOUS. "Assessment is
+    // absent" would pass forever if `SOURCE_LABELS` were deleted, if the fixture stopped
+    // carrying a source, or if the row failed to render at all — an absence assertion
+    // must first prove the presence it is asserting the absence of. So: the label is
+    // still a real label for this fixture's source value (the detail screen renders it),
+    // AND the row does not show it.
+    mount({ clients: [client()], total: 1, limit: 100 });
+    await screen.findByText('Maria Lopez');
+    expect(SOURCE_LABELS.mode_a_at_close).toBe('Assessment');
+    const meta = screen.getByText(/Sold/);
+    expect(meta.textContent).not.toContain('Assessment');
+  });
+
+  it('⚠ Part 4d — a client with NO referral record shows NOTHING, not a label', async () => {
+    // ⚠ THIS CASE WAS INVERTED IN CANVASS-9a, NOT DELETED, AND THE INVERSION IS THE
+    // RECORD. It asserted `findByText(/No referral record/)` — correct until Danny ruled
+    // that a row with no referral record says nothing at all (the membership-badge
+    // principle: a referred client says who referred them and everyone else says
+    // nothing). Measured reason: 264 of 272 seeded rows carry no pipeline row, so the
+    // label was repeated text on almost every row.
     //
-    // ⚠ ANCHORED ON THE LITERAL, NOT ON NO_STAGE_LABEL, AND THE GUARD-PROOF IS WHY.
-    // This case originally used `new RegExp(NO_STAGE_LABEL)`; changing the constant to
-    // 'Lead' — the exact defect — moved the needle with the code and the test stayed
-    // GREEN. A test whose needle is the value under test cannot fail.
+    // ⚠ AND THE ROW MUST STILL READ DELIBERATELY WITH IT GONE, which the brief asks for
+    // in terms — so this asserts the POSITIVE too: the date survives as the row's one
+    // meta segment. A row that rendered an EMPTY meta line would satisfy "the label is
+    // absent" while looking like a failed load, and that is the defect this pairing
+    // catches.
     mount({ clients: [client({ stage: null })], total: 1, limit: 100 });
-    expect(await screen.findByText(/No referral record/)).toBeTruthy();
+    await screen.findByText('Maria Lopez');
+    expect(screen.queryByText(/No referral record/)).toBeNull();
+    const meta = screen.getByText(/Assigned/);
+    expect(meta.textContent).toBe('Assigned Sep 15');
   });
 
   it('⚠ the missing-stage label is never a pipeline stage name', async () => {
@@ -263,7 +290,11 @@ describe('Canvass-4 — the list', () => {
     await screen.findByText('Details not available yet');
     const meta = screen.getByText(/Sold/);
     expect(meta.textContent).toContain('Assigned');
-    expect(meta.textContent).toContain('Assessment');
+    // ⚠ THE `toContain('Assessment')` THAT STOOD HERE IS GONE WITH THE SOURCE SEGMENT
+    // ITSELF (Part 4c), not relaxed. What this case is actually for — that an
+    // unnamed-record row still carries the metadata it does have — is unchanged and is
+    // now carried by the stage and the date.
+    expect(meta.textContent).toContain('Sold');
   });
 
   it('a failed load reports an error rather than an empty book', async () => {

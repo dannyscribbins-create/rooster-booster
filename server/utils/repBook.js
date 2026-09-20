@@ -72,4 +72,96 @@ const STAGE_RANK_SQL = `CASE pc.pipeline_status
            ELSE -1
          END`;
 
-module.exports = { OWN_BOOK_PREDICATE, STAGE_RANK_SQL };
+// ─── THE TIMEFRAME WINDOW (Canvass-9a, Parts 3b / 4b) ───────────────────────
+//
+// The rep's Home and Clients screens carry a week/month/year/all selector. It lives
+// here for the same reason OWN_BOOK_PREDICATE does: the window is applied by FIVE
+// separate statements across two routes — Home's stats, Home's conversions, the
+// list, the list's total, and the list's locked/provisional split — and five copies
+// of "what does 'this week' mean" is five things to get out of step.
+//
+// ⚠ AND THE DIVERGENCE HERE WOULD BE INVISIBLE RATHER THAN LOUD: a stat card and the
+// list beneath it computing slightly different windows both look completely correct
+// on their own. Only adding them up reveals it, which nobody does.
+
+// ⚠ `all` IS THE ABSENCE OF A PREDICATE, NOT A VERY LARGE WINDOW. A sentinel date —
+// "1970", "100 years ago" — would silently DROP any assignment whose date columns are
+// both NULL, because `NULL >= anything` is NULL. The absence of a clause cannot.
+const TIMEFRAME_DAYS = Object.freeze({ week: 7, month: 30, year: 365 });
+
+/**
+ * Normalise the client's `?timeframe=` into a window start.
+ *
+ * ⚠ AN UNRECOGNISED VALUE FALLS BACK TO `all`, WHICH IS THE WIDEST WINDOW, AND THAT
+ * DIRECTION IS THE WHOLE REASON THIS DOES NOT 400. A bad cursor DOES 400 on this
+ * route, because silently restarting at page 1 would make a corrupted cursor look
+ * like the end of the book — it HIDES rows. A bad timeframe falling back to `all`
+ * can only ever show MORE rows than asked for, never fewer, so it cannot hide
+ * anything; and it reproduces the pre-parameter behaviour exactly, which is what
+ * keeps a client that sends nothing working unchanged.
+ *
+ * ⚠ ONE `Date` FOR THE WHOLE REQUEST, COMPUTED HERE AND PASSED TO EVERY STATEMENT —
+ * deliberately NOT `NOW()` inside each query. Five statements each calling `NOW()`
+ * would each get a different instant, so a row created mid-request could land inside
+ * the list's window and outside the count's. The numbers would disagree, rarely and
+ * unreproducibly, which is the worst kind.
+ *
+ * @param {unknown} raw - req.query.timeframe
+ * @returns {{key: 'week'|'month'|'year'|'all', since: Date|null}}
+ */
+function parseTimeframe(raw) {
+  const key = Object.prototype.hasOwnProperty.call(TIMEFRAME_DAYS, raw) ? raw : 'all';
+  if (key === 'all') return { key: 'all', since: null };
+  return { key, since: new Date(Date.now() - TIMEFRAME_DAYS[key] * 24 * 60 * 60 * 1000) };
+}
+
+// ── THE CLAUSE, OVER THE ASSIGNMENT DATE ────────────────────────────────────
+//
+// ⚠ IT WINDOWS ON WHEN THE ASSIGNMENT HAPPENED — `COALESCE(sticky_set_at,
+// provisional_set_at)`, the same expression the list already sorts and displays as
+// "Assigned Sep 15". So "this week" means what the row itself says, and a rep can
+// check the filter against the dates in front of them. Windowing on `updated_at`
+// instead would be defensible and unverifiable: a row touched by a sync would drift
+// into "this week" while displaying an assignment date from March.
+//
+// ⚠ INERT WHEN THE PARAMETER IS NULL, exactly like the keyset clause above, so `all`
+// and a window run the SAME statement rather than two assembled variants. A route
+// that concatenates a clause conditionally has two shapes and tests one.
+//
+// ⚠ A ROW WITH NO ASSIGNMENT DATE AT ALL IS EXCLUDED FROM EVERY WINDOW AND INCLUDED
+// IN `all`. That is correct rather than convenient: `NULL >= x` is NULL, and a row
+// whose date we do not know cannot be claimed to fall inside a named window. It is
+// also not hypothetical — the seeded fixture carries an assignment with no client
+// mirror row, and the schema does not require either date column.
+//
+// @param {number} n - the 1-based parameter position holding the window start
+// @returns {string} a SQL fragment beginning with AND
+function timeframeClause(n) {
+  return `AND ($${n}::timestamptz IS NULL
+              OR COALESCE(cra.sticky_set_at, cra.provisional_set_at) >= $${n}::timestamptz)`;
+}
+
+// ── THE SAME WINDOW, OVER A CONVERSION ──────────────────────────────────────
+//
+// ⚠ A SEPARATE FUNCTION BECAUSE IT WINDOWS A DIFFERENT COLUMN ON A DIFFERENT TABLE,
+// AND CONFLATING THEM WOULD BE WRONG IN A WAY NOTHING WOULD REPORT. A conversion has
+// its own date — `referral_conversions.converted_at` — and the question "how many
+// conversions this week" is about when the CONVERSION happened, not about when the
+// referrer's rep assignment was made. Reusing `timeframeClause()` there would count
+// conversions by the age of an unrelated assignment row and return a plausible
+// number for a question nobody asked.
+//
+// @param {number} n - the 1-based parameter position holding the window start
+// @returns {string} a SQL fragment beginning with AND
+function conversionTimeframeClause(n) {
+  return `AND ($${n}::timestamptz IS NULL OR rc.converted_at >= $${n}::timestamptz)`;
+}
+
+module.exports = {
+  OWN_BOOK_PREDICATE,
+  STAGE_RANK_SQL,
+  TIMEFRAME_DAYS,
+  parseTimeframe,
+  timeframeClause,
+  conversionTimeframeClause,
+};

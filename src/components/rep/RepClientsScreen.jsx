@@ -4,6 +4,8 @@ import { statusVar } from '../../constants/statusTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { getAdminToken } from '../../utils/authStorage';
 import { safeAsync } from '../../utils/clientErrorReporter';
+import RepTimeframeBar, { TIMEFRAME_PHRASES } from './RepTimeframeBar';
+import { useRowPress, RowChevron } from './repRowAffordance';
 
 // ─── THE CLIENTS TAB — the rep's book of business (Canvass-4, A34.4) ─────────
 //
@@ -51,6 +53,21 @@ const STAGE_LABELS = Object.freeze({
   paid: 'Complete',
   not_sold: 'Not sold',
 });
+// ⚠ THIS LABEL NO LONGER APPEARS IN THE LIST, AND THE RULING IS "SHOW NOTHING"
+// (Canvass-9a, Part 4d). It is still exported and still rendered on the DETAIL screen,
+// where a named "Pipeline stage" section with nothing in it would be worse than a
+// sentence saying why.
+//
+// **Ruled by Danny: a list row with no referral record says nothing at all.** This is
+// the membership-badge principle reaching the stage segment — a referred client says
+// who referred them and everyone else says nothing. ⚠ MOST OF A BOOK IS DIRECT
+// CLIENTS (measured: 264 of 272 rows on the seeded fixture have no pipeline row), so
+// the label was repeated text on almost every row that told a rep nothing actionable.
+//
+// ⚠ AND A LABEL ON EVERY ROW IS WHAT MAKES IT INVISIBLE ANYWAY. A string that never
+// varies stops being read, so it cost a line of vertical space per row and carried no
+// information — while the eight rows where a stage DOES exist were the ones it made
+// harder to spot.
 const NO_STAGE_LABEL = 'No referral record';
 
 // ── ASSIGNMENT SOURCES — the real enum, not the mockup's ────────────────────
@@ -168,14 +185,34 @@ function MembershipBadge({ membership }) {
 // the warning colour when flagged. ⚠ The colour comes from the tokens, never from
 // the mockup's literal orange — that PNG is RoofMiles-branded and this surface is
 // white-label.
+// ── ⚠ WHAT A ROW CARRIES, AFTER CANVASS-9a: NAME · BADGES · STAGE IF ANY · DATE ──
+//
+// **TWO SEGMENTS WERE REMOVED BY RULING, AND NEITHER IS A SIMPLIFICATION I CHOSE.**
+//
+//   · **THE SOURCE IS GONE** (Part 4c). "· Quote", "· Assessment" — Danny: redundant,
+//     since the source appears in the detail, and not the information he wants at a
+//     glance. `SOURCE_LABELS` is still exported and still used by the DETAIL screen,
+//     where it answers a question the rep went looking for.
+//   · **A MISSING STAGE NOW RENDERS NOTHING** (Part 4d), rather than the words "No
+//     referral record". See NO_STAGE_LABEL's own note for the ruling and the measured
+//     reason — it was repeated text on 264 of 272 rows.
+//
+// ⚠ AND THE ROW HAD TO BE CHECKED FOR READING DELIBERATELY WITH BOTH GONE, WHICH THE
+// BRIEF ASKS FOR IN TERMS. The worst case is a direct client with no stage: the meta
+// line becomes the single segment "Assigned Sep 15". **That is a complete sentence-like
+// fragment rather than a fragment of a longer one** — there is no leading separator, no
+// trailing "·", and no empty space where something used to be, because the line is
+// built by joining a FILTERED list rather than by interpolating slots. A row that
+// failed to load would show an empty meta line; this one shows a date, which is the
+// distinction the brief is asking about.
 function ClientRow({ client, onOpen }) {
-  const stage = client.stage ? (STAGE_LABELS[client.stage] || client.stage) : NO_STAGE_LABEL;
-  const source = SOURCE_LABELS[client.assignmentSource] || client.assignmentSource || null;
+  const { pressed, pressHandlers } = useRowPress();
+  const stage = client.stage ? (STAGE_LABELS[client.stage] || client.stage) : null;
   const assigned = formatAssignedAt(client.assignedAt);
 
   // Built as a list so a missing segment collapses instead of leaving a stray
   // separator — the ' · '.join a template literal would have to fake.
-  const meta = [stage, assigned ? `Assigned ${assigned}` : null, source].filter(Boolean);
+  const meta = [stage, assigned ? `Assigned ${assigned}` : null].filter(Boolean);
 
   return (
     <li
@@ -183,10 +220,19 @@ function ClientRow({ client, onOpen }) {
       onKeyDown={onOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(client.jobberClientId); } } : undefined}
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
+      data-rep-row-pressed={onOpen && pressed ? 'true' : 'false'}
+      {...(onOpen ? pressHandlers : {})}
       style={{
         listStyle: 'none',
         cursor: onOpen ? 'pointer' : undefined,
-        background: 'var(--rm-surface, #FFFFFF)',
+        // ⚠ PRESSED PRESSES *DOWN* TO `--rm-recess` HERE, WHICH IS THE OPPOSITE
+        // DIRECTION FROM HOME'S FOCUS ROWS — and it is the same rule. These rows are
+        // CARDS sitting on `surface`, above a column painted `recess` (A34.1), so
+        // swapping to the other ground means going down into the column. Home's rows
+        // sit directly on the column and swap up to `surface`. ⚠ `--rm-text` is floored
+        // against BOTH grounds, which is what makes either direction safe without a
+        // per-brand measurement.
+        background: onOpen && pressed ? 'var(--rm-recess, #ECF0F8)' : 'var(--rm-surface, #FFFFFF)',
         border: elevationVar('border') ? `1px solid ${elevationVar('border')}` : undefined,
         borderLeft: `4px solid ${client.isFlagged ? statusVar('warning') : 'var(--rm-primary, #F26A1B)'}`,
         borderRadius: 12,
@@ -217,17 +263,26 @@ function ClientRow({ client, onOpen }) {
         </span>
         <MembershipBadge membership={client.membership} />
         <StatusPill isFlagged={client.isFlagged} isSticky={client.isSticky} />
+        {/* ⚠ ONLY WHEN THE ROW OPENS SOMETHING — see FocusRow's note. */}
+        {onOpen && <RowChevron />}
       </div>
-      <p
-        style={{
-          margin: '6px 0 0',
-          fontSize: 13, lineHeight: 1.4,
-          color: 'var(--rm-text, #1C2D4D)',
-          opacity: MUTED,
-        }}
-      >
-        {meta.join(' · ')}
-      </p>
+      {/* ⚠ THE WHOLE LINE IS CONDITIONAL, NOT JUST ITS SEGMENTS. With the source and
+          the no-stage label both gone, a row for a client with no stage AND no
+          assignment date has nothing to put here — and an empty `<p>` still occupies
+          its line box and its 6px top margin, which is the "something failed to load"
+          reading the brief warns against. No segments, no element. */}
+      {meta.length > 0 && (
+        <p
+          style={{
+            margin: '6px 0 0',
+            fontSize: 13, lineHeight: 1.4,
+            color: 'var(--rm-text, #1C2D4D)',
+            opacity: MUTED,
+          }}
+        >
+          {meta.join(' · ')}
+        </p>
+      )}
     </li>
   );
 }
@@ -260,22 +315,92 @@ function ClientRow({ client, onOpen }) {
 // heading is what tells a rep this is a state rather than a failed render.
 // Text carries it, and text is floored: full-opacity `--rm-text` on recess measured
 // 11.16:1 light / 18.45:1 dark, and the MUTED line 4.97:1 / 9.67:1.
-function EmptyBook() {
+// ── ⚠ AND A WINDOWED EMPTY RESULT IS NOT AN EMPTY BOOK (Canvass-9a) ─────────
+//
+// The copy above is a claim about the REP — "you have not been assigned anyone yet" —
+// and the timeframe bar makes it reachable by a rep with 272 clients who tapped
+// "Week". Telling that rep their book is empty is simply false, and it is the kind of
+// false that makes someone think the app has lost their data.
+//
+// ⚠ THIS IS THE SAME DISTINCTION A34.6 DRAWS ON THE REVENUE CARD — "you may not see
+// this" and "this does not exist yet" must not share a treatment — arriving on a
+// different screen. Two different states, two different sentences, and the filtered
+// one says how to get back.
+function EmptyBook({ timeframe = 'all' }) {
+  const filtered = timeframe !== 'all';
   return (
     <div style={{ padding: '24px 4px', textAlign: 'center', fontFamily: fontVar('body') }}>
       <p style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, color: 'var(--rm-text, #1C2D4D)' }}>
-        No clients yet
+        {filtered ? 'Nothing in this timeframe' : 'No clients yet'}
       </p>
       <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED }}>
-        Clients appear here once a request in Jobber is assigned to you.
+        {filtered
+          ? 'No clients were assigned to you in this window. Choose All to see your whole book.'
+          : 'Clients appear here once a request in Jobber is assigned to you.'}
+      </p>
+    </div>
+  );
+}
+
+// ── ⚠ THE BOOK STAT CARDS — LOCKED AND PROVISIONAL ONLY (Part 4a) ───────────
+//
+// **NOT FLAGGED**, by the same ruling that removed it from Home's grid: Flagged is a
+// pill on the rows it applies to, there is no explanatory language for it anywhere in
+// the app, and a rep can take no action on a flag an owner resolves. See
+// `RepHomeScreen`'s STAT_CARDS note for the full reasoning — it is one ruling, and
+// naming it in both places is deliberate rather than duplicated, because the next
+// person to add a card will be looking at whichever file they happen to open.
+//
+// ⚠ AND THESE TWO ARE THE RIGHT PAIR FOR *THIS* SCREEN RATHER THAN A SUBSET OF HOME'S.
+// Home answers "how big is my book" and leads with CLIENTS; this screen IS the book, so
+// the total is already on it — the count line under the list has rendered it
+// unconditionally since Canvass-4b, which was a production bug report. Repeating it in
+// a card would be the same number twice on one screen. Locked and Provisional are the
+// split that the list's own pills show per row and that nothing else totals.
+const BOOK_STAT_CARDS = Object.freeze([
+  { key: 'locked', label: 'LOCKED' },
+  { key: 'provisional', label: 'PROVISIONAL' },
+]);
+
+// ⚠ ITS OWN COMPONENT RATHER THAN AN IMPORT FROM RepHomeScreen, AND THE REASON IS A
+// CYCLE. `RepHomeScreen` already imports `STAGE_LABELS` from THIS file; importing
+// `StatCard` back from it would close the loop. The two are eleven lines of identical
+// presentation, and the honest fix is a shared primitive rather than a cycle — filed
+// rather than improvised here, because extracting it means touching Home's exports in
+// a phase whose Home work is already the largest part of the diff.
+function BookStatCard({ label, value }) {
+  return (
+    <div
+      style={{
+        flex: '1 1 40%',
+        minWidth: 0,
+        background: 'var(--rm-surface, #FFFFFF)',
+        border: `1px solid ${elevationVar('border')}`,
+        borderRadius: 12,
+        padding: '12px 14px',
+        fontFamily: fontVar('body'),
+      }}
+    >
+      <p style={{
+        margin: 0, fontSize: 24, fontWeight: 700, lineHeight: 1.15,
+        color: 'var(--rm-text, #1C2D4D)',
+      }}>
+        {value}
+      </p>
+      <p style={{
+        margin: '2px 0 0', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+        color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
+      }}>
+        {label}
       </p>
     </div>
   );
 }
 
 export default function RepClientsScreen({ onOpenClient = null }) {
-  const [state, setState] = useState({ status: 'loading', clients: [], total: 0, limit: 0, nextCursor: null });
+  const [state, setState] = useState({ status: 'loading', clients: [], total: 0, limit: 0, nextCursor: null, counts: null });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [timeframe, setTimeframe] = useState('all');
 
   useEffect(() => {
     let live = true;
@@ -288,7 +413,7 @@ export default function RepClientsScreen({ onOpenClient = null }) {
         // `rb_admin_token` and a hand-written literal here would be a second,
         // silently-wrong copy of it — the first draft of this file had exactly that.
         const token = getAdminToken();
-        const res = await fetch(`${BACKEND_URL}/api/rep/clients`, {
+        const res = await fetch(`${BACKEND_URL}/api/rep/clients?timeframe=${encodeURIComponent(timeframe)}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!res.ok) throw new Error(`rep clients: HTTP ${res.status}`);
@@ -300,13 +425,25 @@ export default function RepClientsScreen({ onOpenClient = null }) {
           total: Number.isFinite(data.total) ? data.total : 0,
           limit: Number.isFinite(data.limit) ? data.limit : 0,
           nextCursor: typeof data.nextCursor === 'string' ? data.nextCursor : null,
+          // ⚠ `Number.isFinite` PER FIELD, NOT `Array.isArray` AND NOT `!= null`. The
+          // guard matches THIS value's own shape — an object carrying two numbers — and
+          // its siblings above are guarded differently because they are differently
+          // shaped. `!= null` would admit a string, and `"7" + 2` is `"72"`: a
+          // confidently wrong figure in a stat card. Deliberate difference, not drift.
+          counts: data.counts && Number.isFinite(data.counts.locked) && Number.isFinite(data.counts.provisional)
+            ? data.counts
+            : null,
         });
       } catch {
         if (live) setState((s) => ({ ...s, status: 'error' }));
       }
     }, 'RepClientsScreen/load')();
+    // ⚠ SAME RACE GUARD AS HOME'S, AND IT MATTERS MORE HERE: this effect REPLACES the
+    // list wholesale, so a stale response arriving second would paint one window's rows
+    // under another window's bar and cursor.
     return () => { live = false; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeframe]);
 
   // ── LOAD THE NEXT PAGE ────────────────────────────────────────────────────
   // ⚠ APPENDS, AND IS GUARDED AGAINST A DOUBLE-TAP. Two in-flight requests with the
@@ -320,8 +457,12 @@ export default function RepClientsScreen({ onOpenClient = null }) {
     safeAsync(async () => {
       try {
         const token = getAdminToken();
+        // ⚠ THE WINDOW TRAVELS WITH THE CURSOR. Omitting it here would make page 2 of a
+        // filtered list unfiltered — the list would silently widen as a rep scrolled,
+        // and the count line would stop agreeing with the rows above it. A keyset cursor
+        // is only valid within the predicate it was minted under.
         const res = await fetch(
-          `${BACKEND_URL}/api/rep/clients?cursor=${encodeURIComponent(state.nextCursor)}`,
+          `${BACKEND_URL}/api/rep/clients?timeframe=${encodeURIComponent(timeframe)}&cursor=${encodeURIComponent(state.nextCursor)}`,
           { headers: token ? { Authorization: `Bearer ${token}` } : {} }
         );
         if (!res.ok) throw new Error(`rep clients page: HTTP ${res.status}`);
@@ -342,11 +483,11 @@ export default function RepClientsScreen({ onOpenClient = null }) {
     }, 'RepClientsScreen/loadMore')();
   };
 
-  const { status, clients, total, limit } = state;
+  const { status, clients, total, limit, counts } = state;
 
   return (
     <>
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 14 }}>
         <h1
           style={{
             margin: '0 0 4px',
@@ -357,10 +498,30 @@ export default function RepClientsScreen({ onOpenClient = null }) {
         >
           My Clients
         </h1>
+        {/* ⚠ THE SUBTITLE NOW CARRIES THE WINDOW, exactly as Home's stats section does,
+            and for the same reason: the window is stated ONCE and governs everything
+            below it — the cards, the list and the count. On THIS screen that includes the
+            list, which is a decision recorded in RepTimeframeBar's header rather than
+            left implicit: one control on one screen means one thing. */}
         <p style={{ margin: 0, fontSize: 15, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)' }}>
-          Book of business
+          {timeframe === 'all' ? 'Book of business' : `Clients ${TIMEFRAME_PHRASES[timeframe]}`}
         </p>
       </div>
+
+      <RepTimeframeBar value={timeframe} onChange={setTimeframe} label="Book timeframe" />
+
+      {/* ⚠ RENDERED ONLY WHEN THE SERVER SUPPLIED BOTH COUNTS. A stat card is a claim
+          about a number, and drawing 0 because a payload lost a field is the
+          "absent is not zero" defect this codebase already shipped once on the admin
+          money surface — an admin was told affirmatively there was nothing to review.
+          Absent counts mean no cards, not two zeros. */}
+      {status === 'ready' && counts && (
+        <div data-rep-book-stats="" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+          {BOOK_STAT_CARDS.map((c) => (
+            <BookStatCard key={c.key} label={c.label} value={counts[c.key]} />
+          ))}
+        </div>
+      )}
 
       {status === 'loading' && (
         <p style={{ margin: 0, fontSize: 15, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)', fontFamily: fontVar('body') }}>
@@ -374,7 +535,7 @@ export default function RepClientsScreen({ onOpenClient = null }) {
         </p>
       )}
 
-      {status === 'ready' && clients.length === 0 && <EmptyBook />}
+      {status === 'ready' && clients.length === 0 && <EmptyBook timeframe={timeframe} />}
 
       {status === 'ready' && clients.length > 0 && (
         <>

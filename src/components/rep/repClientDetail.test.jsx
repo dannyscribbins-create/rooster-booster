@@ -47,10 +47,23 @@ beforeEach(() => { localStorage.setItem(ADMIN_TOKEN_KEY, 'team-token'); });
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
 
 describe('Canvass-5 — the detail screen renders the assignment record', () => {
-  it('shows the name, the source in real vocabulary, and the locked pill', async () => {
+  // ⚠ THE NEEDLE CHANGED SHAPE IN CANVASS-9a BECAUSE THE MARKUP DID, AND THE PROPERTY
+  // IS UNCHANGED. Part 5 split the run-on `Source: X · Y · Assigned Z` paragraph into
+  // labelled `dt`/`dd` field rows — that was the fix for the two-line cramped wrap
+  // Canvass-8 measured — so `/Source: Assessment/` can no longer match: the label and
+  // the value are now two elements and there is no colon between them.
+  // ⚠ ASSERTED AS A LABEL/VALUE PAIR RATHER THAN BY LOOSENING THE REGEX. A relaxed
+  // `/Assessment/` would pass against a screen that had lost the "Source" label
+  // entirely, which is precisely the structure this phase added — so the pairing is
+  // what has to be pinned, not the value's presence somewhere on the page.
+  it('shows the name, the source as a labelled field, and the locked pill', async () => {
     mountDetail(detailPayload());
     expect(await screen.findByText('Maria Lopez')).toBeTruthy();
-    expect(screen.getByText(/Source: Assessment/)).toBeTruthy();
+    const sourceLabel = screen.getByText('Source');
+    expect(sourceLabel.tagName).toBe('DT');
+    // The value is this label's own sibling, not merely somewhere in the document.
+    expect(sourceLabel.nextElementSibling.tagName).toBe('DD');
+    expect(sourceLabel.nextElementSibling.textContent).toBe('Assessment');
     expect(screen.getByText(/First assignment locked/)).toBeTruthy();
     expect(screen.getByText('Locked')).toBeTruthy();
   });
@@ -73,8 +86,13 @@ describe('Canvass-5 — the detail screen renders the assignment record', () => 
     // The mockup draws `Danny → Sarah K. → Maria Lopez`. There is no data behind it:
     // the link is a name string with no foreign key. The name is true; the chain
     // would be an invention.
+    // ⚠ SAME MARKUP CHANGE AS THE SOURCE FIELD ABOVE (Part 5): "Referred by" is now a
+    // `dt` and the name its `dd`, so one regex can no longer span both. The chain
+    // assertion — which is the point of this case — is untouched.
     mountDetail(detailPayload({ referredBy: 'Sarah K.' }));
-    expect(await screen.findByText(/Referred by Sarah K\./)).toBeTruthy();
+    const label = await screen.findByText('Referred by');
+    expect(label.tagName).toBe('DT');
+    expect(label.nextElementSibling.textContent).toBe('Sarah K.');
     expect(screen.queryByText(/→/)).toBeNull();
   });
 
@@ -264,5 +282,99 @@ describe('Canvass-5 — paging the list', () => {
     render(<ThemeProvider><RepClientsScreen onOpenClient={onOpenClient} /></ThemeProvider>);
     fireEvent.click(await screen.findByText('Client a'));
     expect(onOpenClient).toHaveBeenCalledWith('a');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CANVASS-9a PART 5 — THE DETAIL SCREEN IS GROUPED INTO NAMED SECTIONS
+//
+// Danny: "all clunked together in scribble right now." The header card carried the
+// client's identity, two badges, THREE attribution facts as a separator-joined
+// sentence, and the contact details — four unrelated kinds of information in one box,
+// at one visual weight, with no labels.
+describe('Canvass-9a Part 5 — the detail screen is grouped, and the attribution no longer wraps', () => {
+  it('renders four NAMED sections in relevance order', async () => {
+    mountDetail(detailPayload());
+    await screen.findByText('Maria Lopez');
+    // ⚠ ORDER AS WELL AS PRESENCE. Four sections that all exist in an arbitrary order
+    // would satisfy a presence-only assertion while still reading as a scribble.
+    const titles = [...document.querySelectorAll('h2')].map((h) => h.textContent);
+    expect(titles).toEqual(['Attribution', 'Pipeline', 'Value']);
+    // The client card leads and is deliberately UNTITLED — the client's own name is its
+    // heading, and a "CLIENT" label above a person's name is a label nobody needs.
+    const firstSection = document.querySelectorAll('section')[0];
+    expect(firstSection.textContent).toContain('Maria Lopez');
+  });
+
+  it('⚠ the three attribution facts are SEPARATE labelled rows, not one joined sentence', async () => {
+    // This is the fix for the two-line cramped wrap Canvass-8 measured. The cause was
+    // the SHAPE — three facts joined with a separator into one paragraph, broken by the
+    // browser wherever it ran out of room, mid-fact, with the separator orphaned.
+    mountDetail(detailPayload());
+    await screen.findByText('Maria Lopez');
+    const labels = [...document.querySelectorAll('dt')].map((d) => d.textContent);
+    expect(labels).toContain('Source');
+    expect(labels).toContain('Status');
+    expect(labels).toContain('Assigned');
+    // ⚠ AND THE SEPARATOR IS GONE FROM THE ATTRIBUTION CARD ENTIRELY, which is the
+    // character that was being orphaned. Asserted on the card rather than the page,
+    // because other parts of the screen may legitimately use it.
+    const attributionCard = [...document.querySelectorAll('section')]
+      .find((s) => s.textContent.includes('Attribution'));
+    expect(attributionCard.textContent).not.toContain(' · ');
+  });
+
+  it('⚠ each value is its label’s OWN sibling, not merely somewhere on the page', async () => {
+    // A `getByText` for the value would pass against a screen whose labels and values
+    // had drifted apart — the pairing is the property, and `dt`/`dd` adjacency is it.
+    mountDetail(detailPayload());
+    await screen.findByText('Maria Lopez');
+    const pairs = {};
+    for (const dt of document.querySelectorAll('dt')) {
+      pairs[dt.textContent] = dt.nextElementSibling && dt.nextElementSibling.textContent;
+    }
+    expect(pairs.Source).toBe('Assessment');
+    expect(pairs.Status).toBe('First assignment locked');
+  });
+
+  it('⚠ an ABSENT assignment date omits its row rather than rendering a dash', async () => {
+    // A dash in a labelled row is a claim that we looked and there was nothing; an
+    // absent row makes no claim. Same rule as the membership badge.
+    mountDetail(detailPayload({ assignedAt: null }));
+    await screen.findByText('Maria Lopez');
+    const labels = [...document.querySelectorAll('dt')].map((d) => d.textContent);
+    expect(labels).not.toContain('Assigned');
+    // ⚠ THE PAIRED POSITIVE, so this is not satisfied by a screen that lost the row
+    // entirely: the other two attribution rows must still be there.
+    expect(labels).toContain('Source');
+    expect(labels).toContain('Status');
+  });
+
+  it('⚠ the contact details are labelled fields on the CLIENT card, not a joined line', async () => {
+    mountDetail(detailPayload());
+    await screen.findByText('Maria Lopez');
+    const pairs = {};
+    for (const dt of document.querySelectorAll('dt')) {
+      pairs[dt.textContent] = dt.nextElementSibling && dt.nextElementSibling.textContent;
+    }
+    expect(pairs.Email).toBeTruthy();
+    // And they sit on the FIRST section, beside the name, rather than in the
+    // attribution record — "how to reach them" is not an attribution fact.
+    const firstSection = document.querySelectorAll('section')[0];
+    expect(firstSection.textContent).toContain(pairs.Email);
+  });
+
+  it('⚠ the status PILL moved to the attribution card, off the client card', async () => {
+    // A correction rather than a rearrangement: "locked or provisional" is a fact about
+    // the RECORD, and sitting beside the client's name it read as a property of the
+    // PERSON.
+    mountDetail(detailPayload());
+    await screen.findByText('Maria Lopez');
+    const sections = [...document.querySelectorAll('section')];
+    const clientCard = sections[0];
+    const attributionCard = sections.find((s) => s.textContent.includes('Attribution'));
+    expect(attributionCard.textContent).toContain('Locked');
+    // The client card keeps the MEMBERSHIP badge, which genuinely is about the person.
+    expect(clientCard.textContent).not.toContain('Locked');
   });
 });

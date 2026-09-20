@@ -61,6 +61,51 @@ import { LIGHT_SURFACE_HEX } from '../../utils/themeTokens.mjs';
 // mutually inconsistent NULL-logo behaviours. So this reports upward and renders
 // nothing different itself. ⚠ Do NOT add a fallback here: a second site deciding
 // what an absent mark looks like is the exact drift BrandMark was written to end.
+// ── ⚠ `stableBox` — THE PLATE CHANGES THE BOX, AND ON A SHELL THAT MATTERS ───
+//
+// Canvass-9a, and it is a MEASURED defect rather than a refinement. The plate wraps
+// the mark in a div padded `10px 14px`, so in dark mode the header is **20px taller
+// than in light** — and because the header is the first thing in a column, that 20px
+// displaces every element below it. Measured on the rendered node, palette-beta, one
+// route, one scroll position, fonts equal in both runs:
+//
+//     header height   dark 87.59   light 67.59   Δ +20
+//     main top        dark 145.59  light 125.59  Δ +20
+//     h1 top          dark 169.59  light 149.59  Δ +20
+//
+// ⚠ IT IS A SINGLE DISPLACEMENT, NOT AN ACCUMULATION — the offset is introduced at
+// the header and every later number carries the same 20, unchanged. Proven by
+// zeroing ONLY this padding on the rendered node: the dark header collapsed to
+// 67.59 and `main` to 125.59, matching light exactly.
+//
+// ⚠ AND THE CAUSE IS THE PADDING, NOT SPACE THAT "FAILED TO COLLAPSE". In light mode
+// this component returns a BARE IMAGE and the wrapper does not exist at all; the
+// `<img>` itself is byte-identical in both modes (39.59 × 132 at the measured size).
+// The whole 20px is this div's own vertical padding.
+//
+// ── WHY IT IS OPT-IN AND NOT SIMPLY FIXED FOR EVERYONE ──────────────────────
+// This component has FOUR call sites and only one of them is a shell. On
+// LoginScreen, ResetPinScreen and FrozenAccountScreen a person never sees the same
+// screen in both modes back to back — there is nothing to compare against, so a
+// 20px difference is unobservable there. On the rep shell the mode is a TOGGLE the
+// rep flips on the Profile tab and then watches the app repaint, which is precisely
+// the condition under which the jump is visible. **The requirement belongs to the
+// surface that has it.**
+//
+// ⚠ AND THIS FILE'S OWN HEADER FORBIDS THE ALTERNATIVE IN TERMS: *"Light mode is
+// byte-for-byte the previous markup … Adopting this component must not move a pixel
+// in the only mode that has shipped."* Reserving the box unconditionally would add
+// 20px to three shipped auth screens as a side effect of fixing a fourth. The flag
+// keeps that promise while making the box identical where identity is required.
+//
+// WHEN SET: light mode renders the SAME wrapper with the SAME padding and a
+// transparent background, so the two branches produce the same box BY
+// CONSTRUCTION rather than by two numbers someone has to keep equal.
+//
+// ⚠ THE ATTRIBUTES SAY WHAT IS TRUE. `data-rm-logo-box` marks the wrapper in both
+// modes — it is the box. `data-rm-logo-plate` marks it ONLY when it actually paints
+// a plate, which is dark only, so every existing assertion that a plate is absent in
+// light stays correct and keeps meaning what it meant.
 export default function BrandLogo({
   src,
   alt,
@@ -69,6 +114,7 @@ export default function BrandLogo({
   // component is not also a layout change. FrozenAccountScreen passes 16.
   marginBottom = 20,
   onError,
+  stableBox = false,
 }) {
   const { mode } = useContext(ThemeContext);
 
@@ -80,6 +126,28 @@ export default function BrandLogo({
       style={{ width, height: 'auto', display: 'block' }}
     />
   );
+
+  // ⚠ ONE DECLARATION, READ BY BOTH BRANCHES. The whole point is that the dark plate
+  // and the reserved light box cannot have different padding — so the number is
+  // written once and neither branch may restate it.
+  const BOX_PADDING = '10px 14px';
+
+  if (mode !== 'dark' && stableBox) {
+    return (
+      <div
+        data-rm-logo-box=""
+        style={{
+          background: 'transparent',
+          width: 'fit-content',
+          margin: `0 auto ${marginBottom}px`,
+          padding: BOX_PADDING,
+          borderRadius: 12,
+        }}
+      >
+        {image}
+      </div>
+    );
+  }
 
   if (mode !== 'dark') {
     // Light mode is byte-for-byte the previous markup: no wrapper, no plate, the
@@ -101,11 +169,12 @@ export default function BrandLogo({
     // real browser use to find it, matching data-rm-theme on the provider.
     <div
       data-rm-logo-plate=""
+      data-rm-logo-box=""
       style={{
         background: LIGHT_SURFACE_HEX,
         width: 'fit-content',
         margin: `0 auto ${marginBottom}px`,
-        padding: '10px 14px',
+        padding: BOX_PADDING,
         borderRadius: 12,
       }}
     >

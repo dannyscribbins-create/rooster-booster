@@ -1126,3 +1126,249 @@ describe('Canvass-6 — GET /api/rep/home (A34.5 ruling ④, A34.6, A34.7)', () 
     assert.equal(res.body.stats.clients, 1);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CANVASS-9a — THE TIMEFRAME WINDOW, THROUGH THE REAL ROUTES (Parts 3b / 4b)
+//
+// ⚠ THESE ASSERT THE RESULT, NOT THAT A HELPER WAS CALLED. `repTimeframe.test.js`
+// covers the parser and the SQL fragments in isolation; a green parser proves
+// nothing about whether any query uses it — this repo's recorded
+// `loadContractorBranding()` defect is exactly that shape, where a resolver's own
+// unit test stayed green while no column was ever supplied. So every case here goes
+// through HTTP, against real rows, and reads the numbers back.
+//
+// ⚠ AND THE FIXTURE IS AGED SO THE FOUR WINDOWS CANNOT AGREE BY ACCIDENT. Three
+// assignments at 2, 20 and 200 days produce 1 / 2 / 3 / 3 for week / month / year /
+// all. If every row sat inside every window, a route that ignored the parameter
+// entirely would pass every case — the vacuity this repo recorded against the
+// request-attribution anchor, where a fixture's dates sat inside the grace window
+// under BOTH candidate anchors and the wrong one went green.
+describe('Canvass-9a — the timeframe window (Parts 3b / 4b)', () => {
+  const TOKEN = 'tf-token';
+  let repId;
+
+  // ⚠ AGES THE ASSIGNMENT ROW EXPLICITLY. The shared `assign()` helper stamps NOW()
+  // for both set_at columns, which cannot express "assigned 200 days ago" — and a
+  // window test whose rows are all new is the vacuous one.
+  async function assignAged(jobberClientId, daysAgo, { sticky = true } = {}) {
+    await pool.query(
+      `INSERT INTO client_rep_assignments
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at,
+          provisional_rep_id, provisional_source, provisional_set_at, updated_at)
+       VALUES ($1, $2,
+               CASE WHEN $4 THEN $3::int ELSE NULL END,
+               CASE WHEN $4 THEN 'mode_a_at_close' ELSE NULL END,
+               CASE WHEN $4 THEN NOW() - ($5 || ' days')::interval ELSE NULL END,
+               CASE WHEN $4 THEN NULL ELSE $3::int END,
+               CASE WHEN $4 THEN NULL ELSE 'mode_a' END,
+               CASE WHEN $4 THEN NULL ELSE NOW() - ($5 || ' days')::interval END,
+               NOW() - ($5 || ' days')::interval)`,
+      [TENANT, jobberClientId, repId, sticky, String(daysAgo)]
+    );
+  }
+
+  beforeEach(async () => {
+    repId = await seedRep(TENANT, 'tf-rep@x.test');
+    await seedSession(TOKEN, { contractorId: TENANT, teamMemberId: repId });
+    await seedClient(TENANT, 'tf-new', 'New', 'Client');
+    await seedClient(TENANT, 'tf-mid', 'Mid', 'Client');
+    await seedClient(TENANT, 'tf-old', 'Old', 'Client');
+    await assignAged('tf-new', 2);
+    await assignAged('tf-mid', 20);
+    await assignAged('tf-old', 200);
+  });
+
+  it('⚠ the four windows return FOUR DIFFERENT client counts on the list', async () => {
+    // The discriminating case. A route ignoring ?timeframe= returns 3 for all four.
+    const week = await request('/api/rep/clients?timeframe=week', TOKEN);
+    const month = await request('/api/rep/clients?timeframe=month', TOKEN);
+    const year = await request('/api/rep/clients?timeframe=year', TOKEN);
+    const all = await request('/api/rep/clients?timeframe=all', TOKEN);
+
+    assert.equal(week.status, 200);
+    assert.equal(week.body.clients.length, 1, 'week should hold only the 2-day-old row');
+    assert.equal(month.body.clients.length, 2, 'month should hold the 2- and 20-day rows');
+    assert.equal(year.body.clients.length, 3, 'year should hold all three');
+    assert.equal(all.body.clients.length, 3, 'all should hold all three');
+
+    assert.deepEqual(week.body.clients.map((c) => c.jobberClientId), ['tf-new']);
+  });
+
+  it('⚠ the TOTAL obeys the window too — otherwise the count line is a wrong sentence', async () => {
+    // "Showing 1 of 3" over one row is not a smaller truth; it is false. The list and
+    // its total are windowed by the same parameter in the same request.
+    const week = await request('/api/rep/clients?timeframe=week', TOKEN);
+    assert.equal(week.body.total, 1, 'the total must be windowed, not the whole book');
+    const all = await request('/api/rep/clients?timeframe=all', TOKEN);
+    assert.equal(all.body.total, 3);
+  });
+
+  it('⚠ the locked/provisional counts obey the window, and they SUM to the total', async () => {
+    // Part 4a's two cards. The split is computed in the SAME statement as the total, so
+    // `locked + provisional === total` holds BY CONSTRUCTION rather than by two queries
+    // that ought to agree — and this asserts the construction rather than trusting it.
+    await seedClient(TENANT, 'tf-prov', 'Prov', 'Client');
+    await assignAged('tf-prov', 3, { sticky: false });
+
+    const week = await request('/api/rep/clients?timeframe=week', TOKEN);
+    assert.ok(week.body.counts, 'counts must be present');
+    assert.equal(week.body.counts.locked, 1, 'one sticky row inside the week');
+    assert.equal(week.body.counts.provisional, 1, 'one provisional row inside the week');
+    assert.equal(week.body.counts.locked + week.body.counts.provisional, week.body.total);
+
+    const all = await request('/api/rep/clients?timeframe=all', TOKEN);
+    assert.equal(all.body.counts.locked, 3);
+    assert.equal(all.body.counts.provisional, 1);
+    assert.equal(all.body.counts.locked + all.body.counts.provisional, all.body.total);
+  });
+
+  it('⚠ HOME stats obey the window — every card, not a subset', async () => {
+    // Ruled: no card is exempt, so the window is stated once above the grid. A route
+    // that windowed `clients` and not `locked` would make the grid internally
+    // inconsistent while every number looked plausible on its own.
+    const week = await request('/api/rep/home?timeframe=week', TOKEN);
+    assert.equal(week.status, 200);
+    assert.equal(week.body.stats.clients, 1);
+    assert.equal(week.body.stats.locked, 1);
+    assert.equal(week.body.stats.provisional, 0);
+
+    const all = await request('/api/rep/home?timeframe=all', TOKEN);
+    assert.equal(all.body.stats.clients, 3);
+    assert.equal(all.body.stats.locked, 3);
+    assert.equal(all.body.stats.provisional, 0);
+  });
+
+  it('⚠ TODAY FOCUS is NOT windowed — it answers "what now", not "when"', async () => {
+    // A deliberate non-effect, asserted because it is a decision rather than an
+    // oversight: a client assigned in March sitting at `sold` is exactly what belongs
+    // on that list in September. If someone later adds the window to those two queries
+    // this goes red, which is the point.
+    await pool.query(
+      `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, pipeline_status, last_synced_at)
+       VALUES ($1, 'tf-old', 'sold', NOW())`,
+      [TENANT]
+    );
+    const week = await request('/api/rep/home?timeframe=week', TOKEN);
+    const staged = week.body.focus.furthestAlong.map((c) => c.jobberClientId);
+    assert.deepEqual(staged, ['tf-old'], 'the 200-day-old staged client must still be in focus under ?timeframe=week');
+  });
+
+  it('⚠ an OMITTED timeframe behaves exactly as `all` — the pre-parameter contract', async () => {
+    // What keeps an older client, or any caller that sends nothing, working unchanged.
+    const omitted = await request('/api/rep/clients', TOKEN);
+    const all = await request('/api/rep/clients?timeframe=all', TOKEN);
+    assert.equal(omitted.body.total, all.body.total);
+    assert.deepEqual(
+      omitted.body.clients.map((c) => c.jobberClientId),
+      all.body.clients.map((c) => c.jobberClientId)
+    );
+  });
+
+  it('⚠ a GARBAGE timeframe widens to `all` rather than hiding the book', async () => {
+    // The direction matters: a bad cursor 400s on this route because silently
+    // restarting at page 1 HIDES rows. A bad timeframe can only ever show more.
+    for (const bad of ['decade', 'WEEK', '', '7']) {
+      const res = await request(`/api/rep/clients?timeframe=${encodeURIComponent(bad)}`, TOKEN);
+      assert.equal(res.status, 200, `${bad} should not error`);
+      assert.equal(res.body.total, 3, `${bad} should widen to all`);
+    }
+  });
+
+  it('⚠ the window travels with the CURSOR — page 2 of a filtered list stays filtered', async () => {
+    // Omitting it on the next page would make the list silently widen as a rep scrolled
+    // and stop agreeing with the count above it. A keyset cursor is only valid within
+    // the predicate it was minted under.
+    for (let i = 0; i < 4; i++) {
+      await seedClient(TENANT, `tf-w${i}`, `W${i}`, 'Client');
+      await assignAged(`tf-w${i}`, 1);
+    }
+    // 5 rows inside the week now (tf-new + four), 6 inside the month, 8 in all.
+    const month = await request('/api/rep/clients?timeframe=month', TOKEN);
+    assert.equal(month.body.total, 6, 'month holds the five recent rows plus the 20-day one');
+
+    // Page through the WEEK window and confirm no 20- or 200-day row ever appears.
+    let cursor = null;
+    const seen = [];
+    for (let guard = 0; guard < 10; guard++) {
+      const path = `/api/rep/clients?timeframe=week${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const page = await request(path, TOKEN);
+      assert.equal(page.status, 200);
+      for (const c of page.body.clients) seen.push(c.jobberClientId);
+      if (!page.body.nextCursor) break;
+      cursor = page.body.nextCursor;
+    }
+    assert.ok(!seen.includes('tf-mid'), 'the 20-day row leaked into a week-windowed page');
+    assert.ok(!seen.includes('tf-old'), 'the 200-day row leaked into a week-windowed page');
+    assert.equal(seen.length, 5);
+  });
+
+  it('⚠ CONVERSIONS are windowed by their OWN date, not by the assignment date', async () => {
+    // ⚠ A SEPARATE CLAUSE FROM EVERY OTHER STAT, AND SO A SEPARATE CASE. A conversion
+    // has its own `converted_at`; reusing the assignment window here would count
+    // conversions by the age of an unrelated assignment row and return a plausible
+    // number for a question nobody asked.
+    //
+    // ⚠ THE FIXTURE IS BUILT SO THE TWO DATES DISAGREE, which is the whole point: the
+    // ASSIGNMENT is 2 days old (inside every window) while one CONVERSION is 60 days old
+    // (outside week and month, inside year). A fixture where both dates sat in the same
+    // bucket could not tell the two clauses apart — the vacuity this repo recorded
+    // against the request-attribution anchor, where the dates agreed under both
+    // candidate anchors and the wrong one went green.
+    const { rows: u1 } = await pool.query(
+      `INSERT INTO users (full_name, email, pin, email_verified, contractor_id, jobber_client_id)
+       VALUES ('Ref One', 'tf-ref1@x.test', 'x', TRUE, $1, 'tf-new') RETURNING id`,
+      [TENANT]
+    );
+    const { rows: u2 } = await pool.query(
+      `INSERT INTO users (full_name, email, pin, email_verified, contractor_id, jobber_client_id)
+       VALUES ('Ref Two', 'tf-ref2@x.test', 'x', TRUE, $1, 'tf-mid') RETURNING id`,
+      [TENANT]
+    );
+    // tf-new is assigned 2 days ago; tf-mid 20 days ago. Both assignments are inside
+    // `year`, so any difference below comes from the CONVERSION date alone.
+    await pool.query(
+      `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at)
+       VALUES ($1, $2, 'conv-recent', NOW() - interval '2 days')`,
+      [u1[0].id, TENANT]
+    );
+    await pool.query(
+      `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at)
+       VALUES ($1, $2, 'conv-old', NOW() - interval '60 days')`,
+      [u2[0].id, TENANT]
+    );
+
+    const week = await request('/api/rep/home?timeframe=week', TOKEN);
+    const month = await request('/api/rep/home?timeframe=month', TOKEN);
+    const year = await request('/api/rep/home?timeframe=year', TOKEN);
+    const all = await request('/api/rep/home?timeframe=all', TOKEN);
+
+    assert.equal(week.body.stats.conversions, 1, 'only the 2-day-old conversion is inside a week');
+    assert.equal(month.body.stats.conversions, 1, 'the 60-day-old conversion is outside a 30-day month');
+    assert.equal(year.body.stats.conversions, 2, 'both are inside a year');
+    assert.equal(all.body.stats.conversions, 2);
+
+    // ⚠ AND THE PROOF THAT IT IS THE CONVERSION DATE DOING THE WORK: under `month` the
+    // ASSIGNMENT for tf-mid is present in the book (20 days old, inside 30) while its
+    // CONVERSION is not counted. If the conversions query were windowed by the
+    // assignment date instead, this would read 2.
+    assert.equal(month.body.stats.clients, 2, 'tf-mid IS in the month-windowed book');
+  });
+
+  it('⚠ a row with NO assignment date is in `all` and in NO window', async () => {
+    // `NULL >= x` is NULL, so this falls out of the SQL rather than being special-cased
+    // — and it is the reason `all` is the ABSENCE of a predicate rather than a sentinel
+    // date, which would have dropped this row from `all` too. Not hypothetical: the
+    // schema requires neither date column.
+    await pool.query(
+      `INSERT INTO client_rep_assignments
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+       VALUES ($1, 'tf-undated', $2, 'manual', NULL, NOW())`,
+      [TENANT, repId]
+    );
+    const all = await request('/api/rep/clients?timeframe=all', TOKEN);
+    assert.ok(all.body.clients.some((c) => c.jobberClientId === 'tf-undated'), 'an undated row must appear in `all`');
+
+    const year = await request('/api/rep/clients?timeframe=year', TOKEN);
+    assert.ok(!year.body.clients.some((c) => c.jobberClientId === 'tf-undated'), 'an undated row cannot be claimed to be inside a window');
+  });
+});

@@ -70,6 +70,55 @@ function Line({ children }) {
   );
 }
 
+// ── ⚠ THE FIELD ROW, AND IT IS THE FIX FOR A MEASURED DEFECT (Part 5) ───────
+//
+// Canvass-8 found the attribution value **wrapping to two cramped lines at phone
+// width**, and the cause was its shape rather than its length: source, locked-state
+// and date were joined with ' · ' into ONE paragraph, so the browser broke the line
+// wherever it ran out of room — mid-fact, with a leading separator stranded on the
+// second line. A longer source label or a contractor with a longer date format makes
+// it worse, and nothing about the markup said which fact was which.
+//
+// ⚠ SO THIS IS NOT "GIVE IT MORE ROOM", WHICH WOULD HAVE BEEN THE AVAILABLE
+// NON-FIX. Three facts joined by a separator is a LIST rendered as a sentence; each
+// one gets its own labelled row, so a wrap happens inside one value and stays legible,
+// and each fact is findable by its own name. **A label per fact also removes the ' · '
+// entirely**, which is the character that was being orphaned.
+//
+// ⚠ `dt`/`dd` INSIDE A `dl`, NOT TWO SPANS. These genuinely are term/value pairs, and
+// the semantics are free — a screen reader announces "Source, Quote" rather than
+// reading two unrelated fragments in sequence.
+function Field({ label, children }) {
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'baseline', gap: 10,
+        // ⚠ A ROW GAP RATHER THAN A MARGIN ON THE VALUE, so the last field adds no
+        // trailing space inside the card.
+        marginTop: 6,
+      }}
+    >
+      <dt style={{
+        flex: '0 0 auto', minWidth: 66,
+        fontSize: 12, fontWeight: 600, letterSpacing: '0.02em',
+        color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
+      }}>
+        {label}
+      </dt>
+      {/* ⚠ `minWidth: 0` IS WHAT LETS A LONG VALUE WRAP INSIDE ITS OWN COLUMN instead
+          of forcing the row wider than the card. A flex child defaults to
+          `min-width: auto`, which refuses to shrink below its content — the reason
+          "it wraps badly" and "it overflows" are usually the same bug. */}
+      <dd style={{
+        margin: 0, minWidth: 0, flex: 1,
+        fontSize: 15, lineHeight: 1.45, color: 'var(--rm-text, #1C2D4D)',
+      }}>
+        {children}
+      </dd>
+    </div>
+  );
+}
+
 // ── THE REVENUE CARD (A34.6 + A24.4) ────────────────────────────────────────
 //
 // TWO STATES, AND TELLING THEM APART IS THE ENTIRE RULING.
@@ -193,9 +242,24 @@ export default function RepClientDetailScreen({ clientId, onBack }) {
 
       {status === 'ready' && client && (
         <>
-          {/* ── IDENTITY + ASSIGNMENT — the mockup's header card ───────────── */}
+          {/* ── ⚠ FOUR NAMED SECTIONS, WHERE THERE USED TO BE ONE RUN-ON CARD ───
+              Part 5. Danny: "all clunked together in scribble right now." The header
+              card carried the client's identity, the membership and status badges, THREE
+              attribution facts as a separator-joined sentence, and the contact details —
+              four unrelated kinds of information in one box, at one visual weight, with
+              no labels. Grouped by relevance now, each section titled:
+                 CLIENT      — who they are and how to reach them
+                 ATTRIBUTION — the assignment record: source, status, date
+                 PIPELINE    — where the referral sits, when there is one
+                 VALUE       — A34.6's two states, unchanged
+              ⚠ THE SECTIONS ARE THE SAME `Card` PRIMITIVE AT THE SAME WEIGHT. GROUPING
+              IS WHAT WAS MISSING, NOT HIERARCHY — ranking these four would be inventing a
+              claim about which matters most, and the rep decides that by what they came
+              looking for. */}
+
+          {/* ── CLIENT ───────────────────────────────────────────────────────── */}
           <Card accent={client.isFlagged ? statusVar('warning') : 'var(--rm-primary, #F26A1B)'}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{
                 flex: 1, minWidth: 0, fontSize: 18, fontWeight: 700,
                 color: 'var(--rm-text, #1C2D4D)',
@@ -206,35 +270,73 @@ export default function RepClientDetailScreen({ clientId, onBack }) {
                 {client.nameUnavailable ? 'Details not available yet' : client.name}
               </span>
               <MembershipBadge membership={client.membership} />
-              <StatusPill isFlagged={client.isFlagged} isSticky={client.isSticky} />
             </div>
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)' }}>
-              {[
-                `Source: ${SOURCE_LABELS[client.assignmentSource] || client.assignmentSource || 'Unknown'}`,
-                client.isSticky ? 'First assignment locked' : 'Provisional — not yet locked',
-                client.assignedAt ? `Assigned ${new Date(client.assignedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : null,
-              ].filter(Boolean).join(' · ')}
-            </p>
-            {/* Contact details only when we actually hold a client record. */}
+            {/* ⚠ CONTACT DETAILS ARE LABELLED FIELDS NOW RATHER THAN A SEPARATOR JOIN,
+                for the same reason as the attribution block below — with a second benefit
+                that only shows on a phone: an email and a phone number are both things a
+                rep wants to ACT on, and a labelled row is a target rather than half of a
+                sentence. Rendered only when we actually hold a client record. */}
             {!client.nameUnavailable && (client.email || client.phone) && (
-              <p style={{ margin: '6px 0 0', fontSize: 13, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)' }}>
-                {[client.email, client.phone].filter(Boolean).join(' · ')}
-              </p>
+              <dl style={{ margin: '4px 0 0' }}>
+                {client.email && <Field label="Email">{client.email}</Field>}
+                {client.phone && <Field label="Phone">{client.phone}</Field>}
+              </dl>
             )}
           </Card>
 
-          {/* ── PIPELINE STAGE ─────────────────────────────────────────────── */}
+          {/* ── ATTRIBUTION ──────────────────────────────────────────────────
+              ⚠ THIS IS THE BLOCK THAT WAS WRAPPING TO TWO CRAMPED LINES AT PHONE WIDTH
+              — Canvass-8's own finding, fixed here because the brief asks for it. Three
+              facts, three labelled rows; see `Field` for why the shape was the cause.
+              ⚠ THE STATUS PILL MOVES HERE FROM THE HEADER CARD, and that is a correction
+              rather than a rearrangement: "locked or provisional" is a fact about the
+              RECORD, and sitting beside the client's name it read as a property of the
+              PERSON. */}
           <Card>
-            <CardTitle>Pipeline stage</CardTitle>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <CardTitle>Attribution</CardTitle>
+              <StatusPill isFlagged={client.isFlagged} isSticky={client.isSticky} />
+            </div>
+            <dl style={{ margin: 0 }}>
+              <Field label="Source">
+                {SOURCE_LABELS[client.assignmentSource] || client.assignmentSource || 'Unknown'}
+              </Field>
+              {/* ⚠ SPELLED OUT RATHER THAN LEFT TO THE PILL. The pill is a one-word state
+                  and this row says what that state MEANS — they are not redundant, and a
+                  rep who does not yet know the vocabulary has only this row. */}
+              <Field label="Status">
+                {client.isSticky ? 'First assignment locked' : 'Provisional — not yet locked'}
+              </Field>
+              {/* ⚠ OMITTED ENTIRELY WHEN ABSENT, never rendered as a dash. A dash in a
+                  labelled row is a claim that we looked and there was nothing; an absent
+                  row makes no claim at all. Same rule as the membership badge. */}
+              {client.assignedAt && (
+                <Field label="Assigned">
+                  {new Date(client.assignedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </Field>
+              )}
+            </dl>
+          </Card>
+
+          {/* ── PIPELINE ─────────────────────────────────────────────────────
+              ⚠ THE "No referral record" SENTENCE STAYS HERE, AND THAT IS NOT A
+              CONTRADICTION OF PART 4d. That ruling removed the label from LIST ROWS,
+              where it was repeated text on 264 of 272 rows that told a rep nothing
+              actionable. Here it is the entire content of a section the rep opened
+              deliberately, and a titled section with nothing in it reads as a failed
+              load. **Showing nothing is right where the row already says enough; saying
+              why is right where the rep is asking.** */}
+          <Card>
+            <CardTitle>Pipeline</CardTitle>
             <Line>{client.stage ? (STAGE_LABELS[client.stage] || client.stage) : NO_STAGE_LABEL}</Line>
             {/* ⚠ THE ONE HONEST FRAGMENT OF THE MOCKUP'S REFERRAL CHAIN. A referred
                 client carries a referrer NAME and nothing else — no id, no link, no
                 second hop. Showing the name is true; drawing an arrow diagram from it
                 would be an invention. */}
             {client.referredBy && (
-              <p style={{ margin: '6px 0 0', fontSize: 13, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)' }}>
-                Referred by {client.referredBy}
-              </p>
+              <dl style={{ margin: 0 }}>
+                <Field label="Referred by">{client.referredBy}</Field>
+              </dl>
             )}
           </Card>
 

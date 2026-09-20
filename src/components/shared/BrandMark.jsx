@@ -114,7 +114,14 @@ import { fontVar } from '../../constants/elevationTheme';
 // the url makes the state self-clearing: a new url has not failed, so it is
 // tried. It also needs no effect and no dependency array, so there is no
 // stale-closure hazard and no eslint-disable.
-export default function BrandMark({ width = 120, marginBottom = 20, branding: supplied, nameAlreadyShown = false }) {
+// ⚠ `stableBox` IS FORWARDED, NOT INTERPRETED. It is BrandLogo's box-model flag
+// (Canvass-9a — the dark plate makes a header 20px taller than in light, measured).
+// This component decides WHICH mark a surface gets; it has no opinion on the mark's
+// box, so it passes the flag through to the one place that does. ⚠ It reaches only
+// the A1/A2-with-logo branches, which is correct and worth stating: the A2 TEXT
+// fallback renders no plate in either mode, so it has no mode-dependent box to
+// stabilise — measured at 53px in both modes on the rep header.
+export default function BrandMark({ width = 120, marginBottom = 20, branding: supplied, nameAlreadyShown = false, stableBox = false }) {
   const ctx = useContext(ThemeContext);
   const [failedLogoUrl, setFailedLogoUrl] = useState(null);
 
@@ -140,6 +147,7 @@ export default function BrandMark({ width = 120, marginBottom = 20, branding: su
         alt={companyName}
         width={width}
         marginBottom={marginBottom}
+        stableBox={stableBox}
         onError={() => setFailedLogoUrl(logoUrl)}
       />
     );
@@ -147,7 +155,7 @@ export default function BrandMark({ width = 120, marginBottom = 20, branding: su
 
   // A1: nobody is resolved. The platform's own door, so the platform's own mark.
   if (!resolved) {
-    return <BrandLogo src={roofMilesLogo} alt={companyName} width={width} marginBottom={marginBottom} />;
+    return <BrandLogo src={roofMilesLogo} alt={companyName} width={width} marginBottom={marginBottom} stableBox={stableBox} />;
   }
 
   // A2, collapsed: the surrounding composition already names them adjacent to

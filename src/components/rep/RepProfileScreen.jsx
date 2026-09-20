@@ -55,7 +55,19 @@ function initialsOf(fullName) {
   return (first + last).toUpperCase();
 }
 
-function Row({ label, children, testId }) {
+// ── ⚠ `infoSlot` RESERVES ROOM AND BUILDS NO MECHANISM (Canvass-9a, Part 6b) ──
+//
+// The brief asks for room to the RIGHT OF THE LABEL for an info icon, and says in terms
+// that the icon and its popup are 9b's. So this makes the label half a flex ROW with a
+// gap instead of a bare span — an icon becomes one child here and nothing reflows.
+//
+// ⚠ IT RENDERS NOTHING TODAY, AND THAT IS THE POINT RATHER THAN AN UNFINISHED EDGE.
+// A29 already ruled this exact shape for the bottom nav's FAB slot: a control that is
+// present but inert — disabled, greyed, tooltipped, wired to a no-op — reads as an
+// oversight, and the next person to see it enables it. **An absent control is a
+// decision.** The slot is a layout property, not a placeholder: there is no element, no
+// reserved width, and no empty box.
+function Row({ label, children, testId, infoSlot = false }) {
   return (
     <div
       data-testid={testId}
@@ -66,11 +78,82 @@ function Row({ label, children, testId }) {
         fontFamily: fontVar('body'),
       }}
     >
-      <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)', flexShrink: 0 }}>
-        {label}
-      </span>
+      <div
+        data-rep-row-label=""
+        data-rep-info-slot={infoSlot ? 'true' : 'false'}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+      >
+        <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)' }}>
+          {label}
+        </span>
+        {/* 9b's info icon mounts HERE. Nothing else changes when it does. */}
+      </div>
       <div style={{ minWidth: 0, textAlign: 'right' }}>{children}</div>
     </div>
+  );
+}
+
+// ── THE ATTRIBUTION PILL ────────────────────────────────────────────────────
+//
+// ⚠ THE POSITIVE STATE IS FILLED IN THE BRAND PRIMARY, AS THE BRIEF SPECIFIES, AND THE
+// NEGATIVE STATE IS DELIBERATELY NOT. A brand-primary badge is an affirmation — it is
+// the colour this app uses for the thing you tapped and the thing that is true — and
+// putting a RESTRICTION in it would announce a limitation as though it were a feature.
+// The negative takes the unfilled treatment `StatusPill` already uses for
+// "Provisional", so the two surfaces agree about what an unfilled pill means.
+//
+// ⚠ `--rm-on-primary` IS THE INK, NEVER A LITERAL WHITE. It is COMPUTED under a
+// contrast floor against whatever the primary fill turns out to be, and the platform
+// primary is the orange #F26A1B whose floored pair is **BLACK**. White-on-orange is
+// what it looks like it should be and is not what mounts; `themeKeyIntegrity` fails on
+// the plausible answer and has already caught exactly this on the avatar in this file.
+//
+// ⚠ THE null STATE GETS NO PILL AT ALL. `caps` is null until `/api/admin/me` lands, so
+// `attributable` is genuinely unknown for the first frame — and a pill in either
+// direction would be a claim about the rep's configuration made before the answer
+// arrived. An em dash says "not known yet" and claims nothing, which is the same
+// reasoning `initialsOf()` uses for an empty avatar.
+//
+// ── ⚠ IT SITS VALUE-RIGHT, NOT CENTRED, AND THAT IS A34's A30 OVERRIDING THE BRIEF ──
+// The brief asks for the pill "centred under the Title control". **A30 rules this row's
+// alignment in terms** — *"Label left, control right, matching Title, Attribution type,
+// Fallback link and Security, which all read label-left / value-right"* — and it names
+// Attribution type as one of the four rows that establish the rhythm. Centring this one
+// value would break the alignment A30 derived from the mockup's own row rhythm, and
+// would leave a right-aligned `<select>` directly above a centred pill.
+// **The ruling governs the brief on a question the ruling already answered** (CLAUDE.md,
+// Mockup precedence: the dated rulings win on behaviour and placement). The pill IS
+// directly under the Title control, in the same value column — which is the part of the
+// instruction that survives the ruling. ⚠ Raised rather than silently resolved: if Danny
+// wants it genuinely centred, that is an A30 amendment and not a styling tweak.
+function AttributionPill({ attributable }) {
+  if (attributable === null) {
+    return (
+      <span style={{ fontSize: 15, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>
+        —
+      </span>
+    );
+  }
+
+  const positive = attributable === true;
+  return (
+    <span
+      data-rep-attribution-pill=""
+      data-attributable={positive ? 'true' : 'false'}
+      style={{
+        display: 'inline-block',
+        fontSize: 13, fontWeight: 600, lineHeight: 1.2,
+        padding: '5px 11px', borderRadius: 999,
+        fontFamily: fontVar('body'),
+        background: positive ? 'var(--rm-primary, #F26A1B)' : 'transparent',
+        color: positive ? 'var(--rm-on-primary, #000000)' : 'var(--rm-text, #1C2D4D)',
+        // `currentColor` so the border cannot drift from the text it outlines — the
+        // same reasoning StatusPill records for its own border.
+        border: positive ? '1px solid transparent' : '1px solid currentColor',
+      }}
+    >
+      {positive ? 'Matches credited to you' : 'Matches not credited to you'}
+    </span>
   );
 }
 
@@ -160,17 +243,20 @@ export default function RepProfileScreen({ onLogout, caps = null }) {
 
   return (
     <>
+      {/* ⚠ NO SUBTITLE (Canvass-9a, Part 6a). It read "Self-service settings", and
+          Danny's note is that the title already says it. It was also the weaker kind of
+          subtitle — a description of the screen's CATEGORY rather than a fact about its
+          contents, which is the one kind that earns its line. Home's and Clients'
+          subtitles survive because they now carry the timeframe window, which is
+          information the heading cannot give. */}
       <div style={{ marginBottom: 20 }}>
         <h1 style={{
-          margin: '0 0 4px', fontFamily: fontVar('heading'),
+          margin: 0, fontFamily: fontVar('heading'),
           fontSize: 30, fontWeight: 700, letterSpacing: '-0.01em',
           color: 'var(--rm-text, #1C2D4D)',
         }}>
           Profile
         </h1>
-        <p style={{ margin: 0, fontSize: 15, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)' }}>
-          Self-service settings
-        </p>
       </div>
 
       {/* The avatar disc — mockup 6 draws it centred and filled with the action
@@ -235,15 +321,20 @@ export default function RepProfileScreen({ onLogout, caps = null }) {
         </select>
       </Row>
 
-      {/* ── ATTRIBUTION TYPE — display only, from the capability seam ───────── */}
-      <Row label="Attribution type" testId="rep-attribution">
-        <span style={{ fontSize: 15, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>
-          {attributable === null
-            ? '—'
-            : attributable
-              ? 'Attributable — clients matched to you are credited to you'
-              : 'Not attributable — clients are not credited to you'}
-        </span>
+      {/* ── ATTRIBUTION TYPE — display only, from the capability seam ─────────
+          ⚠ A PILL, NOT A SENTENCE (Canvass-9a, Part 6b). The sentence was up to 54
+          characters in a right-aligned value column on a 430px screen, so it wrapped to
+          three lines and pushed the row to nearly three times the height of Title
+          beside it. A pill is one line by construction.
+          ⚠ AND IT MUST BE TRUE ON ITS OWN, WHICH IS THE CONSTRAINT THAT PICKED THE COPY.
+          The info popup 9b adds will say "Clients matched to you through any means are
+          credited to you" — that adds DEPTH, and it must never be what rescues an
+          overstated label. Same principle the conversions card records: a rep who never
+          taps the icon must not be misled. "Matches credited to you" says whose, and
+          what happens, and claims nothing about the mechanism that the popup then
+          explains. */}
+      <Row label="Attribution type" testId="rep-attribution" infoSlot>
+        <AttributionPill attributable={attributable} />
       </Row>
 
       {/* ⚠ role="status" NOT role="alert". A failed save is worth announcing and is
@@ -266,16 +357,39 @@ export default function RepProfileScreen({ onLogout, caps = null }) {
       <div style={{ height: 20 }} aria-hidden="true" />
       <RepThemeToggleRow />
 
+      {/* ── ⚠ SIGN OUT IS ISOLATED (Canvass-9a, Part 6c) ────────────────────
+          It was touching the theme row's bottom hairline — `padding: 0` and no margin,
+          directly under a `borderBottom` — so it read as one more row in the list rather
+          than as the one destructive action on the screen. **The adjacency A30 requires
+          is ORDER, not proximity**: "directly above Sign out" means nothing may be
+          inserted between them, and it says nothing about the gap. Nothing is inserted.
+          ⚠ THE PADDING IS ON THE BUTTON, NOT ONLY ABOVE IT, and that is a touch-target
+          fix as much as a visual one: at `padding: 0` this control's hit area was the
+          height of its own text — about 19px on a phone, well under the ~44px a thumb
+          needs — for the single action on this screen that ends the session. A
+          mis-tapped Sign out is a full re-authentication, and on this stack that is a
+          PIN the rep may not have to hand. */}
+      <div style={{ height: 28 }} aria-hidden="true" />
+
       {onLogout && (
         <button
           type="button"
           onClick={onLogout}
           data-rep-signout=""
           style={{
-            background: 'none', border: 'none', padding: 0,
+            display: 'block', width: '100%',
+            background: 'none', border: 'none',
+            padding: '14px 0',
             font: 'inherit', cursor: 'pointer', textAlign: 'left',
             fontWeight: 700, fontSize: 16,
-            color: 'var(--rm-danger-text, #B91C1C)',
+            // ⚠ `statusVar('dangerText')`, NOT A HAND-WRITTEN `var(--rm-danger-text, …)`.
+            // This read the raw custom property with its own literal fallback, which is
+            // the second copy of a value `statusTheme.js` already owns — and the exact
+            // shape behind the recorded 1.34:1 login-screen defect, where a fallback was
+            // a plausible tint rather than the value that mounts. Flagged on reading this
+            // file, per CLAUDE.md's silent-audit rule, and fixed here because the line was
+            // already being edited.
+            color: statusVar('dangerText'),
           }}
         >
           Sign out

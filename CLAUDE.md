@@ -344,8 +344,39 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1556 server tests across 251 suites, and 1229 React tests across 75 files** (measured 2026-09-19 by the Canvass-8 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1556 · suites 251 · pass 1556 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-8 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1271 React tests across 77 files** (measured 2026-09-20 by the Canvass-9a commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9a COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  Server 1556 → 1574 is **+18 = 8 + 10**: eight in one new file (`repTimeframe.test.js`) and ten
+  appended to an EXISTING file (`repClients.test.js`). Suites 251 → 254 is **+3 = 2 + 1** — that
+  new file's TWO top-level `test.describe` blocks plus the ONE `describe` appended to
+  `repClients.test.js`. React 1229 → 1271 is **+42**; files 75 → 77 is two new files.
+  ⚠ **COUNTED WITH `grep -c`, AND EVERY LOOP CHECKED FOR POSITION RATHER THAN COUNTED.** Every
+  `for` in both new server files and in `repTimeframeAndRows.test.jsx` sits INSIDE an `it()`/`test()`
+  body — they iterate assertions and fixtures, not cases — so they multiply nothing.
+  ⚠ **THE REACT +42 IS FIVE CONTRIBUTORS, NOT TWO, AND WRITING THEM OUT IS THE CHECK:**
+  5 (`repHeaderModeParity.test.jsx`, new) + 22 (`repTimeframeAndRows.test.jsx`, new) + 6 (a new
+  describe appended to `repClientDetail.test.jsx`) + 6 (one appended to `repProfileScreen.test.jsx`)
+  + **1 where a single case was SPLIT INTO TWO** in `repClientsScreen.test.jsx` (the source
+  assertion moved out of the row case into its own) + **1** new negative-fill case in
+  `repProfileScreen.test.jsx` + **1 PHANTOM**. That is 42.
+  ⚠ **AND THE PHANTOM WAS PREDICTED BEFORE THE RUN AND THEN PROVEN, NOT RECONCILED AFTER IT.**
+  This commit adds `src/utils/greeting.js`, and **`src/utils` is one of the four roots
+  `adminBranding.test.jsx` walks**, emitting one case per swept non-test file. Asked before the
+  gate, per the rule this file states; then proven by moving the util aside and re-running that
+  file alone — **63 → 62 → 63**. `src/components/rep/` is NOT a walked root, so the two new
+  components there (`RepTimeframeBar.jsx`, `repRowAffordance.jsx`) add nothing, which is why the
+  arithmetic closes at exactly 42 rather than 44.
+  ⚠ **TWO GUARD-PROOFS WERE RUN AGAINST THIS COMMIT'S OWN NEW FENCES, AND BOTH WENT RED AS
+  PREDICTED.** Removing `stableBox` from `RepShell`'s `<BrandMark>` took the header-parity file to
+  **2 failed / 3 passed**, reporting *"expected 5 to be 4"* — dark renders five header elements and
+  light four, which is the shape of the original defect. Neutralising `timeframeClause()` took
+  `repClients.test.js` to **6 failed**, and re-pointing `conversionTimeframeClause()` at the
+  assignment date took it to **exactly 1**. A fence whose failure mode has never been observed is a
+  claim, not a check.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-8 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.*
+  It read **1556 / 251 / 1229 / 75**, +8 server in one new file and +22 React across an existing
+  file and one new one, and it records that its gate went red twice first — once on `cancelled 8`
+  beside `fail 1`, which is the reading this file insists is not a passing count.
   Server 1548 → 1556 is **+8**, the `it(` lines of one new file (`repConversions.test.js`); suites
   250 → 251 is that file's single top-level `describe`. React 1207 → 1229 is **+22 = 6 + 16** — six
   cases appended to the EXISTING `repHomeScreen.test.jsx` for the conversions card, and sixteen in

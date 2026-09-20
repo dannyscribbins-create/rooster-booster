@@ -7,6 +7,7 @@ import { usePermissions } from '../../hooks/useAdminPermissions';
 import { useAdminBranding } from '../shared/BrandingProvider';
 import { platformIdentityLine } from '../../utils/platformIdentity';
 import { clearAdminToken, getAdminToken } from '../../utils/authStorage';
+import { greetingLine } from '../../utils/greeting';
 
 // ─── money(): format a currency stat, or say the value is unavailable ────────
 // Guards the two money StatCards below. `stats.X.toLocaleString()` on a field
@@ -113,10 +114,12 @@ export default function AdminDashboard({ setLoggedIn, setPage, refreshKey, onSta
     ? (stats.pendingCashouts > 0 ? 'some' : 'none')
     : 'unknown';
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const firstName = full_name ? full_name.trim().split(/\s+/)[0] : null;
-  const greetingTitle = firstName ? `${greeting}, ${firstName}.` : `${greeting}.`;
+  // ⚠ EXTRACTED TO `src/utils/greeting.js` IN CANVASS-9a, NOT REWRITTEN. The rep app's
+  // Home tab needed the same greeting, and CLAUDE.md requires duplicate logic in more
+  // than one file to become a shared utility rather than a second copy. **The
+  // boundaries and the trailing full stop are this file's own, moved verbatim** — the
+  // rendered string is unchanged, which is why AdminDashboard.test.jsx needed no edit.
+  const greetingTitle = greetingLine(full_name);
 
   return (
     <>

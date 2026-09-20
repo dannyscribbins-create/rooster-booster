@@ -4210,11 +4210,224 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-9a — the structural UI pass, and the layout shift diagnosed (SHIPPED 2026-09-20)
+
+- [x] **✅ THE LAYOUT SHIFT BETWEEN MODES IS FIXED, AND THE DIAGNOSIS IS WORTH MORE THAN THE FIX.**
+      Danny had two screenshots of the same page at the same scroll position, differing only by the
+      dark-mode toggle, with the content sitting lower in one — since the first rep screen shipped.
+      **Measured on the rendered node**, palette-beta, 430x860, fonts confirmed loaded in BOTH runs:
+      `header 87.59 dark / 67.59 light`, `main top 145.59 / 125.59`, `h1 top 169.59 / 149.59` — a
+      **single 20px displacement introduced at the header** and carried unchanged by everything
+      below it, not an accumulation.
+      **Cause: `BrandLogo`'s dark-mode plate and its `10px 14px` padding.** Proven rather than
+      inferred — zeroing only that padding on the rendered node collapsed dark to 67.59 / 125.59,
+      matching light exactly. Fixed with an opt-in `stableBox` that makes light reserve the same
+      box, so the two modes produce one geometry BY CONSTRUCTION. Both modes now measure **59.8**.
+      ⚠ **DANNY'S HYPOTHESIS WAS RIGHT IN SUBSTANCE AND WRONG IN MECHANISM, AND THE DIFFERENCE
+      MATTERS.** He guessed the light plate was present but failing to collapse. It is **entirely
+      absent** in light — `BrandLogo` returns a bare `<img>` — and the `<img>` itself is byte-identical
+      in both modes. The whole 20px is the wrapper's own padding, which is why the fix is a box and
+      not a collapse.
+
+- [ ] 🔴 **THE SEEDER CANNOT EXERCISE THE DARK PLATE AT ALL, AND THAT IS WHY THIS SURVIVED FOUR
+      PHASES OF REP WORK.** `seedLocalStack.js` points every `logo_url` at `example.invalid` — its
+      own header says so, as a deliberate choice that exercises the absence rule. The consequence
+      nobody had drawn: the image fails, `BrandMark` takes its **A2 TEXT branch**, and **no plate
+      renders in either mode** — measured 53px both ways, no shift. **The defect needs a logo that
+      actually loads, which is every real contractor and no local fixture.**
+      ⚠ **A SESSION MEASURING THE STOCK STACK WOULD HAVE CONCLUDED THE HYPOTHESIS WAS WRONG.** That
+      is the failure this entry exists to prevent: the fixture makes a whole rendering branch
+      unreachable, and the branch's absence reads as the branch being correct. **This session had to
+      point `logo_url` at a real reachable PNG before the plate could be seen at all.**
+      **What would close it:** a fourth contractor, or a flag on the existing ones, whose `logo_url`
+      resolves to a committed local asset — so the plate branch, the `onError` fallback (A34.11) and
+      the A2 text branch are each reachable from one seeding run. Filed, not built: it is a seeder
+      change with its own test obligations, not a line in a UI phase.
+
+- [ ] 🔴 **`resize_window` REPORTS SUCCESS AND CHANGES NOTHING — AN INSTRUMENT FACT, MEASURED TWICE.**
+      Called with 420x900 and again with 430x860, both returning *"Successfully resized"*, while
+      `window.innerWidth` stayed **2560** across both. `outerWidth`/`outerHeight` read **0**.
+      ⚠ **THIS IS THE "a mechanism that reports health it cannot observe" CLASS, arriving through a
+      browser tool** — a plausible success with no way to tell by looking. **Phone-width rendering
+      must be produced some other way; this session used a 430px IFRAME**, which is a real layout at
+      a real width and does not mutate the page under measurement.
+      ⚠ **AND `innerWidth` IS 2560, NOT ZERO** — confirming CLAUDE.md's existing correction that the
+      recorded "all viewport values are zero" caveat was false. Only `outerWidth`/`outerHeight` are 0.
+
+- [ ] 🔴 **THE `<screen-shader>` NEEDLE IN CLAUDE.md IS RIGHT AND THE OBVIOUS SELECTOR FOR IT IS
+      WRONG.** CLAUDE.md records the diagnosis correctly: a screen-dimming extension injects a
+      `<screen-shader>` element as a direct child of `<html>` painting a full-viewport div at
+      z-index 2147483645, and the capture faithfully photographs it. **Confirmed again this session,
+      and two captures came back uniformly near-black while the DOM read correctly light.**
+      ⚠ **WHAT IS NEW: the overlay divs are CHILDREN of `<screen-shader>`, so they are OUTSIDE
+      `<body>` AND one level below `<html>`.** A sweep written as `html > *, body *` — which is the
+      natural way to write it and is what this session wrote — reaches **neither**, reports
+      `hidden: []`, and leaves the capture black with no error. **The correct sweep is
+      `document.querySelectorAll('*')`, plus hiding the `<screen-shader>` container by tag.**
+      ⚠ **Filed as a NEEDLE correction rather than a new environment limitation**, because the
+      recorded limitation was accurate and only the search was not — which is exactly the
+      *"validate every needle against known answers, in BOTH directions"* rule catching the reader
+      rather than the environment. **Once hidden correctly, capture works and is usable.**
+
+- [x] **✅ THREE READER FAULTS IN ONE SESSION, ALL CAUGHT BEFORE THEY BECAME FINDINGS.** Recorded
+      together because the pattern is the point: *assume the instrument is wrong before the finding
+      is.*
+      **1 — a 6px `h1` delta that looked like a mode difference was a FONT RACE.** Playfair Display
+      had loaded in one run and not the other. Gating on `document.fonts.ready` removed it entirely.
+      **Two readings taken under different font states are not two readings of the same thing.**
+      **2 — this session's own contrast helper walked the ground from `el.parentElement`**, so a
+      filled chip — which IS its own ink's ground — reported **1:1, white on white**. That is the
+      *"measure on the ELEMENT, not its parent"* fault reproduced inside the instrument built to
+      avoid it. Fixed to start the walk at the element itself; the chip then read 5.87:1.
+      **3 — a press-state ground swap read as "no change"** because the computed style was sampled
+      synchronously after dispatching `pointerdown`, before React flushed. With a 120ms flush it
+      reads `rgb(17,50,48)` → `rgb(5,15,15)` → restored, exactly as designed.
+
+- [x] **✅ THE TIMEFRAME RULING, AND IT IS A DECISION DANNY ASKED FOR PER-STAT.** **Every stat under
+      the bar obeys it; none is exempt.** The window is applied to the assignment date —
+      `COALESCE(sticky_set_at, provisional_set_at)` — and to `referral_conversions.converted_at` for
+      conversions, which is a **separate clause on a separate table** because reusing the assignment
+      window there would count conversions by the age of an unrelated row.
+      ⚠ **A MIXED GRID WAS REJECTED ON DANNY'S OWN REASONING:** a running total beside a windowed
+      count needs a per-card marker before any number can be trusted. **The window is stated ONCE,
+      in the section's subtitle directly above the grid, and governs everything beneath it** — which
+      is how "make it obvious which cards respond" is answered by having nothing to distinguish.
+      ⚠ **`all` IS THE DEFAULT AND IS THE ABSENCE OF A PREDICATE, NOT A LARGE WINDOW.** A sentinel
+      date would silently drop any assignment whose date columns are both NULL. Verified live: an
+      undated row appears in `all` and in no window.
+      ⚠ **TODAY'S FOCUS IS DELIBERATELY NOT WINDOWED** — it answers "what should I do now", which is
+      not a question about a date range. Verified in the browser: 10 rows under every window.
+
+- [ ] 🔴 **ON THE CLIENTS TAB THE WINDOW ALSO FILTERS THE LIST, AND THAT REACHES FURTHER THAN THE
+      BRIEF SAID.** Danny's brief says the bar "filters the stats". On Home that IS everything under
+      it; on Clients the **list is the dominant element**, and a control at the top of that screen
+      that windowed two small cards while leaving the list untouched would put **two different
+      windows on one screen**. Ruled: one control on one screen means one thing, so the list, its
+      total and the locked/provisional split all obey it.
+      ⚠ **RAISED RATHER THAN BURIED.** If Danny meant stats-only, the change is to drop
+      `timeframeClause(6)` from the list query and the cursor's parameter — the counts would keep
+      working unchanged. **Verified live against known answers: 53 / 130 / 204 / 272 for
+      week / month / year / all, matching an independent SQL count exactly.**
+
+- [ ] 🔴 **A30 vs THE BRIEF ON THE ATTRIBUTION PILL — RESOLVED TOWARD THE RULING, AND DANNY SHOULD
+      CONFIRM.** The brief asks for the pill "centred under the Title control". **A30 rules this
+      row's alignment in terms** — *"Label left, control right, matching Title, Attribution type,
+      Fallback link and Security"* — and names Attribution type as one of the four rows that
+      establish the rhythm. **Centring it would leave a right-aligned `<select>` directly above a
+      centred pill.** Shipped value-right, in the same column directly under the Title control,
+      which is the part of the instruction that survives the ruling.
+      ⚠ **If Danny wants it genuinely centred, that is an A30 amendment, not a styling tweak.**
+
+- [x] **✅ THE PILL COPY IS TRUE ON ITS OWN, WHICH WAS THE BINDING CONSTRAINT.** "Matches credited to
+      you" / "Matches not credited to you". 9b's info popup will say *"Clients matched to you
+      through any means are credited to you"* — that adds DEPTH and must never rescue an overstated
+      label, the same principle the conversions card already records. **"Attributable" is the jargon
+      the old sentence existed to explain and is deliberately gone from the rendered pill.**
+      ⚠ **THE NEGATIVE STATE IS NOT FILLED IN THE BRAND PRIMARY**, though the brief specifies that
+      colour. A brand-primary badge is an affirmation; announcing a restriction in it would read as
+      a feature. The negative takes `StatusPill`'s unfilled treatment so the two surfaces agree
+      about what an unfilled pill means.
+
+- [ ] 🔴 **A LAYOUT DEFECT FOUND BY LOOKING, WHICH NO MEASUREMENT IN THIS PHASE COULD HAVE SHOWN.**
+      Removing the FLAGGED card left three cards on `flex: 1 1 40%`, so the third **wrapped alone
+      and stretched to full width**: a PROVISIONAL of `1` rendered at the same visual weight as the
+      conversions card, directly above a CLIENTS of `272`. **The least important number became the
+      largest object on the screen.**
+      ⚠ **BOTH OBVIOUS FIXES WERE WRONG.** Three-across fits at 430px (measured: 123.3px each, no
+      label overflow) and **does not fit at 320–375px**, where three 121px cards want 383px of a
+      280px column. A half-width lone card leaves a **HOLE**, which the grid's own note forbids in
+      terms. Shipped: CLIENTS full width, LOCKED and PROVISIONAL paired beneath — no hole at any
+      width, and it matches the Clients tab, where those two pair for a structural reason
+      (`sticky_rep_id IS NULL` / `IS NOT NULL` partition the rows, so they sum to the first).
+      ⚠ **FILED AS AN OPEN ITEM BECAUSE IT IS A VISUAL JUDGEMENT DANNY HAS NOT SEEN.** The
+      arrangement is defensible and rule-compliant; it is not his ruling.
+
+- [ ] 🔴 **A DUPLICATED STAT CARD, FILED RATHER THAN EXTRACTED — AND THE REASON IS A CYCLE.**
+      `RepClientsScreen` needed `RepHomeScreen`'s `StatCard` for Part 4a's two cards, and
+      `RepHomeScreen` **already imports `STAGE_LABELS` from `RepClientsScreen`**. Importing back
+      would close the loop, so `BookStatCard` is eleven lines of deliberate duplication.
+      **The honest fix is a shared primitive** — `src/components/rep/` has no shared-presentation
+      module yet. Not done here: extracting it means touching Home's exports in a phase whose Home
+      work is already the largest part of the diff.
+
+- [ ] **⏳ CANVASS-9b — DEFERRED BY NAME, WITH ROOM LEFT WHERE THE BRIEF ASKED FOR IT.**
+      · **Info icons and the long-press reveal.** Room is reserved structurally and **nothing is
+        rendered**: the Attribution type label is a flex row with `data-rep-info-slot="true"` and one
+        child, and the conversions card's heading row already had its slot. ⚠ **A29's reasoning
+        governs the emptiness** — a control that is present but inert reads as an oversight and the
+        next person enables it; an absent control is a decision.
+      · **Motion.** Danny's brief, recorded verbatim in the Canvass-9a session notes: it should feel
+        *"clean, buttery, tactile, empowering, informative, and swift"*, and interacting should
+        *"feel like a decision when you click without friction"*. **Two accepted constraints:** scroll
+        motion must not make a long list feel weighed down — **a 3,756-client book on a mid-range
+        phone is the test case** — and the system must respect the OS reduce-motion setting **from
+        the start rather than as a retrofit**.
+        ⚠ **9b INHERITS A WORKING BASELINE RATHER THAN AN EXCEPTION TO CARVE:** the press feedback
+        shipped here is an INSTANT ground swap with no transition declared, which is already correct
+        under `prefers-reduced-motion` by construction.
+      · **The badge / filter system**, and the **CONV card's standout treatment**.
+      · **REFERRALS AS A FILTER on the Clients page**, alongside in-app / link-sent / needs-resend.
+        ⚠ **Danny's reasoning for why it was never in the mockup, recorded because it explains an
+        absence someone will otherwise read as an oversight: the book EXPANDED from referrals-only
+        to all assigned clients after the mockup was drawn.**
+
+- [ ] **⏳ PROFILE PHOTO FOR REPS — ITS OWN PHASE, LATER IN THE REP ARC.** Same as the referrer app:
+      stored in Backblaze, 2MB limit, from gallery or files. Danny wants it for personal ownership.
+      ⚠ **NOT A UI TWEAK** — it is storage, upload handling and a size limit, which is why it is a
+      phase rather than a line item. **2FA remains Wave 4 (SH-10 / SH-13), unchanged.**
+
+- [ ] 🔴 **`citecheck --changed-files` FLAGGED 21 LIKELY ROTTED AND *ZERO* NEEDED REPAIR — AND
+      VERIFYING THAT IS THE WHOLE ENTRY.** The breakdown, because the totals alone are useless:
+      **17 are the documented must-not-repair set.** They cite `CLAUDE.md:436-438`, `:501` and
+      `:502` as **quotations of pre-edit content**, and `CDL_3c_PHASE05_RULINGS.md` predicts this
+      exact flag in terms: *"Any future edit to `CLAUDE.md` will flag them LIKELY ROTTED, correctly
+      and permanently. They are not to be repaired."* **This commit edits CLAUDE.md's test-count
+      tripwire, +31 lines above them, so all 17 fired precisely as that document said they would.**
+      **4 point into `src/components/admin/AdminDashboard.jsx`, which this commit genuinely
+      changed — and ALL FOUR WERE ALREADY WRONG AT `a2f595a`, BEFORE THE EDIT.** Verified by
+      reading the cited content at the OLD line in the OLD revision, which is the procedure
+      CLAUDE.md prescribes and the only thing that separates these two groups:
+      · `AdminDashboard.jsx:63` (`ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md:240`) and `:62`
+        (`CDL_3b_BUILD_SPEC.md:596`) are both described as rendering *"Rooster Booster · Accent
+        Roofing"*. At HEAD those lines are a `headers:` object and a `fetch(` call. ⚠ **The literal
+        does not exist anywhere in the file any more** — it was retired to
+        `platformIdentityLine(branding)`. **So the repair is rewriting the sentence, not the
+        number**, and both specs now describe a state of the code that is gone.
+      · `AdminDashboard.jsx:83` (`PRE_LAUNCH_CHECKLIST.md:6880`) describes `pipelineTotal` as
+        `stats ? sum-of-four : 0`. That expression is at **`:79`** at HEAD; `:83` is a comment
+        four lines below it. Already off by four.
+      · `AdminDashboard.jsx:131` (`PRE_LAUNCH_CHECKLIST.md:2600`) records a stack trace through
+        that line. At HEAD it is `</div>`.
+      ⚠ **NOTHING WAS RENUMBERED, AND ADDING THE DELTA WOULD HAVE BEEN THE DEFECT.** CLAUDE.md
+      records the measured precedent: a commit flagged eleven of its own citations and **all eleven
+      had already been wrong beforehand**; adding the delta would have produced eleven
+      confidently-wrong citations under a message saying they were repaired. **Re-deriving where
+      these four subjects live is a different and larger job — filed here rather than improvised.**
+      ⚠ **AND THE TWO BRAND-SPEC ONES SHOULD BE CITED BY ROLE WHEN THEY ARE FIXED**, not by a new
+      number: *"AdminDashboard's page-header subtitle"* does not drift.
+
+- [x] **✅ WHAT A GENERAL-TIER REP ACTUALLY SEES, SINCE THE BRIEF ASKED.** **They DO get "Switch to
+      the admin panel".** `canSwitchSurface()` is `role === 'team' && is_field_rep` — **not
+      tier-gated**, deliberately: Ruling A(i) holds that a general-tier rep's admin side is an honest
+      empty state saying their Owner has granted them nothing, and that is still a destination.
+      ⚠ **SO THE CHROME BUDGET IS HEADER + SWITCHER = 117.8px** before the greeting, of which the
+      switcher is 58 — **half the chrome, and the half that cannot be reduced without reopening a
+      ruling.** The header itself is now 59.8 in both modes, down from 87.59/67.59.
+      ⚠ **OBSERVED AND NOT RULED:** on a phone the switcher is the most prominent object above the
+      greeting, and for a general-tier rep it leads to an empty state. **Flagged for Danny; not
+      changed, because A(i) ruled it.**
+
 ### Canvass-8 — Profile completed, and the conversions card (SHIPPED 2026-09-19)
 
 - [x] **✅ THE ARC'S STATE, RECORDED PLAINLY SO NOBODY HAS TO INFER IT.** **With Profile complete,
       the Canvass rep-screen arc is DONE except Canvass-9's real-browser pass.** Home, Clients,
       client detail and Profile all exist.
+      ⚠ **THAT BROWSER PASS IS NOW DONE — CANVASS-9a SUPERSEDED CANVASS-9 AS SCOPED AND FOLDED IT
+      IN**, because every screen had already been measured as it shipped and what had never happened
+      was seeing them TOGETHER. All four tabs were walked in both modes on palette-beta and captured.
+      **The sentence above is left as the record of what was true on 2026-09-19 rather than
+      rewritten**; this clause is the closure half. **The remaining UI work is CANVASS-9b** — see
+      that entry above for what it carries.
       ⚠ **NETWORK IS 3e's AND IS NOT PART OF THIS ARC.** The bottom nav's fourth tab is a
       placeholder by design; the constellation, the router decision (D10) and the rep-token mint are
       3d/3e's. **A session finding the Network tab inert has found the plan, not a gap.**

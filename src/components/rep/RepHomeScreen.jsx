@@ -4,14 +4,32 @@ import { statusVar } from '../../constants/statusTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { getAdminToken } from '../../utils/authStorage';
 import { safeAsync } from '../../utils/clientErrorReporter';
+import { greetingLine } from '../../utils/greeting';
+import RepTimeframeBar, { TIMEFRAME_PHRASES } from './RepTimeframeBar';
+import { useRowPress, RowChevron } from './repRowAffordance';
 import { STAGE_LABELS } from './RepClientsScreen';
 
 // ─── THE HOME TAB — mockups 2A/2B, on ruling ④ (Canvass-6) ──────────────────
 //
+// ── ⚠ THE SCREEN'S SHAPE, RESTRUCTURED IN CANVASS-9a (Part 3c) ──────────────
+//   greeting  →  "Your book at a glance" (timeframe bar, stat grid, conversions)
+//             →  "Today's focus" (Referral progress, Recently assigned)
+//
+// ⚠ WHAT THIS REPLACED, BECAUSE THE OLD SHAPE READS AS DELIBERATE UNTIL IT IS NAMED:
+// the `h1` said "Today's focus" and its subtitle said "Your book at a glance", so the
+// STAT GRID was titled "Today's focus" and the two actual focus lists were untitled
+// subsections underneath it. The subtitle has become the stats section's own heading —
+// it is what that phrase always described — and Today's Focus is now a sibling section
+// below, which is the mockup's arrangement.
+//
 // ⚠ TODAY'S FOCUS IS TWO SECTIONS WITH TWO HONEST LABELS, AND THE REASONING IS
 // RECORDED HERE SO IT IS NOT "SIMPLIFIED" BACK INTO ONE LIST.
-//   **Furthest along** ranks clients that HAVE a pipeline stage, by that stage.
+//   **Referral progress** ranks clients that HAVE a pipeline stage, by that stage.
 //   **Recently assigned** ranks the rest, by assignment date.
+// ⚠ THE FIRST WAS CALLED "Furthest along" UNTIL CANVASS-9a AND THE RENAME CHANGES NO
+// RULING. A34.5 governs both names identically: two orderings, two labels each true
+// about its own rows, neither implying the other, and the first not demoted for being
+// small today.
 // Neither section implies the other and neither borrows the other's label. A client
 // in the second is NOT behind one in the first — it simply has no referral record to
 // place it on the pipeline. They are two orderings, not one ranking split in half.
@@ -55,14 +73,61 @@ const MUTED = 0.72;
 // number starts accumulating when real referrals convert AFTER launch, and the card
 // existing is what makes that recordable. See `ConversionsCard` for why it is not a
 // fifth cell in this grid.
+// ── ⚠ THERE IS NO `FLAGGED` CARD, AND IT WAS REMOVED RATHER THAN NEVER ADDED ──
+//
+// Canvass-9a, ruled by Danny. **Flagged is a PILL on the rows it applies to, and
+// nowhere else in the app is there explanatory language about it** — an FAQ and
+// contractor training cover the concept later.
+//
+// ⚠ THE REASON IS THAT A DEDICATED CARD DRAWS ATTENTION TO A THING THAT MEANS
+// NOTHING TO A REP. A flag is resolved by an owner or an admin (A34.7); the rep can
+// take no action on it. A stat card reading "1 FLAGGED" on the entry screen asks a
+// question the rep cannot answer and cannot dismiss, and for most reps it reads 0
+// forever — a permanent slot for a number with no consequence.
+//
+// ⚠ THE SERVER STILL COUNTS IT AND THAT IS NOT DEAD CODE. `GET /api/rep/home` keeps
+// returning `flagged`, scoped by A34.7 to open co-assignment flags naming this rep,
+// because the DETAIL screen's pending-review card and the row pill are both driven
+// by the same scoping and the count is what its tests pin. Removing the card is a
+// display decision; the data contract is A34.7's and is untouched.
+//
+// ⚠ AND THE GRID REFLOWS RATHER THAN LEAVING A HOLE — same rule the absent revenue
+// card already follows. `flex: 1 1 40%` means three cards redistribute; a hole is
+// what a rep reads as a lock.
+// ⚠ `wide` IS A LAYOUT CONSEQUENCE OF REMOVING THE FOURTH CARD, AND IT WAS FOUND BY
+// LOOKING RATHER THAN BY MEASURING — no contrast reading or count could have shown it.
+// With four cards at `flex: 1 1 40%` the grid was a tidy 2x2. With three, the third
+// WRAPS ALONE AND STRETCHES TO FULL WIDTH, so a PROVISIONAL of 1 rendered at the same
+// visual weight as the conversions card, directly above a CLIENTS of 272. **The least
+// important number became the largest object on the screen.**
+//
+// ⚠ THE TWO OBVIOUS FIXES ARE BOTH WRONG, AND THE MEASUREMENTS AND THE RULINGS SAY WHY.
+//   · **Three across** fits at 430px — measured on the rendered node, 123.3px per card
+//     with no label overflow — and does NOT fit at 320-375px, where three cards needing
+//     121px each plus gaps want 383px of a 280px column. It would break on the narrower
+//     half of real phones, which is the half this app is most used on.
+//   · **A half-width lone card** leaves empty space beside it, and that is exactly the
+//     HOLE this grid's own note forbids in terms: *"a three-card grid with a hole would
+//     satisfy the prose and contradict the design. A hole is what a rep would read as a
+//     lock."*
+//
+// **So CLIENTS leads at full width and the two stats that PARTITION it pair beneath.**
+// No hole at any width, and the hierarchy becomes the honest one: the size of the book,
+// then its split. ⚠ It also matches the Clients tab, where Locked and Provisional are
+// already a pair — and they pair there for a structural reason rather than a visual one:
+// `sticky_rep_id IS NULL` and `IS NOT NULL` partition the rows, so those two always sum
+// to this one. The layout now says what the data means.
 const STAT_CARDS = Object.freeze([
-  { key: 'clients', label: 'CLIENTS' },
+  { key: 'clients', label: 'CLIENTS', wide: true },
   { key: 'locked', label: 'LOCKED' },
   { key: 'provisional', label: 'PROVISIONAL' },
-  { key: 'flagged', label: 'FLAGGED' },
 ]);
 
-function StatCard({ label, value, alert = false }) {
+// ⚠ `alert` IS GONE, NOT DISABLED. It tinted a value with `warningText` when the
+// count was above zero, and FLAGGED was its ONLY consumer — removed above by ruling.
+// A prop with no caller is dead code, and CLAUDE.md requires it to go in the same
+// session it is identified rather than be left for a reader to wonder about.
+function StatCard({ label, value, wide = false }) {
   return (
     <div
       style={{
@@ -70,7 +135,10 @@ function StatCard({ label, value, alert = false }) {
         // that 2B's remaining cards stretch when revenue is dropped: "a three-card grid
         // with a hole would satisfy the prose and contradict the design". A hole is what
         // a rep would read as a lock.
-        flex: '1 1 40%',
+        // ⚠ 100% TAKES A WHOLE ROW; 40% LETS EXACTLY TWO SHARE ONE. Both still GROW, so
+        // neither can leave a gap at the end of its row at any viewport width — which is
+        // what keeps the no-hole rule true for both shapes rather than only the pair.
+        flex: wide ? '1 1 100%' : '1 1 40%',
         minWidth: 0,
         background: 'var(--rm-surface, #FFFFFF)',
         border: `1px solid ${elevationVar('border')}`,
@@ -81,7 +149,7 @@ function StatCard({ label, value, alert = false }) {
     >
       <p style={{
         margin: 0, fontSize: 24, fontWeight: 700, lineHeight: 1.15,
-        color: alert && value > 0 ? statusVar('warningText') : 'var(--rm-text, #1C2D4D)',
+        color: 'var(--rm-text, #1C2D4D)',
       }}>
         {value}
       </p>
@@ -98,8 +166,8 @@ function StatCard({ label, value, alert = false }) {
 // ─── THE CONVERSIONS CARD (Canvass-8) ───────────────────────────────────────
 //
 // ⚠ DELIBERATELY NOT A FIFTH STAT CELL, AND THE REASON IS THE LABEL RATHER THAN THE
-// LAYOUT. The grid's cells carry one-word uppercase labels — CLIENTS, LOCKED,
-// PROVISIONAL, FLAGGED — and the truthful label for this number is a phrase: it
+// LAYOUT. The grid's cells carry one-word uppercase labels — CLIENTS, LOCKED and
+// PROVISIONAL — and the truthful label for this number is a phrase: it
 // counts *people your clients referred who have become customers*. "CONV" is the
 // mockup's word and says nothing; "CONVERSIONS" alone does not say whose, or of
 // what, and a rep with sold jobs would reasonably read it as their own closings.
@@ -159,20 +227,35 @@ function ConversionsCard({ value }) {
   );
 }
 
+// ⚠ THE CHEVRON AND THE PRESS STATE ARE WHAT MAKE THIS READ AS TAPPABLE (Part 3e).
+// The row has been activatable since Canvass-6 and said so only to a screen reader.
+// See `repRowAffordance.jsx` for why hover and `cursor: pointer` do not count.
+//
+// ⚠ PRESSED SWAPS TO `--rm-surface`, AND THE DIRECTION IS DELIBERATE. These rows sit
+// directly on the column, which A34.1 puts on `--rm-recess`, so lifting to `surface`
+// is the visible change here — the inverse of the Clients tab's card rows, which sit
+// ON surface and press DOWN to recess. One rule, "swap to the other ground", applied
+// to two different starting grounds. ⚠ BOTH DIRECTIONS KEEP THE TEXT FLOORED: A34.1
+// records that `--rm-text` is floored to 4.5:1 against BOTH `surface` and `recess`,
+// which is exactly what makes a ground swap safe without a per-brand measurement.
 function FocusRow({ client, onOpen, trailing }) {
+  const { pressed, pressHandlers } = useRowPress();
   return (
     <li
       onClick={onOpen ? () => onOpen(client.jobberClientId) : undefined}
       onKeyDown={onOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(client.jobberClientId); } } : undefined}
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
+      data-rep-row-pressed={onOpen && pressed ? 'true' : 'false'}
+      {...(onOpen ? pressHandlers : {})}
       style={{
         listStyle: 'none',
         display: 'flex', alignItems: 'center', gap: 8,
-        padding: '10px 0',
+        padding: '10px 8px 10px 0',
         borderBottom: `1px solid ${elevationVar('border')}`,
         cursor: onOpen ? 'pointer' : undefined,
         fontFamily: fontVar('body'),
+        background: onOpen && pressed ? 'var(--rm-surface, #FFFFFF)' : 'transparent',
       }}
     >
       <span style={{
@@ -187,6 +270,10 @@ function FocusRow({ client, onOpen, trailing }) {
       <span style={{ flexShrink: 0, fontSize: 12, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED }}>
         {trailing}
       </span>
+      {/* ⚠ ONLY WHEN THE ROW ACTUALLY OPENS SOMETHING. A chevron on an inert row is a
+          promise the row does not keep — and `onOpen` is genuinely absent in the
+          admin branding preview, which mounts these rows to demonstrate a palette. */}
+      {onOpen && <RowChevron />}
     </li>
   );
 }
@@ -194,15 +281,22 @@ function FocusRow({ client, onOpen, trailing }) {
 // ⚠ BOTH SECTIONS USE THIS SAME SHELL, AT THE SAME WEIGHT, DELIBERATELY. If the first
 // section were styled as secondary while it is small, filling up later would require a
 // restyle — and the ruling is that it becomes the real focus with no code change.
+// ⚠ `h3`, NOT `h2`, AND THE CHANGE IS STRUCTURAL RATHER THAN COSMETIC (Part 3c).
+// These two sections are now NESTED INSIDE a "Today's focus" section that owns the
+// `h2`, so an `h2` here would make them siblings of their own parent and give the
+// screen two headings claiming the same level. The visual weight is unchanged — the
+// font size and weight are the same numbers as before — which matters because A34.5
+// forbids the first section being visually subordinate. **The level moved; the
+// prominence did not.**
 function FocusSection({ title, subtitle, clients, onOpen, trailingFor, emptyCopy }) {
   return (
     <section style={{ marginBottom: 20 }}>
-      <h2 style={{
+      <h3 style={{
         margin: '0 0 2px', fontFamily: fontVar('heading'),
         fontSize: 17, fontWeight: 700, color: 'var(--rm-text, #1C2D4D)',
       }}>
         {title}
-      </h2>
+      </h3>
       <p style={{ margin: '0 0 6px', fontSize: 13, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)', fontFamily: fontVar('body') }}>
         {subtitle}
       </p>
@@ -241,6 +335,12 @@ function formatAssigned(iso) {
 // ⚠ AND IT RENDERS REAL-LOOKING NUMBERS RATHER THAN ZEROS, because the preview's job
 // is to show what a contractor's brand looks like on a populated screen — an all-zero
 // dashboard would demonstrate the palette on almost no ink.
+// ⚠ `flagged` STAYS IN THIS FIXTURE THOUGH NO CARD READS IT ANY MORE. The route still
+// returns it — A34.7's scoping is a data contract this phase did not touch — and a
+// preview payload that omits a key the server sends is a fixture that has quietly
+// stopped mirroring the thing it stands in for. That is this repo's recorded
+// "a double that can also stand in for a different shape" failure, and the cost of
+// keeping one honest key is nothing.
 const PREVIEW_SAMPLE = Object.freeze({
   stats: { clients: 128, locked: 121, provisional: 7, flagged: 2, conversions: 6 },
   focus: {
@@ -254,12 +354,16 @@ const PREVIEW_SAMPLE = Object.freeze({
   },
 });
 
-export default function RepHomeScreen({ onOpenClient = null, preview = false }) {
+export default function RepHomeScreen({ onOpenClient = null, preview = false, caps = null }) {
   const [state, setState] = useState(
     preview
       ? { status: 'ready', stats: PREVIEW_SAMPLE.stats, focus: PREVIEW_SAMPLE.focus }
       : { status: 'loading', stats: null, focus: null }
   );
+  // ⚠ `all` IS THE DEFAULT, WHICH IS WHAT KEEPS THE ENTRY SCREEN A RUNNING TOTAL.
+  // See RepTimeframeBar's header: defaulting to a window would silently shrink every
+  // number a rep sees on arrival and read as data loss.
+  const [timeframe, setTimeframe] = useState('all');
 
   useEffect(() => {
     // ⚠ FIRST LINE, BEFORE ANYTHING IS CONSTRUCTED. B-4's fence asserts the branding
@@ -269,7 +373,14 @@ export default function RepHomeScreen({ onOpenClient = null, preview = false }) 
     safeAsync(async () => {
       try {
         const token = getAdminToken();
-        const res = await fetch(`${BACKEND_URL}/api/rep/home`, {
+        // ⚠ THE WINDOW IS A SERVER PARAMETER, NOT A CLIENT FILTER, AND THAT IS NOT AN
+        // IMPLEMENTATION PREFERENCE. The stats are COUNTS over the rep's whole book —
+        // 272 rows on the seeded fixture and 3,756 in Danny's worst case — and the
+        // payload carries only the focus lists, never the rows the counts are taken
+        // over. There is nothing on the client to filter, so a client-side window
+        // could only ever filter what happened to be paged in and would report a
+        // confidently wrong number.
+        const res = await fetch(`${BACKEND_URL}/api/rep/home?timeframe=${encodeURIComponent(timeframe)}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!res.ok) throw new Error(`rep home: HTTP ${res.status}`);
@@ -279,28 +390,39 @@ export default function RepHomeScreen({ onOpenClient = null, preview = false }) 
         if (live) setState((s) => ({ ...s, status: 'error' }));
       }
     }, 'RepHomeScreen/load')();
+    // ⚠ `live` IS WHAT MAKES CHANGING THE WINDOW SAFE. Tapping Week then Month leaves
+    // two requests in flight, and without this the slower one wins whichever it is —
+    // the stats would show a window the bar is not displaying. The cleanup runs before
+    // the next effect, so only the newest request may write.
     return () => { live = false; };
-  }, [preview]);
+  }, [preview, timeframe]);
 
   const { status, stats, focus } = state;
 
   return (
     <>
+      {/* ── THE GREETING (Part 3a) ──────────────────────────────────────
+          ⚠ `greetingLine` IS THE ADMIN DASHBOARD'S OWN IMPLEMENTATION, EXTRACTED — not a
+          second one written to match. It lived inline in `AdminDashboard.jsx` (the
+          block under `pendingState`) and now lives in `src/utils/greeting.js`, which
+          both surfaces call. The `< 12` / `< 17` boundaries are the admin's unchanged,
+          so the two surfaces cannot greet differently at 4pm.
+          ⚠ AND IT RESOLVES IN THE VIEWER'S TIMEZONE because `new Date().getHours()` reads
+          the clock of the machine running it, which in a browser is the rep's own. That
+          is a requirement, not a side effect — see the util's header for why it must
+          never move to the server or take a timezone from the contractor record.
+          ⚠ THE NAME COMES FROM `caps`, WHICH ARRIVES AFTER FIRST PAINT, so the greeting
+          renders without a name for one frame and then gains one. That is correct and
+          is why `firstNameOf` returns null rather than a placeholder — a fabricated
+          name on a white-label surface is the one thing this must not do. */}
       <div style={{ marginBottom: 20 }}>
         <h1 style={{
-          margin: '0 0 4px', fontFamily: fontVar('heading'),
+          margin: 0, fontFamily: fontVar('heading'),
           fontSize: 30, fontWeight: 700, letterSpacing: '-0.01em',
           color: 'var(--rm-text, #1C2D4D)',
         }}>
-          Today&apos;s focus
+          {greetingLine(caps && caps.full_name)}
         </h1>
-        {/* ⚠ THE MOCKUP'S BANNER COPY IS NOT REPRODUCED. 2A/2B read "Two referral chains
-            are one step from conversion" — which is about the referral CHAIN, the very
-            thing A34.5 replaced with the one-hop version. Reproducing it would put
-            two-hop copy over one-hop data, the lie A34.5 names. */}
-        <p style={{ margin: 0, fontSize: 15, opacity: MUTED, color: 'var(--rm-text, #1C2D4D)' }}>
-          Your book at a glance
-        </p>
       </div>
 
       {status === 'loading' && (
@@ -317,34 +439,91 @@ export default function RepHomeScreen({ onOpenClient = null, preview = false }) 
 
       {status === 'ready' && stats && focus && (
         <>
-          <div data-rep-stats="" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 22 }}>
-            {STAT_CARDS.map((c) => (
-              <StatCard key={c.key} label={c.label} value={stats[c.key] ?? 0} alert={c.key === 'flagged'} />
-            ))}
-          </div>
+          {/* ── THE STATS SECTION — "Your book at a glance" (Part 3c) ─────────
+              ⚠ THIS SECTION IS NOW NAMED, AND TODAY'S FOCUS IS NO LONGER THE NAME OF IT.
+              The screen used to open with an `h1` reading "Today's focus" whose subtitle
+              was "Your book at a glance", with the two lists below under their own
+              headings — so the stat grid was titled "Today's focus" and the actual focus
+              lists were untitled subsections of it. **Danny's intent is the mockup's:
+              stats at the top, Today's Focus as its own section BELOW them.** The
+              subtitle became this section's name, which is what it always described.
+              ⚠ AND THE SUBTITLE NOW CARRIES THE WINDOW, WHICH IS THE WHOLE ANSWER TO
+              "make it obvious which cards respond". Every card under this bar obeys it,
+              so the window is stated ONCE here and there is nothing to distinguish
+              per-card. See RepTimeframeBar's header for the ruling. */}
+          <section style={{ marginBottom: 22 }} data-rep-stats-section="">
+            <h2 style={{
+              margin: '0 0 2px', fontFamily: fontVar('heading'),
+              fontSize: 17, fontWeight: 700, color: 'var(--rm-text, #1C2D4D)',
+            }}>
+              Your book at a glance
+            </h2>
+            <p style={{
+              margin: '0 0 10px', fontSize: 13, opacity: MUTED,
+              color: 'var(--rm-text, #1C2D4D)', fontFamily: fontVar('body'),
+            }}>
+              {/* ⚠ ONE SENTENCE GOVERNING THE WHOLE GRID. `all` reads "all time" rather
+                  than naming a date range, because there is no range — the server
+                  applies no predicate at all in that case. */}
+              Clients {TIMEFRAME_PHRASES[timeframe]}
+            </p>
 
-          <ConversionsCard value={stats.conversions ?? 0} />
+            <RepTimeframeBar value={timeframe} onChange={setTimeframe} label="Stats timeframe" />
 
-          <FocusSection
-            title="Furthest along"
-            subtitle="Your clients with a referral record, by pipeline stage"
-            clients={focus.furthestAlong}
-            onOpen={onOpenClient}
-            trailingFor={(c) => (c.stage ? (STAGE_LABELS[c.stage] || c.stage) : '')}
-            // ⚠ STATES A FACT ABOUT THE DATA, NOT A FAILURE. "None yet" would read as
-            // something missing; this says why the section is empty and implies nothing
-            // about the clients in the other one.
-            emptyCopy="None of your clients has a referral record yet, so there is no pipeline stage to rank by."
-          />
+            <div data-rep-stats="" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+              {STAT_CARDS.map((c) => (
+                <StatCard key={c.key} label={c.label} value={stats[c.key] ?? 0} wide={c.wide === true} />
+              ))}
+            </div>
 
-          <FocusSection
-            title="Recently assigned"
-            subtitle="Your other clients, newest assignment first"
-            clients={focus.recentlyAssigned}
-            onOpen={onOpenClient}
-            trailingFor={(c) => formatAssigned(c.assignedAt)}
-            emptyCopy="Clients appear here once a request in Jobber is assigned to you."
-          />
+            <ConversionsCard value={stats.conversions ?? 0} />
+          </section>
+
+          {/* ── TODAY'S FOCUS — ITS OWN SECTION, BELOW THE STATS (Part 3c) ────
+              ⚠ IT IS NOT FILTERED BY THE TIMEFRAME, DELIBERATELY. These two lists answer
+              "what should I do now", which is not a question about a date range: a client
+              assigned in March sitting at `sold` is exactly what belongs here in
+              September. The bar is scoped to the stats and sits inside their section
+              rather than above both, so it does not appear to govern this one. */}
+          <section data-rep-focus-section="">
+            <h2 style={{
+              margin: '0 0 10px', fontFamily: fontVar('heading'),
+              fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em',
+              color: 'var(--rm-text, #1C2D4D)',
+            }}>
+              Today&apos;s focus
+            </h2>
+
+            <FocusSection
+              // ⚠ RENAMED FROM "Furthest along" (Part 3d). A34.5's ruling is UNCHANGED by
+              // the rename and is what constrains it: two orderings, two labels each true
+              // about its own rows, neither implying the other. "Referral progress" says
+              // what these rows have — a referral record with a pipeline position — and
+              // still makes no claim that the rows in the other section are behind them.
+              // ⚠ AND IT IS STILL NOT VISUALLY SUBORDINATE. Same heading level, same size,
+              // same weight as "Recently assigned", and it still leads. A34.5's note that
+              // it must not be demoted "just because it is small today" governs the rename
+              // exactly as it governed the original.
+              title="Referral progress"
+              subtitle="Your clients with a referral record, by pipeline stage"
+              clients={focus.furthestAlong}
+              onOpen={onOpenClient}
+              trailingFor={(c) => (c.stage ? (STAGE_LABELS[c.stage] || c.stage) : '')}
+              // ⚠ STATES A FACT ABOUT THE DATA, NOT A FAILURE. "None yet" would read as
+              // something missing; this says why the section is empty and implies nothing
+              // about the clients in the other one.
+              emptyCopy="None of your clients has a referral record yet, so there is no pipeline stage to rank by."
+            />
+
+            <FocusSection
+              title="Recently assigned"
+              subtitle="Your other clients, newest assignment first"
+              clients={focus.recentlyAssigned}
+              onOpen={onOpenClient}
+              trailingFor={(c) => formatAssigned(c.assignedAt)}
+              emptyCopy="Clients appear here once a request in Jobber is assigned to you."
+            />
+          </section>
         </>
       )}
     </>
