@@ -591,6 +591,52 @@ router.get('/api/rep/home', async (req, res) => {
       params
     );
 
+    // ── CONVERSIONS (Canvass-8) — A36.1's credit rule, READ rather than written ──
+    //
+    // ⚠ ITS OWN QUERY, AND IT MUST STAY ONE. A conversion is a `referral_conversions`
+    // ROW; every stat above counts a `client_rep_assignments` row. LEFT JOINing this
+    // table into the query above would FAN OUT `COUNT(*)` — one client whose referrer
+    // has three conversions would report `clients: 3` — so the four stats above would
+    // silently inflate while looking entirely plausible. `repConversions.test.js`'s
+    // fan-out case fails loudly if anyone ever "unifies" them.
+    // ⚠ SO THE STATS COMMENT ABOVE — "every one counts over the same predicate as the
+    // lists" — DOES NOT EXTEND TO THIS ONE, deliberately. It shares the rep predicate
+    // and not the FROM, because it answers a different question about a different row.
+    //
+    // THE PATH, established across the A35/A36 arc and not invented here: a conversion
+    // names the REFERRER (`rc.user_id`), never the rep. The referrer's own Jobber
+    // client row — `users.jobber_client_id`, A24.5's join key — is the only thing that
+    // carries a rep assignment. So "my conversions" means *conversions whose REFERRER
+    // sits in my book*, which is exactly A36.1: the chain credits back to the
+    // referrer's rep. Nothing here writes an assignment; the chain-writes-sticky half
+    // of A36.1 is unbuilt and this phase does not build it.
+    //
+    // ⚠ THE PRE-LAUNCH BASELINE, MEASURED BY DANNY ON RAILWAY 2026-09-19 AGAINST
+    // `accent-roofing-dev`: conversions_total 2 · has_user_id 2 · user_has_jobber_link 2
+    // · resolves_to_an_assignment 0 · resolves_to_a_rep 0. **Both conversions bridge all
+    // the way to a Jobber client and neither client is in any rep's book**, so this
+    // returns 0 for every rep today.
+    // ⚠ AND THAT ZERO IS NOT THIN COVERAGE WAITING FOR THE BACKFILL TO FILL IT — the
+    // reasoning was corrected at the ruling. A conversion is a ROOFMILES concept: a
+    // tracked referral becoming a customer. The backfill imports JOBBER data, and
+    // Jobber never recorded a referral chain, so a mass import manufactures no
+    // conversions. The number starts accumulating when real referrals convert AFTER
+    // launch. **Building it is what makes that recordable**; waiting for a number that
+    // cannot arrive until the plumbing exists is circular.
+    const { rows: convRows } = await pool.query(
+      `SELECT COUNT(*)::int AS conversions
+         FROM referral_conversions rc
+         JOIN users u
+           ON u.id            = rc.user_id
+          AND u.contractor_id = rc.contractor_id
+         JOIN client_rep_assignments cra
+           ON cra.contractor_id    = rc.contractor_id
+          AND cra.jobber_client_id = u.jobber_client_id
+        WHERE rc.contractor_id = $1
+          AND ${OWN_BOOK_PREDICATE}`,
+      params
+    );
+
     // ── SECTION 1 — FURTHEST ALONG ───────────────────────────────────────────
     // Only clients with a stage. Ordered by the pipeline's own progression, then by
     // recency as a tiebreak, then by id so the order is TOTAL — the same discipline
@@ -644,7 +690,10 @@ router.get('/api/rep/home', async (req, res) => {
     });
 
     res.json({
-      stats: statRows[0],
+      // ⚠ MERGED, NOT NESTED — the client reads stats.conversions beside the other
+      // four. They come from two queries for the reason recorded at the second one;
+      // that is an implementation fact and not something the payload should expose.
+      stats: { ...statRows[0], conversions: convRows[0].conversions },
       focus: {
         furthestAlong: furthest.map((r) => ({ ...shape(r), stage: r.pipeline_status })),
         recentlyAssigned: recent.map(shape),

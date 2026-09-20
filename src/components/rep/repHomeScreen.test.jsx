@@ -10,7 +10,7 @@
 // the two sections never imply one ranking, and that no revenue appears in any state.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import ThemeProvider from '../shared/ThemeProvider';
 import RepHomeScreen, { STAT_CARDS } from './RepHomeScreen';
 import { ADMIN_TOKEN_KEY } from '../../utils/authStorage';
@@ -158,11 +158,21 @@ describe('Canvass-6 — the stats, and what is deliberately absent', () => {
   });
 
   it('a first-run rep sees zeros and both empty states, not an error', async () => {
-    mount(payload());
+    const { container } = mount(payload());
     expect(await screen.findByText(/Clients appear here once a request in Jobber is assigned/)).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
-    // Every stat reads 0 rather than being hidden.
-    expect(screen.getAllByText('0').length).toBe(STAT_CARDS.length);
+    // ⚠ SCOPED PER REGION, AND THIS IS A DELIBERATE CHANGE MADE IN CANVASS-8 RATHER
+    // THAN A LOOSENING. It read `getAllByText('0').length === STAT_CARDS.length` over
+    // the WHOLE screen, which was correct while the grid held every zero on the page.
+    // Canvass-8's conversions card adds a fifth zero OUTSIDE the grid, so the old form
+    // would have had to become `STAT_CARDS.length + 1` — a hand-maintained number that
+    // goes stale the next time anything renders a 0. Asserting each region separately
+    // is falsifiable in both directions instead: a stat dropped from the grid fails the
+    // first, and a conversions card that stops rendering fails the second.
+    const grid = container.querySelector('[data-rep-stats]');
+    expect(grid).toBeTruthy();
+    expect(within(grid).getAllByText('0').length).toBe(STAT_CARDS.length);
+    expect(within(screen.getByTestId('rep-conversions')).getByText('0')).toBeTruthy();
   });
 
   it('a failed load reports an error rather than an empty dashboard', async () => {
@@ -243,5 +253,76 @@ describe('Canvass-6 — tapping through to detail', () => {
     expect(screen.queryByText('null')).toBeNull();
     fireEvent.click(row);
     expect(onOpenClient).toHaveBeenCalledWith('x');
+  });
+});
+
+// ── CANVASS-8: THE CONVERSIONS CARD ─────────────────────────────────────────
+//
+// ⚠ EVERY MEANINGFUL CASE HERE IS SEEDED NON-ZERO. Danny's Railway baseline is 0
+// for every rep, and a card that has only ever rendered 0 is untested — a scoping
+// or formatting bug is invisible at zero. The zero case is asserted too, separately,
+// because zero is the honest production state and must not read as an error.
+//
+// ⚠ DECLARATION-LEVEL ONLY, like the rest of this file: jsdom resolves no var() and
+// does no layout, so nothing here proves what the card PAINTS or how it sits beside
+// the grid. That is the browser pass's job.
+describe('Canvass-8 — the conversions card', () => {
+  it('renders the count from the payload at a NON-ZERO value', async () => {
+    mount(payload({ stats: { conversions: 3 } }));
+    const card = await screen.findByTestId('rep-conversions');
+    expect(within(card).getByText('3')).toBeTruthy();
+  });
+
+  it('⚠ the label is TRUE ON ITS OWN — it says what the number counts, and it is not "CONV"', async () => {
+    // The mockup's word is CONV and it says nothing. A rep who never taps the info
+    // affordance the UI pass will add must still read the label correctly, so the
+    // label carries the noun ("referral conversions") rather than an abbreviation.
+    mount(payload({ stats: { conversions: 3 } }));
+    const card = await screen.findByTestId('rep-conversions');
+    expect(within(card).getByText(/referral conversions/i)).toBeTruthy();
+    // ⚠ ANCHORED ON THE WHOLE WORD. A bare 'CONV' needle would match 'CONVERSIONS'
+    // and pass against the very label this rules out — the substring trap.
+    expect(/\bCONV\b/.test(card.textContent)).toBe(false);
+  });
+
+  it('carries a definition line naming WHOSE referrals and WHAT happened to them', async () => {
+    mount(payload({ stats: { conversions: 3 } }));
+    const card = await screen.findByTestId('rep-conversions');
+    const text = card.textContent.toLowerCase();
+    expect(text.includes('your clients')).toBe(true);
+    expect(text.includes('referred')).toBe(true);
+    expect(text.includes('customers')).toBe(true);
+  });
+
+  it('renders zero honestly — no alert, no lock, no "not available" framing', async () => {
+    mount(payload({ stats: { conversions: 0 } }));
+    const card = await screen.findByTestId('rep-conversions');
+    expect(within(card).getByText('0')).toBeTruthy();
+    expect(card.querySelector('[role="alert"]')).toBeNull();
+    const text = card.textContent.toLowerCase();
+    for (const forbidden of ['locked', 'not available', 'unavailable', 'coming soon', 'error']) {
+      expect(text.includes(forbidden)).toBe(false);
+    }
+  });
+
+  it('⚠ sits OUTSIDE the stat grid — a fifth uppercase cell is what the label could not fit', async () => {
+    // Structural, not cosmetic: the grid's cells are one-word uppercase labels, and
+    // the truthful label for this number is a phrase. Keeping it out of the grid is
+    // what lets the label be true. If someone folds it back in, this fails.
+    const { container } = mount(payload({ stats: { conversions: 3 } }));
+    await screen.findByTestId('rep-conversions');
+    const grid = container.querySelector('[data-rep-stats]');
+    expect(grid).toBeTruthy();
+    expect(grid.querySelector('[data-testid="rep-conversions"]')).toBeNull();
+  });
+
+  it('treats a missing conversions field as 0 rather than rendering undefined', async () => {
+    // The server always sends it, but a card that prints "undefined" on a partial
+    // payload is the kind of defect that only shows in production.
+    mount(payload());
+    const card = await screen.findByTestId('rep-conversions');
+    expect(within(card).getByText('0')).toBeTruthy();
+    expect(card.textContent.includes('undefined')).toBe(false);
+    expect(card.textContent.includes('NaN')).toBe(false);
   });
 });

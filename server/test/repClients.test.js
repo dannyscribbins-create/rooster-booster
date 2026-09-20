@@ -1053,7 +1053,12 @@ describe('Canvass-6 — GET /api/rep/home (A34.5 ruling ④, A34.6, A34.7)', () 
     await seedSession('tok-h9', { contractorId: TENANT, teamMemberId: me });
     const res = await home('tok-h9');
     assert.equal(res.status, 200, 'an empty book is not an error');
-    assert.deepEqual(res.body.stats, { clients: 0, locked: 0, provisional: 0, flagged: 0 });
+    // ⚠ UPDATED IN CANVASS-8, DELIBERATELY AND OPENLY. `conversions` was added to this
+    // payload by the conversions card. A deepEqual on the WHOLE stats object is exactly
+    // the fence that catches an unannounced payload change, and it caught this one —
+    // so the key is ADDED here rather than the assertion being relaxed to a subset.
+    // Keeping it exhaustive is what makes the NEXT unannounced key fail too.
+    assert.deepEqual(res.body.stats, { clients: 0, locked: 0, provisional: 0, flagged: 0, conversions: 0 });
     assert.deepEqual(res.body.focus.furthestAlong, []);
     assert.deepEqual(res.body.focus.recentlyAssigned, []);
   });

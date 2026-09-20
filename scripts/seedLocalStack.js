@@ -923,6 +923,67 @@ async function seedStack(pool) {
   // test instead, which drives the component directly. → PRE_LAUNCH_CHECKLIST.md,
   // the Canvass-4 badge-2 entry, which names exactly what 3d must write.
 
+  // ── CANVASS-8: A TITLE ON THE BOOK REP ──────────────────────────────────────
+  // initDB seeds 6 titles per contractor and leaves EVERY team_members.title_id
+  // NULL, so the no-title state — the one a real rep meets on first open — is
+  // already renderable. What is NOT renderable without this is the OTHER state.
+  // ⚠ A STATE THE FIXTURE NEVER RENDERS CANNOT BE EYE-TESTED, so the book rep gets
+  // a title and the colleague keeps NULL. Both states now exist on one stack.
+  const { rows: betaTitles } = await pool.query(
+    `SELECT id, name FROM titles WHERE contractor_id = $1 ORDER BY name ASC LIMIT 1`,
+    [beta]
+  );
+  if (betaTitles.length > 0) {
+    await pool.query(`UPDATE team_members SET title_id = $1 WHERE id = $2`, [betaTitles[0].id, betaRepId]);
+  }
+
+  // ── CANVASS-8: CONVERSIONS, ON BOTH SIDES OF THE SCOPING BOUNDARY ───────────
+  // ⚠ SEEDED NON-ZERO ON PURPOSE. Danny's Railway baseline is 0 for every rep, and
+  // a card that has only ever rendered 0 is untested — a scoping bug is invisible
+  // at zero. The card must be eye-testable with real ink in it.
+  //
+  // THE PATH the card reads: referral_conversions.user_id → users.jobber_client_id
+  // → client_rep_assignments. The conversion names the REFERRER; the referrer's own
+  // client row is what carries the rep. So a referrer must be bridged to a client
+  // that is already in a rep's book.
+  //
+  // ⚠ THREE REFERRERS, AND THE SECOND AND THIRD ARE THE DISCRIMINATING ONES:
+  //   · bridged to jc-beta-1, which is the BOOK REP's client  → 2 conversions, COUNT
+  //   · bridged to jc-beta-8, which is the COLLEAGUE's client → 1 conversion, MUST NOT
+  //     count for the book rep. Without this row the screen reads the same whether
+  //     the rep predicate is there or not.
+  //   · NOT bridged at all (jobber_client_id NULL)            → 1 conversion, counts
+  //     for NOBODY. This is the ordinary production shape, and it is what stops the
+  //     seeded total from being mistaken for "every conversion finds a rep".
+  // Expected on this stack: book rep sees 2, colleague sees 1.
+  const convFixtures = [
+    ['conv-referrer-mine@local.test',      'Nadia Prescott', 'jc-beta-1', 2],
+    ['conv-referrer-colleague@local.test', 'Owen Bramley',   'jc-beta-8', 1],
+    ['conv-referrer-unbridged@local.test', 'Rosa Lindqvist', null,        1],
+  ];
+  for (const [email, name, jobberClientId, count] of convFixtures) {
+    const { rows: u } = await pool.query(
+      `INSERT INTO users (full_name, email, pin, contractor_id, jobber_client_id, email_verified)
+       VALUES ($1, $2, 'local-stack-placeholder', $3, $4, TRUE)
+       -- ⚠ (contractor_id, email), NOT (email). The global UNIQUE(email) that the
+       -- users CREATE still shows was DROPPED by a later ALTER and replaced with
+       -- users_contractor_id_email_unique. ON CONFLICT (email) finds no arbiter index
+       -- and raises 42P10 — which is a TABLE'S SHAPE IS ITS CREATE PLUS EVERY ALTER
+       -- SINCE, caught here by the seeder test cancelling eight cases.
+       ON CONFLICT (contractor_id, email) DO UPDATE SET jobber_client_id = EXCLUDED.jobber_client_id
+       RETURNING id`,
+      [name, email, beta, jobberClientId]
+    );
+    for (let i = 0; i < count; i += 1) {
+      await pool.query(
+        `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at, bonus_amount)
+         VALUES ($1, $2, $3, NOW() - ($4 || ' days')::interval, 100)
+         ON CONFLICT (user_id, jobber_client_id) DO NOTHING`,
+        [u[0].id, beta, `converted-${email.split('@')[0]}-${i}`, String(i * 3 + 2)]
+      );
+    }
+  }
+
   const { rows: betaBook } = await pool.query(
     `SELECT COUNT(*)::int AS n FROM client_rep_assignments
       WHERE contractor_id = $1 AND COALESCE(sticky_rep_id, provisional_rep_id) = $2`,
@@ -936,6 +997,10 @@ async function seedStack(pool) {
     repEmail: `book-rep@${beta}.test`,
     colleagueId: betaOtherId,
     clientsInBook: betaBook[0].n,
+    // Canvass-8 — both states of the title row, and both sides of the conversions
+    // scoping, are on this stack. Expected: book rep 2 conversions, colleague 1.
+    repTitle: betaTitles.length > 0 ? betaTitles[0].name : null,
+    colleagueTitle: null,
   };
 
   return summary;
@@ -1021,7 +1086,11 @@ module.exports = { assertLocalStackTarget, withDatabase, seedStack, CONTRACTORS,
 //   served because the Jobber adapter THROWS and the route falls back to
 //   pipeline_cache — so every pipeline response carries `stale: true` and the
 //   staleness banner is always up. The live sync path is still unreachable.
-// · ⚠ NO referral_conversions ROWS, so `conversion_bonus` is null everywhere and
+// · ⚠ CORRECTED IN CANVASS-8 — THERE ARE NOW referral_conversions ROWS, four of
+//   them, seeded for the rep Home conversions card. The line that stood here said
+//   "NO referral_conversions ROWS"; it was true until this phase and is left quoted
+//   rather than deleted so the change is visible. What it went on to claim is STILL
+//   TRUE and is the part that matters: the REFERRER-side `conversion_bonus` is
 //   the figures come from the boost-schedule fallback (500 + boost). The
 //   CONVERSION-sourced amount, the schedule NAME on an expanded card, and the
 //   inline expand it gates are all still unreachable.
@@ -1039,7 +1108,10 @@ module.exports = { assertLocalStackTarget, withDatabase, seedStack, CONTRACTORS,
 //   BUG: ReferrerApp shows PendingMatch first, Announcement only when there is
 //   no pending match and no experience prompt, then Experience. Dismiss one to
 //   reach the next.
-// · NOT PRODUCTION-SHAPED DATA. Still NO referral_conversions rows, so
+// · NOT PRODUCTION-SHAPED DATA. ⚠ "Still NO referral_conversions rows" was true
+//   when written and is NOT true after Canvass-8 — there are four, and they exist to
+//   make the rep conversions card eye-testable at a non-zero value. The referrer-side
+//   consequence this sentence described is unchanged, so
 //   `conversion_bonus` remains null and the CONVERSION-sourced amount, the
 //   schedule NAME on an expanded card and the inline expand it gates are all
 //   still unreachable.

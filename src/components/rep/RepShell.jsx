@@ -2,10 +2,10 @@ import { useContext, useState } from 'react';
 import { ThemeContext } from '../shared/ThemeProvider';
 import BrandMark from '../shared/BrandMark';
 import RepBottomNav, { REP_TABS } from './RepBottomNav';
-import RepThemeToggleRow from './RepThemeToggleRow';
 import RepClientsScreen from './RepClientsScreen';
 import RepClientDetailScreen from './RepClientDetailScreen';
 import RepHomeScreen from './RepHomeScreen';
+import RepProfileScreen from './RepProfileScreen';
 import { fontVar } from '../../constants/elevationTheme';
 
 // ─── THE FIELD REP SHELL — C/DL-3c Phase 3-A ─────────────────────────────────
@@ -102,7 +102,7 @@ function tabForScreen(screen) {
  * @param {React.ReactNode} switcher - SurfaceSwitcher for a rep who is also an
  *        owner or admin; null for a general-tier rep, who has one destination.
  */
-export default function RepShell({ onLogout, switcher = null, preview = false }) {
+export default function RepShell({ onLogout, switcher = null, preview = false, caps = null }) {
   const { branding } = useContext(ThemeContext);
 
   // ⚠ ONE PIECE OF STATE, NOT ONE PER SCREEN. `screen` names the destination and
@@ -228,7 +228,7 @@ export default function RepShell({ onLogout, switcher = null, preview = false })
           boxSizing: 'border-box',
         }}
       >
-        <Screen view={view} onLogout={onLogout} preview={preview} onNavigate={(next) => { setView(next); window.scrollTo(0, 0); }} />
+        <Screen view={view} onLogout={onLogout} preview={preview} caps={caps} onNavigate={(next) => { setView(next); window.scrollTo(0, 0); }} />
       </main>
 
       <RepBottomNav activeTab={activeTab} onSelect={selectTab} />
@@ -287,9 +287,14 @@ function Header() {
 // and found nothing; this is a screen that does not exist yet, and saying so
 // with an empty state would be a claim about data. It also keeps the known
 // StateCard dark-border defect off a surface 3-D is about to inspect by eye.
-function Screen({ view, onLogout, onNavigate, preview = false }) {
+function Screen({ view, onLogout, onNavigate, preview = false, caps = null }) {
   if (view.screen === 'profile') {
-    return <ProfileScreen onLogout={onLogout} />;
+    // ⚠ caps ARRIVES AS A PROP AND MAY BE null. RepShell stays a LEAF with respect
+    // to RepCapabilitiesContext (see this file's header) — RepSurface reads the
+    // context one level up and threads the value down. A bare shell mount, which
+    // BrandLogo.test.jsx and repThemeToggle.test.jsx both do, passes nothing and the
+    // screen renders without capability-derived rows rather than throwing.
+    return <RepProfileScreen onLogout={onLogout} caps={caps} />;
   }
 
   // ⚠ HOME IS NO LONGER A PLACEHOLDER (Canvass-6). Only Network still is.
@@ -344,40 +349,5 @@ function ScreenTitle({ title, subtitle }) {
       </h1>
       <p style={{ margin: 0, fontSize: 15, opacity: MUTED }}>{subtitle}</p>
     </div>
-  );
-}
-
-function ProfileScreen({ onLogout }) {
-  return (
-    <>
-      <ScreenTitle title="Profile" subtitle="Self-service settings" />
-
-      {/* ⚠ THE ONLY ROW 3-A BUILDS. Title (A28 — a select over the contractor's
-          seeded rows, never free text), Attribution type, Fallback link and
-          Security are 3-C's, and the mockup's Fallback link value is the exact
-          string CD-8 voided, so it is not reproduced anywhere. */}
-      <RepThemeToggleRow />
-
-      {/* ⚠ SIGN OUT IS LAST, AND A30 DEPENDS ON IT BEING HERE. The theme toggle
-          is ruled to sit DIRECTLY ABOVE this row — the anchor is Sign out
-          rather than Security because Sign out is the one row in that list
-          nothing can defer. Red from the status token, not a literal: the
-          text-safe tone, which is what dangerText is for. */}
-      {onLogout && (
-        <button
-          type="button"
-          onClick={onLogout}
-          data-rep-signout=""
-          style={{
-            background: 'none', border: 'none', padding: 0,
-            font: 'inherit', cursor: 'pointer', textAlign: 'left',
-            fontWeight: 700, fontSize: 16,
-            color: 'var(--rm-danger-text, #B91C1C)',
-          }}
-        >
-          Sign out
-        </button>
-      )}
-    </>
   );
 }

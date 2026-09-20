@@ -4210,6 +4210,253 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-8 — Profile completed, and the conversions card (SHIPPED 2026-09-19)
+
+- [x] **✅ THE ARC'S STATE, RECORDED PLAINLY SO NOBODY HAS TO INFER IT.** **With Profile complete,
+      the Canvass rep-screen arc is DONE except Canvass-9's real-browser pass.** Home, Clients,
+      client detail and Profile all exist.
+      ⚠ **NETWORK IS 3e's AND IS NOT PART OF THIS ARC.** The bottom nav's fourth tab is a
+      placeholder by design; the constellation, the router decision (D10) and the rep-token mint are
+      3d/3e's. **A session finding the Network tab inert has found the plan, not a gap.**
+      ⚠ **A UI AND LAYOUT PASS FOLLOWS CANVASS-9**, once every screen exists to be judged together
+      — that is where the info icons, the CONV card's standout treatment and the three open copy
+      questions land. **Judging one screen at a time is what the pass exists to avoid.**
+
+- [ ] 🔴 **TWO DEFECTS THIS PHASE'S OWN GATE CAUGHT, BOTH MINE, BOTH RECORDED BECAUSE THE SHAPES
+      RECUR.**
+      **1 — `ON CONFLICT (email)` on `users` raised 42P10 and CANCELLED EIGHT SEEDER CASES.** The
+      `users` CREATE still reads `email TEXT UNIQUE NOT NULL`, and that global unique **was dropped
+      by a later ALTER** and replaced with `users_contractor_id_email_unique UNIQUE (contractor_id,
+      email)`. ⚠ **A TABLE'S SHAPE IS ITS CREATE PLUS EVERY ALTER SINCE** — the rule is already
+      resident and this is a fresh instance of breaking it. ⚠ **AND THE SYMPTOM WAS `cancelled 8`,
+      NOT `fail 8`**: the seeder threw during setup, so the cases never ran. **A cancelled count is
+      not a passing count and must never be read as one.**
+      **2 — a `deepEqual` on the whole `stats` object went red when `conversions` was added.** That
+      is the fence working: an exhaustive deep-equal is what catches an **unannounced payload
+      change**. It was updated by **adding the key**, never by relaxing to a subset — relaxing it
+      would spend the fence to pay for one change and leave the next one silent.
+
+
+
+- [x] **✅ THE CONV BASELINE, MEASURED BY DANNY ON RAILWAY 2026-09-19 (`accent-roofing-dev`):**
+      **`conversions_total 2` · `has_user_id 2` · `user_has_jobber_link 2` ·
+      `resolves_to_an_assignment 0` · `resolves_to_a_rep 0`.**
+      ⚠ **THE BRIDGE IS NOT THE BLOCKER, WHICH IS THE OPPOSITE OF WHAT THE FUNNEL WAS EXPECTED TO
+      SHOW.** Both conversions resolve all the way to a Jobber client. They fail at the **last**
+      step: neither client is in any rep's book yet.
+      ⚠ **AND THE CONCLUSION DRAWN FROM THAT WAS WRONG AND IS CORRECTED HERE RATHER THAN QUIETLY
+      DROPPED.** This session wrote that coverage would fill in as the historical backfill ran.
+      **It will not.** A conversion is a **RoofMiles concept** — a tracked referral becoming a
+      customer — and that tracking did not exist before this app. **The backfill imports JOBBER
+      data, and Jobber never recorded a referral chain, so a mass import produces no conversions.**
+      The number stays at or near zero until real referrals convert **after launch**.
+      **RULING (Danny, 2026-09-19): BUILD IT.** The zero is not thin coverage waiting to fill — it
+      is the honest state of a feature that starts accumulating at launch, and **the flow must exist
+      for it to be recorded and shown when it does.** Waiting for a number that cannot arrive until
+      the plumbing exists is circular.
+
+- [x] **✅ THE LABEL OBJECTION WAS RIGHT ABOUT THE FORMAT, AND IT IS SOLVED RATHER THAN DODGED.**
+      The truthful label — *"referrals that converted, whose referrer resolves to you"* — does not
+      fit the stat grid's one-word uppercase idiom (CLIENTS · LOCKED · PROVISIONAL · FLAGGED).
+      **Chosen treatment: a full-width card OUTSIDE the grid**, carrying the number, the label
+      **REFERRAL CONVERSIONS**, and a definition line — *"People your clients referred who have
+      become customers."*
+      **Why this and not the alternatives:** a fifth grid cell forces an abbreviation, and **"CONV"
+      is the mockup's word and says nothing** while "CONVERSIONS" alone does not say *whose* or *of
+      what* — a rep with sold jobs would reasonably read it as their own closings. A two-line label
+      inside the grid still has to fight the cell width. **A label that cannot fit the grid is a
+      reason to leave the grid, not to shorten the label.**
+      ⚠ **A TEST ASSERTS THE LABEL IS NOT `CONV`, ANCHORED ON A WORD BOUNDARY** — a bare `CONV`
+      needle matches `CONVERSIONS` and would have passed against the very thing it rules out.
+
+- [x] **✅ SCOPED TO THE VIEWING REP, AND PROVEN AT A NON-ZERO VALUE.** The count reads
+      `referral_conversions.user_id` → `users.jobber_client_id` → `client_rep_assignments`, using
+      the **same `OWN_BOOK_PREDICATE`** the other screens use. ⚠ **Never a contractor-wide number on
+      a personal screen:** Danny's 2 are company-wide, and two reps each seeing "2" is two wrong
+      beliefs from one true number.
+      **Guard-proofed both halves, and they are fenced by DIFFERENT cases:** removing the rep
+      scoping takes **exactly 1** case red (the colleague's-conversion case); joining on the
+      CONVERTED client instead of the REFERRER's takes **4** red. **Both are covered; neither test
+      covers the other's half.**
+      ⚠ **AND THE FIRST GUARD-PROOF ATTEMPT WAS INVALID, WHICH IS WORTH THE LINE.** Deleting the
+      predicate outright drops `$2`, so Postgres errors on parameter count and **all 8 cases fail
+      from a 500** — that proves the query breaks, not that the predicate does work. The valid
+      mutation keeps `$2` bound (`AND $2::int IS NOT NULL`) and removes only the scoping. **A
+      guard-proof that fails everything has usually broken the harness, not found coverage.**
+
+- [x] **✅ IT IS ITS OWN QUERY, AND A FENCE STOPS ANYONE UNIFYING IT.** A conversion is a
+      `referral_conversions` row; every other stat counts a `client_rep_assignments` row.
+      ⚠ **`LEFT JOIN`ing the table into the stats query FANS OUT `COUNT(*)`** — one client whose
+      referrer has three conversions would report `clients: 3`, silently inflating all four
+      existing stats while looking entirely plausible. A test asserts `clients: 1` against
+      **3** conversions on one client and fails loudly if they are ever merged.
+      ⚠ **So the stats query's own comment — "every one counts over the same predicate as the
+      lists" — does NOT extend to this one.** Said at the site, because that comment is exactly
+      what would invite the merge.
+
+- [ ] ⚠ **THE CONV CARD IS BUILT EXPECTING AN INFO AFFORDANCE — RULED FOR THE UI PASS (Danny,
+      2026-09-19).** Each card will carry a small **"i"** in its corner; tapping it shows a short
+      popup explaining the term. **Rationale:** *Locked*, *Provisional*, *Flagged* and *Conversions*
+      are precise terms whose meaning goes deeper than the word carries, and none is layman's
+      language — **the answer is to explain them, not to shorten them.** The card's heading row is
+      already a flex row with the label on one side and nothing on the other, so an icon slots in
+      **without a reflow**. ⚠ **The popup MECHANISM is not built here.**
+      ⚠ **ONE CONSTRAINT THAT DOES NOT RELAX: the label must still be TRUE ON ITS OWN.** A rep who
+      never taps the icon must not be misled — the popup adds **depth**, it does not rescue a label
+      that overstates. Same principle as the membership badge, where an absent badge is a non-claim.
+      ⚠ **Danny also notes the CONV card may deserve a standout outline or appearance given its
+      significance to the product. A UI-PASS DIRECTION, not this phase's work.**
+
+- [ ] 🔵 **THREE QUESTIONS FOR THE UI PASS — NAMED, NOT RESOLVED.**
+      **(a) Where does the explanatory copy live?** ⚠ If each popup's wording sits in its own
+      component, **the same concept gets explained differently in three places within a year.** One
+      source keeps them consistent and makes them translatable later. **Establish whether this repo
+      already has a pattern for shared copy** — it was not looked for in this phase.
+      **(b) ⚠ Contrast.** A small grey "i" in a corner is **exactly the shape that measured 2.24:1
+      on the nav dots** before Canvass-2 raised it. Every icon needs measuring on its **actual
+      ground**, both modes, against the **3:1 graphic floor** — not the text floor.
+      **(c) Do reps and admins see the SAME explanation?** *"Flagged"* means *"an owner will resolve
+      this"* to a rep and *"you need to resolve this"* to an admin. **Same word, different action.**
+      Say whether one copy source can serve both or whether they are two.
+
+- [x] **✅ PROFILE COMPLETED — mockup 6, and ⚠ IT IS A REAL SCREEN, CHECKED BEFORE ASSUMING.**
+      Screen 8 taught this: the inventory records `8` as *"NOT A SEPARATE SCREEN"*. **`6` is one.**
+      **Shipped this phase, above the existing rows:** the centred avatar disc with initials, the
+      **Title** control (A28), and **Attribution type**. **Untouched:** the theme row and Sign out.
+      ⚠ **EVERY NEW ROW GOES ABOVE THE THEME ROW, BECAUSE A30's ANCHOR IS Sign out.** The theme row
+      must sit **directly** above Sign out, and that adjacency is now asserted from **both** sides —
+      `repThemeToggle.test.jsx` drives the shell, `repProfileScreen.test.jsx` drives the screen.
+      **The screen was EXTRACTED to `src/components/rep/RepProfileScreen.jsx`** from its inline
+      definition in `RepShell`. ⚠ **`RepThemeToggleRow`'s import in `RepShell` became dead and was
+      removed in the same commit** — `npm run lint` is react-hooks-only and would never have said so.
+
+- [x] **✅ THE TITLE CONTROL IS THE ONLY WRITE ON THE REP SURFACE, AND IT IS NOT OPTIMISTIC.**
+      What it writes is **the rep's own identity shown back to them**; a value that appears saved
+      and was not is a lie the screen tells, corrected silently on the next load. The control shows
+      a saving state, **commits only after the server agrees, and reverts on failure.**
+      ⚠ **ONE STATUS CODE, TWO MEANINGS — AND THE COPY MUST SERVE THE LIKELY ONE.** The server
+      returns **403 `invalid_title`** both for a cross-contractor id **and** for a title an admin
+      **deleted between load and save** — `DELETE /api/admin/titles/:id` nulls affected members and
+      leaves the id dangling. A rep hitting the second case has done nothing forbidden, so the copy
+      reads *"That title is no longer available. The list has been refreshed."* and re-fetches.
+      **A test forbids the words "not allowed", "permission", "forbidden" and "denied".**
+      ⚠ **Asserted on the TYPED BODY (`invalid_title`), never on Express's own error page.**
+
+- [x] **✅ (c) THE FENCE WAS CHECKED BEFORE BUILDING, AND BOTH PATHS ARE ON THE ALLOWLIST.**
+      `roleRouting.test.jsx`'s `ALLOWED_ADMIN_CALLS` holds **exactly three**, matched by **method
+      and full path** with query strings stripped: `GET /api/admin/me`, `GET /api/admin/titles`,
+      `PATCH /api/admin/me/title`. **Profile's two calls were already there**, and `PATCH` is
+      allowed **on purpose** rather than by the substring accident Canvass-3 repaired.
+      **A second fence was added from the screen's own side** — `repProfileScreen.test.jsx` asserts
+      the exact set of admin keys the screen calls, so a new call fails in the file being edited
+      rather than only in one nobody opens alongside it.
+
+- [x] **✅ (d) ATTRIBUTION TYPE — DISPLAY ONLY, FROM THE CAPABILITY SEAM.** Copy in a rep's
+      language: **attributable** → *"Attributable — clients matched to you are credited to you"*;
+      **not attributable** → *"Not attributable — clients are not credited to you"*. A test forbids
+      "locked", "denied", "no permission" and "restricted" in the non-attributable state — **a plain
+      fact, not a denial.** Capabilities resolve after first paint, so an unresolved read renders
+      **`—`** rather than guessing either way.
+      ⚠ **`rep_revenue_visibility` DELIBERATELY GETS NO ROW, IN EITHER STATE.** It reaches the
+      component and is not rendered: a row reading *"Revenue: hidden"* **tells a rep they are being
+      denied something**, which is exactly the lock-by-omission the Home stat grid already refuses
+      (A34.6, CD-7). Revenue is absent from the rep surface entirely until Wave 1.5/1.6. **A test
+      sweeps the whole screen for "revenue" and "$" in BOTH flag states.**
+
+- [x] **✅ (e) THE FALLBACK LINK ROW DOES NOT SHIP, AND THE REASON IS DATA, NOT DEFERRAL.**
+      `contractor_invite_links.owner_team_member_id` has **ZERO writers repo-wide** — `link_type
+      = 'rep'` is READ in five places and **minted in none** — so **there is no link to show.** CD-8
+      voided the mockup's example value on top of that. **A row with a placeholder would tell a rep
+      they have a link they do not have**, which is A34.6's reasoning applied to a different field.
+      It arrives with 3d's mint. **A test asserts neither "fallback" nor "roofmiles.link" renders.**
+
+- [x] **✅ (f) THE SECURITY ROW STAYS DEFERRED — A34.9 RE-VERIFIED AND STILL TRUE.** **No
+      self-service change-password route exists anywhere in this codebase, for any role.** A
+      password is written in exactly two places: **invite acceptance** and **credential recovery**.
+      Shipping the row means shipping a new authenticated write path, which A24.7 assigns elsewhere.
+      **The screen reads complete without it** — A30 already anchored the theme row on Sign out
+      rather than Security precisely so its absence changes nothing.
+
+- [x] **✅ THE `themeKeyIntegrity` FENCE CAUGHT ME WRITING THE PLAUSIBLE FALLBACK.** The avatar's
+      initials were declared `var(--rm-on-primary, #FFFFFF)` — white on the orange fill, which is
+      what it looks like it should be. ⚠ **`--rm-on-primary` is COMPUTED under a contrast floor
+      against the primary fill, and the platform primary `#F26A1B` floors to BLACK.** The fence
+      named the expected value and it is now `#000000`. **This is the R-1 defect class, caught by
+      the mechanism built for it** — jsdom resolves no `var()`, so nothing else could have seen it.
+
+- [x] **✅ AN EXISTING ASSERTION WENT RED FOR THE RIGHT REASON AND WAS STRENGTHENED, NOT LOOSENED.**
+      `repHomeScreen.test.jsx` asserted `getAllByText('0').length === STAT_CARDS.length` over the
+      **whole screen** — correct while the grid held every zero on the page. The conversions card
+      adds a fifth zero **outside** the grid. ⚠ **The obvious repair — `STAT_CARDS.length + 1` — is
+      a hand-maintained number that goes stale the next time anything renders a 0.** It is now
+      asserted **per region**: the grid's zeros against the constant, and the card's own zero
+      separately. **Falsifiable in both directions instead of one.**
+
+- [x] **✅ VERIFIED IN A REAL BROWSER ON palette-beta, BOTH MODES, TRAPS ARMED.** Own server pair on
+      **3100 / 4100** (a scratchpad launcher mounting the real `createApp()`, because `server.js`
+      hardcodes 4000) — **Danny's `:3000` / `:4000` untouched.**
+      **Every text pair measured on its ACTUAL COMPOSITED GROUND, both modes, zero failures.**
+      Home dark: CONV number **13.10**, label **7.54**, definition **7.54** on `rgb(17,50,48)`.
+      Home light: **12.04 / 5.19 / 5.19** on `#FFFFFF`. Profile dark: avatar **8.02**, select
+      **13.10**, row labels **18.45**, attribution value **9.67**, Sign out **7.02**. Profile light:
+      avatar **5.87**, select **12.04**, labels **11.16**, attribution value **4.97** *(the tightest
+      pair on the screen)*, Sign out **6.00**.
+      **Two traps fired and are recorded because both are on the standing list:** a **contaminated
+      `rm_brand_hint` of `beta-exteriors`** was already in storage from an earlier session and was
+      cleared before any reading; the **`<screen-shader>` overlay was present**, hidden **by
+      structure** (full-viewport, z-index > 2×10⁹) and **re-hidden after every navigation and theme
+      flip**, because it re-injects.
+      ⚠ **AND `outerWidth` READ 0 WHILE `innerWidth` AND `screen.width` BOTH READ 2560** — the
+      standing caveat that *all three* are zero is **wrong**, exactly as CLAUDE.md already records.
+
+- [x] **✅ TWO READER FAULTS CAUGHT BEFORE THEY BECAME FINDINGS, AND BOTH ARE THE RECORDED SHAPES.**
+      **1 — the avatar measured 1.08:1 and it was the MEASURER, not the screen.** The ground walker
+      started at `el.parentElement`, so for text inside a coloured disc it measured **the page behind
+      the disc** rather than the disc. Corrected to start at the element itself: **8.02:1, pass.**
+      ⚠ **A reader fault that produces a FAILURE is as misleading as one that confirms a
+      hypothesis** — this one would have shipped a defect report about a pair that is fine.
+      **2 — `--rm-primary` read EMPTY at `document.documentElement`.** `ThemeProvider` mounts the
+      variables on **its own wrapper**, not on `:root`. The composited reading was the true one.
+      ⚠ **Reading a custom property off the root and concluding "not mounted" is a reader fault on
+      this codebase**, and it is now written down.
+
+- [x] **✅ AND A THIRD ASSUMPTION CORRECTED BY MEASURING IN THE MODE IT WAS ABOUT.** The card's
+      border reads `rgba(0,0,0,0.12)` in light, which is the black-alpha the mockup inventory records
+      as **invisible on a dark surface** — so the obvious conclusion was that the card edge vanishes
+      in dark mode. ⚠ **It does not: `elevationVar('border')` is MODE-AWARE and flips to
+      `rgba(255,255,255,0.18)`**, painting **1.76:1** against the card surface. **The documented
+      `StateCard` problem does not apply here.** *Measured in dark rather than inferred from light.*
+
+- [x] **✅ `citecheck --changed-files` REPORTED 15 LIKELY ROTTED AND NONE WAS REPAIRED — CORRECTLY.**
+      Re-arming the test-count tripwire inserted 20 lines into `CLAUDE.md`, moving three cited
+      targets. ⚠ **All 15 are PROTECTED RECORDS, and the documents say so in terms:**
+      `CDL_3c_PHASE05_RULINGS.md`'s header states it cites those lines *"as quotations of their
+      pre-edit content"*, that any future `CLAUDE.md` edit *"will flag them LIKELY ROTTED, correctly
+      and permanently"*, and that **"they are not to be repaired"**; this file's own entry adds that
+      repairing the `CLAUDE.md:502` pair *"would destroy the evidence"*.
+      ⚠ **ADDING THE +20 DELTA WOULD HAVE DESTROYED FIFTEEN RECORDS IN A COMMIT WHOSE MESSAGE SAID
+      IT WAS FIXING CITATIONS** — the exact failure the "do not repair by adding the delta" rule
+      exists to prevent. **Verified by reading each cited line in the OLD revision first**, which is
+      what showed `CLAUDE.md:436` to be the bare fragment `"anything."` and therefore never a live
+      pointer at all. **This will recur on every future CLAUDE.md edit and is expected, not a defect.**
+
+- [ ] 🔵 **UI-PASS OBSERVATIONS FROM THE RENDER, FILED NOT FIXED.**
+      · **The CONV card reads as "another box", not as standout** — which is the direct evidence for
+      Danny's note that it may deserve a distinct outline. Its edge (1.76:1 dark) and surface step
+      (1.24:1) are the same as every other card's.
+      · **The Attribution type value wraps to two cramped lines** in its right-aligned row at phone
+      width — *"Attributable — clients matched to you are credited to you"* is long for that slot.
+      **A layout question, not a contrast one; all its pairs pass.**
+      · **Profile light's attribution value is the tightest pair measured, 4.97 against a 4.5
+      floor.** It passes. ⚠ **It is the one to re-measure if `MUTED` or the row ground ever moves.**
+
+- [ ] ⚠ **WHICH CLAIMS ARE DECLARATION-LEVEL AND WHICH ARE NOT.** jsdom resolves **no `var()`** and
+      performs **no layout**, so every colour and placement claim in the React suites proves only
+      **which token a site reaches for**. **Unproven until the browser pass:** the conversions card's
+      ground and its border against `--rm-recess`; the avatar's initials on the primary fill in both
+      modes; the select's own border and text on `--rm-surface`; whether the card reads as
+      *standout* or merely *another box*. **OWNER: Canvass-9.**
+
 ### Canvass-attribution-model-3 — CONV measured-first, and one open question scoped (docs only, 2026-09-19)
 
 - [ ] 🔵 **OPEN QUESTION — CLIENT MATCHING AND THE REP RELATIONSHIP. A QUESTION, NOT A DEFECT.**

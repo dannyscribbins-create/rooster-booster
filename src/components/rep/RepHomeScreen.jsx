@@ -43,9 +43,18 @@ const MUTED = 0.72;
 // ⚠ CHAINS IS NOT HERE, AND THAT IS A DATA FACT RATHER THAN AN OMISSION. The mockup's
 // CHAINS card counts referral chains; the referral link is a name string with no
 // foreign key, which is the same reason the detail screen draws no chain.
-// ⚠ CONV IS NOT HERE EITHER — see the checklist entry. It is computable, but its
-// population on Accent could not be measured from this environment and the standing
-// rule is not to ship a card that always reads 0.
+// ⚠ CONV IS NOT IN THIS GRID EITHER, BUT IT NOW SHIPS — AS ITS OWN CARD BELOW.
+// ⚠ THE SENTENCE THIS REPLACES SAID IT COULD NOT BE MEASURED FROM THIS ENVIRONMENT
+// AND THAT "the standing rule is not to ship a card that always reads 0". Danny ran
+// the funnel on Railway 2026-09-19 and it CAN be measured: 2 conversions, both
+// bridged to a Jobber client, neither client in any rep's book — so it reads 0 today.
+// ⚠ AND THE REASONING THAT ZERO WOULD FILL IN AS THE BACKFILL RAN WAS WRONG, which is
+// why this note is longer than the line it replaces. A conversion is a ROOFMILES
+// concept — a tracked referral becoming a customer — and the backfill imports JOBBER
+// data, which never recorded a referral chain. **No import can manufacture one.** The
+// number starts accumulating when real referrals convert AFTER launch, and the card
+// existing is what makes that recordable. See `ConversionsCard` for why it is not a
+// fifth cell in this grid.
 const STAT_CARDS = Object.freeze([
   { key: 'clients', label: 'CLIENTS' },
   { key: 'locked', label: 'LOCKED' },
@@ -83,6 +92,70 @@ function StatCard({ label, value, alert = false }) {
         {label}
       </p>
     </div>
+  );
+}
+
+// ─── THE CONVERSIONS CARD (Canvass-8) ───────────────────────────────────────
+//
+// ⚠ DELIBERATELY NOT A FIFTH STAT CELL, AND THE REASON IS THE LABEL RATHER THAN THE
+// LAYOUT. The grid's cells carry one-word uppercase labels — CLIENTS, LOCKED,
+// PROVISIONAL, FLAGGED — and the truthful label for this number is a phrase: it
+// counts *people your clients referred who have become customers*. "CONV" is the
+// mockup's word and says nothing; "CONVERSIONS" alone does not say whose, or of
+// what, and a rep with sold jobs would reasonably read it as their own closings.
+// **A label that cannot fit the grid is a reason to leave the grid, not to shorten
+// the label**, so this is a full-width card with the phrase as its label and a
+// definition line under it.
+//
+// ⚠ THE LABEL MUST STAY TRUE ON ITS OWN. The UI pass will add a tappable "i" to each
+// card explaining the term, and the label problem largely dissolves — but a rep who
+// never taps it must not be misled, so the popup adds DEPTH and never rescues a
+// label that overstates. Same principle as the membership badge, where an absent
+// badge is a non-claim. **Do not shorten this label when the info affordance lands.**
+//
+// ⚠ ROOM IS LEFT FOR THAT AFFORDANCE ON PURPOSE — the heading row is a flex row with
+// the label on one side and nothing on the other, so an icon slots in without a
+// reflow. The popup MECHANISM is not built here, and Danny's note that this card may
+// deserve a standout outline is a UI-pass direction, not this phase's work.
+function ConversionsCard({ value }) {
+  return (
+    <section
+      data-testid="rep-conversions"
+      data-rep-conversions=""
+      style={{
+        background: 'var(--rm-surface, #FFFFFF)',
+        border: `1px solid ${elevationVar('border')}`,
+        borderRadius: 12,
+        padding: '14px 16px',
+        marginBottom: 22,
+        fontFamily: fontVar('body'),
+      }}
+    >
+      <p style={{
+        margin: 0, fontSize: 28, fontWeight: 700, lineHeight: 1.1,
+        color: 'var(--rm-text, #1C2D4D)',
+      }}>
+        {value}
+      </p>
+      {/* The heading row — label left, the UI pass's info icon will sit right. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <h2 style={{
+          margin: '2px 0 0', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
+          color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body'),
+        }}>
+          REFERRAL CONVERSIONS
+        </h2>
+      </div>
+      {/* ⚠ THE DEFINITION LINE IS PART OF THE LABEL, NOT DECORATION. It is what makes
+          the number unambiguous without the info popup: whose referrals, and what
+          happened to them. It renders in every state, including zero. */}
+      <p style={{
+        margin: '6px 0 0', fontSize: 13, lineHeight: 1.5,
+        color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
+      }}>
+        People your clients referred who have become customers.
+      </p>
+    </section>
   );
 }
 
@@ -169,7 +242,7 @@ function formatAssigned(iso) {
 // is to show what a contractor's brand looks like on a populated screen — an all-zero
 // dashboard would demonstrate the palette on almost no ink.
 const PREVIEW_SAMPLE = Object.freeze({
-  stats: { clients: 128, locked: 121, provisional: 7, flagged: 2 },
+  stats: { clients: 128, locked: 121, provisional: 7, flagged: 2, conversions: 6 },
   focus: {
     furthestAlong: [
       { jobberClientId: 'preview-1', name: 'Maria Lopez', nameUnavailable: false, stage: 'paid' },
@@ -244,11 +317,13 @@ export default function RepHomeScreen({ onOpenClient = null, preview = false }) 
 
       {status === 'ready' && stats && focus && (
         <>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 22 }}>
+          <div data-rep-stats="" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 22 }}>
             {STAT_CARDS.map((c) => (
               <StatCard key={c.key} label={c.label} value={stats[c.key] ?? 0} alert={c.key === 'flagged'} />
             ))}
           </div>
+
+          <ConversionsCard value={stats.conversions ?? 0} />
 
           <FocusSection
             title="Furthest along"

@@ -71,7 +71,12 @@ export default function RepSurface({ onLogout, switcher = null }) {
       data-rep-attributable={String(caps.is_attributable === true)}
       data-rep-revenue-visible={String(caps.rep_revenue_visibility === true)}
     >
-      <RepShell onLogout={onLogout} switcher={switcher} />
+      {/* ⚠ CAPABILITIES GO DOWN AS A PROP, NOT THROUGH A SECOND useRepCapabilities()
+          CALL LOWER DOWN. RepShell must stay a LEAF with respect to this context —
+          its own header records the two suites that mount it BARE and would lose the
+          throw they assert on. Profile is the first screen to need a capability, and
+          this is the route that file names. */}
+      <RepShell onLogout={onLogout} switcher={switcher} caps={caps} />
     </div>
   );
 }

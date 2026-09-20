@@ -253,7 +253,23 @@ describe('Palette-0 T1 — the seeded stack is in the states the arc needs', () 
     // ⚠ users and contractors DO NOT MOVE, and that was predicted rather than
     // discovered: Canvass-5's other 261 seeded rows are jobber_clients and
     // client_rep_assignments, neither of which this assertion counts.
-    assert.deepEqual(rows[0], { c: 3, u: 7, m: 11 });
+    // ⚠ u: 7 -> 10 IN CANVASS-8. THE TRIPWIRE WORKING A FOURTH TIME, and the breakdown
+    // is written out for the same reason as the three above: a total that merely "looks
+    // bigger" is what this repo records going stale.
+    //   users +3 : three REFERRERS for the conversions card, and each one is a distinct
+    //              state rather than three of a kind —
+    //                · bridged to a client in the BOOK REP's book      → counts for them
+    //                · bridged to a client in the COLLEAGUE's book     → must NOT count
+    //                  for the book rep, and without it the screen reads identically
+    //                  whether the rep predicate is present or absent
+    //                · NOT bridged at all (jobber_client_id NULL)      → counts for
+    //                  NOBODY, which is the ordinary production shape and is what stops
+    //                  the seeded total being mistaken for "every conversion finds a rep"
+    // ⚠ team_members and contractors DO NOT MOVE, and that was predicted rather than
+    // discovered: Canvass-8 adds a TITLE to an existing rep (an UPDATE, not an INSERT)
+    // and four referral_conversions rows, and this assertion counts neither table.
+    // The claim this case makes is CONVERGENCE; the counts are what make it falsifiable.
+    assert.deepEqual(rows[0], { c: 3, u: 10, m: 11 });
   });
 });
 

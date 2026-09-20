@@ -344,8 +344,28 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1548 server tests across 250 suites, and 1207 React tests across 74 files** (measured 2026-09-18 by the Canvass-6 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1548 · suites 250 · pass 1548 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-6 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1556 server tests across 251 suites, and 1229 React tests across 75 files** (measured 2026-09-19 by the Canvass-8 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1556 · suites 251 · pass 1556 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-8 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  Server 1548 → 1556 is **+8**, the `it(` lines of one new file (`repConversions.test.js`); suites
+  250 → 251 is that file's single top-level `describe`. React 1207 → 1229 is **+22 = 6 + 16** — six
+  cases appended to the EXISTING `repHomeScreen.test.jsx` for the conversions card, and sixteen in
+  one new file (`repProfileScreen.test.jsx`); 74 → 75 is that file.
+  ⚠ **COUNTED WITH `grep -c`, AND EVERY LOOP CHECKED FOR POSITION.** `repConversions.test.js`
+  contains NO loop at all, so 8 is exact. `repProfileScreen.test.jsx`'s three `for` loops all sit
+  INSIDE `it()` bodies — they iterate forbidden-word assertions and the two revenue-flag states —
+  so they multiply nothing and the count is 16.
+  ⚠ **AND THE REACT ARITHMETIC CLOSES EXACTLY BECAUSE THE WALKER WAS ASKED BEFORE THE RUN, NOT
+  RECONCILED AFTER IT.** `adminBranding.test.jsx` walks `src/components/admin`, `src/constants`,
+  `src/components/superAdmin` and `src/utils`, emitting one case per swept file. This commit's new
+  non-test file is `src/components/rep/RepProfileScreen.jsx` — **`src/components/rep` is not a
+  walked root** — so there is no phantom twenty-third case.
+  ⚠ **THE GATE WENT RED TWICE BEFORE THIS FIGURE, AND BOTH FAILURES WERE THE TRIPWIRES WORKING.**
+  First `cancelled 8` with `fail 1`: the seeder threw during setup on an `ON CONFLICT (email)` whose
+  arbiter index no longer exists — **a CANCELLED count is not a passing count**, and reading only
+  `pass` would have hidden an entire un-run suite. Then `fail 1` on a `deepEqual` over the whole
+  `stats` object, which is exactly the fence that catches an **unannounced payload change**; it was
+  repaired by ADDING the new key, never by relaxing it to a subset.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-6 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.*
   Server 1534 → 1548 is **+14**, one new `describe` appended to the EXISTING `repClients.test.js`;
   suites 249 → 250 is that single block. React 1191 → 1207 is **+16** in one new file
   (`repHomeScreen.test.jsx`), and 73 → 74 is that file.
