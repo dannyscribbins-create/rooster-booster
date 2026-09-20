@@ -121,7 +121,7 @@ import { fontVar } from '../../constants/elevationTheme';
 // the A1/A2-with-logo branches, which is correct and worth stating: the A2 TEXT
 // fallback renders no plate in either mode, so it has no mode-dependent box to
 // stabilise — measured at 53px in both modes on the rep header.
-export default function BrandMark({ width = 120, marginBottom = 20, branding: supplied, nameAlreadyShown = false, stableBox = false }) {
+export default function BrandMark({ width = 120, marginBottom = 20, branding: supplied, nameAlreadyShown = false, stableBox = false, boxPadding }) {
   const ctx = useContext(ThemeContext);
   const [failedLogoUrl, setFailedLogoUrl] = useState(null);
 
@@ -148,6 +148,7 @@ export default function BrandMark({ width = 120, marginBottom = 20, branding: su
         width={width}
         marginBottom={marginBottom}
         stableBox={stableBox}
+        boxPadding={boxPadding}
         onError={() => setFailedLogoUrl(logoUrl)}
       />
     );
@@ -155,7 +156,7 @@ export default function BrandMark({ width = 120, marginBottom = 20, branding: su
 
   // A1: nobody is resolved. The platform's own door, so the platform's own mark.
   if (!resolved) {
-    return <BrandLogo src={roofMilesLogo} alt={companyName} width={width} marginBottom={marginBottom} stableBox={stableBox} />;
+    return <BrandLogo src={roofMilesLogo} alt={companyName} width={width} marginBottom={marginBottom} stableBox={stableBox} boxPadding={boxPadding} />;
   }
 
   // A2, collapsed: the surrounding composition already names them adjacent to

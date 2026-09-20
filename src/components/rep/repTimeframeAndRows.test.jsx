@@ -21,6 +21,7 @@ import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/re
 import ThemeProvider from '../shared/ThemeProvider';
 import RepHomeScreen from './RepHomeScreen';
 import RepClientsScreen, { EmptyBook } from './RepClientsScreen';
+import RepShell from './RepShell';
 import RepTimeframeBar, { TIMEFRAMES, TIMEFRAME_PHRASES } from './RepTimeframeBar';
 import { ADMIN_TOKEN_KEY } from '../../utils/authStorage';
 
@@ -364,5 +365,91 @@ describe('Canvass-9a Part 3e — the rows read as tappable', () => {
     const li = container.querySelector('li');
     expect(li.style.transition).toBe('');
     expect(li.style.animation).toBe('');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CANVASS-9b PART 0(b) — THE SWITCHER IS ABSENT FROM EVERY SCREEN BUT PROFILE
+//
+// The other half of the ruling, fenced from the shell's side. `repProfileScreen`
+// proves it IS on Profile; this proves it is NOT anywhere else — and the two
+// together are what make "it moved" checkable rather than "it disappeared".
+//
+// ⚠ THE SHELL IS DRIVEN WITH A REAL SWITCHER NODE THROUGHOUT. Passing null would make
+// every absence assertion here pass vacuously against a shell that had simply lost the
+// prop — an absence assertion must first prove the presence it is asserting the absence
+// of. So each case navigates to Profile at the end and finds it there, on the SAME
+// mount, which is the paired positive.
+describe('Canvass-9b Part 0(b) — the switcher is absent from Home, Clients and Client Detail', () => {
+  const SWITCHER = <button type="button" data-surface-switcher="admin">Switch to the admin panel</button>;
+
+  const mountShell = () => render(
+    <ThemeProvider>
+      <RepShell onLogout={() => {}} switcher={SWITCHER} />
+    </ThemeProvider>
+  );
+
+  const go = async (tab) => {
+    fireEvent.click(document.querySelector(`[data-rep-tab="${tab}"]`));
+    await waitFor(() => expect(document.querySelector('[data-rep-screen]').getAttribute('data-rep-screen')).toBe(tab));
+  };
+
+  const switcher = () => document.querySelector('[data-surface-switcher]');
+
+  it('⚠ HOME — the entry screen carries no switcher, and Profile still does', async () => {
+    installFetch(clientsPayload());
+    mountShell();
+    await waitFor(() => expect(document.querySelector('[data-rep-shell]')).toBeTruthy());
+    expect(switcher(), 'the switcher is back on Home').toBeNull();
+    // ⚠ THE PAIRED POSITIVE, SAME MOUNT. Without it this passes against a shell that
+    // never received the prop at all.
+    await go('profile');
+    expect(switcher(), 'the switcher is not on Profile either — it was lost, not moved').toBeTruthy();
+  });
+
+  it('⚠ CLIENTS carries no switcher', async () => {
+    installFetch(clientsPayload());
+    mountShell();
+    await go('clients');
+    expect(switcher()).toBeNull();
+    await go('profile');
+    expect(switcher()).toBeTruthy();
+  });
+
+  it('⚠ CLIENT DETAIL carries no switcher', async () => {
+    // The sub-screen, reached by tapping a row — the one screen that is not a tab, and
+    // therefore the one a chrome-level control would most easily survive onto.
+    installFetch(clientsPayload({
+      clients: [{
+        jobberClientId: 'jc-1', name: 'Maria Lopez', nameUnavailable: false, stage: 'sold',
+        assignmentSource: 'mode_a_at_close', isSticky: true, assignedAt: '2026-09-15T12:00:00Z',
+        isFlagged: false, membership: 'none',
+      }],
+      total: 1,
+    }));
+    mountShell();
+    await go('clients');
+    const row = await screen.findByText('Maria Lopez');
+    fireEvent.click(row.closest('li'));
+    await waitFor(() => expect(document.querySelector('[data-rep-screen]').getAttribute('data-rep-screen')).toBe('clientDetail'));
+    expect(switcher()).toBeNull();
+  });
+
+  it('⚠ the shell renders NO switcher slot of its own at any screen', async () => {
+    // The structural fence rather than the per-screen one: `[data-rep-switcher-slot]`
+    // as a CHILD OF THE SHELL ROOT is the chrome mount that was removed. Profile
+    // renders a slot of its own, INSIDE main — so this anchors on the parent, not on
+    // the attribute, which is what keeps it meaningful after the move.
+    installFetch(clientsPayload());
+    mountShell();
+    for (const tab of ['home', 'clients', 'profile']) {
+      await go(tab);
+      expect(
+        document.querySelector('[data-rep-shell] > [data-rep-switcher-slot]'),
+        `a chrome-level switcher slot reappeared on ${tab}`
+      ).toBeNull();
+    }
+    // And on Profile the slot exists inside the column, which is where it moved to.
+    expect(document.querySelector('main [data-rep-switcher-slot]')).toBeTruthy();
   });
 });

@@ -4210,6 +4210,120 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-9b Part 0 — the header finished, and the switcher moved to Profile (SHIPPED 2026-09-20)
+
+- [x] **✅ 9a's TWO OPEN QUESTIONS ARE RULED, BOTH AS SHIPPED — NO CODE CHANGED FOR EITHER.**
+      · **The attribution pill stays value-right. A30 is UNAMENDED.** The 9a entry raised this as
+        needing Danny's confirmation; it has it, and the ruling stands as written.
+      · **The Clients timeframe filters the WHOLE PAGE, list included.** The reasoning 9a filed —
+        one control on one screen means one thing — is accepted. **Both items are now closed
+        rather than left open against a phase that has shipped.**
+
+- [x] **✅ THE HEADER COMPLAINT WAS RIGHT AND MY 9a NUMBER WAS NOT THE ONE TO ACT ON.** Danny's
+      screenshot at 430px showed a white band far taller than a halved logo needs. 9a reported the
+      header at **59.8px** and stopped there. **Measured properly this time, the full stack above
+      the page title at 430px:**
+      | part | top | height |
+      |---|---|---|
+      | header (white band) | 0 | **59.8** |
+      | └ logo box (padded wrapper) | 10 | 39.8 |
+      | &nbsp;&nbsp;&nbsp;└ the MARK itself | 20 | **19.8** |
+      | switcher row | 59.8 | **58.0** |
+      | main (column, 24px pad) | 117.8 | — |
+      | h1 | **141.8** | 40 |
+      ⚠ **THE HEADER WAS 3.02x THE HEIGHT OF THE MARK INSIDE IT** — 40px of padding around a 19.8px
+      logo. Danny's phrase, *"the padding is doing more work than the logo"*, is literally what the
+      numbers say. **And the header was only 42% of the problem: the switcher row was another 58px,
+      and 9a's report named it without treating it as removable.**
+
+- [x] **✅ THE ~260px FIGURE AND MY 141.8 ARE BOTH RIGHT, AND RECONCILING THEM MATTERED.**
+      141.8 CSS px to the h1 is **283.6 device px at DPR 2**, which is what a phone screenshot
+      measures in. **Checked rather than assumed that a real device differs from the iframe:**
+      `safe-area-inset-top` is used in **no file in this repo** (BrandingPreview's own comment says
+      so in terms) and the viewport meta carries **no `viewport-fit=cover`**, so every safe-area
+      inset resolves to 0 — a real phone lays this out identically in CSS px. **The disagreement
+      was units, not geometry.** ⚠ Worth keeping because "his number and mine differ" is exactly
+      the point where a session either reconciles or picks one and is quietly wrong.
+
+- [x] **✅ THE SWITCHER MOVED TO PROFILE, LEFT OF SIGN OUT (ruled by Danny).** It is a rare,
+      account-level action and was costing a 58px row on all four tabs.
+      ⚠ **ALL THREE MOUNTS WERE ENUMERATED BEFORE ANY WERE TOUCHED**, because Canvass-0 recorded
+      three and removing an admin-side one by accident is the obvious way to break this:
+      | mount | variant | action |
+      |---|---|---|
+      | `AdminApp` → `AdminNoAccessScreen` | `admin` | **untouched** |
+      | `AdminApp` → `AdminShell` sidebar | `adminSidebar` | **untouched** |
+      | `App.jsx` → `RepSurface` | `rep` | **moved, within the rep surface only** |
+      **The prop chain from `App.jsx` is unchanged** — eligibility is still decided there, once,
+      against the live session. Only *where `RepShell` renders the node* moved.
+      ⚠ **AND IT STILL RENDERS ONLY FOR SWITCHER-ELIGIBLE MEMBERS.** `canSwitchSurface()` is
+      `role === 'team' && is_field_rep`; a member who is not eligible receives `null` and Profile
+      draws nothing. Fenced from both directions, and the guard-proof for it went red.
+
+- [x] **✅ "NOT SUBORDINATE TO SIGN OUT" IS BUILT STRUCTURALLY, NOT HOPED FOR.** Three mechanisms,
+      none of them "make it bigger":
+      · **It is the only BORDERED control on the screen.** SurfaceSwitcher's rep variant is an
+        outlined button with an icon; Sign out is bare text with no border and no background.
+      · **It leads in reading order** — left, and first in the DOM, so a screen reader reaches it
+        before the destructive action.
+      · **`flexShrink: 0`**, so when the row runs out of width it is SIGN OUT that wraps, never the
+        switcher that gets squeezed. **A control compressed to fit beside a bigger neighbour is how
+        "subordinate" gets built by accident.**
+      ⚠ **AND THE DISCOVERY CONCERN THE OLD PLACEMENT WAS BUILT AROUND IS ANSWERED, NOT DISMISSED.**
+      Profile is where someone looks for an account-level action and is one tap from every screen.
+      The escape hatch is behind a labelled door, not behind a wall.
+
+- [x] **✅ A30 SURVIVES THE MOVE, AND THE READING IS RECORDED BECAUSE IT WILL BE QUESTIONED.**
+      A30 requires the theme toggle DIRECTLY above Sign out and Sign out LAST. **Its subject is the
+      ROW LIST.** The switcher **joined Sign out's row** rather than becoming a row of its own, so
+      the theme row is still directly above the last row and **no row was inserted into the gap**.
+      ⚠ **THE FENCES WERE RE-EXPRESSED, NOT RELAXED.** They now target the sign-out ROW instead of
+      the button, and they gained two assertions — that Sign out is inside that row, and that
+      nothing follows it. Inserting a row into A30's gap takes **4 cases red across two files**.
+
+- [ ] 🔴 **A GUARD-PROOF FOUND A HOLE IN ONE OF THIS PHASE'S OWN NEW FENCES, AND THE HOLE IS A
+      PROPERTY OF jsdom RATHER THAN OF THE TEST.** The ordering fence asserted DOM order —
+      "Sign out follows the switcher" — which is correct and is all a layout-free renderer can see.
+      ⚠ **`flex-direction: row-reverse` PAINTS SIGN OUT TO THE LEFT, BREAKING THE RULING, AND LEFT
+      THE FENCE GREEN.** DOM order is untouched by a visual reversal.
+      Closed by forbidding a reversing `flex-direction` outright, and that proof now breaks it.
+      ⚠ **FILED RATHER THAN CLOSED BECAUSE THE CLASS IS WIDER THAN THIS ONE CONTROL:** *every*
+      left/right or above/below assertion in the React suite is DOM-order based and is blind to
+      `row-reverse`, `column-reverse`, `order:`, `position: absolute` and `float`. **This repo has
+      no sweep for that.** The browser pass is what actually sees painted position, and it is not
+      run per-commit. Worth a targeted fence on the handful of components where a ruling names a
+      SIDE rather than an order.
+
+- [x] **✅ THE HEADER CUT, AND WHAT IT MEASURES AFTER.** Header padding 10 → 8; the logo box's
+      padding 10px 14px → **6px 10px**, via a new defaulted `boxPadding` prop so the three auth
+      call sites stay **byte-identical** — the promise `BrandLogo`'s own header makes in terms.
+      ⚠ **THE VALUE IS STILL A SINGLE BINDING READ BY BOTH MODE BRANCHES**, which is what the
+      parity fence depends on: making it a prop widens what the value can BE without reintroducing
+      two places for it to be written.
+      **Measured on the rendered node at 430px, after (b) and (c):**
+      | | before 9b | after 9b | change |
+      |---|---|---|---|
+      | header | 59.8 | **47.8** | −20% |
+      | switcher row | 58.0 | **0** (moved) | −58 |
+      | main top | 117.8 | **47.8** | −59% |
+      | **h1 top** | **141.8** | **71.8** | **−49%** |
+
+- [x] **✅ BOTH MODES *AND* BOTH BRANDS THIS TIME — 9a SWEPT palette-beta ONLY AND SAID SO.**
+      Geometry is identical across all four combinations: header **47.8**, logo box 31.8, mark
+      19.8, main top 47.8, h1 top 71.8. **The `stableBox` parity fence holds** — header, main top
+      and h1 top are equal in light and dark on **both** brands — and dark still carries the plate
+      on both, so Ruling 3 is intact.
+      **Contrast at the switcher's NEW ground, measured on the element** (it moved from the shell
+      chrome to the profile column; both are `--rm-recess`, verified rather than assumed):
+      | | beta light | beta dark | alpha light | alpha dark |
+      |---|---|---|---|---|
+      | switcher label | 11.16 | 18.45 | 12.00 | 17.96 |
+      | Sign out | 6.00 | 7.02 | 5.66 | 7.21 |
+      The switcher's border is `currentColor`, so it inherits the label's ratio and clears the 3:1
+      graphic floor in all four. ⚠ **palette-alpha had to be given a reachable `logo_url` first**,
+      for the same reason beta did in 9a — the seeder gap filed there makes the plate branch
+      unreachable on every seeded contractor.
+
 ### Canvass-9a — the structural UI pass, and the layout shift diagnosed (SHIPPED 2026-09-20)
 
 - [x] **✅ THE LAYOUT SHIFT BETWEEN MODES IS FIXED, AND THE DIAGNOSIS IS WORTH MORE THAN THE FIX.**

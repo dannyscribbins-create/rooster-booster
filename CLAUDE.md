@@ -344,8 +344,31 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1271 React tests across 77 files** (measured 2026-09-20 by the Canvass-9a commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9a COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1280 React tests across 77 files** (measured 2026-09-20 by the Canvass-9b Part 0 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9b PART 0 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  React 1271 → 1280 is **+9 = 5 + 4**, both appended to EXISTING files — five cases in
+  `repProfileScreen.test.jsx` (the switcher's new home) and four in `repTimeframeAndRows.test.jsx`
+  (its absence from the other three screens). **The FILE count stays 77 and the SERVER numbers do
+  not move at all**, which is the expected shape: Part 0 is a placement change with no server
+  surface. ⚠ **A React figure that rises while the file count holds means an existing suite grew**
+  — a different event from a new suite arriving, and worth reading as such.
+  ⚠ **NO PHANTOM THIS TIME, AND IT WAS ASKED BEFORE THE RUN RATHER THAN RECONCILED AFTER.** Part 0
+  adds **no new file of any kind**, so none of `adminBranding.test.jsx`'s four walked roots gained a
+  sweepable file and the arithmetic closes at exactly 9.
+  ⚠ **FIVE GUARD-PROOFS WERE RUN AND ONE OF THEM FOUND A HOLE, WHICH IS THE ENTRY WORTH KEEPING.**
+  Reinstating the chrome slot took the absence fences to **4 failed**; removing the eligibility gate
+  took the ineligible-member case red; inserting a row into A30's gap took **4** cases red across
+  two files; and swapping the JSX order broke the ordering fence. ⚠ **But `flex-direction:
+  row-reverse` DID NOT** — it paints Sign out to the LEFT of the switcher, breaking the ruling,
+  while leaving DOM order untouched, and the ordering assertion stayed **green** against it.
+  **jsdom performs no layout, so a visual reversal is invisible to every position assertion.** The
+  fence now forbids a reversing `flex-direction` outright, and that proof breaks it. *A fence whose
+  failure mode has never been observed is a claim, not a check — and this one had its gap exactly
+  where the reader is blind.*
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-9a COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.*
+  It read **1574 / 254 / 1271 / 77**, +18 server across two files and +42 React across five
+  contributors including one phantom, and it records the two guard-proofs that took the
+  header-parity and timeframe fences red.
   Server 1556 → 1574 is **+18 = 8 + 10**: eight in one new file (`repTimeframe.test.js`) and ten
   appended to an EXISTING file (`repClients.test.js`). Suites 251 → 254 is **+3 = 2 + 1** — that
   new file's TWO top-level `test.describe` blocks plus the ONE `describe` appended to

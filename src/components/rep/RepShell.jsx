@@ -191,31 +191,32 @@ export default function RepShell({ onLogout, switcher = null, preview = false, c
     >
       <Header />
 
-      {/* ⚠ THE SWITCHER IS CHROME, NOT SCREEN CONTENT, AND THAT IS A CORRECTION
-          MADE DURING THIS BUILD RATHER THAN A PREFERENCE. It was first placed on
-          the Profile screen beside Sign out — which is where RepPlaceholder had
-          it and where the admin sidebar puts it — and surfaceSwitcher.test.jsx
-          went RED. The test was right: RepPlaceholder was a SINGLE screen, so
-          "beside Sign out" and "always visible" were the same placement. With
-          four tabs they are not, and Profile-only would have made a rep-admin's
-          only way back to the admin panel something they had to go and find.
-          That is the same failure SurfaceSwitcher's own header rules out when it
-          refuses to sit behind a PermissionGate — putting the escape hatch
-          behind the wall it escapes. A tab is not a permission wall, but it is
-          still discovery, and nothing ruled that trade.
-          Rendered here it is visible on every screen, exactly as it was, and
-          NULL for a general-tier rep, exactly as it was. */}
-      {switcher && (
-        <div
-          data-rep-switcher-slot=""
-          style={{
-            width: 'min(430px, 100vw)', margin: '0 auto',
-            padding: '16px 20px 0', boxSizing: 'border-box',
-          }}
-        >
-          {switcher}
-        </div>
-      )}
+      {/* ⚠ THE SWITCHER IS NO LONGER RENDERED HERE — IT LIVES ON PROFILE, LEFT OF
+          SIGN OUT. Ruled by Danny, Canvass-9b Part 0(b): it is a rare,
+          account-level action and does not belong on every screen. It cost a
+          58px row on all four tabs.
+
+          ⚠ AND THE ARGUMENT THAT USED TO SIT HERE IS NOW INVERTED, NOT MERELY
+          STALE — WHICH IS WHY IT IS QUOTED RATHER THAN DELETED. It read:
+          *"It was first placed on the Profile screen beside Sign out … and
+          surfaceSwitcher.test.jsx went RED. The test was right … Profile-only
+          would have made a rep-admin's only way back to the admin panel
+          something they had to go and find … A tab is not a permission wall, but
+          it is still discovery, and nothing ruled that trade."*
+
+          **Something has now ruled that trade.** The observation was sound and
+          the conclusion is superseded: Danny weighed the discovery cost against
+          58px of chrome on every screen and chose the chrome. ⚠ **A reader who
+          finds only the old paragraph would restore this slot and undo a
+          ruling**, which is precisely the inverted-record failure this repo
+          records — a comment that instructs against the correct change.
+
+          ⚠ THE DISCOVERY CONCERN IS ANSWERED BY PLACEMENT, NOT DISMISSED.
+          Profile is where someone looks for an account-level action, and it is
+          one tap from every screen via the bottom nav — so the escape hatch is
+          not behind a wall, it is behind a labelled door. `RepProfileScreen`
+          carries the constraint that it must not read as subordinate to Sign
+          out. */}
 
       {/* The bottom nav is fixed, so the scrolling column reserves room for it
           rather than letting the last row sit underneath. */}
@@ -228,7 +229,7 @@ export default function RepShell({ onLogout, switcher = null, preview = false, c
           boxSizing: 'border-box',
         }}
       >
-        <Screen view={view} onLogout={onLogout} preview={preview} caps={caps} onNavigate={(next) => { setView(next); window.scrollTo(0, 0); }} />
+        <Screen view={view} onLogout={onLogout} switcher={switcher} preview={preview} caps={caps} onNavigate={(next) => { setView(next); window.scrollTo(0, 0); }} />
       </main>
 
       <RepBottomNav activeTab={activeTab} onSelect={selectTab} />
@@ -286,7 +287,14 @@ function Header() {
       style={{
         position: 'relative',
         background: 'var(--rm-surface, #FFFFFF)',
-        padding: '10px 20px',
+        // ⚠ 8px, DOWN FROM 10 (and from 14 before 9a) — 9b Part 0(c). Danny's
+        // screenshot at 430px: a white band far taller than a 19.8px mark needs,
+        // with "the padding doing more work than the logo". Measured before
+        // cutting, which is what showed where the space actually was:
+        //     header 59.8 = 10 (pad) + 39.8 (logo box) + 10 (pad)
+        //     of which the MARK is 19.8 — a 3.02x band for a 1x logo.
+        // The box was the larger half, so both were cut rather than only this one.
+        padding: '8px 20px',
         display: 'flex',
         alignItems: 'center',
       }}
@@ -296,7 +304,14 @@ function Header() {
           for the four card surfaces it was built for; inside a shrink-to-fit
           box the auto margins have nothing to distribute and it sits left. */}
       <div style={{ width: 'fit-content' }}>
-        <BrandMark width={66} marginBottom={0} stableBox />
+        {/* ⚠ `boxPadding` IS TIGHTER THAN BrandLogo'S DEFAULT, AND ONLY HERE.
+            `10px 14px` is more than half this mark's own height again — correct on
+            a full-page auth card with a 120-180px logo, oversized around a 66px
+            one. The three auth call sites pass nothing and keep the default, so
+            they are byte-identical. See BrandLogo's note on why the value stays a
+            single binding read by both mode branches: the parity fence depends on
+            light and dark being unable to diverge, whatever a caller passes. */}
+        <BrandMark width={66} marginBottom={0} stableBox boxPadding="6px 10px" />
       </div>
       <div
         aria-hidden="true"
@@ -322,14 +337,19 @@ function Header() {
 // and found nothing; this is a screen that does not exist yet, and saying so
 // with an empty state would be a claim about data. It also keeps the known
 // StateCard dark-border defect off a surface 3-D is about to inspect by eye.
-function Screen({ view, onLogout, onNavigate, preview = false, caps = null }) {
+function Screen({ view, onLogout, onNavigate, switcher = null, preview = false, caps = null }) {
   if (view.screen === 'profile') {
     // ⚠ caps ARRIVES AS A PROP AND MAY BE null. RepShell stays a LEAF with respect
     // to RepCapabilitiesContext (see this file's header) — RepSurface reads the
     // context one level up and threads the value down. A bare shell mount, which
     // BrandLogo.test.jsx and repThemeToggle.test.jsx both do, passes nothing and the
     // screen renders without capability-derived rows rather than throwing.
-    return <RepProfileScreen onLogout={onLogout} caps={caps} />;
+    // ⚠ THE SWITCHER TRAVELS TO PROFILE AS A PROP, exactly as `caps` does, and for
+    // the same reason: RepShell stays a LEAF with respect to RepCapabilitiesContext
+    // and decides nothing about eligibility. `App.jsx` already decided — it passes
+    // null for anyone ineligible — so a general-tier rep with no admin panel to
+    // return to receives null here and Profile renders without the control.
+    return <RepProfileScreen onLogout={onLogout} caps={caps} switcher={switcher} />;
   }
 
   // ⚠ HOME IS NO LONGER A PLACEHOLDER (Canvass-6). Only Network still is.

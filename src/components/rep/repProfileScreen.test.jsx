@@ -273,9 +273,15 @@ describe('Canvass-8 — what does NOT ship, and A30\'s anchor', () => {
     const signOut = document.querySelector('[data-rep-signout]');
     expect(row, 'the theme row is not on the Profile screen').toBeTruthy();
     expect(signOut).toBeTruthy();
+    // ⚠ THE TARGET IS THE SIGN-OUT *ROW* SINCE 9b PART 0(b) — see the twin assertion
+    // in repThemeToggle.test.jsx for the full reasoning. The switcher joined Sign
+    // out's row rather than becoming a row of its own, so A30's row list is intact.
     let next = row.nextElementSibling;
     while (next && next.getAttribute('aria-hidden') === 'true') next = next.nextElementSibling;
-    expect(next, 'something sits between the theme row and Sign out').toBe(signOut);
+    expect(next, 'something sits between the theme row and the Sign out row')
+      .toBe(signOut.closest('[data-rep-account-actions]'));
+    expect(next.contains(signOut)).toBe(true);
+    expect(next.nextElementSibling, 'something now follows the Sign out row').toBeNull();
   });
 
   it('renders the rep\'s initials without inventing a name when one is absent', async () => {
@@ -355,10 +361,15 @@ describe('Canvass-9a Part 6 — Profile’s chrome', () => {
     expect(signout.style.paddingTop).not.toBe('0px');
     expect(signout.style.paddingBottom).toBe(signout.style.paddingTop);
 
-    // ⚠ AND A SPACER SEPARATES IT FROM THE ROW ABOVE. Asserted structurally rather than
-    // by a pixel total, because what matters is that SOMETHING holds them apart — a
+    // ⚠ AND A SPACER SEPARATES ITS ROW FROM THE ROW ABOVE. Asserted structurally rather
+    // than by a pixel total, because what matters is that SOMETHING holds them apart — a
     // future change to the amount should not fail this.
-    const spacer = signout.previousElementSibling;
+    // ⚠ THE SPACER IS NOW THE ACCOUNT ROW'S PREVIOUS SIBLING, NOT THE BUTTON'S, since
+    // 9b Part 0(b) put the switcher beside Sign out inside that row. The property is
+    // unchanged; the element the button hangs from moved one level.
+    const accountRow = signout.closest('[data-rep-account-actions]');
+    expect(accountRow, 'Sign out is not inside the account row').toBeTruthy();
+    const spacer = accountRow.previousElementSibling;
     expect(spacer.getAttribute('aria-hidden')).toBe('true');
     expect(parseInt(spacer.style.height, 10)).toBeGreaterThan(20);
   });
@@ -370,7 +381,8 @@ describe('Canvass-9a Part 6 — Profile’s chrome', () => {
     // between them.
     mount({});
     const signout = await screen.findByText('Sign out');
-    const spacer = signout.previousElementSibling;
+    const accountRow = signout.closest('[data-rep-account-actions]');
+    const spacer = accountRow.previousElementSibling;
     // The spacer carries nothing at all.
     expect(spacer.children.length).toBe(0);
     expect(spacer.textContent).toBe('');
@@ -391,5 +403,132 @@ describe('Canvass-9a Part 6 — Profile’s chrome', () => {
     // fallback must be the one statusTheme.js defines rather than one retyped here.
     // `themeKeyIntegrity.test.js` owns the value itself and names it when it fires.
     expect(signout.style.color).toMatch(/^var\(--rm-danger-text, #[0-9A-Fa-f]{6}\)$/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CANVASS-9b PART 0(b) — THE SWITCHER MOVED TO PROFILE, LEFT OF SIGN OUT
+//
+// Ruled by Danny: it is a rare, account-level action and does not belong on every
+// screen. It was costing a 58px row on all four tabs — measured, chrome above the
+// page title fell 141.8 -> 71.8px once it and the header padding went.
+//
+// ⚠ THE CONSTRAINT THAT CAME WITH THE RULING: it is the ONLY route back to the admin
+// panel, so it must stay obviously actionable and must NOT read as subordinate to the
+// destructive action beside it. These cases fence the structural half of that; the
+// painted half is the browser pass (measured 11.16 / 18.45 light / dark on
+// palette-beta and 12.00 / 17.96 on palette-alpha, all against a 4.5 floor).
+describe('Canvass-9b Part 0(b) — the switcher lives on Profile, beside Sign out', () => {
+  const withSwitcher = (over = {}) => {
+    installFetch();
+    return render(
+      <ThemeProvider context={CONTEXT} fetchStoredMode={async () => null}>
+        <RepProfileScreen
+          onLogout={() => {}}
+          caps={caps(over)}
+          switcher={<button type="button" data-surface-switcher="admin">Switch to the admin panel</button>}
+        />
+      </ThemeProvider>
+    );
+  };
+
+  it('renders the switcher for an ELIGIBLE member, to the LEFT of Sign out in one row', async () => {
+    withSwitcher();
+    const signout = await screen.findByText('Sign out');
+    const row = signout.closest('[data-rep-account-actions]');
+    expect(row, 'Sign out is not inside the account row').toBeTruthy();
+
+    const sw = row.querySelector('[data-surface-switcher]');
+    expect(sw, 'the switcher is not in the account row').toBeTruthy();
+
+    // ⚠ ORDER IS THE ASSERTION, NOT MERE CO-PRESENCE. "Left of Sign out" is the ruling,
+    // and two elements that both exist in the wrong order would satisfy a presence-only
+    // check. jsdom performs no layout so `getBoundingClientRect` cannot say which is
+    // left — DOM order is the observable that survives here, and it is also what a
+    // screen reader follows, which is the half of "not subordinate" that matters most.
+    // eslint-disable-next-line no-bitwise
+    expect(sw.compareDocumentPosition(signout) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'Sign out does not follow the switcher').toBeTruthy();
+
+    // ⚠ AND THE ROW MUST NOT REVERSE ITS OWN VISUAL ORDER — A HOLE THE GUARD-PROOF
+    // FOUND RATHER THAN A PRECAUTION I THOUGHT OF. Flipping the row to
+    // `flex-direction: row-reverse` paints Sign out on the LEFT and the switcher on
+    // the RIGHT, breaking the ruling, while leaving DOM order untouched — so the
+    // assertion above stayed GREEN against it. A fence whose failure mode has never
+    // been observed is a claim, and this one had a gap exactly where jsdom's lack of
+    // layout leaves the reader blind.
+    // ⚠ ASSERTED ON THE DECLARATION, WHICH IS THE ONLY OBSERVABLE THERE IS HERE: a
+    // reversing direction is forbidden outright, rather than trying to infer painted
+    // position from a DOM that has none.
+    expect(['', 'row'], 'the account row reverses its visual order, so Sign out paints left of the switcher')
+      .toContain(row.style.flexDirection);
+  });
+
+  it('⚠ renders NOTHING for an INELIGIBLE member — the paired negative', async () => {
+    // A general-tier rep who is not switcher-eligible has no admin panel to return to.
+    // ⚠ App.jsx decides this, once, against the live session; this screen receives null.
+    // Without this case, "the switcher renders" would be satisfied by a screen that
+    // draws it unconditionally — which would offer every rep a door to a panel they
+    // cannot open.
+    installFetch();
+    render(
+      <ThemeProvider context={CONTEXT} fetchStoredMode={async () => null}>
+        <RepProfileScreen onLogout={() => {}} caps={caps()} switcher={null} />
+      </ThemeProvider>
+    );
+    const signout = await screen.findByText('Sign out');
+    expect(document.querySelector('[data-surface-switcher]')).toBeNull();
+    expect(document.querySelector('[data-rep-switcher-slot]')).toBeNull();
+    // ⚠ AND SIGN OUT STILL WORKS AND IS STILL IN ITS ROW — the row must not collapse
+    // or mis-place when its first child is absent.
+    expect(signout.closest('[data-rep-account-actions]')).toBeTruthy();
+  });
+
+  it('⚠ Sign out still fires when the switcher is beside it', async () => {
+    // The destructive action is the one thing on this screen that must not become
+    // harder to hit because a control moved next to it.
+    installFetch();
+    const onLogout = vi.fn();
+    render(
+      <ThemeProvider context={CONTEXT} fetchStoredMode={async () => null}>
+        <RepProfileScreen
+          onLogout={onLogout}
+          caps={caps()}
+          switcher={<button type="button" data-surface-switcher="admin">Switch to the admin panel</button>}
+        />
+      </ThemeProvider>
+    );
+    const signout = await screen.findByText('Sign out');
+    fireEvent.click(signout);
+    expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠ the switcher does not SHRINK when the row runs out of room', async () => {
+    // "Must not read as subordinate" built structurally rather than hoped for. A
+    // control compressed to fit beside a bigger neighbour is how subordinate gets
+    // made by accident, so the row wraps SIGN OUT instead. jsdom cannot measure the
+    // wrap; it can assert the declaration that causes it.
+    withSwitcher();
+    await screen.findByText('Sign out');
+    const slot = document.querySelector('[data-rep-switcher-slot]');
+    expect(slot.style.flexShrink).toBe('0');
+    const row = document.querySelector('[data-rep-account-actions]');
+    expect(row.style.flexWrap).toBe('wrap');
+  });
+
+  it('⚠ Sign out carries NO border — the switcher is the stronger object in the row', async () => {
+    // The visual half of "not subordinate", asserted at declaration level. The
+    // switcher is the only bordered control on this screen; Sign out is bare text.
+    // ⚠ PAIRED, so this cannot pass by both being bare: the real SurfaceSwitcher
+    // paints its own border, and this asserts Sign out declines one.
+    // ⚠ `borderStyle`, NOT `border`. jsdom normalises the shorthand and reports
+    // `style.border` as 'medium' for `border: none` — a shorthand that never expands
+    // the way the author wrote it, which is the recorded jsdom limitation. Reading the
+    // longhand is what the assertion actually means anyway: it is the STYLE that
+    // decides whether an edge is drawn.
+    withSwitcher();
+    const signout = await screen.findByText('Sign out');
+    expect(signout.style.borderStyle).toBe('none');
+    expect(signout.style.background).toBe('none');
   });
 });

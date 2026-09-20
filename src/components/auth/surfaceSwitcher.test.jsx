@@ -80,6 +80,27 @@ afterEach(() => {
   window.history.replaceState({}, '', '/');
 });
 
+// ⚠ ON THE REP SURFACE THE SWITCHER LIVES ON **PROFILE** SINCE 9b PART 0(b), NOT IN
+// THE SHELL CHROME. Danny ruled it off every screen: it is a rare, account-level
+// action and it was costing a 58px row on all four tabs.
+//
+// ⚠ THIS HELPER NAVIGATES; IT DOES NOT RELAX AN ASSERTION. The property these cases
+// own is "an eligible member IS OFFERED a way back", which is unchanged — only where
+// the offer lives moved. Every call site below that used to assert on the entry
+// screen now goes to Profile first and still asserts the control is there. The
+// PAIRED half — that it is absent from Home, Clients and Client Detail — is asserted
+// in repTimeframeAndRows.test.jsx and repProfileScreen.test.jsx, so "it moved" is
+// fenced from both directions rather than only by this file going quiet.
+async function openRepProfile() {
+  const tab = await waitFor(() => {
+    const t = document.querySelector('[data-rep-tab="profile"]');
+    if (!t) throw new Error('rep profile tab not mounted');
+    return t;
+  });
+  fireEvent.click(tab);
+  await waitFor(() => expect(document.querySelector('[data-rep-signout]')).toBeTruthy());
+}
+
 describe('C/DL-3c Phase 2b — who is offered a switcher', () => {
 
   it('[RED] an OWNER-REP is offered one on the admin panel', async () => {
@@ -99,10 +120,15 @@ describe('C/DL-3c Phase 2b — who is offered a switcher', () => {
     expect(switchToAdmin()).toBeNull();
   });
 
-  it('[RED] a GENERAL-tier rep is offered one on the rep surface', async () => {
+  it('[RED] a GENERAL-tier rep is offered one on the rep surface (on Profile)', async () => {
     installFetch({ tier: 'general', isFieldRep: true, permissions: {} });
     render(<App />);
     await waitFor(() => expect(repSurface()).toBeTruthy());
+    // ⚠ NOT ON THE ENTRY SCREEN ANY MORE — asserted explicitly rather than left to the
+    // navigation below, because "the control is somewhere" is what this pair exists to
+    // stop being enough.
+    expect(switchToAdmin(), 'the switcher is back in the shell chrome').toBeNull();
+    await openRepProfile();
     expect(switchToAdmin()).toBeTruthy();
   });
 
@@ -134,7 +160,9 @@ describe('C/DL-3c Phase 2b — the switch itself, and the fallback', () => {
     await waitFor(() => expect(repSurface()).toBeTruthy());
     expect(adminPanel()).toBeNull();
     // The return leg exists — a one-way door is the defect the whole routing
-    // rule was shaped around.
+    // rule was shaped around. ⚠ It is now ON PROFILE, which is why this navigates:
+    // the property under test is that a way back EXISTS, not where it is drawn.
+    await openRepProfile();
     expect(switchToAdmin()).toBeTruthy();
   });
 
@@ -146,6 +174,7 @@ describe('C/DL-3c Phase 2b — the switch itself, and the fallback', () => {
     fireEvent.click(switchToRep());
     await waitFor(() => expect(repSurface()).toBeTruthy());
 
+    await openRepProfile();
     fireEvent.click(switchToAdmin());
     await waitFor(() => expect(adminPanel()).toBeTruthy());
     expect(repSurface()).toBeNull();

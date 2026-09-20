@@ -157,7 +157,7 @@ function AttributionPill({ attributable }) {
   );
 }
 
-export default function RepProfileScreen({ onLogout, caps = null }) {
+export default function RepProfileScreen({ onLogout, caps = null, switcher = null }) {
   const [titles, setTitles] = useState([]);
   // `selected` is the COMMITTED value — it moves only after the server agrees.
   const [selected, setSelected] = useState(
@@ -371,13 +371,60 @@ export default function RepProfileScreen({ onLogout, caps = null }) {
           PIN the rep may not have to hand. */}
       <div style={{ height: 28 }} aria-hidden="true" />
 
+      {/* ── ⚠ THE ACCOUNT ROW — SWITCHER LEFT, SIGN OUT RIGHT (9b Part 0b) ──
+          Ruled by Danny: the surface switcher moves here from the shell chrome,
+          to the LEFT of Sign out. It was costing a 58px row on all four tabs for
+          a rare, account-level action.
+
+          ⚠ A30'S ANCHOR IS INTACT, AND THE READING MATTERS. A30 requires the
+          theme toggle DIRECTLY ABOVE Sign out with nothing inserted between, and
+          Sign out LAST. Its subject is the ROW LIST — Title, Attribution type,
+          Fallback link, Security, theme toggle, Sign out. **The switcher joins
+          Sign out's row rather than becoming a row of its own**, so the theme row
+          is still directly above the Sign-out row and that row is still last. No
+          row was inserted. `repProfileScreen.test.jsx` asserts both halves.
+
+          ⚠ AND IT MUST NOT READ AS SUBORDINATE TO SIGN OUT, WHICH IS A REAL RISK
+          OF PUTTING IT BESIDE A DESTRUCTIVE ACTION. Three things answer it, and
+          none is "make it bigger":
+            · **It is the only BORDERED control on this screen.** SurfaceSwitcher's
+              rep variant is an outlined button with an icon; Sign out is bare text
+              with no border and no background. The switcher is visually the
+              stronger object in the row, which is the opposite of subordinate.
+            · **It leads in reading order** — left, and first in the DOM, so a
+              screen reader reaches it before the destructive action.
+            · **`flexShrink: 0` on it**, so when the row runs out of width it is
+              SIGN OUT that wraps, never the switcher that gets squeezed. A
+              control compressed to fit beside a bigger neighbour is exactly how
+              "subordinate" gets built by accident.
+
+          ⚠ `justifyContent: space-between` WITH ONE CHILD PUTS IT AT FLEX-START,
+          which is why a general-tier rep — who receives `switcher === null` — sees
+          Sign out in exactly the position it occupied before this change. */}
+      <div
+        data-rep-account-actions=""
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12, flexWrap: 'wrap',
+        }}
+      >
+        {/* ⚠ RENDERED ONLY WHEN App.jsx SUPPLIED ONE. Eligibility is decided there,
+            once, against the live session — `canSwitchSurface()` is
+            `role === 'team' && is_field_rep`. A general-tier rep who is NOT a field
+            rep, and any referrer, gets null and no control. Deciding it here would
+            be a second copy of that predicate with no way to stay current. */}
+        {switcher && (
+          <div data-rep-switcher-slot="" style={{ flexShrink: 0 }}>
+            {switcher}
+          </div>
+        )}
+
       {onLogout && (
         <button
           type="button"
           onClick={onLogout}
           data-rep-signout=""
           style={{
-            display: 'block', width: '100%',
             background: 'none', border: 'none',
             padding: '14px 0',
             font: 'inherit', cursor: 'pointer', textAlign: 'left',
@@ -395,6 +442,7 @@ export default function RepProfileScreen({ onLogout, caps = null }) {
           Sign out
         </button>
       )}
+      </div>
     </>
   );
 }

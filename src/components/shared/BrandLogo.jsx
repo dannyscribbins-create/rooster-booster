@@ -115,6 +115,7 @@ export default function BrandLogo({
   marginBottom = 20,
   onError,
   stableBox = false,
+  boxPadding = '10px 14px',
 }) {
   const { mode } = useContext(ThemeContext);
 
@@ -130,7 +131,19 @@ export default function BrandLogo({
   // ⚠ ONE DECLARATION, READ BY BOTH BRANCHES. The whole point is that the dark plate
   // and the reserved light box cannot have different padding — so the number is
   // written once and neither branch may restate it.
-  const BOX_PADDING = '10px 14px';
+  //
+  // ⚠ IT IS A DEFAULTED PROP SINCE 9b PART 0(c), AND THE DEFAULT IS THE SHIPPED VALUE.
+  // The rep header needs a tighter box than a full-page auth card does: its mark is
+  // 19.8px tall, where `10px 14px` is more than half the logo's own height again.
+  // The three auth call sites pass nothing and are therefore BYTE-IDENTICAL — which is
+  // the promise this file's header makes in terms ("Adopting this component must not
+  // move a pixel in the only mode that has shipped"), and the same reason `stableBox`
+  // is opt-in rather than universal.
+  // ⚠ STILL ONE VALUE PER RENDER, WHICH IS WHAT THE PARITY FENCE DEPENDS ON: both
+  // branches read this same binding, so light and dark cannot diverge whatever a
+  // caller passes. Making it a prop widens what the value can BE; it does not
+  // reintroduce two places for it to be written.
+  const BOX_PADDING = boxPadding;
 
   if (mode !== 'dark' && stableBox) {
     return (

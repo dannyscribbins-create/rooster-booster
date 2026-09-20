@@ -217,9 +217,26 @@ describe('the Profile theme toggle — placement (A30) and both modes', () => {
 
     // DIRECTLY above: nothing of ours between them. Guards against a later row
     // being inserted into the gap A30 names, which "somewhere above" would miss.
+    //
+    // ⚠ THE TARGET IS THE SIGN-OUT *ROW*, NOT THE BUTTON, SINCE 9b PART 0(b). Danny
+    // ruled the surface switcher onto Profile beside Sign out, so the button now sits
+    // inside `[data-rep-account-actions]` with the switcher. **A30's subject is the
+    // ROW LIST** — Title, Attribution type, Fallback link, Security, theme toggle,
+    // Sign out — and the switcher joined Sign out's row rather than becoming a row of
+    // its own. So the theme row is still directly above the last row, and no row was
+    // inserted into the gap.
+    // ⚠ THE FENCE IS NOT WEAKENED BY THIS, AND THAT IS THE POINT OF THE EXTRA
+    // ASSERTIONS BELOW: it still fails if anything is inserted between them, and it
+    // now ALSO fails if Sign out stops being inside that row or stops being last.
+    // Relaxing it to "Sign out appears somewhere after" would have been the easy
+    // change and would have retired the guard A30 depends on.
     let next = row().nextElementSibling;
     while (next && next.getAttribute('aria-hidden') === 'true') next = next.nextElementSibling;
-    expect(next, 'something sits between the theme row and Sign out').toBe(signOut());
+    expect(next, 'something sits between the theme row and the Sign out row')
+      .toBe(signOut().closest('[data-rep-account-actions]'));
+    // Sign out is inside that row, and that row is the LAST thing on the screen.
+    expect(next.contains(signOut())).toBe(true);
+    expect(next.nextElementSibling, 'something now follows the Sign out row').toBeNull();
   });
 
   it('[RED] renders in BOTH modes and reports the mode it is in', async () => {
