@@ -12,7 +12,6 @@ const {
   STAGE_RANK_SQL,
   parseTimeframe,
   timeframeClause,
-  conversionTimeframeClause,
 } = require('../utils/repBook');
 
 // ─── THE REP SURFACE'S OWN PREFIX (Canvass-3, amendment A34.3) ───────────────
@@ -347,7 +346,23 @@ router.get('/api/rep/clients', async (req, res) => {
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
          COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
          (fa.id IS NOT NULL)                                   AS is_flagged,
-         (u.id IS NOT NULL)                                    AS membership_confirmed
+         -- ⚠ EXISTS, NOT A JOIN, AND THIS FIXED A LIVE DOUBLE-COUNT FOUND IN THE BROWSER.
+         -- The users.jobber_client_id column has NO unique constraint and no index, so two app
+         -- users can legitimately point at one Jobber client — an imperfect match, or a
+         -- referrer fixture and the client themselves. A LEFT JOIN then emits ONE ROW PER
+         -- MATCH, so that client appeared TWICE in the rep's book while total (its own
+         -- COUNT over client_rep_assignments) counted it once. Observed on the local
+         -- stack: 100 rows returned, with jc-beta-1 among them twice.
+         -- ⚠ THE MIRROR OF THE CANVASS-4b DEFECT. There an INNER JOIN silently DROPPED
+         -- assignments whose client had no mirror row (39 assignments, ~30 rows on
+         -- screen); this silently ADDED one. Both are a join used to answer a yes/no
+         -- question, and both are invisible in a one-word diff.
+         -- ⚠ A boolean needs EXISTS. A join is for columns you are going to SELECT.
+         (EXISTS (
+           SELECT 1 FROM users u
+            WHERE u.contractor_id = cra.contractor_id
+              AND u.jobber_client_id = cra.jobber_client_id
+         ))                                                    AS membership_confirmed
        FROM client_rep_assignments cra
        LEFT JOIN jobber_clients jc
          ON jc.contractor_id = cra.contractor_id
@@ -375,9 +390,7 @@ router.get('/api/rep/clients', async (req, res) => {
         AND fa.status = 'open'
         AND fa.flag_reason = 'rep_co_assignment'
         AND fa.reps_involved @> to_jsonb($2::int)
-       LEFT JOIN users u
-         ON u.contractor_id = cra.contractor_id
-        AND u.jobber_client_id = cra.jobber_client_id
+
        WHERE ${OWN_BOOK_PREDICATE}
          ${timeframeClause(6)}
          -- The keyset. When no cursor is supplied $4/$5 are NULL and the clause is
@@ -530,7 +543,23 @@ router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
          COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
          (fa.id IS NOT NULL)                                   AS is_flagged,
-         (u.id IS NOT NULL)                                    AS membership_confirmed
+         -- ⚠ EXISTS, NOT A JOIN, AND THIS FIXED A LIVE DOUBLE-COUNT FOUND IN THE BROWSER.
+         -- The users.jobber_client_id column has NO unique constraint and no index, so two app
+         -- users can legitimately point at one Jobber client — an imperfect match, or a
+         -- referrer fixture and the client themselves. A LEFT JOIN then emits ONE ROW PER
+         -- MATCH, so that client appeared TWICE in the rep's book while total (its own
+         -- COUNT over client_rep_assignments) counted it once. Observed on the local
+         -- stack: 100 rows returned, with jc-beta-1 among them twice.
+         -- ⚠ THE MIRROR OF THE CANVASS-4b DEFECT. There an INNER JOIN silently DROPPED
+         -- assignments whose client had no mirror row (39 assignments, ~30 rows on
+         -- screen); this silently ADDED one. Both are a join used to answer a yes/no
+         -- question, and both are invisible in a one-word diff.
+         -- ⚠ A boolean needs EXISTS. A join is for columns you are going to SELECT.
+         (EXISTS (
+           SELECT 1 FROM users u
+            WHERE u.contractor_id = cra.contractor_id
+              AND u.jobber_client_id = cra.jobber_client_id
+         ))                                                    AS membership_confirmed
        FROM client_rep_assignments cra
        LEFT JOIN jobber_clients jc
          ON jc.contractor_id = cra.contractor_id
@@ -547,9 +576,7 @@ router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
         AND fa.status = 'open'
         AND fa.flag_reason = 'rep_co_assignment'
         AND fa.reps_involved @> to_jsonb($2::int)
-       LEFT JOIN users u
-         ON u.contractor_id = cra.contractor_id
-        AND u.jobber_client_id = cra.jobber_client_id
+
        WHERE ${OWN_BOOK_PREDICATE}
          AND cra.jobber_client_id = $3`,
       [contractorId, teamMemberId, jobberClientId]
@@ -728,47 +755,64 @@ router.get('/api/rep/home', async (req, res) => {
     // conversions. The number starts accumulating when real referrals convert AFTER
     // launch. **Building it is what makes that recordable**; waiting for a number that
     // cannot arrive until the plumbing exists is circular.
-    // ── ⚠ THE STAGE-BASED REDEFINITION IS STILL BLOCKED, BY A SECOND BLOCKER THAT
-    //      CANVASS-STAGE REVEALED BY REMOVING THE FIRST ONE. LEFT UNCHANGED HERE.
+    // ── CONVERSIONS (Canvass-stage, Ruling 1 / Danny 2026-09-21) ──────────────
     //
-    // 8da50a2 found the first: no client outside the referral pipeline had a stage at
-    // all, so "clients who turned into a sold job" was not computable and DIRECT was
-    // structurally zero. This phase fixes that — every client now carries a stage.
+    // ⚠ REDEFINED. THIS COUNTED `referral_conversions` ROWS AND NOW COUNTS SALES, AND
+    // THE TWO ARE DIFFERENT QUESTIONS THAT MUST NOT BE RE-ALIGNED:
+    //   · a rep's CONVERSIONS count SALES, repeats included — every job is a sale from
+    //     its createdAt, and jobs within the contractor's window are one sale;
+    //   · a referrer's PAYOUTS count PEOPLE REFERRED — a referred person's FIRST sale
+    //     pays once and their later sales pay nothing further, enforced by
+    //     `UNIQUE(user_id, jobber_client_id)` on referral_conversions.
+    // **They measure different things deliberately.** A future session that "aligns"
+    // them breaks one of the two by construction.
     //
-    // ⚠ THE SECOND BLOCKER IS THAT THE STAGE HAS NO HISTORY. jobber_clients.pipeline_stage
-    // is a CURRENT value; nothing anywhere records WHEN a client became 'sold'. This
-    // screen carries a week/month/year/all timeframe bar, so a conversions figure has to
-    // answer "how many converted IN THIS WINDOW" — and there is no column that can.
-    // ⚠ AND THE OBVIOUS SUBSTITUTE IS EXPLICITLY FORBIDDEN by conversionTimeframeClause's
-    // own header in repBook.js: windowing a conversion count by the assignment date
-    // "would count conversions by the age of an unrelated assignment row and return a
-    // plausible number for a question nobody asked." That is this defect exactly.
+    // ⚠ WHAT UNBLOCKED IT WAS A DATE, NOT A STAGE. 8da50a2 found that non-referred
+    // clients had no stage at all; Canvass-stage fixed that, and then a SECOND blocker
+    // appeared — a stage is a CURRENT value with no history, and this screen carries a
+    // timeframe bar. `client_sales.anchor_at` is the column that can answer "converted
+    // in this window", which is why the count is over sales rather than over stages.
     //
-    // WHAT WOULD CLOSE IT: a write-once `sold_at` on jobber_clients, set the first time
-    // a client's stage reaches 'sold' or 'paid' and never overwritten — the same pattern
-    // pipeline_cache.paid_at already uses, and the three writers already compute the
-    // stage they would need to compare against. It was NOT added here because the
-    // migration approved for this phase was one column.
+    // ⚠ ITS OWN QUERY, AND IT MUST STAY ONE — the same reason the old one did. A client
+    // with three sales would FAN OUT `COUNT(*)` if this were joined into the stats query
+    // above, so `clients` would silently inflate while looking entirely plausible.
     //
-    // ⚠ AND WHEN IT IS BUILT, THE COUNT IS `IN ('sold','paid')`, NEVER `= 'sold'`.
-    // The classifier returns a single current stage, so counting 'sold' alone makes the
-    // number SHRINK as jobs get paid — the most successful conversions leaving the count
-    // and reading as lost work. Once sold, always converted. (Danny's admin panel
-    // documents Sold contractor-facing as "Job created in Jobber", which is exactly
-    // classifyPipelineStatus's own rule: a job exists and no invoice is paid yet. The
-    // two agree, and that agreement is recorded here so neither drifts alone.)
+    // ⚠ THE SPLIT IS A UNION OVER SALES, NOT A SUM OF TWO COUNTS. A client can be
+    // referred through MORE THAN ONE source — a CRM "Referred by" value and an in-app
+    // invite chain — and adding per-source counts would count that client's sales twice
+    // and make referral + direct exceed the total. `EXISTS` asks one question per SALE:
+    // did this client arrive through any referral source at all. So the three numbers
+    // satisfy referral + direct = total by construction rather than by luck.
     const { rows: convRows } = await pool.query(
-      `SELECT COUNT(*)::int AS conversions
-         FROM referral_conversions rc
-         JOIN users u
-           ON u.id            = rc.user_id
-          AND u.contractor_id = rc.contractor_id
-         JOIN client_rep_assignments cra
-           ON cra.contractor_id    = rc.contractor_id
-          AND cra.jobber_client_id = u.jobber_client_id
-        WHERE rc.contractor_id = $1
-          AND ${OWN_BOOK_PREDICATE}
-          ${conversionTimeframeClause(3)}`,
+      `SELECT
+         COUNT(*)::int AS conversions,
+         COUNT(*) FILTER (WHERE EXISTS (
+           SELECT 1 FROM pipeline_cache pc
+            WHERE pc.contractor_id = cs.contractor_id
+              AND pc.jobber_client_id = cs.jobber_client_id
+         ) OR EXISTS (
+           SELECT 1 FROM users u
+            WHERE u.contractor_id = cs.contractor_id
+              AND u.jobber_client_id = cs.jobber_client_id
+              AND u.invited_by_user_id IS NOT NULL
+         ))::int AS conversions_referral,
+         COUNT(*) FILTER (WHERE NOT EXISTS (
+           SELECT 1 FROM pipeline_cache pc
+            WHERE pc.contractor_id = cs.contractor_id
+              AND pc.jobber_client_id = cs.jobber_client_id
+         ) AND NOT EXISTS (
+           SELECT 1 FROM users u
+            WHERE u.contractor_id = cs.contractor_id
+              AND u.jobber_client_id = cs.jobber_client_id
+              AND u.invited_by_user_id IS NOT NULL
+         ))::int AS conversions_direct
+       FROM client_sales cs
+       JOIN client_rep_assignments cra
+         ON cra.contractor_id    = cs.contractor_id
+        AND cra.jobber_client_id = cs.jobber_client_id
+      WHERE cs.contractor_id = $1
+        AND ${OWN_BOOK_PREDICATE}
+        AND ($3::timestamptz IS NULL OR cs.anchor_at >= $3::timestamptz)`,
       windowed
     );
 
@@ -859,7 +903,16 @@ router.get('/api/rep/home', async (req, res) => {
       // ⚠ MERGED, NOT NESTED — the client reads stats.conversions beside the other
       // four. They come from two queries for the reason recorded at the second one;
       // that is an implementation fact and not something the payload should expose.
-      stats: { ...statRows[0], conversions: convRows[0].conversions },
+      // ⚠ THE SPLIT SHIPS BESIDE THE TOTAL, AND THE THREE ARE ONE ROW FROM ONE QUERY.
+      // Computing referral and direct separately would let them disagree with the total
+      // the moment one picked up a predicate the other did not — and a card whose
+      // breakdown does not add up is worse than one with no breakdown.
+      stats: {
+        ...statRows[0],
+        conversions: convRows[0].conversions,
+        conversionsReferral: convRows[0].conversions_referral,
+        conversionsDirect: convRows[0].conversions_direct,
+      },
       focus: {
         furthestAlong: furthest.map((r) => ({ ...shape(r), stage: r.pipeline_stage })),
         // ⚠ RECENTLY ASSIGNED NOW CARRIES A STAGE TOO (Canvass-stage, Danny's ruling).

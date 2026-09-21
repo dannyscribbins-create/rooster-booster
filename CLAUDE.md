@@ -370,9 +370,39 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1606 server tests across 264 suites, and 1328 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage Ruling-2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1606 · suites 264 · pass 1606 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE RULING-2 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
-  TESTS.** **BOTH HALVES MOVED AND NEITHER SUITE COUNT DID**, which is the expected shape here:
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1622 server tests across 269 suites, and 1329 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage conversions commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1622 · suites 269 · pass 1622 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CONVERSIONS COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
+  TESTS.** Server 1606 → **1622** is **+16 = 13 + 2 + 1**: thirteen in one new file
+  (`saleGrouping.test.js`), a net +2 in the REWRITTEN `repConversions.test.js`, and **+1 for a
+  fan-out fence added late** — see below. Read as 13 + 2: thirteen in one new file
+  (`saleGrouping.test.js`) and a net **+2** in `repConversions.test.js`, which was REWRITTEN
+  from 8 cases to 10. Suites 264 → 269 is **+5 = 3 + 2** — the new file's three top-level
+  describes, plus that rewrite going from ONE describe to THREE. React 1328 → 1329 is **+1**:
+  two inverted cases in `repHomeScreen.test.jsx` were replaced by three.
+  ⚠ **COUNTED WITH `grep -c`, AND THE TWO `for` LOOPS WERE CHECKED FOR POSITION RATHER THAN
+  COUNTED.** One is inside a `beforeEach` hook (it iterates tables to clear) and one is inside an
+  `it()` body (it seeds three clients); **neither wraps an `it()`**, so 13 and 10 are exact.
+  ⚠ **A WHOLE TEST FILE WAS REWRITTEN RATHER THAN PATCHED, AND THE DELTA IS THE TELL.** Ruling 1
+  replaced the DEFINITION of a rep's conversion — it counted `referral_conversions` rows and now
+  counts SALES — so eight case names describing a referrer chain were about a question the product
+  no longer asks. **The scoping proofs were carried over deliberately** (own-book, cross-rep,
+  tenancy, fan-out); dropping them while changing a definition is how a rewrite loses coverage
+  nobody notices.
+  ⚠ **THE GATE WENT RED FIRST, AND BOTH FAILURES WERE FENCES WORKING.** A `deepEqual` over the
+  whole `stats` object caught the two new breakdown keys — **the SECOND unannounced-key catch by
+  that same assertion in two phases** — and was repaired by ADDING them, never by relaxing it to
+  a subset. The other was a timeframe case still seeding `referral_conversions`.
+  ⚠ **AND THE `EXIT=` LINE IS WHY THE RED RUN WAS NOTICED AT ALL.** The background task reported
+  **exit 0** while the log's own `EXIT=` line read **1** — the wrapper's status, not the gate's.
+  **Read the EXIT= written into the log, never the harness's summary of it.**
+  ⚠ **AND THE LAST +1 CAME FROM A LIVE DEFECT FOUND IN A BROWSER, NOT BY A TEST — WHICH IS THE
+  ENTRY WORTH KEEPING.** A client with TWO linked `users` rows rendered TWICE in the rep's book:
+  `membership_confirmed` was a `LEFT JOIN` on a column with no uniqueness, so it emitted one row
+  per match while `total` counted the client once. **No fixture had two users on one client, so
+  no assertion could see it** — the seeder models the state and nothing had ever read it. **A
+  boolean needs `EXISTS`; a join is for columns you SELECT.** It is the MIRROR of the Canvass-4b
+  defect, where an INNER JOIN silently DROPPED rows instead.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE RULING-2 COMMIT ITSELF.* **BOTH HALVES MOVED AND NEITHER SUITE COUNT DID**, which is the expected shape here:
   server 1604 → 1606 is **+2** appended to an EXISTING `describe` in `repClients.test.js`, and
   React 1325 → 1328 is **+3** appended to the EXISTING `repClientsScreen.test.jsx`. **No new test
   file of either kind**, so suites hold at 264 and files at 79. A file count and a suite count

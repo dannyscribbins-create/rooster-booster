@@ -305,25 +305,46 @@ describe('Canvass-8 — the conversions card', () => {
     expect(within(card).getByText('3')).toBeTruthy();
   });
 
-  it('⚠ the label is TRUE ON ITS OWN — it says what the number counts, and it is not "CONV"', async () => {
-    // The mockup's word is CONV and it says nothing. A rep who never taps the info
-    // affordance the UI pass will add must still read the label correctly, so the
-    // label carries the noun ("referral conversions") rather than an abbreviation.
+  it('⚠ the label is "CONVERSIONS" — RENAMED in Canvass-stage, and still not "CONV"', async () => {
+    // ⚠ THE LABEL WAS "REFERRAL CONVERSIONS" AND THAT WAS TRUE OF WHAT IT COUNTED: the
+    // number WAS referral conversions. Ruling 1 made the card's face the TOTAL — every
+    // sale in the rep's book — so "referral" became FALSE of it, and Referral is now one
+    // half of the breakdown. **The label had to change because the number did.**
     mount(payload({ stats: { conversions: 3 } }));
     const card = await screen.findByTestId('rep-conversions');
-    expect(within(card).getByText(/referral conversions/i)).toBeTruthy();
-    // ⚠ ANCHORED ON THE WHOLE WORD. A bare 'CONV' needle would match 'CONVERSIONS'
-    // and pass against the very label this rules out — the substring trap.
-    expect(/\bCONV\b/.test(card.textContent)).toBe(false);
+    expect(within(card).getByText(/^CONVERSIONS$/)).toBeTruthy();
+    // ⚠ AND THE FACE MUST NO LONGER CALL ITSELF REFERRAL — a total labelled "referral
+    // conversions" would overstate by exactly the direct half.
+    expect(/referral conversions/i.test(card.textContent)).toBe(false);
+    // ⚠ ANCHORED ON THE WHOLE WORD. A bare 'CONV' needle would match 'CONVERSIONS' and
+    // pass against the very label this rules out — the substring trap.
+    expect(new RegExp(`\bCONV\b`).test(card.textContent)).toBe(false);
   });
 
-  it('carries a definition line naming WHOSE referrals and WHAT happened to them', async () => {
+  it('⚠ the definition moved BEHIND the info icon — the face carries the term alone', async () => {
+    // ⚠ INVERTED, NOT DELETED. This asserted a definition line naming whose referrals and
+    // what happened to them. Ruling 1's definition has three clauses — repeats count,
+    // grouped jobs do not, and Referral is not what a referrer is paid — which is a
+    // paragraph rather than a line, so it moved behind the icon.
     mount(payload({ stats: { conversions: 3 } }));
     const card = await screen.findByTestId('rep-conversions');
-    const text = card.textContent.toLowerCase();
-    expect(text.includes('your clients')).toBe(true);
-    expect(text.includes('referred')).toBe(true);
-    expect(text.includes('customers')).toBe(true);
+    expect(card.textContent).not.toContain('People your clients referred who have become customers.');
+    // The paired positive: the control that now holds it is present, so "the line is gone"
+    // cannot pass against a card that simply lost its explanation.
+    expect(card.querySelector('[data-rep-info-icon]')).toBeTruthy();
+  });
+
+  it('⚠ the breakdown splits into Referral and Direct, both from the payload', async () => {
+    // ⚠ THE RIGHT-HAND SLOT USED TO READ "Total" WITH NO SOURCE and said so on screen.
+    // Ruling 1 gave it one: the face is the total, and the two halves are the split.
+    mount(payload({ stats: { conversions: 3, conversionsReferral: 2, conversionsDirect: 1 } }));
+    const card = await screen.findByTestId('rep-conversions');
+    fireEvent.click(card.querySelector('[data-rep-reveal-toggle]'));
+    expect(card.textContent).toContain('Referral');
+    expect(card.textContent).toContain('Direct');
+    // ⚠ AND THE OLD "no source" COPY MUST BE GONE, or the card would claim a figure is
+    // unavailable while displaying it.
+    expect(card.textContent).not.toContain('Not recorded yet.');
   });
 
   it('renders zero honestly — no alert, no lock, no "not available" framing', async () => {

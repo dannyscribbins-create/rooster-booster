@@ -4210,6 +4210,147 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### 🔴 Canvass-stage — a LIVE DOUBLE-COUNT in the rep's book, found in a browser (2026-09-21)
+
+- [x] **✅ FIXED — A CLIENT WITH TWO LINKED APP USERS APPEARED TWICE IN THE REP'S CLIENT LIST.**
+      `membership_confirmed` was computed by `LEFT JOIN users u … AND u.jobber_client_id =
+      cra.jobber_client_id`, and **`users.jobber_client_id` has no unique constraint and no
+      index** — so two app users can legitimately point at one Jobber client. The join emitted
+      **one row per match**, so that client rendered twice while `total` (its own COUNT over
+      assignments) counted it once. **Measured on the local stack: 100 rows returned, with
+      `jc-beta-1` among them twice.** Fixed by computing the boolean with `EXISTS` at both sites.
+      ⚠ **IT IS THE MIRROR OF THE CANVASS-4b DEFECT, AND THAT IS WHY IT IS FILED RATHER THAN JUST
+      FIXED.** There an INNER JOIN silently **dropped** assignments whose client had no mirror row
+      — 39 assignments, ~30 rows on screen. This silently **added** one. **Both are a join used to
+      answer a yes/no question**, both are invisible in a one-word diff, and the list looks
+      entirely plausible either way. **A boolean needs `EXISTS`; a join is for columns you SELECT.**
+      ⚠ **IT WAS PRE-EXISTING, NOT INTRODUCED BY THIS ARC** — that join predates Canvass-stage and
+      computes membership, not the stage or the referral flag.
+      ⚠ **AND NO TEST COULD HAVE CAUGHT IT, BECAUSE NO FIXTURE HAD TWO USERS ON ONE CLIENT.** It
+      was found by looking at the rendered screen on the seeded stack — the seeder models the
+      state (a conversions referrer pointed at `jc-beta-1`) and no assertion had ever read it.
+      **A regression fence now exists and is guard-proofed:** restoring the join takes it red.
+
+- [ ] ⚠ **THE SAME SHAPE MAY EXIST ELSEWHERE — NOT SWEPT.** Two sites in `server/routes/rep.js`
+      were fixed. **Any query that LEFT JOINs a table with no uniqueness on the join key, purely
+      to test existence, has this defect.** `flagged_assignments` is joined the same way in the
+      list query and is filtered to `status = 'open'` + one `flag_reason` — **a client with two
+      open co-assignment flags naming the same rep would duplicate identically.** Not fixed here
+      because it needs its own fixture and its own look; filed rather than assumed safe.
+
+### Canvass-stage — conversions SHIPPED, and the cancellation question ruled (2026-09-21)
+
+- [x] **✅ THE CONVERSIONS COUNT SHIPS. `client_sales` + `client_sale_jobs` migrated; a rep's
+      conversions count SALES over `client_sales`, windowed by `anchor_at`.** The anchor is **JOB
+      CREATED** (ruled), matching Sold in the admin panel and `classifyPipelineStatus`, so the count
+      and the stage cannot drift apart. Grouping uses the contractor's own `invoice_window_days`.
+      ⚠ **`sold_at` WAS NOT MIGRATED** — the design made it redundant (`MIN(anchor_at)`), and the
+      instruction was not to migrate a column the new design makes redundant.
+
+- [x] **✅ PAYOUTS AND CONVERSIONS MEASURE DIFFERENT THINGS, DELIBERATELY — FILED SO NOBODY
+      "ALIGNS" THEM.** A rep's **CONVERSIONS count SALES**, repeats included. A referrer's
+      **PAYOUTS count PEOPLE REFERRED**: a referred person's FIRST sale produces ONE payout and
+      their later sales pay the referrer nothing further. `UNIQUE(user_id, jobber_client_id)` on
+      `referral_conversions` is what enforces it and **stays exactly as it is** — it is in
+      *Never Break These Rules*, and it is not an obstacle to Ruling 1 but the mechanism of it.
+      ⚠ **PRE-ROOFMILES REFERRALS ARE KEPT FROM PAYING BY THE ONE-PER-PERSON RULE AND THE PROGRAM
+      START DATE — NOT by the import's 12-month anchor**, which affects ONLY the rep's conversion
+      count. Two different guards for two different numbers; conflating them would make the import
+      window look like a money control, which it is not.
+      ⚠ **AND THE OVERLAY'S REFERRAL FIGURE CAN EXCEED THAT REFERRER'S PAYOUTS**, because it counts
+      SALES from referred clients. **The glossary entry is what stops a rep reading one as the
+      other** — `REP_GLOSSARY.conversions` says the Referral figure *"is not the same as what a
+      referrer is paid"*, in the rep's own words, behind the card's info icon.
+
+- [x] **✅ THE MONEY FENCE: the grouping primitive is consumed by the REP CONVERSIONS PATH ONLY.**
+      Wiring it into `evaluateReferral()` would change how much referrers are paid — its own
+      ruling, never a side effect. A source-text fence asserts `referralRules.js` imports and reads
+      none of it. ⚠ **A behavioural test cannot see this**: `evaluateReferral` would keep returning
+      identical payouts for every fixture that does not straddle a window, so it would pass for a
+      long time against a wired-in grouping and then start paying differently on a case nobody
+      seeded.
+
+- [x] **✅ CANCELLATIONS — NO AUTOMATIC DETECTION, RULED (Danny, 2026-09-21). DO NOT RE-ATTEMPT
+      WITHOUT NEW EVIDENCE.** Probes on Accent's live account established:
+      · **`completedAt` does NOT distinguish cancelled from completed** — closing a job stamps it
+        either way, so the obvious field is not a signal.
+      · **Jobber's own workflow:** a finished job enters `requires_invoicing`; creating the invoice
+        moves it to `archived`.
+      · ⚠ **A REAL cancelled job at Accent is left UNSCHEDULED, with a note. It is NOT archived.**
+      ⚠ **THEREFORE THERE IS NO SIGNAL.** "Unscheduled" equally describes a genuine sale waiting
+      for a crew date, and nothing in Jobber's data separates the two. **Notes are recorded but are
+      RULED OUT as a signal — nothing may be designed to rely on free text.**
+      ⚠ **AND THE PLAUSIBLE RULE IS RULED OUT BY NAME: do NOT build "archived with no invoice".**
+      Real cancellations never reach that state, so it would be machinery that catches nothing
+      real while looking like a working control — health reported that cannot be observed.
+      **So: every job counts as a sale from its `createdAt`, and the count ships on that basis.**
+
+- [ ] ⚠ **STRIKE FROM RECORD — DANNY'S DESIGN, ITS OWN PHASE. NOT BUILT HERE.** Cancellations are
+      removed by hand: a discreet action inside a **settings control on the client detail page**,
+      never broadcast on a main screen. It removes the **SALE** — and optionally its revenue —
+      **never the client**, who stays in the rep's book.
+      **Three things to settle first:**
+      · **(a) WHO MAY STRIKE — reported, not decided.** ⚠ **A strike lowers the rep's own numbers,
+        so a rep has every incentive never to use it and cancellations would simply stay counted.**
+        A36.3 already makes manual reassignment an owner/admin action and a strike is the same kind
+        of correction. **Options: owner/admin only, or rep-requests / admin-confirms.** The second
+        keeps the rep's knowledge (they know it cancelled) without giving them the incentive
+        problem, at the cost of a queue.
+      · **(b) EXCLUDE, NEVER DELETE.** "Delete the revenue" is irreversible, so a wrong strike
+        could not be undone. **Proposed: the sale is marked struck — who, when, why — and left out
+        of counts and revenue.** Reversible, auditable, identical numbers.
+      · **(c) IT MUST NOT TOUCH REFERRAL PAYOUTS.** Striking a rep's conversion is a rep-side
+        correction. Whether a referrer loses a payout is a separate money question — and payouts
+        trigger on a **paid invoice**, which a cancellation never has.
+      ⚠ **THE SCHEMA IS ALREADY SHAPED FOR IT, AND WHAT THAT REQUIRED IS WORTH RECORDING:** because
+      the SALE is a row, adding `struck_at TIMESTAMPTZ`, `struck_by INTEGER`, `struck_reason TEXT`
+      plus `AND struck_at IS NULL` in the readers is purely additive. **Had conversions been stored
+      as a COUNT on `jobber_clients` — the shape the withdrawn `sold_at` pointed toward — there
+      would be no row to mark and this would need a rebuild.**
+
+- [ ] ⚠ **FILE, DO NOT FIX — THE REFERRER PIPELINE SHOWS A CANCELLED JOB AS "Sold", PERMANENTLY.**
+      `classifyPipelineStatus` returns `'sold'` whenever any job exists, so a referred client whose
+      job was cancelled shows **Sold** to their referrer for ever. **Payouts are safe** — they
+      trigger on a paid invoice, which a cancellation never has — **but the referrer sees a sale
+      that did not happen.** ⚠ **And with no automatic cancellation signal (ruled above), the fix
+      is not obvious either**: the same absence that stops the rep side detecting it stops this
+      side too. **Nothing in Canvass-stage touches the referrer pipeline.**
+
+- [ ] ⚠ **THE COST GAP, MEASURED, FOR THE LOGGING TO CONFIRM: a 10-job client query with nested
+      invoices REQUESTED 173 and ACTUALLY cost 19.** That is a 9× estimate-vs-reality gap, and it
+      is exactly what the per-page cost logging shipped on 2026-09-20 exists to measure. ⚠ **It
+      also justifies the minimal selection used for sale paging** (`id createdAt` only, measured at
+      **8** per page): reusing the fat related-data query to read two fields would pay the larger
+      cost repeatedly for data the grouping throws away. **Read the real figures off the Railway
+      logs of a real import before re-pacing anything.**
+
+### 🔴 ADMIN PANEL — "Invoice Grouping Window" is a control that does nothing (found 2026-09-21)
+
+- [ ] 🔴🔴 **A LIVE CONTRACTOR-FACING DEFECT, FILED SEPARATELY FROM THE REP WORK BECAUSE IT IS NOT
+      A REP PROBLEM.** The admin schedule builder offers a control labelled **"Invoice Grouping
+      Window"** — *"How many days of invoices are grouped together to determine the total job
+      value"* — with options 20 / 30 / 45 / 60, stored in
+      `referral_schedules.invoice_window_days INTEGER NOT NULL DEFAULT 20`, editable through full
+      CRUD, and **read by nothing**. ⚠ **A contractor can set it to 45 today and no invoice is
+      grouped, no payout changes, and nothing anywhere behaves differently.**
+      **Storage ✅ · editor ✅ · validator ✅ · DELIVERY ❌** — the fourth of the five wiring states.
+      **`evaluateReferral()` says so itself** (`server/referralRules.js`), and the quote is the
+      evidence this was known rather than forgotten:
+      > *"For MVP, we use the single triggered invoice — the UNIQUE constraint on
+      > referral_conversions prevents double-counting if a second invoice fires for the same
+      > client. SCALABLE PATH: implement full batch grouping when multi-invoice projects become
+      > common enough to warrant it. The invoice_window_days column is already seeded and ready."*
+      ⚠ **THE COMMENT IS HONEST AND THE ADMIN PANEL IS NOT.** The shortcut is documented at the
+      code; what is missing is that the contractor was shown a setting for the thing that was
+      deferred. **The fix is a product decision — build the grouping for payouts, or remove/disable
+      the control until it does something.** ⚠ **NOT FIXED IN CANVASS-STAGE** (Danny, 2026-09-21):
+      touching it changes how much referrers are paid.
+      ⚠ **AND THE REP SIDE NOW *READS* THAT COLUMN** (`windowDaysFor()` in
+      `server/utils/clientSales.js`), so the setting is no longer inert everywhere — **it governs
+      sale grouping for a rep's conversions and still does nothing for payouts.** That asymmetry is
+      deliberate and fenced, but it means the control's own helper text is now wrong in a second
+      way: it says *invoices* and *job value*, and on the rep side it groups *jobs* into *sales*.
+
 ### Canvass-stage — the 20-day grouping rule, and what is actually in the code (2026-09-21)
 
 - [ ] 🔴🔴 **THE 20-DAY GROUPING RULE DOES NOT EXIST IN CODE. THE SETTING DOES, THE ADMIN UI
@@ -4233,6 +4374,23 @@ may legitimately change several of these subjects.*
       ⚠ **THIS IS THE FOURTH-STATE FAILURE FROM *"Classifying whether a value is wired up has five
       states"*: storage ✅, editor ✅, validator ✅, **delivery ❌**.** A contractor can set the
       window to 45 days today and nothing anywhere will behave differently.
+
+- [x] **✅ 1(a) RULED — THE ANCHOR IS JOB CREATED (Danny, 2026-09-21).** A sale begins when a job
+      is created in Jobber, matching **Sold** in the admin panel and in `classifyPipelineStatus`,
+      so the count and the stage cannot disagree about which sale a job belongs to. Jobs whose
+      `createdAt` falls within the window of that first job belong to the same sale.
+      ⚠ **THEREFORE `QUOTE_APPROVED` IS NOT NEEDED AND IS NOT REGISTERED — recorded with its
+      reason, not just its outcome.** Approving a quote creates no job, so it starts no sale; and
+      the classifier reads only *a quote is not archived*, which approval does not change. **It is
+      an event that can move neither number.**
+      ⚠ **ONE NUMBER SERVING BOTH GROUPINGS — HONESTLY? PARTLY, AND THE GAP IS NAMED.** Using the
+      contractor's `invoice_window_days` means the admin control they see governs the rep's sale
+      grouping. But that control's own helper text says it groups **invoices** to determine **total
+      job value**, which is money-grouping; the rep side groups **jobs** into **sales**, which is
+      count-grouping. **The same number is defensible — "how close together is still one project"
+      is one judgement — but the LABEL is now wrong in a second way**, and that is filed on the
+      admin-panel defect entry rather than fixed here.
+      *(The original finding follows.)*
 
 - [ ] 🔴 **1(a) THE ANCHOR — THERE IS NOTHING TO MATCH OR MISMATCH, WHICH MAKES THIS A DESIGN
       DECISION RATHER THAN A RECONCILIATION.** The instruction asked what the existing rule
@@ -4291,6 +4449,23 @@ may legitimately change several of these subjects.*
       conversion is `MIN(anchor_at)`, derivable rather than stored. **DO NOT MIGRATE IT.** The
       `pipeline_stage` column shipped on 2026-09-20 stays; only `sold_at` is withdrawn.
 
+- [x] **✅ 1(d) PAGING IS PROVEN AND BUILT — `after` WORKS WITH THE ASCENDING CREATED_AT SORT.**
+      Measured by Danny in GraphiQL on Accent's live account, **2026-09-21**:
+      · `after: null` → the `2026-06-02T15:57:32Z` job, `hasNextPage` **true**, `endCursor` `"MQ"`,
+        `requestedQueryCost` **8**
+      · `after: "MQ"` → the `2026-09-21T03:26:59Z` job, `hasNextPage` **false**, `endCursor` `"Mg"`,
+        `requestedQueryCost` **8**
+      ⚠ **VERSION CAVEAT KEPT:** explorer `2026-05-12`, our client pins `2026-02-17`. Strong
+      evidence, not proof.
+      **Built in `fetchAllClientJobs()`** (`server/utils/clientSales.js`): pages oldest-first until
+      `hasNextPage` is false, capped at 40 pages with a typed failure — an UNBOUNDED loop over a
+      third party is the Canvass-3.6 defect, and a cap that reports is not the same as a cap that
+      truncates silently. ⚠ **Oldest-first is load-bearing rather than tidy**: grouping walks
+      forward from an anchor, so a run that stops early leaves a correct PREFIX of the sales rather
+      than an arbitrary middle — the newest sales are missing, which is recoverable, instead of the
+      anchors being wrong, which is not.
+      *(The original finding follows.)*
+
 - [ ] ⚠ **1(d) THE CAP UNDERCOUNTS COMMERCIAL ACCOUNTS, AND THE FIX IS PAGING RATHER THAN A BIGGER
       NUMBER.** Under the old design only the EARLIEST job mattered, and Danny's measured
       `jobs(first: 1, sort: { key: CREATED_AT, direction: ASCENDING })` solved it exactly at cost
@@ -4304,6 +4479,14 @@ may legitimately change several of these subjects.*
       cost is unmeasured; the cost logging shipped on 2026-09-20 will print it on the next real
       import**, and no pacing should be changed before it does.
 
+- [x] **✅ 1(e) RULED — EARLIEST OBSERVED (Danny, 2026-09-21).** The anchor is the earliest job the
+      import sees. Pre-window history is invisible and that is accepted: the programme starts at
+      the contractor's RoofMiles implementation date, so a sale whose first job predates the import
+      window is not a sale the rep's count is claiming to measure. ⚠ **Recorded so the consequence
+      is not later read as a bug:** a straddling group's anchor is its earliest OBSERVED job, which
+      can be later than its true first job.
+      *(The original finding follows.)*
+
 - [ ] ⚠ **1(e) THE 12-MONTH IMPORT WINDOW — A STRADDLING GROUP IS ANCHORED TOO LATE, AND IT IS
       SILENT.** The import filters CLIENTS to the last 12 months. A sale whose first job sits
       13 months back and whose second sits 11 months back is imported as a group anchored on the
@@ -4313,6 +4496,15 @@ may legitimately change several of these subjects.*
       import already says the program starts at the implementation date); or, for any client with
       an in-window job, fetch that client's jobs without the date filter (accurate, and costs a
       second pass over a subset). **Report only — not decided.**
+
+- [x] **✅ RULED (Danny, 2026-09-21) — A SALE STANDS WHILE IT HAS AT LEAST ONE MEMBER, AND THIS
+      SUPERSEDES *"a conversion stands once recorded"*.** That earlier ruling was made when a
+      conversion was a client-level flag, where the only two options were "stands" and "vanishes".
+      A sale has MEMBERS, so the halves come apart: one job of three deleted leaves a sale that
+      plainly happened; every job deleted leaves nothing that converted. **The supersession is
+      recorded here rather than left implicit, because the earlier wording is still true of the
+      shape it was written about and would read as unchanged.**
+      *(The original question follows.)*
 
 - [ ] ⚠ **DOES A DELETED JOB SHRINK ITS GROUP? THE EARLIER RULING NEEDS RE-DERIVING UNDER
       GROUPING.** *"A conversion stands once recorded"* was ruled when a conversion was a client

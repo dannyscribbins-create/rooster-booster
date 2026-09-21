@@ -56,10 +56,22 @@ describe('Canvass-9b — the glossary is ONE copy source', () => {
     }
   });
 
-  it('⚠ REFERRAL CONVERSIONS has no entry — the card already explains itself', () => {
-    // Its definition line IS the explanation an icon would have opened. A second route
-    // to the same sentence is clutter, not help.
-    expect(REP_GLOSSARY.conversions).toBeUndefined();
+  it('⚠ CONVERSIONS now HAS an entry — INVERTED in Canvass-stage, and the reason is length', () => {
+    // ⚠ THIS ASSERTED `toBeUndefined()` AND WAS CORRECT WHEN WRITTEN. The card carried a
+    // one-sentence definition line, so an icon would have been a second route to the
+    // same sentence — clutter, not help.
+    // ⚠ RULING 1 MADE THE DEFINITION TOO LONG FOR A LINE. It has to say that repeat
+    // sales count, that grouped jobs do not, and that the Referral figure is NOT what a
+    // referrer is paid. That is a paragraph, so it moved behind the icon and the label
+    // carries the term alone. The ruling changed the content, and the content decided
+    // the control — not the other way round.
+    expect(REP_GLOSSARY.conversions).toBeDefined();
+    const body = REP_GLOSSARY.conversions.body.toLowerCase();
+    // ⚠ THE THREE THINGS THE LABEL CANNOT SAY ON ITS OWN, asserted as PROPERTIES rather
+    // than as a fixed sentence, so the copy can be improved without going vacuous.
+    expect(body).toContain('again');        // repeats count
+    expect(body).toContain('one sale');     // grouped jobs do not
+    expect(body).toContain('paid');         // a referrer's payouts are a different number
   });
 
   it('⚠ an unknown key THROWS rather than returning an empty panel', () => {
@@ -155,17 +167,20 @@ describe('Canvass-9b — which cards carry an icon, and which deliberately do no
     }
   });
 
-  it('⚠ the CONVERSIONS card carries NO info icon, though it carries a reveal', async () => {
-    // Its definition line is the explanation. The caret opens the BREAKDOWN, which is
-    // different content — so the absence of one control and the presence of the other
-    // are both deliberate, and asserting them together is what says so.
+  it('⚠ the CONVERSIONS card carries BOTH an info icon and a reveal — INVERTED in Canvass-stage', async () => {
+    // ⚠ THIS ASSERTED THE ICON WAS ABSENT, AND THAT WAS RIGHT WHILE THE DEFINITION FIT
+    // ON ONE LINE. Ruling 1's definition does not fit, so the line moved behind the icon.
+    // ⚠ THE TWO CONTROLS STILL ANSWER DIFFERENT QUESTIONS, WHICH IS WHY BOTH BELONG AND
+    // WHY THEY ARE ASSERTED TOGETHER: the icon explains what the WORD means, the caret
+    // opens the BREAKDOWN. Neither is a second route to the other's content.
     const { container } = mountHome();
     await screen.findByText('Your book at a glance');
     const card = container.querySelector('[data-testid="rep-conversions"]');
-    expect(card.querySelector('[data-rep-info-icon]'), 'the conversions card grew an info icon').toBeNull();
+    expect(card.querySelector('[data-rep-info-icon]'), 'the conversions card lost its info icon').toBeTruthy();
     expect(card.querySelector('[data-rep-reveal-toggle]'), 'the conversions card lost its reveal').toBeTruthy();
-    // And the definition line — the thing that makes the icon unnecessary — is present.
-    expect(card.textContent).toContain('People your clients referred who have become customers.');
+    // ⚠ AND THE OLD DEFINITION LINE IS GONE FROM THE FACE. Leaving it there alongside the
+    // icon would be the clutter the original ruling forbade, now with the icon as well.
+    expect(card.textContent).not.toContain('People your clients referred who have become customers.');
   });
 
   it('⚠ NOTHING on the screen explains FLAGGED, even though the payload carries it', async () => {

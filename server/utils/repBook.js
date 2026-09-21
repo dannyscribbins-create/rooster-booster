@@ -146,27 +146,10 @@ function timeframeClause(n) {
               OR COALESCE(cra.sticky_set_at, cra.provisional_set_at) >= $${n}::timestamptz)`;
 }
 
-// ── THE SAME WINDOW, OVER A CONVERSION ──────────────────────────────────────
-//
-// ⚠ A SEPARATE FUNCTION BECAUSE IT WINDOWS A DIFFERENT COLUMN ON A DIFFERENT TABLE,
-// AND CONFLATING THEM WOULD BE WRONG IN A WAY NOTHING WOULD REPORT. A conversion has
-// its own date — `referral_conversions.converted_at` — and the question "how many
-// conversions this week" is about when the CONVERSION happened, not about when the
-// referrer's rep assignment was made. Reusing `timeframeClause()` there would count
-// conversions by the age of an unrelated assignment row and return a plausible
-// number for a question nobody asked.
-//
-// @param {number} n - the 1-based parameter position holding the window start
-// @returns {string} a SQL fragment beginning with AND
-function conversionTimeframeClause(n) {
-  return `AND ($${n}::timestamptz IS NULL OR rc.converted_at >= $${n}::timestamptz)`;
-}
-
 module.exports = {
   OWN_BOOK_PREDICATE,
   STAGE_RANK_SQL,
   TIMEFRAME_DAYS,
   parseTimeframe,
   timeframeClause,
-  conversionTimeframeClause,
 };

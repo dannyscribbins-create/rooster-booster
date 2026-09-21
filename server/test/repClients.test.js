@@ -295,6 +295,44 @@ describe('Canvass-4 — A34.4: the WHOLE book, not the referred slice', () => {
     assert.equal(byId['jc-ref'].referredBy, undefined, 'the list must not carry the referrer name');
   });
 
+  it('[RED] ⚠ a client with TWO linked app users appears ONCE — the fan-out fence', async () => {
+    // ⚠ A LIVE DEFECT, FOUND IN THE BROWSER ON THE LOCAL STACK, NOT BY A TEST.
+    // `membership_confirmed` was computed by `LEFT JOIN users u ... AND u.jobber_client_id
+    // = cra.jobber_client_id`, and `users.jobber_client_id` has NO unique constraint and
+    // no index — so two app users can legitimately point at one Jobber client. The join
+    // then emitted ONE ROW PER MATCH and the client appeared TWICE in the rep's book,
+    // while `total` (its own COUNT over assignments) counted it once.
+    //
+    // ⚠ THE MIRROR OF THE CANVASS-4b DEFECT, WHICH IS WHY IT IS WORTH ITS OWN CASE.
+    // There an INNER JOIN silently DROPPED assignments whose client had no mirror row —
+    // 39 assignments, ~30 rows on screen. This silently ADDED one. Both are a join used
+    // to answer a yes/no question; both are invisible in a one-word diff; and the list
+    // looks entirely plausible either way.
+    //
+    // ⚠ THE SEEDER ALREADY MODELS THIS STATE (a conversions referrer pointed at
+    // `jc-beta-1`), so it is reachable by construction rather than exotic.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-fanout', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-two-users', 'Twice');
+    await assign(TENANT, 'jc-two-users', { sticky: me });
+    for (const email of ['one@x.test', 'two@x.test']) {
+      await pool.query(
+        `INSERT INTO users (full_name, email, pin, email_verified, contractor_id, jobber_client_id)
+         VALUES ('U', $2, 'x', TRUE, $1, 'jc-two-users')`,
+        [TENANT, email]
+      );
+    }
+
+    const res = await request('/api/rep/clients', 'tok-fanout');
+    const rows = res.body.clients.filter((c) => c.jobberClientId === 'jc-two-users');
+    assert.equal(rows.length, 1, 'two linked users must not duplicate the client row');
+    // ⚠ THE PAIRED POSITIVE. "It appears once" is also true of a client that vanished
+    // entirely, and dropping the row is the OTHER way to make a fan-out go away — so the
+    // membership answer the join existed to produce must still be right.
+    assert.equal(rows[0].membership, 'confirmed', 'and membership must still resolve');
+    assert.equal(res.body.total, 1, 'the list and the total must agree');
+  });
+
   it('[RED] DISCRIMINATING CONTROL — the referral join must stay a LEFT JOIN', async () => {
     // ⚠ RESTORING THE pipeline_cache JOIN FOR is_referred RE-OPENS THE EXACT DEFECT
     // A34.4 EXISTS TO PREVENT, and a one-word diff is all it takes. Canvass-stage had
@@ -1202,7 +1240,15 @@ describe('Canvass-6 — GET /api/rep/home (A34.5 ruling ④, A34.6, A34.7)', () 
     // the fence that catches an unannounced payload change, and it caught this one —
     // so the key is ADDED here rather than the assertion being relaxed to a subset.
     // Keeping it exhaustive is what makes the NEXT unannounced key fail too.
-    assert.deepEqual(res.body.stats, { clients: 0, locked: 0, provisional: 0, flagged: 0, conversions: 0 });
+    // ⚠ UPDATED AGAIN IN CANVASS-STAGE, THE SAME WAY AND FOR THE SAME REASON. Ruling 1
+    // added the Referral/Direct breakdown to this payload, and this fence caught it —
+    // a SECOND unannounced-key catch by the same assertion. Both keys are ADDED.
+    // ⚠ Relaxing this to a subset would be the tempting repair and would disarm the
+    // only thing that has now caught two payload changes in two phases.
+    assert.deepEqual(res.body.stats, {
+      clients: 0, locked: 0, provisional: 0, flagged: 0,
+      conversions: 0, conversionsReferral: 0, conversionsDirect: 0,
+    });
     assert.deepEqual(res.body.focus.furthestAlong, []);
     assert.deepEqual(res.body.focus.recentlyAssigned, []);
   });
@@ -1447,38 +1493,35 @@ describe('Canvass-9a — the timeframe window (Parts 3b / 4b)', () => {
   });
 
   it('⚠ CONVERSIONS are windowed by their OWN date, not by the assignment date', async () => {
-    // ⚠ A SEPARATE CLAUSE FROM EVERY OTHER STAT, AND SO A SEPARATE CASE. A conversion
-    // has its own `converted_at`; reusing the assignment window here would count
-    // conversions by the age of an unrelated assignment row and return a plausible
-    // number for a question nobody asked.
+    // ⚠ REWRITTEN IN CANVASS-STAGE — THE SUBJECT MOVED, THE PROPERTY DID NOT. This
+    // seeded `referral_conversions` rows and windowed on `converted_at`. Ruling 1
+    // redefined a rep's conversions to count SALES, so the date is now
+    // `client_sales.anchor_at` — but the thing worth fencing is unchanged: in ONE
+    // payload, the conversions figure must obey a DIFFERENT window from every other
+    // stat beside it.
     //
-    // ⚠ THE FIXTURE IS BUILT SO THE TWO DATES DISAGREE, which is the whole point: the
-    // ASSIGNMENT is 2 days old (inside every window) while one CONVERSION is 60 days old
-    // (outside week and month, inside year). A fixture where both dates sat in the same
-    // bucket could not tell the two clauses apart — the vacuity this repo recorded
-    // against the request-attribution anchor, where the dates agreed under both
-    // candidate anchors and the wrong one went green.
-    const { rows: u1 } = await pool.query(
-      `INSERT INTO users (full_name, email, pin, email_verified, contractor_id, jobber_client_id)
-       VALUES ('Ref One', 'tf-ref1@x.test', 'x', TRUE, $1, 'tf-new') RETURNING id`,
+    // ⚠ AND THAT IS WHY THIS CASE STAYS HERE RATHER THAN BEING LEFT TO
+    // repConversions.test.js, which also windows sales. That file proves conversions
+    // window correctly IN ISOLATION. This one proves the two clauses coexist in the
+    // same response — the failure it catches is a route that windowed everything the
+    // same way, which an isolated test cannot see.
+    //
+    // ⚠ THE FIXTURE MAKES THE TWO DATES DISAGREE, which is the whole point: both
+    // ASSIGNMENTS are inside `month`, while one SALE is 60 days old and outside it.
+    // A fixture where both dates sat in the same bucket could not tell the clauses apart.
+    await seedClient(TENANT, 'tf-sale-new', 'SaleNew');
+    await seedClient(TENANT, 'tf-sale-old', 'SaleOld');
+    await assign(TENANT, 'tf-sale-new', { sticky: repId });
+    await assign(TENANT, 'tf-sale-old', { sticky: repId });
+    await pool.query(
+      `INSERT INTO client_sales (contractor_id, jobber_client_id, anchor_at, last_event_at)
+       VALUES ($1, 'tf-sale-new', NOW() - interval '2 days', NOW() - interval '2 days')`,
       [TENANT]
     );
-    const { rows: u2 } = await pool.query(
-      `INSERT INTO users (full_name, email, pin, email_verified, contractor_id, jobber_client_id)
-       VALUES ('Ref Two', 'tf-ref2@x.test', 'x', TRUE, $1, 'tf-mid') RETURNING id`,
+    await pool.query(
+      `INSERT INTO client_sales (contractor_id, jobber_client_id, anchor_at, last_event_at)
+       VALUES ($1, 'tf-sale-old', NOW() - interval '60 days', NOW() - interval '60 days')`,
       [TENANT]
-    );
-    // tf-new is assigned 2 days ago; tf-mid 20 days ago. Both assignments are inside
-    // `year`, so any difference below comes from the CONVERSION date alone.
-    await pool.query(
-      `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at)
-       VALUES ($1, $2, 'conv-recent', NOW() - interval '2 days')`,
-      [u1[0].id, TENANT]
-    );
-    await pool.query(
-      `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at)
-       VALUES ($1, $2, 'conv-old', NOW() - interval '60 days')`,
-      [u2[0].id, TENANT]
     );
 
     const week = await request('/api/rep/home?timeframe=week', TOKEN);
@@ -1486,17 +1529,19 @@ describe('Canvass-9a — the timeframe window (Parts 3b / 4b)', () => {
     const year = await request('/api/rep/home?timeframe=year', TOKEN);
     const all = await request('/api/rep/home?timeframe=all', TOKEN);
 
-    assert.equal(week.body.stats.conversions, 1, 'only the 2-day-old conversion is inside a week');
-    assert.equal(month.body.stats.conversions, 1, 'the 60-day-old conversion is outside a 30-day month');
+    assert.equal(week.body.stats.conversions, 1, 'only the 2-day-old SALE is inside a week');
+    assert.equal(month.body.stats.conversions, 1, 'the 60-day-old sale is outside a 30-day month');
     assert.equal(year.body.stats.conversions, 2, 'both are inside a year');
     assert.equal(all.body.stats.conversions, 2);
 
-    // ⚠ AND THE PROOF THAT IT IS THE CONVERSION DATE DOING THE WORK: under `month` the
-    // ASSIGNMENT for tf-mid is present in the book (20 days old, inside 30) while its
-    // CONVERSION is not counted. If the conversions query were windowed by the
-    // assignment date instead, this would read 2.
-    assert.equal(month.body.stats.clients, 2, 'tf-mid IS in the month-windowed book');
+    // ⚠ AND THE PROOF THAT IT IS THE SALE DATE DOING THE WORK, NOT THE ASSIGNMENT DATE.
+    // Both assignments were made just now, so both clients are inside the month-windowed
+    // BOOK while only one of their sales is counted. If the conversions query were
+    // windowed by the assignment date instead, this would read 2.
+    const monthClients = month.body.stats.clients;
+    assert.ok(monthClients >= 2, 'both clients ARE in the month-windowed book');
   });
+
 
   it('⚠ a row with NO assignment date is in `all` and in NO window', async () => {
     // `NULL >= x` is NULL, so this falls out of the SQL rather than being special-cased

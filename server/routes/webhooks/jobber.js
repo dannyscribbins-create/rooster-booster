@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { pool } = require('../../db');
 const { syncSingleClient, classifyPipelineStatus } = require('../../crm/pipelineSync');
+const { refreshClientSales } = require('../../utils/clientSales');
 const { logError } = require('../../middleware/errorLogger');
 const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
@@ -1747,6 +1748,32 @@ async function handleStageWebhook(req, topic) {
       [contractorId, jobberClientId, stage]
     );
     console.log(`[${topic}] ${itemId} -> client ${jobberClientId} stage ${stage} (${result.rowCount} row(s), contractor: ${contractorId})`);
+
+    // ── SALES RECOMPUTE (Canvass-stage, Ruling 1) ───────────────────────────
+    //
+    // ⚠ ONLY ON JOB_CREATE. Sales are anchored on JOB CREATED, so a quote event
+    // cannot open, close or move a sale — recomputing on one would page every job a
+    // client has in order to arrive at the answer it already had. The stage still
+    // updates on quote events above, because a quote genuinely moves the stage.
+    //
+    // ⚠ ISOLATED, AND DELIBERATELY NOT ALLOWED TO FAIL THE STAGE WRITE. The stage is
+    // already committed by the time this runs; a paging failure must leave that
+    // standing rather than rolling the handler into its catch. The nightly sync is the
+    // backstop, and the failure is recorded.
+    if (topic === 'job-create') {
+      try {
+        const counts = await refreshClientSales(pool, { contractorId, jobberClientId, token });
+        console.log(`[${topic}] client ${jobberClientId} sales recomputed — ${counts.sales} sale(s), ${counts.jobs} job(s)`);
+      } catch (salesErr) {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(`[${topic}] stage written but sales recompute failed for client ${jobberClientId}: ${salesErr.message}`),
+          source: `POST /webhooks/jobber/${topic} — sales recompute`,
+          alert: false,
+        });
+      }
+    }
   } catch (err) {
     await logError({ req, error: err, contractorId, source: `POST /webhooks/jobber/${topic}` });
     console.error(`[${topic}]`, err.message);

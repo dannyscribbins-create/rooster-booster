@@ -236,21 +236,20 @@ function StatCard({ label, value, wide = false, info = null }) {
 // ⚠ AND THE GROUND SWAP IS THE HALF THAT SURVIVES A COLOUR-VISION DIFFERENCE, which
 // is why it is not decoration on top of the border. A treatment carried only by hue
 // is a treatment some readers do not get.
-function ConversionsCard({ value }) {
+function ConversionsCard({ value, referral, direct }) {
   return (
     <RepRevealCard
       testId="rep-conversions"
-      revealLabel="Referral conversions breakdown"
-      // ⚠ THE LEFT FIGURE IS REAL AND THE RIGHT ONE HAS NO SOURCE TODAY — SAID
-      // PLAINLY RATHER THAN FILLED WITH A PLAUSIBLE NUMBER. Danny's spec is
-      // "referral and total side by side". The referral figure is `stats.conversions`,
-      // which the server computes. **There is no total-conversions figure anywhere in
-      // the payload or the schema**, and the candidates are all wrong: the
-      // contractor's total would disclose other reps' numbers, and the rep's client
-      // count is a different unit entirely. Inventing either would be exactly the
-      // "do not fake one" this phase was told to avoid. Filed as a data question.
-      left={{ title: 'Referral', value }}
-      right={{ title: 'Total', empty: 'Not recorded yet.' }}
+      revealLabel="Conversions breakdown"
+      // ⚠ BOTH FIGURES ARE REAL NOW, AND THE SLOTS CHANGED MEANING. This read
+      // "Referral" against a TOTAL that had no source and said so. Ruling 1 made the
+      // card's face the TOTAL — every sale — and the breakdown REFERRAL vs DIRECT,
+      // both computed by the server in the same row as the total.
+      // ⚠ THE SPLIT IS A UNION OVER SALES, NOT A SUM OF SOURCES. A client referred
+      // through both a CRM "Referred by" value and an in-app invite is still ONE
+      // client with ONE set of sales, so referral + direct = total by construction.
+      left={{ title: 'Referral', value: referral }}
+      right={{ title: 'Direct', value: direct }}
     >
       <section
         data-rep-conversions=""
@@ -271,27 +270,21 @@ function ConversionsCard({ value }) {
         }}>
           {value}
         </p>
-        {/* ⚠ NO INFO ICON HERE, AND THAT IS A DECISION. The definition line below IS
-            the explanation an icon would have opened — a second route to the same
-            sentence is clutter, not help. The caret `RepRevealCard` draws opens the
-            BREAKDOWN, which is different content. */}
+        {/* ⚠ THE INFO ICON IS NOW CORRECT WHERE IT WAS PREVIOUSLY REDUNDANT, AND THE
+            REASON IS THAT THE DEFINITION GOT LONGER. This card used to carry a
+            one-sentence definition line and no icon, because a second route to one
+            sentence is clutter. Ruling 1's definition cannot be one short line — it has
+            to say that repeat sales count, and that grouped jobs do not — so the line
+            moves behind the icon and the label carries the term alone. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <h2 style={{
             margin: '2px 0 0', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
             color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body'),
           }}>
-            REFERRAL CONVERSIONS
+            CONVERSIONS
           </h2>
+          <RepInfoIcon termKey="conversions" />
         </div>
-        {/* ⚠ THE DEFINITION LINE IS PART OF THE LABEL, NOT DECORATION. It is what makes
-            the number unambiguous without the info popup: whose referrals, and what
-            happened to them. It renders in every state, including zero. */}
-        <p style={{
-          margin: '6px 0 0', fontSize: 13, lineHeight: 1.5, maxWidth: '88%',
-          color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
-        }}>
-          People your clients referred who have become customers.
-        </p>
       </section>
     </RepRevealCard>
   );
@@ -416,7 +409,10 @@ function formatAssigned(iso) {
 // "a double that can also stand in for a different shape" failure, and the cost of
 // keeping one honest key is nothing.
 const PREVIEW_SAMPLE = Object.freeze({
-  stats: { clients: 128, locked: 121, provisional: 7, flagged: 2, conversions: 6 },
+  // ⚠ conversionsReferral + conversionsDirect MUST EQUAL conversions HERE TOO. The
+  // preview stands in for a real payload; a breakdown that did not add up would
+  // demonstrate the palette on a card that is lying.
+  stats: { clients: 128, locked: 121, provisional: 7, flagged: 2, conversions: 6, conversionsReferral: 4, conversionsDirect: 2 },
   focus: {
     furthestAlong: [
       { jobberClientId: 'preview-1', name: 'Maria Lopez', nameUnavailable: false, stage: 'paid' },
@@ -553,7 +549,11 @@ export default function RepHomeScreen({ onOpenClient = null, preview = false, ca
               ))}
             </div>
 
-            <ConversionsCard value={stats.conversions ?? 0} />
+            <ConversionsCard
+              value={stats.conversions ?? 0}
+              referral={stats.conversionsReferral ?? 0}
+              direct={stats.conversionsDirect ?? 0}
+            />
           </section>
 
           {/* ── TODAY'S FOCUS — ITS OWN SECTION, BELOW THE STATS (Part 3c) ────

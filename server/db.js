@@ -2358,6 +2358,64 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     updated_at TIMESTAMPTZ DEFAULT NOW()
   )`);
 
+  // ── CLIENT SALES (Canvass-stage, Ruling 1 / Danny 2026-09-21) ────────────────
+  //
+  // A rep's CONVERSIONS count SALES. Every job is a sale from its createdAt, and jobs
+  // within the contractor's invoice_window_days of that first job are ONE sale.
+  //
+  // ⚠ WHY A TABLE AND NOT A COLUMN. `sold_at` on jobber_clients was designed first and
+  // WITHDRAWN: one timestamp per client cannot hold several conversions, and a repeat
+  // customer is explicitly several. A client's FIRST conversion is `MIN(anchor_at)`
+  // here — derivable, so storing it as well would be a second copy of one fact.
+  //
+  // ⚠ AND THIS IS WHAT UNBLOCKS THE CONVERSIONS COUNT AT ALL. The blocker was never the
+  // stage; it was that a stage has no HISTORY, so a screen with a week/month/year bar
+  // had no column to window on. `anchor_at` is that column.
+  await pool.query(`CREATE TABLE IF NOT EXISTS client_sales (
+    id SERIAL PRIMARY KEY,
+    contractor_id    TEXT        NOT NULL,
+    jobber_client_id TEXT        NOT NULL,
+    anchor_at        TIMESTAMPTZ NOT NULL,
+    last_event_at    TIMESTAMPTZ NOT NULL,
+    revenue_total    NUMERIC(12,2),
+    created_at       TIMESTAMPTZ DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (contractor_id, jobber_client_id, anchor_at)
+  )`);
+
+  // ⚠ THE UNIQUE ABOVE IS WHAT MAKES RECOMPUTE IDEMPOTENT. A sale is identified by its
+  // client and the instant it opened, so re-running the grouping over the same jobs
+  // upserts the same rows instead of manufacturing duplicates on every webhook.
+  //
+  // ⚠ revenue_total IS NULL UNTIL WAVE 1.5/1.6, AND IT LIVES ON THE SALE RATHER THAN
+  // THE JOB BECAUSE THE RULING PUTS IT THERE: later jobs in a group add their balance
+  // to that group's value. A per-job column would have to be summed by every reader,
+  // and the two would drift the first time one reader forgot.
+  //
+  // ⚠ AND THE SHAPE DELIBERATELY LEAVES ROOM FOR `struck`. Strike-from-record is ruled
+  // as its own phase: a sale is EXCLUDED, never deleted, with who/when/why. That is
+  // `ADD COLUMN struck_at TIMESTAMPTZ`, `struck_by INTEGER`, `struck_reason TEXT` plus
+  // `AND struck_at IS NULL` in the readers — additive, no reshaping, because the SALE
+  // is already the row that would carry it. Storing conversions as a count on
+  // jobber_clients instead would have made that impossible without a rebuild.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_client_sales_book
+    ON client_sales (contractor_id, jobber_client_id, anchor_at)`);
+
+  // Membership. A job belongs to exactly ONE sale, enforced by the primary key rather
+  // than by the code that writes it.
+  // ⚠ ON DELETE CASCADE IS CORRECT HERE AND IS NOT A CONTRADICTION OF "EXCLUDE, NEVER
+  // DELETE". Striking a sale will set a flag and keep the row; this cascade only fires
+  // when a sale row is genuinely removed during a RECOMPUTE — when regrouping moves a
+  // job into a different sale, the stale membership must not survive its parent.
+  await pool.query(`CREATE TABLE IF NOT EXISTS client_sale_jobs (
+    sale_id       INTEGER NOT NULL REFERENCES client_sales(id) ON DELETE CASCADE,
+    contractor_id TEXT    NOT NULL,
+    jobber_job_id TEXT    NOT NULL,
+    PRIMARY KEY (contractor_id, jobber_job_id)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_client_sale_jobs_sale
+    ON client_sale_jobs (sale_id)`);
+
   // ⚠ NO NEW INDEX, AND THAT IS A DECISION RATHER THAN AN OMISSION. Every read of this
   // column reaches it through the existing UNIQUE (jobber_client_id, contractor_id) —
   // the rep queries join jobber_clients on exactly that pair and then read the stage off

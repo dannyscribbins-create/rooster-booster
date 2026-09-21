@@ -101,6 +101,21 @@ export const REP_GLOSSARY = Object.freeze({
     term: 'Attribution type',
     body: 'Clients matched to you through any means are credited to you.',
   }),
+
+  // ⚠ THIS DEFINITION EXISTS BECAUSE THE LABEL ALONE CANNOT CARRY IT. "Conversions"
+  // is the right word and it leaves two real questions open, both of which a rep will
+  // otherwise answer wrongly from experience: does selling the same customer twice
+  // count twice (yes), and does a job added to an existing project count again (no).
+  //
+  // ⚠ AND IT MUST NOT SAY "referrals". A rep's conversions count SALES, repeats
+  // included; a referrer's payouts count PEOPLE REFERRED, once each. The two numbers
+  // measure different things by ruling, so the breakdown's Referral figure can exceed
+  // that referrer's payouts — this sentence is what stops a rep reading one as the
+  // other, and it is the reason the term is defined at all.
+  conversions: Object.freeze({
+    term: 'Conversions',
+    body: 'Every sale in your book. Selling the same client again counts again, but jobs booked close together count as one sale. Referral and Direct split the same total — Referral counts sales from clients who came through the referral programme, which is not the same as what a referrer is paid.',
+  }),
 });
 
 /**

@@ -32,7 +32,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseTimeframe, timeframeClause, conversionTimeframeClause } = require('../utils/repBook');
+const fs = require('node:fs');
+const path = require('node:path');
+const { parseTimeframe, timeframeClause } = require('../utils/repBook');
 
 test.describe('Canvass-9a — parseTimeframe', () => {
   test('the three named windows produce a start date, in ascending age', () => {
@@ -99,13 +101,29 @@ test.describe('Canvass-9a — the timeframe SQL fragments', () => {
   });
 
   test('⚠ a CONVERSION is windowed by its own date, on its own table', () => {
-    // Reusing the assignment clause for conversions would count them by the age of an
-    // unrelated assignment row and return a plausible number for a question nobody
-    // asked. These are two functions for exactly that reason.
-    const sql = conversionTimeframeClause(3);
-    assert.match(sql, /rc\.converted_at/);
-    assert.ok(!/sticky_set_at/.test(sql), 'a conversion is not windowed by an assignment date');
-    assert.match(sql, /\$3::timestamptz IS NULL/);
+    // ⚠ REPOINTED IN CANVASS-STAGE, NOT DELETED, AND THE LESSON IS UNCHANGED. This
+    // asserted on `conversionTimeframeClause()`, a helper that windowed
+    // `referral_conversions.converted_at`. Ruling 1 redefined a rep's conversions to
+    // count SALES, so the count moved to `client_sales` and that helper lost its only
+    // production caller — it was removed as dead code rather than left exported.
+    //
+    // ⚠ THE PROPERTY IT GUARDED IS STILL THE ONE THAT MATTERS, AND IS NOW EASIER TO
+    // GET WRONG, NOT HARDER. The new window is inline SQL beside four statements that
+    // all use `timeframeClause()`, so "simplifying" it to match its neighbours is a
+    // natural-looking edit — and it would count conversions by the age of an unrelated
+    // assignment row, returning a plausible number for a question nobody asked.
+    //
+    // So this reads the ROUTE'S OWN SOURCE rather than a helper's output, which is the
+    // only place the property now lives.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', 'rep.js'), 'utf8');
+    const conv = src.slice(src.indexOf('AS conversions,'), src.indexOf('SECTION 1'));
+    assert.ok(conv.length > 0, 'the conversions query must be findable — this fence is vacuous otherwise');
+    assert.match(conv, /cs\.anchor_at\s*>=\s*\$3::timestamptz/,
+      'conversions must be windowed by the SALE anchor');
+    assert.ok(!/sticky_set_at/.test(conv),
+      'a conversion is not windowed by an assignment date');
+    assert.ok(!/converted_at/.test(conv),
+      'and no longer by referral_conversions — a rep counts SALES, a referrer is paid per PERSON');
   });
 
   test('the parameter position is honoured rather than hardcoded', () => {
