@@ -1,0 +1,713 @@
+'use strict';
+
+// ── CANVASS-STAGE BACKFILL: THE REP SCOPE, THE FACT TABLES AND THE REPLAY ────
+//
+// Rulings (Danny, 2026-09-21), and the case in this file that holds each one:
+//   2  Steps A–I untouched; rep scope gets its OWN steps  → THE COUNTING TEST
+//   5  mapping lights up a book, retroactively             → replay + route cases
+//   6  sale grouping in the import, full-history paging    → sales cases
+//   7  the bulk fence, with a positive control             → THE FENCE
+//   8  pacing on requestedQueryCost; every nested first:   → pacing cases
+//   1  assigned users atomic per assessment                → co-assignment pair
+//
+// ⚠ LIVE-SEND GUARD, AND IT IS LOAD-BEARING — same reason as errorLoggerAlertFlag.test.js.
+// setup.js loads .env alongside .env.test, so the REAL RESEND_API_KEY leaks into this
+// process, and several modules build their Resend client at require() time. The stub
+// below must be installed BEFORE ./setup is required. It doubles as the fence's email
+// observation channel: every Resend send anywhere in the process lands in sentEmails.
+
+const _resendPath = require.resolve('resend');
+const sentEmails = [];
+require.cache[_resendPath] = {
+  id: _resendPath,
+  filename: _resendPath,
+  loaded: true,
+  exports: {
+    Resend: class {
+      constructor() {
+        this.emails = {
+          send: async (msg) => { sentEmails.push(msg); return { data: { id: 'test-stub' }, error: null }; },
+        };
+      }
+    },
+  },
+};
+// Twilio is required lazily and only when all three credentials are set; stubbed anyway
+// so that if they ever are, an SMS is counted here rather than sent.
+const smsSent = [];
+try {
+  const _twilioPath = require.resolve('twilio');
+  require.cache[_twilioPath] = {
+    id: _twilioPath, filename: _twilioPath, loaded: true,
+    exports: () => ({ messages: { create: async (m) => { smsSent.push(m); return { sid: 'stub' }; } } }),
+  };
+} catch { /* twilio not installed — nothing can send SMS */ }
+
+const { initTestDb } = require('./setup');
+const { describe, it, before, beforeEach, after } = require('node:test');
+const assert = require('node:assert/strict');
+const axios = require('axios');
+const crypto = require('crypto');
+const { request: _httpRequest } = require('node:http');
+const { startTestServer, stopTestServer, seedAudience, waitFor } = require('./helpers');
+
+const importJob = require('../jobs/fullJobberImport');
+const repScope = require('../jobs/repImportScope');
+const clientSales = require('../utils/clientSales');
+const replay = require('../utils/attributionReplay');
+const { runAttributionEngine } = require('../utils/attributionEngine');
+const { evaluateAudience } = require('../cron/jobs/dynamicAudiences');
+
+const TENANT = 'rep-scope-a';
+const DAY = 24 * 60 * 60 * 1000;
+const ago = (days) => new Date(Date.now() - days * DAY).toISOString();
+
+let pool, realAxiosPost;
+
+// ── THE JOBBER DOUBLE ─────────────────────────────────────────────────────────
+// Routes each query by its operation name. ⚠ It THROWS on anything it does not
+// recognise rather than answering "no data" — a double that can return a plausible
+// empty shape satisfies every assertion of absence (CLAUDE.md, shell-harness section).
+// Every non-Jobber URL is counted as an outbound send and answered, never forwarded.
+const calls = { byOp: {}, outbound: [] };
+const sleeps = [];
+
+function page(key, nodes, { hasNextPage = false, endCursor = null, cost = null } = {}) {
+  return {
+    data: {
+      data: { [key]: { nodes, pageInfo: { hasNextPage, endCursor } } },
+      ...(cost ? { extensions: { cost } } : {}),
+    },
+  };
+}
+
+function installJobber({ campaign = {}, rep = {}, clientJobs = {}, repHandler = null } = {}) {
+  const fn = async (url, body) => {
+    if (!String(url).includes('api.getjobber.com')) {
+      calls.outbound.push(url);
+      return { data: { ok: true } };
+    }
+    const q = body?.query || '';
+    const op = (q.match(/query\s+(\w+)/) || [])[1] || 'unknown';
+    calls.byOp[op] = (calls.byOp[op] || 0) + 1;
+    if (repHandler && /^Rep/.test(op)) {
+      const r = await repHandler(op, body.variables);
+      if (r) return r;
+    }
+    switch (op) {
+      case 'GetClients':  return page('clients', campaign.clients || []);
+      case 'GetInvoices': return page('invoices', campaign.invoices || []);
+      case 'GetJobs':     return page('jobs', campaign.jobs || []);
+      case 'GetQuotes':   return page('quotes', campaign.quotes || []);
+      case 'GetRequests': return page('requests', campaign.requests || []);
+      case 'RepRequests': return page('requests', rep.requests || []);
+      case 'RepQuotes':   return page('quotes', rep.quotes || []);
+      case 'RepJobs':     return page('jobs', rep.jobs || []);
+      case 'GetClientJobsPaged': {
+        const id = body.variables.id;
+        if (!clientJobs[id]) throw new Error(`harness: no full job history for ${id}`);
+        return { data: { data: { client: { jobs: { nodes: clientJobs[id], pageInfo: { hasNextPage: false, endCursor: null } } } } } };
+      }
+      default: throw new Error(`harness: unexpected query ${op}`);
+    }
+  };
+  axios.post = fn;
+  importJob._setTestOverrides({ axiosPost: fn, getFreshToken: async () => 'tok', startupDelayMs: 0 });
+  repScope._setTestOverrides({ axiosPost: fn, sleep: async (ms) => { sleeps.push(ms); } });
+  clientSales._setTestOverrides({ axiosPost: fn });
+}
+
+// ── FIXTURES ─────────────────────────────────────────────────────────────────
+const client = (id, createdDaysAgo) => ({
+  id, firstName: 'C', lastName: id, isCompany: false, isLead: false, isArchived: false,
+  createdAt: ago(createdDaysAgo), updatedAt: ago(1),
+  emails: [{ address: `${id}@example.com`, primary: true }],
+  phones: [{ number: '770-555-0100', primary: true }],
+  customFields: [],
+});
+const campaignJob = (id, clientId, days) => ({
+  id, jobStatus: 'active', jobType: 'ONE_OFF', completedAt: null, createdAt: ago(days),
+  client: { id: clientId }, customFields: [],
+});
+
+// The campaign-scope data. pc-old: a PAYING client from three years ago. new-1: an
+// UNPAID prospect created inside 12 months (Step G keeps it). up-1: UNPAID and created
+// two years ago — Step G EXCLUDES it, so the campaign never tags it.
+const CAMPAIGN = {
+  clients: [client('pc-old', 1100), client('new-1', 60), client('up-1', 730)],
+  invoices: [{ id: 'inv-pc', invoiceStatus: 'paid', createdAt: ago(1000), amounts: { total: 9000 }, client: { id: 'pc-old' } }],
+  jobs: [
+    campaignJob('j-pc', 'pc-old', 1050),
+    campaignJob('j-new1a', 'new-1', 25),
+    campaignJob('j-new1b', 'new-1', 20),
+  ],
+  quotes: [{ id: 'q-pc', quoteStatus: 'converted', createdAt: ago(1060), client: { id: 'pc-old' } }],
+  requests: [{ id: 'r-pc', requestStatus: 'converted', createdAt: ago(1070), client: { id: 'pc-old' } }],
+};
+
+// The rep window's data (last 12 months).
+// ⚠ up-1 IS THE DISCRIMINATING CASE the ruling names: an UNPAID client inside the rep
+// window that the campaign excluded. It must get a stage, fact rows and sales — and NO
+// contact_tags. ghost-1 has no jobber_clients row at all, so it must get facts and no row.
+const REP = {
+  requests: [
+    { id: 'rq-up1', createdAt: ago(40), client: { id: 'up-1' }, salesperson: null,
+      assessment: { id: 'as-up1', assignedUsers: { nodes: [{ id: 'ju-rep1' }] } } },
+    { id: 'rq-new1', createdAt: ago(50), client: { id: 'new-1' }, salesperson: null,
+      // ⚠ TWO people on ONE assessment — the import must store them TOGETHER (ruling 1).
+      // Guard-proofed: keeping only the first user left every other case green, because
+      // the replay's flag case seeds its facts directly; only this fixture sees the write.
+      assessment: { id: 'as-new1', assignedUsers: { nodes: [{ id: 'ju-rep2' }, { id: 'ju-rep3' }] } } },
+    { id: 'rq-ghost', createdAt: ago(20), client: { id: 'ghost-1' }, salesperson: { id: 'ju-rep1' }, assessment: null },
+  ],
+  quotes: [
+    { id: 'q-up1', createdAt: ago(38), quoteStatus: 'approved', client: { id: 'up-1' },
+      salesperson: { id: 'ju-rep1' }, lastTransitioned: { approvedAt: ago(35) } },
+  ],
+  jobs: [
+    { id: 'j-up1', createdAt: ago(30), client: { id: 'up-1', createdAt: ago(730) } },
+    { id: 'j-new1a', createdAt: ago(25), client: { id: 'new-1', createdAt: ago(60) } },
+    { id: 'j-new1b', createdAt: ago(20), client: { id: 'new-1', createdAt: ago(60) } },
+  ],
+};
+// Full history for the one client created BEFORE the window — a job 700 days ago is a
+// second, separate sale that the window alone cannot see.
+const CLIENT_JOBS = { 'up-1': [{ id: 'j-up1-old', createdAt: ago(700) }, { id: 'j-up1', createdAt: ago(30) }] };
+
+async function reset() {
+  for (const t of [
+    'client_sale_jobs', 'client_sales', 'crm_request_facts', 'crm_quote_facts',
+    'flagged_assignments', 'admin_messages', 'client_rep_assignments', 'dynamic_audiences',
+    'contact_tags', 'pipeline_cache', 'notifications', 'jobber_import_progress', 'jobber_clients',
+    'sessions', 'error_log', 'contacts', 'contractor_settings', 'tokens', 'titles',
+  ]) {
+    await pool.query(`DELETE FROM ${t}`);
+  }
+  await pool.query(`DELETE FROM referral_schedules WHERE contractor_id = $1`, [TENANT]);
+  await pool.query(`DELETE FROM team_members WHERE contractor_id = $1`, [TENANT]);
+  await pool.query(`INSERT INTO contractors (id, name, status) VALUES ($1, $1, 'active') ON CONFLICT (id) DO NOTHING`, [TENANT]);
+  await pool.query(
+    `INSERT INTO tokens (contractor_id, access_token, refresh_token, expires_at)
+     VALUES ($1, 'tok', 'refresh', NOW() + INTERVAL '120 minutes')`,
+    [TENANT]
+  );
+  // up-1's mirror row exists (as a client webhook would have created it), UNSTAGED and
+  // UNTAGGED — so the fill-only stage write has something to fill and nothing to regress.
+  await pool.query(
+    `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_synced_at)
+     VALUES ('up-1', $1, 'Up', NOW())`,
+    [TENANT]
+  );
+  calls.byOp = {};
+  calls.outbound = [];
+  sleeps.length = 0;
+  sentEmails.length = 0;
+  smsSent.length = 0;
+  importJob.importState.status = 'idle';
+}
+
+async function seedRep(jobberUserId, { attributable = true } = {}) {
+  const { rows } = await pool.query(
+    `INSERT INTO team_members (contractor_id, email, password_hash, tier, is_field_rep, is_attributable, jobber_user_id)
+     VALUES ($1, $2, 'x', 'general', true, $3, $4) RETURNING id`,
+    [TENANT, `${jobberUserId}-${crypto.randomBytes(3).toString('hex')}@rep.test`, attributable, jobberUserId]
+  );
+  return rows[0].id;
+}
+
+const count = async (table, where = 'contractor_id = $1') => {
+  const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM ${table} WHERE ${where}`, [TENANT]);
+  return rows[0].n;
+};
+const stageOf = async (id) => {
+  const { rows } = await pool.query(
+    `SELECT pipeline_stage FROM jobber_clients WHERE contractor_id = $1 AND jobber_client_id = $2`, [TENANT, id]);
+  return rows[0] ? rows[0].pipeline_stage : undefined;
+};
+const assignmentOf = async (id) => {
+  const { rows } = await pool.query(
+    `SELECT sticky_rep_id, sticky_source, provisional_rep_id FROM client_rep_assignments
+      WHERE contractor_id = $1 AND jobber_client_id = $2`, [TENANT, id]);
+  return rows[0] || null;
+};
+
+before(async () => {
+  pool = await initTestDb();
+  realAxiosPost = axios.post;
+});
+after(async () => {
+  axios.post = realAxiosPost;
+  importJob._resetTestOverrides();
+  repScope._resetTestOverrides();
+  clientSales._resetTestOverrides();
+  await pool.end();
+});
+beforeEach(reset);
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Rep scope — the import writes facts, stages and sales for the rep window', () => {
+
+  it('writes request and quote facts, keeping raw unmapped jobber_user_ids', async () => {
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+
+    assert.equal(importJob.importState.status, 'complete');
+    assert.equal(importJob.importState.repScopeError, null);
+    const { rows: reqs } = await pool.query(
+      `SELECT jobber_request_id, jobber_client_id, salesperson_jobber_user_id, assessment_id, assigned_jobber_user_ids
+         FROM crm_request_facts WHERE contractor_id = $1 ORDER BY jobber_request_id`, [TENANT]);
+    assert.deepEqual(reqs, [
+      { jobber_request_id: 'rq-ghost', jobber_client_id: 'ghost-1', salesperson_jobber_user_id: 'ju-rep1', assessment_id: null, assigned_jobber_user_ids: [] },
+      { jobber_request_id: 'rq-new1', jobber_client_id: 'new-1', salesperson_jobber_user_id: null, assessment_id: 'as-new1', assigned_jobber_user_ids: ['ju-rep2', 'ju-rep3'] },
+      { jobber_request_id: 'rq-up1', jobber_client_id: 'up-1', salesperson_jobber_user_id: null, assessment_id: 'as-up1', assigned_jobber_user_ids: ['ju-rep1'] },
+    ]);
+    const { rows: quotes } = await pool.query(
+      `SELECT jobber_quote_id, quote_status, salesperson_jobber_user_id, approved_at IS NOT NULL AS approved
+         FROM crm_quote_facts WHERE contractor_id = $1`, [TENANT]);
+    assert.deepEqual(quotes, [{ jobber_quote_id: 'q-up1', quote_status: 'approved', salesperson_jobber_user_id: 'ju-rep1', approved: true }]);
+    // No rep is mapped, so the replay had nothing to do — and the facts are kept anyway.
+    assert.equal(await count('client_rep_assignments'), 0);
+  });
+
+  it('fills an UNSTAGED row, never regresses a staged one, and never creates a row', async () => {
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+
+    assert.equal(await stageOf('up-1'), 'sold', 'the unpaid client in the window gets a stage');
+    assert.equal(await stageOf('new-1'), 'sold', 'Step H+I staged it; the rep fill leaves it');
+    assert.equal(await stageOf('pc-old'), 'paid', 'a full-history "paid" is never regressed');
+    assert.equal(await stageOf('ghost-1'), undefined, 'the rep scope must never CREATE a jobber_clients row');
+    assert.equal(importJob.importState.repScope.stages.noRow, 1, 'and the rowless client is counted');
+
+    // ⚠ THE REGRESSION GUARD'S OWN PROOF: a staged row that the rep scope DOES touch.
+    await pool.query(`UPDATE jobber_clients SET pipeline_stage = 'paid' WHERE contractor_id = $1 AND jobber_client_id = 'up-1'`, [TENANT]);
+    await repScope.runRepScope(pool, { contractorId: TENANT, filterPreference: { mode: 'recommended' }, getToken: async () => 'tok' });
+    assert.equal(await stageOf('up-1'), 'paid', 'the rep window cannot see invoices, so it must not overwrite');
+  });
+
+  it('groups sales, re-paging in full ONLY the client created before the window', async () => {
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+
+    const { rows } = await pool.query(
+      `SELECT jobber_client_id, COUNT(*)::int AS sales FROM client_sales WHERE contractor_id = $1
+        GROUP BY jobber_client_id ORDER BY jobber_client_id`, [TENANT]);
+    // up-1: the 700-day-old job is its own sale — visible only through the full re-page.
+    // new-1: two jobs 5 days apart, inside 20 days → ONE sale, from the window alone.
+    assert.deepEqual(rows, [{ jobber_client_id: 'new-1', sales: 1 }, { jobber_client_id: 'up-1', sales: 2 }]);
+    assert.equal(calls.byOp.GetClientJobsPaged, 1, 'only up-1 needed its full history');
+  });
+
+  it('names the rep steps distinctly in the log, with pages and cost as each finishes', async () => {
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    const lines = [];
+    const realLog = console.log;
+    console.log = (...a) => { lines.push(a.join(' ')); };
+    try {
+      await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+    } finally {
+      console.log = realLog;
+    }
+    for (const step of ['Rep Step 1 — requests', 'Rep Step 2 — quotes', 'Rep Step 3 — jobs']) {
+      assert.ok(
+        lines.some((l) => l.includes(`${step} complete — 1 pages`) && l.includes('cost requested=')),
+        `missing summary line for ${step}`
+      );
+    }
+  });
+
+  it('a rep-scope failure leaves the campaign import complete and reports the error', async () => {
+    installJobber({
+      campaign: CAMPAIGN,
+      clientJobs: CLIENT_JOBS,
+      repHandler: async (op) => (op === 'RepRequests'
+        ? { data: { errors: [{ message: "Field 'createdAt' doesn't exist" }] } }
+        : null),
+    });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+
+    assert.equal(importJob.importState.status, 'complete');
+    assert.match(importJob.importState.repScopeError, /createdAt/);
+    // The campaign's own work committed: pc-old and new-1 are imported and tagged.
+    assert.ok(await count('contact_tags', `contractor_id = $1 AND jobber_client_id = 'pc-old'`) > 0);
+    assert.equal(await count('crm_request_facts'), 0, 'a failed query records no history rather than an empty one');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Ruling 2 — THE COUNTING TEST: campaigns are identical with and without the rep scope', () => {
+
+  async function campaignSnapshot() {
+    const { rows: tags } = await pool.query(
+      `SELECT jobber_client_id, contact_id, tag, source FROM contact_tags WHERE contractor_id = $1
+        ORDER BY jobber_client_id, tag`, [TENANT]);
+    const audiences = {};
+    for (const [name, filter] of [
+      ['all', { tags: [], mode: 'OR' }],
+      ['pipeline', { tags: ['job:active', 'quote:approved', 'request:assessment_completed', 'paying_client', 'job_count:first_time'], mode: 'OR' }],
+    ]) {
+      const id = await seedAudience(pool, { contractorId: TENANT, name, tags: filter.tags, mode: filter.mode });
+      await evaluateAudience(pool, id);
+      const { rows } = await pool.query(
+        `SELECT jobber_client_id FROM dynamic_audience_members WHERE audience_id = $1 ORDER BY jobber_client_id`, [id]);
+      audiences[name] = rows.map((r) => r.jobber_client_id);
+    }
+    return { tags, audiences };
+  }
+
+  it('contact_tags and campaign audiences are IDENTICAL; up-1 gets a stage, facts and NO tags', async () => {
+    // Run A — the same campaign data, with a rep window that holds nothing.
+    installJobber({ campaign: CAMPAIGN, rep: {}, clientJobs: CLIENT_JOBS });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+    const without = await campaignSnapshot();
+
+    // Run B — identical campaign data, with the rep window populated.
+    await reset();
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+    const withRep = await campaignSnapshot();
+
+    // ⚠ NOT VACUOUS: the campaign really did tag, so "identical" is not "both empty".
+    assert.ok(without.tags.length > 5, `expected campaign tags, got ${without.tags.length}`);
+    assert.ok(without.audiences.pipeline.length > 0, 'the tag audience must have members');
+    assert.deepEqual(withRep.tags, without.tags, 'contact_tags must be identical');
+    assert.deepEqual(withRep.audiences, without.audiences, 'campaign audiences must be identical');
+
+    // The discriminating client: the rep scope DID reach it …
+    assert.equal(await stageOf('up-1'), 'sold');
+    assert.equal(await count('crm_request_facts', `contractor_id = $1 AND jobber_client_id = 'up-1'`), 1);
+    assert.equal(await count('client_sales', `contractor_id = $1 AND jobber_client_id = 'up-1'`), 2);
+    // … and wrote it NO tags.
+    assert.equal(await count('contact_tags', `contractor_id = $1 AND jobber_client_id = 'up-1'`), 0);
+    assert.ok(!withRep.audiences.all.includes('ghost-1'), 'a rowless rep-scope client never enters an audience');
+  });
+
+  it('⚠ the campaign sweeps are the SAME queries as before — no rep filter leaked into them', async () => {
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    const sent = [];
+    const inner = axios.post;
+    const spy = async (url, body) => { sent.push(body?.query || ''); return inner(url, body); };
+    importJob._setTestOverrides({ axiosPost: spy });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+    for (const op of ['GetJobs', 'GetQuotes', 'GetRequests']) {
+      const q = sent.find((s) => new RegExp(`query ${op}\\b`).test(s));
+      assert.ok(q, `${op} must still run`);
+      assert.ok(!/createdAt:\s*\{\s*after/.test(q), `${op} must carry no createdAt filter on Recommended`);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Ruling 7 — THE FENCE: the rep steps and the replay send and create nothing', () => {
+
+  const FENCED = [
+    ['users', 'contractor_id = $1'],
+    ['pending_referrals', 'contractor_id = $1'],
+    ['contractor_invite_links', 'contractor_id = $1'],
+    ['experience_invite_tokens', 'contractor_id = $1'],
+    ['pipeline_cache', 'contractor_id = $1'],
+    ['notifications', 'contractor_id = $1'],
+    ['admin_messages', 'contractor_id = $1'],
+    ['contact_tags', 'contractor_id = $1'],
+  ];
+  const snapshot = async () => {
+    const out = {};
+    for (const [t, w] of FENCED) out[t] = await count(t, w);
+    out.emails = sentEmails.length;
+    out.sms = smsSent.length;
+    out.outboundHttp = calls.outbound.length;
+    return out;
+  };
+
+  it('rep steps + mapping replay: every counter is unchanged, and attribution really ran', async () => {
+    installJobber({ rep: REP, clientJobs: CLIENT_JOBS });
+    const rep1 = await seedRep('ju-rep1');
+    const before0 = await snapshot();
+
+    await repScope.runRepScope(pool, { contractorId: TENANT, filterPreference: { mode: 'recommended' }, getToken: async () => 'tok' });
+    await replay.replayForTeamMember(pool, { contractorId: TENANT, teamMemberId: rep1 });
+
+    // ⚠ THE PROOF THAT SOMETHING HAPPENED — "nothing was sent" is also what a no-op sends.
+    assert.equal((await assignmentOf('up-1'))?.sticky_rep_id, rep1, 'the replay must have attributed up-1');
+    assert.deepEqual(await snapshot(), before0);
+  });
+
+  it('POSITIVE CONTROL — the same counters DO see a real send and a real referral write', async () => {
+    // Without this, the fence above passes against a harness that could never observe
+    // anything. Each counter is driven by a real product path through the SAME stubs.
+    installJobber({});
+    const before0 = await snapshot();
+
+    const { sendAdminNotification } = require('../utils/notificationEmail');
+    await sendAdminNotification(pool, 'cashout', 'probe', '<p>probe</p>', TENANT);
+    await axios.post('https://api.resend.com/emails', {});        // an outbound call via axios
+    await pool.query(
+      `INSERT INTO admin_messages (contractor_id, message_type, title, body, color_code) VALUES ($1, 'probe', 't', 'b', 'orange')`, [TENANT]);
+    // The engine's DEFAULT still rings the bell for a co-assignment — the live paths' behaviour.
+    const [a, b] = [await seedRep('ju-pa'), await seedRep('ju-pb')];
+    await runAttributionEngine(pool, {
+      contractorId: TENANT, jobberClientId: 'pc-probe', currentStatus: 'lead', client: { quotes: { nodes: [] } },
+      fetchAttributionData: async () => ({ requests: [{ id: 'r', createdAt: ago(1), salesperson: null,
+        assessment: { id: 'as', assignedUsers: { nodes: [{ id: 'ju-pa' }, { id: 'ju-pb' }] } } }] }),
+      token: null, referralAnchor: ago(1),
+    });
+
+    const after0 = await snapshot();
+    assert.equal(after0.emails, before0.emails + 1, 'the email counter must see a real Resend send');
+    assert.equal(after0.outboundHttp, before0.outboundHttp + 1, 'the HTTP counter must see a non-Jobber call');
+    assert.equal(after0.admin_messages, before0.admin_messages + 2, 'the table counter must see admin alerts');
+    assert.ok(a && b);
+  });
+
+  it('a co-assignment found in history is FLAGGED without ringing the bell', async () => {
+    const [a, b] = [await seedRep('ju-a'), await seedRep('ju-b')];
+    await pool.query(
+      `INSERT INTO crm_request_facts (contractor_id, jobber_client_id, jobber_request_id, created_at, assessment_id, assigned_jobber_user_ids)
+       VALUES ($1, 'co-1', 'rq-co', $2, 'as-co', '["ju-a","ju-b"]'::jsonb)`, [TENANT, ago(10)]);
+    await replay.replayForTeamMember(pool, { contractorId: TENANT, teamMemberId: a });
+
+    const { rows } = await pool.query(`SELECT reps_involved FROM flagged_assignments WHERE contractor_id = $1`, [TENANT]);
+    assert.equal(rows.length, 1, 'the co-assignment is recorded in the Flagged queue');
+    assert.deepEqual([...rows[0].reps_involved].sort(), [a, b].sort());
+    assert.equal(await count('admin_messages'), 0, 'and no bell rings');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Ruling 1 + 5 — the replay reproduces the engine over stored history', () => {
+
+  const addRequest = (clientId, id, days, { assigned = [], salesperson = null, assessment = true } = {}) => pool.query(
+    `INSERT INTO crm_request_facts (contractor_id, jobber_client_id, jobber_request_id, created_at,
+       salesperson_jobber_user_id, assessment_id, assigned_jobber_user_ids)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [TENANT, clientId, id, ago(days), salesperson, assessment ? `as-${id}` : null, JSON.stringify(assigned)]);
+  const setStage = (clientId, stage) => pool.query(
+    `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, pipeline_stage, last_synced_at)
+     VALUES ($1, $2, 'X', $3, NOW())
+     ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET pipeline_stage = EXCLUDED.pipeline_stage`,
+    [clientId, TENANT, stage]);
+
+  it('⚠ TWO SEPARATE assessments are NOT a co-assignment — the pair to the flag case', async () => {
+    // The grouping finding (ruling 1): the same two reps, on two assessments instead of one.
+    // A flat (user, occurred_at) list would read both as the same event.
+    const a = await seedRep('ju-a');
+    const b = await seedRep('ju-b');
+    await setStage('sep-1', 'inspection');
+    await addRequest('sep-1', 'rq-1', 30, { assigned: ['ju-a'] });
+    await addRequest('sep-1', 'rq-2', 10, { assigned: ['ju-b'] });
+    await replay.replayForTeamMember(pool, { contractorId: TENANT, teamMemberId: a });
+
+    assert.equal(await count('flagged_assignments'), 0, 'no co-assignment flag');
+    assert.equal((await assignmentOf('sep-1')).provisional_rep_id, b, 'the newest assessment holds the provisional');
+  });
+
+  it('replays oldest-first with history AS OF each request — the older rep wins a sold client', async () => {
+    // Sold, no quote: Mode A at close. Oldest request (rep A) is replayed first with only
+    // itself visible, so A becomes sticky; the newer request (rep B) then short-circuits.
+    // ⚠ Without the "as of" cut the first pass would see B's newer request as eligible[0]
+    // and credit B — a request that did not exist yet when A's request happened.
+    const a = await seedRep('ju-a');
+    await seedRep('ju-b');
+    await setStage('ord-1', 'sold');
+    await addRequest('ord-1', 'rq-old', 40, { assigned: ['ju-a'] });
+    await addRequest('ord-1', 'rq-new', 20, { assigned: ['ju-b'] });
+    await replay.replayForTeamMember(pool, { contractorId: TENANT, teamMemberId: a });
+
+    const row = await assignmentOf('ord-1');
+    assert.equal(row.sticky_rep_id, a);
+    assert.equal(row.sticky_source, 'mode_a_at_close');
+  });
+
+  it('an existing sticky WINS — history never overwrites a present assignment', async () => {
+    const a = await seedRep('ju-a');
+    const other = await seedRep('ju-other');
+    await setStage('st-1', 'sold');
+    await addRequest('st-1', 'rq-st', 15, { assigned: ['ju-a'] });
+    await pool.query(
+      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+       VALUES ($1, 'st-1', $2, 'manual', NOW(), NOW())`, [TENANT, other]);
+    await replay.replayForTeamMember(pool, { contractorId: TENANT, teamMemberId: a });
+    assert.equal((await assignmentOf('st-1')).sticky_rep_id, other);
+  });
+
+  it('R3 — a sold client whose history names nobody attributable records nothing', async () => {
+    const a = await seedRep('ju-a');
+    await setStage('r3-1', 'sold');
+    await addRequest('r3-1', 'rq-r3', 15, { assigned: ['ju-a'] });
+    await pool.query(`UPDATE team_members SET is_attributable = false WHERE id = $1`, [a]);
+    const result = await replay.replayForTeamMember(pool, { contractorId: TENANT, teamMemberId: a });
+    assert.equal(result, null, 'a non-attributable member triggers no replay');
+    // And replaying the client directly still resolves nobody — no orphan flag.
+    await replay.replayClientAttribution(pool, { contractorId: TENANT, jobberClientId: 'r3-1' });
+    assert.equal(await count('client_rep_assignments'), 0);
+    assert.equal(await count('flagged_assignments'), 0);
+  });
+
+  it('with NO mirror row, the stage falls back to stored facts (a sale means sold)', async () => {
+    const a = await seedRep('ju-a');
+    await addRequest('nr-1', 'rq-nr', 15, { salesperson: 'ju-a', assessment: false });
+    await pool.query(
+      `INSERT INTO client_sales (contractor_id, jobber_client_id, anchor_at, last_event_at) VALUES ($1, 'nr-1', $2, $2)`,
+      [TENANT, ago(10)]);
+    await pool.query(`INSERT INTO contractor_crm_settings (contractor_id, attribution_source) VALUES ($1, 'request_salesperson')
+                      ON CONFLICT (contractor_id) DO UPDATE SET attribution_source = EXCLUDED.attribution_source`, [TENANT]);
+    try {
+      await replay.replayForTeamMember(pool, { contractorId: TENANT, teamMemberId: a });
+      const row = await assignmentOf('nr-1');
+      assert.equal(row.sticky_rep_id, a, 'sold → the sticky gate, Mode B at close');
+      assert.equal(await count('jobber_clients'), 1, 'still no row for nr-1 (only up-1 from the reset)');
+    } finally {
+      await pool.query(`DELETE FROM contractor_crm_settings WHERE contractor_id = $1`, [TENANT]);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Ruling 8 — pacing on requestedQueryCost, and every nested connection capped', () => {
+
+  it('waits exactly what computeThrottlePaceDelayMs says between pages, from the response cost', async () => {
+    const cost = { requestedQueryCost: 1506, actualQueryCost: 1174, throttleStatus: { currentlyAvailable: 500, restoreRate: 500, maximumAvailable: 10000 } };
+    installJobber({
+      repHandler: async (op, vars) => {
+        if (op !== 'RepRequests') return null;
+        return vars.after === null
+          ? page('requests', [], { hasNextPage: true, endCursor: 'c1', cost })
+          : page('requests', [], { cost });
+      },
+    });
+    await repScope.pageRepConnection({
+      label: 'Rep Step 1 — requests', query: repScope.REP_REQUESTS_QUERY, dataPath: 'requests',
+      since: ago(365), getToken: async () => 'tok', onPage: async () => {},
+    });
+    // ceil((1506 - 500) / 500 * 1000) + 500 buffer = 2512. A hardcoded 2500 page cost would give 4500.
+    assert.deepEqual(sleeps, [2512]);
+  });
+
+  it('a THROTTLED page is retried at the same cursor after a paced wait', async () => {
+    let n = 0;
+    const cursors = [];
+    installJobber({
+      repHandler: async (op, vars) => {
+        if (op !== 'RepQuotes') return null;
+        cursors.push(vars.after);
+        n += 1;
+        if (n === 1) {
+          return { data: { errors: [{ message: 'Throttled', extensions: { code: 'THROTTLED' } }],
+            extensions: { cost: { requestedQueryCost: 906, throttleStatus: { currentlyAvailable: 6, restoreRate: 500 } } } } };
+        }
+        return page('quotes', [{ id: 'q', client: { id: 'c' } }]);
+      },
+    });
+    const r = await repScope.pageRepConnection({
+      label: 'Rep Step 2 — quotes', query: repScope.REP_QUOTES_QUERY, dataPath: 'quotes',
+      since: ago(365), getToken: async () => 'tok', onPage: async () => {},
+    });
+    assert.deepEqual(cursors, [null, null]);
+    assert.equal(r.nodes, 1);
+    assert.equal(sleeps[0], Math.ceil(((906 - 6) / 500) * 1000) + 500);
+  });
+
+  it('every nested connection in the three rep queries carries an explicit first:', () => {
+    for (const q of [repScope.REP_REQUESTS_QUERY, repScope.REP_QUOTES_QUERY, repScope.REP_JOBS_QUERY]) {
+      const connections = [...q.matchAll(/(\w+)(\([^)]*\))?\s*\{\s*nodes\b/g)];
+      assert.ok(connections.length > 0, 'the needle must find the connections it checks');
+      for (const m of connections) {
+        assert.match(m[2] || '', /first:\s*\d+/, `${m[1]} has no explicit first:`);
+      }
+    }
+  });
+
+  it('the rep window follows the mode: 12 months, or the chosen custom date', () => {
+    const now = new Date('2026-09-21T12:00:00Z');
+    for (const mode of ['recommended', 'paying_only', 'pull_all']) {
+      assert.equal(repScope.repWindowStart({ mode }, now).toISOString(), '2025-09-21T12:00:00.000Z', mode);
+    }
+    assert.equal(
+      repScope.repWindowStart({ mode: 'custom_date', customDate: '2026-01-15' }, now).toISOString(),
+      '2026-01-15T00:00:00.000Z'
+    );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Ruling 5 — mapping a rep through the admin routes lights up their book', () => {
+  let server, port, ownerToken;
+
+  function http(method, path, body) {
+    return new Promise((resolve, reject) => {
+      const payload = body ? JSON.stringify(body) : null;
+      const req = _httpRequest({
+        hostname: 'localhost', port, path, method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ownerToken}`,
+          ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+        },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString();
+          resolve({ status: res.statusCode, body: text ? JSON.parse(text) : null });
+        });
+      });
+      req.on('error', reject);
+      if (payload) req.write(payload);
+      req.end();
+    });
+  }
+
+  beforeEach(async () => {
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    app.use('/', require('../routes/admin/index'));
+    ({ server, port } = await startTestServer(app));
+    const { rows } = await pool.query(
+      `INSERT INTO team_members (contractor_id, email, password_hash, tier) VALUES ($1, $2, 'x', 'owner') RETURNING id`,
+      [TENANT, `owner-${crypto.randomBytes(3).toString('hex')}@rep.test`]);
+    ownerToken = crypto.randomBytes(32).toString('hex');
+    await pool.query(
+      `INSERT INTO sessions (user_id, token, expires_at, role, contractor_id, team_member_id)
+       VALUES (NULL, $1, NOW() + INTERVAL '1 hour', 'admin', $2, $3)`, [ownerToken, TENANT, rows[0].id]);
+    await pool.query(
+      `INSERT INTO crm_request_facts (contractor_id, jobber_client_id, jobber_request_id, created_at, assessment_id, assigned_jobber_user_ids)
+       VALUES ($1, 'up-1', 'rq-route', $2, 'as-route', '["ju-route"]'::jsonb)`, [TENANT, ago(12)]);
+  });
+  // node:test runs this after each case in the describe, so the server never outlives it.
+  const { afterEach } = require('node:test');
+  afterEach(async () => { await stopTestServer(server); });
+
+  it('PATCH mapping an ATTRIBUTABLE member starts the replay and book-status reports it', async () => {
+    const rep = await seedRep(null);
+    const res = await http('PATCH', `/api/admin/team/${rep}`, { jobber_user_id: 'ju-route' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.book_replay, 'started');
+    await waitFor(async () => (await assignmentOf('up-1'))?.provisional_rep_id === rep);
+    await waitFor(async () => (await http('GET', '/api/admin/team/book-status')).body.state === 'complete');
+    const status = (await http('GET', '/api/admin/team/book-status')).body;
+    assert.equal(status.teamMemberId, rep);
+    assert.equal(status.clientsDone, 1);
+  });
+
+  it('PATCH mapping a NON-attributable member starts nothing — and the response says so', async () => {
+    const rep = await seedRep(null, { attributable: false });
+    const res = await http('PATCH', `/api/admin/team/${rep}`, { jobber_user_id: 'ju-route' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.book_replay, undefined);
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(await assignmentOf('up-1'), null);
+  });
+
+  it('promote → attributable on an already-MAPPED member starts it; UNMAPPING removes nothing', async () => {
+    const rep = await seedRep('ju-route', { attributable: false });
+    const res = await http('POST', `/api/admin/team/${rep}/promote`, { is_attributable: true });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.book_replay, 'started');
+    await waitFor(async () => (await assignmentOf('up-1'))?.provisional_rep_id === rep);
+
+    const unmap = await http('PATCH', `/api/admin/team/${rep}`, { jobber_user_id: null });
+    assert.equal(unmap.body.book_replay, undefined);
+    assert.equal((await assignmentOf('up-1')).provisional_rep_id, rep, 'unmapping is not retroactive');
+  });
+});

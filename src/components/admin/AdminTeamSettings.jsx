@@ -556,6 +556,10 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
   const [jobberUsersErr, setJobberUsersErr]       = useState(null);
   const [jobberSearch, setJobberSearch]           = useState('');
   const [jobberMapErr, setJobberMapErr]           = useState(null);
+  // Book replay (Canvass-stage backfill, ruling 5): set when a save maps an attributable
+  // member to a Jobber user and the server answers book_replay: 'started'. Then polled
+  // from GET /api/admin/team/book-status until it stops running.
+  const [bookStatus, setBookStatus]               = useState(null);
   const [localIsFieldRep, setLocalIsFieldRep]                   = useState(!!member.is_field_rep);
   const [localIsAttributable, setLocalIsAttributable]           = useState(!!member.is_attributable);
   const [localRepRevenueVis, setLocalRepRevenueVis]             = useState(!!member.rep_revenue_visibility);
@@ -669,11 +673,34 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
     if (p) setWorkingPerms({ ...p.permissions });
   }
 
+  // Reads a response body without letting a body-less or non-JSON reply abort the save.
+  async function readJsonSafe(r) {
+    try { return (await r.json()) || {}; } catch { return {}; }
+  }
+
+  // ⚠ ONLY ADOPTS A STATUS FOR THIS MEMBER. The status is per contractor, so an import's
+  // replay or another member's would otherwise be reported inside this drawer.
+  useEffect(() => {
+    if (bookStatus?.state !== 'running') return undefined;
+    const id = setInterval(async () => {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/admin/team/book-status`, {
+          headers: { Authorization: `Bearer ${getAdminToken()}` },
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (d && d.teamMemberId === member.id) setBookStatus(d);
+      } catch { /* keep polling */ }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [bookStatus?.state, member.id]);
+
   async function handleSave() {
     setSaving(true);
     setSaveErr(null);
     setJobberMapErr(null);
     const token = getAdminToken();
+    let bookReplayStarted = false;
     try {
       // Step 1: PATCH identity fields only when something actually changed (compare to last-saved baseline, not stale props)
       const identityChanged = localName !== baselineRef.current.name || localTier !== baselineRef.current.tier || localTitleId !== baselineRef.current.titleId || localJobberUserId !== baselineRef.current.jobberUserId;
@@ -688,6 +715,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(body),
         });
+        if (r.ok && (await readJsonSafe(r)).book_replay === 'started') bookReplayStarted = true;
         if (!r.ok) {
           const d = await r.json();
           if (r.status === 409 && d.error === 'jobber_user_already_mapped') {
@@ -714,6 +742,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(repBody),
         });
+        if (rr.ok && (await readJsonSafe(rr)).book_replay === 'started') bookReplayStarted = true;
         if (!rr.ok) {
           const d = await rr.json();
           setSaveErr(d.error || 'Failed to update rep status.');
@@ -740,6 +769,7 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
       };
       setSaving(false);
       setSaveSuccess(true);
+      if (bookReplayStarted) setBookStatus({ state: 'running', teamMemberId: member.id, clientsDone: 0, clientsTotal: 0 });
       onSaved();
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       successTimerRef.current = setTimeout(() => setSaveSuccess(false), 3000);
@@ -979,6 +1009,16 @@ function MemberEditDrawer({ member, myTier, onClose, onSaved, titles }) {
                   <div style={{ padding: '8px 12px', borderRadius: AD.radiusMd, background: AD.red2Bg, border: `1px solid ${AD.red2}`, color: AD.red2Text, fontSize: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
                     <i className="ph ph-warning-circle" style={{ fontSize: 14, flexShrink: 0 }} />
                     {jobberMapErr}
+                  </div>
+                )}
+                {bookStatus && (
+                  <div data-book-status={bookStatus.state} style={{ padding: '8px 12px', borderRadius: AD.radiusMd, background: AD.bgCardTint, color: AD.textSecondary, fontSize: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <i className={bookStatus.state === 'running' ? 'ph ph-circle-notch' : 'ph ph-info'} style={{ fontSize: 14, flexShrink: 0 }} />
+                    {bookStatus.state === 'running'
+                      ? `Building this rep's book from imported Jobber history… ${bookStatus.clientsDone || 0} of ${bookStatus.clientsTotal || 0} clients checked`
+                      : bookStatus.state === 'complete'
+                        ? `Book ready — ${bookStatus.clientsDone || 0} client${bookStatus.clientsDone === 1 ? '' : 's'} from Jobber history checked. Clients credited to this rep now appear in their app.`
+                        : "This rep's book could not be built from history. Save the Jobber user again to retry."}
                   </div>
                 )}
               </div>

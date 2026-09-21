@@ -247,6 +247,10 @@ export default function CRMSettings() {
   const [importCounters, setImportCounters]     = useState({ totalFound: 0, imported: 0, tagged: 0, matchingProcessed: 0, matchingLinked: 0, matchingTotal: 0 });
   const [importLastResult, setImportLastResult] = useState(null);
   const [importErrorMsg, setImportErrorMsg]     = useState('');
+  // Rep scope (Canvass-stage backfill): the rep step running now, and — on completion —
+  // the error message if the rep scope failed after the campaign import had committed.
+  const [importRepStep, setImportRepStep]       = useState('');
+  const [importRepError, setImportRepError]     = useState('');
 
   const fieldSavedTimer     = useRef(null);
   const syncMsgTimer        = useRef(null);
@@ -316,6 +320,11 @@ export default function CRMSettings() {
           const mp = d.matchingProgress || {};
           setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: mp.linked || 0, matchingTotal: mp.total || 0 });
           setImportPhase('matching');
+          startImportPolling();
+        } else if (d.status === 'rep_history') {
+          setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: 0, matchingLinked: d.linksEstablished || 0, matchingTotal: 0 });
+          setImportRepStep(d.repStep || '');
+          setImportPhase('rep_history');
           startImportPolling();
         } else if (d.status === 'complete' && d.totalFound > 0) {
           const mp = d.matchingProgress || {};
@@ -605,7 +614,11 @@ export default function CRMSettings() {
           const mp = d.matchingProgress || {};
           setImportCounters({ totalFound: d.totalFound, imported: d.imported, tagged: d.tagged, matchingProcessed: mp.processed || 0, matchingLinked: mp.linked || 0, matchingTotal: mp.total || 0 });
           setImportPhase('matching');
+        } else if (d.status === 'rep_history') {
+          setImportRepStep(d.repStep || '');
+          setImportPhase('rep_history');
         } else if (d.status === 'complete') {
+          setImportRepError(d.repScopeError || '');
           clearInterval(importPollRef.current);
           importPollRef.current = null;
           const mp = d.matchingProgress || {};
@@ -1717,7 +1730,7 @@ export default function CRMSettings() {
       {
         value: 'paying_only',
         label: 'Paying clients only',
-        sub: 'Only clients with at least one paid invoice — no prospects',
+        sub: 'Only clients with at least one paid invoice — no prospects. Rep history still covers the last 12 months',
       },
       {
         value: 'custom_date',
@@ -1908,6 +1921,39 @@ export default function CRMSettings() {
       );
     }
 
+    // Rep scope (Canvass-stage backfill) — runs after the campaign import has finished.
+    // The step label comes straight from the server ("Rep Step 1 — requests", …), which
+    // is the same label the Railway log carries.
+    if (importPhase === 'rep_history') {
+      return (
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+            <span style={{
+              padding: '3px 10px', borderRadius: AD.radiusPill,
+              background: AD.bgCardTint, color: AD.textSecondary,
+              fontSize: 12, fontWeight: 600, fontFamily: AD.fontSans,
+            }}>
+              Building rep history…
+            </span>
+            <i className="ph ph-circle-notch" style={{
+              fontSize: 16, color: AD.textSecondary,
+              animation: 'crmSpin 0.8s linear infinite',
+            }} />
+          </div>
+          <div style={{ fontSize: 13, color: AD.textSecondary, marginBottom: 8 }}>
+            {importRepStep || 'Starting'}
+          </div>
+          <div style={{ fontSize: 13, color: AD.textTertiary, marginBottom: 20, lineHeight: 1.6 }}>
+            Your clients are imported. RoofMiles is now reading recent requests, quotes and jobs
+            so field reps see their clients, stages and sales. This usually takes 10–15 minutes.
+          </div>
+          <span style={{ fontSize: 13, color: AD.greenText }}>
+            ✓ {importCounters.imported.toLocaleString()} clients imported
+          </span>
+        </Card>
+      );
+    }
+
     if (importPhase === 'results_success') {
       return (
         <Card style={{ borderColor: AD.green }}>
@@ -1935,6 +1981,11 @@ export default function CRMSettings() {
           <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.textSecondary, lineHeight: 1.65 }}>
             Your Jobber clients are now available in RoofMiles. Tags have been applied and contacts matched to app users automatically.
           </p>
+          {importRepError && (
+            <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.amberText, lineHeight: 1.65 }}>
+              Rep history could not be built this time ({importRepError}). Your client import is unaffected — run the import again to retry.
+            </p>
+          )}
           <PrimaryBtn onClick={() => setImportPhase('idle')}>Done</PrimaryBtn>
         </Card>
       );

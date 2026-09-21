@@ -138,7 +138,11 @@ describe('admin route enforcement coverage', () => {
   // exactly like its deactivate sibling. This is the one case the message below
   // says is correct — and it is also the reflex this constant exists to prevent,
   // so: the number moved because a route was added, not because a walk broke.
-  const EXPECTED_ADMIN_ROUTE_COUNT = 138; // measured 2026-08-31, C/DL-3c Phase 2c
+  // ⚠ 138 → 139 IN THE CANVASS-STAGE BACKFILL, DELIBERATELY. One route was ADDED:
+  // GET /api/admin/team/book-status (ruling 5 — what the admin sees while a rep's
+  // book is replayed), gated on `team` like its GET /api/admin/team sibling. The walk
+  // reported exactly 139 before this line changed; no route was removed.
+  const EXPECTED_ADMIN_ROUTE_COUNT = 139; // measured 2026-09-21, Canvass-stage backfill
   it('router walk: /api/admin/* route count matches the recorded number exactly', () => {
     assert.equal(
       adminRoutes.length,

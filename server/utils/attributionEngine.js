@@ -138,7 +138,7 @@ async function insertFlagAdminMessage(pool, contractorId, flagId, title, body) {
   );
 }
 
-async function writeCoAssignmentFlag(pool, contractorId, jobberClientId, repIds, assessmentId) {
+async function writeCoAssignmentFlag(pool, contractorId, jobberClientId, repIds, assessmentId, notifyAdmin = true) {
   const { rows: existingFlag } = await pool.query(
     `SELECT id FROM flagged_assignments
      WHERE contractor_id = $1 AND jobber_client_id = $2 AND flag_reason = 'rep_co_assignment' AND status = 'open'`,
@@ -152,6 +152,9 @@ async function writeCoAssignmentFlag(pool, contractorId, jobberClientId, repIds,
      RETURNING id`,
     [contractorId, jobberClientId, JSON.stringify(repIds), assessmentId]
   );
+  // The flag ROW is always written — it is the record the admin queue resolves. Only the
+  // bell is optional, for the bulk replay (see notifyAdminOnFlag below).
+  if (!notifyAdmin) return;
   await insertFlagAdminMessage(
     pool, contractorId, inserted[0].id,
     'Assignment Flagged: Multiple Reps Matched',
@@ -209,6 +212,14 @@ async function writeOrphanFlag(pool, contractorId, jobberClientId, triggeringQuo
 //                       and this parameter is how the two are separated inside one engine.
 //                       ⚠ Do NOT flip the default to false "for symmetry" — that silently
 //                       un-flags the referral pipeline, which is the half R3 does not touch.
+//   notifyAdminOnFlag — true (default) inserts the admin_messages bell beside a new
+//                       co-assignment flag. FALSE writes the flagged_assignments row and
+//                       rings nothing. ⚠ ONLY the historical replay passes false
+//                       (server/utils/attributionReplay.js): it runs over a whole book at
+//                       once, and ruling 7 (Danny, 2026-09-21) is that the replay creates
+//                       no admin alert. The flag itself still lands in the Flagged queue,
+//                       so the co-assignment is recorded rather than hidden. Every live
+//                       path keeps the default.
 //   logError          — injectable; defaults to real logError for production
 //
 // Order of operations (contractual — do not reorder):
@@ -229,6 +240,7 @@ async function runAttributionEngine(pool, {
   token,
   referralAnchor,
   writeOrphanOnMiss = true,
+  notifyAdminOnFlag = true,
   logError = realLogError,
 }) {
   // 1. Guard — fail closed on missing identity
@@ -315,7 +327,7 @@ async function runAttributionEngine(pool, {
       if (match.type === 'single') {
         await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_a_at_close');
       } else if (match.type === 'multiple') {
-        await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId);
+        await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId, notifyAdminOnFlag);
       } else {
         if (writeOrphanOnMiss) await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
       }
@@ -344,7 +356,7 @@ async function runAttributionEngine(pool, {
         await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a');
       }
     } else if (match.type === 'multiple') {
-      await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId);
+      await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId, notifyAdminOnFlag);
     }
   } else {
     const match = await resolveModeBMatch(pool, contractorId, requests, referralAnchor);

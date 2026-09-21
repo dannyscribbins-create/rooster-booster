@@ -4210,6 +4210,163 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage backfill — the rep scope, the fact tables and the replay (BUILT 2026-09-21)
+
+*Rulings 1–10 by Danny, 2026-09-21. Built in one commit after a killed session; the recovery
+check found a clean tree at `c5830e2` and neither fact table in any local database.*
+
+- [x] **✅ SCHEMA — `crm_quote_facts` and `crm_request_facts`, migrated at the end of `initDB()`
+      exactly as approved.** The raw `jobber_user_id` is kept on every row, mapped or not, because
+      the user nobody has mapped yet is exactly the one whose history has to be there when they are.
+- [x] **✅ THE GROUPING FINDING, FILED PER RULING 1: A FLAT (user, occurred_at) LIST CANNOT TELL A
+      CO-ASSIGNMENT FROM TWO SEPARATE ASSIGNMENTS.** Two reps on ONE assessment is Mode A's
+      `'multiple'` outcome (a flag); the same two reps on two assessments is two `'single'` outcomes.
+      A flat list reads both identically. **`assigned_jobber_user_ids` is therefore atomic per
+      assessment** (JSONB on the request row), matching `flagged_assignments.reps_involved`.
+      ⚠ **AND THE FIRST TEST OF IT WAS VACUOUS, WHICH IS WHY THE FIXTURE CHANGED.** Keeping only the
+      first user on write left all 22 cases green, because the replay's flag case seeds its facts
+      directly. Only an import fixture with two people on one assessment sees the write; that
+      fixture now exists and the injection takes it red.
+- [x] **✅ RULING 2 — THE CAMPAIGN SWEEPS ARE UNTOUCHED; THE REP SCOPE HAS ITS OWN THREE STEPS.**
+      **WHY, NAMED AS THE RULING ASKED:** `deriveAndSaveTags()` (`server/utils/deriveJobberTags.js`)
+      builds the `request:*`, `quote:*`, `job:*`, `job_type:*`, `job_count:*` and `recency:*` tags,
+      plus `work_category` / `material_type` / `assigned_rep` / `insurance` off the latest job, **from
+      the import's Step C/D/E arrays**. `evaluateAudience()` (`server/cron/jobs/dynamicAudiences.js`)
+      selects campaign audiences from `contact_tags`. **Filtering C/D/E to the rep window would have
+      re-tagged older paying clients and changed who receives campaigns.** So Steps A–I run with the
+      same filters, selections and pacing, and **Rep Step 1 — requests / Rep Step 2 — quotes / Rep
+      Step 3 — jobs** run AFTER them (`server/jobs/repImportScope.js`), in their own `try`, writing
+      only the fact tables, `pipeline_stage` and `client_sales`. Each step logs
+      `… complete — N pages, N nodes, cost requested=… actual=…` under its own name.
+      ⚠ **ISOLATION RUNS BOTH WAYS:** the rep steps read nothing the campaign steps fetched either,
+      so filtering Step C later cannot silently truncate rep sale grouping.
+      **THE COUNTING TEST** runs the same campaign data twice, once with an empty rep window and once
+      populated, and asserts `contact_tags` and two campaign audiences (an all-clients one and a
+      pipeline-tag one) are **identical**. The discriminating client `up-1` (unpaid, created two
+      years ago, so excluded by Step G) gets a stage, fact rows and two sales, and **zero tags**.
+      Guard-proofed: making the rep scope write one tag takes it red.
+- [x] **✅ RULING 4 — ONE CONTROL.** The rep window follows the mode: 12 months for Recommended and
+      Paying-clients-only (stated in that option's copy), the chosen date for Custom. ⚠ **`pull_all`
+      also gets 12 months**, so an API-only caller cannot trigger an unbounded rep sweep.
+- [x] **✅ RULING 5 — MAPPING LIGHTS UP A BOOK, IN THE BACKGROUND.** `PATCH /api/admin/team/:id`
+      setting `jobber_user_id`, or `POST /:id/promote` turning `is_attributable` on, starts a replay
+      when the member is BOTH mapped and attributable, and answers `book_replay: 'started'`. An import
+      completing replays for every already-mapped attributable rep. No Jobber call — it reads the facts
+      (`server/utils/attributionReplay.js`). Sticky is existing-wins (the engine's own step 3 and
+      `writeSticky`'s predicate); R3 holds (`writeOrphanOnMiss: false`); clearing a mapping or
+      demoting triggers nothing and removes nothing.
+      **What the admin sees:** under the Jobber-user picker, *"Building this rep's book from imported
+      Jobber history… N of M clients checked"*, then *"Book ready — N clients from Jobber history
+      checked. Clients credited to this rep now appear in their app."* Polled from
+      `GET /api/admin/team/book-status`. **In the import panel:** a *"Building rep history…"* card
+      naming the current rep step, after the client import itself is done.
+- [x] **✅ RULING 6 — SALE GROUPING IN THE IMPORT**, through `recomputeClientSales`. ⚠ **A client
+      created INSIDE the window is grouped from the window's jobs alone** (no job can predate its
+      client, so that is its full history). **Every other client is re-paged in full, oldest first,
+      with `fetchAllClientJobs`**, because `recomputeClientSales` rewrites all of a client's sales and
+      a truncated list would both split a sale straddling the window start and delete every older
+      sale. That needed one scalar added to the measured jobs selection: `client { createdAt }`.
+- [x] **✅ RULING 7 — THE BULK FENCE, COUNTED, WITH ITS POSITIVE CONTROL.** Rep steps plus a mapping
+      replay leave `users`, `pending_referrals`, `contractor_invite_links`,
+      `experience_invite_tokens`, `pipeline_cache`, `notifications`, `admin_messages`,
+      `contact_tags`, Resend sends, SMS and non-Jobber HTTP **all unchanged** while a sticky really is
+      written. The positive control drives a real `sendAdminNotification`, a non-Jobber `axios.post`
+      and the engine's default co-assignment bell through **the same counters** and sees each one.
+- [x] **✅ RULING 8 — PACING ON `requestedQueryCost`** through `pipelineSync`'s
+      `computeThrottlePaceDelayMs`, for the rep steps only; campaign pacing is unchanged. The one
+      nested connection carries `assignedUsers(first: 5)`, and a test fails if any nested connection
+      in the three queries lacks an explicit `first:`. Page cap 600 per step, reported as a failure.
+
+- [ ] ⚠ **NEEDS DANNY — ONE DEVIATION FROM THE APPROVED REPLAY, MADE DELIBERATELY AND FENCED: THE
+      "AS OF" CUT.** As approved, each replayed request gets *"requests from crm_request_facts sorted
+      DESC"*. Taken literally, the FIRST (oldest) pass then sees every newer request too, and for a
+      sold client `eligible[0]` is the NEWEST one — so oldest-first ordering would change nothing and
+      the newest request's rep would win, crediting a request that did not exist yet when the older
+      one happened. **Built instead: each pass sees only requests created at or before the one being
+      replayed**, which is what the live path could have seen at the time. Consequence: **on a sold
+      client with two assessment reps, the OLDER request's rep wins.** Guard-proofed. If the literal
+      reading is what was meant, it is one `.filter` in `replayClientAttribution`.
+- [ ] ⚠ **NEEDS DANNY — THE REPLAY RECORDS A CO-ASSIGNMENT WITHOUT RINGING THE BELL.** Ruling 7 says
+      the replay creates no admin alert, and a co-assignment flag's `admin_messages` row is one. The
+      engine gained `notifyAdminOnFlag` (default **true**; every live path unchanged) and the replay
+      passes false: **the flag lands in the Flagged queue, no bell rings.** At Accent's volume a
+      replay could otherwise ring dozens at once. If flags from history should not be written at all,
+      that is a different ruling.
+- [ ] 🔴 **REP-WINDOW CLIENTS WITH NO `jobber_clients` ROW GET FACTS AND AN ASSIGNMENT, BUT NO STAGE
+      AND NO NAME.** The rep steps never CREATE a mirror row (Danny's guard). A client created more
+      than 12 months ago, never paid, with a request in the last 12 months, is excluded by Step G on
+      Recommended, and a new request does not bump the client's `updatedAt` (measured 2026-09-18), so
+      nothing else creates the row either. **Counted every run:** `Rep stages complete — … N with no
+      jobber_clients row`. The rep sees these as `client_row_missing`. **The fix is the open WRITE-SIDE
+      GAP item in the Canvass-4b section** (the request path should mirror the client), or letting the
+      rep steps create a minimal row. **Read N off the first production run before ruling.**
+- [ ] ⚠ **THE FACT TABLES ARE WRITTEN ONLY BY THE FULL IMPORT.** The request webhooks and
+      `repRequestSweep` still attribute live and write no facts, so **a mapping replay sees history
+      as of the last import.** A client whose only request arrived after that import is attributed
+      live if the rep was already mapped, and missed if they were mapped later, until the next import.
+      Small change (write a fact row in `attributeFromRequest`); not in the ruling, so not done.
+- [ ] ⚠ **THE PIPELINE STAGE FROM THE REP SCOPE IS FILL-ONLY, AND THAT IS A LIMIT AS WELL AS A GUARD.**
+      The rep window sees no invoices and no job older than the window, so it cannot say `'paid'` and
+      must not overwrite Step H+I's full-history verdict (guard-proofed: overwriting regresses `paid`
+      to `sold`). **A stale non-null stage on a row outside Step G's set is left as it was.**
+- [ ] ⚠ **`assignedUsers(first: 5)` CAPS AN ASSESSMENT AT FIVE PEOPLE.** A sixth would be silently
+      absent from the co-assignment test. Far past any real visit; recorded so it is not assumed.
+- [ ] ⚠ **BOOK STATUS IS IN MEMORY**, like `importState`. A redeploy mid-replay loses the progress
+      line (never the writes, which are idempotent); re-saving the mapping reruns it.
+- [ ] ⚠ **THE IMPORT PANEL'S NEW "Building rep history…" CARD HAS NO REACT TEST — `CRMSettings.jsx`
+      HAS NO TEST FILE AT ALL.** The team drawer's book line is tested (a pair, guard-proofed both
+      ways); the import card is not, because building a harness for a 2,000-line component with no
+      existing one is its own job. What is untested: the `rep_history` status branch in both polls,
+      the step label, and the `repScopeError` line on the results card. The server side of all three
+      is tested in `repImportScope.test.js`.
+- [ ] ⚠ **CITATION DRIFT FROM THIS COMMIT — 29 FLAGGED `LIKELY ROTTED`, RECORDED RATHER THAN
+      REPAIRED BY DELTA.** `citecheck --changed-files` first reported **97**; almost all of them
+      pointed into `server/routes/admin/team.js` because the replay helper had been inserted near the
+      top. **Moving the helper, the new route and its require to the END of that file, and shrinking
+      both handler edits to a one-line swap, took `team.js` to ZERO** — the cheap mitigation
+      `CLAUDE.md` names. What remains, by target: `CLAUDE.md:436`, `:436-438`, `:501`, `:502`
+      (17 — moved by the tripwire entry, as every re-arm has done; several of these, e.g. the
+      `:502` set, are ALREADY recorded as wrong), `fullJobberImport.js:542` (3),
+      `AdminTeamSettings.jsx:804` / `:915` / `:1512` / `:1833` (6), `AdminTeamSettings.test.jsx:117-123`
+      (2), `PRE_LAUNCH_CHECKLIST.md:6880` (1). ⚠ **Per the procedure, each needs its OLD target read
+      at `c5830e2` before any shift — and most should be re-cited by role instead.** Not done inside
+      this build's diff, which would make it unreviewable.
+      ⚠ **AND THE MOVE ITSELF BROKE A COMMENT, CAUGHT ONLY BY READING THE DIFF.** The relocation
+      script took slice offsets, then deleted a line above them, then cut at the stale offsets: the
+      first line of the Finance-flags comment vanished and a fragment of the moved header stayed in
+      its place. Comments only, so the module loaded and every test stayed green. Repaired from HEAD.
+- [ ] ⚠ **TWO NEW FUNCTIONS EXCEED THE 60-LINE SIGNAL — FLAGGED, NOT SPLIT.** `pageRepConnection`
+      and `runRepScope` in `server/jobs/repImportScope.js`. The first is one paging loop with its
+      throttle branch inline; the second is the three steps in sequence. Splitting either scatters the
+      one control flow someone has to read to trust the pacing. Recorded so it is a decision.
+
+- [ ] ⚠ **EFFICIENCY NOTE, NOT A DEFECT (RULING 3): ON RECOMMENDED, STEPS B–E FETCH THE ACCOUNT'S
+      ENTIRE HISTORY AND STEP G TRIMS AFTERWARDS.** `dateFilter` is set only for `custom_date`, so
+      Recommended sweeps every invoice, job, quote and request ever created and then keeps paying
+      clients plus 12 months of prospects. **The RESULT matches the UI copy exactly**; the cost is
+      higher than needed. Custom date range applies its date during the fetch (Step A filtered; B–E
+      per client). ⚠ **THE COST DIFFERENCE IS NOT YET MEASURED, AND IT IS NOT GUESSED HERE.** What is
+      measured: the rep window alone is 224 pages / 212,644 requested (Danny, 2026-09-21). The
+      full-history figure for Steps C/D/E prints on the next Recommended run — every campaign page
+      already logs `COST Step C page N — requested=…`. **Sum those against the Rep Step totals on the
+      first production run.** ⚠ **AND IT DOES NOT CHANGE RULING 2:** campaigns can filter by paid
+      invoice, a second safeguard against a mistagged lead, but not every campaign uses it and tags
+      other than paid would still shift. Not changed here.
+- [ ] ⚠ **`pull_all` IS ACCEPTED BY THE API AND ABSENT FROM THE UI.** `POST /api/admin/jobber-full-import`
+      lists it in `validModes` (and its 400 message omits `paying_only`, which the UI does send).
+      Either expose it or remove it; nothing reaches it today except a hand-built request.
+- [ ] ⚠ **JOBBER API VERSION UPGRADE — `2026-02-17` APPEARS 43 TIMES ACROSS 17 FILES IN `server/`
+      AT `c5830e2`**, tests included (re-counted with `git grep -o`; that is the scope the ruling's
+      figure matches). ⚠ **THIS COMMIT MAKES IT 46 ACROSS 18** — `repImportScope.js` adds one header
+      and two comments — **plus 1 in `src/utils/jobberUserSearch.js`**, which the `server/` count
+      does not see. Tracked markdown carries more, as records rather than sites. Every probe in
+      this arc ran at explorer version 2026-05-12, so each carries a version caveat, **including the
+      createdAt filter the three rep steps depend on.** If that filter is absent at 2026-02-17, the rep
+      scope fails loudly after the campaign import has committed (tested) and the import panel says
+      so. **Danny is looking up the 2026-02-17 retirement date himself** (Jobber's docs refuse
+      automated access). The upgrade is its own phase: one header value, every site, and a re-probe
+      of every field this arc marked "observed at 2026-05-12".
+
 ### 🔴 Canvass-stage — a LIVE DOUBLE-COUNT in the rep's book, found in a browser (2026-09-21)
 
 - [x] **✅ FIXED — A CLIENT WITH TWO LINKED APP USERS APPEARED TWICE IN THE REP'S CLIENT LIST.**
@@ -6451,7 +6608,8 @@ may legitimately change several of these subjects.*
       upsert is almost certainly right and "almost certainly" is not the standard for a fence.**
       **OWNER: unassigned; small, and it makes the LEFT JOIN a belt rather than the only brace.**
 
-- [ ] 🔴 **THE HISTORICAL PASS — SCOPED, NOT BUILT, AND IT NEEDS A SCHEMA RULING BEFORE ANYTHING
+- [x] ✅ **CLOSED 2026-09-21 — BUILT as the Canvass-stage backfill; schema ruled. See that section.**
+      🔴 **THE HISTORICAL PASS — SCOPED, NOT BUILT, AND IT NEEDS A SCHEMA RULING BEFORE ANYTHING
       ELSE. ⚠ THE DECISIVE FINDING: `jobs/fullJobberImport.js` CAPTURES NO PERSON AT ALL.**
       Read field by field, in **both** the per-client and the bulk variants of all four queries:
       · quotes → `id quoteStatus createdAt` — **no `salesperson`**
@@ -6471,7 +6629,8 @@ may legitimately change several of these subjects.*
       `assignedUsers` ids, each against a `(contractor_id, jobber_client_id)` and the source object's
       id and date. **OWNER: its own phase. NEEDS DANNY: the table/column shape, and the backup.**
 
-- [ ] ⚠ **THE HISTORICAL PASS — THE FENCES, AND WHY THEY NEED A DIFFERENT PROOF AT VOLUME.**
+- [x] ✅ **CLOSED 2026-09-21 — the counting fence and its positive control shipped; the replay flags a co-assignment without ringing the bell. See the Canvass-stage backfill section.**
+      ⚠ **THE HISTORICAL PASS — THE FENCES, AND WHY THEY NEED A DIFFERENT PROOF AT VOLUME.**
       It inherits R3 (an unresolved client records nothing) and the TWO-PIPELINES fence (no outreach,
       no referrer record, no pending invite, no admin alert). **A single leak in a one-off webhook is
       one message; in a bulk run over thousands of clients it is thousands.**
@@ -6486,7 +6645,8 @@ may legitimately change several of these subjects.*
       could mean a large number of `admin_messages` rows in one run. **Whether a historical pass
       should raise bells at all is a ruling, not an implementation detail.** **NEEDS DANNY.**
 
-- [ ] 🔴 **THE MAPPING TRIGGER — WHAT HAPPENS WHEN AN ADMIN MAPS A REP. NEEDS DANNY, EXCEPT FOR ONE
+- [x] ✅ **CLOSED 2026-09-21 — ruled and built as B (in the background, off the request path); unmapping is not retroactive, by ruling. See the Canvass-stage backfill section.**
+      🔴 **THE MAPPING TRIGGER — WHAT HAPPENS WHEN AN ADMIN MAPS A REP. NEEDS DANNY, EXCEPT FOR ONE
       OPTION THE EVIDENCE RULES OUT.** Danny's ruling is that mapping a rep later is what makes their
       book appear, so the trigger is the mapping, not the import. Three shapes:
       | option | what the rep sees, and when | cost at Accent's volume |
@@ -6510,7 +6670,8 @@ may legitimately change several of these subjects.*
       unmapping is not.** That asymmetry is defensible — you cannot un-know who worked a job — but it
       should be a ruling rather than a side effect of nothing having a delete path.
 
-- [ ] ⚠ **COST AND DURATION — CANNOT BE ESTIMATED YET, AND THE MISSING NUMBER IS ONE QUERY AWAY.**
+- [x] ✅ **CLOSED 2026-09-21 — measured by Danny: 224 pages, 212,644 requested, floor about 6 min 45 s for the 12-month rep window.**
+      ⚠ **COST AND DURATION — CANNOT BE ESTIMATED YET, AND THE MISSING NUMBER IS ONE QUERY AWAY.**
       What IS known, measured and recorded: the Jobber budget is **maximumAvailable 10,000 with
       restoreRate 500/s** (measured 2026-08-23), `pipelineSync` pages against a
       `CONSERVATIVE_REQUESTED_COST` of ~8055 per 25-client page, and Accent has **147 Jobber users**.
@@ -6528,7 +6689,8 @@ may legitimately change several of these subjects.*
       fully successful page, never on failure, so a failed run re-covers rather than skips. **A failed
       run must leave the watermark where it was and nothing half-written.**
 
-- [ ] ⚠ **THE HISTORICAL PASS — PHASE ESTIMATE, AND EVERY QUESTION THAT NEEDS A RULING.**
+- [x] ✅ **CLOSED 2026-09-21 — H0–H4 built in one phase after rulings 1–10; every question below was ruled.**
+      ⚠ **THE HISTORICAL PASS — PHASE ESTIMATE, AND EVERY QUESTION THAT NEEDS A RULING.**
       **Phase H0 — measure.** Run the magnitudes query and the per-page cost probe. Cheap, and every
       later estimate depends on it. **No schema change, no backup needed.**
       **Phase H1 — the schema.** ⚠ **BACKBLAZE GATE.** Where the person on a quote/request/assessment

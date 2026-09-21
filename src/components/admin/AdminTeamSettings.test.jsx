@@ -82,7 +82,7 @@ function jsonResponse(body, status = 200) {
 // branch. An unmodelled URL throws rather than resolving to undefined — a silent
 // `await r.json()` on a stub surfaces three steps later as a confusing render
 // failure.
-function installFetch({ member = memberRow() } = {}) {
+function installFetch({ member = memberRow(), bookReplay = false, bookStatus = null } = {}) {
   calls = [];
   global.fetch = vi.fn(async (url, opts = {}) => {
     const u = String(url);
@@ -92,7 +92,12 @@ function installFetch({ member = memberRow() } = {}) {
     if (u.includes(FLAGS_URL))  return jsonResponse({ flags: [] });
     if (u.includes(JOBBER_URL)) return jsonResponse({ users: [], totalCount: 0 });
     if (u.includes(TITLES_URL)) return jsonResponse([]);
-    if (u.includes('/promote')) return jsonResponse({ id: MEMBER_ID, ...member });
+    // Book replay (Canvass-stage backfill): the promote answer carries book_replay only
+    // when the server started one, exactly as POST /:id/promote does.
+    if (u.includes('/promote')) {
+      return jsonResponse({ id: MEMBER_ID, ...member, ...(bookReplay ? { book_replay: 'started' } : {}) });
+    }
+    if (u.includes('/api/admin/team/book-status')) return jsonResponse(bookStatus || { state: 'idle' });
     if (u.includes('/permissions')) return jsonResponse({ success: true });
     if (u.includes(TEAM_URL) && method === 'PATCH') {
       // The real contract: a PATCH carrying ANY of the three rep flags is
@@ -134,8 +139,8 @@ function callsTo(fragment, method) {
 
 // Mounts the roster with a given acting admin and opens the edit drawer.
 // `viewer` is the AdminPermissionsContext value — the same shape AdminApp provides.
-async function openDrawer({ member, viewer } = {}) {
-  installFetch({ member });
+async function openDrawer({ member, viewer, bookReplay, bookStatus } = {}) {
+  installFetch({ member, bookReplay, bookStatus });
   sessionStorage.setItem('rb_admin_token', 'test-admin-token');
   const value = viewer || { tier: 'owner', permissions: {}, loading: false, full_name: 'Owner', email: 'o@t.invalid' };
   render(
@@ -289,5 +294,35 @@ describe('MemberEditDrawer — rep promotion area', () => {
     const copy = screen.getByText(/own performance/i);
     expect(copy).toBeInTheDocument();
     expect(copy.textContent).toMatch(/never the team's or the company's/i);
+  });
+});
+
+// ── BOOK REPLAY (Canvass-stage backfill, ruling 5) ────────────────────────────
+// What the admin sees after mapping an attributable rep: a running line, then a
+// finished one, from GET /api/admin/team/book-status.
+describe("MemberEditDrawer — building a rep's book from history", () => {
+  it('shows the running line when the save starts a replay, then the finished one', async () => {
+    await openDrawer({
+      member: memberRow({ is_field_rep: true, jobber_user_id: 'ju-1' }),
+      bookReplay: true,
+      bookStatus: { state: 'complete', teamMemberId: MEMBER_ID, clientsDone: 3, clientsTotal: 3 },
+    });
+    fireEvent.click(repSwitch(ATTRIBUTABLE));
+    await save();
+
+    await screen.findByText(/Building this rep's book from imported Jobber history/);
+    // The drawer polls every 2s, so the finished line needs a longer wait than the default.
+    await screen.findByText(/Book ready — 3 clients from Jobber history checked/, {}, { timeout: 4000 });
+  });
+
+  it('⚠ PAIRED NEGATIVE — the same save WITHOUT book_replay shows no book line at all', async () => {
+    // Without this sibling, the case above cannot tell "the drawer reads book_replay"
+    // from "the drawer always shows the line after a promote".
+    await openDrawer({ member: memberRow({ is_field_rep: true, jobber_user_id: 'ju-1' }) });
+    fireEvent.click(repSwitch(ATTRIBUTABLE));
+    await save();
+    await waitFor(() => expect(callsTo('/promote', 'POST').length).toBe(1));
+    expect(screen.queryByText(/this rep's book/)).toBeNull();
+    expect(callsTo('/api/admin/team/book-status').length).toBe(0);
   });
 });

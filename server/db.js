@@ -2422,6 +2422,54 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // the matched row. An index ON pipeline_stage would serve a query that scans BY stage,
   // and no such query exists. Add one when one does, with a measurement beside it.
 
+  // ── CRM FACT TABLES — THE REP SCOPE'S OWN HISTORY (Canvass-stage backfill) ────
+  //
+  // Approved by Danny 2026-09-21. Written ONLY by the full import's rep steps
+  // (server/jobs/repImportScope.js) and read ONLY by the attribution replay
+  // (server/utils/attributionReplay.js), which runs the existing engine over this
+  // history with NO Jobber call — so mapping a rep later lights up their book from
+  // what was already fetched.
+  //
+  // ⚠ THE RAW jobber_user_id IS KEPT ON EVERY ROW, MAPPED OR NOT. That is the whole
+  // reason these tables exist rather than a list of assignments: a user nobody has
+  // mapped yet is exactly the one whose history must still be here when they are.
+  //
+  // ⚠ assigned_jobber_user_ids IS ATOMIC PER ASSESSMENT, AND A FLAT LIST WOULD BE A
+  // DEFECT. A flat (user, occurred_at) list cannot tell a CO-ASSIGNMENT (two reps on
+  // ONE assessment — Mode A's 'multiple' outcome, a flag) from two SEPARATE
+  // assessments (two single outcomes). The people on an assessment are stored
+  // together, matching flagged_assignments.reps_involved.
+  //
+  // Appended at the END of initDB() for the citation reason recorded on the blocks
+  // above; nothing here has an ordering constraint.
+  await pool.query(`CREATE TABLE IF NOT EXISTS crm_quote_facts (
+    contractor_id              TEXT NOT NULL,
+    jobber_client_id           TEXT NOT NULL,
+    jobber_quote_id            TEXT NOT NULL,
+    quote_status               TEXT,
+    approved_at                TIMESTAMPTZ,
+    salesperson_jobber_user_id TEXT,
+    created_at                 TIMESTAMPTZ,
+    PRIMARY KEY (contractor_id, jobber_quote_id)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_quote_facts_client
+    ON crm_quote_facts (contractor_id, jobber_client_id)`);
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS crm_request_facts (
+    contractor_id              TEXT NOT NULL,
+    jobber_client_id           TEXT NOT NULL,
+    jobber_request_id          TEXT NOT NULL,
+    created_at                 TIMESTAMPTZ NOT NULL,
+    salesperson_jobber_user_id TEXT,
+    assessment_id              TEXT,
+    assigned_jobber_user_ids   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    PRIMARY KEY (contractor_id, jobber_request_id)
+  )`);
+  // created_at DESC because the engine's request list is contractually newest-first
+  // (eligible[0] is the winner), so the replay reads in that order off the index.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_request_facts_client
+    ON crm_request_facts (contractor_id, jobber_client_id, created_at DESC)`);
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed

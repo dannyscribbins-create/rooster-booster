@@ -7,6 +7,8 @@ const deriveAndSaveTags = require('../utils/deriveJobberTags');
 const { refreshTokenIfNeeded } = require('../crm/jobber');
 const { runContactMatchingPass } = require('./contactMatchingPass');
 const { classifyPipelineStatus } = require('../crm/pipelineSync');
+const { runRepScope } = require('./repImportScope');
+const { replayForMappedReps } = require('../utils/attributionReplay');
 
 // ── THE IMPORT'S CLIENT SHAPE, ADAPTED FOR THE CLASSIFIER (Canvass-stage) ─────
 //
@@ -60,6 +62,12 @@ const importState = {
   matchingProgress: { processed: 0, total: 0, linked: 0 },
   linksEstablished: 0,
   errorMessage: null,
+  // Rep scope (Canvass-stage backfill). repStep names the step running now, for the
+  // admin panel; repScope is the finished summary; repScopeError is set when the rep
+  // scope failed AFTER the campaign import had already completed and committed.
+  repStep: null,
+  repScope: null,
+  repScopeError: null,
 };
 
 // ── TEST SEAM (Canvass-stage Part 2) ─────────────────────────────────────────
@@ -259,6 +267,9 @@ async function runFullJobberImport(contractorId, filterPreference) {
   importState.imported = 0;
   importState.tagged = 0;
   importState.errorMessage = null;
+  importState.repStep = null;
+  importState.repScope = null;
+  importState.repScopeError = null;
 
   // Date filter: only applied when mode=custom_date with a valid date
   const dateFilter = (filterPreference.mode === 'custom_date' && filterPreference.customDate)
@@ -941,6 +952,33 @@ async function runFullJobberImport(contractorId, filterPreference) {
         [contractorId, `${importState.imported} clients imported, ${importState.linksEstablished} contact links established.`]
       );
     }
+
+    // ── REP SCOPE — Rep Steps 1-3, stages, sales, then the replay ────────────
+    // ⚠ AFTER THE CAMPAIGN IMPORT, AND IN ITS OWN try, ON PURPOSE. Everything above has
+    // committed by now, so a rep-scope failure — including a schema error on the
+    // createdAt filter, which is observed only at a newer API version — cannot touch the
+    // campaign result. It is recorded on importState and the run still completes.
+    // ⚠ Steps A-I above are UNCHANGED by this block (ruling 2); see repImportScope.js
+    // for why the rep scope fetches its own data rather than reading theirs.
+    importState.status = 'rep_history';
+    try {
+      importState.repScope = await runRepScope(pool, {
+        contractorId,
+        filterPreference,
+        getToken: () => getFreshToken(contractorId),
+        onStep: (label) => { importState.repStep = label; },
+      });
+      // Ruling 5: an import completing lights up the books of reps ALREADY mapped. No
+      // Jobber call — it reads the facts written just above.
+      importState.repStep = 'Rep replay';
+      const replay = await replayForMappedReps(pool, { contractorId });
+      if (replay) importState.repScope.replay = { clients: replay.clientsDone, failed: replay.failed };
+    } catch (repErr) {
+      importState.repScopeError = repErr.message;
+      await logError({ req: null, contractorId, error: repErr, source: 'fullJobberImport — rep scope' });
+      console.error('[fullJobberImport] Rep scope failed (campaign import already complete):', repErr.message);
+    }
+    importState.repStep = null;
 
     importState.status = 'complete';
     importState.completedAt = new Date();

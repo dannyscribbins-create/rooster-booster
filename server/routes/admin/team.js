@@ -323,7 +323,7 @@ router.patch('/api/admin/team/:id', requirePermission('team.manage'), [
       `UPDATE team_members SET ${updates.join(', ')} WHERE id = $${i} RETURNING id, email, full_name, tier, title_id, jobber_user_id`,
       values
     );
-    res.json(result.rows[0]);
+    res.json(await withBookReplay(result.rows[0], contractorId, targetId, !!jobber_user_id));
   } catch (err) {
     if (err.code === '23505' && err.constraint === 'team_members_jobber_user_id_unique') {
       return res.status(409).json({
@@ -447,7 +447,7 @@ router.post('/api/admin/team/:id/promote', requirePermission('rep_promotion'), a
         + `revenue_visibility ${target.rep_revenue_visibility}→${merged.rep_revenue_visibility}`]
     );
 
-    res.json(result.rows[0]);
+    res.json(await withBookReplay(result.rows[0], contractorId, targetId, merged.is_attributable && !target.is_attributable));
   } catch (err) {
     await logError({ req, error: err, source: 'POST /api/admin/team/:id/promote' });
     res.status(500).json({ error: 'Internal server error' });
@@ -1382,6 +1382,68 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
     res.json({ ...payload, cached: false });
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/jobber-users' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ═══ CANVASS-STAGE BACKFILL — APPENDED AT THE END ON PURPOSE ═══════════════════
+// ⚠ PLACED HERE, NOT BESIDE THE ROUTES THAT CALL IT, FOR CITATION REASONS: dozens of
+// documents cite this file by line, and a block inserted near the top moved every one of
+// them (measured: 97 flagged by citecheck --changed-files). The helper is a function
+// declaration (hoisted), and the require below runs at module load, long before any
+// request can reach a handler — so the placement changes nothing at run time.
+const { replayForTeamMember, getReplayStatus } = require('../../utils/attributionReplay');
+
+// ── MAPPING LIGHTS UP A BOOK (Canvass-stage backfill, ruling 5) ─────────────────
+// When a team member becomes BOTH mapped to a Jobber user AND attributable — by either
+// of its two writers, PATCH /api/admin/team/:id and POST /api/admin/team/:id/promote,
+// both ABOVE — the attribution replay runs over the history the last full
+// import stored, in the background, with no Jobber call. The route answers immediately
+// and carries `book_replay: 'started'`; GET /api/admin/team/book-status reports progress.
+// replayForTeamMember re-checks "mapped AND attributable" itself, so calling it for a
+// member who is only one of the two is a no-op rather than a wrong replay.
+// ⚠ RETROACTIVE ON MAPPING, NEVER ON UNMAPPING: clearing jobber_user_id or demoting does
+// not trigger anything and removes no assignment.
+async function maybeStartBookReplay(contractorId, teamMemberId) {
+  // ⚠ Never lets a failure here turn a SAVED edit into a 500 — the member's row has
+  // already been written by the time this runs, and the admin must not be told it wasn't.
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM team_members
+        WHERE id = $1 AND contractor_id = $2 AND is_attributable = true AND jobber_user_id IS NOT NULL`,
+      [teamMemberId, contractorId]
+    );
+    if (rows.length === 0) return false;
+    // Fire and forget — the replay records its own failures and never throws.
+    replayForTeamMember(pool, { contractorId, teamMemberId });
+    return true;
+  } catch (err) {
+    await logError({ req: null, contractorId, error: err, source: 'team — book replay trigger' });
+    return false;
+  }
+}
+
+// The one line each writer above calls in place of `res.json(row)`, so neither handler
+// grew. `shouldTry` is the writer's own half of the condition:
+//   · PATCH   — a mapping was SET (a truthy jobber_user_id; clearing one never triggers);
+//   · promote — is_attributable went false → true.
+// maybeStartBookReplay then checks the whole "mapped AND attributable" state itself.
+async function withBookReplay(row, contractorId, memberId, shouldTry) {
+  const started = shouldTry ? await maybeStartBookReplay(contractorId, memberId) : false;
+  return started ? { ...row, book_replay: 'started' } : row;
+}
+
+// ── GET /api/admin/team/book-status ─────────────────────────────────────────────
+// Progress of the most recent book replay for this contractor (ruling 5). In memory,
+// like the import's own status: { state: 'idle' | 'running' | 'complete' | 'error',
+// teamMemberId, clientsTotal, clientsDone, failed, startedAt, finishedAt }.
+router.get('/api/admin/team/book-status', requirePermission('team'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  try {
+    res.json(getReplayStatus(adminSession.contractorId));
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/admin/team/book-status' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

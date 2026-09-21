@@ -370,7 +370,26 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1623 server tests across 269 suites, and 1329 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage conversions commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1623 · suites 269 · pass 1623 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1645 server tests across 275 suites, and 1331 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage backfill commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1645 · suites 275 · pass 1645 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE BACKFILL COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
+  Server 1623 → 1645 is **+22**, the `it(` lines of one new file (`repImportScope.test.js`);
+  suites 269 → 275 is its **six** top-level describes. React 1329 → 1331 is **+2** appended to
+  the EXISTING `AdminTeamSettings.test.jsx`, so files hold at 79. **All four were predicted
+  before the run and matched.** Counted with `grep -c`; the file's `for` loops all sit inside
+  `it()` bodies or helpers and wrap no case.
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN:** the only `src/` files touched are EXISTING files under
+  `src/components/admin`, and `adminBranding.test.jsx` emits one case per FILE, not per edit.
+  ⚠ **THE GATE WENT RED FIRST, AND IT WAS A FENCE WORKING:** `adminRouteCoverage`'s exact route
+  count reported 139 against 138 — the one route this commit adds. Moved deliberately, with the
+  reason beside the constant. ⚠ **And the background task reported exit 0 while the log's own
+  `EXIT=` line read 1** — the second time in one day that the wrapper's status disagreed.
+  ⚠ **ONE OF TEN GUARD-PROOFS FOUND A VACUOUS CASE, AND ONE INJECTION FIRST FAILED TO LAND.**
+  Keeping only the first user of a co-assignment left all 22 green — the replay's flag case seeds
+  its facts directly, so nothing saw the import's WRITE — and the fixture now carries two people
+  on one assessment. The anchor for that same injection had first matched nothing; the script
+  said so, and the run it would have produced was discarded rather than read.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CONVERSIONS COMMIT ITSELF.* It read
+  **1623 / 269 / 1329 / 79**, measured by the Canvass-stage conversions commit.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CONVERSIONS COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
   TESTS.** Server 1606 → **1623** is **+17 = 13 + 2 + 1 + 1**: the last two are fan-out
   fences added late, and **BOTH were the same defect shape in two different tables** — see below.
