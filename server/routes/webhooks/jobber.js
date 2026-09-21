@@ -220,6 +220,11 @@ let _refreshTokenIfNeeded         = refreshTokenIfNeeded;
 let _getFreshContractorAccessToken = getFreshContractorAccessToken;
 let _fetchRequestById             = fetchRequestById;
 let _fetchAttributionData         = fetchAttributionData;
+// Canvass-stage. Declared HERE with its siblings, not beside its function at the foot of
+// the file: a `let` initialised down there would be in the TDZ for any caller that ran
+// first, and this file's seam note is explicit that load-order is a timing argument and
+// not a guarantee. The function itself hoists, so naming it from up here is safe.
+let _fetchStageSubjectClient      = fetchStageSubjectClient;
 let _sendEmail                    = (...args) => resend.emails.send(...args);
 
 // test seam — inert in production, never called outside server/test/
@@ -233,6 +238,7 @@ function _setTestOverrides({
   getFreshContractorAccessToken: g,
   fetchRequestById: h,
   fetchAttributionData: i,
+  fetchStageSubjectClient: j,
 } = {}) {
   if (a !== undefined) _fetchInvoiceWithJobs        = a;
   if (b !== undefined) _fetchFullClient              = b;
@@ -243,6 +249,7 @@ function _setTestOverrides({
   if (g !== undefined) _getFreshContractorAccessToken = g;
   if (h !== undefined) _fetchRequestById             = h;
   if (i !== undefined) _fetchAttributionData         = i;
+  if (j !== undefined) _fetchStageSubjectClient      = j;
 }
 
 // test seam — inert in production, never called outside server/test/
@@ -255,6 +262,7 @@ function _resetTestOverrides() {
   _getFreshContractorAccessToken = getFreshContractorAccessToken;
   _fetchRequestById            = fetchRequestById;
   _fetchAttributionData        = fetchAttributionData;
+  _fetchStageSubjectClient     = fetchStageSubjectClient;
   _sendEmail                   = (...args) => resend.emails.send(...args);
 }
 
@@ -1572,6 +1580,198 @@ router.post('/jobber/request-update', async (req, res) => {
   if (!verifyJobberWebhookSignature(req, res)) return;
   res.status(200).json({ received: true });
   handleRequestWebhook(req, 'request-update');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STAGE WEBHOOKS — QUOTE_CREATE, QUOTE_UPDATE, JOB_CREATE (Canvass-stage)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// WHY THEY EXIST, AND WHY THEY ARE NOT URGENT. Measured live by Danny on Accent's
+// account 2026-09-21: creating a quote, and converting it to a job, BOTH bump the
+// client's `updatedAt` to the second. So `jobberIncrementalSync`'s 25-hour filter
+// already catches every stage transition within about a day. These handlers take that
+// lag to near-instant; they do not rescue a hole.
+// ⚠ AND THE BEHAVIOUR IS OBJECT-SPECIFIC, NOT GENERAL — a REQUEST does NOT bump the
+// client's updatedAt (measured 2026-09-18, Canvass-3.7). Do not generalise from either
+// measurement to the other; the two are recorded together in PRE_LAUNCH_CHECKLIST.md
+// precisely so nobody does.
+//
+// THE TRANSITIONS THESE COVER, and there are only three worth a webhook:
+//   inspection  <- a quote is created            QUOTE_CREATE
+//   not_sold    <- every quote becomes archived  QUOTE_UPDATE
+//   sold        <- a job is created              JOB_CREATE
+// `paid` already arrives through the INVOICE_UPDATE subscription, which this file has
+// handled since long before this phase.
+//
+// ⚠ THEY WRITE A STAGE AND NOTHING ELSE. No syncSingleClient, no pipeline_cache, no
+// pending referral, no email, no admin alert. That is the TWO-PIPELINES fence, and it
+// is asserted over these three topics by name rather than assumed.
+//
+// ⚠ AND THEY NEVER CREATE A jobber_clients ROW — the same guard the request path
+// carries, extended here deliberately rather than by habit. Row CREATION belongs to the
+// three writers that carry a full client payload; a row conjured from a stage alone has
+// no name, email or phone. These handlers know a quote id or a job id, not a client.
+
+// ⚠ THREE FIELDS HERE ARE **NOT PROVEN** AT OUR PINNED VERSION 2026-02-17, AND EACH IS
+// NAMED BECAUSE AN UNKNOWN FIELD FAILS THE WHOLE QUERY RATHER THAN ITSELF:
+//   1. `Query.quote(id:)` — ZERO occurrences anywhere in this repo before this commit.
+//   2. `Query.job(id:)`   — likewise ZERO. ⚠ `server/crm/jobber.js` asserts in a comment
+//      that "client(id:)/invoice(id:)/job(id:) are all proven in this codebase". That is
+//      TRUE of the first two and FALSE of `job(id:)`: measured 2026-09-21, the only
+//      occurrence of `job(id:)` in the repository was that comment claiming it. The
+//      claim has been corrected at its source.
+//   3. `Quote.client` / `Job.client` — needed to get from a quote or job id to a client.
+// ⚠ THE DEGRADATION IS THE SAME ONE `fetchRequestById` CHOSE, AND FOR THE SAME REASON:
+// a fetch that cannot name its field writes NOTHING and records the failure. It never
+// falls back to a wider query. If these turn out to be absent at 2026-02-17, the
+// handlers are inert and the nightly sync keeps doing the job it already does — which
+// is why shipping them ahead of a GraphiQL confirmation is safe rather than reckless.
+async function fetchStageSubjectClient(topic, itemId, token) {
+  const isQuote = topic.startsWith('quote');
+  const query = isQuote
+    ? `query GetQuoteClient($id: EncodedId!) { quote(id: $id) { id client { id } } }`
+    : `query GetJobClient($id: EncodedId!) { job(id: $id) { id client { id } } }`;
+
+  const response = await retryWithBackoff(
+    () => axios.post(
+      'https://api.getjobber.com/api/graphql',
+      { query, variables: { id: itemId } },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+        },
+      }
+    ),
+    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+  );
+
+  // ⚠ JOBBER ANSWERS A GraphQL FAILURE WITH HTTP 200 PLUS AN `errors` ARRAY, and
+  // jobberShouldRetry reads only error.response.status — so retryWithBackoff resolves
+  // happily on exactly the failure this function is most likely to hit. Reading the
+  // errors array explicitly is what turns that into a recorded skip instead of a
+  // silent `undefined` client id. Same defect class as the Canvass-3.6 user picker,
+  // which returned HTTP 200 with a truncated list.
+  const gqlErrors = response.data?.errors;
+  if (gqlErrors?.length > 0) {
+    throw new Error(`Jobber GraphQL error resolving ${topic} ${itemId}: ${gqlErrors.map(e => e.message).join('; ')}`);
+  }
+
+  const node = isQuote ? response.data?.data?.quote : response.data?.data?.job;
+  const clientId = node?.client?.id;
+  if (!clientId) throw new Error(`${topic} ${itemId}: no client id on the fetched ${isQuote ? 'quote' : 'job'}`);
+  return clientId;
+}
+
+// Shared body for the three stage topics. Mirrors handleRequestWebhook's shape exactly:
+// parse, resolve tenancy, claim the delivery, fetch, act, log — never throwing out.
+async function handleStageWebhook(req, topic) {
+  let payload;
+  try {
+    payload = JSON.parse(req.body.toString());
+  } catch (parseErr) {
+    await logError({ req, error: parseErr, source: `POST /webhooks/jobber/${topic} — payload parse` });
+    return;
+  }
+
+  const itemId = payload?.data?.webHookEvent?.itemId;
+
+  // No fallbackLookup, for the same reason handleRequestWebhook passes none: the
+  // payload's itemId is a QUOTE or JOB id, which appears in no local table, so there is
+  // nothing to look up and no safe guess.
+  let contractorId;
+  try {
+    contractorId = await resolveWebhookContractorId(payload);
+  } catch (err) {
+    await logWebhookResolutionFailure(req, topic, itemId, payload, err);
+    return;
+  }
+
+  try {
+    if (!itemId) throw new Error(`${topic} webhook: missing item id (itemId) in payload`);
+
+    // ⚠ KEYED ON occurred_at, SO A GENUINE SECOND UPDATE IS NOT SWALLOWED. QUOTE_UPDATE
+    // in particular fires repeatedly for one quote, and each firing is a real event that
+    // may change the classification — deduping on (topic, itemId) alone would drop every
+    // transition after the first.
+    const claim = await claimWebhookDelivery(contractorId, topic, itemId, webhookOccurredAt(payload));
+    if (!claim.claimed) {
+      console.log(`[${topic}] duplicate delivery for ${itemId} — already claimed, skipping`);
+      return;
+    }
+    if (!claim.keyed) {
+      await logError({
+        req: null,
+        contractorId,
+        error: new Error(`[${topic}] webhook carried no occurredAt/occuredAt — delivery dedupe inert for ${itemId}`),
+        source: `POST /webhooks/jobber/${topic} — dedupe key`,
+        alert: false,
+      });
+    }
+
+    let token, jobberClientId, relatedData;
+    try {
+      token = await _getFreshContractorAccessToken(contractorId);
+      jobberClientId = await _fetchStageSubjectClient(topic, itemId, token);
+      relatedData = await _fetchClientRelatedData(jobberClientId, token);
+    } catch (fetchErr) {
+      // Skip-and-log, the established semantics. alert:false keeps a schema-version
+      // failure out of the inbox at per-item cardinality; it is one loud row per item in
+      // error_log, which is what an absent `quote(id:)` or `job(id:)` would look like.
+      await logError({
+        req,
+        contractorId,
+        error: new Error(`[${topic}] skipped ${itemId} — could not resolve or fetch its client: ${fetchErr.message}`),
+        source: `POST /webhooks/jobber/${topic} — fetch`,
+        alert: false,
+      });
+      return;
+    }
+
+    if (!relatedData) {
+      // A null related fetch means "not observed", never "no stage" — the same reading
+      // upsertAndTagClient's COALESCE encodes. Write nothing.
+      console.log(`[${topic}] ${itemId} -> client ${jobberClientId} returned no related data, no stage written`);
+      return;
+    }
+
+    const stage = classifyPipelineStatus(relatedData);
+
+    // ⚠ UPDATE ONLY. See the block at the top of this section: a zero-row result is the
+    // expected quiet outcome for a client the sync has not mirrored yet, not an error.
+    const result = await pool.query(
+      `UPDATE jobber_clients
+          SET pipeline_stage = $3
+        WHERE contractor_id = $1 AND jobber_client_id = $2`,
+      [contractorId, jobberClientId, stage]
+    );
+    console.log(`[${topic}] ${itemId} -> client ${jobberClientId} stage ${stage} (${result.rowCount} row(s), contractor: ${contractorId})`);
+  } catch (err) {
+    await logError({ req, error: err, contractorId, source: `POST /webhooks/jobber/${topic}` });
+    console.error(`[${topic}]`, err.message);
+  }
+}
+
+// POST /webhooks/jobber/quote-create — Jobber topic QUOTE_CREATE
+router.post('/jobber/quote-create', async (req, res) => {
+  if (!verifyJobberWebhookSignature(req, res)) return;
+  res.status(200).json({ received: true });
+  handleStageWebhook(req, 'quote-create');
+});
+
+// POST /webhooks/jobber/quote-update — Jobber topic QUOTE_UPDATE
+router.post('/jobber/quote-update', async (req, res) => {
+  if (!verifyJobberWebhookSignature(req, res)) return;
+  res.status(200).json({ received: true });
+  handleStageWebhook(req, 'quote-update');
+});
+
+// POST /webhooks/jobber/job-create — Jobber topic JOB_CREATE
+router.post('/jobber/job-create', async (req, res) => {
+  if (!verifyJobberWebhookSignature(req, res)) return;
+  res.status(200).json({ received: true });
+  handleStageWebhook(req, 'job-create');
 });
 
 module.exports = router;

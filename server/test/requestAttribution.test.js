@@ -447,21 +447,53 @@ describe('Canvass-3.7 — THE FENCE: widening attribution must not widen outreac
     assert.equal(pending[0].n, 0, 'no pending referral record');
     assert.equal(await countOf('contact_tags'), 0, 'no Paid-Customer tag pass');
 
-    // ⚠ THE SEVENTH ZERO, ADDED IN CANVASS-STAGE. jobber_clients gained a
-    // pipeline_stage column, and the request-driven path must not write it — the
-    // three sanctioned writers are the nightly sync, the full import and the CLIENT
-    // webhooks. This path writes client_rep_assignments and nothing else.
-    // ⚠ IT IS ASSERTED AGAINST A SEEDED ROW WHOSE STAGE IS ALREADY NULL, NOT AGAINST
-    // AN ABSENT ROW. "No jobber_clients row exists" would be satisfied by a path that
-    // simply never creates rows there, which is true of this path for reasons that
-    // have nothing to do with the stage — so the absence would prove nothing. A row
-    // that EXISTS and stays unstaged is the discriminating form.
+    // ⚠ WHAT THE SEVENTH ZERO BECAME, AND WHY IT IS NO LONGER A ZERO.
+    //
+    // Canvass-stage first shipped a seventh zero here: "the request path writes no
+    // pipeline stage". **Danny REVERSED that the same day.** Rep attribution starts at
+    // the REQUEST, so a path that attributes a client without staging it leaves the rep
+    // looking at a brand-new client with no stage at all. It now writes one.
+    //
+    // ⚠ THAT IS NOT A WEAKENING OF THE FENCE, AND THE SIX ZEROS ABOVE ARE UNTOUCHED.
+    // The fence stops this path SENDING anything and stops it writing the REFERRER
+    // pipeline. A stage on jobber_clients is neither — it sends nothing, and
+    // jobber_clients is the whole-client table, not pipeline_cache. So the seventh
+    // assertion inverts from "must not write" to "must write, and must not CREATE".
     const { rows: staged } = await pool.query(
       `SELECT pipeline_stage FROM jobber_clients WHERE contractor_id = $1 AND jobber_client_id = $2`,
       [TENANT, CLIENT]
     );
     assert.equal(staged.length, 1, 'the seeded mirror row must still be there');
-    assert.equal(staged[0].pipeline_stage, null, 'the request path must write no pipeline stage');
+    assert.equal(staged[0].pipeline_stage, 'sold', 'the request path MUST stage the client it attributes');
+  });
+
+  it('the request path UPDATES an existing mirror row and never CREATES one', async () => {
+    // ⚠ DANNY'S GUARD, AND IT NEEDS BOTH HALVES TO MEAN ANYTHING. Row CREATION belongs
+    // to the three writers that carry a full client payload; a row conjured from a stage
+    // alone would have no name, email or phone — the `client_row_missing` state — and
+    // this path has no payload to fill it with.
+    //
+    // ⚠ THE NEGATIVE ALONE IS VACUOUS. "No row was created" is also what a path that
+    // does nothing at all produces, and this handler has plenty of ways to quietly do
+    // nothing. The two cases run the SAME fixture and differ only in whether the mirror
+    // row exists beforehand, so the positive is the proof the negative is about the
+    // guard rather than about the path failing.
+    const repId = await seedRep('ju-nocreate');
+    _setTestOverrides({
+      getFreshContractorAccessToken: async () => 'tok',
+      fetchRequestById: async () => triggerRequest(),
+      fetchFullClient: async () => soldClient(),
+      fetchAttributionData: modeAData(['ju-nocreate']),
+    });
+
+    // NO jobber_clients row is seeded for CLIENT here — that is the whole point.
+    await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
+    await waitFor(async () => (await assignmentsFor()).length > 0);
+
+    // The discriminator: attribution really did run, so "no row" is a decision and not
+    // a symptom of the handler having bailed out early.
+    assert.equal((await assignmentsFor())[0].sticky_rep_id, repId, 'attribution must have actually run');
+    assert.equal(await countOf('jobber_clients'), 0, 'the request path must not CREATE a mirror row');
   });
 
   it('POSITIVE CONTROL — a referred client still produces its outreach through the REFERRAL path', async () => {

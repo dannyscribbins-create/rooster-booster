@@ -449,9 +449,25 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
 // uses every one of them in production and was verified live in GraphiQL on 2026-07-06.
 // THREE things these two queries add are NOT proven at our version, and each is listed
 // because the 3.6b lesson is that an unknown field fails the WHOLE query, not just itself:
-//   1. `Query.request(id:)`        — the singular field. Siblings client(id:)/invoice(id:)/
-//                                    job(id:) are all proven in this codebase; this one is
-//                                    inferred from that pattern, not observed.
+//   1. `Query.request(id:)`        — the singular field. ⚠ THIS LINE USED TO READ
+//                                    "Siblings client(id:)/invoice(id:)/job(id:) are all
+//                                    proven in this codebase", AND THE job(id:) THIRD OF
+//                                    THAT WAS FALSE. Measured 2026-09-21 by Canvass-stage:
+//                                    `client(id:)` is proven (many uses) and `invoice(id:)`
+//                                    is proven (the invoice-paid webhook), but the ONLY
+//                                    occurrence of `job(id:)` anywhere in the repository
+//                                    was THIS COMMENT asserting it. `quote(id:)` likewise
+//                                    had zero. **A claim of provenness with no source, in
+//                                    a comment written to be careful about exactly that.**
+//                                    So: this one is inferred from client(id:) and
+//                                    invoice(id:), not observed — and inferring a singular
+//                                    root field from two siblings is a weaker argument than
+//                                    the original sentence made it sound.
+//                                    ⚠ Canvass-stage now USES `quote(id:)` and `job(id:)`
+//                                    in the stage webhooks, under the same skip-and-log
+//                                    degradation and with the same caveat recorded there.
+//                                    They are still unobserved; using them does not prove
+//                                    them, and a GraphiQL probe is filed for Danny.
 //   2. `Request.client`            — needed to get from a request id to a client id.
 //   3. `Request.updatedAt`, and `RequestFilterAttributes.updatedAt` — observed by Danny in
 //      the explorer at version 2026-05-12 on 2026-09-18, which is STRONG EVIDENCE AND NOT

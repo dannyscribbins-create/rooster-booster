@@ -4241,8 +4241,45 @@ may legitimately change several of these subjects.*
       **The two agree** — recorded so neither drifts alone.) → `server/routes/rep.js`, the
       conversions query's header carries this same note at the site.
 
+- [x] **✅ THE SEVENTH ZERO IS REVERSED — THE REQUEST PATH NOW WRITES A STAGE (Danny, 2026-09-21).**
+      Canvass-stage shipped a fence assertion that the request path wrote no stage; it was
+      reversed the same day. **Rep attribution STARTS at the request**, so a path that attributes
+      a client without staging it leaves the rep looking at a brand-new client with no stage at
+      all. It now writes one — `'lead'` immediately, progressing from there.
+      ⚠ **FOR EVERY CLIENT, NOT ONLY NON-REFERRALS.** The rep surface stores a stage for everyone
+      and reads `jobber_clients` only (Ruling 1); a referred client skipped here would read as
+      unstaged on the rep's screen while its referral record said otherwise.
+      ⚠ **IT IS NOT A WEAKENING OF THE FENCE.** The fence stops this path SENDING anything and
+      stops it writing the REFERRER pipeline. A stage on `jobber_clients` is neither. The other
+      six zeros are unchanged and still asserted with their positive control; the seventh
+      **inverted** from *"must not write"* to *"must write, and must not CREATE"*.
+      ⚠ **THE GUARD: UPDATE ONLY, NEVER CREATE.** Row creation belongs to the three writers that
+      carry a full client payload; a row conjured from a stage alone has no name, email or phone.
+      A zero-row UPDATE is the expected quiet outcome, not an error. **Both halves are tested** —
+      the negative alone would pass against a path that does nothing.
+
+- [x] **✅ THREE STAGE WEBHOOKS SHIPPED — QUOTE_CREATE, QUOTE_UPDATE, JOB_CREATE.** They reuse the
+      request webhooks' pattern exactly: HMAC verify, 200 inside Jobber's 1-second limit, work in
+      the background, `claimWebhookDelivery` keyed on `occurred_at`. **No schema change** — the
+      existing `jobber_webhook_events` PK is already `(contractor_id, topic, item_id, occurred_at)`.
+      ⚠ **THEY WRITE A STAGE AND NOTHING ELSE**, and the fence is asserted over each topic **BY
+      NAME** rather than inferred from the shared handler — "they share a handler" is a fact about
+      this commit, not a property a fence should rest on. Guard-proofed: routing the handler
+      through `syncSingleClient` takes all three red on `pipeline_cache`.
+      ⚠ **`occurred_at` IS LOAD-BEARING, NOT DECORATIVE.** QUOTE_UPDATE fires repeatedly for one
+      quote id and each firing can change the classification; deduping on `(topic, itemId)` alone
+      would drop every transition after the first, so an archived quote would never reach
+      `not_sold`. Proven: flattening the key takes the genuine-second-update case red.
+      **The other offered topics add nothing for stage** — `JOB_CLOSED`, `JOB_DESTROY`,
+      `QUOTE_APPROVED`, `QUOTE_SENT`, `QUOTE_DESTROY`. The classifier reads only *a job exists*,
+      *a quote is not archived*, and *an invoice is paid*: closing a job does not change that a
+      job exists; approving or sending a quote does not change that it is unarchived; and the two
+      DESTROY topics describe a REGRESSION, which the ruling on `sold_at` says to leave standing.
+
 - [ ] ⚠ **A CLIENT ASSIGNED BY THE REQUEST PATH AND NEVER TOUCHED BY A JOB OR INVOICE EVENT HAS
-      NO STAGE — REPORTED, NOT DECIDED.** The request-driven path (`REQUEST_CREATE` /
+      NO STAGE — ⚠ THIS ENTRY IS SUPERSEDED BY THE TWO ABOVE AND IS KEPT AS THE RECORD OF THE
+      QUESTION.** The gap it describes is closed: the request path stages the client it
+      attributes, and the three stage webhooks cover the transitions afterwards. The request-driven path (`REQUEST_CREATE` /
       `REQUEST_UPDATE` and the hourly `repRequestSweep`) writes `client_rep_assignments` and
       **never** `jobber_clients` — verified from source: `server/utils/requestAttribution.js`
       contains no `INSERT` and no reference to that table at all. So such a client sits in a rep's
@@ -4264,13 +4301,70 @@ may legitimately change several of these subjects.*
       happened to them.** Widening the filter would re-fetch the whole book nightly for no
       behavioural gain. → `server/cron/jobs/jobberIncrementalSync.js`
 
-- [ ] ⚠ **OPEN QUESTION FOR DANNY, TO MEASURE IN GraphiQL — DOES CREATING A QUOTE OR A JOB BUMP A
-      CLIENT'S `updatedAt`?** Not assumed either way. Danny expects **not**, on the evidence that
-      a REQUEST does not: measured live during Canvass-3.7, the client stayed
+- [x] **✅ ANSWERED BY MEASUREMENT — QUOTES AND JOBS *DO* BUMP THE CLIENT'S `updatedAt`; REQUESTS
+      DO NOT. ⚠ THE BEHAVIOUR IS OBJECT-SPECIFIC, AND THE TWO FINDINGS ARE RECORDED TOGETHER SO
+      NOBODY GENERALISES FROM EITHER ONE.**
+      Measured live by Danny on Accent's account **2026-09-21** (explorer version `2026-05-12`;
+      our client pins `2026-02-17`), test client `Z2lkOi8vSm9iYmVyL0NsaWVudC8xMzIxODkyODU=`:
+
+      | moment | client `updatedAt` | what appeared |
+      |---|---|---|
+      | before | `2026-09-18T15:57:37Z` | — |
+      | after a quote was made | `2026-09-21T03:25:55Z` | quote `createdAt` `03:25:55Z`, draft |
+      | after converting it to a job | `2026-09-21T03:27:00Z` | job `createdAt` `03:26:59Z`, quote now `converted` |
+
+      **The REQUEST counter-measurement, 2026-09-18 (Canvass-3.7):** the client stayed at
       `2026-09-14T14:48:58Z` while a request created `2026-09-18T15:41:20Z` appeared against it.
-      **If quotes and jobs behave the same way, the nightly sync can never stage a client whose
-      only activity is a quote**, and the webhooks are the sole path. **Same shape as the
-      request-`updatedAt` test that settled Canvass-3.7.**
+      ⚠ **Do not reason from one of these to the other. A request is not a quote is not a job.**
+      **CONSEQUENCE 1 — the nightly sync's 25-hour filter DOES catch quote and job creation**, so
+      a non-referred client's stage lags **at most about a day**, not indefinitely. The earlier
+      worry that a quiet client could never be staged is closed.
+      **CONSEQUENCE 2 — `converted` is a live `quoteStatus` value, and the classifier handles it
+      CORRECTLY**, verified from source: `classifyPipelineStatus` returns `'sold'` on
+      `jobs.length > 0` **before it reads quotes at all**, so a converted quote with its job
+      resolves to `'sold'` and never to `'inspection'`. ⚠ The one edge: a converted quote whose
+      job is absent from the fetched list would read `'inspection'` — reachable only if the job
+      fetch is empty or truncated, and noted rather than guarded.
+
+- [ ] ⚠ **CONSEQUENCE 3 — JOB `createdAt` IS *NOT* AVAILABLE AT EVERY WRITER, AND THIS BLOCKS PART
+      OF `sold_at`.** Checked per writer rather than assumed, because the ruling is that the
+      `sold_at` date is always Jobber's at every path:
+
+      | fetch | used by | job `createdAt`? |
+      |---|---|---|
+      | `fetchClientRelatedData` | client webhooks, the 3 new stage webhooks | ✅ yes |
+      | `GetClientRelated` (inline) | `jobberIncrementalSync` | ✅ yes |
+      | Step C (bulk + per-client) | `fullJobberImport` | ✅ yes |
+      | **`fetchFullClient`** | **the REQUEST path** and `repRequestSweep` | 🔴 **NO** — selects `id jobStatus` only |
+
+      **The fix is one word** — add `createdAt` to `fetchFullClient`'s `jobs` selection. It is
+      **proven at `2026-02-17`**: three other shipped queries select `job.createdAt` under that
+      exact version header, so this is not a 3.6b-style unknown-field risk. **Deliberately NOT
+      done in the seventh-zero commit** — it is only needed once `sold_at` exists, and it belongs
+      in that commit so the gated work stays together.
+
+- [ ] ⚠ **`Query.quote(id:)` AND `Query.job(id:)` ARE UNPROVEN AT `2026-02-17`, AND A COMMENT
+      CLAIMED OTHERWISE.** The three new stage webhooks need them to get from a quote/job id to a
+      client id. **Measured 2026-09-21: the only occurrence of `job(id:)` anywhere in the
+      repository was `server/crm/jobber.js`'s own comment asserting it was "proven in this
+      codebase"; `quote(id:)` had zero.** `client(id:)` and `invoice(id:)` genuinely are proven.
+      **A claim of provenness with no source, inside a comment written to be careful about
+      exactly that.** Corrected at the source.
+      ⚠ **SHIPPING AHEAD OF CONFIRMATION IS SAFE HERE, AND THE REASON IS THE DEGRADATION, NOT
+      OPTIMISM.** A fetch that cannot name its field writes NOTHING and records the failure — it
+      never falls back to a wider query, exactly as `fetchRequestById` chose. If these fields are
+      absent at our version the handlers are simply inert, and the nightly sync keeps doing the
+      job it already does within about a day. **The probe for Danny:**
+
+      ```graphql
+      query RootFieldProbe($quoteId: EncodedId!, $jobId: EncodedId!) {
+        quote(id: $quoteId) { id client { id } }
+        job(id: $jobId)     { id client { id } }
+      }
+      ```
+      ⚠ **Run it against the 2026-02-17 version header, not the explorer default.** If it errors,
+      say which of the two fields it named — an unknown field fails the whole query, so a single
+      error message does not tell you both answers.
 
       ```graphql
       query ClientUpdatedAtProbe($id: EncodedId!) {
@@ -4330,6 +4424,27 @@ may legitimately change several of these subjects.*
       transaction, so the two commit or roll back together. **Worth one real run's observation
       before the historical import is scoped.**
 
+- [ ] ⚠ **THE UNMARKED `console.log` CALLS IN `fullJobberImport.js` — ITS OWN SWEEP, NOT A
+      CANVASS-STAGE FIX (Danny, 2026-09-21).** That file logs progress throughout with bare
+      `console.log`, against CLAUDE.md's *no console.log in production code paths* rule. The
+      Canvass-stage Step H+I lines continue the existing pattern and are net-neutral (they replace
+      Step H's and Step I's own logs); the one line this phase ADDED as a new kind — the per-page
+      cost measurement — carries `// diagnostic log — intentional`. **Filed rather than fixed:
+      sweeping a background job's operational logging is a separate decision about what that
+      job's interface is, and mixing it into a stage commit would make the diff unreviewable.**
+
+- [x] **✅ A HARNESS REPORTED FAILURE FOR ITS OWN LAST CONDITIONAL — FILED BECAUSE THE SHAPE IS THE
+      ONE THIS REPO KEEPS RECORDING.** A background poll checking the Railway backend after the
+      Canvass-stage push exited **code 1** and was reported as failed. **All twelve probes had
+      returned HTTP 200.** The loop ended `[ $i -lt 12 ] && perl -e '…sleep…'`; on the final
+      iteration the test is false, the `&&` chain returns 1, and that becomes the script's exit
+      status. ⚠ **Reading the exit code alone would have reported a backend problem that does not
+      exist** — the status described the harness's own last conditional, not the thing measured.
+      **Same family as `npm ls` printing a version that is not installed, and `git diff <sha>^`
+      reaching cmd.exe with the caret eaten: a plausible wrong answer, no error, nothing about it
+      inviting a second look.** The findings were read in full rather than inferred from the
+      status, which is the only reason it was caught.
+
 - [ ] ⚠ **PER-PAGE QUERY COST IS NOW LOGGED AND HAS NOT YET BEEN READ.** `fullJobberImport`'s two
       pacing branches compare `currentlyAvailable` against a hardcoded `PAGE_COST = 2500` that has
       **no source**, while Jobber returns `requestedQueryCost` and `actualQueryCost` on every
@@ -4365,6 +4480,15 @@ may legitimately change several of these subjects.*
       `evaluateReferral()` gate; that line is a bare `await pool.query(`), and this file's own
       line 645 (`webhooks/jobber.js:330` names a write site that was at `:341` — inside the MVP
       shortcut comment, not the INSERT).
+      ⚠ **AND A SIXTH IN THE SAME DOCUMENT, WHICH IS THE DANGEROUS VARIANT RATHER THAN THE
+      OBVIOUS ONE.** `TENANT_RESOLUTION_REBUILD_SPEC.md:486` describes `resolveWebhookContractorId`
+      and cites `webhooks/jobber.js:291-296`. Measured at `11ada37`: that function was at **`:277`**,
+      and `:291-296` lands on **`logWebhookResolutionFailure`** — a *different* function, 14 lines
+      away, about the *same subject*. **It survives `citecheck` (the target resolves), it survives
+      a sweep (the file exists), and it survives a human spot-check (the content is about webhook
+      contractor resolution, one function along).** Only reading it against its own citing sentence
+      catches it. That is the "lands on a plausible sibling" shape, and it is why the unit of
+      verification here is the SET rather than the flagged members.
       ⚠ **THIS IS A SUBJECT RE-DERIVATION, WHICH IS A DIFFERENT AND LARGER JOB THAN A CITATION
       REPAIR**, and doing it inside Canvass-stage's diff would have made that diff unreviewable.
 

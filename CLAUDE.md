@@ -370,9 +370,32 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1590 server tests across 260 suites, and 1325 React tests across 79 files** (measured 2026-09-20 by the Canvass-stage commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1590 · suites 260 · pass 1590 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-STAGE COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
-  TESTS.** Server 1574 → 1590 is **+16 = 8 + 6 + 2**: eight in one new file
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1604 server tests across 264 suites, and 1325 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage stage-webhooks commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1604 · suites 264 · pass 1604 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE STAGE-WEBHOOKS COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
+  TESTS.** Server 1590 → 1604 is **+14 = 13 + 1**: thirteen in one new file
+  (`stageWebhooks.test.js`) and **one appended to an EXISTING describe** in
+  `requestAttribution.test.js`. Suites 260 → 264 is **+4** — the new file's four top-level
+  `describe` blocks; the requestAttribution case landed inside one that already existed.
+  ⚠ **13 FROM 11 `it(` LINES, AND THE GAP IS THE WHOLE REASON TO COUNT RATHER THAN READ.**
+  `grep -c` reports **11**, and ONE of them sits inside a three-entry `for` loop that WRAPS the
+  `it()` — the fence is asserted per topic BY NAME rather than once for a shared handler. So
+  10 × 1 + 1 × 3 = 13. **Reading "11 lines" as 11 cases would have been low by two**, which is
+  the direction that looks identical to a suite that partly failed to register.
+  ⚠ **THE REACT NUMBERS DID NOT MOVE AND WERE RE-MEASURED RATHER THAN CARRIED.** This commit
+  touches no `src/` file at all, so 1325 / 79 is the same measurement re-observed, read by name
+  off this run's own log. **A number that did not change still has to be MEASURED to be re-armed.**
+  ⚠ **FIVE MORE GUARD-PROOFS, AND ONE FOUND A TEST LOOKING IN THE WRONG PLACE.** Making the
+  request path CREATE rows took 1 red; removing its stage write took 1; making the stage webhooks
+  CREATE rows took 1; routing a stage handler through `syncSingleClient` took **3** red across the
+  three topics; and flattening the dedupe key took the genuine-second-update case red. ⚠ **A
+  sixth case failed first for a reason that was mine, not the code's**: an unresolvable-tenant
+  test waited on a tenant-scoped `error_log` count, and a contractor-resolution failure BY
+  DEFINITION carries no contractor — the assertion was about the right subject and was looking
+  somewhere the subject could not be.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CANVASS-STAGE COMMIT ITSELF.* It
+  read **1590 / 260 / 1325 / 79**, +16 server across two new files and two appended cases, and it
+  records the nine guard-proofs of which two found vacuous tests.
+  Server 1574 → 1590 is **+16 = 8 + 6 + 2**: eight in one new file
   (`pipelineStageWriters.test.js`), six in another (`fullImportCursor.test.js`), and **two appended
   to EXISTING describes** in `repClients.test.js`. Suites 254 → 260 is **+6 = 3 + 3** — those two
   new files' three top-level `describe` blocks each; the repClients pair landed inside describes

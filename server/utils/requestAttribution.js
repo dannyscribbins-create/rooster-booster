@@ -104,6 +104,40 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
 
   const currentStatus = classifyPipelineStatus(fullClient);
 
+  // ── THE STAGE WRITE (Canvass-stage Part 2; the seventh zero REVERSED) ───────
+  //
+  // ⚠ THIS PATH DELIBERATELY WRITES A STAGE, AND A TEST PREVIOUSLY FORBADE IT.
+  // Canvass-stage shipped a "seventh zero" on the TWO-PIPELINES fence asserting the
+  // request path wrote no stage. Danny REVERSED that the same day, and the reason is
+  // the rep's experience: rep attribution STARTS at the request, so without this a rep
+  // sees a newly assigned client carrying no stage at all. Writing it here gives them
+  // 'lead' the moment the client enters their book, and it progresses from there.
+  //
+  // ⚠ IT DOES NOT BREACH THE FENCE, AND THE DISTINCTION IS THE WHOLE RULING. The fence
+  // exists to stop this path SENDING anything and to stop it writing the REFERRER
+  // pipeline. A stage on jobber_clients is neither: it sends nothing, and jobber_clients
+  // is the whole-client table, not pipeline_cache. The other six zeros are unchanged and
+  // still asserted, with their positive control.
+  //
+  // ⚠ FOR EVERY CLIENT, NOT ONLY NON-REFERRALS. The rep surface stores a stage for
+  // everyone and reads jobber_clients only (Ruling 1) — a referred client skipped here
+  // would read as unstaged on the rep's screen while its referral record said otherwise.
+  //
+  // ⚠ UPDATE ONLY — THIS PATH MUST NEVER CREATE A jobber_clients ROW. That is Danny's
+  // guard, and it keeps row CREATION with the three writers that carry a full client
+  // payload (the nightly sync, the full import, the client webhooks). A row conjured
+  // from a stage alone would have no name, no email and no phone — the
+  // `client_row_missing` state the rep list already has to render around — and this path
+  // has no client payload to fill it with. If no row exists yet, nothing is written and
+  // the next client-webhook or nightly sync supplies both the row and the stage.
+  // ⚠ A zero-row UPDATE is the EXPECTED quiet outcome here, not an error to log.
+  await pool.query(
+    `UPDATE jobber_clients
+        SET pipeline_stage = $3
+      WHERE contractor_id = $1 AND jobber_client_id = $2`,
+    [contractorId, jobberClientId, currentStatus]
+  );
+
   await runAttributionEngine(pool, {
     contractorId,
     jobberClientId,
