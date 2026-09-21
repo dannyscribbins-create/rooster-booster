@@ -1714,6 +1714,21 @@ Four confirmed instances:
 like when it FAILS, and prove it fails that way before trusting that it passes. A check whose
 failure mode has never been observed is a claim, not a check.**
 
+⚠ **AND THE GUARD-PROOF ITSELF HAS THIS FAILURE MODE: AN INJECTION MUST REINTRODUCE THE
+DEFECT, NOT A DIFFERENT SPELLING OF THE FIX.** Measured in Canvass-stage. A fence caught a
+fan-out caused by a `LEFT JOIN` on a non-unique key, repaired by computing the boolean with
+`EXISTS`. The guard-proof swapped `EXISTS` for a correlated `COUNT(*) > 0` — and **all 73 cases
+stayed green, correctly**, because both forms de-duplicate. Only restoring the actual join took
+it red.
+⚠ **A GREEN RESULT FROM THE WRONG INJECTION IS INDISTINGUISHABLE FROM A FENCE THAT DOES NOT
+FIRE**, and it is the more flattering reading, so it is the one that gets believed. **Before
+trusting a guard-proof, say which DEFECT the injection reintroduces** — not which line it
+edits. Rewriting the fix in another correct form tests nothing but your own refactor.
+⚠ **AND CONFIRM THE INJECTION LANDED.** A separate instance in the same arc: an anchor string
+matched nothing, the edit was silently skipped, and the suite reported **71/71 green** — which
+reads exactly like a fence that does not fire. The only tell was an `AssertionError` printed
+above the green count by the patching script.
+
 ⚠ **AND THE SAME FAILURE WITH THE SIGN FLIPPED: A MECHANISM THAT REPORTS A LIMITATION IT NEVER
 DIAGNOSED. A RECORDED LIMITATION IS A CLAIM, AND IT NEEDS A SOURCE LIKE ANY OTHER NUMBER.**
 
