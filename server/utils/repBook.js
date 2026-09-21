@@ -63,7 +63,12 @@ const OWN_BOOK_PREDICATE = `cra.contractor_id = $1
 // client is arguably not a "focus" at all; that observation is FILED rather than acted
 // on, because re-ordering the ruling's own words on a hunch is how a label stops
 // matching its rows.
-const STAGE_RANK_SQL = `CASE pc.pipeline_status
+// ⚠ RE-POINTED AT jobber_clients IN CANVASS-STAGE (Ruling 1). It read
+// `CASE pc.pipeline_status` — the referral-only table — which is why only referred
+// clients could ever be ranked. The five values and their order are UNCHANGED; only
+// the column moved. ⚠ The rank must be computed from the SAME column the payload
+// ships as `stage`, or a row would sort by one value and display another.
+const STAGE_RANK_SQL = `CASE jc.pipeline_stage
            WHEN 'paid'       THEN 4
            WHEN 'sold'       THEN 3
            WHEN 'inspection' THEN 2

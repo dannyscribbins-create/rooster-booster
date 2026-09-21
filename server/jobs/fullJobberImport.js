@@ -6,6 +6,46 @@ const { jobberShouldRetry } = require('../utils/retryHelpers');
 const deriveAndSaveTags = require('../utils/deriveJobberTags');
 const { refreshTokenIfNeeded } = require('../crm/jobber');
 const { runContactMatchingPass } = require('./contactMatchingPass');
+const { classifyPipelineStatus } = require('../crm/pipelineSync');
+
+// ── THE IMPORT'S CLIENT SHAPE, ADAPTED FOR THE CLASSIFIER (Canvass-stage) ─────
+//
+// ⚠ THIS IMPORT ASSEMBLES A THIRD SHAPE, DIFFERENT FROM BOTH OTHER WRITERS, AND
+// THAT IS WHY AN ADAPTER EXISTS HERE AND NOWHERE ELSE.
+//   · the webhook router's fetchClientRelatedData returns the raw Jobber client, so
+//     classifyPipelineStatus can read it directly;
+//   · jobberIncrementalSync likewise holds the raw client from its related query;
+//   · THIS file builds its clients in Step F by joining four separately-paged
+//     fetches onto a Map, so `jobs`, `quotes` and `invoices` are all BARE ARRAYS.
+//
+// classifyPipelineStatus reads `client.jobs?.nodes`, `client.quotes?.nodes` and
+// `job.invoices?.nodes`. Handing it the Step F client gives `undefined || []` for
+// every one of them — which is the classifier's first branch, so it returns 'lead'
+// for EVERY client in the import, raises nothing, and fills the column with a
+// verdict that looks like a business fact. Hence a named adapter rather than a call.
+//
+// ⚠ AND THE INVOICE JOIN IS AN EQUIVALENCE, NOT A RECONSTRUCTION — SAID PLAINLY
+// BECAUSE IT LOOKS LIKE A FUDGE UNTIL THE CLASSIFIER'S TEST IS READ. Neither of this
+// file's two invoice queries selects a JOB association: invoices arrive attached to
+// the CLIENT only, so which job an invoice belongs to is genuinely not knowable here.
+// The classifier asks only `jobs.some(job => job.invoices.some(inv => paid))` — i.e.
+// "does this client have a job AND a paid invoice". Attaching the client's invoices
+// to every job answers exactly that question and no other. It cannot change the
+// verdict, because the classifier never reads an invoice per-job for any other purpose.
+// ⚠ If a future change makes the classifier read invoices per-job, this stops being
+// an equivalence and must be re-derived — do not assume it still holds.
+function classifyImportedClientStage(client) {
+  const clientInvoices = [
+    ...(client.invoices || []),
+    ...(client.jobs || []).flatMap(j => j.invoices?.nodes || []),
+  ];
+  return classifyPipelineStatus({
+    jobs: {
+      nodes: (client.jobs || []).map(j => ({ ...j, invoices: { nodes: clientInvoices } })),
+    },
+    quotes: { nodes: client.quotes || [] },
+  });
+}
 
 // ── IMPORT STATE ──────────────────────────────────────────────────────────────
 // Module-level — persists in memory for the duration of the process.
@@ -22,6 +62,39 @@ const importState = {
   errorMessage: null,
 };
 
+// ── TEST SEAM (Canvass-stage Part 2) ─────────────────────────────────────────
+//
+// Inert in production, never called outside server/test/. Modelled exactly on
+// jobberIncrementalSync's seam, which exists for the same reason recorded there: the
+// alternative is patching axios on the shared require cache, which is sound and is
+// also "exactly the kind of cleverness that rots the moment someone changes how the
+// module loads."
+//
+// ⚠ THE REASON IT IS ADDED NOW RATHER THAN SOMEDAY: this file had NO seam and NO test,
+// and the Step H / Step I partly-written defect lived here undisturbed the whole time.
+// A cursor and a per-client transaction are precisely the kind of mechanism that
+// reports health it cannot observe if nothing ever drives them to failure.
+//
+// `startupDelayMs` is part of the seam because the import opens with a fixed 3s sleep;
+// a test that waits it out three times pays 9 seconds to observe nothing.
+// Declared above every caller — a `let` read before initialisation is a TDZ throw.
+let _axiosPost = (...args) => axios.post(...args);
+let _getFreshToken = null;          // null = use the real getFreshToken below
+let _startupDelayMs = 3000;
+
+// test seam — inert in production, never called outside server/test/
+function _setTestOverrides({ axiosPost, getFreshToken, startupDelayMs } = {}) {
+  if (axiosPost !== undefined) _axiosPost = axiosPost;
+  if (getFreshToken !== undefined) _getFreshToken = getFreshToken;
+  if (startupDelayMs !== undefined) _startupDelayMs = startupDelayMs;
+}
+// test seam — inert in production, never called outside server/test/
+function _resetTestOverrides() {
+  _axiosPost = (...args) => axios.post(...args);
+  _getFreshToken = null;
+  _startupDelayMs = 3000;
+}
+
 // ── PAGINATION HELPER ─────────────────────────────────────────────────────────
 async function fetchAllPages(token, query, dataPath, label = '', contractorId = null) {
   const results = [];
@@ -34,7 +107,7 @@ async function fetchAllPages(token, query, dataPath, label = '', contractorId = 
     pageNum++;
 
     const response = await retryWithBackoff(
-      () => axios.post(
+      () => _axiosPost(
         'https://api.getjobber.com/api/graphql',
         { query, variables: { after } },
         {
@@ -89,6 +162,38 @@ async function fetchAllPages(token, query, dataPath, label = '', contractorId = 
 
     console.log(`[fullJobberImport] ${label} — page ${pageNum}, ${nodes.length} ${dataPath}`);
 
+    // ── PER-PAGE COST MEASUREMENT (Canvass-stage Part 3) ────────────────────────
+    // MEASUREMENT ONLY — this line changes no behaviour and paces nothing.
+    //
+    // ⚠ WHY IT EXISTS: the two pacing branches below both compare currentlyAvailable
+    // against a hardcoded PAGE_COST = 2500, and that number has NO SOURCE. Jobber
+    // returns the real figure on every single response, in the SAME extensions.cost
+    // object those branches already read throttleStatus out of — requestedQueryCost
+    // (what the query was quoted at) and actualQueryCost (what it was charged). The
+    // code reaches into that object, takes the sibling it wants, and leaves the two
+    // fields that would have made the constant unnecessary.
+    // server/routes/admin/campaigns.js flags the identical shortcut.
+    //
+    // ⚠ AND IT IS PER QUERY SHAPE, WHICH IS WHY label AND dataPath ARE ON THE LINE.
+    // fetchAllPages is called with several different selection sets; one number
+    // cannot be right for all of them, and a log that does not say which shape it
+    // measured would produce a second unsourced constant instead of a measurement.
+    //
+    // ⚠ DO NOT RE-PACE ANYTHING ON THIS UNTIL A PRODUCTION RUN HAS PRINTED IT.
+    // Substituting one guess for another is how the 2500 arrived. Read it off the
+    // Railway logs of a real import first, then decide separately whether the
+    // pacing changes at all.
+    const cost = response.data?.extensions?.cost;
+    if (cost) {
+      // diagnostic log — intentional
+      console.log(
+        `[fullJobberImport] COST ${label} page ${pageNum} — requested=${cost.requestedQueryCost} `
+        + `actual=${cost.actualQueryCost} available=${cost.throttleStatus?.currentlyAvailable} `
+        + `max=${cost.throttleStatus?.maximumAvailable} restore=${cost.throttleStatus?.restoreRate} `
+        + `nodes=${nodes.length} path=${dataPath}`
+      );
+    }
+
     hasNextPage = connection?.pageInfo?.hasNextPage || false;
     after = connection?.pageInfo?.endCursor || null;
 
@@ -128,6 +233,8 @@ async function fetchAllPages(token, query, dataPath, label = '', contractorId = 
 
 // ── TOKEN HELPER ─────────────────────────────────────────────────────────────
 async function getFreshToken(contractorId) {
+  // test seam — inert in production, never taken outside server/test/
+  if (_getFreshToken) return _getFreshToken(contractorId);
   await refreshTokenIfNeeded(contractorId);
   const tokenResult = await pool.query(
     'SELECT access_token, expires_at FROM tokens WHERE contractor_id = $1',
@@ -161,7 +268,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
   console.log('[fullJobberImport] starting — date filter:', dateFilter || 'none (all clients)');
 
   try {
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, _startupDelayMs));
     console.log('[fullJobberImport] Step A — fetching all clients...');
     const tokenA = await getFreshToken(contractorId);
 
@@ -204,7 +311,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
       for (const client of allClients) {
         try {
           const invRes = await retryWithBackoff(
-            () => axios.post(
+            () => _axiosPost(
               'https://api.getjobber.com/api/graphql',
               {
                 query: `
@@ -269,7 +376,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
       for (const client of allClients) {
         try {
           const quotRes = await retryWithBackoff(
-            () => axios.post(
+            () => _axiosPost(
               'https://api.getjobber.com/api/graphql',
               {
                 query: `
@@ -332,7 +439,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
       for (const client of allClients) {
         try {
           const reqRes = await retryWithBackoff(
-            () => axios.post(
+            () => _axiosPost(
               'https://api.getjobber.com/api/graphql',
               {
                 query: `
@@ -395,7 +502,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
       for (const client of allClients) {
         try {
           const jobRes = await retryWithBackoff(
-            () => axios.post(
+            () => _axiosPost(
               'https://api.getjobber.com/api/graphql',
               {
                 query: `
@@ -525,24 +632,140 @@ async function runFullJobberImport(contractorId, filterPreference) {
     importState.totalFound = filteredClients.length;
     console.log(`[fullJobberImport] Step G complete — ${filteredClients.length} clients to import`);
 
-    // ── STEP H — Bulk upsert into jobber_clients (batches of 500) ────────────
-    console.log('[fullJobberImport] Step H — upserting into jobber_clients...');
-    const BATCH_SIZE = 500;
-    for (let i = 0; i < filteredClients.length; i += BATCH_SIZE) {
-      const batch = filteredClients.slice(i, i + BATCH_SIZE);
-      for (const client of batch) {
-        const email = client.emails?.find(e => e.primary)?.address
-          || client.emails?.[0]?.address
-          || null;
-        const phone = client.phones?.find(p => p.primary)?.number
-          || client.phones?.[0]?.number
-          || null;
+    // ── STEP H+I — PER-CLIENT TRANSACTION AND CURSOR (Canvass-stage Part 2) ──
+    //
+    // ⚠ THIS DELIBERATELY FIXES THE STEP H / STEP I PARTLY-WRITTEN DEFECT. It is
+    // NOT a side effect of adding the stage column, and it is recorded here rather
+    // than left for someone to discover in a diff.
+    //
+    // WHAT IT REPLACED: Step H upserted jobber_clients for ALL clients, and Step I
+    // then derived tags for ALL clients. Those are two full passes over the same
+    // list, so a failure anywhere in the second one left EVERY client half-written —
+    // a jobber_clients row with no tags — and a re-run started from the beginning
+    // with no record of how far it had got. The two steps are merged below into one
+    // per-client unit of work.
+    //
+    // ⚠ AND THE RESUMABILITY THIS REPLACES WAS NEVER THERE. The scoping for this
+    // phase assumed the import already kept durable progress; it does not. Steps A-C
+    // fetch everything into memory, progress lives only in the module-level
+    // `importState` object, and nothing is written until this point — so a failure in
+    // the fetch loses the whole run. Bulk all-or-nothing on the FETCH is accepted
+    // (at a 12-month window a failed run costs minutes); the cursor below covers the
+    // WRITE phase, which is the part that leaves a database half-updated.
+    //
+    // THREE PROPERTIES, and each is a thing that was previously impossible:
+    //   (1) a client is wholly written or not written at all — one transaction;
+    //   (2) a failed run leaves a clean PREFIX, and the cursor names where it ended;
+    //   (3) a run reports WHICH concern failed, not merely that something did.
+    console.log('[fullJobberImport] Step H+I — per-client upsert, stage and tags...');
 
-        await pool.query(
+    // ⚠ SORTED BY ID, AND THE CURSOR IS WHY. `clientMap.values()` yields insertion
+    // order, which comes from however Jobber happened to page the fetch. A cursor over
+    // an order that can differ between runs is worse than no cursor: on resume it
+    // would skip clients that sorted differently the second time, silently, and the
+    // run would report success. A total order the database and the loop agree on is
+    // what makes "everything up to this id is done" a true statement.
+    filteredClients.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+    // ── RESUME ────────────────────────────────────────────────────────────────
+    // A cursor row survives the process; `importState` does not. Reading it here is
+    // what makes a resumed run different from a restarted one.
+    let resumeAfterId = null;
+    try {
+      const { rows: cursorRows } = await pool.query(
+        `SELECT last_client_id, clients_done FROM jobber_import_progress
+          WHERE contractor_id = $1 AND completed_at IS NULL`,
+        [contractorId]
+      );
+      if (cursorRows[0]?.last_client_id) {
+        resumeAfterId = cursorRows[0].last_client_id;
+        console.log(`[fullJobberImport] resuming after client ${resumeAfterId} (${cursorRows[0].clients_done} already done)`);
+      }
+    } catch (cursorErr) {
+      // A missing or unreadable cursor must never block an import — it degrades to a
+      // full re-run, which is correct and merely slower. Every write below is an
+      // idempotent upsert, so re-processing a client is safe.
+      console.warn(`[fullJobberImport] cursor read failed, starting from the beginning: ${cursorErr.message}`);
+    }
+
+    // ⚠ THE PER-RUN FIELDS RESET AND THE CURSOR FIELDS DO NOT, AND THE SPLIT IS THE
+    // WHOLE POINT OF THE ROW. `failed`, `last_error` and `last_failed_concern` describe
+    // THIS run and would otherwise accumulate across resumes, so a resumed run that
+    // succeeded completely would still report the previous run's failures. But
+    // `last_client_id` and `clients_done` are the cursor — they describe work that is
+    // COMMITTED, they survive the process, and resetting them is exactly what would
+    // turn a resume back into a restart.
+    // ⚠ `clients_done` IS RESET ONLY WHEN THIS IS NOT A RESUME, which is what keeps it
+    // a count of committed clients rather than a count of clients committed this run.
+    const runId = `${contractorId}-${Date.now()}`;
+    await pool.query(
+      `INSERT INTO jobber_import_progress
+         (contractor_id, run_id, clients_total, started_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (contractor_id) DO UPDATE SET
+         run_id              = EXCLUDED.run_id,
+         clients_total       = EXCLUDED.clients_total,
+         clients_done        = CASE WHEN $4::boolean THEN jobber_import_progress.clients_done ELSE 0 END,
+         last_client_id      = CASE WHEN $4::boolean THEN jobber_import_progress.last_client_id ELSE NULL END,
+         failed              = 0,
+         last_error          = NULL,
+         last_failed_concern = NULL,
+         started_at          = COALESCE(jobber_import_progress.started_at, NOW()),
+         completed_at        = NULL,
+         updated_at          = NOW()`,
+      [contractorId, runId, filteredClients.length, resumeAfterId !== null]
+    );
+
+    let contractorFieldMappings = {};
+    try {
+      const mappingsResult = await pool.query(
+        'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
+        [contractorId]
+      );
+      contractorFieldMappings = mappingsResult.rows[0]?.contractor_field_mappings || {};
+    } catch {
+      // fall through — deriveAndSaveTags uses hardcoded label defaults
+    }
+
+    // ── PER-CONCERN COUNTERS ──────────────────────────────────────────────────
+    // ⚠ ONE PASS DOES NOT MEAN ONE NUMBER. A client can be upserted, receive a stage,
+    // and fail tag derivation; reporting a single "imported" count cannot say which
+    // of those happened. `staged` is counted separately from `upserted` because a
+    // null stage is a legitimate outcome, not a failure, and the two must not be
+    // read as the same event.
+    const counts = { upserted: 0, staged: 0, tagged: 0, failed: 0 };
+    let skipped = 0;
+    let sawResumePoint = resumeAfterId === null;
+
+    for (const client of filteredClients) {
+      // The sorted order above is what lets a string compare stand in for "already
+      // done" — every id at or below the cursor was committed by the previous run.
+      if (!sawResumePoint) {
+        if (client.id === resumeAfterId) sawResumePoint = true;
+        skipped += 1;
+        continue;
+      }
+
+      const email = client.emails?.find(e => e.primary)?.address
+        || client.emails?.[0]?.address
+        || null;
+      const phone = client.phones?.find(p => p.primary)?.number
+        || client.phones?.[0]?.number
+        || null;
+
+      const pipelineStage = classifyImportedClientStage(client);
+
+      const tx = await pool.connect();
+      let concern = 'begin';
+      try {
+        await tx.query('BEGIN');
+
+        concern = 'jobber_clients';
+        await tx.query(
           `INSERT INTO jobber_clients
              (jobber_client_id, contractor_id, first_name, last_name, email, phone,
-              is_company, is_lead, is_archived, last_synced_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+              is_company, is_lead, is_archived, pipeline_stage, last_synced_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
            ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET
              first_name = EXCLUDED.first_name,
              last_name = EXCLUDED.last_name,
@@ -551,6 +774,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
              is_company = EXCLUDED.is_company,
              is_lead = EXCLUDED.is_lead,
              is_archived = EXCLUDED.is_archived,
+             pipeline_stage = COALESCE(EXCLUDED.pipeline_stage, jobber_clients.pipeline_stage),
              last_synced_at = NOW()`,
           [
             client.id,
@@ -562,62 +786,136 @@ async function runFullJobberImport(contractorId, filterPreference) {
             client.isCompany === true,
             client.isLead === true,
             client.isArchived === true,
+            pipelineStage,
           ]
         );
+
+        // ⚠ THE FLATTENED SHAPE, AND IT IS BUILT HERE RATHER THAN REUSED. This is
+        // what deriveAndSaveTags wants; classifyImportedClientStage above needs the
+        // OPPOSITE shape and builds its own. Do not "simplify" by feeding one to
+        // both — the classifier reads `jobs.nodes` and would see an empty array,
+        // returning 'lead' for every client in the import with no error at all.
+        concern = 'contact_tags';
+        const normalizedJobs = client.jobs.map(j => ({
+          ...j,
+          invoices: j.invoices?.nodes || [],
+        }));
+        const clientData = {
+          isCompany:    client.isCompany,
+          isLead:       client.isLead,
+          tags:         client.tags,
+          customFields: client.customFields,
+          jobs:         normalizedJobs,
+          invoices:     client.invoices,
+          quotes:       client.quotes,
+          requests:     client.requests,
+        };
+        // `tx` rather than `pool` — deriveAndSaveTags takes its query runner as its
+        // first parameter and passes it down to every tag helper, so the whole tag
+        // derivation joins this client's transaction with no signature change.
+        await deriveAndSaveTags(tx, contractorId, client.id, clientData, contractorFieldMappings);
+
+        // Permanent system tag — marks this contact as a known Jobber client
+        await tx.query(
+          `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
+           VALUES ($1, $2, 'jobber_client', 'system', NOW())
+           ON CONFLICT DO NOTHING`,
+          [client.id, contractorId]
+        );
+
+        // tier_1 = Jobber-only client (no linked app contact). Replaced by tier_2 after matching pass.
+        await tx.query(
+          `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
+           VALUES ($1, $2, 'tier_1', 'system', NOW())
+           ON CONFLICT DO NOTHING`,
+          [client.id, contractorId]
+        );
+
+        // ⚠ THE CURSOR IS WRITTEN INSIDE THE SAME TRANSACTION, AND THAT IS THE WHOLE
+        // MECHANISM. Committed separately it would be a report of progress rather
+        // than a record of it: a crash between the client's COMMIT and the cursor's
+        // would re-do one client (harmless), and a crash the other way round would
+        // SKIP one (not harmless, and silent). One commit makes the two agree by
+        // construction.
+        // ⚠ AND THE CURSOR STOPS ADVANCING AT THE FIRST FAILURE, WHICH IS WHAT MAKES
+        // "a clean prefix" LITERALLY TRUE RATHER THAN NEARLY TRUE. This loop does not
+        // abort on a failed client — it logs and carries on, which is right, because
+        // one bad client should not cost the other 5,999. But that means a plain
+        // high-water mark would record "attempted up to here", not "completed up to
+        // here": a failure at ic-2 followed by a success at ic-3 would advance the
+        // cursor PAST ic-2, and the resumed run would skip the one client that still
+        // needed doing — silently, and forever, since nothing would ever revisit it.
+        // Freezing the cursor at the last client before the first failure means a
+        // resume retries from exactly the point where the run stopped being complete.
+        concern = 'cursor';
+        if (counts.failed === 0) {
+          await tx.query(
+            `UPDATE jobber_import_progress
+                SET last_client_id = $2,
+                    clients_done   = clients_done + 1,
+                    updated_at     = NOW()
+              WHERE contractor_id = $1`,
+            [contractorId, client.id]
+          );
+        }
+
+        await tx.query('COMMIT');
+
+        counts.upserted += 1;
+        if (pipelineStage) counts.staged += 1;
+        counts.tagged += 1;
+        importState.imported += 1;
+        importState.tagged += 1;
+      } catch (clientErr) {
+        try { await tx.query('ROLLBACK'); } catch { /* the connection is already unusable */ }
+        counts.failed += 1;
+        // The concern name is what turns "the import failed" into "tag derivation
+        // failed on client X" — recorded on the cursor row so it survives the process.
+        await pool.query(
+          `UPDATE jobber_import_progress
+              SET failed = failed + 1, last_error = $2, last_failed_concern = $3, updated_at = NOW()
+            WHERE contractor_id = $1`,
+          [contractorId, clientErr.message, concern]
+        ).catch(() => { /* never let the progress write mask the real error */ });
+        await logError({
+          req: null,
+          contractorId,
+          error: new Error(`fullJobberImport Step H+I — client ${client.id} failed at ${concern}: ${clientErr.message}`),
+          source: 'fullJobberImport — per-client transaction',
+        });
+        console.error(`[fullJobberImport] client ${client.id} failed at ${concern}: ${clientErr.message}`);
+      } finally {
+        tx.release();
       }
-      importState.imported += batch.length;
-      console.log(`[fullJobberImport] Step H — upserted ${importState.imported}/${filteredClients.length}`);
+
+      if (counts.upserted % 100 === 0) {
+        console.log(`[fullJobberImport] Step H+I — ${counts.upserted}/${filteredClients.length - skipped} written`);
+      }
     }
 
-    // ── STEP I — Derive and save tags (per client) ────────────────────────────
-    console.log('[fullJobberImport] Step I — deriving tags...');
-    let contractorFieldMappings = {};
-    try {
-      const mappingsResult = await pool.query(
-        'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
+    console.log(
+      `[fullJobberImport] Step H+I complete — upserted ${counts.upserted}, staged ${counts.staged}, `
+      + `tagged ${counts.tagged}, failed ${counts.failed}, skipped ${skipped} (resumed)`
+    );
+
+    // ⚠ COMPLETE ONLY WHEN NOTHING FAILED — THE CLOSURE HALF, AND IT WAS WRONG FIRST.
+    // This originally set completed_at unconditionally, so a run that failed two of
+    // three clients still marked itself finished, the resume read (which requires
+    // completed_at IS NULL) found nothing, and the cursor could never be acted on. The
+    // mechanism recorded progress arriving and had no way to record that it had NOT
+    // arrived — the exact asymmetry CLAUDE.md names. Caught by the resume test, which
+    // is the only reason it is not still there.
+    if (counts.failed === 0) {
+      await pool.query(
+        `UPDATE jobber_import_progress SET completed_at = NOW(), updated_at = NOW()
+          WHERE contractor_id = $1`,
         [contractorId]
       );
-      contractorFieldMappings = mappingsResult.rows[0]?.contractor_field_mappings || {};
-    } catch {
-      // fall through — deriveAndSaveTags uses hardcoded label defaults
-    }
-    for (const client of filteredClients) {
-      // Normalize job-embedded invoices shape for deriveAndSaveTags
-      const normalizedJobs = client.jobs.map(j => ({
-        ...j,
-        invoices: j.invoices?.nodes || [],
-      }));
-
-      const clientData = {
-        isCompany:    client.isCompany,
-        isLead:       client.isLead,
-        tags:         client.tags,
-        customFields: client.customFields,
-        jobs:         normalizedJobs,
-        invoices:     client.invoices,
-        quotes:       client.quotes,
-        requests:     client.requests,
-      };
-
-      await deriveAndSaveTags(pool, contractorId, client.id, clientData, contractorFieldMappings);
-
-      // Permanent system tag — marks this contact as a known Jobber client
-      await pool.query(
-        `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
-         VALUES ($1, $2, 'jobber_client', 'system', NOW())
-         ON CONFLICT DO NOTHING`,
-        [client.id, contractorId]
+    } else {
+      console.warn(
+        `[fullJobberImport] run left OPEN for resume — ${counts.failed} client(s) failed, `
+        + `cursor held at ${counts.upserted > 0 ? 'the last completed client' : 'the start'}`
       );
-
-      // tier_1 = Jobber-only client (no linked app contact). Replaced by tier_2 after matching pass.
-      await pool.query(
-        `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
-         VALUES ($1, $2, 'tier_1', 'system', NOW())
-         ON CONFLICT DO NOTHING`,
-        [client.id, contractorId]
-      );
-
-      importState.tagged += 1;
     }
 
     // ── PHASE 2 — Contact matching pass ──────────────────────────────────────
@@ -656,4 +954,4 @@ async function runFullJobberImport(contractorId, filterPreference) {
   }
 }
 
-module.exports = { runFullJobberImport, importState };
+module.exports = { runFullJobberImport, importState, _setTestOverrides, _resetTestOverrides };

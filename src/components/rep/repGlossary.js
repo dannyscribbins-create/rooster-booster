@@ -69,9 +69,23 @@ export const REP_GLOSSARY = Object.freeze({
   // ⚠ THE TERM A REP IS MOST LIKELY TO GUESS WRONG. "Locked" sounds like a
   // restriction on THEM. It is the opposite: it is the credit being settled in their
   // favour and no longer reassignable by a later event.
+  //
+  // ⚠ REWORDED (Canvass-stage Part 4) BECAUSE THE OLD COPY CONTRADICTED A36.3, WHICH
+  // IS A RULING AND NOT A MATTER OF TASTE. It read "credited to you for good. A later
+  // match cannot move them to someone else." — a flat claim of permanence. A36.3
+  // (DECISION_C_DL_BUILD_SPEC.md §25) makes Owner/Admin manual reassignment the one
+  // path that supersedes sticky BY DESIGN, and §25 records that (h)'s premise — that
+  // sticky can never be corrected later — was FALSE. So the old sentence told a rep
+  // something the system does not guarantee, and the case where it breaks is exactly
+  // the case a rep would care about: an admin moving their client away.
+  //
+  // ⚠ IT NAMES THE EXCEPTION RATHER THAN SOFTENING THE RULE. "A later match cannot
+  // move them" keeps the true and reassuring half — automatic reattribution really is
+  // foreclosed — and "only an owner or admin can" is the A36.3 override said out loud.
+  // A vaguer hedge would have been honest and useless.
   locked: Object.freeze({
     term: 'Locked',
-    body: 'The client is credited to you for good. A later match cannot move them to someone else.',
+    body: 'The client is credited to you. A later match cannot move them — only an owner or admin can.',
   }),
 
   // ⚠ SAYS WHAT HAPPENS NEXT RATHER THAN ONLY WHAT IS TRUE NOW, because the useful

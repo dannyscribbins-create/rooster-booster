@@ -226,7 +226,17 @@ describe('Canvass-4 — the own-book predicate', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 describe('Canvass-4 — A34.4: the WHOLE book, not the referred slice', () => {
 
-  it('[RED] a client with an assignment and NO pipeline_cache row still appears, with a null stage', async () => {
+  // ⚠ UPDATED IN CANVASS-STAGE, AND THE BEHAVIOUR CHANGE IS DELIBERATE RATHER THAN A
+  // TEST BENT TO FIT THE CODE. The stage no longer comes from pipeline_cache at all —
+  // it is read from jobber_clients.pipeline_stage (Ruling 1: one source, no fall-back).
+  // So the fixture seeds the stage where the route now reads it.
+  // ⚠ WHAT THIS CASE ASSERTS IS UNCHANGED AND IS STILL A34.4: the whole book renders,
+  // and an unstaged client's stage is ABSENT rather than invented. Only the meaning of
+  // that null moved — it used to mean "no referral record", and now means "no Jobber
+  // event has classified this client yet", which is a state either kind of client can
+  // be in. The unreferred client here is deliberately left unstaged to keep the
+  // null-stage assertion live.
+  it('[RED] a client with an assignment and NO stage still appears, with a null stage', async () => {
     const me = await seedRep(TENANT, 'me@a.test');
     await seedSession('tok-whole', { contractorId: TENANT, teamMemberId: me });
     await seedClient(TENANT, 'jc-referred', 'Referred');
@@ -236,12 +246,39 @@ describe('Canvass-4 — A34.4: the WHOLE book, not the referred slice', () => {
     await pool.query(
       `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status)
        VALUES ($1, 'jc-referred', 'Referred', 'Someone', 'sold')`, [TENANT]);
+    await pool.query(
+      `UPDATE jobber_clients SET pipeline_stage = 'sold'
+        WHERE contractor_id = $1 AND jobber_client_id = 'jc-referred'`, [TENANT]);
 
     const res = await request('/api/rep/clients', 'tok-whole');
     const byId = Object.fromEntries(res.body.clients.map((c) => [c.jobberClientId, c]));
     assert.ok(byId['jc-unreferred'], 'the UNREFERRED client must be in the book');
     assert.equal(byId['jc-unreferred'].stage, null, 'and its stage must be absent, not invented');
     assert.equal(byId['jc-referred'].stage, 'sold');
+  });
+
+  // ⚠ THE NEW HALF OF A34.4, TESTABLE FOR THE FIRST TIME. Before Canvass-stage a
+  // NON-REFERRED client could not carry a stage at any layer, so "the whole book, not
+  // the referred slice" could only be asserted about the ROW's presence. Now the stage
+  // itself is book-wide, and this is what says the route reads it from the whole-client
+  // table rather than the referral one.
+  it('[RED] a NON-REFERRED client carries a real stage, with no pipeline_cache row at all', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-nonref', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-direct', 'Direct');
+    await assign(TENANT, 'jc-direct', { sticky: me });
+    await pool.query(
+      `UPDATE jobber_clients SET pipeline_stage = 'paid'
+        WHERE contractor_id = $1 AND jobber_client_id = 'jc-direct'`, [TENANT]);
+
+    const res = await request('/api/rep/clients', 'tok-nonref');
+    const row = res.body.clients.find((c) => c.jobberClientId === 'jc-direct');
+    assert.equal(row.stage, 'paid', 'a client with no referral record still has a stage');
+    // The discriminator: there is genuinely no referral row, so a route still reading
+    // pipeline_cache would return null here.
+    const { rows: pc } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM pipeline_cache WHERE contractor_id = $1`, [TENANT]);
+    assert.equal(pc[0].n, 0, 'and the referral table is genuinely empty');
   });
 
   it('[RED] DISCRIMINATING CONTROL — the same fixture under an INNER JOIN loses the unreferred client', async () => {
@@ -874,7 +911,23 @@ describe('Canvass-6 — GET /api/rep/home (A34.5 ruling ④, A34.6, A34.7)', () 
 
   // Seeds a client with an optional stage and an explicit assignment instant, so a
   // fixture can make stage-order and recency-order DISAGREE.
-  async function book(me, id, { stage = null, minutesAgo = 0, name = null } = {}) {
+  //
+  // ⚠ `stage` AND `referred` ARE TWO SEPARATE KNOBS SINCE CANVASS-STAGE, AND THEY USED
+  // TO BE ONE. Before this phase the only stage column lived on pipeline_cache, so
+  // "has a stage" and "has a referral record" were necessarily the same fact and one
+  // parameter could stand for both. They are now independent:
+  //   · `stage`    → jobber_clients.pipeline_stage — the VALUE the route displays and
+  //                  ranks by, and every client can have one.
+  //   · `referred` → a pipeline_cache row — which SECTION of Today's Focus the client
+  //                  falls in. The partition stayed on the referral record by ruling.
+  //
+  // ⚠ `referred` DEFAULTS TO `stage != null` ONLY TO KEEP THE PRE-EXISTING FIXTURES
+  // MEANING WHAT THEY MEANT, and a fixture exercising the new state must pass it
+  // EXPLICITLY. A default that quietly re-couples the two knobs is how the distinction
+  // this phase drew would be lost again — so the four-arg form is the honest one for
+  // anything written from here on.
+  async function book(me, id, { stage = null, referred = undefined, minutesAgo = 0, name = null } = {}) {
+    const hasReferralRow = referred === undefined ? stage !== null : referred;
     await seedClient(TENANT, id, name || id);
     await pool.query(
       `INSERT INTO client_rep_assignments
@@ -884,6 +937,13 @@ describe('Canvass-6 — GET /api/rep/home (A34.5 ruling ④, A34.6, A34.7)', () 
       [TENANT, id, me, String(minutesAgo)]
     );
     if (stage) {
+      await pool.query(
+        `UPDATE jobber_clients SET pipeline_stage = $3
+          WHERE contractor_id = $1 AND jobber_client_id = $2`,
+        [TENANT, id, stage]
+      );
+    }
+    if (hasReferralRow) {
       await pool.query(
         `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status)
          VALUES ($1, $2, $3, 'Someone', $4)`,
@@ -950,6 +1010,41 @@ describe('Canvass-6 — GET /api/rep/home (A34.5 ruling ④, A34.6, A34.7)', () 
     const s2 = res.body.focus.recentlyAssigned.map((c) => c.jobberClientId);
     assert.equal(s1.filter((i) => s2.includes(i)).length, 0, 'no client may be in both');
     assert.deepEqual([...s1, ...s2].sort(), ['h-a', 'h-b', 'h-c', 'h-d'], 'and none is lost between them');
+  });
+
+  // ⚠ THE RULING CANVASS-STAGE RAISED AND DANNY SETTLED, AND IT IS THE CASE THE OLD
+  // FIXTURE HELPER COULD NOT EXPRESS AT ALL.
+  //
+  // Once every client carries a stage, the obvious change was to repoint the section
+  // partition at "has a stage". That was RULED AGAINST: the two sections are two
+  // different JOBS, not one list split by which data happens to exist. Referral
+  // progress is the referral network; Recently assigned is who the rep should be
+  // working now. So the partition stays on the referral record, Section 2 does not
+  // empty out, and the stage appears in BOTH because both questions want it.
+  //
+  // ⚠ THE DISCRIMINATOR IS A CLIENT THAT HAS A STAGE AND NO REFERRAL RECORD. Under the
+  // repointed partition it would have moved into Section 1; under the ruling it stays
+  // in Section 2 AND shows its stage. No fixture written before this phase can tell
+  // those two outcomes apart, because the state was unreachable.
+  it('[RED] a STAGED but NON-REFERRED client stays in Recently assigned — and carries its stage', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-h4b', { contractorId: TENANT, teamMemberId: me });
+    await book(me, 'h-ref-sold',    { stage: 'sold', referred: true });
+    await book(me, 'h-direct-paid', { stage: 'paid', referred: false });
+
+    const res = await home('tok-h4b');
+    const s1 = res.body.focus.furthestAlong;
+    const s2 = res.body.focus.recentlyAssigned;
+
+    assert.deepEqual(s1.map((c) => c.jobberClientId), ['h-ref-sold'],
+      'the partition is the REFERRAL RECORD — a staged non-referred client must not migrate to section 1');
+    assert.deepEqual(s2.map((c) => c.jobberClientId), ['h-direct-paid'],
+      'it belongs to Recently assigned');
+    // ⚠ THE OTHER HALF OF THE RULING, AND THE PHASE'S VISIBLE WIN FOR A REP. Section 2
+    // could not carry a stage before — these are by definition the clients with no
+    // pipeline_cache row, and the stage used to live only on pipeline_cache.
+    assert.equal(s2[0].stage, 'paid', 'Recently assigned now SHOWS the stage');
+    assert.equal(s1[0].stage, 'sold', 'and Referral progress still does');
   });
 
   it('[RED] not_sold HAS a stage, so it ranks LAST rather than being hidden', async () => {

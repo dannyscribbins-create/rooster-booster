@@ -14,7 +14,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const axios = require('axios');
 const { pool } = require('../../db');
-const { syncSingleClient } = require('../../crm/pipelineSync');
+const { syncSingleClient, classifyPipelineStatus } = require('../../crm/pipelineSync');
 const { logError } = require('../../middleware/errorLogger');
 const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
@@ -307,6 +307,26 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
     || fullClient.phones?.[0]?.number
     || null;
 
+  // ── PIPELINE STAGE (Canvass-stage Part 1) ──────────────────────────────────
+  //
+  // ⚠ relatedData GOES IN WHOLE, AND THAT IS THE POINT — IT IS ALREADY THE SHAPE
+  // classifyPipelineStatus WANTS. fetchClientRelatedData returns the raw Jobber
+  // client, so `jobs: { nodes: [...] }`, `quotes: { nodes: [...] }` and each job's
+  // `invoices: { nodes: [...] }` are all intact.
+  //
+  // ⚠ DO NOT PASS THE `clientData` BUILT BELOW. That object flattens each job's
+  // invoices and hands `jobs` over as a bare array, because deriveAndSaveTags wants
+  // the opposite shape. The classifier reads `client.jobs?.nodes`, so the flattened
+  // form yields an empty array, hits the "no jobs and no quotes" branch, and returns
+  // 'lead' — for EVERY client, with no error anywhere. Two consumers of one fetch
+  // needing opposite shapes is the whole trap; see the note in jobberIncrementalSync.
+  //
+  // ⚠ GATED ON relatedData BEING PRESENT, MATCHING THE TAG BLOCK BELOW. Two of this
+  // function's four callers already guard `if (relatedData)`; the other two pass the
+  // result of a fetch that resolves to null on failure. A null stage here means "not
+  // observed this pass" and the COALESCE below preserves whatever was already stored.
+  const pipelineStage = relatedData ? classifyPipelineStatus(relatedData) : null;
+
   // ── BLANK PROTECTION (Wave 0.2 item 1) ──────────────────────────────────────
   // COALESCE, not EXCLUDED, on the four identity-bearing columns. This upsert has
   // callers that pass a PARTIAL shell rather than a full client: job-update builds
@@ -334,14 +354,28 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
   //       Jobber and that is still showing here, or when the Wave 0.4 matcher begins
   //       auto-linking on these columns, whichever comes first.
   //
-  // Scoped to THIS writer only. jobberIncrementalSync.js:162 and fullJobberImport.js:542
-  // always carry full Jobber payloads — they are precisely where a legitimate clear
-  // arrives, and coalescing there would freeze cleared fields permanently.
+  // Scoped to THIS writer only. The other two jobber_clients writers — the per-client
+  // upsert in jobberIncrementalSync's runForContractor loop, and the per-client
+  // transaction in fullJobberImport's Step H+I — always carry full Jobber payloads.
+  // They are precisely where a legitimate clear arrives, and coalescing the four
+  // identity columns there would freeze cleared fields permanently.
+  //
+  // ⚠ CITED BY ROLE SINCE CANVASS-STAGE, AND THE REPAIR IS WORTH THE LINE BECAUSE THE
+  // OLD FORM WAS HALF WRONG IN EXACTLY THE WAY CLAUDE.md PREDICTS. It read
+  // "jobberIncrementalSync.js:162 and fullJobberImport.js:542". Verified at 8da50a2
+  // before repairing: the fullJobberImport citation was CORRECT (it landed on the
+  // INSERT), and the jobberIncrementalSync one was ALREADY WRONG — :162 is GraphQL
+  // error handling inside the paging loop, while that writer sat at :286.
+  // ⚠ Canvass-stage moved BOTH targets, so citecheck flagged both identically as
+  // LIKELY ROTTED. Adding this commit's delta to each — the one-keystroke repair —
+  // would have shifted the correct citation off its target AND certified the wrong one
+  // as fixed. A function name does not drift; a line number does, and says nothing
+  // about whether it was ever right.
   await pool.query(
     `INSERT INTO jobber_clients
        (jobber_client_id, contractor_id, first_name, last_name, email, phone,
-        is_company, is_lead, is_archived, last_synced_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        is_company, is_lead, is_archived, pipeline_stage, last_synced_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
      ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET
        first_name = COALESCE(EXCLUDED.first_name, jobber_clients.first_name),
        last_name = COALESCE(EXCLUDED.last_name, jobber_clients.last_name),
@@ -350,6 +384,12 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
        is_company = EXCLUDED.is_company,
        is_lead = EXCLUDED.is_lead,
        is_archived = EXCLUDED.is_archived,
+       -- COALESCE for the same reason as the four identity columns above, arrived at
+       -- independently: a caller with no relatedData supplies null, and null here means
+       -- "not observed", never "no stage". The MVP-shortcut caveat recorded above does
+       -- NOT apply to this column — a stage cannot be "cleared" in Jobber, only moved to
+       -- another of the five values, so there is no legitimate clear for COALESCE to eat.
+       pipeline_stage = COALESCE(EXCLUDED.pipeline_stage, jobber_clients.pipeline_stage),
        last_synced_at = NOW()`,
     [
       fullClient.id,
@@ -373,6 +413,7 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
       // prefix here would be a permanently-undefined branch — dead code dressed as
       // symmetry. Write the guard the value needs; do not align this with its siblings.
       fullClient.isArchived === true,
+      pipelineStage,
     ]
   );
 

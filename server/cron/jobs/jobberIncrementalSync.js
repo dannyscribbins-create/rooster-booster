@@ -7,6 +7,7 @@ const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../../utils/retryHelpers');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
+const { classifyPipelineStatus } = require('../../crm/pipelineSync');
 const { evaluateAudience } = require('./dynamicAudiences');
 const { getFreshContractorAccessToken } = require('../../crm/jobber');
 
@@ -274,6 +275,34 @@ async function runForContractor(contractorId) {
       const quotes   = relatedData.quotes?.nodes || [];
       const requests = relatedData.requests?.nodes || [];
 
+      // ── PIPELINE STAGE (Canvass-stage Part 1) ────────────────────────────────
+      //
+      // ⚠ relatedData, NOT clientData — AND THE TWO ARE NOT INTERCHANGEABLE. This is
+      // the defect this phase was nearly built on, so it is written down at the site
+      // rather than in a handoff.
+      //
+      // classifyPipelineStatus reads the GraphQL CONNECTION shape:
+      //     client.jobs?.nodes · client.quotes?.nodes · job.invoices?.nodes
+      // `clientData` below is built for deriveAndSaveTags, which wants the OPPOSITE —
+      // `jobs` as a bare array with `invoices` FLATTENED onto each job. Those two
+      // requirements are mutually exclusive, and one object cannot satisfy both.
+      //
+      // ⚠ PASSING clientData HERE RAISES NOTHING AND RETURNS 'lead' FOR EVERY CLIENT.
+      // `undefined?.nodes || []` gives an empty array for jobs AND quotes, which is
+      // exactly the classifier's first branch: no jobs and no quotes means 'lead'. The
+      // column would fill with a plausible verdict for the entire book, the conversions
+      // count would sit at zero forever, and the whole thing would read as a business
+      // fact rather than a bug. A test seeded with a lead passes against it.
+      // → the fixture for this is a client with a JOB and a PAID INVOICE, deliberately,
+      //   so a flattening regression cannot go green.
+      //
+      // ⚠ AND THE EMPTY-OBJECT GUARD IS THE SAME DEFECT ARRIVING BY A DIFFERENT DOOR.
+      // relatedData is `... || {}`, so a related fetch that returned no client would
+      // classify as 'lead' for precisely the same reason. `null` here means "not
+      // classified this pass" and the upsert below leaves any existing stage alone.
+      const relatedClient = relatedResponse.data?.data?.client || null;
+      const pipelineStage = relatedClient ? classifyPipelineStatus(relatedClient) : null;
+
       const email = client.emails?.find(e => e.primary)?.address
         || client.emails?.[0]?.address
         || null;
@@ -285,8 +314,8 @@ async function runForContractor(contractorId) {
       await pool.query(
         `INSERT INTO jobber_clients
            (jobber_client_id, contractor_id, first_name, last_name, email, phone,
-            is_company, is_lead, is_archived, last_synced_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            is_company, is_lead, is_archived, pipeline_stage, last_synced_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
          ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET
            first_name = EXCLUDED.first_name,
            last_name = EXCLUDED.last_name,
@@ -295,6 +324,15 @@ async function runForContractor(contractorId) {
            is_company = EXCLUDED.is_company,
            is_lead = EXCLUDED.is_lead,
            is_archived = EXCLUDED.is_archived,
+           -- ⚠ COALESCE, UNLIKE THE COLUMNS ABOVE IT, AND THE REASON DIFFERS FROM
+           -- THE WEBHOOK WRITER'S. There the concern is a partial shell overwriting
+           -- good identity data with nulls; here the related fetch can legitimately
+           -- fail on its own while the client fetch succeeded, and a null stage then
+           -- means "not classified this pass", never "this client has no stage".
+           -- Writing EXCLUDED unconditionally would erase a correct stage whenever
+           -- the second query failed — a silent regression on a transient error.
+           -- Write the guard the value needs; do not align it with its siblings.
+           pipeline_stage = COALESCE(EXCLUDED.pipeline_stage, jobber_clients.pipeline_stage),
            last_synced_at = NOW()`,
         [
           client.id,
@@ -306,6 +344,7 @@ async function runForContractor(contractorId) {
           client.isCompany === true,
           client.isLead === true,
           client.isArchived === true,
+          pipelineStage,
         ]
       );
 

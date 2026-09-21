@@ -675,28 +675,47 @@ async function seedStack(pool) {
   );
   const betaOtherId = betaOther.rows[0].id;
 
-  // [jobberClientId, name, stage|null, sticky|null, provisional|null, source, membershipState]
+  // [jobberClientId, name, stage|null, sticky|null, provisional|null, source, membershipState, referred]
   // membershipState: 1 = linked users row · 4 = contact-level app user · 3 = contact,
   // not an app user · 2 = nothing known. ⚠ ONLY STATE 1 RENDERS A BADGE — 2, 3 and 4
   // are indistinguishable and the ruling forbids asserting anything about them. They
   // are all seeded anyway, precisely so the screen can be EYE-CHECKED for the absence
   // of a reserved slot: three rows that differ in the database and must look identical.
+  //
+  // ⚠ `referred` IS AN EIGHTH COLUMN SINCE CANVASS-STAGE, AND IT USED TO BE IMPLIED BY
+  // `stage`. Before this phase the only stage column lived on pipeline_cache, so a
+  // client with a stage necessarily had a referral record and one seeder flag stood for
+  // both facts. They are now independent — the stage lives on jobber_clients and every
+  // client can have one, while the referral record still decides which Today's Focus
+  // section a client falls in. **A state the fixture never renders cannot be
+  // eye-tested**, and "staged but not referred" is now the single most common state in
+  // a real rep's book, so it is seeded explicitly below rather than left to inference.
   const BOOK = [
-    ['jc-beta-1', 'Maria Lopez',   'paid',       betaRepId, null, 'quote_salesperson',  1],
-    ['jc-beta-2', 'Allen Wade',    'sold',       betaRepId, null, 'mode_a_at_close',    4],
-    ['jc-beta-3', 'Pat Chen',      'inspection', betaRepId, null, 'manual',             3],
-    ['jc-beta-4', 'June Harris',   null,         betaRepId, null, 'mode_b_at_close',    2],
-    ['jc-beta-5', 'Sam Okafor',    null,         null, betaRepId, 'mode_a',             2],
-    ['jc-beta-6', 'Dana Whitfield','lead',       betaRepId, null, 'promoted_provisional', 1],
-    ['jc-beta-7', 'Ellis Brand',   'not_sold',   betaRepId, null, 'manual',             3],
+    ['jc-beta-1', 'Maria Lopez',   'paid',       betaRepId, null, 'quote_salesperson',  1, true],
+    ['jc-beta-2', 'Allen Wade',    'sold',       betaRepId, null, 'mode_a_at_close',    4, true],
+    ['jc-beta-3', 'Pat Chen',      'inspection', betaRepId, null, 'manual',             3, true],
+    ['jc-beta-4', 'June Harris',   null,         betaRepId, null, 'mode_b_at_close',    2, false],
+    ['jc-beta-5', 'Sam Okafor',    null,         null, betaRepId, 'mode_a',             2, false],
+    ['jc-beta-6', 'Dana Whitfield','lead',       betaRepId, null, 'promoted_provisional', 1, true],
+    ['jc-beta-7', 'Ellis Brand',   'not_sold',   betaRepId, null, 'manual',             3, true],
+    // ⚠ THE PHASE'S OWN STATE, AND THE REASON THE COLUMN EXISTS: a NON-REFERRED client
+    // carrying a real stage. jc-beta-10 is the exact shape Danny described — a client
+    // his team assigned him in Jobber who then sold and had an invoice paid, with no
+    // "Referred by" value anywhere. Before this phase it could carry no stage at all,
+    // so a rep could not see that it had converted. It must render in RECENTLY ASSIGNED
+    // (the partition is the referral record) and must SHOW "Complete" there.
+    ['jc-beta-10', 'Wes Trammell', 'paid',       betaRepId, null, 'mode_a_at_close',    2, false],
+    // Its mid-pipeline sibling, so the section shows more than one stage value and a
+    // stage-ordering regression in section 2 would be visible rather than inferred.
+    ['jc-beta-11', 'Nia Alvarez',  'sold',       betaRepId, null, 'quote_salesperson',  3, false],
     // ⚠ NO CLIENT MIRROR ROW — name null means the jobber_clients INSERT is skipped.
     // The Canvass-4b state: a real assignment for a client we cannot yet name.
-    ['jc-beta-9', null,            null,         betaRepId, null, 'mode_a_at_close',    2],
+    ['jc-beta-9', null,            null,         betaRepId, null, 'mode_a_at_close',    2, false],
     // The colleague's client — must NOT appear in the book rep's list.
-    ['jc-beta-8', 'Not Mine',      'sold',       betaOtherId, null, 'mode_a_at_close',  2],
+    ['jc-beta-8', 'Not Mine',      'sold',       betaOtherId, null, 'mode_a_at_close',  2, true],
   ];
 
-  for (const [jcId, name, stage, sticky, provisional, source, membershipState] of BOOK) {
+  for (const [jcId, name, stage, sticky, provisional, source, membershipState, referred] of BOOK) {
     // ⚠ `name === null` MEANS "SEED NO jobber_clients ROW AT ALL" (Canvass-4b), and it
     // is the one fixture state this screen had no way to render before. An assignment
     // whose client has no mirror row was silently dropped by an inner join — 39
@@ -708,11 +727,12 @@ async function seedStack(pool) {
     if (name !== null) {
       const [first, ...rest] = name.split(' ');
       await pool.query(
-        `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_name, last_synced_at)
-         VALUES ($1, $2, $3, $4, NOW())
+        `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_name, pipeline_stage, last_synced_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
          ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE
-           SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name`,
-        [jcId, beta, first, rest.join(' ') || null]
+           SET first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name,
+               pipeline_stage = EXCLUDED.pipeline_stage`,
+        [jcId, beta, first, rest.join(' ') || null, stage]
       );
     }
 
@@ -731,10 +751,13 @@ async function seedStack(pool) {
       [beta, jcId, sticky, sticky ? source : null, provisional, provisional ? source : null]
     );
 
-    // ⚠ ONLY THE REFERRED CLIENTS GET A pipeline_cache ROW. The ones with a null stage
-    // are the whole-book case — an ordinary client with a request and no referral — and
-    // they are what makes "No referral record" visible on screen instead of only in a test.
-    if (stage) {
+    // ⚠ ONLY THE REFERRED CLIENTS GET A pipeline_cache ROW, AND THE FLAG IS NOW THE
+    // `referred` COLUMN RATHER THAN `stage`. It used to read `if (stage)`, which was
+    // correct only while a stage could not exist without a referral record. Keying it
+    // on the stage now would give every staged client a referral row and erase the
+    // whole-book case this fixture exists to show — the "a condition whose meaning
+    // changed without its text changing" failure, in a seeder.
+    if (referred) {
       await pool.query(
         `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status)
          VALUES ($1, $2, $3, 'Seeded Referrer', $4)

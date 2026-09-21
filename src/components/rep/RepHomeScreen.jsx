@@ -422,8 +422,11 @@ const PREVIEW_SAMPLE = Object.freeze({
       { jobberClientId: 'preview-1', name: 'Maria Lopez', nameUnavailable: false, stage: 'paid' },
       { jobberClientId: 'preview-2', name: 'Allen Wade', nameUnavailable: false, stage: 'sold' },
     ],
+    // ⚠ CARRIES `stage` SINCE CANVASS-STAGE, BECAUSE THE ROUTE NOW SENDS IT. A preview
+    // fixture that omits a key the server supplies has quietly stopped mirroring the
+    // thing it stands in for — the same reasoning that keeps `flagged` in the stats above.
     recentlyAssigned: [
-      { jobberClientId: 'preview-3', name: 'Pat Chen', nameUnavailable: false, assignedAt: '2026-09-15T12:00:00Z' },
+      { jobberClientId: 'preview-3', name: 'Pat Chen', nameUnavailable: false, stage: 'inspection', assignedAt: '2026-09-15T12:00:00Z' },
     ],
   },
 });
@@ -589,12 +592,30 @@ export default function RepHomeScreen({ onOpenClient = null, preview = false, ca
               emptyCopy="None of your clients has a referral record yet, so there is no pipeline stage to rank by."
             />
 
+            {/* ⚠ THIS SECTION NOW SHOWS A PIPELINE STAGE, WHICH IT COULD NOT BEFORE
+                CANVASS-STAGE — the only stage column lived on the referral table, and
+                these rows are by definition the clients with no referral record. That
+                is the phase's visible win for a rep: the section that answers "who
+                should I be working now" can say where each of them stands.
+                ⚠ THE ORDER IS STILL ASSIGNMENT RECENCY, and the subtitle still says so.
+                Ranking by stage here would duplicate Referral progress's ordering and
+                collapse two different jobs into one list. */}
             <FocusSection
               title="Recently assigned"
               subtitle="Your other clients, newest assignment first"
               clients={focus.recentlyAssigned}
               onOpen={onOpenClient}
-              trailingFor={(c) => formatAssigned(c.assignedAt)}
+              // ⚠ THE DATE STAYS ALONGSIDE THE STAGE RATHER THAN BEING REPLACED BY IT.
+              // The subtitle claims an ordering; dropping the date would leave that claim
+              // unverifiable on screen, which is the "label must be true of its rows"
+              // failure arriving from the other direction. A stage-less row still shows
+              // its date, so the trailing is never empty and never mysterious.
+              trailingFor={(c) => {
+                const when = formatAssigned(c.assignedAt);
+                const stage = c.stage ? (STAGE_LABELS[c.stage] || c.stage) : '';
+                if (stage && when) return `${stage} · ${when}`;
+                return stage || when;
+              }}
               emptyCopy="Clients appear here once a request in Jobber is assigned to you."
             />
           </section>

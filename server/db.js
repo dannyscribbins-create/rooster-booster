@@ -2274,6 +2274,96 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
          (contractor_id, (COALESCE(sticky_rep_id, provisional_rep_id)), updated_at DESC)
   `);
 
+  // ── JOBBER CLIENTS: PIPELINE STAGE (Canvass-stage Part 1) ────────────────────
+  //
+  // THE FIRST MIGRATION THIS TABLE HAS EVER HAD. jobber_clients was CREATEd once and
+  // never ALTERed, so a reader who checks only the CREATE gets the shape right today —
+  // and will get it wrong the moment anyone adds a second column. Per CLAUDE.md's rule,
+  // a table's shape is its CREATE plus every ALTER since.
+  //
+  // WHY THE TABLE MOVED: pipeline_cache.pipeline_status is REFERRED CLIENTS ONLY. Its
+  // only writer is syncSingleClient(), whose first statement is `if (!referredBy) return`,
+  // so a client with no CRM Referred-By value can never receive a stage from any path.
+  // A rep's book is mostly non-referred clients, so most of a rep's book had no stage at
+  // all — they could not see where a client stood, and their conversions stat could
+  // never move. jobber_clients is the whole-client table; the stage belongs here.
+  //
+  // ⚠ NULLABLE, AND NO DEFAULT, DELIBERATELY. NULL means "never classified" and must
+  // stay distinguishable from 'lead', which is a real classifier verdict meaning "this
+  // client has no jobs and no quotes". A DEFAULT 'lead' would destroy the only signal
+  // that separates a stale row from a genuine lead, and would do it silently — every
+  // row would read as a plausible business fact.
+  //
+  // ⚠ NAMED pipeline_stage, NOT pipeline_status, AND THAT IS NOT A STYLE CHOICE. The
+  // rep queries join both tables; if the columns shared a name, a join mis-typed as
+  // pc.<col> instead of jc.<col> would still compile, still run, and silently read the
+  // referral-only table — the exact defect this column exists to remove. Different
+  // names make that mistake a loud error instead of a quiet wrong answer.
+  //
+  // ⚠ NO BACKFILL HERE. Existing rows stay NULL and are filled by the three writers as
+  // Jobber next touches each client. The historical import is scoped separately.
+  await pool.query(`ALTER TABLE jobber_clients ADD COLUMN IF NOT EXISTS pipeline_stage TEXT`);
+
+  // The five values classifyPipelineStatus() can return, and nothing else. NULL is
+  // permitted by a CHECK constraint automatically (NULL IS NOT FALSE), which is what
+  // lets "never classified" coexist with a closed value set.
+  // ⚠ pipeline_cache.pipeline_status can also hold 'app_user' — written at signup by
+  // POST /api/signup in routes/referrer.js. That is a MEMBERSHIP marker, not a pipeline
+  // position, and this constraint is what stops it ever being copied into this column
+  // by a future writer that treats the two tables as interchangeable.
+  // ⚠ A CHECK constraint has NO BACKING INDEX, so duplicate_object is the only collision
+  // a re-run can raise — unlike ADD CONSTRAINT ... UNIQUE, which also needs
+  // duplicate_table for 42P07. The pg_constraint pre-check is used here in preference to
+  // an exception handler either way, matching tokens_contractor_id_unique.
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'jobber_clients_pipeline_stage_valid'
+      ) THEN
+        ALTER TABLE jobber_clients ADD CONSTRAINT jobber_clients_pipeline_stage_valid
+          CHECK (pipeline_stage IN ('lead', 'inspection', 'not_sold', 'sold', 'paid'));
+      END IF;
+    END $$;
+  `);
+
+  // ── FULL IMPORT PROGRESS CURSOR (Canvass-stage Part 2) ───────────────────────
+  //
+  // Durable progress for server/jobs/fullJobberImport.js. The import's own
+  // `importState` is a module-level object in memory: it reports progress to the admin
+  // status route and vanishes with the process, so a crashed run left no record of how
+  // far it got and a re-run started from zero.
+  //
+  // ⚠ ONE ROW PER CONTRACTOR, NOT ONE PER RUN, AND THAT IS DELIBERATE. The question
+  // this table answers is "where did the import for this contractor get to", which has
+  // exactly one answer at a time. A run-history table would be a different feature with
+  // a different retention question; `run_id` distinguishes runs for logging without
+  // turning this into one.
+  //
+  // ⚠ completed_at IS THE CLOSURE HALF, per CLAUDE.md's rule that a tracking mechanism
+  // needs both halves. A cursor that only ever records progress ARRIVING cannot say
+  // whether the last run finished, so a resumed run could not tell "stopped at client X"
+  // from "ended at client X because X was the last one". The resume read requires
+  // completed_at IS NULL for exactly that reason.
+  await pool.query(`CREATE TABLE IF NOT EXISTS jobber_import_progress (
+    contractor_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    last_client_id TEXT,
+    clients_total INTEGER NOT NULL DEFAULT 0,
+    clients_done INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    last_failed_concern TEXT,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // ⚠ NO NEW INDEX, AND THAT IS A DECISION RATHER THAN AN OMISSION. Every read of this
+  // column reaches it through the existing UNIQUE (jobber_client_id, contractor_id) —
+  // the rep queries join jobber_clients on exactly that pair and then read the stage off
+  // the matched row. An index ON pipeline_stage would serve a query that scans BY stage,
+  // and no such query exists. Add one when one does, with a measurement beside it.
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed

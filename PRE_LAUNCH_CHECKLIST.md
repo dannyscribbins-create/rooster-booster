@@ -4210,6 +4210,175 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage — the pipeline stage on jobber_clients (SHIPPED 2026-09-20)
+
+- [x] **✅ CLOSED — THE FIRST CONVERSIONS BLOCKER IS GONE.** `jobber_clients.pipeline_stage`
+      (TEXT, nullable, no default, CHECK on the five classifier values) is written by all three
+      client writers — the nightly sync, the full import and the client webhooks. Every client in
+      a rep's book now carries a stage, referred or not. This closes the *population* half of the
+      Canvass-9b Part 2 blocker recorded directly below; **the definition half is still open, for
+      a different reason — see the next item.**
+
+- [ ] 🔴 **THE CONVERSIONS REDEFINITION IS STILL BLOCKED — BY A SECOND BLOCKER THAT FIXING THE
+      FIRST ONE REVEALED. THE STAGE HAS NO HISTORY.** `jobber_clients.pipeline_stage` is a
+      **current** value; nothing anywhere records *when* a client became `'sold'`. The rep Home
+      screen carries a week/month/year/all timeframe bar, so a conversions figure must answer
+      *"how many converted IN THIS WINDOW"* — and no column can.
+      ⚠ **THE OBVIOUS SUBSTITUTE IS ALREADY FORBIDDEN IN WRITING**, by
+      `conversionTimeframeClause()`'s own header in `server/utils/repBook.js`: windowing a
+      conversion count by the assignment date *"would count conversions by the age of an unrelated
+      assignment row and return a plausible number for a question nobody asked."* That is this
+      defect exactly, which is why it was not shipped.
+      **WHAT WOULD CLOSE IT:** a write-once `sold_at` on `jobber_clients`, set the first time a
+      stage reaches `'sold'` or `'paid'` and never overwritten — the pattern `pipeline_cache.paid_at`
+      already uses. All three writers already compute the stage they would compare against.
+      ⚠ **NOT ADDED IN THIS PHASE BECAUSE THE APPROVED MIGRATION WAS ONE COLUMN.** Needs Danny.
+      ⚠ **AND WHEN IT IS BUILT, THE COUNT IS `IN ('sold','paid')`, NEVER `= 'sold'`** — the
+      classifier returns one current stage, so counting `'sold'` alone makes the number SHRINK as
+      jobs get paid, the most successful conversions leaving the count and reading as lost work.
+      Once sold, always converted. (Danny's admin panel documents Sold contractor-facing as *"Job
+      created in Jobber"*; `classifyPipelineStatus` says *a job exists and no invoice is paid yet*.
+      **The two agree** — recorded so neither drifts alone.) → `server/routes/rep.js`, the
+      conversions query's header carries this same note at the site.
+
+- [ ] ⚠ **A CLIENT ASSIGNED BY THE REQUEST PATH AND NEVER TOUCHED BY A JOB OR INVOICE EVENT HAS
+      NO STAGE — REPORTED, NOT DECIDED.** The request-driven path (`REQUEST_CREATE` /
+      `REQUEST_UPDATE` and the hourly `repRequestSweep`) writes `client_rep_assignments` and
+      **never** `jobber_clients` — verified from source: `server/utils/requestAttribution.js`
+      contains no `INSERT` and no reference to that table at all. So such a client sits in a rep's
+      book unstaged until a client/job/invoice webhook or the nightly sync next touches it.
+      ⚠ **THE GAP IS CHEAP TO CLOSE AND WAS DELIBERATELY LEFT OPEN.** That path **already computes
+      the exact stage** — `const currentStatus = classifyPipelineStatus(fullClient)` — and
+      discards it. Writing it would be one statement.
+      ⚠ **BUT IT WOULD CONTRADICT THE SEVENTH ZERO DANNY RULED INTO THE TWO-PIPELINES FENCE** in
+      this same phase (*the request path writes no stage*), which is now a test. **The two cannot
+      both stand; Danny decides which.** → `server/test/requestAttribution.test.js`, the fence.
+
+- [ ] ⚠ **DO NOT "FIX" THE NIGHTLY SYNC'S 25-HOUR FILTER. THE ANSWER IS THAT IT IS CORRECT.**
+      `jobberIncrementalSync` selects `clients(filter: { updatedAt: { after: <25 hours ago> } })`,
+      so it stages only clients Jobber touched in the last 25 hours — it does **not** backfill
+      existing stage-less clients, and that surprised everyone including Danny.
+      **It does not need to.** `job-update` and `invoice-paid` are precisely the events that mean
+      *"this client converted"*, and both call `upsertAndTagClient`, so the stage lands exactly
+      when it matters. **A client who sits still stays stage-less, which is correct — nothing
+      happened to them.** Widening the filter would re-fetch the whole book nightly for no
+      behavioural gain. → `server/cron/jobs/jobberIncrementalSync.js`
+
+- [ ] ⚠ **OPEN QUESTION FOR DANNY, TO MEASURE IN GraphiQL — DOES CREATING A QUOTE OR A JOB BUMP A
+      CLIENT'S `updatedAt`?** Not assumed either way. Danny expects **not**, on the evidence that
+      a REQUEST does not: measured live during Canvass-3.7, the client stayed
+      `2026-09-14T14:48:58Z` while a request created `2026-09-18T15:41:20Z` appeared against it.
+      **If quotes and jobs behave the same way, the nightly sync can never stage a client whose
+      only activity is a quote**, and the webhooks are the sole path. **Same shape as the
+      request-`updatedAt` test that settled Canvass-3.7.**
+
+      ```graphql
+      query ClientUpdatedAtProbe($id: EncodedId!) {
+        client(id: $id) {
+          id
+          updatedAt
+          quotes(first: 5) { nodes { id quoteStatus createdAt } }
+          jobs(first: 5)   { nodes { id jobStatus   createdAt } }
+        }
+      }
+      ```
+      **Procedure:** run it against a quiet client and note `client.updatedAt`. Create a QUOTE for
+      that client in Jobber. Re-run — if `client.updatedAt` has not moved, a quote does not bump
+      it. Repeat, converting the quote to a JOB, for the job answer.
+      ⚠ **EVERY FIELD ABOVE IS ALREADY SELECTED BY A SHIPPED QUERY AT VERSION `2026-02-17`, AND
+      THAT IS DELIBERATE RATHER THAN INCIDENTAL.** `client.updatedAt` is in `fullJobberImport`'s
+      Step A; `quoteStatus`/`jobStatus`/`createdAt` are in `fetchClientRelatedData`. **GraphQL has
+      no optional field — a selection naming a field absent at our version fails the WHOLE query**,
+      so do NOT add `updatedAt` to the `quotes` or `jobs` nodes to "check both at once": that field
+      is unproven on those types here and would return nothing at all rather than a partial answer.
+
+- [x] **✅ FINDING — "A CONDITION WHOSE MEANING CHANGED WITHOUT ITS TEXT CHANGING", RAISED AND
+      RESOLVED BY KEEPING THE CONDITION RATHER THAN REPOINTING IT.** Today's Focus partitions on
+      `pc.jobber_client_id IS NULL`, which **meant** *"not referred"*. Once every client carries a
+      stage, repointing that at `jc.pipeline_stage IS NULL` was the obvious change — and it would
+      have emptied Section 2, because nearly every client now has a stage.
+      ⚠ **RULED (Danny, 2026-09-19): THE PARTITION DOES NOT MOVE.** The two sections are two
+      different JOBS, not one list split by which data happens to exist — *Referral progress* is
+      the referral network, *Recently assigned* is who the rep should be working now. **Recently
+      assigned NOW SHOWS THE STAGE**, which it could not before, and keeps assignment-recency
+      ordering. **The label stays true of its rows** (A34.5).
+      ⚠ **THE FIRST RULING ON THIS WAS WRONG AND WAS REVERSED THE SAME DAY**, which is what
+      produced the resident *"RoofMiles is not another CRM"* framing in `CLAUDE.md` — see
+      **Architectural Principles**.
+
+- [x] **✅ THE STEP H / STEP I PARTLY-WRITTEN DEFECT IS FIXED, DELIBERATELY AND NOT AS A SIDE
+      EFFECT.** `fullJobberImport` used to upsert every `jobber_clients` row in one pass and derive
+      every client's tags in a second, so a failure in the second left EVERY client half-written,
+      with no record of how far the run got. Steps H and I are now **one transaction per client**,
+      with a durable cursor (`jobber_import_progress`) written **inside the same transaction**, and
+      per-concern counters so a run reports *which* thing failed.
+      ⚠ **THE CURSOR FREEZES AT THE FIRST FAILURE RATHER THAN TRACKING A HIGH-WATER MARK.** The
+      loop does not abort on a failed client, so a plain high-water mark would advance past a
+      failure whenever a LATER client succeeded — and the resumed run would skip the one client
+      that still needed doing, silently and permanently.
+      ⚠ **AND `completed_at` IS SET ONLY WHEN NOTHING FAILED. THIS WAS WRONG FIRST**: it was set
+      unconditionally, so a run that failed two of three clients still marked itself finished, the
+      resume read (which requires `completed_at IS NULL`) found nothing, and the cursor could never
+      be acted on — a mechanism recording progress arriving with no way to record that it had not.
+      **Caught by the resume test, which is the only reason it is not still there.**
+
+- [ ] ⚠ **`fullJobberImport` NOW HAS A TEST SEAM AND ITS FIRST-EVER TESTS — AND THE RESUME IS
+      FIXTURE-PROVED, NOT LIVE-VERIFIED.** `server/test/fullImportCursor.test.js` drives the real
+      loop through an axios seam. **What is NOT verified: a real import against Jobber**, at real
+      scale, with a real mid-run failure. The cursor's behaviour under a process kill (as opposed
+      to a per-client exception) is proved only by construction — the cursor shares the client's
+      transaction, so the two commit or roll back together. **Worth one real run's observation
+      before the historical import is scoped.**
+
+- [ ] ⚠ **PER-PAGE QUERY COST IS NOW LOGGED AND HAS NOT YET BEEN READ.** `fullJobberImport`'s two
+      pacing branches compare `currentlyAvailable` against a hardcoded `PAGE_COST = 2500` that has
+      **no source**, while Jobber returns `requestedQueryCost` and `actualQueryCost` on every
+      response in the same `extensions.cost` object those branches already read `throttleStatus`
+      out of. A log line now prints the real figures **per query shape**.
+      ⚠ **NOTHING WAS RE-PACED AND `PAGE_COST` IS UNCHANGED** — substituting one guess for another
+      is how the 2500 arrived. **Read it off the Railway logs of a real import, then decide
+      separately whether the pacing changes at all.** `server/routes/admin/campaigns.js` flags the
+      identical shortcut and is the second site to revisit.
+
+- [ ] ⚠ **NINE CITATIONS INTO `server/routes/webhooks/jobber.js` WERE ALREADY WRONG BEFORE
+      CANVASS-STAGE TOUCHED IT — MEASURED AT `8da50a2`, RECORDED RATHER THAN IMPROVISED.**
+      Canvass-stage inserted ~27 lines into that file, so `citecheck --changed-files` flagged
+      them LIKELY ROTTED. **The flag means "your edit moved the target line". It says nothing
+      about whether the citation was ever right** — so each was read at its OLD line in the OLD
+      revision before anything was changed, per the standing procedure.
+      **`TENANT_RESOLUTION_REBUILD_SPEC.md`'s Batch C table — ALL FIVE WRONG, each by a different
+      amount**, verified against `grep "router.post('/jobber"` at `8da50a2`:
+
+      | Cited | Claims | Actually at | Off by |
+      |---|---|---|---|
+      | `webhooks/jobber.js:392` | `disconnect` | 426 | 34 |
+      | `webhooks/jobber.js:452` | `client-create` | 480 | 28 |
+      | `webhooks/jobber.js:529` | `client-update` | 581 | 52 |
+      | `webhooks/jobber.js:607` | `invoice-paid` | 728 | 121 |
+      | `webhooks/jobber.js:1126` | `job-update` | 1258 | 132 |
+
+      ⚠ **NO SINGLE DELTA COULD EVER HAVE REPAIRED THAT SET, AT ANY POINT IN ITS HISTORY** — the
+      strongest form of the argument against arithmetic repair, and the second time this repo has
+      measured it. **The fix is to delete the File:Line column entirely: the table's own Handler
+      column already names each subject by role**, which is the citation that cannot drift.
+      **Also already wrong:** `MEMBER_RANK_ECONOMY_SPEC.md:532` (`:1105` claims an
+      `evaluateReferral()` gate; that line is a bare `await pool.query(`), and this file's own
+      line 645 (`webhooks/jobber.js:330` names a write site that was at `:341` — inside the MVP
+      shortcut comment, not the INSERT).
+      ⚠ **THIS IS A SUBJECT RE-DERIVATION, WHICH IS A DIFFERENT AND LARGER JOB THAN A CITATION
+      REPAIR**, and doing it inside Canvass-stage's diff would have made that diff unreviewable.
+
+- [x] **✅ ONE CITATION PAIR WAS REPAIRED, BECAUSE IT LIVED IN A FILE THIS PHASE OWNS — AND IT IS
+      THE WORKED EXAMPLE OF WHY ADDING THE DELTA IS FORBIDDEN.** `upsertAndTagClient`'s
+      COALESCE comment read *"jobberIncrementalSync.js:162 and fullJobberImport.js:542"*.
+      **Verified at `8da50a2`: `fullJobberImport.js:542` was CORRECT** (it landed exactly on the
+      `INSERT INTO jobber_clients`), **and `jobberIncrementalSync.js:162` was ALREADY WRONG** — it
+      points at GraphQL error handling inside the paging loop, while that writer sat at `:286`.
+      **Canvass-stage moved both targets, so citecheck flagged both identically.** Adding this
+      commit's delta to each would have shifted the correct citation OFF its target and certified
+      the wrong one as repaired, under a message saying a defect was closed. **Both now cite by
+      role**, and the comment carries the measurement so the next reader does not re-derive it.
+
 ### Canvass-9b Part 2 — the overlay fixes, and a BLOCKER on the conversions definition (2026-09-20)
 
 - [ ] 🔴🔴 **THE NEW CONVERSIONS DEFINITION IS NOT COMPUTABLE TODAY, AND THE REASON IS THE

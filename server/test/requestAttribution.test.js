@@ -414,6 +414,12 @@ describe('Canvass-3.7 — THE FENCE: widening attribution must not widen outreac
   it('the request-driven path creates no outreach, referrer record, pending invite or alert', async () => {
     // The target list filed with the TWO-PIPELINES ruling, asserted item by item.
     const repId = await seedRep('ju-fence');
+    // The mirror row the seventh zero is asserted against — present, and unstaged.
+    await pool.query(
+      `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, last_synced_at)
+       VALUES ($1, $2, 'Fence', NOW())`,
+      [CLIENT, TENANT]
+    );
     let emailsSent = 0;
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
@@ -440,6 +446,22 @@ describe('Canvass-3.7 — THE FENCE: widening attribution must not widen outreac
     const { rows: pending } = await pool.query(`SELECT COUNT(*)::int AS n FROM pending_referrals WHERE contractor_id = $1`, [TENANT]);
     assert.equal(pending[0].n, 0, 'no pending referral record');
     assert.equal(await countOf('contact_tags'), 0, 'no Paid-Customer tag pass');
+
+    // ⚠ THE SEVENTH ZERO, ADDED IN CANVASS-STAGE. jobber_clients gained a
+    // pipeline_stage column, and the request-driven path must not write it — the
+    // three sanctioned writers are the nightly sync, the full import and the CLIENT
+    // webhooks. This path writes client_rep_assignments and nothing else.
+    // ⚠ IT IS ASSERTED AGAINST A SEEDED ROW WHOSE STAGE IS ALREADY NULL, NOT AGAINST
+    // AN ABSENT ROW. "No jobber_clients row exists" would be satisfied by a path that
+    // simply never creates rows there, which is true of this path for reasons that
+    // have nothing to do with the stage — so the absence would prove nothing. A row
+    // that EXISTS and stays unstaged is the discriminating form.
+    const { rows: staged } = await pool.query(
+      `SELECT pipeline_stage FROM jobber_clients WHERE contractor_id = $1 AND jobber_client_id = $2`,
+      [TENANT, CLIENT]
+    );
+    assert.equal(staged.length, 1, 'the seeded mirror row must still be there');
+    assert.equal(staged[0].pipeline_stage, null, 'the request path must write no pipeline stage');
   });
 
   it('POSITIVE CONTROL — a referred client still produces its outreach through the REFERRAL path', async () => {

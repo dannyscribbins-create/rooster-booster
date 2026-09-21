@@ -116,6 +116,32 @@ MVP shortcuts must be flagged with a code comment explaining: (a) the limitation
 
 > The **Known MVP shortcuts** inventory moved to `docs/ARCHITECTURE.md` in ABR 6A commit 2 — see **Known MVP shortcuts** there. The rule above is what makes that list reference: the flag lives in the code, so the inventory is a lookup, not a thing you could violate.
 
+### ⚠ ROOFMILES IS NOT ANOTHER CRM — WHAT THE REP APP IS FOR
+
+Ruled by Danny 2026-09-19, and it governs **every** rep-surface decision.
+
+**Reps do not need RoofMiles to manage and follow up with every assigned client. Jobber is
+where the work is managed.** RoofMiles tracks who is assigned to them, their
+closing/converting stats, their referral network and their referral potential, and makes it
+easier to capitalise on clients through the referral programme. **Its purpose is to help reps
+get clients into the app and into the contractor's programme, one way or another.**
+
+⚠ **THIS IS RESIDENT BECAUSE THE FAILURE IS SILENT AND LOOKS LIKE GOOD PRODUCT SENSE.** Every
+CRM-ward feature is individually reasonable — a follow-up queue, a task list, a "clients
+needing attention" sort. Each one is a small step, none of them announces itself as a change
+of purpose, and a session that has not met this sentence will propose one and be right to.
+**Meet the answer before writing the proposal** — the same reasoning that makes the Jobber
+write-back ruling resident (*Never Break → Jobber API*, A36.5.a).
+
+⚠ **THE WORKED EXAMPLE IS A RULING THAT WAS MADE AND REVERSED THE SAME DAY.** Canvass-stage
+gave every client a pipeline stage. Today's Focus split its two sections on *"has a stage"*,
+so the obvious consequence was that one section would empty and should be merged away — and
+that was ruled, then **reversed by Danny within the hour**: the two sections are two different
+JOBS (the referral network; who to work now), not one list split by which data happens to
+exist. The partition stayed on the referral record. **Deciding a rep-surface question from the
+shape of the data rather than from what the app is for is exactly what this block exists to
+catch**, and it caught its author.
+
 ---
 
 ## Architecture
@@ -344,7 +370,35 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1574 server tests across 254 suites, and 1323 React tests across 79 files** (measured 2026-09-20 by the Canvass-9b Part 2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1574 · suites 254 · pass 1574 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1590 server tests across 260 suites, and 1325 React tests across 79 files** (measured 2026-09-20 by the Canvass-stage commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1590 · suites 260 · pass 1590 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-STAGE COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
+  TESTS.** Server 1574 → 1590 is **+16 = 8 + 6 + 2**: eight in one new file
+  (`pipelineStageWriters.test.js`), six in another (`fullImportCursor.test.js`), and **two appended
+  to EXISTING describes** in `repClients.test.js`. Suites 254 → 260 is **+6 = 3 + 3** — those two
+  new files' three top-level `describe` blocks each; the repClients pair landed inside describes
+  that already existed, so they add cases without adding a suite.
+  ⚠ **COUNTED WITH `grep -c`, AND BOTH NEW FILES CONTAIN NO LOOP OF ANY KIND** — checked
+  explicitly rather than assumed, because a loop's position is a property of the file and not of
+  the arc. So 8 and 6 are exact, not 8 × anything.
+  ⚠ **REACT 1323 → 1325 IS +2 WHILE THE FILE COUNT HOLDS AT 79**, which is the shape that means
+  an existing suite grew rather than a new one arriving. Both are in `repHomeScreen.test.jsx`.
+  **A THIRD CASE THERE WAS RENAMED AND CONTRIBUTES 0** — its title had been INVERTED by this
+  phase (*"section 2 shows the assignment date"* stated a contrast that stopped being true when
+  section 2 gained a stage), and it kept passing only because its fixture had no stage to show.
+  ⚠ **NO PHANTOM, AND IT WAS ASKED BEFORE THE RUN.** This commit's `src/` changes are confined to
+  `src/components/rep/`, which is **not** one of `adminBranding.test.jsx`'s four walked roots, and
+  it adds no new non-test file to any of them — so the arithmetic closes at exactly 2.
+  ⚠ **AND NINE GUARD-PROOFS WERE RUN, OF WHICH TWO FOUND VACUOUS TESTS — WHICH IS THE ENTRY
+  WORTH KEEPING.** Injecting the flattened client shape into the sync took **all seven** stage
+  cases red, every one reporting `actual: 'lead'`; reinstating a referral gate took **five** red
+  and left the two REFERRED cases green; breaching the fence's seventh zero took exactly **one**;
+  degrading the import cursor to a high-water mark took **one**; removing the per-client
+  transaction took **three**. ⚠ **But removing the COALESCE left all seven GREEN**, and disabling
+  resume entirely left all six GREEN — both tests were passing for the wrong reason. The first
+  made its fetch THROW, which aborts before the upsert, so the stage survived because nothing was
+  written; the second keyed on `clients_done`, which resets on a non-resume and reaches the same
+  number by both routes. **Repaired to drive a resolved 200 with a null client, and to observe a
+  sentinel on the prefix row** — both then failed as predicted.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CANVASS-9b PART 2 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
   TESTS.** React 1319 → 1323 is **+4**, all appended to the EXISTING
   `repInfoAndReveal.test.jsx` for the three overlay fixes — so **the FILE count stays 79** and the
@@ -1248,6 +1302,29 @@ above a list of six.
     unchanged, and *"the sentinel is absent"* read like a pass each time. **Fixed by
     parameterising the write and READING THE COLUMN BACK before trusting the page.** ⚠ **An
     absence assertion must first prove the presence it is asserting the absence of.**
+
+12. **A FIXTURE SEEDED WITH THE VALUE A BROKEN READ ALSO PRODUCES.** Found in Canvass-stage,
+    before it shipped, and it is the *wiring* counterpart to #10 and #11 — there a default hid a
+    missing provider and a missing supply; here the DEFAULT VERDICT of a pure function hides that
+    the function was handed the wrong shape entirely.
+    `classifyPipelineStatus` reads the GraphQL **connection** shape — `client.jobs?.nodes`,
+    `client.quotes?.nodes`, `job.invoices?.nodes`. The object every caller has nearest to hand is
+    the **flattened** one built for `deriveAndSaveTags`, which needs the exact opposite. Hand it
+    the flattened object and `undefined?.nodes || []` yields empty arrays for jobs AND quotes —
+    which is the classifier's first branch, so it returns **`'lead'`**. No throw, no warning.
+    ⚠ **THE CONSEQUENCE IS WHAT MAKES IT WORTH A NUMBER: the column fills with a plausible verdict
+    for the ENTIRE book and the dependent stat sits at zero forever, reading as a business fact
+    rather than a bug.** *"Most of our clients are leads and conversions are slow"* is a sentence
+    a contractor would simply accept.
+    ⚠ **AND A `'lead'` FIXTURE PASSES AGAINST IT.** Seeding the state that happens to equal the
+    default makes correct wiring and no wiring indistinguishable — the vacuity is in the FIXTURE,
+    not in the assertion, which is why reading the test tells you nothing.
+    **THE RULE: seed the state FURTHEST from the function's default, and prefer one that can only
+    be reached by traversing the whole structure.** Here that is a client with a job AND a paid
+    invoice, since `'paid'` requires walking `jobs.nodes` and then `invoices.nodes`. Proven: the
+    flattened shape injected into the writer took all seven cases RED, every one reporting
+    `actual: 'lead'`. ⚠ **More generally — when two consumers of one fetch need opposite shapes,
+    say so at both sites**; the shapes are individually correct and the mismatch is invisible.
 
 **The conclusion:** non-vacuity assertions belong in tests that look **too simple to need
 them** — grep-a-file, render-and-check, slice-a-string — because that is exactly where this

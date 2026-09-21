@@ -336,7 +336,7 @@ router.get('/api/rep/clients', async (req, res) => {
          (jc.jobber_client_id IS NULL) AS client_row_missing,
          -- The cursor's timestamp, as TEXT so microseconds survive the round trip.
          cra.updated_at::text                                  AS cursor_ts,
-         pc.pipeline_status,
+         jc.pipeline_stage,
          COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
          COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
@@ -346,9 +346,16 @@ router.get('/api/rep/clients', async (req, res) => {
        LEFT JOIN jobber_clients jc
          ON jc.contractor_id = cra.contractor_id
         AND jc.jobber_client_id = cra.jobber_client_id
-       LEFT JOIN pipeline_cache pc
-         ON pc.contractor_id = cra.contractor_id
-        AND pc.jobber_client_id = cra.jobber_client_id
+       -- ⚠ THE pipeline_cache JOIN IS GONE FROM THIS QUERY (Canvass-stage, Ruling 1).
+       -- The pc.pipeline_status column was the only one it supplied here, and the stage now
+       -- comes from jobber_clients, so the join had nothing left to contribute.
+       -- ⚠ RULING 1 IS "READ jobber_clients ONLY — NO FALL-BACK TO pipeline_cache", and
+       -- the reason is a frozen row, not tidiness: clearing "Referred by" in Jobber
+       -- freezes that client's pipeline_cache stage forever, so a read-and-fall-back
+       -- would PREFER the frozen value over the correct daily-updated one. One source
+       -- also means no read-order question and no way for the 'app_user' string — which
+       -- pipeline_cache.pipeline_status can hold and which is not a stage at all — to
+       -- reach this payload.
        LEFT JOIN flagged_assignments fa
          ON fa.contractor_id = cra.contractor_id
         AND fa.jobber_client_id = cra.jobber_client_id
@@ -408,7 +415,13 @@ router.get('/api/rep/clients', async (req, res) => {
         // it must not reuse 'Unnamed client', which means something else entirely.
         name: r.client_row_missing ? null : (r.client_name || 'Unnamed client'),
         nameUnavailable: r.client_row_missing,
-        stage: r.pipeline_status,          // null = no referral record (A34.4's whole book)
+        // ⚠ THE MEANING OF `null` HERE CHANGED IN CANVASS-STAGE, AND THE OLD COMMENT
+        // WOULD NOW BE INVERTED RATHER THAN MERELY STALE — so it is corrected, not kept.
+        // It read "null = no referral record". The stage no longer comes from the
+        // referral table at all: null now means NOT YET CLASSIFIED — no Jobber event has
+        // touched this client since the column shipped. A referred client and a
+        // non-referred one both carry a real stage.
+        stage: r.pipeline_stage,
         assignmentSource: r.assignment_source,
         isSticky: r.is_sticky,
         assignedAt: r.assigned_at,
@@ -487,7 +500,13 @@ router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
          (jc.jobber_client_id IS NULL)                         AS client_row_missing,
          jc.email,
          jc.phone,
-         pc.pipeline_status,
+         jc.pipeline_stage,
+         -- ⚠ THE pipeline_cache JOIN SURVIVES IN THIS QUERY ALONE, AND ONLY FOR THIS
+         -- COLUMN. The stage moved to jobber_clients (Ruling 1) and the detail screen
+         -- reads it from there; referred_by has no home but pipeline_cache, so the
+         -- join stays here and was deleted from the client-list query, which used it
+         -- for nothing else. ⚠ SO DO NOT CLAIM "the rep tree reads no pipeline_cache".
+         -- It reads exactly one column, in exactly one query, for the referrer's name.
          pc.referred_by,
          COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
@@ -535,7 +554,7 @@ router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
       nameUnavailable: r.client_row_missing,
       email: r.email ?? null,
       phone: r.phone ?? null,
-      stage: r.pipeline_status,
+      stage: r.pipeline_stage,
       referredBy: r.referred_by ?? null,
       assignmentSource: r.assignment_source,
       isSticky: r.is_sticky,
@@ -691,6 +710,35 @@ router.get('/api/rep/home', async (req, res) => {
     // conversions. The number starts accumulating when real referrals convert AFTER
     // launch. **Building it is what makes that recordable**; waiting for a number that
     // cannot arrive until the plumbing exists is circular.
+    // ── ⚠ THE STAGE-BASED REDEFINITION IS STILL BLOCKED, BY A SECOND BLOCKER THAT
+    //      CANVASS-STAGE REVEALED BY REMOVING THE FIRST ONE. LEFT UNCHANGED HERE.
+    //
+    // 8da50a2 found the first: no client outside the referral pipeline had a stage at
+    // all, so "clients who turned into a sold job" was not computable and DIRECT was
+    // structurally zero. This phase fixes that — every client now carries a stage.
+    //
+    // ⚠ THE SECOND BLOCKER IS THAT THE STAGE HAS NO HISTORY. jobber_clients.pipeline_stage
+    // is a CURRENT value; nothing anywhere records WHEN a client became 'sold'. This
+    // screen carries a week/month/year/all timeframe bar, so a conversions figure has to
+    // answer "how many converted IN THIS WINDOW" — and there is no column that can.
+    // ⚠ AND THE OBVIOUS SUBSTITUTE IS EXPLICITLY FORBIDDEN by conversionTimeframeClause's
+    // own header in repBook.js: windowing a conversion count by the assignment date
+    // "would count conversions by the age of an unrelated assignment row and return a
+    // plausible number for a question nobody asked." That is this defect exactly.
+    //
+    // WHAT WOULD CLOSE IT: a write-once `sold_at` on jobber_clients, set the first time
+    // a client's stage reaches 'sold' or 'paid' and never overwritten — the same pattern
+    // pipeline_cache.paid_at already uses, and the three writers already compute the
+    // stage they would need to compare against. It was NOT added here because the
+    // migration approved for this phase was one column.
+    //
+    // ⚠ AND WHEN IT IS BUILT, THE COUNT IS `IN ('sold','paid')`, NEVER `= 'sold'`.
+    // The classifier returns a single current stage, so counting 'sold' alone makes the
+    // number SHRINK as jobs get paid — the most successful conversions leaving the count
+    // and reading as lost work. Once sold, always converted. (Danny's admin panel
+    // documents Sold contractor-facing as "Job created in Jobber", which is exactly
+    // classifyPipelineStatus's own rule: a job exists and no invoice is paid yet. The
+    // two agree, and that agreement is recorded here so neither drifts alone.)
     const { rows: convRows } = await pool.query(
       `SELECT COUNT(*)::int AS conversions
          FROM referral_conversions rc
@@ -715,15 +763,26 @@ router.get('/api/rep/home', async (req, res) => {
          cra.jobber_client_id,
          TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client_name,
          (jc.jobber_client_id IS NULL)                                          AS client_row_missing,
-         pc.pipeline_status,
+         jc.pipeline_stage,
          COALESCE(cra.sticky_set_at, cra.provisional_set_at)                    AS assigned_at
        FROM client_rep_assignments cra
        LEFT JOIN jobber_clients jc
          ON jc.contractor_id = cra.contractor_id AND jc.jobber_client_id = cra.jobber_client_id
+       -- ⚠ STILL AN INNER JOIN, AND STILL ON pipeline_cache — THE PARTITION DID NOT
+       -- MOVE. This section is "clients with a referral record", and a referral record
+       -- IS a pipeline_cache row. The STAGE moved to jobber_clients; the MEMBERSHIP
+       -- test did not, and must not. See Section 2's note for the ruling.
        JOIN pipeline_cache pc
          ON pc.contractor_id = cra.contractor_id AND pc.jobber_client_id = cra.jobber_client_id
        WHERE ${OWN_BOOK_PREDICATE}
-         AND pc.pipeline_status IS NOT NULL
+       -- ⚠ THE pc.pipeline_status IS NOT NULL CONDITION IS GONE, AND ITS REMOVAL IS
+       -- REQUIRED RATHER THAN TIDYING. It was the old proxy for "has a stage" — exactly
+       -- the thing that has moved tables — so leaving it would have gated this section
+       -- on the referral table's stage while displaying jobber_clients'. It also made
+       -- the two sections a NON-exhaustive partition: a client with a pipeline_cache
+       -- row whose status was NULL appeared in NEITHER section and vanished from
+       -- Today's Focus entirely. Section 1 is now exactly the complement of Section 2,
+       -- which is what the comment down there has always claimed.
        ORDER BY ${STAGE_RANK_SQL} DESC, cra.updated_at DESC, cra.jobber_client_id DESC
        LIMIT $3`,
       [...params, FOCUS_LIMIT]
@@ -732,11 +791,27 @@ router.get('/api/rep/home', async (req, res) => {
     // ── SECTION 2 — RECENTLY ASSIGNED ────────────────────────────────────────
     // ⚠ THE COMPLEMENT, NOT A SECOND PAGE. `pipeline_cache` row absent is the
     // condition — so every client appears in exactly one section and none in both.
+    //
+    // ⚠ THE CONDITION DELIBERATELY DID NOT MOVE TO `jc.pipeline_stage IS NULL`, AND
+    // THIS IS THE ONE DECISION IN THE PHASE MOST WORTH READING BEFORE EDITING.
+    // Repointing it at the stage was the obvious change once every client has a stage,
+    // and it was RULED AGAINST (Danny, 2026-09-19) after this phase raised it: the
+    // condition's TEXT would not have changed meaningfully, but its MEANING would have
+    // — "no referral record" would silently have become "not yet classified" — and the
+    // section would have emptied out, because nearly every client now has a stage.
+    //
+    // THE TWO SECTIONS ARE TWO DIFFERENT JOBS, NOT ONE LIST SPLIT BY WHAT DATA HAPPENS
+    // TO EXIST. Referral progress is the referral network, which is the product's
+    // point. Recently assigned is "who should I be working now" — and RoofMiles is not
+    // another CRM, so that question is about getting a client into the programme, not
+    // about managing the job. Jobber manages the job. The stage is now shown in BOTH
+    // because both questions want it; the partition belongs to neither.
     const { rows: recent } = await pool.query(
       `SELECT
          cra.jobber_client_id,
          TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client_name,
          (jc.jobber_client_id IS NULL)                                          AS client_row_missing,
+         jc.pipeline_stage,
          COALESCE(cra.sticky_set_at, cra.provisional_set_at)                    AS assigned_at
        FROM client_rep_assignments cra
        LEFT JOIN jobber_clients jc
@@ -745,6 +820,10 @@ router.get('/api/rep/home', async (req, res) => {
          ON pc.contractor_id = cra.contractor_id AND pc.jobber_client_id = cra.jobber_client_id
        WHERE ${OWN_BOOK_PREDICATE}
          AND pc.jobber_client_id IS NULL
+       -- ⚠ ORDER UNCHANGED — assignment recency, not stage. Ranking this section by
+       -- stage would duplicate Referral progress's ordering and collapse the two jobs
+       -- above into one list, and the subtitle claims recency. The label must stay true
+       -- of the rows beneath it, which is A34.5's whole point.
        ORDER BY COALESCE(cra.sticky_set_at, cra.provisional_set_at) DESC NULLS LAST,
                 cra.jobber_client_id DESC
        LIMIT $3`,
@@ -764,8 +843,13 @@ router.get('/api/rep/home', async (req, res) => {
       // that is an implementation fact and not something the payload should expose.
       stats: { ...statRows[0], conversions: convRows[0].conversions },
       focus: {
-        furthestAlong: furthest.map((r) => ({ ...shape(r), stage: r.pipeline_status })),
-        recentlyAssigned: recent.map(shape),
+        furthestAlong: furthest.map((r) => ({ ...shape(r), stage: r.pipeline_stage })),
+        // ⚠ RECENTLY ASSIGNED NOW CARRIES A STAGE TOO (Canvass-stage, Danny's ruling).
+        // It could not before: the only stage column lived on pipeline_cache, and this
+        // section is BY DEFINITION the clients with no pipeline_cache row. That is the
+        // visible win of this phase for a rep — the section that answers "who should I
+        // be working now" can finally say where each of them stands.
+        recentlyAssigned: recent.map((r) => ({ ...shape(r), stage: r.pipeline_stage })),
       },
       limit: FOCUS_LIMIT,
     });

@@ -96,7 +96,13 @@ describe('Canvass-6 — the two sections are two orderings, not one ranking', ()
     expect(s2.textContent).not.toContain('Client staged');
   });
 
-  it('section 1 shows the stage, section 2 shows the assignment date', async () => {
+  // ⚠ THIS CASE'S NAME WAS INVERTED BY CANVASS-STAGE, NOT MERELY MADE STALE, SO IT IS
+  // CORRECTED RATHER THAN LEFT. It read "section 1 shows the stage, section 2 shows the
+  // assignment date", which stated a CONTRAST that is no longer true: section 2 now
+  // shows the stage as well. It kept passing only because its section-2 fixture had no
+  // stage to show — a test that agrees with the new behaviour by accident while its
+  // title instructs the next reader against it.
+  it('section 1 shows the stage, and section 2 shows the assignment date when there is no stage', async () => {
     mount(payload({
       furthestAlong: [client('a', { stage: 'paid' })],
       recentlyAssigned: [client('b')],
@@ -104,6 +110,32 @@ describe('Canvass-6 — the two sections are two orderings, not one ranking', ()
     // 'paid' renders as "Complete" — the mapping CLAUDE.md keeps resident.
     expect(await screen.findByText('Complete')).toBeTruthy();
     expect(screen.getByText(/Sep 15/)).toBeTruthy();
+  });
+
+  // ⚠ THE PHASE'S VISIBLE WIN FOR A REP, AND IT WAS UNRENDERABLE BEFORE. Section 2 is by
+  // definition the clients with no referral record, and until Canvass-stage the only
+  // pipeline stage in the schema lived on the referral table — so these rows COULD NOT
+  // carry one. A rep could not see that a directly-assigned client had sold.
+  it('⚠ section 2 now shows a STAGE for a client that has one — beside its date, not instead of it', async () => {
+    mount(payload({
+      recentlyAssigned: [client('direct', { stage: 'sold' })],
+    }));
+    const s2 = (await screen.findByText('Recently assigned')).closest('section');
+    expect(s2.textContent).toContain('Sold');
+    // ⚠ THE DATE MUST SURVIVE. The subtitle claims "newest assignment first", and
+    // dropping the date would leave that ordering claim unverifiable on screen — the
+    // "a label must be true of its rows" rule arriving from the other direction.
+    expect(s2.textContent).toContain('Sep 15');
+  });
+
+  it('⚠ and a stage-less row in section 2 still shows its date, with no stray separator', async () => {
+    // The paired negative. The trailing is built by joining two optional parts, so the
+    // failure mode is a dangling separator on a row with only one of them — visible to
+    // a rep, invisible to a test that only asserts the date is present.
+    mount(payload({ recentlyAssigned: [client('plain')] }));
+    const s2 = (await screen.findByText('Recently assigned')).closest('section');
+    expect(s2.textContent).toContain('Sep 15');
+    expect(s2.textContent).not.toContain('·');
   });
 
   it('⚠ an EMPTY section 1 reads as a fact, not an error or a gap', async () => {
