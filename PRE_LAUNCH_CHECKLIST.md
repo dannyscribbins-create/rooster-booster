@@ -4231,12 +4231,30 @@ may legitimately change several of these subjects.*
       state (a conversions referrer pointed at `jc-beta-1`) and no assertion had ever read it.
       **A regression fence now exists and is guard-proofed:** restoring the join takes it red.
 
-- [ ] ⚠ **THE SAME SHAPE MAY EXIST ELSEWHERE — NOT SWEPT.** Two sites in `server/routes/rep.js`
-      were fixed. **Any query that LEFT JOINs a table with no uniqueness on the join key, purely
-      to test existence, has this defect.** `flagged_assignments` is joined the same way in the
-      list query and is filtered to `status = 'open'` + one `flag_reason` — **a client with two
-      open co-assignment flags naming the same rep would duplicate identically.** Not fixed here
-      because it needs its own fixture and its own look; filed rather than assumed safe.
+- [x] **✅ THE SAME SHAPE WAS FOUND IN `flagged_assignments` AND FIXED — AND IT WAS WORSE THAN THE
+      FIRST.** Three queries joined it the same way, and it has no uniqueness on
+      (contractor_id, jobber_client_id) either: **one client can carry two open co-assignment
+      flags naming the same rep** — a second co-assignment raised before the first was resolved.
+      · in the **LIST**, that duplicated the client's row;
+      · in the **DETAIL** route, two rows came back for one client;
+      · 🔴 **in the STATS query it was worst: `COUNT(*)` counts the client once per flag, so
+        CLIENTS and LOCKED inflate as well as FLAGGED.** The rep's headline number on Home would
+        have been wrong, not merely its flag count.
+      **Fixed by extracting `openCoFlagExists()` into `repBook.js`** — a predicate, not a join —
+      for the same reason `OWN_BOOK_PREDICATE` lives there: three copies of the scoping already
+      existed, and a fix landing in two of them would leave the third inflating, **which is
+      exactly how the original defect reached three readers at once.**
+      ⚠ **THE FIXTURE DID NOT MODEL THE STATE.** Every existing flag fixture seeded exactly one
+      flag, so the duplication was unreachable by any assertion. The new case seeds two.
+      ⚠ **AND THE FIRST GUARD-PROOF PROVED NOTHING, WHICH IS WORTH THE LINE.** Swapping `EXISTS`
+      for a correlated `COUNT(*) > 0` left all 73 cases green — correctly, since both de-duplicate.
+      Only restoring the actual LEFT JOIN took it red. **An injection must reintroduce the DEFECT,
+      not merely a different spelling of the fix**, and a green result from the wrong injection
+      reads exactly like a fence that works.
+      ⚠ **THE GENERAL FORM, WHICH IS THE REASON THE FIRST INSTANCE WAS FILED RATHER THAN JUST
+      FIXED:** *any query that LEFT JOINs a table with no uniqueness on the join key, purely to
+      test existence, has this defect.* The first was found by looking at a rendered screen; the
+      second by asking where else the shape lived. **The second method is far cheaper.**
 
 ### Canvass-stage — conversions SHIPPED, and the cancellation question ruled (2026-09-21)
 

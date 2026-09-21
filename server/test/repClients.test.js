@@ -333,6 +333,49 @@ describe('Canvass-4 — A34.4: the WHOLE book, not the referred slice', () => {
     assert.equal(res.body.total, 1, 'the list and the total must agree');
   });
 
+  it('[RED] ⚠ TWO OPEN FLAGS on one client do not duplicate it — list, total and STATS', async () => {
+    // ⚠ THE SECOND INSTANCE OF THE FAN-OUT SHAPE IN ONE ARC, AND THE STATE NO FIXTURE
+    // HAD EVER MODELLED. `flagged_assignments` has no uniqueness on
+    // (contractor_id, jobber_client_id), so one client can carry TWO open
+    // co-assignment flags naming the same rep — a second co-assignment raised before
+    // the first was resolved. Every existing flag fixture seeded exactly one, so the
+    // duplication was unreachable by any assertion.
+    //
+    // ⚠ AND THE STATS QUERY IS THE WORST OF THE THREE READERS, WHICH IS WHY THIS CASE
+    // ASSERTS THEM RATHER THAN JUST THE LIST. With a join, `COUNT(*)` counts the client
+    // once per flag — so CLIENTS and LOCKED inflate as well as FLAGGED, and the rep's
+    // headline number on Home is wrong, not merely its flag count.
+    const me = await seedRep(TENANT, 'me@a.test');
+    const other = await seedRep(TENANT, 'other@a.test');
+    await seedSession('tok-twoflags', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-two-flags', 'Flagged');
+    await assign(TENANT, 'jc-two-flags', { sticky: me });
+    // TWO open co-assignment flags, both naming this rep — the unmodelled state.
+    for (const n of [1, 2]) {
+      await pool.query(
+        `INSERT INTO flagged_assignments
+           (contractor_id, jobber_client_id, flag_reason, reps_involved, status)
+         VALUES ($1, 'jc-two-flags', 'rep_co_assignment', $2::jsonb, 'open')`,
+        [TENANT, JSON.stringify([me, other, n])]
+      );
+    }
+
+    const res = await request('/api/rep/clients', 'tok-twoflags');
+    const rows = res.body.clients.filter((c) => c.jobberClientId === 'jc-two-flags');
+    assert.equal(rows.length, 1, 'two open flags must not duplicate the client row');
+    assert.equal(res.body.total, 1, 'and the list and the total must agree');
+    // ⚠ THE PAIRED POSITIVE. "It appears once" is also true of a client dropped
+    // entirely, and dropping the row is the other way a fan-out disappears — so the
+    // answer the join existed to produce must still be right.
+    assert.equal(rows[0].isFlagged, true, 'and it must still read as flagged');
+
+    // The stats, over the same fixture in the same request shape.
+    const home = await request('/api/rep/home', 'tok-twoflags');
+    assert.equal(home.body.stats.clients, 1, 'CLIENTS must not inflate');
+    assert.equal(home.body.stats.locked, 1, 'LOCKED must not inflate');
+    assert.equal(home.body.stats.flagged, 1, 'and FLAGGED counts the client, not the flags');
+  });
+
   it('[RED] DISCRIMINATING CONTROL — the referral join must stay a LEFT JOIN', async () => {
     // ⚠ RESTORING THE pipeline_cache JOIN FOR is_referred RE-OPENS THE EXACT DEFECT
     // A34.4 EXISTS TO PREVENT, and a one-word diff is all it takes. Canvass-stage had

@@ -370,9 +370,11 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1622 server tests across 269 suites, and 1329 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage conversions commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1622 · suites 269 · pass 1622 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1623 server tests across 269 suites, and 1329 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage conversions commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1623 · suites 269 · pass 1623 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CONVERSIONS COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
-  TESTS.** Server 1606 → **1622** is **+16 = 13 + 2 + 1**: thirteen in one new file
+  TESTS.** Server 1606 → **1623** is **+17 = 13 + 2 + 1 + 1**: the last two are fan-out
+  fences added late, and **BOTH were the same defect shape in two different tables** — see below.
+  Read as 13 + 2: thirteen in one new file
   (`saleGrouping.test.js`), a net +2 in the REWRITTEN `repConversions.test.js`, and **+1 for a
   fan-out fence added late** — see below. Read as 13 + 2: thirteen in one new file
   (`saleGrouping.test.js`) and a net **+2** in `repConversions.test.js`, which was REWRITTEN
@@ -395,8 +397,20 @@ then say what was not checked.
   ⚠ **AND THE `EXIT=` LINE IS WHY THE RED RUN WAS NOTICED AT ALL.** The background task reported
   **exit 0** while the log's own `EXIT=` line read **1** — the wrapper's status, not the gate's.
   **Read the EXIT= written into the log, never the harness's summary of it.**
-  ⚠ **AND THE LAST +1 CAME FROM A LIVE DEFECT FOUND IN A BROWSER, NOT BY A TEST — WHICH IS THE
-  ENTRY WORTH KEEPING.** A client with TWO linked `users` rows rendered TWICE in the rep's book:
+  ⚠ **THE SECOND FAN-OUT WAS FOUND BY ASKING WHERE ELSE THE SHAPE LIVED, AND IT WAS WORSE.**
+  `flagged_assignments` was joined the same way in THREE queries, and it has no uniqueness on
+  (contractor_id, jobber_client_id) either — one client can carry two open co-assignment flags
+  naming one rep. In the LIST that duplicates a row; **in the STATS query `COUNT(*)` counts the
+  client once per flag, so CLIENTS and LOCKED inflate as well as FLAGGED** and the rep's headline
+  number on Home is wrong. **The first instance was found by looking at a screen; the second by
+  asking what else had the shape** — which is the cheaper of the two and is why the first one was
+  filed with its general form rather than just fixed.
+  ⚠ **AND THE FIRST GUARD-PROOF FOR IT PROVED NOTHING.** Swapping `EXISTS` for a correlated
+  `COUNT(*) > 0` left all 73 green — correctly, since both de-duplicate. Only restoring the actual
+  LEFT JOIN took it red. **An injection has to reintroduce the DEFECT, not merely a different
+  spelling of the fix.**
+  ⚠ **AND THE FIRST OF THE TWO CAME FROM A LIVE DEFECT FOUND IN A BROWSER, NOT BY A TEST — WHICH
+  IS THE ENTRY WORTH KEEPING.** A client with TWO linked `users` rows rendered TWICE in the rep's book:
   `membership_confirmed` was a `LEFT JOIN` on a column with no uniqueness, so it emitted one row
   per match while `total` counted the client once. **No fixture had two users on one client, so
   no assertion could see it** — the seeder models the state and nothing had ever read it. **A

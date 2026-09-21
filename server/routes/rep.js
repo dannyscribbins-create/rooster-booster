@@ -10,6 +10,7 @@ const { logError } = require('../middleware/errorLogger');
 const {
   OWN_BOOK_PREDICATE,
   STAGE_RANK_SQL,
+  openCoFlagExists,
   parseTimeframe,
   timeframeClause,
 } = require('../utils/repBook');
@@ -345,7 +346,7 @@ router.get('/api/rep/clients', async (req, res) => {
          COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
          COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
-         (fa.id IS NOT NULL)                                   AS is_flagged,
+         ${openCoFlagExists(2)}                                 AS is_flagged,
          -- ⚠ EXISTS, NOT A JOIN, AND THIS FIXED A LIVE DOUBLE-COUNT FOUND IN THE BROWSER.
          -- The users.jobber_client_id column has NO unique constraint and no index, so two app
          -- users can legitimately point at one Jobber client — an imperfect match, or a
@@ -384,12 +385,6 @@ router.get('/api/rep/clients', async (req, res) => {
        -- also means no read-order question and no way for the 'app_user' string — which
        -- pipeline_cache.pipeline_status can hold and which is not a stage at all — to
        -- reach this payload.
-       LEFT JOIN flagged_assignments fa
-         ON fa.contractor_id = cra.contractor_id
-        AND fa.jobber_client_id = cra.jobber_client_id
-        AND fa.status = 'open'
-        AND fa.flag_reason = 'rep_co_assignment'
-        AND fa.reps_involved @> to_jsonb($2::int)
 
        WHERE ${OWN_BOOK_PREDICATE}
          ${timeframeClause(6)}
@@ -542,7 +537,7 @@ router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
          COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
          COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
-         (fa.id IS NOT NULL)                                   AS is_flagged,
+         ${openCoFlagExists(2)}                                 AS is_flagged,
          -- ⚠ EXISTS, NOT A JOIN, AND THIS FIXED A LIVE DOUBLE-COUNT FOUND IN THE BROWSER.
          -- The users.jobber_client_id column has NO unique constraint and no index, so two app
          -- users can legitimately point at one Jobber client — an imperfect match, or a
@@ -570,12 +565,6 @@ router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
        -- ⚠ A34.7, REUSED EXACTLY AS THE LIST SCOPES IT. Orphan flags are admin-only
        -- and must not reach a rep; only a co-assignment flag NAMING this rep does.
        -- The list's first draft joined on client alone and would have leaked one.
-       LEFT JOIN flagged_assignments fa
-         ON fa.contractor_id = cra.contractor_id
-        AND fa.jobber_client_id = cra.jobber_client_id
-        AND fa.status = 'open'
-        AND fa.flag_reason = 'rep_co_assignment'
-        AND fa.reps_involved @> to_jsonb($2::int)
 
        WHERE ${OWN_BOOK_PREDICATE}
          AND cra.jobber_client_id = $3`,
@@ -708,16 +697,10 @@ router.get('/api/rep/home', async (req, res) => {
          COUNT(*)::int                                                          AS clients,
          COUNT(*) FILTER (WHERE cra.sticky_rep_id IS NOT NULL)::int             AS locked,
          COUNT(*) FILTER (WHERE cra.sticky_rep_id IS NULL)::int                 AS provisional,
-         COUNT(*) FILTER (WHERE fa.id IS NOT NULL)::int                         AS flagged
+         COUNT(*) FILTER (WHERE ${openCoFlagExists(2)})::int                    AS flagged
        FROM client_rep_assignments cra
        -- A34.7, scoped exactly as the list and the detail scope it: only OPEN
        -- co-assignment flags naming THIS rep. Orphan flags are admin-only.
-       LEFT JOIN flagged_assignments fa
-         ON fa.contractor_id = cra.contractor_id
-        AND fa.jobber_client_id = cra.jobber_client_id
-        AND fa.status = 'open'
-        AND fa.flag_reason = 'rep_co_assignment'
-        AND fa.reps_involved @> to_jsonb($2::int)
        WHERE ${OWN_BOOK_PREDICATE}
          ${timeframeClause(3)}`,
       windowed

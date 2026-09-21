@@ -146,10 +146,51 @@ function timeframeClause(n) {
               OR COALESCE(cra.sticky_set_at, cra.provisional_set_at) >= $${n}::timestamptz)`;
 }
 
+// ── THE OPEN CO-ASSIGNMENT FLAG, AS A PREDICATE RATHER THAN A JOIN ──────────
+//
+// A34.7's scoping, in one place: only OPEN co-assignment flags NAMING THIS REP.
+// Orphan flags are admin-only and must never reach a rep.
+//
+// ⚠ IT IS AN `EXISTS` AND NOT A `LEFT JOIN`, AND THAT IS A BUG FIX RATHER THAN A
+// STYLE CHOICE. `flagged_assignments` has no uniqueness on
+// (contractor_id, jobber_client_id), so ONE CLIENT CAN CARRY TWO OPEN
+// co-assignment flags naming the same rep — a second co-assignment raised before
+// the first was resolved. A join then emits ONE ROW PER FLAG, and every reader
+// inflates at once:
+//   · the LIST renders that client twice;
+//   · the DETAIL route sees two rows for one client;
+//   · and the STATS query is the worst of the three — `COUNT(*)` counts the client
+//     twice, so **CLIENTS and LOCKED inflate as well as FLAGGED**. The rep's
+//     headline number on Home would be wrong, not just the flag count.
+//
+// ⚠ THIS IS THE SECOND INSTANCE OF THE SAME SHAPE IN ONE ARC. `membership_confirmed`
+// had it through `users.jobber_client_id`, found by looking at a rendered screen.
+// **A boolean needs EXISTS; a join is for columns you are going to SELECT.** The
+// general form: a LEFT JOIN used to answer yes/no is a latent fan-out wherever the
+// join key is not unique, and nothing about the query looks wrong.
+//
+// ⚠ EXTRACTED HERE FOR THE REASON OWN_BOOK_PREDICATE IS: three copies of this
+// scoping already existed and a fix landing in two of them would leave the third
+// inflating — which is exactly how the original defect reached three readers.
+//
+// @param {number} n - the 1-based parameter position holding the team member id
+// @returns {string} a SQL expression evaluating to boolean
+function openCoFlagExists(n) {
+  return `EXISTS (
+           SELECT 1 FROM flagged_assignments fa
+            WHERE fa.contractor_id = cra.contractor_id
+              AND fa.jobber_client_id = cra.jobber_client_id
+              AND fa.status = 'open'
+              AND fa.flag_reason = 'rep_co_assignment'
+              AND fa.reps_involved @> to_jsonb($${n}::int)
+         )`;
+}
+
 module.exports = {
   OWN_BOOK_PREDICATE,
   STAGE_RANK_SQL,
   TIMEFRAME_DAYS,
+  openCoFlagExists,
   parseTimeframe,
   timeframeClause,
 };
