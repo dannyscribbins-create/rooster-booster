@@ -164,6 +164,43 @@ describe('Canvass-4 — the list', () => {
     expect(meta.textContent).toContain('Assigned');
   });
 
+  // ── RULING 2 (Danny, 2026-09-21) — TWO CHANNELS, NEITHER BORROWING THE OTHER ──
+  it('⚠ a REFERRED client shows a "Referral" text segment beside its stage', async () => {
+    mount({ clients: [client({ isReferred: true })], total: 1, limit: 100 });
+    await screen.findByText('Maria Lopez');
+    const meta = screen.getByText(/Sold/);
+    expect(meta.textContent).toContain('Referral');
+    // ⚠ BOTH CHANNELS IN ONE ASSERTION SET. The stage must be untouched by the referral
+    // marker — same word, same line — because "Sold" means the same thing however the
+    // client arrived. A build that fused the two would still contain 'Referral'.
+    expect(meta.textContent).toContain('Sold');
+    expect(meta.textContent).toContain('Assigned Sep 15');
+  });
+
+  it('⚠ a DIRECT client shows NOTHING in that channel — no "Direct", no empty slot', async () => {
+    // ⚠ THE PAIRED NEGATIVE, AND IT NEEDS ITS POSITIVE TO MEAN ANYTHING. "Referral is
+    // absent" passes against a row that failed to render at all, so the stage and the
+    // date are asserted present on the same row. Danny's standing principle — no badge
+    // unless it IS a referral — held here; only the FORM changed to text.
+    mount({ clients: [client({ isReferred: false })], total: 1, limit: 100 });
+    await screen.findByText('Maria Lopez');
+    const meta = screen.getByText(/Sold/);
+    expect(meta.textContent).not.toContain('Referral');
+    expect(meta.textContent).not.toContain('Direct');
+    expect(meta.textContent).toBe('Sold · Assigned Sep 15');
+  });
+
+  it('⚠ and it is TEXT, not a third pill — the row keeps exactly two', async () => {
+    // ⚠ THE CONSTRAINT THE RULING IS ACTUALLY ABOUT. The row already carries a
+    // MembershipBadge and a StatusPill; a third chip of similar shape is the collision
+    // Danny is guarding against. Asserting the SEGMENT lives in the meta line — the same
+    // element as the stage and the date — is what pins "text" rather than "badge".
+    mount({ clients: [client({ isReferred: true })], total: 1, limit: 100 });
+    await screen.findByText('Maria Lopez');
+    const meta = screen.getByText(/Sold/);
+    expect(meta.textContent).toBe('Sold · Referral · Assigned Sep 15');
+  });
+
   it('⚠ Part 4c — the SOURCE is absent from a list row, and its label still exists', async () => {
     // ⚠ TWO ASSERTIONS, AND THE SECOND IS WHAT STOPS THIS GOING VACUOUS. "Assessment is
     // absent" would pass forever if `SOURCE_LABELS` were deleted, if the fixture stopped

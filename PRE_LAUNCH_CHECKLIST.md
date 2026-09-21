@@ -4210,6 +4210,159 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage — the 20-day grouping rule, and what is actually in the code (2026-09-21)
+
+- [ ] 🔴🔴 **THE 20-DAY GROUPING RULE DOES NOT EXIST IN CODE. THE SETTING DOES, THE ADMIN UI
+      PROMISES IT, AND NOTHING READS IT.** Ruling 1 says to reuse an existing reader that groups
+      quotes and jobs within 20 days as one sale. **Established from source, and the answer is
+      that there is no such reader.** What exists:
+      · **`referral_schedules.invoice_window_days INTEGER NOT NULL DEFAULT 20`** — the 20.
+      · **A contractor-facing control** in `ScheduleBuilderDrawer.jsx` labelled **"Invoice
+        Grouping Window"**, with the helper text *"How many days of invoices are grouped together
+        to determine the total job value"*, offering 20 / 30 / 45 / 60.
+      · **Full CRUD** for it through the admin schedules endpoints.
+      · **One SELECT** of the column, in `evaluateReferral()` (`server/referralRules.js`).
+      ⚠ **AND THE SELECTED VALUE IS NEVER CONSUMED.** Nothing after that query reads it; the only
+      "window" logic in the rest of the file is the ANNUAL reset period, a different concept. The
+      function says so in terms: *"For MVP, we use the single triggered invoice … SCALABLE PATH:
+      implement full batch grouping when multi-invoice projects become common enough to warrant
+      it. The invoice_window_days column is already seeded and ready."*
+      ⚠ **WHAT ACTUALLY PREVENTS DOUBLE-COUNTING TODAY IS A UNIQUE CONSTRAINT, NOT A WINDOW** —
+      `UNIQUE(user_id, jobber_client_id)` on `referral_conversions`, which is **one conversion per
+      client EVER** and is a resident non-negotiable in `CLAUDE.md`.
+      ⚠ **THIS IS THE FOURTH-STATE FAILURE FROM *"Classifying whether a value is wired up has five
+      states"*: storage ✅, editor ✅, validator ✅, **delivery ❌**.** A contractor can set the
+      window to 45 days today and nothing anywhere will behave differently.
+
+- [ ] 🔴 **1(a) THE ANCHOR — THERE IS NOTHING TO MATCH OR MISMATCH, WHICH MAKES THIS A DESIGN
+      DECISION RATHER THAN A RECONCILIATION.** The instruction asked what the existing rule
+      anchors on; the honest answer is *nothing, it was never built*. **Three candidate anchors
+      are in play and they are not the same:**
+      · the admin UI's own copy says **invoices** are grouped, to determine **total job value**;
+      · Danny's description says the window starts at **the first approved quote or scheduled job**;
+      · the Sold definition and `classifyPipelineStatus` both say **a job exists**.
+      ⚠ **A window anchored on quote APPROVAL while a conversion is counted at job CREATION can
+      disagree about which sale a job belongs to** — a quote approved on day 1 and a job created
+      on day 25 are one sale under the first and two under the second. **Needs Danny's ruling.**
+
+- [ ] ⚠ **1(b) WHAT THE RULE WAS BUILT FOR — AND WHERE ITS SEMANTICS DO NOT FIT A REP'S COUNT.**
+      It was designed for referral **payouts**: group invoices to determine **total job value**, so
+      a tiered or percentage schedule pays on the right number. **That is a MONEY-grouping
+      concept.** A rep's conversions need a **SALE-grouping** concept — how many times this client
+      converted. They coincide often and not always: two invoices on one job is one sale and one
+      job; two jobs ten days apart is one sale under Ruling 1 but two jobs.
+      ⚠ **So reuse is right and a straight lift is not.** The reusable thing is ONE grouping
+      primitive answering *"which sale does this job/invoice belong to"*, consumed by both the
+      payout path and the conversions count — which is exactly what makes *one sale, one
+      conversion, one payout* true rather than aspirational.
+      ⚠ **AND A COLLISION TO RULE ON: Ruling 1 SAYS EVERY SALE IS A CONVERSION; THE REFERRAL SIDE
+      CANNOT RECORD A SECOND ONE.** `UNIQUE(user_id, jobber_client_id)` means a repeat customer
+      produces a new sale and a new REP conversion, but no second `referral_conversions` row and
+      therefore no second payout. **That is the two-rules divergence Ruling 1 exists to prevent,
+      arriving from the schema instead of from the logic**, and the constraint is listed under
+      *Never Break These Rules*. It cannot be removed on this phase's authority.
+
+- [ ] ⚠ **1(c) THE PROPOSED SHAPE — AND `sold_at` IS NOW REDUNDANT, SO IT MUST NOT BE MIGRATED.**
+      One `sold_at` per client cannot hold several conversions. Minimum shape, two tables:
+
+      ```sql
+      client_sales (
+        id SERIAL PRIMARY KEY,
+        contractor_id     TEXT        NOT NULL,
+        jobber_client_id  TEXT        NOT NULL,
+        anchor_at         TIMESTAMPTZ NOT NULL,   -- the group's first qualifying event, Jobber's date
+        last_event_at     TIMESTAMPTZ NOT NULL,   -- newest member, so the window can be tested
+        revenue_total     NUMERIC(12,2),          -- NULL until Wave 1.5/1.6 attaches revenue
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+      client_sale_jobs (
+        sale_id          INTEGER NOT NULL REFERENCES client_sales(id) ON DELETE CASCADE,
+        contractor_id    TEXT    NOT NULL,
+        jobber_job_id    TEXT    NOT NULL,
+        PRIMARY KEY (contractor_id, jobber_job_id)   -- a job belongs to exactly ONE sale
+      )
+      ```
+      **The conversions count becomes `COUNT(*) FROM client_sales`** over the rep's book, windowed
+      by `anchor_at` — which is the timeframe column the stage never had and the reason the count
+      was blocked. `revenue_total` is where Wave 1.5/1.6 attaches, and Danny's rule already adds
+      later jobs' balances to the group, so the column belongs on the SALE and not on the job.
+      ⚠ **`sold_at` ON `jobber_clients` IS REDUNDANT UNDER THIS DESIGN** — a client's first
+      conversion is `MIN(anchor_at)`, derivable rather than stored. **DO NOT MIGRATE IT.** The
+      `pipeline_stage` column shipped on 2026-09-20 stays; only `sold_at` is withdrawn.
+
+- [ ] ⚠ **1(d) THE CAP UNDERCOUNTS COMMERCIAL ACCOUNTS, AND THE FIX IS PAGING RATHER THAN A BIGGER
+      NUMBER.** Under the old design only the EARLIEST job mattered, and Danny's measured
+      `jobs(first: 1, sort: { key: CREATED_AT, direction: ASCENDING })` solved it exactly at cost
+      **5**. **Grouping needs EVERY job**, so today's caps — `first: 10` on `fetchFullClient`,
+      `first: 50` elsewhere — silently drop sales for any client above them.
+      **Proposal: page oldest-first** with `sort: { key: CREATED_AT, direction: ASCENDING }` plus
+      `after: $cursor`, until `hasNextPage` is false. Oldest-first matters because grouping walks
+      forward from an anchor, so a partial read is a correct PREFIX rather than an arbitrary
+      middle. ⚠ **`sort` is PROVEN (Danny, 2026-09-21); `after` on `client.jobs` is NOT** — it is
+      inferred from the connection shape, and the same unknown-field rule applies. **The per-page
+      cost is unmeasured; the cost logging shipped on 2026-09-20 will print it on the next real
+      import**, and no pacing should be changed before it does.
+
+- [ ] ⚠ **1(e) THE 12-MONTH IMPORT WINDOW — A STRADDLING GROUP IS ANCHORED TOO LATE, AND IT IS
+      SILENT.** The import filters CLIENTS to the last 12 months. A sale whose first job sits
+      13 months back and whose second sits 11 months back is imported as a group anchored on the
+      SECOND job, so its date is wrong and — if the two fall more than the window apart — it can
+      read as a sale that never had a beginning. **Two options, for Danny:** record the anchor as
+      *earliest OBSERVED* and accept that pre-window history is invisible (cheap, honest, and the
+      import already says the program starts at the implementation date); or, for any client with
+      an in-window job, fetch that client's jobs without the date filter (accurate, and costs a
+      second pass over a subset). **Report only — not decided.**
+
+- [ ] ⚠ **DOES A DELETED JOB SHRINK ITS GROUP? THE EARLIER RULING NEEDS RE-DERIVING UNDER
+      GROUPING.** *"A conversion stands once recorded"* was ruled when a conversion was a client
+      flag. Under grouping a sale has MEMBERS, and the two halves come apart: if one job of three
+      is deleted the SALE plainly still happened, but if every job in a group is deleted there is
+      nothing left that converted. **Suggested and not decided:** the sale stands while it has at
+      least one member; revenue always reflects reality. **A rule applied once to a surface does
+      not stay correct when the surface moves** — which is why this is a question and not an
+      inheritance.
+
+- [x] **✅ THE TWO ROOT-FIELD PROBES PASSED — `job(id:)` AND `quote(id:)` ARE NOW MEASURED.**
+      Danny, GraphiQL, Accent's live account, **2026-09-21**: `job(id:)` returned id, `createdAt`
+      `2026-09-21T03:26:59Z`, `jobStatus` **"late"**, `client { id }`; `quote(id:)` returned id,
+      `quoteStatus` **"converted"**, `createdAt` `2026-09-21T03:25:55Z`, `client { id }`.
+      ⚠ **VERSION CAVEAT KEPT:** the explorer ran at `2026-05-12`; our client pins `2026-02-17`.
+      Strong evidence, not proof, for what our version receives. **The comment that previously
+      asserted this with no source now cites the measurement, dated** — a proof with no date is
+      the thing that got filed as false in the first place.
+      ⚠ **`jobStatus` "late" IS A LIVE VALUE** and is recorded here because the classifier reads
+      only *a job exists* — no `jobStatus` value changes its verdict today, and any future rule
+      that branches on job status must start from the real value set, not a guessed one.
+
+- [x] **✅ QUOTE_CREATE, QUOTE_UPDATE and JOB_CREATE ARE REGISTERED IN THE JOBBER DEVELOPER CENTER**
+      (Danny, 2026-09-21), against the three endpoints verified live by the 401-vs-404 control.
+
+- [ ] ⚠ **QUOTE_APPROVED IS DELIBERATELY NOT REGISTERED, AND WHETHER IT IS NEEDED DEPENDS ON 1(a).**
+      It is **not** needed for the STAGE: `classifyPipelineStatus` reads *a quote is not archived*,
+      and approving a quote does not change that, so the stage is identical before and after.
+      **It becomes relevant only if the grouping window anchors on quote approval** — the open
+      question in 1(a). If Danny anchors there, the handler is a one-line addition to the existing
+      shared `handleStageWebhook`.
+      ⚠ **AND IT MAY BE REDUNDANT EVEN THEN. UNVERIFIED, WITH A CHEAP TEST NOW AVAILABLE:**
+      approval changes a quote's status, so `QUOTE_UPDATE` probably fires on it — but *probably*
+      is not a finding. **QUOTE_UPDATE is now registered and live, so the measurement costs one
+      action:** approve a quote in Jobber and watch the Railway logs for a `[quote-update]` line
+      naming that quote id. If it appears, `QUOTE_APPROVED` adds nothing.
+
+- [x] **✅ RULING 2 — SETTLED AND BUILT. Referral is a TEXT segment; direct clients show NOTHING.**
+      The list gained `(pc.jobber_client_id IS NOT NULL) AS is_referred` — **a boolean, never the
+      referrer's name**; the detail screen keeps the name, which is the question it answers.
+      ⚠ **THE FORM CHANGED AND THE PRINCIPLE DID NOT.** Danny's standing *"no badge unless it IS a
+      referral"* held; it became text because the row already carries two pills (Membership and
+      Status) and a third chip of similar shape is the collision the ruling guards against. **Two
+      channels: the STAGE is identical plain text for everyone — "Sold" is where the sale is — and
+      the referral marker never touches its colour, shape or wording.**
+      ⚠ **RESTORING THE `pipeline_cache` JOIN RE-OPENED AN OLD HAZARD AND IS FENCED.** Canvass-stage
+      had removed it entirely; it is back as a **LEFT** join for this one boolean. Guard-proofed:
+      making it INNER takes **29** tests red, because it silently turns the whole book into a
+      referral gate — the exact A34.4 defect, invisible in a one-word diff.
+
 ### Canvass-stage — the pipeline stage on jobber_clients (SHIPPED 2026-09-20)
 
 - [x] **✅ CLOSED — THE FIRST CONVERSIONS BLOCKER IS GONE.** `jobber_clients.pipeline_stage`

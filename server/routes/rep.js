@@ -337,6 +337,12 @@ router.get('/api/rep/clients', async (req, res) => {
          -- The cursor's timestamp, as TEXT so microseconds survive the round trip.
          cra.updated_at::text                                  AS cursor_ts,
          jc.pipeline_stage,
+         -- ⚠ A BOOLEAN, NEVER THE REFERRER'S NAME (Ruling 2, Danny 2026-09-21). The list
+         -- answers "is this from my network"; the DETAIL screen answers "who referred
+         -- them", and it already reads pc.referred_by for exactly that. A list that
+         -- carried the name would be making a claim it has no room to qualify — and the
+         -- row's meta line is one line of small muted text.
+         (pc.jobber_client_id IS NOT NULL)                     AS is_referred,
          COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
          COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
@@ -346,9 +352,16 @@ router.get('/api/rep/clients', async (req, res) => {
        LEFT JOIN jobber_clients jc
          ON jc.contractor_id = cra.contractor_id
         AND jc.jobber_client_id = cra.jobber_client_id
-       -- ⚠ THE pipeline_cache JOIN IS GONE FROM THIS QUERY (Canvass-stage, Ruling 1).
-       -- The pc.pipeline_status column was the only one it supplied here, and the stage now
-       -- comes from jobber_clients, so the join had nothing left to contribute.
+       -- ⚠ THE pipeline_cache JOIN IS BACK, AND ONLY FOR is_referred ABOVE.
+       -- Canvass-stage removed it: pc.pipeline_status was the only column it supplied and
+       -- the stage moved to jobber_clients (Ruling 1). Ruling 2 then needed a referral
+       -- signal on this screen, which is the one thing pipeline_cache can still answer
+       -- here. ⚠ IT MUST STAY A LEFT JOIN — an inner join would silently re-make this
+       -- query a referral gate, which is the exact defect A34.4 exists to prevent and
+       -- which a reviewer cannot see in a one-word diff.
+       LEFT JOIN pipeline_cache pc
+         ON pc.contractor_id = cra.contractor_id
+        AND pc.jobber_client_id = cra.jobber_client_id
        -- ⚠ RULING 1 IS "READ jobber_clients ONLY — NO FALL-BACK TO pipeline_cache", and
        -- the reason is a frozen row, not tidiness: clearing "Referred by" in Jobber
        -- freezes that client's pipeline_cache stage forever, so a read-and-fall-back
@@ -422,6 +435,11 @@ router.get('/api/rep/clients', async (req, res) => {
         // touched this client since the column shipped. A referred client and a
         // non-referred one both carry a real stage.
         stage: r.pipeline_stage,
+        // ⚠ Ruling 2: TRUE only. The client renders a segment for a referral and
+        // NOTHING for a direct client — so `false` and "absent" mean the same thing on
+        // screen, deliberately. A "Direct" label would put a word on the majority of
+        // rows to say nothing had happened.
+        isReferred: r.is_referred,
         assignmentSource: r.assignment_source,
         isSticky: r.is_sticky,
         assignedAt: r.assigned_at,

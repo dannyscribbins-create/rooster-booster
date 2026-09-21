@@ -23,6 +23,20 @@ const { jobberShouldRetry } = require('./retryHelpers');
 // Fetches complete client data from Jobber by ID, including quotes/jobs/invoices
 // needed for accurate pipeline status classification. Called from webhook handlers
 // so classifyPipelineStatus gets full data rather than the sparse webhook payload.
+//
+// ⚠ `createdAt` ON THE JOB NODES IS LOAD-BEARING AND WAS MISSING UNTIL CANVASS-STAGE.
+// This selection read `id jobStatus` only, which made it the ONE fetch of four that
+// could not date a sale — and it is the fetch the REQUEST path and repRequestSweep use.
+// The gap was found by asking the question per writer rather than once: the webhook
+// router's fetchClientRelatedData, jobberIncrementalSync's GetClientRelated and
+// fullJobberImport's Step C all carried it; this did not.
+// ⚠ The field is PROVEN at 2026-02-17 — those three shipped queries select
+// `job.createdAt` under that exact version header — so this is not a 3.6b-style
+// unknown-field risk, where a field absent at our version fails the WHOLE query.
+// ⚠ `first: 10` IS STILL A CAP, AND IT IS NOT ENOUGH FOR SALE GROUPING. Dating one
+// sale needs only the earliest job; grouping sales needs EVERY job, and a client with
+// more than ten silently loses some. See PRE_LAUNCH_CHECKLIST.md on paging jobs
+// oldest-first — this line fixes the missing FIELD, not the cap.
 async function fetchFullClient(clientId, token) {
   const response = await retryWithBackoff(
     () => axios.post(
@@ -37,7 +51,7 @@ async function fetchFullClient(clientId, token) {
             quotes(first: 10) { nodes { id quoteStatus lastTransitioned { approvedAt } salesperson { id } } }
             jobs(first: 10) {
               nodes {
-                id jobStatus
+                id jobStatus createdAt
                 invoices(first: 5) { nodes { invoiceStatus } }
               }
             }

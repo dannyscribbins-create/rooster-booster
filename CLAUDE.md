@@ -370,9 +370,28 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1604 server tests across 264 suites, and 1325 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage stage-webhooks commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1604 · suites 264 · pass 1604 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE STAGE-WEBHOOKS COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
-  TESTS.** Server 1590 → 1604 is **+14 = 13 + 1**: thirteen in one new file
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1606 server tests across 264 suites, and 1328 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage Ruling-2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1606 · suites 264 · pass 1606 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE RULING-2 COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS
+  TESTS.** **BOTH HALVES MOVED AND NEITHER SUITE COUNT DID**, which is the expected shape here:
+  server 1604 → 1606 is **+2** appended to an EXISTING `describe` in `repClients.test.js`, and
+  React 1325 → 1328 is **+3** appended to the EXISTING `repClientsScreen.test.jsx`. **No new test
+  file of either kind**, so suites hold at 264 and files at 79. A file count and a suite count
+  answer different questions, and neither answers "how many cases".
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN.** The only `src/` file touched is
+  `RepClientsScreen.jsx` — an EXISTING file, and `src/components/rep/` is not one of
+  `adminBranding.test.jsx`'s four walked roots either way — so the arithmetic closes at exactly 3.
+  ⚠ **AND A GUARD-PROOF FAILED TO APPLY AND WAS CAUGHT BY READING ITS OWN OUTPUT.** The first
+  attempt to make the restored `pipeline_cache` join INNER used an anchor string that matched
+  nothing; the injection never landed, and the suite reported **71/71 green** — which reads
+  exactly like a fence that does not fire. **A guard-proof that proves nothing looks identical to
+  a guard-proof that passes**, and the only tell was the Python `AssertionError` printed above the
+  green count. Re-applied by line number, it took **29** tests red. **Check that the injection
+  landed before believing the result.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE STAGE-WEBHOOKS COMMIT ITSELF.* It
+  read **1604 / 264 / 1325 / 79**, +14 server from 11 `it(` lines (one inside a three-entry loop
+  that wraps it), and records the five guard-proofs plus the test of its own that was looking in
+  a place its subject could not be.
+  Server 1590 → 1604 is **+14 = 13 + 1**: thirteen in one new file
   (`stageWebhooks.test.js`) and **one appended to an EXISTING describe** in
   `requestAttribution.test.js`. Suites 260 → 264 is **+4** — the new file's four top-level
   `describe` blocks; the requestAttribution case landed inside one that already existed.

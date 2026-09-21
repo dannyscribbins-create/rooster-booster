@@ -463,11 +463,26 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
 //                                    invoice(id:), not observed — and inferring a singular
 //                                    root field from two siblings is a weaker argument than
 //                                    the original sentence made it sound.
-//                                    ⚠ Canvass-stage now USES `quote(id:)` and `job(id:)`
-//                                    in the stage webhooks, under the same skip-and-log
-//                                    degradation and with the same caveat recorded there.
-//                                    They are still unobserved; using them does not prove
-//                                    them, and a GraphiQL probe is filed for Danny.
+//                                    ⚠ **`job(id:)` AND `quote(id:)` ARE NOW GENUINELY
+//                                    PROVEN, AND THIS IS THE MEASUREMENT RATHER THAN A
+//                                    CLAIM.** Run by Danny in GraphiQL against Accent's
+//                                    live account on **2026-09-21**:
+//                                      · `job(id:)`   returned id, createdAt
+//                                        2026-09-21T03:26:59Z, jobStatus "late",
+//                                        client { id }
+//                                      · `quote(id:)` returned id, quoteStatus "converted",
+//                                        createdAt 2026-09-21T03:25:55Z, client { id }
+//                                    ⚠ **VERSION CAVEAT, KEPT DELIBERATELY:** the explorer
+//                                    ran at **2026-05-12**; our client pins **2026-02-17**.
+//                                    That is strong evidence and not proof for what our
+//                                    version receives — the same caveat item 3 below carries
+//                                    for `Request.updatedAt`, and for the same reason.
+//                                    ⚠ **THE DATE AND THE ACCOUNT ARE THE POINT.** The
+//                                    sentence this block replaced asserted provenness with
+//                                    no source and was FALSE; a proof with no date is the
+//                                    thing that got filed as false. Canvass-stage's stage
+//                                    webhooks use both fields, under skip-and-log
+//                                    degradation that holds regardless.
 //   2. `Request.client`            — needed to get from a request id to a client id.
 //   3. `Request.updatedAt`, and `RequestFilterAttributes.updatedAt` — observed by Danny in
 //      the explorer at version 2026-05-12 on 2026-09-18, which is STRONG EVIDENCE AND NOT

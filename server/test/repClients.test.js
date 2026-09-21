@@ -262,6 +262,55 @@ describe('Canvass-4 — A34.4: the WHOLE book, not the referred slice', () => {
   // the referred slice" could only be asserted about the ROW's presence. Now the stage
   // itself is book-wide, and this is what says the route reads it from the whole-client
   // table rather than the referral one.
+  // ⚠ RULING 2 (Danny, 2026-09-21): the list carries a referral BOOLEAN, never the
+  // referrer's name. The detail screen answers "who referred them"; the list answers
+  // only "is this from my network".
+  it('[RED] the list marks a REFERRED client and says nothing about a direct one', async () => {
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-isref', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-ref', 'Referred');
+    await seedClient(TENANT, 'jc-dir', 'Direct');
+    await assign(TENANT, 'jc-ref', { sticky: me });
+    await assign(TENANT, 'jc-dir', { sticky: me });
+    // ⚠ BOTH CLIENTS CARRY THE SAME STAGE, DELIBERATELY. The two channels must be
+    // independent: if is_referred tracked the stage in any way, an identical stage on
+    // both rows would hide it.
+    await pool.query(
+      `UPDATE jobber_clients SET pipeline_stage = 'sold' WHERE contractor_id = $1`, [TENANT]);
+    await pool.query(
+      `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status)
+       VALUES ($1, 'jc-ref', 'Referred', 'Someone', 'sold')`, [TENANT]);
+
+    const res = await request('/api/rep/clients', 'tok-isref');
+    const byId = Object.fromEntries(res.body.clients.map((c) => [c.jobberClientId, c]));
+
+    assert.equal(byId['jc-ref'].isReferred, true, 'a client with a referral record is marked');
+    assert.equal(byId['jc-dir'].isReferred, false, 'a direct client is not');
+    // The discriminator for the OTHER channel: the stage is identical on both, so a
+    // build that derived one signal from the other could not pass both assertions.
+    assert.equal(byId['jc-ref'].stage, 'sold');
+    assert.equal(byId['jc-dir'].stage, 'sold');
+    // ⚠ AND THE NAME IS NOT IN THE LIST PAYLOAD AT ALL. Ruling 2 is a boolean; shipping
+    // the referrer's name here would be a claim the row has no room to qualify.
+    assert.equal(byId['jc-ref'].referredBy, undefined, 'the list must not carry the referrer name');
+  });
+
+  it('[RED] DISCRIMINATING CONTROL — the referral join must stay a LEFT JOIN', async () => {
+    // ⚠ RESTORING THE pipeline_cache JOIN FOR is_referred RE-OPENS THE EXACT DEFECT
+    // A34.4 EXISTS TO PREVENT, and a one-word diff is all it takes. Canvass-stage had
+    // removed this join entirely; Ruling 2 brought it back. An inner join here silently
+    // makes the whole book a referral gate again.
+    const me = await seedRep(TENANT, 'me@a.test');
+    await seedSession('tok-leftjoin', { contractorId: TENANT, teamMemberId: me });
+    await seedClient(TENANT, 'jc-dir-only', 'DirectOnly');
+    await assign(TENANT, 'jc-dir-only', { sticky: me });
+    // No pipeline_cache row anywhere for this tenant.
+
+    const res = await request('/api/rep/clients', 'tok-leftjoin');
+    assert.equal(res.body.clients.length, 1, 'a client with NO referral record must still appear');
+    assert.equal(res.body.clients[0].isReferred, false);
+  });
+
   it('[RED] a NON-REFERRED client carries a real stage, with no pipeline_cache row at all', async () => {
     const me = await seedRep(TENANT, 'me@a.test');
     await seedSession('tok-nonref', { contractorId: TENANT, teamMemberId: me });

@@ -212,7 +212,25 @@ function ClientRow({ client, onOpen }) {
 
   // Built as a list so a missing segment collapses instead of leaving a stray
   // separator — the ' · '.join a template literal would have to fake.
-  const meta = [stage, assigned ? `Assigned ${assigned}` : null].filter(Boolean);
+  //
+  // ⚠ 'Referral' IS A TEXT SEGMENT AND NOT A THIRD PILL (Ruling 2, Danny 2026-09-21),
+  // AND THE ROW IS WHY. It already carries two pills — MembershipBadge and StatusPill —
+  // and a third chip of the same shape is precisely the collision the ruling guards
+  // against: the rep must be able to tell "where is the sale" from "is this from my
+  // network" at a glance, and three similar chips make that harder, not easier.
+  // ⚠ SO THE TWO CHANNELS ARE: the STAGE, identical plain text for every client because
+  // "Sold" means the same thing however the client arrived; and the REFERRAL marker,
+  // which never touches the stage's colour, shape or wording.
+  // ⚠ AND NOTHING RENDERS FOR A DIRECT CLIENT. Danny's standing principle — no badge
+  // unless it IS a referral — held; only its FORM changed, from a badge to text. A
+  // "Direct" label would put a word on the majority of rows to announce that nothing
+  // had happened, which is the reserved-slot failure the membership ruling already
+  // forbids one line up.
+  const meta = [
+    stage,
+    client.isReferred ? 'Referral' : null,
+    assigned ? `Assigned ${assigned}` : null,
+  ].filter(Boolean);
 
   return (
     <li
