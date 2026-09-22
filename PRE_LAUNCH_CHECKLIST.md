@@ -4210,6 +4210,231 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage — the unmapped-quote fall-through, and what a rebuild would take (2026-09-22)
+
+*REPORTED, NOTHING BUILT. Danny ran both naming queries on Railway, 2026-09-22.*
+
+- [x] **(a) CONFIRMS THE NOISE READING, AND ADDS A BIGGER FACT.** Bailey Nabinger 170, Kate Preiss 138,
+      Haley Lowery 93 — schedulers, none a team member, none attributable. Then Brett Chance 13, Chris
+      Hodges 8, Michelle Brambila 7, "Scheduled Jobs" 6, Stacy Brookins 4, Creighton Deasy 2, Nick
+      Gonzalez 2 and a tail of 1s. ⚠ **NOT ONE OF THE 13 IS A RoofMiles TEAM MEMBER — every Jobber user
+      on Danny's visits, salespeople included, is unmapped.** The chained regroup also ran: **133 clients
+      changed, 142 sales merged away, 0 failed.**
+- [x] ✅ **THE FALL-THROUGH IS CONFIRMED FROM SOURCE.** `runAttributionEngine`'s sticky gate tries, in
+      this order: (1) the most recently approved ELIGIBLE quote's salesperson, matched against
+      `team_members` **filtered on `is_attributable = true`**; (2) promote an existing provisional;
+      (3) Mode A/B; (4) orphan. An eligible quote naming an UNMAPPED user matches nobody at (1) — there
+      is no "a quote exists but its author is unknown" branch — so it proceeds to (2) and (3), and Mode A
+      hands the client to whoever was on the assessment. That is exactly Danny's ten
+      `mode_a_at_close` rows. ⚠ **AND A SECOND CAUSE PRODUCES THE SAME ROW:** a quote approved more than
+      **7 days before** the triggering request's `createdAt` is out of the grace window and is not
+      eligible **even if its author IS mapped**. Query (4) below separates the two per client.
+- [ ] 🔴 **NEEDS DANNY — SHOULD AN ELIGIBLE QUOTE BY AN UNMAPPED USER BLOCK THE FALL-THROUGH? BOTH
+      READINGS, NOT A RECOMMENDATION DRESSED AS ONE.**
+      **Reading A — it should block.** The quote's salesperson is the strongest signal the engine has.
+      When it is present but unreadable, letting a WEAKER signal win is a silent downgrade, and the
+      result is written as a **sticky** — which no later mapping can correct, because sticky is
+      existing-wins. Ten of Danny's clients are in that state today.
+      **Reading B — it should not.** Mapping is incomplete by design: Accent has 147 Jobber users and
+      one member. "Unmapped" does not mean "a rep" — schedulers write quotes, and one of the 13 is
+      literally a user called *Scheduled Jobs*. If any non-member's name on a quote blocked attribution,
+      clients a rep really worked would go unassigned whenever the office wrote the quote.
+      ⚠ **A THIRD OPTION THE QUESTION HIDES, AND IT IS THE ONE THAT MATCHES THE DAMAGE:** keep the
+      fall-through but write a **PROVISIONAL rather than a STICKY** when an eligible quote's salesperson
+      is unmapped. A provisional is re-examined by every later replay, so mapping that person later
+      fixes it automatically; the sticky is what makes today's ten permanent. It can also flag instead
+      (a new `flagged_assignments` reason), which is visible but needs an admin to act.
+      **Not changed, either way, until Danny rules.**
+- [x] **THE TWO `quote_salesperson` ROWS ARE NOT A DEFECT — TWO COMPETING QUOTES.** The gate picks the
+      **most recently approved ELIGIBLE** quote, not "the only quote". A `quote_salesperson` sticky means
+      DANNY'S quote won that comparison while another salesperson's approved quote also exists on the
+      client — either because his was approved later, or because theirs fell outside the 7-day grace for
+      the triggering request. Query (4) lists every quote on those clients with its date and grace
+      status, which shows which of the two it was.
+
+- [ ] **THE POPULATION — READ-ONLY SQL, `accent-roofing-dev`. All four parse on PostgreSQL 16.14.**
+      ⚠ **"ELIGIBLE" IS APPROXIMATED THE ONLY WAY STORED DATA ALLOWS:** a quote is counted when it is
+      approved, not archived, and **some** request on that client was created within 7 days after the
+      approval — i.e. it could have been in grace for at least one replay pass. The engine applies that
+      test per request anchor, so these counts are an upper bound on "could have won".
+      **(1) How many clients carry a foreign eligible quote, split by how they were assigned (a + b):**
+      ```sql
+      WITH assigned AS (
+        SELECT cra.jobber_client_id, cra.sticky_source, cra.provisional_source,
+               tm.jobber_user_id AS rep_jobber_user_id
+          FROM client_rep_assignments cra
+          LEFT JOIN team_members tm ON tm.id = COALESCE(cra.sticky_rep_id, cra.provisional_rep_id)
+         WHERE cra.contractor_id = 'accent-roofing-dev'),
+      eq AS (
+        SELECT q.jobber_client_id, q.salesperson_jobber_user_id
+          FROM crm_quote_facts q
+         WHERE q.contractor_id = 'accent-roofing-dev'
+           AND q.approved_at IS NOT NULL
+           AND q.quote_status IS DISTINCT FROM 'archived'
+           AND q.salesperson_jobber_user_id IS NOT NULL
+           AND EXISTS (SELECT 1 FROM crm_request_facts r
+                        WHERE r.contractor_id = 'accent-roofing-dev'
+                          AND r.jobber_client_id = q.jobber_client_id
+                          AND r.created_at <= q.approved_at + INTERVAL '7 days')),
+      foreign_q AS (
+        SELECT DISTINCT a.jobber_client_id, a.sticky_source, a.provisional_source
+          FROM assigned a JOIN eq ON eq.jobber_client_id = a.jobber_client_id
+         WHERE eq.salesperson_jobber_user_id IS DISTINCT FROM a.rep_jobber_user_id)
+      SELECT COALESCE(sticky_source, 'PROVISIONAL only: ' || COALESCE(provisional_source, 'none')) AS how_assigned,
+             COUNT(*) AS clients
+        FROM foreign_q
+       GROUP BY ROLLUP (COALESCE(sticky_source, 'PROVISIONAL only: ' || COALESCE(provisional_source, 'none')))
+       ORDER BY 2 DESC;
+      ```
+      *The row with an empty `how_assigned` is the ROLLUP total.* **Good result:** the `mode_a_at_close`
+      row is small. It is Danny's ten scaled to the whole account, and it is the number that decides
+      between hand fixes and a rebuild.
+      **(2) The population a rebuild would actually change (c) — and the half it would NOT:**
+      ```sql
+      WITH eq AS (
+        SELECT q.jobber_client_id, q.salesperson_jobber_user_id
+          FROM crm_quote_facts q
+         WHERE q.contractor_id = 'accent-roofing-dev'
+           AND q.approved_at IS NOT NULL
+           AND q.quote_status IS DISTINCT FROM 'archived'
+           AND q.salesperson_jobber_user_id IS NOT NULL
+           AND EXISTS (SELECT 1 FROM crm_request_facts r
+                        WHERE r.contractor_id = 'accent-roofing-dev'
+                          AND r.jobber_client_id = q.jobber_client_id
+                          AND r.created_at <= q.approved_at + INTERVAL '7 days')),
+      unmapped AS (
+        SELECT DISTINCT eq.jobber_client_id
+          FROM eq
+          LEFT JOIN team_members tm
+            ON tm.contractor_id = 'accent-roofing-dev' AND tm.jobber_user_id = eq.salesperson_jobber_user_id
+         WHERE tm.id IS NULL)
+      SELECT CASE WHEN cra.jobber_client_id IS NULL THEN '3 not assigned to anyone'
+                  WHEN cra.sticky_rep_id IS NOT NULL THEN '1 STICKY — a replay will NOT move it'
+                  ELSE '2 provisional only — a replay CAN move it' END AS state,
+             COUNT(*) AS clients
+        FROM unmapped u
+        LEFT JOIN client_rep_assignments cra
+          ON cra.contractor_id = 'accent-roofing-dev' AND cra.jobber_client_id = u.jobber_client_id
+       GROUP BY 1 ORDER BY 1;
+      ```
+      ⚠ **THE SPLIT IS THE WHOLE POINT: mapping people and replaying CANNOT fix row 1.** Sticky is
+      existing-wins, so a plain replay leaves every wrong sticky exactly where it is. Row 1 is the
+      rebuild's justification; row 2 fixes itself; row 3 is new book for whoever gets mapped.
+      **(3) Who to map, by how many clients they carry (d):**
+      ```sql
+      WITH ju AS (
+        SELECT u->>'id' AS jobber_user_id, u->'name'->>'full' AS name, u->>'status' AS jobber_status, c.cached_at
+          FROM admin_cache c CROSS JOIN LATERAL jsonb_array_elements(c.data->'users') AS u
+         WHERE c.contractor_id = 'accent-roofing-dev' AND c.cache_key = 'jobber_users'),
+      eq AS (
+        SELECT q.jobber_client_id, q.salesperson_jobber_user_id
+          FROM crm_quote_facts q
+         WHERE q.contractor_id = 'accent-roofing-dev'
+           AND q.approved_at IS NOT NULL
+           AND q.quote_status IS DISTINCT FROM 'archived'
+           AND q.salesperson_jobber_user_id IS NOT NULL
+           AND EXISTS (SELECT 1 FROM crm_request_facts r
+                        WHERE r.contractor_id = 'accent-roofing-dev'
+                          AND r.jobber_client_id = q.jobber_client_id
+                          AND r.created_at <= q.approved_at + INTERVAL '7 days'))
+      SELECT COALESCE(ju.name, '(not in cached list)') AS quote_salesperson,
+             ju.jobber_status,
+             COUNT(DISTINCT eq.jobber_client_id) AS clients_with_their_approved_quote,
+             COUNT(DISTINCT eq.jobber_client_id) FILTER (WHERE cra.sticky_rep_id IS NOT NULL) AS of_those_already_sticky,
+             eq.salesperson_jobber_user_id,
+             (SELECT MAX(cached_at) FROM ju) AS names_cached_at
+        FROM eq
+        LEFT JOIN team_members tm
+          ON tm.contractor_id = 'accent-roofing-dev' AND tm.jobber_user_id = eq.salesperson_jobber_user_id
+        LEFT JOIN ju ON ju.jobber_user_id = eq.salesperson_jobber_user_id
+        LEFT JOIN client_rep_assignments cra
+          ON cra.contractor_id = 'accent-roofing-dev' AND cra.jobber_client_id = eq.jobber_client_id
+       WHERE tm.id IS NULL
+       GROUP BY 1, 2, 5
+       ORDER BY 3 DESC;
+      ```
+      **Good result:** a short head of real salespeople, and a long tail of office users with one or two
+      each. `of_those_already_sticky` is how much of each person's book is already frozen to someone else.
+      **(4) Why each of Danny's 15 went the way it did — every quote on those clients:**
+      ```sql
+      WITH rep AS (SELECT id, jobber_user_id FROM team_members
+                    WHERE contractor_id = 'accent-roofing-dev' AND is_attributable AND jobber_user_id IS NOT NULL),
+      subject AS (
+        SELECT cra.jobber_client_id, cra.sticky_source
+          FROM client_rep_assignments cra
+         WHERE cra.contractor_id = 'accent-roofing-dev'
+           AND cra.sticky_rep_id = (SELECT id FROM rep)
+           AND EXISTS (SELECT 1 FROM crm_quote_facts q2
+                        WHERE q2.contractor_id = 'accent-roofing-dev' AND q2.jobber_client_id = cra.jobber_client_id
+                          AND q2.approved_at IS NOT NULL AND q2.quote_status IS DISTINCT FROM 'archived'
+                          AND q2.salesperson_jobber_user_id IS NOT NULL
+                          AND q2.salesperson_jobber_user_id <> (SELECT jobber_user_id FROM rep))),
+      ju AS (SELECT u->>'id' AS jobber_user_id, u->'name'->>'full' AS name
+               FROM admin_cache c CROSS JOIN LATERAL jsonb_array_elements(c.data->'users') AS u
+              WHERE c.contractor_id = 'accent-roofing-dev' AND c.cache_key = 'jobber_users')
+      SELECT TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client,
+             s.sticky_source AS how_danny_got_it,
+             COALESCE(ju.name, '(not in cached list)') AS quote_salesperson,
+             q.quote_status, q.approved_at::date AS approved,
+             (q.salesperson_jobber_user_id = (SELECT jobber_user_id FROM rep)) AS is_danny,
+             EXISTS (SELECT 1 FROM crm_request_facts r
+                      WHERE r.contractor_id = 'accent-roofing-dev' AND r.jobber_client_id = q.jobber_client_id
+                        AND r.created_at <= q.approved_at + INTERVAL '7 days') AS in_grace_for_some_request,
+             q.jobber_client_id
+        FROM subject s
+        JOIN crm_quote_facts q
+          ON q.contractor_id = 'accent-roofing-dev' AND q.jobber_client_id = s.jobber_client_id
+        LEFT JOIN jobber_clients jc
+          ON jc.contractor_id = 'accent-roofing-dev' AND jc.jobber_client_id = s.jobber_client_id
+        LEFT JOIN ju ON ju.jobber_user_id = q.salesperson_jobber_user_id
+       ORDER BY 1, q.approved_at NULLS LAST;
+      ```
+      **Good result:** each `mode_a_at_close` client shows a foreign quote with `in_grace_for_some_request`
+      TRUE — meaning it lost only because its author is unmapped, which is the case a rebuild fixes. A
+      FALSE there means the grace window excluded it, and mapping that person changes nothing.
+
+- [ ] 🔴 **THE REBUILD — SCOPED, NOT BUILT.**
+      **⚠ NO MARKER EXISTS, AND THAT IS THE FIRST FINDING.** `client_rep_assignments` carries
+      `provisional_source` (`mode_a` · `mode_b` · `qr_link`), `sticky_source` (`quote_salesperson` ·
+      `promoted_provisional` · `mode_a_at_close` · `mode_b_at_close` · `manual`) and the two `*_set_at`
+      timestamps. **The replay writes through the SAME engine, so it produces the SAME sources** — a
+      replay-written sticky is indistinguishable from a live-written one. The only discriminator
+      available today is TIME: the import's replay ran in one burst on 2026-09-21, and a mapping replay
+      runs when an admin saves a mapping. That is good enough for ONE rebuild now and is not a mechanism.
+      **What adding one takes:** one column (`written_by TEXT`, values `live` / `replay` / `manual`), one
+      option threaded through `runAttributionEngine` to both write helpers, the replay passing it, tests
+      on each writer, and a decision about existing rows (leave NULL = "unknown, pre-marker" rather than
+      guessing). **Worth having regardless of whether a rebuild happens.**
+      **What must be preserved:** `sticky_source = 'manual'` — Danny's 3 (Sarah Han, Holly Tinkey ×2) —
+      because **A36.3 makes manual the designed override**, and ⚠ **`provisional_source = 'qr_link'`,
+      which the engine already treats as precedence over `mode_a`.** Plus anything a live webhook wrote
+      after the import, identifiable only by `*_set_at` until the marker exists. **A rebuild filtered on
+      "delete the engine-written sources, keep `manual` and `qr_link`" preserves all three of Danny's
+      rows** — confirmed against the source of the manual writer, `PATCH
+      /api/admin/team/flagged-assignments/:id`, which sets `sticky_source='manual'` in one transaction.
+      **What else moves:** ⚠ **`client_sales` is NOT touched** — the replay writes only assignments and
+      flags, so conversion COUNTS follow ownership rather than being recomputed. ⚠ **Rep numbers dip to
+      zero between the discard and the end of the replay**, because a book is "clients assigned to me";
+      on Accent's volume the replay took well under a minute (430 clients, 0 failed), and Danny is the
+      only viewer today. ⚠ **`flagged_assignments` needs its own decision:** `writeCoAssignmentFlag`
+      skips when an OPEN flag already exists on the client, so stale open flags from the partial state
+      would both survive and suppress the correct new ones — a rebuild should close the replay-written
+      OPEN flags first and must not touch ones an admin has already resolved.
+      **⚠ IT NEEDS NO RE-IMPORT, CONFIRMED FROM SOURCE.** `attributionReplay.js` reads
+      `crm_request_facts`, `crm_quote_facts` and `jobber_clients.pipeline_stage` only — no Jobber call
+      anywhere in the file, and the bulk fence in `repImportScope.test.js` counts that. So the whole
+      rebuild is: map everyone → discard engine-written assignments → run `replayForMappedReps` once.
+      ⚠ **AND THE ORDER MATTERS FOR THE REASON THIS ITEM EXISTS:** mapping reps ONE AT A TIME replays
+      each in turn, and the first one's stickies block the others. **Map everyone first, then discard,
+      then replay once** — or the rebuild reproduces the defect it is fixing.
+      **⚠ WHAT IT COSTS LATER, PLAINLY.** Today: nothing. The rep app is a 3c placeholder, no rep opens a
+      book, and Danny is the only person who can see an assignment — so discarding and rewriting them is
+      invisible. After a rep is live: clients move under someone who has been working them, their
+      conversion count changes, and any flag they acted on is re-raised — a trust cost, not a data cost,
+      and it needs a maintenance window. After a second contractor: the job must be per-contractor
+      (each has its own mapping state), so it stops being "one reset" and becomes an operation someone
+      has to run per tenant, with the same trust cost each time. **Cheapest now, by a wide margin.**
+
 ### Canvass-stage — the sale rule is CHAINED, and the money phase is filed (2026-09-22)
 
 *Danny's rulings, 2026-09-22. Step 1 BUILT; Step 2 ($0 exclusion) HELD; the sale-value /
