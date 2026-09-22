@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { withLock } = require('../withLock');
 const { pool } = require('../../db');
 const { logError } = require('../../middleware/errorLogger');
+const { campaignVisibleClient } = require('../../utils/repScopeRows'); // rep-scope rows join no audience
 
 // Explicit overrides for system tag values that don't round-trip cleanly through title-case.
 // 'sms_opted_out' title-cases to 'Sms Opted Out' — must map to the stored value 'SMS Opted Out'.
@@ -51,8 +52,8 @@ async function evaluateAudience(pool, audienceId) {
       WHERE contractor_id = $1
       UNION ALL
       SELECT NULL::uuid AS contact_id, jobber_client_id
-      FROM jobber_clients
-      WHERE contractor_id = $1
+      FROM jobber_clients jc
+      WHERE contractor_id = $1 AND ${campaignVisibleClient('jc')}
     `;
   } else if (mode === 'AND') {
     // Each tag must match — one correlated EXISTS per tag per pool.
@@ -80,7 +81,7 @@ async function evaluateAudience(pool, audienceId) {
       UNION ALL
       SELECT NULL::uuid AS contact_id, jc.jobber_client_id AS jobber_client_id
       FROM jobber_clients jc
-      WHERE jc.contractor_id = $1
+      WHERE jc.contractor_id = $1 AND ${campaignVisibleClient('jc')}
         AND ${jobberConditions.join('\n        AND ')}
     `;
   } else {
@@ -99,7 +100,7 @@ async function evaluateAudience(pool, audienceId) {
       UNION ALL
       SELECT NULL::uuid AS contact_id, jc.jobber_client_id AS jobber_client_id
       FROM jobber_clients jc
-      WHERE jc.contractor_id = $1
+      WHERE jc.contractor_id = $1 AND ${campaignVisibleClient('jc')}
         AND EXISTS (
           SELECT 1 FROM contact_tags ct
           WHERE ct.jobber_client_id = jc.jobber_client_id

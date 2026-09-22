@@ -4210,6 +4210,153 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage backfill — the first production run, and three follow-ups (2026-09-22)
+
+- [x] **✅ THE FIRST REAL RUN, RECORDED AS MEASURED (Accent, 2026-09-21, Recommended).** Rep Step 1
+      requests 67 pages / 6,656 nodes (requested 100,835, actual 74,917); Rep Step 2 quotes 96 /
+      9,592 (86,880 / 86,792); Rep Step 3 jobs 62 / 6,110 (31,310 / 30,860); throttle retries of
+      ~0.5–1 s. **7,041 rep-scope clients, 162 newly staged, 148 with no mirror row. 2,982 clients
+      grouped into 5,619 sales, 1,143 re-paged in full, 0 failed. Replay: 430 clients, 0 failed.**
+      17,779 imported and tagged. Danny's book: 411 clients (≈34/month, matching his reality), 208
+      locked, 203 provisional.
+- [x] **✅ SALES CLIPPED TO WHERE THE BOOK STARTS (ruled 2026-09-22).** "All" read 347 and "Year"
+      286; the 61 difference was sales predating the window, present only for the 1,143 clients
+      re-paged in full — **an artifact of fetching, not a number.** Built as a READ-TIME clip,
+      `SALES_IN_BOOK_WINDOW` in `server/utils/repBook.js`, against
+      **`contractor_crm_settings.rep_window_start`**. Grouping still fetches and writes full history
+      where it needs it; only the COUNT is clipped, so every later writer (webhooks, the nightly
+      sync, a re-import) is respected without knowing the rule. The import records the window only
+      after the rep scope completes, and a later import can only move it **earlier** (LEAST).
+      **"All" now means every sale since the book started**, so on Accent it equals "Year" to
+      within the days since the import. ⚠ **Accent's first run predates the column**: a one-time,
+      guarded boot migration derives it as that run's `completed_at` minus 12 months, **assuming
+      Recommended**. The authoritative value is that run's own log line *"Rep scope — window starts
+      …"*; if they differ, one UPDATE corrects it.
+- [x] **✅ THE 148 ARE NAMED — Rep Step 4 — names.** After the three rep steps, ONLY the rowless client
+      ids are fetched through `client(id:)`, and each row is created **with full identity** and its
+      computed stage. The three rep sweeps are not widened. A client Jobber cannot return is
+      counted and never written blank. Logged as *"Rep Step 4 — names complete — N clients with no
+      row, N named, N not found, N failed, cost …"*. Supersedes the 🔴 rowless-client item in the
+      section below.
+      ⚠ **THE FENCE NEEDED MORE THAN "WRITE NO TAGS", AND THAT IS WHY A PREDICATE EXISTS.**
+      `evaluateAudience()`'s no-tag branch selects **every** `jobber_clients` row, and the contact
+      matching pass links any matching row and then **writes a `tier_2` tag on it**. So the rows
+      are marked `jobber_clients.rep_scope_only` and both readers carry `campaignVisibleClient()`
+      (`server/utils/repScopeRows.js`). ⚠ **The flag is not a permanent exclusion:** every
+      campaign-side writer (Step H+I, the client webhooks, jobberIncrementalSync) also writes the
+      permanent `jobber_client` system tag, so once one of them ingests the client for its own
+      reasons, it becomes campaign-visible with no change to any of them. For every pre-existing row
+      the flag is false and the predicate is true, so today's audiences are unchanged.
+      **The counting test** now carries ghost-1 as a second discriminating client: named, marked,
+      zero tags, absent from the all-clients audience. The exit, and the matching pass with a
+      paired positive, are tested and guard-proofed.
+- [ ] ⚠ **REP-SCOPE ROWS ARE VISIBLE TO TWO NON-CAMPAIGN READERS, BY CHOICE.** The admin Contacts
+      list (`admin/contacts.js`) shows them, since they are real Jobber clients. And
+      `findReferrerCandidates` (`server/utils/pendingReferral.js`) can match a CRM "Referred by" name
+      to one — **which can lead to a pending-referral invite to that person.** Not excluded: that is
+      a referral-credit question, and a referrer who really is a past Accent client should be
+      findable. **NEEDS DANNY if that is wrong.**
+
+- [ ] 🔴 **NEEDS DANNY — THE CONVERSION COUNT, DIAGNOSED BEFORE ANY CHANGE.** Danny: 286 on Year
+      against an expected ~213 (411 × his 52% close rate). **His 52% is a CLIENT rate; the card
+      counts SALES**, so repeat sales per client are the first explanation to test. Read-only SQL,
+      for Railway (Danny is the only mapped attributable rep, so `rep` resolves to him; the scalar
+      subqueries **error** if that stops being true, rather than silently mixing two books):
+      ```sql
+      WITH rep AS (SELECT id, jobber_user_id FROM team_members
+                    WHERE contractor_id = 'accent-roofing' AND is_attributable AND jobber_user_id IS NOT NULL),
+      book AS (SELECT jobber_client_id FROM client_rep_assignments
+                WHERE contractor_id = 'accent-roofing'
+                  AND COALESCE(sticky_rep_id, provisional_rep_id) = (SELECT id FROM rep)),
+      yr AS (SELECT cs.* FROM client_sales cs JOIN book b USING (jobber_client_id)
+              WHERE cs.contractor_id = 'accent-roofing' AND cs.anchor_at >= NOW() - INTERVAL '365 days'),
+      per AS (SELECT jobber_client_id, COUNT(*) AS n FROM yr GROUP BY 1)
+      -- (a) sales vs distinct clients, and (b) the distribution:
+      SELECT 'total' AS bucket, (SELECT COUNT(*) FROM yr) AS sales, (SELECT COUNT(*) FROM per) AS clients
+      UNION ALL
+      SELECT CASE WHEN n >= 3 THEN '3+' ELSE n::text END, SUM(n), COUNT(*) FROM per GROUP BY 1
+      ORDER BY 1;
+      ```
+      **If `clients` ≈ 213, the card is correct and the gap is repeat sales — say so plainly.**
+      (c) **What stored data can and cannot say about "sales that are not sales".** The rep steps
+      selected only `id createdAt client` for jobs, so **job total and job status are NOT stored.**
+      Measurable now: the stage of each selling client (`'sold'` = a job and no paid invoice
+      anywhere — where an unscheduled cancellation would sit) and the job ids behind every
+      multi-sale client, to feed the probe below. **$0 jobs and UNSCHEDULED jobs need GraphiQL.**
+      ```sql
+      -- same WITH as above, then:
+      SELECT jc.pipeline_stage, COUNT(DISTINCT yr.jobber_client_id) AS clients, COUNT(*) AS sales
+        FROM yr LEFT JOIN jobber_clients jc
+          ON jc.contractor_id = yr.contractor_id AND jc.jobber_client_id = yr.jobber_client_id
+       GROUP BY 1 ORDER BY 1;
+      -- the multi-sale clients and their jobs, for the probe:
+      SELECT yr.jobber_client_id, yr.anchor_at, array_agg(j.jobber_job_id) AS job_ids
+        FROM yr JOIN client_sale_jobs j ON j.sale_id = yr.id
+       WHERE yr.jobber_client_id IN (SELECT jobber_client_id FROM per WHERE n >= 2)
+       GROUP BY yr.id, yr.jobber_client_id, yr.anchor_at ORDER BY 1, 2;
+      ```
+      **The GraphiQL probe**, one multi-sale client at a time. ⚠ `total`, `jobNumber` and `title`
+      are unverified at our pinned 2026-02-17 — if the explorer rejects one, drop it and re-run:
+      ```graphql
+      query SaleCheck($id: EncodedId!) {
+        client(id: $id) {
+          id firstName lastName
+          jobs(first: 50, sort: { key: CREATED_AT, direction: ASCENDING }) {
+            nodes {
+              id jobNumber title createdAt jobStatus total
+              invoices(first: 5) { nodes { invoiceStatus amounts { total } } }
+            }
+          }
+        }
+      }
+      ```
+      **Read it for:** `total` of 0 (warranty, inspection, service call), `jobStatus` of
+      `unscheduled` with no invoice (how Accent leaves a cancellation), and two jobs a few weeks
+      apart that are really one project. **Do not change the definition until Danny has seen the
+      numbers.**
+- [ ] ⚠ **THE 9 REFERRAL CONVERSIONS — "is it because I'm the only mapped rep?" PARTLY, AND ONLY IN
+      ONE CASE.** Verified from source: only three things write an assignment — the engine's
+      provisional write, its sticky write (both match a rep by `jobber_user_id` among
+      `is_attributable` members), and an admin's manual assign from the Flagged queue. **Nothing
+      assigns a client to "the only mapped rep" by default** (`qr_link` is read and never written).
+      So each referral client has Danny's Jobber user on its assessment, request or approved quote,
+      or was assigned to him by hand. ⚠ **THE CASE WHERE HIS SUSPICION IS RIGHT:** an assessment
+      listing Danny AND an unmapped colleague resolves to Danny alone, because Mode A only matches
+      attributable members. With a second rep mapped, the same visit would raise a co-assignment
+      flag instead. That inflates his book and conversions exactly when others are unmapped.
+      ```sql
+      -- same rep / book CTEs as above, then:
+      SELECT cs.jobber_client_id, COUNT(*) AS sales, cra.sticky_source, cra.provisional_source,
+             EXISTS (SELECT 1 FROM crm_quote_facts q WHERE q.contractor_id = cs.contractor_id
+                        AND q.jobber_client_id = cs.jobber_client_id
+                        AND q.salesperson_jobber_user_id = (SELECT jobber_user_id FROM rep)) AS his_quote,
+             MAX(jsonb_array_length(f.assigned_jobber_user_ids)) FILTER (
+                 WHERE f.assigned_jobber_user_ids @> jsonb_build_array((SELECT jobber_user_id FROM rep))) AS people_on_his_assessment
+        FROM client_sales cs
+        JOIN client_rep_assignments cra USING (contractor_id, jobber_client_id)
+        LEFT JOIN crm_request_facts f ON f.contractor_id = cs.contractor_id AND f.jobber_client_id = cs.jobber_client_id
+       WHERE cs.contractor_id = 'accent-roofing'
+         AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = (SELECT id FROM rep)
+         AND (EXISTS (SELECT 1 FROM pipeline_cache pc WHERE pc.contractor_id = cs.contractor_id AND pc.jobber_client_id = cs.jobber_client_id)
+           OR EXISTS (SELECT 1 FROM users u WHERE u.contractor_id = cs.contractor_id AND u.jobber_client_id = cs.jobber_client_id AND u.invited_by_user_id IS NOT NULL))
+       GROUP BY cs.jobber_client_id, cra.sticky_source, cra.provisional_source, cs.contractor_id;
+      ```
+      ⚠ **`sales` there is inflated by the request join** (one row per request) and is for reading
+      the attribution columns, not for counting. A row with `people_on_his_assessment` ≥ 2 is the
+      only-mapped-rep case; `his_quote` true or a single-person assessment is ordinary attribution;
+      `sticky_source = 'manual'` is an admin's decision.
+- [ ] ⚠ **THE IMPORT AND THE CRONS SHARE ONE JOBBER BUDGET.** The hourly rep sweep ran at 02:20 UTC
+      mid-import, was throttled because the import held the bucket, and **HELD its watermark** — the
+      never-advance-on-failure design working; the next hour re-covered the window. But nothing
+      coordinates the two: the 30-minute pipeline sync and the nightly incremental sync draw on the
+      same 10,000-point bucket, and during a 1 h 45 m import they will be throttled or will slow it.
+      Options: skip the crons while `importState.status` is running, or share a single pacer.
+      **NEEDS DANNY — not urgent while imports are rare.**
+- [ ] ⚠ **THE EFFICIENCY NOTE NOW HAS ITS REAL COST.** Accent's first run took **1 h 45 m** (8:42 pm
+      to 10:27 pm). The rep steps took about **12 minutes** (10:15 to 10:27, as predicted). **The other
+      ~1.5 hours were the campaign import sweeping full history on Recommended** — the unfiltered
+      Steps B–E that Step G then trims. See the ruling-3 item below; still not changed, by ruling.
+
 ### Canvass-stage backfill — the rep scope, the fact tables and the replay (BUILT 2026-09-21)
 
 *Rulings 1–10 by Danny, 2026-09-21. Built in one commit after a killed session; the recovery
@@ -4292,7 +4439,8 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       passes false: **the flag lands in the Flagged queue, no bell rings.** At Accent's volume a
       replay could otherwise ring dozens at once. If flags from history should not be written at all,
       that is a different ruling.
-- [ ] 🔴 **REP-WINDOW CLIENTS WITH NO `jobber_clients` ROW GET FACTS AND AN ASSIGNMENT, BUT NO STAGE
+- [x] ✅ **CLOSED 2026-09-22 — Rep Step 4 names them (148 on Accent's first run); see the follow-ups section above.**
+      🔴 **REP-WINDOW CLIENTS WITH NO `jobber_clients` ROW GET FACTS AND AN ASSIGNMENT, BUT NO STAGE
       AND NO NAME.** The rep steps never CREATE a mirror row (Danny's guard). A client created more
       than 12 months ago, never paid, with a request in the last 12 months, is excluded by Step G on
       Recommended, and a new request does not bump the client's `updatedAt` (measured 2026-09-18), so
@@ -4319,6 +4467,7 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       existing one is its own job. What is untested: the `rep_history` status branch in both polls,
       the step label, and the `repScopeError` line on the results card. The server side of all three
       is tested in `repImportScope.test.js`.
+<!-- citecheck:record -->
 - [ ] ⚠ **CITATION DRIFT FROM THIS COMMIT — 29 FLAGGED `LIKELY ROTTED`, RECORDED RATHER THAN
       REPAIRED BY DELTA.** `citecheck --changed-files` first reported **97**; almost all of them
       pointed into `server/routes/admin/team.js` because the replay helper had been inserted near the
@@ -4335,7 +4484,15 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       script took slice offsets, then deleted a line above them, then cut at the stale offsets: the
       first line of the Finance-flags comment vanished and a fragment of the moved header stayed in
       its place. Comments only, so the module loaded and every test stayed green. Repaired from HEAD.
-- [ ] ⚠ **TWO NEW FUNCTIONS EXCEED THE 60-LINE SIGNAL — FLAGGED, NOT SPLIT.** `pageRepConnection`
+      ⚠ **2026-09-22, THE FOLLOW-UPS COMMIT: 20 flagged, and it is the SAME set** — the `CLAUDE.md`
+      `:436` / `:436-438` / `:501` / `:502` citations, moved again by that commit's tripwire entry, plus
+      the checklist self-citation. **Zero pointed into code**: the five code files that commit edited
+      moved no cited line. Two of the 20 were THIS item's own list, which is why it now sits inside a
+      record marker: it quotes rotted citations as evidence, the exemption `CLAUDE.md` names.
+<!-- /citecheck:record -->
+- [ ] ⚠ **ONE FUNCTION EXCEEDS THE 60-LINE SIGNAL — FLAGGED, NOT SPLIT** (was two until 2026-09-22,
+      when `pageRepConnection` shrank below it by sharing `repRequest` with Rep Step 4). `runRepScope`,
+      81 lines, in `server/jobs/repImportScope.js`. Formerly: `pageRepConnection`
       and `runRepScope` in `server/jobs/repImportScope.js`. The first is one paging loop with its
       throttle branch inline; the second is the three steps in sequence. Splitting either scatters the
       one control flow someone has to read to trust the pacing. Recorded so it is a decision.

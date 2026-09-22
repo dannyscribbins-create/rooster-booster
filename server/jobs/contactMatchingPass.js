@@ -1,5 +1,6 @@
 const { pool } = require('../db');
 const { logError } = require('../middleware/errorLogger');
+const { campaignVisibleClient } = require('../utils/repScopeRows'); // rep-scope rows are never linked or tier_2-tagged
 
 /**
  * runContactMatchingPass(contractorId, options)
@@ -38,8 +39,8 @@ async function runContactMatchingPass(contractorId, options = {}) {
       const ids = jobberClientIds || [jobberClientId];
       const jcResult = await pool.query(
         `SELECT jobber_client_id, first_name, last_name, email, phone
-         FROM jobber_clients
-         WHERE jobber_client_id = ANY($1) AND contractor_id = $2`,
+         FROM jobber_clients jc
+         WHERE jobber_client_id = ANY($1) AND contractor_id = $2 AND ${campaignVisibleClient('jc')}`,
         [ids, contractorId]
       );
 
@@ -119,8 +120,8 @@ async function _matchContactToJobberClients(contractorId, contact) {
               WHEN $1::TEXT IS NOT NULL AND LOWER(TRIM(COALESCE(email,''))) = $1 THEN 'email'
               ELSE 'phone'
             END AS matched_on
-     FROM jobber_clients
-     WHERE contractor_id = $3
+     FROM jobber_clients jc
+     WHERE contractor_id = $3 AND ${campaignVisibleClient('jc')}
        AND (
          ($1::TEXT IS NOT NULL AND LOWER(TRIM(COALESCE(email,''))) = $1)
          OR ($2::TEXT IS NOT NULL AND $2 <> '' AND REGEXP_REPLACE(COALESCE(phone,''), '[^0-9]', '', 'g') = $2)

@@ -327,3 +327,54 @@ describe('Canvass-stage — conversions obey the timeframe', () => {
       'a 200-day-old SALE is outside this week, even though the assignment is minutes old');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Danny, 2026-09-22: a rep's book starts at the import window. "All" had exceeded
+// "Year" by 61 on Accent — sales that predated the window and existed only because
+// 1,143 clients were re-paged in full so grouping could be exact.
+describe('Canvass-stage — conversions are clipped to where the book starts', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const setWindow = (contractorId, daysAgo) => pool.query(
+    `INSERT INTO contractor_crm_settings (contractor_id, rep_window_start) VALUES ($1, $2)
+     ON CONFLICT (contractor_id) DO UPDATE SET rep_window_start = EXCLUDED.rep_window_start`,
+    [contractorId, new Date(Date.now() - daysAgo * DAY).toISOString()]);
+
+  beforeEach(async () => {
+    await pool.query(`DELETE FROM contractor_crm_settings WHERE contractor_id = ANY($1)`, [[TENANT, OTHER_TENANT]]);
+  });
+  after(async () => {
+    await pool.query(`DELETE FROM contractor_crm_settings WHERE contractor_id = ANY($1)`, [[TENANT, OTHER_TENANT]]);
+  });
+
+  async function bookWithOldAndNewSale(token) {
+    const rep = await seedRep(TENANT, `${token}@x.test`);
+    await seedSession(token, { contractorId: TENANT, teamMemberId: rep });
+    await seedClient(TENANT, `${token}-c`);
+    await assign(TENANT, `${token}-c`, rep);
+    await seedSale(TENANT, `${token}-c`, new Date(Date.now() - 200 * DAY).toISOString()); // before the window
+    await seedSale(TENANT, `${token}-c`, new Date(Date.now() - 10 * DAY).toISOString());  // inside it
+  }
+
+  it('[RED] a sale anchored BEFORE the window counts on neither "All" nor "Year"', async () => {
+    await bookWithOldAndNewSale('clip-1');
+    await setWindow(TENANT, 30);
+    const all = await request('/api/rep/home?timeframe=all', 'clip-1');
+    const year = await request('/api/rep/home?timeframe=year', 'clip-1');
+    assert.equal(all.body.stats.conversions, 1, '"All" means since the book started');
+    assert.equal(year.body.stats.conversions, 1, 'and Year is clipped the same way — the 200-day sale is inside a year but before the book');
+  });
+
+  it('⚠ PAIRED — with NO window recorded, the same two sales both count', async () => {
+    // The proof the clip is the SETTING and not the data: same fixture, no row, 2.
+    await bookWithOldAndNewSale('clip-2');
+    const all = await request('/api/rep/home?timeframe=all', 'clip-2');
+    assert.equal(all.body.stats.conversions, 2);
+  });
+
+  it('[RED] the window is per contractor — another tenant\'s window clips nothing here', async () => {
+    await bookWithOldAndNewSale('clip-3');
+    await setWindow(OTHER_TENANT, 30);
+    const all = await request('/api/rep/home?timeframe=all', 'clip-3');
+    assert.equal(all.body.stats.conversions, 2);
+  });
+});

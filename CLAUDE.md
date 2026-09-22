@@ -370,7 +370,17 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1645 server tests across 275 suites, and 1331 React tests across 79 files** (measured 2026-09-21 by the Canvass-stage backfill commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1645 · suites 275 · pass 1645 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1654 server tests across 277 suites, and 1331 React tests across 79 files** (measured 2026-09-22 by the backfill follow-ups commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1654 · suites 277 · pass 1654 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE FOLLOW-UPS COMMIT ITSELF, BECAUSE IT SHIPS TESTS.** Server
+  1645 → 1654 is **+9 = 6 + 3**: six in a new describe appended to `repImportScope.test.js` and three
+  in one appended to `repConversions.test.js`; suites 275 → 277 is those **two** describes. React
+  did not move — no `src/` file was touched — and was re-measured rather than carried. **All four
+  predicted before the run, and the gate was green on its first run.**
+  ⚠ **A FIXTURE LEAK WENT RED FIRST, IN THE FILE, AND IT WAS NOT THE CODE.** The window-recording case
+  read an earlier case's window, because the file's reset never cleared `contractor_crm_settings` and
+  LEAST correctly kept the earlier value. **The code under test was right, and it said so by failing.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE BACKFILL COMMIT ITSELF.* It read
+  **1645 / 275 / 1331 / 79**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE BACKFILL COMMIT ITSELF, BECAUSE THAT COMMIT SHIPS TESTS.**
   Server 1623 → 1645 is **+22**, the `it(` lines of one new file (`repImportScope.test.js`);
   suites 269 → 275 is its **six** top-level describes. React 1329 → 1331 is **+2** appended to

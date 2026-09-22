@@ -6,6 +6,9 @@
 // window's requests, quotes and jobs, and write ONLY:
 //   · crm_request_facts / crm_quote_facts   (the history the attribution replay reads)
 //   · jobber_clients.pipeline_stage          (fill-only, UPDATE-only — see below)
+//   · jobber_clients rows WITH full identity  (Rep Step 4, only for clients with none;
+//                                              rep_scope_only, no tags — repScopeRows.js)
+//   · contractor_crm_settings.rep_window_start (where the rep's book starts)
 //   · client_sales / client_sale_jobs        (via the existing recomputeClientSales)
 //
 // ⚠ WHY THESE ARE SEPARATE STEPS AND NOT A FILTER ON CAMPAIGN STEPS C/D/E — RULING 2.
@@ -129,28 +132,21 @@ function _resetTestOverrides() {
 }
 
 /**
- * Page one rep connection to exhaustion, handing each page's nodes to onPage.
- * Paced on Jobber's own requestedQueryCost (ruling 8) — never a hardcoded page cost.
- * Returns { pages, nodes, requested, actual } for the step's summary log line.
+ * One rep-scope GraphQL request, retried through Jobber's throttle.
+ * Shared by the three paged steps and by Rep Step 4's per-client identity fetch, so
+ * every rep call is paced and failed the same way.
+ * Returns { data, cost } — `data` is response.data.data, `cost` is extensions.cost.
+ * Throws on any non-throttle GraphQL error: Jobber answers those with HTTP 200, so
+ * retryWithBackoff resolves on them, and reading an empty result instead would record
+ * a window with NO history — a wrong answer that looks exactly like a quiet account.
  */
-async function pageRepConnection({ label, query, dataPath, since, getToken, onPage }) {
-  let after = null;
-  let hasNextPage = true;
-  let pages = 0;
-  let nodesSeen = 0;
-  let requested = 0;
-  let actual = 0;
-  let throttleRetries = 0;
-
-  while (hasNextPage) {
-    if (pages >= MAX_REP_PAGES) {
-      throw new Error(`${label}: page cap (${MAX_REP_PAGES}) reached — run is incomplete`);
-    }
+async function repRequest({ label, query, variables, getToken }) {
+  for (let throttleRetries = 0; ; throttleRetries += 1) {
     const token = await getToken();
     const response = await retryWithBackoff(
       () => _axiosPost(
         'https://api.getjobber.com/api/graphql',
-        { query, variables: { since, after } },
+        { query, variables },
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -161,58 +157,75 @@ async function pageRepConnection({ label, query, dataPath, since, getToken, onPa
       ),
       { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
     );
-
     const cost = response.data?.extensions?.cost;
     const gqlErrors = response.data?.errors;
-    if (gqlErrors?.length > 0) {
-      const throttled = gqlErrors.some((e) => e.extensions?.code === 'THROTTLED' || e.message === 'Throttled');
-      if (throttled) {
-        throttleRetries += 1;
-        if (throttleRetries > MAX_THROTTLE_RETRIES) {
-          throw new Error(`${label}: throttle retry limit exceeded on page ${pages + 1}`);
-        }
-        const wait = computeThrottlePaceDelayMs(cost?.throttleStatus, cost?.requestedQueryCost)
-          || THROTTLE_FALLBACK_WAIT_MS;
-        // diagnostic log — intentional
-        console.log(`[fullJobberImport] ${label} throttled on page ${pages + 1} (retry ${throttleRetries}) — waiting ${wait}ms`);
-        await _sleep(wait);
-        continue; // same page, same cursor
-      }
-      // ⚠ JOBBER ANSWERS A GraphQL FAILURE WITH HTTP 200, so retryWithBackoff resolves on it.
-      // Reading `nodes` as [] here would record a window with NO history — a wrong answer
-      // that looks exactly like a quiet account.
-      throw new Error(`${label}: Jobber GraphQL error on page ${pages + 1}: ${gqlErrors.map((e) => e.message).join('; ')}`);
+    if (!gqlErrors?.length) return { data: response.data?.data, cost };
+
+    const throttled = gqlErrors.some((e) => e.extensions?.code === 'THROTTLED' || e.message === 'Throttled');
+    if (!throttled) {
+      throw new Error(`${label}: Jobber GraphQL error: ${gqlErrors.map((e) => e.message).join('; ')}`);
     }
-    throttleRetries = 0;
+    if (throttleRetries >= MAX_THROTTLE_RETRIES) {
+      throw new Error(`${label}: throttle retry limit exceeded`);
+    }
+    const wait = computeThrottlePaceDelayMs(cost?.throttleStatus, cost?.requestedQueryCost)
+      || THROTTLE_FALLBACK_WAIT_MS;
+    // diagnostic log — intentional
+    console.log(`[fullJobberImport] ${label} throttled (retry ${throttleRetries + 1}) — waiting ${wait}ms`);
+    await _sleep(wait); // then the SAME request again — same cursor, same client
+  }
+}
 
-    const connection = response.data?.data?.[dataPath];
-    if (!connection) throw new Error(`${label}: no ${dataPath} connection on page ${pages + 1}`);
+// Adds one response's cost into a step's running totals.
+function addCost(totals, cost) {
+  if (!cost) return;
+  totals.requested += Number(cost.requestedQueryCost) || 0;
+  totals.actual += Number(cost.actualQueryCost) || 0;
+}
 
-    pages += 1;
+// Waits what Jobber's own cost report says the NEXT call needs (ruling 8).
+async function paceAfter(cost) {
+  const wait = computeThrottlePaceDelayMs(cost?.throttleStatus, cost?.requestedQueryCost);
+  if (wait > 0) await _sleep(wait);
+}
+
+/**
+ * Page one rep connection to exhaustion, handing each page's nodes to onPage.
+ * Paced on Jobber's own requestedQueryCost (ruling 8) — never a hardcoded page cost.
+ * Returns { pages, nodes, requested, actual } for the step's summary log line.
+ */
+async function pageRepConnection({ label, query, dataPath, since, getToken, onPage }) {
+  let after = null;
+  let hasNextPage = true;
+  const totals = { pages: 0, nodes: 0, requested: 0, actual: 0 };
+
+  while (hasNextPage) {
+    if (totals.pages >= MAX_REP_PAGES) {
+      throw new Error(`${label}: page cap (${MAX_REP_PAGES}) reached — run is incomplete`);
+    }
+    const { data, cost } = await repRequest({ label, query, variables: { since, after }, getToken });
+    const connection = data?.[dataPath];
+    if (!connection) throw new Error(`${label}: no ${dataPath} connection on page ${totals.pages + 1}`);
+
+    totals.pages += 1;
     const nodes = connection.nodes || [];
-    nodesSeen += nodes.length;
-    if (cost) {
-      requested += Number(cost.requestedQueryCost) || 0;
-      actual += Number(cost.actualQueryCost) || 0;
-    }
+    totals.nodes += nodes.length;
+    addCost(totals, cost);
     await onPage(nodes);
 
     hasNextPage = !!connection.pageInfo?.hasNextPage;
     after = connection.pageInfo?.endCursor || null;
     if (hasNextPage && !after) {
-      throw new Error(`${label}: hasNextPage with no endCursor on page ${pages}`);
+      throw new Error(`${label}: hasNextPage with no endCursor on page ${totals.pages}`);
     }
-    if (hasNextPage) {
-      const wait = computeThrottlePaceDelayMs(cost?.throttleStatus, cost?.requestedQueryCost);
-      if (wait > 0) await _sleep(wait);
-    }
+    if (hasNextPage) await paceAfter(cost);
   }
 
   // ⚠ NAMED DISTINCTLY FROM THE CAMPAIGN STEPS SO THE RAILWAY LOG SAYS WHICH SCOPE RAN.
   // diagnostic log — intentional
-  console.log(`[fullJobberImport] ${label} complete — ${pages} pages, ${nodesSeen} nodes, `
-    + `cost requested=${requested} actual=${actual}`);
-  return { pages, nodes: nodesSeen, requested, actual };
+  console.log(`[fullJobberImport] ${label} complete — ${totals.pages} pages, ${totals.nodes} nodes, `
+    + `cost requested=${totals.requested} actual=${totals.actual}`);
+  return totals;
 }
 
 async function writeRequestFacts(db, contractorId, nodes) {
@@ -277,9 +290,9 @@ async function writeQuoteFacts(db, contractorId, nodes) {
 /**
  * Stage for every rep-scope client. ⚠ FILL-ONLY AND UPDATE-ONLY, and both halves are
  * deliberate.
- *   · UPDATE-ONLY: the rep steps never CREATE a jobber_clients row — Danny's standing
- *     guard, which keeps row creation with the writers that carry a full client payload
- *     (name, email, phone). A rep-scope client with no row is counted and reported.
+ *   · UPDATE-ONLY: this step never CREATES a jobber_clients row. A rep-scope client with
+ *     no row is returned in `missing`, with the stage computed here, and Rep Step 4
+ *     creates its row WITH full identity — never a nameless one (Danny, 2026-09-22).
  *   · FILL-ONLY (`pipeline_stage IS NULL`): this step sees only the window, and no
  *     invoices at all, so it cannot say 'paid' and cannot see a job older than the window.
  *     Step H+I, which ran first, classified every row it wrote from full history. Letting
@@ -287,7 +300,7 @@ async function writeQuoteFacts(db, contractorId, nodes) {
  */
 async function writeStages(db, contractorId, clientIds, jobsByClient) {
   let staged = 0;
-  let noRow = 0;
+  const missing = [];
   for (const clientId of clientIds) {
     const { rows: quoteRows } = await db.query(
       `SELECT quote_status FROM crm_quote_facts WHERE contractor_id = $1 AND jobber_client_id = $2`,
@@ -309,10 +322,10 @@ async function writeStages(db, contractorId, clientIds, jobsByClient) {
         `SELECT 1 FROM jobber_clients WHERE contractor_id = $1 AND jobber_client_id = $2`,
         [contractorId, clientId]
       );
-      if (rows.length === 0) noRow += 1;
+      if (rows.length === 0) missing.push({ clientId, stage });
     }
   }
-  return { staged, noRow };
+  return { staged, noRow: missing.length, missing };
 }
 
 /**
@@ -356,6 +369,97 @@ async function groupSales(db, { contractorId, jobsByClient, clientCreatedAt, win
     }
   }
   return { clients, sales, paged, failed };
+}
+
+// ── REP STEP 4 — NAMES (Danny, 2026-09-22) ────────────────────────────────────
+// The same identity fields Step A selects, for ONE client. `emails` and `phones` are
+// plain lists, not connections, so ruling 8's first: does not apply to them.
+// ⚠ `client(id:)` IS PROVEN at 2026-02-17 — fetchFullClient and the per-client Steps
+// B–E of the campaign import use it under that exact header.
+const REP_CLIENT_IDENTITY_QUERY = `
+  query RepClientIdentity($id: EncodedId!) {
+    client(id: $id) {
+      id firstName lastName isCompany isLead isArchived
+      emails { address primary }
+      phones { number primary }
+    }
+  }
+`;
+
+/**
+ * Create a NAMED jobber_clients row for each rep-scope client that has none.
+ *
+ * ⚠ THE EARLIER BAN WAS ON NAMELESS ROWS, AND THIS DOES NOT CREATE ONE. A row is written
+ * only after its identity has been fetched; a client Jobber cannot return is counted
+ * and skipped, never written blank.
+ * ⚠ IT FETCHES ONLY THE MISSING IDS — the three rep sweeps are not widened (ruling 3).
+ * ⚠ THE ROW IS MARKED rep_scope_only AND WRITES NO contact_tags, so it joins no
+ * campaign audience and the matching pass never links it (server/utils/repScopeRows.js).
+ * ⚠ ON CONFLICT DO NOTHING: if a campaign-side writer created the row meanwhile, its
+ * row — and its tags — win, and this step does not touch it.
+ *
+ * @param missing  [{ clientId, stage }] from writeStages
+ * @returns { named, notFound, failed, requested, actual }
+ */
+async function nameMissingClients(db, { contractorId, missing, getToken, logError }) {
+  const totals = { named: 0, notFound: 0, failed: 0, requested: 0, actual: 0 };
+  for (const { clientId, stage } of missing) {
+    try {
+      const { data, cost } = await repRequest({
+        label: 'Rep Step 4 — names', query: REP_CLIENT_IDENTITY_QUERY, variables: { id: clientId }, getToken,
+      });
+      addCost(totals, cost);
+      const c = data?.client;
+      if (!c?.id) {
+        totals.notFound += 1;
+      } else {
+        const email = c.emails?.find((e) => e.primary)?.address || c.emails?.[0]?.address || null;
+        const phone = c.phones?.find((p) => p.primary)?.number || c.phones?.[0]?.number || null;
+        const res = await db.query(
+          `INSERT INTO jobber_clients
+             (jobber_client_id, contractor_id, first_name, last_name, email, phone,
+              is_company, is_lead, is_archived, pipeline_stage, rep_scope_only, last_synced_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, NOW())
+           ON CONFLICT (jobber_client_id, contractor_id) DO NOTHING`,
+          [clientId, contractorId, c.firstName || null, c.lastName || null, email, phone,
+            c.isCompany === true, c.isLead === true, c.isArchived === true, stage]
+        );
+        if (res.rowCount > 0) totals.named += 1;
+      }
+      await paceAfter(cost);
+    } catch (err) {
+      totals.failed += 1;
+      await logError({
+        req: null,
+        contractorId,
+        error: new Error(`fullJobberImport Rep Step 4 — client ${clientId}: ${err.message}`),
+        source: 'fullJobberImport — rep names',
+        alert: false,
+      });
+    }
+  }
+  // diagnostic log — intentional
+  console.log(`[fullJobberImport] Rep Step 4 — names complete — ${missing.length} clients with no row, `
+    + `${totals.named} named, ${totals.notFound} not found in Jobber, ${totals.failed} failed, `
+    + `cost requested=${totals.requested} actual=${totals.actual}`);
+  return totals;
+}
+
+/**
+ * Record where this contractor's rep book starts (the COUNT clip — see repBook.js's
+ * SALES_IN_BOOK_WINDOW). ⚠ LEAST, so a later import can only move it EARLIER: history
+ * already fetched stays valid, and a Recommended re-run a year from now must not drop a
+ * year of the book. Postgres LEAST ignores NULL, so the first run simply sets it.
+ * Written only after the rep scope has completed, so a failed run never claims a window
+ * it did not fill.
+ */
+async function recordBookWindow(db, contractorId, windowStart) {
+  await db.query(
+    `INSERT INTO contractor_crm_settings (contractor_id, rep_window_start) VALUES ($1, $2)
+     ON CONFLICT (contractor_id) DO UPDATE
+       SET rep_window_start = LEAST(contractor_crm_settings.rep_window_start, EXCLUDED.rep_window_start)`,
+    [contractorId, windowStart]
+  );
 }
 
 /**
@@ -423,16 +527,23 @@ async function runRepScope(db, { contractorId, filterPreference, getToken, onSte
   });
 
   onStep('Rep stages');
-  summary.stages = await writeStages(db, contractorId, [...clientIds].sort(), jobsByClient);
+  const { missing, ...stageCounts } = await writeStages(db, contractorId, [...clientIds].sort(), jobsByClient);
+  summary.stages = stageCounts;
   // diagnostic log — intentional
   console.log(`[fullJobberImport] Rep stages complete — ${clientIds.size} rep-scope clients, `
-    + `${summary.stages.staged} newly staged, ${summary.stages.noRow} with no jobber_clients row (stage not written)`);
+    + `${summary.stages.staged} newly staged, ${summary.stages.noRow} with no jobber_clients row (named in Rep Step 4)`);
+
+  onStep('Rep Step 4 — names');
+  summary.names = await nameMissingClients(db, { contractorId, missing, getToken, logError });
 
   onStep('Rep sales');
   summary.sales = await groupSales(db, { contractorId, jobsByClient, clientCreatedAt, windowStart, getToken, logError });
   // diagnostic log — intentional
   console.log(`[fullJobberImport] Rep sales complete — ${summary.sales.clients} clients grouped into `
     + `${summary.sales.sales} sales (${summary.sales.paged} re-paged in full), ${summary.sales.failed} failed`);
+
+  // Only now — every rep step has completed — is the window a claim about filled history.
+  await recordBookWindow(db, contractorId, windowStart);
 
   summary.clients = clientIds.size;
   return summary;
@@ -442,7 +553,9 @@ module.exports = {
   runRepScope,
   repWindowStart,
   pageRepConnection,
+  nameMissingClients,
   MAX_REP_PAGES,
+  REP_CLIENT_IDENTITY_QUERY,
   REP_REQUESTS_QUERY,
   REP_QUOTES_QUERY,
   REP_JOBS_QUERY,

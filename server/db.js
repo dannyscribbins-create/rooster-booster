@@ -2470,6 +2470,43 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_request_facts_client
     ON crm_request_facts (contractor_id, jobber_client_id, created_at DESC)`);
 
+  // ── REP BOOK WINDOW + REP-SCOPE MIRROR ROWS (Canvass-stage follow-ups, 2026-09-22) ──
+  //
+  // rep_window_start — WHERE A REP'S BOOK STARTS. Danny ruled that a rep's conversions
+  // count only sales whose anchor falls inside the import window ("a book starts when
+  // the program starts"). Grouping still needs FULL job history for clients older than
+  // the window, so full-history sales are still WRITTEN; this column is what the COUNT
+  // is clipped by, at read time — so every later writer (webhooks, the nightly sync, a
+  // re-import) is respected automatically without knowing the rule exists.
+  // ⚠ NULL means "no rep import has ever run" and clips nothing. A later import can only
+  // move it EARLIER (LEAST in repImportScope.js): history already fetched stays valid,
+  // and a Recommended re-run a year later must not silently drop a year of the book.
+  await pool.query(`ALTER TABLE contractor_crm_settings ADD COLUMN IF NOT EXISTS rep_window_start TIMESTAMPTZ`);
+
+  // ⚠ ONE-TIME BACKFILL for the import that ran BEFORE this column existed (Accent,
+  // 2026-09-21, Recommended). That run did not record its window, so it is derived:
+  // the rep scope starts right after Step H+I completes, and Recommended's window is
+  // 12 months before that. ⚠ ASSUMES RECOMMENDED — the only mode that has run. The
+  // authoritative value is the run's own log line "Rep scope — window starts …".
+  // Guarded two ways, so it is a permanent no-op after the first boot: only while the
+  // column is NULL, and only for a contractor that actually has rep facts.
+  await pool.query(`
+    UPDATE contractor_crm_settings s
+       SET rep_window_start = COALESCE(p.completed_at, p.updated_at) - INTERVAL '12 months'
+      FROM jobber_import_progress p
+     WHERE p.contractor_id = s.contractor_id
+       AND s.rep_window_start IS NULL
+       AND EXISTS (SELECT 1 FROM crm_request_facts f WHERE f.contractor_id = s.contractor_id)
+  `);
+
+  // rep_scope_only — a mirror row created by Rep Step 4 ("names") for a client the rep
+  // scope reached and the campaign import did not. It carries full identity, and it
+  // must receive no contact_tags and join no campaign audience: see
+  // server/utils/repScopeRows.js for the predicate and why the flag alone is not it.
+  // ⚠ NOT NULL DEFAULT false, so every pre-existing row is campaign-visible exactly as
+  // before — the default is what makes the new predicate a no-op on today's data.
+  await pool.query(`ALTER TABLE jobber_clients ADD COLUMN IF NOT EXISTS rep_scope_only BOOLEAN NOT NULL DEFAULT false`);
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed

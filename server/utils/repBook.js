@@ -186,7 +186,26 @@ function openCoFlagExists(n) {
          )`;
 }
 
+// ── A REP'S BOOK STARTS AT THE IMPORT WINDOW (Danny, 2026-09-22) ─────────────
+//
+// Conversions count only sales whose anchor falls on or after the contractor's
+// rep_window_start (contractor_crm_settings) — "a book starts when the program starts".
+// ⚠ WHY A CLIP AT READ TIME AND NOT AT WRITE TIME: grouping needs a client's FULL job
+// history (a sale straddling the window start would otherwise get the wrong anchor), so
+// the import re-pages older clients in full and writes their older sales too. Those
+// years-old sales exist only for the clients that happened to need re-paging — 1,143 of
+// 2,982 on Accent's first run — so counting them made "All" an artifact of fetching.
+// Clipping here keeps the grouping exact and makes every writer (webhooks, the nightly
+// sync, a re-import) respect the window without knowing about it.
+// ⚠ NULL (no rep import has run) clips nothing. So "All" means every sale since the book
+// started, and on Accent it therefore equals "Year" to within the days since the import.
+// Correlated on `cs`, the client_sales alias every reader uses.
+const SALES_IN_BOOK_WINDOW = `cs.anchor_at >= COALESCE(
+           (SELECT s.rep_window_start FROM contractor_crm_settings s WHERE s.contractor_id = cs.contractor_id),
+           '-infinity'::timestamptz)`;
+
 module.exports = {
+  SALES_IN_BOOK_WINDOW,
   OWN_BOOK_PREDICATE,
   STAGE_RANK_SQL,
   TIMEFRAME_DAYS,

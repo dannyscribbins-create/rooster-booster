@@ -81,7 +81,7 @@ function page(key, nodes, { hasNextPage = false, endCursor = null, cost = null }
   };
 }
 
-function installJobber({ campaign = {}, rep = {}, clientJobs = {}, repHandler = null } = {}) {
+function installJobber({ campaign = {}, rep = {}, clientJobs = {}, identities = IDENTITIES, repHandler = null } = {}) {
   const fn = async (url, body) => {
     if (!String(url).includes('api.getjobber.com')) {
       calls.outbound.push(url);
@@ -103,6 +103,9 @@ function installJobber({ campaign = {}, rep = {}, clientJobs = {}, repHandler = 
       case 'RepRequests': return page('requests', rep.requests || []);
       case 'RepQuotes':   return page('quotes', rep.quotes || []);
       case 'RepJobs':     return page('jobs', rep.jobs || []);
+      // Rep Step 4 — one client's identity. A client absent from the map is one Jobber
+      // cannot return, answered as a null client (not an error), exactly as Jobber does.
+      case 'RepClientIdentity': return { data: { data: { client: identities[body.variables.id] || null } } };
       case 'GetClientJobsPaged': {
         const id = body.variables.id;
         if (!clientJobs[id]) throw new Error(`harness: no full job history for ${id}`);
@@ -170,6 +173,12 @@ const REP = {
     { id: 'j-new1b', createdAt: ago(20), client: { id: 'new-1', createdAt: ago(60) } },
   ],
 };
+// Rep Step 4's answers: identity for the one rep-scope client with no mirror row.
+const IDENTITIES = {
+  'ghost-1': { id: 'ghost-1', firstName: 'Gina', lastName: 'Ghost', isCompany: false, isLead: true, isArchived: false,
+    emails: [{ address: 'gina@example.com', primary: true }], phones: [{ number: '770-555-0199', primary: true }] },
+};
+
 // Full history for the one client created BEFORE the window — a job 700 days ago is a
 // second, separate sale that the window alone cannot see.
 const CLIENT_JOBS = { 'up-1': [{ id: 'j-up1-old', createdAt: ago(700) }, { id: 'j-up1', createdAt: ago(30) }] };
@@ -179,7 +188,7 @@ async function reset() {
     'client_sale_jobs', 'client_sales', 'crm_request_facts', 'crm_quote_facts',
     'flagged_assignments', 'admin_messages', 'client_rep_assignments', 'dynamic_audiences',
     'contact_tags', 'pipeline_cache', 'notifications', 'jobber_import_progress', 'jobber_clients',
-    'sessions', 'error_log', 'contacts', 'contractor_settings', 'tokens', 'titles',
+    'sessions', 'error_log', 'contact_jobber_links', 'contacts', 'contractor_settings', 'contractor_crm_settings', 'tokens', 'titles',
   ]) {
     await pool.query(`DELETE FROM ${t}`);
   }
@@ -269,15 +278,17 @@ describe('Rep scope — the import writes facts, stages and sales for the rep wi
     assert.equal(await count('client_rep_assignments'), 0);
   });
 
-  it('fills an UNSTAGED row, never regresses a staged one, and never creates a row', async () => {
+  it('fills an UNSTAGED row, never regresses a staged one, and creates rows only through Rep Step 4', async () => {
     installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
     await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
 
     assert.equal(await stageOf('up-1'), 'sold', 'the unpaid client in the window gets a stage');
     assert.equal(await stageOf('new-1'), 'sold', 'Step H+I staged it; the rep fill leaves it');
     assert.equal(await stageOf('pc-old'), 'paid', 'a full-history "paid" is never regressed');
-    assert.equal(await stageOf('ghost-1'), undefined, 'the rep scope must never CREATE a jobber_clients row');
-    assert.equal(importJob.importState.repScope.stages.noRow, 1, 'and the rowless client is counted');
+    // ⚠ INVERTED BY DANNY'S 2026-09-22 RULING, NOT RELAXED: the stage step still creates no
+    // row (noRow is counted there), and Rep Step 4 then creates ghost-1's row WITH identity.
+    assert.equal(importJob.importState.repScope.stages.noRow, 1, 'the stage step counts the rowless client');
+    assert.equal(await stageOf('ghost-1'), 'lead', 'Rep Step 4 creates it, carrying the stage computed for it');
 
     // ⚠ THE REGRESSION GUARD'S OWN PROOF: a staged row that the rep scope DOES touch.
     await pool.query(`UPDATE jobber_clients SET pipeline_stage = 'paid' WHERE contractor_id = $1 AND jobber_client_id = 'up-1'`, [TENANT]);
@@ -379,7 +390,14 @@ describe('Ruling 2 — THE COUNTING TEST: campaigns are identical with and witho
     assert.equal(await count('client_sales', `contractor_id = $1 AND jobber_client_id = 'up-1'`), 2);
     // … and wrote it NO tags.
     assert.equal(await count('contact_tags', `contractor_id = $1 AND jobber_client_id = 'up-1'`), 0);
-    assert.ok(!withRep.audiences.all.includes('ghost-1'), 'a rowless rep-scope client never enters an audience');
+    // ⚠ THE SECOND DISCRIMINATING CLIENT (Rep Step 4): ghost-1 now HAS a named mirror row —
+    // and the no-tag "all clients" audience, which selects every jobber_clients row, must
+    // still not contain it. Before the repScopeRows predicate it would have.
+    const { rows: ghost } = await pool.query(
+      `SELECT first_name, last_name, rep_scope_only FROM jobber_clients WHERE contractor_id = $1 AND jobber_client_id = 'ghost-1'`, [TENANT]);
+    assert.deepEqual(ghost, [{ first_name: 'Gina', last_name: 'Ghost', rep_scope_only: true }], 'named, and marked');
+    assert.equal(await count('contact_tags', `contractor_id = $1 AND jobber_client_id = 'ghost-1'`), 0, 'no tags');
+    assert.ok(!withRep.audiences.all.includes('ghost-1'), 'a rep-scope row never enters an audience');
   });
 
   it('⚠ the campaign sweeps are the SAME queries as before — no rep filter leaked into them', async () => {
@@ -709,5 +727,106 @@ describe('Ruling 5 — mapping a rep through the admin routes lights up their bo
     const unmap = await http('PATCH', `/api/admin/team/${rep}`, { jobber_user_id: null });
     assert.equal(unmap.body.book_replay, undefined);
     assert.equal((await assignmentOf('up-1')).provisional_rep_id, rep, 'unmapping is not retroactive');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Rep Step 4 — names, and the book window (Danny, 2026-09-22)', () => {
+
+  it('names ONLY the rowless client, from one identity fetch, and logs its own step', async () => {
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    const lines = [];
+    const realLog = console.log;
+    console.log = (...a) => { lines.push(a.join(' ')); };
+    try {
+      await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+    } finally {
+      console.log = realLog;
+    }
+    assert.equal(calls.byOp.RepClientIdentity, 1, 'one identity fetch — for ghost-1 and nobody else');
+    const { rows } = await pool.query(
+      `SELECT email, phone, is_lead, pipeline_stage FROM jobber_clients WHERE contractor_id = $1 AND jobber_client_id = 'ghost-1'`, [TENANT]);
+    assert.deepEqual(rows, [{ email: 'gina@example.com', phone: '770-555-0199', is_lead: true, pipeline_stage: 'lead' }]);
+    assert.ok(lines.some((l) => l.includes('Rep Step 4 — names complete — 1 clients with no row, 1 named')));
+    assert.equal(importJob.importState.repScope.names.named, 1);
+  });
+
+  it('a client Jobber cannot return is COUNTED and never written as a nameless row', async () => {
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS, identities: {} });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+    assert.equal(await stageOf('ghost-1'), undefined, 'no identity → no row');
+    assert.equal(importJob.importState.repScope.names.notFound, 1);
+  });
+
+  it('⚠ THE EXIT — once a campaign writer ingests the client, it joins audiences normally', async () => {
+    // Without this, the predicate could be excluding every flagged row forever, which
+    // would silently drop a client from campaigns after they pay. The campaign writers
+    // all write the permanent `jobber_client` tag, and that is the whole exit.
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+    const id = await seedAudience(pool, { contractorId: TENANT, name: 'all', tags: [], mode: 'OR' });
+    const members = async () => {
+      await evaluateAudience(pool, id);
+      const { rows } = await pool.query(`SELECT jobber_client_id FROM dynamic_audience_members WHERE audience_id = $1`, [id]);
+      return rows.map((r) => r.jobber_client_id);
+    };
+    assert.ok(!(await members()).includes('ghost-1'), 'excluded while only the rep scope has touched it');
+    await pool.query(
+      `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at) VALUES ('ghost-1', $1, 'jobber_client', 'system', NOW())`, [TENANT]);
+    assert.ok((await members()).includes('ghost-1'), 'included once a campaign writer has tagged it');
+  });
+
+  it('the contact matching pass never links a rep-scope row — paired with one it DOES link', async () => {
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+    await pool.query(
+      `INSERT INTO contacts (id, contractor_id, email, name) VALUES
+         ('aaaaaaaa-0000-0000-0000-000000000001', $1, 'gina@example.com', 'Gina Ghost'),
+         ('aaaaaaaa-0000-0000-0000-000000000002', $1, 'new-1@example.com', 'C new-1')`, [TENANT]);
+    const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
+    await runContactMatchingPass(TENANT);
+    const linked = async (jid) => (await pool.query(
+      `SELECT COUNT(*)::int AS n FROM contact_jobber_links WHERE contractor_id = $1 AND jobber_client_id = $2`, [TENANT, jid])).rows[0].n;
+    assert.equal(await linked('new-1'), 1, 'the POSITIVE: an ordinary row with the same shape of match links');
+    assert.equal(await linked('ghost-1'), 0, 'the rep-scope row does not');
+    assert.equal(await count('contact_tags', `contractor_id = $1 AND jobber_client_id = 'ghost-1'`), 0, 'and gets no tier_2 tag');
+  });
+
+  it('records where the book starts, and a later import can only move it EARLIER', async () => {
+    installJobber({ rep: {}, clientJobs: CLIENT_JOBS });
+    const windowOf = async () => (await pool.query(
+      `SELECT rep_window_start FROM contractor_crm_settings WHERE contractor_id = $1`, [TENANT])).rows[0]?.rep_window_start;
+    const run = (mode, customDate) => repScope.runRepScope(pool, {
+      contractorId: TENANT, filterPreference: { mode, customDate }, getToken: async () => 'tok',
+      now: new Date('2026-09-21T12:00:00Z'),
+    });
+    try {
+      await run('custom_date', '2026-03-01');
+      assert.equal((await windowOf()).toISOString(), '2026-03-01T00:00:00.000Z');
+      await run('custom_date', '2026-06-01');
+      assert.equal((await windowOf()).toISOString(), '2026-03-01T00:00:00.000Z', 'a LATER window never narrows the book');
+      await run('recommended');
+      assert.equal((await windowOf()).toISOString(), '2025-09-21T12:00:00.000Z', 'an EARLIER one widens it');
+    } finally {
+      await pool.query(`DELETE FROM contractor_crm_settings WHERE contractor_id = $1`, [TENANT]);
+    }
+  });
+
+  it('the one-time backfill derives the window for an import that ran before the column existed', async () => {
+    await pool.query(`INSERT INTO contractor_crm_settings (contractor_id) VALUES ($1)`, [TENANT]);
+    await pool.query(
+      `INSERT INTO jobber_import_progress (contractor_id, run_id, started_at, completed_at, updated_at)
+       VALUES ($1, 'r', '2025-01-01T00:00:00Z', '2026-09-22T02:15:00Z', '2026-09-22T02:15:00Z')`, [TENANT]);
+    await pool.query(
+      `INSERT INTO crm_request_facts (contractor_id, jobber_client_id, jobber_request_id, created_at)
+       VALUES ($1, 'c', 'r1', NOW())`, [TENANT]);
+    try {
+      await require('../db').initDB();
+      const { rows } = await pool.query(`SELECT rep_window_start FROM contractor_crm_settings WHERE contractor_id = $1`, [TENANT]);
+      // completed_at, NOT started_at — started_at is the FIRST-ever run and can be months old.
+      assert.equal(rows[0].rep_window_start.toISOString(), '2025-09-22T02:15:00.000Z');
+    } finally {
+      await pool.query(`DELETE FROM contractor_crm_settings WHERE contractor_id = $1`, [TENANT]);
+    }
   });
 });

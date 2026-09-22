@@ -8,7 +8,7 @@ const { verifyAdminSession } = require('../middleware/auth');
 const { isActiveFieldRep } = require('../utils/repAccess');
 const { logError } = require('../middleware/errorLogger');
 const {
-  OWN_BOOK_PREDICATE,
+  OWN_BOOK_PREDICATE, SALES_IN_BOOK_WINDOW,
   STAGE_RANK_SQL,
   openCoFlagExists,
   parseTimeframe,
@@ -795,7 +795,7 @@ router.get('/api/rep/home', async (req, res) => {
         AND cra.jobber_client_id = cs.jobber_client_id
       WHERE cs.contractor_id = $1
         AND ${OWN_BOOK_PREDICATE}
-        AND ($3::timestamptz IS NULL OR cs.anchor_at >= $3::timestamptz)`,
+        AND ($3::timestamptz IS NULL OR cs.anchor_at >= $3::timestamptz) AND ${SALES_IN_BOOK_WINDOW}`,
       windowed
     );
 
