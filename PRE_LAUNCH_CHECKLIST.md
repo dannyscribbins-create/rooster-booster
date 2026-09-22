@@ -473,7 +473,7 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       ⚠ **UNVERIFIED IN PRODUCTION.** The figures above are the **seed** (`db.js:830`, which fires
       only on an empty table); production may have been edited since. **Confirm before sizing the
       fix** — Railway console, one statement:
-      `SELECT id, name, payout_model, minimum_invoice, flat_amount, tier_brackets, escalating_steps FROM referral_schedules WHERE contractor_id = 'accent-roofing' LIMIT 100000;`
+      `SELECT id, name, payout_model, minimum_invoice, flat_amount, tier_brackets, escalating_steps FROM referral_schedules WHERE contractor_id = 'accent-roofing-dev' LIMIT 100000;` *(corrected 2026-09-22 from the phantom `'accent-roofing'`; Danny's schedule query returned all three schedules under `accent-roofing-dev`)*
       **The ruling owed:** retire this writer into `evaluateReferral()`, or state in writing why a
       second, schedule-blind write path exists. **It is not a cleanup item — it decides what a
       conversion row MEANS.**
@@ -4210,6 +4210,181 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage — Danny's query results, the people on his visits, and the conversion rule (2026-09-22)
+
+*REPORTED, NOTHING BUILT. Results run by Danny on Railway, `accent-roofing-dev`, 2026-09-22.*
+
+- [x] **THE RESULTS.** 3b-1: 411 clients, 203 provisional / 208 sticky; **shared assessment 403**
+      (202 provisional / 201 sticky); **someone else's approved quote 13, all sticky.** 3b-2: **13** Jobber
+      users share Danny's visits — 170, 138, 93, 13, 8, 7, 6, 4, 2, 2, 1, 1, 1 clients. 4c-1: first sale
+      147 · ≤20d 14 · 21–30d 33 · 31–45d 23 · 46–90d 16 · 91+ 53 = **286**. 4c-3: three schedules, all under
+      `accent-roofing-dev`, all `invoice_window_days` 20 — **grouping has used Accent's own setting.**
+- [x] ✅ **"THE 403 SHARED IS MOSTLY NOISE" — CONFIRMED FROM SOURCE, WITH ONE CONDITION.** Every match
+      the engine makes filters `team_members` on `is_attributable = true`: Mode A (the assessment's
+      assigned users), Mode B (the request salesperson) and the sticky gate's quote salesperson, all in
+      `attributionEngine.js`. A Jobber user who is not an attributable member is never matched, so the
+      top four — scheduling staff by Danny's reading — can create **no co-assignment, no provisional and no
+      sticky.** Mode A matches ALL the attributable people on the most recent in-grace assessment, so
+      Danny plus a scheduler resolves to Danny alone, which is correct. **The condition:** the 403 stays
+      noise only while none of those 13 becomes attributable. **The 13 colleague-quote stickies are NOT
+      noise**: a quote's salesperson is the strongest signal the engine has, and Danny holds those only
+      because that person was unmapped when his replay ran.
+- [ ] 🔴 **RULE — A SCHEDULER OR OFFICE PERSON MUST NEVER BE MARKED `is_attributable`.** If one were,
+      the next replay would raise a co-assignment flag on every client that person shares with a rep —
+      **hundreds at once on Accent** (170 for the most-shared user). Attributable means *"this person
+      wins clients"*, not *"this person touches clients"*.
+      ⚠ **NOTHING IN THE ADMIN UI WARNS BEFORE THAT TOGGLE IS SET.** The drawer's Attributable row
+      (`AdminTeamSettings.jsx`) carries only a description; the one server guard (the promote endpoint
+      in `admin/team.js`) is that attributable requires `is_field_rep`. **Nothing counts shared
+      assessments.** A scheduler who is also marked a field rep can be made attributable in one click,
+      and the replay starts on save. **Recommended, not built:** when Attributable is turned on for a
+      mapped member, show how many clients' stored assessments list them alongside an attributable rep,
+      and require an explicit confirm above a threshold. The count is one query over `crm_request_facts`.
+- [ ] **NAME THE PEOPLE — Danny runs these; the machine that writes this file cannot reach
+      production.** Names come from the Canvass-3.6 picker's cache, the `admin_cache` row keyed
+      `jobber_users`. ⚠ **That row is never deleted** — the expiry cron removes only rows with a past
+      `expires_at`, and this row sets none — so it holds the list from the last time a mapping drawer
+      loaded it, and `names_cached_at` in each result says how old (a zone-less timestamp, in the server's
+      clock). **If it is missing or stale**, open any team member's drawer in Team Settings: the picker
+      fetches and re-caches the full list. `jobber_status` is ACTIVATED / DEACTIVATED / NOT_INVITED etc.,
+      or null if that fetch fell back without status.
+      **(a) The 13 users on Danny's shared visits:**
+      ```sql
+      WITH rep AS (SELECT id, jobber_user_id FROM team_members
+                    WHERE contractor_id = 'accent-roofing-dev' AND is_attributable AND jobber_user_id IS NOT NULL),
+      book AS (SELECT jobber_client_id FROM client_rep_assignments
+                WHERE contractor_id = 'accent-roofing-dev'
+                  AND COALESCE(sticky_rep_id, provisional_rep_id) = (SELECT id FROM rep)),
+      ju AS (SELECT u->>'id' AS jobber_user_id, u->'name'->>'full' AS name, u->'email'->>'raw' AS email,
+                    u->>'status' AS jobber_status, c.cached_at
+               FROM admin_cache c CROSS JOIN LATERAL jsonb_array_elements(c.data->'users') AS u
+              WHERE c.contractor_id = 'accent-roofing-dev' AND c.cache_key = 'jobber_users'),
+      shared AS (SELECT x.jobber_user_id, COUNT(DISTINCT f.jobber_client_id) AS dannys_clients_shared
+                   FROM crm_request_facts f
+                   JOIN book b ON b.jobber_client_id = f.jobber_client_id
+                   CROSS JOIN LATERAL jsonb_array_elements_text(f.assigned_jobber_user_ids) AS x(jobber_user_id)
+                  WHERE f.contractor_id = 'accent-roofing-dev'
+                    AND f.assigned_jobber_user_ids @> jsonb_build_array((SELECT jobber_user_id FROM rep))
+                    AND x.jobber_user_id <> (SELECT jobber_user_id FROM rep)
+                  GROUP BY 1)
+      SELECT sh.dannys_clients_shared AS shared,
+             COALESCE(ju.name, '(not in cached list)') AS jobber_name,
+             ju.email, ju.jobber_status,
+             COALESCE(tm.full_name, tm.email, '— not a team member') AS roofmiles_member,
+             tm.is_field_rep, tm.is_attributable,
+             sh.jobber_user_id,
+             (SELECT MAX(cached_at) FROM ju) AS names_cached_at
+        FROM shared sh
+        LEFT JOIN ju ON ju.jobber_user_id = sh.jobber_user_id
+        LEFT JOIN team_members tm ON tm.contractor_id = 'accent-roofing-dev' AND tm.jobber_user_id = sh.jobber_user_id
+       ORDER BY 1 DESC, 2;
+      ```
+      **(b) The 13 sticky clients with someone else's approved quote, and who that someone is:**
+      ```sql
+      WITH rep AS (SELECT id, jobber_user_id FROM team_members
+                    WHERE contractor_id = 'accent-roofing-dev' AND is_attributable AND jobber_user_id IS NOT NULL),
+      ju AS (SELECT u->>'id' AS jobber_user_id, u->'name'->>'full' AS name, u->>'status' AS jobber_status, c.cached_at
+               FROM admin_cache c CROSS JOIN LATERAL jsonb_array_elements(c.data->'users') AS u
+              WHERE c.contractor_id = 'accent-roofing-dev' AND c.cache_key = 'jobber_users')
+      SELECT TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client,
+             q.approved_at::date AS quote_approved,
+             COALESCE(ju.name, '(not in cached list)') AS quote_salesperson,
+             ju.jobber_status,
+             COALESCE(tm.full_name, tm.email, '— not a team member') AS roofmiles_member,
+             tm.is_field_rep, tm.is_attributable,
+             cra.sticky_source AS how_danny_got_it,
+             q.jobber_client_id, q.salesperson_jobber_user_id,
+             (SELECT MAX(cached_at) FROM ju) AS names_cached_at
+        FROM crm_quote_facts q
+        JOIN client_rep_assignments cra
+          ON cra.contractor_id = q.contractor_id AND cra.jobber_client_id = q.jobber_client_id
+         AND cra.sticky_rep_id = (SELECT id FROM rep)
+        LEFT JOIN jobber_clients jc ON jc.contractor_id = q.contractor_id AND jc.jobber_client_id = q.jobber_client_id
+        LEFT JOIN ju ON ju.jobber_user_id = q.salesperson_jobber_user_id
+        LEFT JOIN team_members tm ON tm.contractor_id = q.contractor_id AND tm.jobber_user_id = q.salesperson_jobber_user_id
+       WHERE q.contractor_id = 'accent-roofing-dev' AND q.approved_at IS NOT NULL
+         AND q.quote_status IS DISTINCT FROM 'archived'
+         AND q.salesperson_jobber_user_id IS NOT NULL
+         AND q.salesperson_jobber_user_id <> (SELECT jobber_user_id FROM rep)
+       ORDER BY 3, 1;
+      ```
+      Both parse and run on PostgreSQL 16.14; (a) was run against a rolled-back fixture and returned the
+      cached name, email, status and "not a team member" for a scheduler sharing one visit.
+      **Good results:** (a) the top four are names Danny recognises as schedulers, marked
+      *"— not a team member"* or not attributable; (b) `how_danny_got_it` is `promoted_provisional` or
+      `mode_a_at_close` — never `quote_salesperson`, which would mean his own quote won — and any
+      salesperson there who really closed the sale is a sticky to reassign by hand. ⚠ (b) may return MORE
+      than 13 rows: a client with two such quotes appears twice.
+      **For the future, recommended not built — an admin view rather than SQL:** in Team Settings, a
+      *"People on your Jobber visits"* panel listing each Jobber user who appears on stored assessments
+      or quotes, with the columns above and two counts (clients shared with an attributable rep; approved
+      quotes on a client another rep holds). It reads only `crm_request_facts`, `crm_quote_facts`,
+      `team_members` and the cached user list — no Jobber call — and it is where the warning above would
+      get its number.
+- [x] **4c-2, REPLACED — one row, only constructs 4c-1 already ran.** Verified to parse on 16.14.
+      ```sql
+      WITH rep AS (SELECT id FROM team_members
+                    WHERE contractor_id = 'accent-roofing-dev' AND is_attributable AND jobber_user_id IS NOT NULL),
+      book AS (SELECT jobber_client_id FROM client_rep_assignments
+                WHERE contractor_id = 'accent-roofing-dev'
+                  AND COALESCE(sticky_rep_id, provisional_rep_id) = (SELECT id FROM rep)),
+      s AS (SELECT cs.jobber_client_id, cs.anchor_at,
+                   LAG(cs.last_event_at) OVER (PARTITION BY cs.jobber_client_id ORDER BY cs.anchor_at) AS prev_last
+              FROM client_sales cs JOIN book b ON b.jobber_client_id = cs.jobber_client_id
+             WHERE cs.contractor_id = 'accent-roofing-dev'),
+      yr AS (SELECT *, EXTRACT(EPOCH FROM anchor_at - prev_last) / 86400 AS gap_days
+               FROM s WHERE anchor_at >= NOW() - INTERVAL '365 days')
+      SELECT COUNT(*) AS anchored_today,
+             COUNT(*) FILTER (WHERE gap_days IS NULL OR gap_days > 20) AS chained_20,
+             COUNT(*) FILTER (WHERE gap_days IS NULL OR gap_days > 30) AS chained_30,
+             COUNT(*) FILTER (WHERE gap_days IS NULL OR gap_days > 45) AS chained_45,
+             COUNT(*) FILTER (WHERE gap_days IS NULL OR gap_days > 60) AS chained_60,
+             COUNT(*) FILTER (WHERE gap_days IS NULL OR gap_days > 90) AS chained_90
+        FROM yr;
+      ```
+      **Danny's hand figures, VERIFIED from 4c-1:** 286−14 = **272** (20d); −33 = **239** (30d); −23 =
+      **216** (45d); −16 = **200** (90d). 60d cannot come from 4c-1 as reported (46–60 and 61–90 were
+      merged); the query above gives it. **70 sales start within 45 days of the previous sale's last job**,
+      and 14 within 20 — gaps a chained 20-day rule would already close.
+- [ ] 🔴 **THE CONVERSION RULE — PREPARED FOR DANNY'S RULING, NOTHING CHANGED.** Deciding: (a) the
+      window length; (b) whether sale grouping gets its OWN setting instead of sharing the payout
+      *Invoice Grouping Window*.
+      **1. Anchored → chained.** The rule lives in one place, `groupJobsIntoSales`
+      (`server/utils/saleGrouping.js`): today a job joins the open sale while it is within N days of the
+      sale's FIRST job; chained measures from the sale's LATEST job. **A one-expression change**, and both
+      writers — the import's rep sale grouping and the stage webhooks' `refreshClientSales` — go through
+      it. `saleGrouping.test.js` pins the anchored behaviour and would be updated openly.
+      ⚠ **Existing `client_sales` rows MUST be recomputed** — they are materialised and nothing
+      re-groups at read time. Two ways: (i) **from stored sales, no Jobber call** — when the new N is at
+      least the old window (20), chaining only ever MERGES consecutive stored sales (no stored sale has an
+      internal gap over 20), so merging each sale whose gap from the previous one's last job is ≤ N is
+      exact; or (ii) **re-page every selling client** through `fetchAllClientJobs` (~3,000 on Accent,
+      requested ≈8 a page). **If $0 exclusion ships at the same time, (ii) is unavoidable** — totals are
+      not stored.
+      ⚠ **A chained window has no ceiling**: a client with a job every 40 days is one sale forever at 45
+      days. Whether a maximum span is wanted belongs to (a).
+      **2. A separate sale-grouping setting.** Today `windowDaysFor` reads the MAX of the active
+      schedules' `invoice_window_days` — a PAYOUT setting, so changing how referrers are paid would
+      silently move reps' conversions. Proposed: `contractor_crm_settings.sale_grouping_days INTEGER`
+      (NULL = platform default); `windowDaysFor` reads it and stops reading `referral_schedules`; one
+      field on the admin CRM settings page. Copy draft: *"Sale grouping — Jobs for the same client that
+      start within this many days of that client's previous job count as one sale in your reps' numbers.
+      This does not change referral payouts."* **Default: whatever Danny rules for (a)** — 45 if he picks
+      it. ⚠ **Changing the value must trigger a recompute** — from stored sales when it widens, a re-page
+      when it narrows (a narrower window can split a stored sale, and `client_sale_jobs` holds no dates).
+      **3. Storing job total, to exclude $0 jobs.** Add `total` to Rep Step 3's jobs query AND to
+      `fetchAllClientJobs`'s — both, or re-paged clients group under a different definition — and drop
+      jobs whose total is exactly 0 before grouping; NULL counts. **Cost:** Rep Step 3's logged baseline is
+      requested **31,310** / actual 30,860 over 62 pages (505 a page); the estimate stays **≤ +100 a
+      page, ≤ +6,200 requested**, pending a GraphiQL comparison. ⚠ **`fetchAllClientJobs` logs no cost at
+      all**, so a re-page's cost cannot be read from the logs today — a cost line belongs with this change.
+      ⚠ **Whether `total` exists at our pinned 2026-02-17 is unverified** — the SaleCheck probe settles it.
+      **4. "Year" under chained 45 + $0 excluded — CANNOT BE ESTIMATED FROM STORED DATA.** Chained 45
+      alone is **216, exact.** The $0 exclusion needs job totals, which are not stored. ⚠ **And 216 is not
+      even an upper bound**: removing a $0 job can SPLIT a chain — a real job on day 0, a $0 service call
+      on day 40 and a real job on day 80 are one sale at 45 days WITH the service call and two without
+      it. The only evidence today is Danny's SaleCheck sample.
+
 ### Canvass-stage — after c337612: the names run, mapping order, and the conversion count (2026-09-22)
 
 - [x] ⚠ **A LOCAL-SEED CONTRACTOR ID WAS WRITTEN INTO SQL HANDED TO DANNY FOR PRODUCTION.** Every
@@ -4232,10 +4407,8 @@ may legitimately change several of these subjects.*
       ⚠ **OTHER `'accent-roofing'` IN NON-TEST CODE, 2026-09-22:** unchanged from the 27-across-8-files
       inventory in `CLAUDE_REGISTRY.md` — c337612 and this commit added none. **In documents, two more
       Railway-facing queries carry it:** the `DB_QUERIES.md` one (fixed here), and the
-      `referral_schedules` query in the two-writers entry near the top of this file. ⚠ **Probably the
-      phantom too, and left alone rather than guessed at:** the schedule seed wrote the literal, but
-      `initDB()`'s seed comment says the live rows took the new id at the rename. The conversion
-      entry's query (3) below lists every schedule row with its contractor id, which settles it.
+      `referral_schedules` query in the two-writers entry near the top of this file. ⚠ **CONFIRMED WRONG AND FIXED 2026-09-22:** Danny's query (3) below returned all three schedules
+      under `accent-roofing-dev`.
 - [x] ✅ **THE 148 ARE NAMED WITHOUT AN IMPORT — a one-off boot job (ruled by Danny 2026-09-22).**
       `server/jobs/repNamesBackfill.js`, started from `server.js` after `initDB()`. It rebuilds the
       rowless rep-scope set from STORED data (request and quote facts, plus clients with a sale whose
@@ -4371,9 +4544,7 @@ may legitimately change several of these subjects.*
                   ELSE '7 >180d' END AS gap_after_previous_sales_last_job,
              COUNT(*) AS sales, COUNT(*) FILTER (WHERE jobs = 1) AS single_job_sales
         FROM yr GROUP BY 1 ORDER BY 1;
-      -- (2) what Year would read under a CHAINED rule — exact, from the same rows:
-      SELECT n AS chained_days, COUNT(*) FILTER (WHERE gap_days IS NULL OR gap_days > n) AS sales
-        FROM yr CROSS JOIN (VALUES (20), (30), (45), (60), (90)) v(n) GROUP BY n ORDER BY n;
+      -- (2) REPLACED 2026-09-22 — see the note under this block; the working form is in the section below.
       -- (3) the window the grouping actually used (it reads the ACTIVE schedules' MAX):
       SELECT contractor_id, is_active, invoice_window_days FROM referral_schedules ORDER BY 1;
       ```
@@ -4384,6 +4555,14 @@ may legitimately change several of these subjects.*
       under the seed's `'accent-roofing'`, the grouping used the **fallback 20**, not Accent's setting —
       the same number today, a different number the day Accent changes it.
       **Do not change the definition until Danny has brought SaleCheck back.**
+      ⚠ **QUERY (2) WAS A DEFECT TWICE.** In this file it was NOT STANDALONE — it read `yr` from a `WITH`
+      that ended at (1)'s semicolon, so pasted alone it cannot run. And the standalone copy printed for
+      Danny failed on Railway with *"syntax error near AS"*. **That second failure is NOT REPRODUCED:**
+      the same text, byte for byte, parses and runs on local PostgreSQL 16.14. The one construct it used
+      that the queries which did run did not is a `VALUES` list with a column-alias list (`v(n)`); if
+      Railway's query tool parses SQL before sending it, that is the likeliest thing to trip it —
+      **unconfirmed.** The replacement below uses only constructs 4c-1 already ran. Danny computed the
+      numbers from (1) instead, and they check out.
 
 ### Canvass-stage backfill — the first production run, and three follow-ups (2026-09-22)
 
