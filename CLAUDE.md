@@ -370,7 +370,26 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1665 server tests across 279 suites, and 1331 React tests across 79 files** (measured 2026-09-22 by the chained-grouping commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1665 · suites 279 · pass 1665 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1683 server tests across 280 suites, and 1331 React tests across 79 files** (measured 2026-09-22 by the confidence-rule commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1683 · suites 280 · pass 1683 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CONFIDENCE-RULE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.** Server
+  1665 → 1683 is **+18 = 8 + 10**: eight appended to the EXISTING describe in
+  `attributionEngine.test.js` and ten in one new file (`repAssignmentRebuild.test.js`); suites 279 →
+  280 is that file's single describe. React did not move — no `src/` file was touched — and was
+  re-measured. **All four predicted before the run; green on the first gate run.**
+  ⚠ **COUNTED WITH `grep -c`, AND THE NEW FILE'S TWO `for` LOOPS WERE CHECKED FOR POSITION** — both
+  sit inside `beforeEach`, iterating tables and tenants, so they wrap no `it()` and 10 is exact.
+  ⚠ **ONE EXISTING CASE WAS INVERTED AND CONTRIBUTES 0.** *"promote provisional when quote salesperson
+  is non-attributable"* asserted the `promoted_provisional` STICKY that Danny's ruling forbids; it now
+  asserts the provisional SURVIVES and no sticky is written. Rewritten in place, with the reason.
+  ⚠ **A TEST FOUND A DESIGN LIMIT RATHER THAN A BUG, AND IT WAS RECORDED INSTEAD OF ENGINEERED AWAY.**
+  `written_by` is one column per ROW, so a row whose last writer was the admin keeps an engine-written
+  provisional the rebuild cannot reach. Harmless — the sticky wins every read — and now its own case.
+  ⚠ **AND A FIXTURE USED A STATUS THE SCHEMA FORBIDS:** `flagged_assignments.status` admits only
+  `open` · `resolved` · `dismissed` · `auto_resolved`, and the first draft seeded `'assigned'`. **The
+  CHECK constraint caught it, which is the fence working** — the value was invented from the route's
+  `action: 'assign'` rather than read from the migration.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CHAINED-GROUPING COMMIT ITSELF.* It read
+  **1665 / 279 / 1331 / 79**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CHAINED-GROUPING COMMIT ITSELF, BECAUSE IT SHIPS TESTS.** Server
   1657 → 1665 is **+8 = 1 + 7**: one new case in the EXISTING grouping describe (the paired negative for
   the chained rule) and seven in a new describe for the regroup; suites 278 → 279 is that one describe.

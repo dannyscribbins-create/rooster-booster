@@ -150,6 +150,10 @@ async function replayClientAttribution(db, { contractorId, jobberClientId, logEr
       referralAnchor: trigger.createdAt,
       writeOrphanOnMiss: false,
       notifyAdminOnFlag: false,
+      // ⚠ THE MARKER, AND THIS IS THE ONLY PLACE IT IS NOT 'live'. It is what lets an
+      // operator-run rebuild discard what the replay wrote while leaving live and manual
+      // assignments alone — see server/jobs/repAssignmentRebuild.js.
+      writtenBy: 'replay',
       logError,
     });
   }

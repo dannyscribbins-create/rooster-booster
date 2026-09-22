@@ -4210,6 +4210,154 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage — the confidence rule, the marker, and the rebuild as a support tool (2026-09-22)
+
+*Danny ruled: NO REBUILD NOW — fix the RULE instead. His 10 wrong stickies cost nothing in a
+pre-launch instance where no rep's compensation depends on them, and rebuilding now would
+rebuild against a rule that was about to change.*
+
+- [x] ✅ **AN ELIGIBLE QUOTE BY AN UNMAPPED AUTHOR NOW MAKES THE ANSWER PROVISIONAL — BUILT.**
+      In `runAttributionEngine`'s sticky gate: when the most recently approved eligible quote names a
+      salesperson matched to no **attributable** member, the fall-through to Mode A/B is kept — blocking
+      would strand real clients whenever the office wrote the quote, and one of Accent's own quote
+      authors is a Jobber user called *Scheduled Jobs* — but the result is written as a **PROVISIONAL**,
+      and the promotion of an existing provisional to sticky is skipped as well.
+      **The reasoning, filed:** the engine used its second-best signal and recorded the result as
+      certain. A provisional is re-examined by every later replay, so mapping that person later fixes
+      the client automatically. **Same behaviour, different confidence.**
+      ⚠ **AND THE REASON IT IS LAUNCH-BLOCKING RATHER THAN CLEANUP: every new contractor starts with
+      NOBODY mapped**, so without this each one takes a batch of permanently-wrong stickies on their
+      first import. Measured on Accent: 10 of Danny's 13, and **1,990 clients account-wide** carry an
+      eligible approved quote by an unmapped author.
+      **Danny's three discriminating cases are tested**, plus an archived-quote negative, the Mode B
+      path, a co-assignment flag that must still fire, and qr_link precedence. **Guard-proofed:**
+      restoring the sticky write takes 1 red, restoring the promotion takes 1, and widening the
+      downgrade to *any* quote rather than an eligible one takes 4.
+      ⚠ **CONSEQUENCE, STATED PLAINLY — A CLIENT WHOSE QUOTE AUTHOR WILL NEVER BE MAPPED STAYS
+      PROVISIONAL INDEFINITELY.** That is the honest reading: nobody has confirmed who closed it.
+      **What reads the difference:** book membership does NOT (`OWN_BOOK_PREDICATE` is
+      `COALESCE(sticky, provisional)`, so the client is in the rep's book either way), but the rep app
+      shows a **locked/provisional split** on Home and a per-client `is_sticky` (`server/routes/rep.js`).
+      So a rep will see a larger "provisional" number than before. ⚠ **NOTHING MISLEADS TODAY** —
+      provisional means "not confirmed", which is exactly true — **but if "locked" ever comes to mean
+      "safe" or "mine for sure" in rep-facing copy, this population is the case that would make that
+      wrong.** Recorded before the rep surfaces are built.
+- [x] ✅ **THE WRITER MARKER — PLUMBING ONLY.** `client_rep_assignments.written_by`, values `live`
+      (default) · `replay` (the historical replay passes it) · `manual` (the admin assign route writes
+      it beside `sticky_source='manual'`). **No contractor sees it and none would care**; it exists
+      solely so a rebuild can tell the replay's assignments from live ones, which were previously
+      indistinguishable because the replay runs the same engine and produces the same sources.
+      **Existing rows stay NULL.** No CHECK constraint (it would have to admit NULL anyway) and no admin
+      UI. ⚠ **IT IS PER ROW, NOT PER HALF** — a row whose last writer was the admin reads `manual`, so
+      an engine-written provisional on that same row is out of a discard's reach. Harmless (the sticky
+      wins every read and the replay rewrites provisionals) and **found by a test, kept as a decision.**
+      ⚠ **And `sticky_source` — not the marker — is what actually protects a manual assignment.**
+- [x] ✅ **THE REBUILD — AN OPERATOR-RUN SUPPORT TOOL, NOT A FEATURE.**
+      `server/jobs/repAssignmentRebuild.js`. **No route, no button, nothing contractor-facing.** An
+      operator sets the Railway env var **`REP_ASSIGNMENT_REBUILD=<contractor id>`**, restarts, reads
+      the log, then **removes the var** (while it is set, every restart re-runs it). Naming the
+      contractor is the confirmation; there is deliberately no all-contractors mode.
+      **The order, which is the design:** discard engine-written assignments → close the OPEN
+      co-assignment flags → replay once. ⚠ **IT REFUSES while any attributable member has no
+      `jobber_user_id`**, because mapping reps one at a time replays each in turn and the first one's
+      stickies block the others — the very defect it repairs. It cannot check the other half (that
+      everyone who SHOULD be a rep exists at all); the operator does that.
+      **Preserved:** `sticky_source='manual'` (A36.3), `provisional_source='qr_link'`, and anything
+      marked `live`. **Flags:** only OPEN `rep_co_assignment` rows are closed — an open flag suppresses
+      the correct new one, and one an admin resolved is a record. **`client_sales` is untouched**, so
+      conversion counts follow ownership rather than being recomputed.
+      ⚠ **THE NULL ASSUMPTION IS STATED, NOT MADE:** rows with no marker predate the column and are
+      treated as replay-written — true for Danny's data, **false for a contractor with months of live
+      activity after their import** — so the count of such rows is reported in the summary line, and
+      `treatNullAsReplay: false` declines it. **No Jobber call**: the test double throws on any HTTP
+      call, so "it needs no re-import" is proven rather than asserted.
+
+- [ ] **3b — THE CORRECTION PATH, REPORTED FROM SOURCE. ⚠ THIS IS THE GAP THAT MATTERS BEFORE LAUNCH.**
+      **(a) Can an admin SEE who a client is assigned to, from the client's record? NO.** The admin
+      Contacts tab and `AdminContactDetailDrawer.jsx` show no assignment at all — the drawer has no rep
+      field, and `admin/contacts.js` never reads `client_rep_assignments`. The only surface that shows
+      an assignment is `AdminFlaggedAssignmentsQueue.jsx`, and it lists **only clients that carry an
+      open flag.**
+      **(b) Can they CHANGE it without SQL? ONLY FOR A FLAGGED CLIENT.** The one write path is
+      `PATCH /api/admin/team/flagged-assignments/:id` (`action: 'assign' | 'dismiss'`,
+      `requirePermission('rep_assignment')`), reached from that queue. ⚠ **So for Danny's 10 — which
+      are NOT flagged — there is no front-end correction path at all.** There is no "reassign this
+      client" anywhere, and no way to clear an assignment.
+      **(c) What it writes:** `sticky_rep_id`, `sticky_source='manual'`, now `written_by='manual'`, plus
+      the flag resolution and an `activity_log` row, all in one transaction. **It survives every later
+      replay** — the engine returns before doing anything when a sticky exists, and the rebuild excludes
+      `manual` by source. A36.3 is the ruling behind that.
+      **(d) Does anything TELL an admin a client may be wrongly assigned? ONLY the two existing flags**
+      — `rep_co_assignment` (two attributable reps on one assessment) and `orphan` (nothing resolved).
+      ⚠ **Nothing raises "an approved quote names someone other than the assigned rep", which is the
+      exact shape of Danny's 10.** It is measurable from stored facts with no Jobber call (the section
+      below has the query).
+      **SCOPED, NOT BUILT — and this is the pre-launch front-end work, not the marker:**
+      **(i)** the assigned rep on the contact drawer, with its source and confidence; **(ii)** a reassign
+      control there, reusing the manual write (the route today is keyed to a FLAG id, so it needs a
+      client-keyed sibling); **(iii)** a third flag reason for the quote/assignment mismatch, so the
+      queue surfaces it rather than a human noticing. **(i) and (ii) are what Danny's requirement —
+      "a contractor can fix a wrong assignment themselves" — actually needs.**
+
+- [ ] ⚠ **THE 13 NULL `how_assigned` ROWS ARE NOT SOURCE-LESS ASSIGNMENTS — THAT IS THE ROLLUP TOTAL.**
+      Query (1)'s `GROUP BY ROLLUP (…)` emits one extra row where the grouping expression is NULL: the
+      total across the groups above it. **13 is the count of Danny's clients carrying a foreign eligible
+      quote** — the same 13 the naming query returned as 15 rows (a client with two foreign quotes
+      appears twice there). ⚠ **The expression it groups by is `COALESCE(sticky_source, 'PROVISIONAL
+      only: ' || COALESCE(provisional_source, 'none'))`, which can never itself be NULL**, so no real
+      row can produce that value. **Nothing writes an assignment without a source:** `writeProvisional`
+      and `writeSticky` always set theirs, and the admin route writes `'manual'`. To confirm on
+      Railway rather than take this on the argument:
+      ```sql
+      SELECT COUNT(*) FILTER (WHERE sticky_rep_id IS NOT NULL AND sticky_source IS NULL)          AS sticky_without_source,
+             COUNT(*) FILTER (WHERE provisional_rep_id IS NOT NULL AND provisional_source IS NULL) AS provisional_without_source,
+             COUNT(*)                                                                              AS rows_total
+        FROM client_rep_assignments WHERE contractor_id = 'accent-roofing-dev';
+      ```
+      **Good result: both counts are 0.** If either is non-zero, that IS a defect and this entry is wrong.
+- [x] **THE GRACE WINDOW WAS NOT THE CAUSE — MEASURED.** Every foreign quote across Danny's 15 rows
+      returned `in_grace_for_some_request = TRUE`, so all ten lost **purely because their author is
+      unmapped**, and the provisional rule above covers the whole set. ⚠ **Several clients carry
+      MULTIPLE approved quotes** — Joe Bowen four; Ken Hall, Jeff Hicks, Erin Owoade and James &
+      Jeremiah Namkoong two — **which is why two rows read `quote_salesperson`: Danny's own quote won
+      the most-recently-approved comparison while a colleague's approved quote also existed.** Not a
+      defect; recorded with these examples so it is not re-opened. **Danny's ruling on the remainder:**
+      the few that did not meet ideal criteria and mapped as a separate job are few enough to be an
+      accepted edge case, correctable by admin intervention.
+- [x] ⚠ **1,990 IS NOT DAMAGE — IT IS WHAT LAUNCH LOOKS LIKE.** That many clients carry an eligible
+      approved quote whose salesperson is mapped to nobody, and they are **NOT ASSIGNED TO ANYONE**;
+      only 13 are stuck on Danny. They are correctly unassigned because nobody is mapped, and **mapping
+      the real salespeople turns them into real books**: Bobby Wiggins 180, Mark Flores 179, Daniel
+      Magdziarz 175, Maurice Poole 175, Matt Mitchell 167, Nick Gonzalez 153, Adam Cherry 151, Chase
+      Castellanos 148, Tony Labandero 134, Brett Chance 126, Tom Rees 116, Matthew Reep 103, Adam Reep
+      83, Vince Scribbins 43, Beth Lindner 33, Chris Hodges 22, Phillip Scribbins 19, and a tail.
+      **The provisional rule is what keeps a LATER mapping able to correct a fall-through** rather than
+      being permanently blocked by a sticky.
+- [ ] ⚠ **NEEDS DANNY — A DEPARTED SALESPERSON'S BOOK. Tom Rees is DEACTIVATED in Jobber and carries
+      116 clients' approved quotes.** A36 rules that assignments never move when someone leaves, so
+      this is about what happens to history at mapping time, not about reassigning a live book.
+      **The options, and what each means:**
+      **(1) Leave him unmapped.** Those 116 clients stay unassigned (or fall through to whoever was on
+      the assessment, now as a PROVISIONAL). Nobody's numbers include work he did; the clients are
+      still reachable in admin Contacts. **Simplest, and loses the history.**
+      **(2) Map him anyway, to a deactivated/non-login team member.** The 116 attribute to him and the
+      account's history is complete. ⚠ **He must be `is_attributable` for the engine to match him at
+      all**, so the question becomes whether a person who cannot log in should hold a book — and what
+      the rep app does with a member who never opens it. The Jobber-user picker already marks
+      DEACTIVATED users and keeps them selectable, **which is the ruling that makes this possible**
+      (Canvass-3.6: retired people's historical attribution still matters).
+      **(3) Reassign to a successor.** Their numbers gain 116 clients they did not close, which is a
+      compensation question the moment conversions drive anything. ⚠ **Not recommended silently** — if
+      it is done, it should be manual assignments an admin makes, which is exactly what A36.3's
+      override is for.
+      **Whichever way it goes, it is a per-person decision, not a policy** — and the same question
+      applies to every deactivated user in the tail.
+- [ ] ⚠ **DANNY'S OWN BOOK KEEPS 10 WRONG STICKIES UNTIL HE CHOOSES TO RUN THE REBUILD.** Ruled
+      2026-09-22: acceptable, because this is a pre-launch test instance and no rep's compensation
+      depends on it. **A later session must not read those rows as evidence of a live defect** — the
+      rule that produced them is fixed, and the tool that would repair them exists and is deliberately
+      not run.
+
 ### Canvass-stage — the unmapped-quote fall-through, and what a rebuild would take (2026-09-22)
 
 *REPORTED, NOTHING BUILT. Danny ran both naming queries on Railway, 2026-09-22.*

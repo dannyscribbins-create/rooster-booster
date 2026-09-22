@@ -2515,6 +2515,19 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // boot job names. Setting it here would switch the job off before it ran.
   await pool.query(`ALTER TABLE contractor_crm_settings ADD COLUMN IF NOT EXISTS rep_names_checked_at TIMESTAMPTZ`);
 
+  // written_by — WHICH WRITER PUT THIS ASSIGNMENT HERE (Danny, 2026-09-22).
+  // ⚠ PLUMBING, NOT PRODUCT: no contractor sees it. The historical replay runs the SAME
+  // engine as the live paths, so it produces the same `*_source` values and the two were
+  // indistinguishable — which is what a rebuild has to tell apart. 'live' · 'replay' ·
+  // 'manual' (the admin assign route).
+  // ⚠ NO BACKFILL AND NO CHECK CONSTRAINT, BOTH DELIBERATE. Existing rows stay NULL,
+  // meaning "written before this column existed" — a rebuild must SAY it reads NULL as
+  // replay-written rather than assume it, because that is true of Danny's data and false
+  // for a contractor with months of live activity after their import. A CHECK would have
+  // to admit NULL anyway, and the three values are written from exactly two code paths,
+  // both tested.
+  await pool.query(`ALTER TABLE client_rep_assignments ADD COLUMN IF NOT EXISTS written_by TEXT`);
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed

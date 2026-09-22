@@ -4,6 +4,7 @@ const { createApp } = require('./server/app');
 const { startCronJobs } = require('./server/cron/index');
 const { startRepNamesBackfill } = require('./server/jobs/repNamesBackfill');
 const { startSaleRegroupBackfill } = require('./server/jobs/saleRegroupBackfill');
+const { startAssignmentRebuildIfRequested } = require('./server/jobs/repAssignmentRebuild');
 const { runBackup } = require('./server/utils/backup');
 const cron = require('node-cron');
 
@@ -34,6 +35,9 @@ const app = createApp();
     // ANCHORED grouping rule to the chained one. No Jobber call. See
     // server/jobs/saleRegroupBackfill.js for why a second run finds nothing to do.
     startSaleRegroupBackfill();
+    // Operator-run support tool, NOT a feature: does nothing unless REP_ASSIGNMENT_REBUILD
+    // names a contractor. See server/jobs/repAssignmentRebuild.js.
+    startAssignmentRebuildIfRequested();
   } catch (err) {
     console.error('[server] initDB() failed — cron jobs will NOT start:', err);
     const { logError } = require('./server/middleware/errorLogger');

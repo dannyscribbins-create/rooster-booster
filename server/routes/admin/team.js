@@ -928,14 +928,19 @@ router.patch('/api/admin/team/flagged-assignments/:id', requirePermission('rep_a
       // No WHERE sticky_rep_id IS NULL guard here — unlike the engine's writeSticky,
       // a manual resolve-assign always supersedes any existing sticky value (rule #4).
       await client.query(
+        // written_by='manual' alongside sticky_source='manual' (Danny, 2026-09-22): the
+        // source says WHY this rep, the marker says WHO put it there. A rebuild discards
+        // engine-written rows and must never touch this one — A36.3 makes manual the
+        // designed override.
         `INSERT INTO client_rep_assignments
-           (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
-         VALUES ($1, $2, $3, 'manual', NOW(), NOW())
+           (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, written_by)
+         VALUES ($1, $2, $3, 'manual', NOW(), NOW(), 'manual')
          ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
            sticky_rep_id = EXCLUDED.sticky_rep_id,
            sticky_source = EXCLUDED.sticky_source,
            sticky_set_at = EXCLUDED.sticky_set_at,
-           updated_at    = EXCLUDED.updated_at`,
+           updated_at    = EXCLUDED.updated_at,
+           written_by    = EXCLUDED.written_by`,
         [contractorId, jobberClientId, rep_id]
       );
     }

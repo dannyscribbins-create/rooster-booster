@@ -86,33 +86,46 @@ async function resolveModeBMatch(pool, contractorId, requests, referralAnchor) {
   return { type: 'single', repId: matchedReps[0].id };
 }
 
-async function writeProvisional(pool, contractorId, jobberClientId, repId, source) {
+// ── THE WRITER MARKER (Danny, 2026-09-22) ─────────────────────────────────────
+// ⚠ PLUMBING, NOT PRODUCT. No contractor sees `written_by` and none would care. It
+// exists so a rebuild can tell the REPLAY's assignments from live ones: the replay runs
+// this same engine and therefore produces the same `*_source` values, which left the two
+// indistinguishable. The only discriminator before this column was that Danny's replay
+// happened in one burst on 2026-09-21 — true once, never a mechanism.
+// ⚠ EXISTING ROWS STAY NULL, and a rebuild must SAY that it reads NULL as
+// replay-written: true for Danny's data, false for a contractor with months of live
+// activity after their import.
+// 'live' (default) · 'replay' (attributionReplay) · 'manual' (the admin assign route,
+// which writes its own row rather than calling these helpers).
+async function writeProvisional(pool, contractorId, jobberClientId, repId, source, writtenBy = 'live') {
   await pool.query(
     `INSERT INTO client_rep_assignments
-       (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, updated_at)
-     VALUES ($1, $2, $3, $4, NOW(), NOW())
+       (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, updated_at, written_by)
+     VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
        provisional_rep_id = EXCLUDED.provisional_rep_id,
        provisional_source = EXCLUDED.provisional_source,
        provisional_set_at = EXCLUDED.provisional_set_at,
-       updated_at         = EXCLUDED.updated_at`,
-    [contractorId, jobberClientId, repId, source]
+       updated_at         = EXCLUDED.updated_at,
+       written_by         = EXCLUDED.written_by`,
+    [contractorId, jobberClientId, repId, source, writtenBy]
   );
 }
 
-async function writeSticky(pool, contractorId, jobberClientId, repId, source) {
+async function writeSticky(pool, contractorId, jobberClientId, repId, source, writtenBy = 'live') {
   // WHERE guard prevents overwriting an existing sticky under a concurrent race
   const result = await pool.query(
     `INSERT INTO client_rep_assignments
-       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
-     VALUES ($1, $2, $3, $4, NOW(), NOW())
+       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, written_by)
+     VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
        sticky_rep_id = EXCLUDED.sticky_rep_id,
        sticky_source = EXCLUDED.sticky_source,
        sticky_set_at = EXCLUDED.sticky_set_at,
-       updated_at    = EXCLUDED.updated_at
+       updated_at    = EXCLUDED.updated_at,
+       written_by    = EXCLUDED.written_by
      WHERE client_rep_assignments.sticky_rep_id IS NULL`,
-    [contractorId, jobberClientId, repId, source]
+    [contractorId, jobberClientId, repId, source, writtenBy]
   );
 
   // Auto-resolution (FA spec §4.5): rowCount > 0 means this call actually just set the
@@ -241,6 +254,9 @@ async function runAttributionEngine(pool, {
   referralAnchor,
   writeOrphanOnMiss = true,
   notifyAdminOnFlag = true,
+  // ⚠ THE WRITER MARKER — 'live' unless the historical replay says otherwise. See
+  // writeProvisional above for why it exists and why NULL rows mean "before the column".
+  writtenBy = 'live',
   logError = realLogError,
 }) {
   // 1. Guard — fail closed on missing identity
@@ -287,6 +303,30 @@ async function runAttributionEngine(pool, {
     let stickyRepId = null;
     let stickySource = null;
 
+    // ⚠ AN ELIGIBLE QUOTE WHOSE AUTHOR IS MAPPED TO NOBODY MAKES EVERY LATER ANSWER
+    // PROVISIONAL (Danny, 2026-09-22). Same resolution, lower confidence.
+    //
+    // The gate's best signal is the quote's salesperson. When that person is not an
+    // attributable member, the match below finds nobody and the gate falls through to a
+    // WEAKER signal — the assessment. Keeping the fall-through is right: mapping is
+    // incomplete by design (Accent: 147 Jobber users, one member, one of them a user
+    // literally called "Scheduled Jobs"), and blocking would leave real clients
+    // unassigned whenever the office wrote the quote. ⚠ WHAT WAS WRONG WAS WRITING THE
+    // RESULT AS CERTAIN. A sticky is existing-wins and no later mapping can correct it; a
+    // provisional is re-examined by every replay, so mapping that person later fixes the
+    // client automatically.
+    // ⚠ AND THE REASON IT IS NOT A CLEANUP: EVERY NEW CONTRACTOR STARTS WITH NOBODY
+    // MAPPED, so without this each one takes a batch of permanently-wrong stickies on
+    // their first import. Measured on Accent 2026-09-22: 10 of Danny's 13 such clients,
+    // and 1,990 clients account-wide carry an eligible approved quote by an unmapped
+    // author.
+    // ⚠ CONSEQUENCE, STATED: a client whose quote author will NEVER be mapped (a
+    // scheduler) stays provisional indefinitely. Book membership is unaffected —
+    // OWN_BOOK_PREDICATE is COALESCE(sticky, provisional) — but the rep app's
+    // locked/provisional split counts it as provisional, which is the honest reading:
+    // nobody has confirmed who closed it.
+    let quoteAuthorUnmapped = false;
+
     // Prefer the eligible quote's attributable salesperson
     if (winnerQuote && winnerQuote.salesperson && winnerQuote.salesperson.id) {
       const { rows: attrRows } = await pool.query(
@@ -297,17 +337,22 @@ async function runAttributionEngine(pool, {
       if (attrRows.length > 0) {
         stickyRepId = attrRows[0].id;
         stickySource = 'quote_salesperson';
+      } else {
+        quoteAuthorUnmapped = true;
       }
     }
 
-    // Fall back to promoting the provisional rep
-    if (stickyRepId === null && currentProvisionalRepId != null) {
+    // Fall back to promoting the provisional rep.
+    // ⚠ NOT WHEN THE QUOTE'S AUTHOR IS UNMAPPED: promotion is the same
+    // uncertain-answer-written-as-certain move one step earlier, and freezing here would
+    // put the client beyond the reach of the mapping that would have corrected it.
+    if (stickyRepId === null && currentProvisionalRepId != null && !quoteAuthorUnmapped) {
       stickyRepId = currentProvisionalRepId;
       stickySource = 'promoted_provisional';
     }
 
     if (stickyRepId !== null) {
-      await writeSticky(pool, contractorId, jobberClientId, stickyRepId, stickySource);
+      await writeSticky(pool, contractorId, jobberClientId, stickyRepId, stickySource, writtenBy);
       return;
     }
 
@@ -322,10 +367,22 @@ async function runAttributionEngine(pool, {
     const attributionSource = await getAttributionSource(pool, contractorId);
     const { requests } = await fetchAttributionData(jobberClientId, token);
 
+    // ⚠ THE ONE PLACE THE CONFIDENCE RULE LANDS. The MATCH is unchanged — same mode, same
+    // eligibility, same single/multiple/none — only the WRITE differs: provisional when
+    // the gate's best signal was unreadable, sticky when it was simply absent. A
+    // co-assignment flag and an orphan flag are unaffected either way; both are records
+    // that something needs a human, and neither claims ownership.
     if (attributionSource === 'assessment_assigned_users') {
       const match = await resolveModeAMatch(pool, contractorId, requests, referralAnchor);
       if (match.type === 'single') {
-        await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_a_at_close');
+        if (quoteAuthorUnmapped) {
+          // qr_link keeps its precedence here exactly as it does in the provisional step.
+          if (currentProvisionalSource !== 'qr_link') {
+            await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a', writtenBy);
+          }
+        } else {
+          await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_a_at_close', writtenBy);
+        }
       } else if (match.type === 'multiple') {
         await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId, notifyAdminOnFlag);
       } else {
@@ -334,7 +391,13 @@ async function runAttributionEngine(pool, {
     } else {
       const match = await resolveModeBMatch(pool, contractorId, requests, referralAnchor);
       if (match.type === 'single') {
-        await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_b_at_close');
+        if (quoteAuthorUnmapped) {
+          if (currentProvisionalSource !== 'qr_link') {
+            await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_b', writtenBy);
+          }
+        } else {
+          await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_b_at_close', writtenBy);
+        }
       } else {
         if (writeOrphanOnMiss) await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
       }
@@ -353,7 +416,7 @@ async function runAttributionEngine(pool, {
     if (match.type === 'single') {
       // Exactly one attributable match — qr_link source takes precedence over mode_a
       if (currentProvisionalSource !== 'qr_link') {
-        await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a');
+        await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a', writtenBy);
       }
     } else if (match.type === 'multiple') {
       await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId, notifyAdminOnFlag);
@@ -361,7 +424,7 @@ async function runAttributionEngine(pool, {
   } else {
     const match = await resolveModeBMatch(pool, contractorId, requests, referralAnchor);
     if (match.type === 'single' && currentProvisionalSource !== 'qr_link') {
-      await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_b');
+      await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_b', writtenBy);
     }
   }
 }

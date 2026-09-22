@@ -491,7 +491,14 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     assert.equal(rows[0]?.sticky_rep_id, repId, 'unknown status must trigger gate (fail-open)');
   });
 
-  it('sticky gate: promote provisional when quote salesperson is non-attributable', async () => {
+  it('⚠ sticky gate: does NOT promote when the quote salesperson is unmapped — the provisional STAYS', async () => {
+    // ⚠ INVERTED 2026-09-22 BY DANNY'S RULING, AND IT IS THE POINT OF THE CHANGE.
+    // It read *"promote provisional when quote salesperson is non-attributable"* and
+    // asserted a `promoted_provisional` STICKY. The gate's best signal — the quote's
+    // salesperson — was present and unreadable, and promoting froze a second-best answer
+    // where no later mapping could reach it. Measured on Accent: 10 of Danny's clients,
+    // and 1,990 account-wide carry an eligible approved quote by an unmapped author.
+    // The provisional survives untouched, so mapping that person later corrects it.
     await seedAssignment(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID,
       provisionalRepId: repId, provisionalSource: 'mode_a', provisionalSetAt: new Date(),
@@ -506,8 +513,10 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
       [CID, CLIENT_ID]
     );
-    assert.equal(rows[0].sticky_rep_id, repId, 'provisional promoted to sticky');
-    assert.equal(rows[0].sticky_source, 'promoted_provisional');
+    assert.equal(rows[0].sticky_rep_id, null, 'no sticky — the answer is not certain');
+    assert.equal(rows[0].sticky_source, null);
+    assert.equal(rows[0].provisional_rep_id, repId, 'and the provisional is left exactly as it was');
+    assert.equal(rows[0].provisional_source, 'mode_a');
   });
 
   it('sticky gate: promote provisional when quote has no salesperson', async () => {
@@ -939,5 +948,171 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     );
     assert.equal(flags.length, 0, 'anchor filtering happens before match-counting — the excluded pre-anchor rep must not trigger co-assignment');
     void repXId;
+  });
+  // ── THE UNMAPPED QUOTE AUTHOR MAKES THE ANSWER PROVISIONAL (Danny, 2026-09-22) ──
+  //
+  // Danny's three discriminating cases, plus the writer marker. The rule: when an eligible
+  // approved quote names a salesperson mapped to no attributable member, the gate still
+  // falls through to Mode A/B — blocking would strand real clients whenever the office
+  // wrote the quote — but the result is written PROVISIONAL, never sticky, so a later
+  // mapping can still correct it.
+
+  it('⚠ an eligible quote by an UNMAPPED author → Mode A writes a PROVISIONAL, never a sticky', async () => {
+    // Danny's first case. jobber-user-C is on no team_members row at all, and the
+    // assessment names rep A — who would have taken a mode_a_at_close STICKY before.
+    const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C' })]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0].sticky_rep_id, null, 'THE CASE: no sticky — this must fail if the gate freezes it');
+    assert.equal(rows[0].sticky_source, null);
+    assert.equal(rows[0].provisional_rep_id, repId, 'the same rep the sticky would have named');
+    assert.equal(rows[0].provisional_source, 'mode_a');
+  });
+
+  it('⚠ an eligible quote by a MAPPED attributable author → that author takes the sticky, unchanged', async () => {
+    // Danny's second case, and the paired positive: the rule must not touch the path where
+    // the best signal IS readable. The assessment names a DIFFERENT rep, so a test that
+    // only counted rows could not tell the two apart.
+    const repG = await seedTeamMember(pool, {
+      contractorId: CID, email: 'rep-gamma@attr-test.com', jobberUserId: 'jobber-user-G',
+      isAttributable: true, fullName: 'Rep Gamma',
+    });
+    const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-G' })]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0].sticky_rep_id, repG, 'the quote author wins, as before');
+    assert.equal(rows[0].sticky_source, 'quote_salesperson');
+  });
+
+  it('⚠ NO eligible quote at all → today’s behaviour, a mode_a_at_close STICKY', async () => {
+    // Danny's third case. The distinction the rule turns on is "present but unreadable"
+    // versus "absent" — without this case, writing every fall-through as provisional would
+    // pass the first case just as well.
+    const client = makeClient([]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0].sticky_rep_id, repId, 'no quote to read, so the assessment is the best signal there is');
+    assert.equal(rows[0].sticky_source, 'mode_a_at_close');
+  });
+
+  it('⚠ an ARCHIVED quote by an unmapped author is not eligible — the sticky still fires', async () => {
+    // The rule keys on an ELIGIBLE quote. An archived one is not eligible, so it must not
+    // downgrade anything: without this, "any quote at all" would read the same.
+    const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C', quoteStatus: 'archived' })]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0].sticky_source, 'mode_a_at_close', 'an archived quote reads as no quote');
+  });
+
+  it('⚠ Mode B: an unmapped quote author downgrades that path too', async () => {
+    await seedCrmSettings(pool, { contractorId: CID, attributionSource: 'request_salesperson' });
+    const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C' })]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: modeBFetcher('jobber-user-A'), token: 'tok',
+      referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0].sticky_rep_id, null);
+    assert.equal(rows[0].provisional_source, 'mode_b');
+  });
+
+  it('⚠ an unmapped quote author does NOT suppress the co-assignment flag', async () => {
+    // A flag is a record that something needs a human; it claims no ownership, so the
+    // confidence rule has nothing to say about it.
+    const repD = await seedTeamMember(pool, {
+      contractorId: CID, email: 'rep-delta@attr-test.com', jobberUserId: 'jobber-user-D',
+      isAttributable: true, fullName: 'Rep Delta',
+    });
+    const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C' })]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: modeAFetcher(['jobber-user-A', 'jobber-user-D']), token: 'tok',
+      referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows: flags } = await pool.query(
+      'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
+      [CID, CLIENT_ID, 'rep_co_assignment']
+    );
+    assert.equal(flags.length, 1, 'still flagged');
+    void repD;
+  });
+
+  it('⚠ qr_link precedence survives the downgrade — an unmapped quote author does not overwrite it', async () => {
+    await seedAssignment(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID,
+      provisionalRepId: rep2Id, provisionalSource: 'qr_link', provisionalSetAt: new Date(),
+    });
+    const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C' })]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0].provisional_source, 'qr_link', 'qr_link keeps precedence over mode_a');
+    assert.equal(rows[0].provisional_rep_id, rep2Id);
+  });
+
+  it('⚠ THE MARKER: a live write records written_by = live, and a replay-marked write records replay', async () => {
+    // Plumbing, and the only reason it exists: a rebuild has to tell the replay's
+    // assignments from live ones, and both go through this engine with the same sources.
+    const client = makeClient([]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      referralAnchor: DEFAULT_ANCHOR,
+    });
+    let { rows } = await pool.query(
+      'SELECT written_by FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0].written_by, 'live', 'the default');
+
+    await pool.query('DELETE FROM client_rep_assignments WHERE contractor_id=$1', [CID]);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      referralAnchor: DEFAULT_ANCHOR, writtenBy: 'replay',
+    });
+    ({ rows } = await pool.query(
+      'SELECT written_by FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    ));
+    assert.equal(rows[0].written_by, 'replay');
   });
 });
