@@ -3,6 +3,7 @@ const { initDB } = require('./server/db');
 const { createApp } = require('./server/app');
 const { startCronJobs } = require('./server/cron/index');
 const { startRepNamesBackfill } = require('./server/jobs/repNamesBackfill');
+const { startSaleRegroupBackfill } = require('./server/jobs/saleRegroupBackfill');
 const { runBackup } = require('./server/utils/backup');
 const cron = require('node-cron');
 
@@ -29,6 +30,10 @@ const app = createApp();
     // One-off: names rep-scope clients left rowless by an import that predates Rep Step 4.
     // Fire-and-forget, never throws; a no-op once claimed. See server/jobs/repNamesBackfill.js.
     startRepNamesBackfill();
+    // One-off in effect, idempotent by construction: rewrites sales written under the old
+    // ANCHORED grouping rule to the chained one. No Jobber call. See
+    // server/jobs/saleRegroupBackfill.js for why a second run finds nothing to do.
+    startSaleRegroupBackfill();
   } catch (err) {
     console.error('[server] initDB() failed — cron jobs will NOT start:', err);
     const { logError } = require('./server/middleware/errorLogger');

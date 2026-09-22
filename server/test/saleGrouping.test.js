@@ -9,6 +9,12 @@
 // ⚠ THE ANCHOR IS JOB CREATED, and the window comes from the contractor's
 // `invoice_window_days` so the admin control they can see means something.
 //
+// ⚠ THE WINDOW BECAME CHAINED ON 2026-09-22 (Danny), MEASURED FROM THE PREVIOUS JOB
+// RATHER THAN THE SALE'S FIRST. One case in the first describe was INVERTED rather than
+// added to, and says so in full. The last describe covers the one-off regroup that
+// rewrites sales already stored under the old anchored rule — no Jobber call, because
+// chaining can only ever merge them.
+//
 // ⚠ AND THE FENCE THIS FILE CARRIES IS THE ONE ABOUT MONEY: the grouping primitive is
 // consumed by the REP CONVERSIONS path ONLY. Wiring it into evaluateReferral() would
 // change how much referrers are PAID — its own ruling, never a side effect — so the
@@ -75,18 +81,39 @@ describe('Canvass-stage — the grouping primitive', () => {
     assert.deepEqual(sales.map((s) => s.jobIds), [['j1'], ['j2']]);
   });
 
-  it('[RED] ⚠ the window is measured from the ANCHOR, never from the previous job', async () => {
-    // ⚠ THE CASE THAT SEPARATES "a sale" FROM "a chain", AND NO OTHER CASE CAN SEE IT.
-    // Three jobs at day 0, 15 and 30. Measured from the ANCHOR: {0,15} and {30} — two
-    // sales. Measured from the PREVIOUS member: all three chain into one, because each
-    // is within 20 days of the one before. A client who buys steadily would otherwise
-    // show ONE conversion forever.
+  it('[RED] ⚠ the window is measured from the PREVIOUS JOB — an add-on to an add-on is one sale', async () => {
+    // ⚠ INVERTED 2026-09-22, DELIBERATELY, AND THIS IS THE CASE THAT DECIDES THE RULE.
+    // It read *"the window is measured from the ANCHOR, never from the previous job"* and
+    // asserted TWO sales here. Danny ruled the opposite: a job within 20 days of the
+    // PREVIOUS job is a minor add-on or addendum to the same project, and an add-on to an
+    // add-on is still that project. Three jobs at day 0, 15 and 30 are ONE sale; under the
+    // old anchored rule they were {0,15} and {30}.
+    // ⚠ The old rule's objection is real and was ACCEPTED, not answered: a chain has no
+    // ceiling, so a client with a job every 19 days is one sale indefinitely. Unrealistic
+    // for a roofer, and superseded when "completion ends a sale" can be built.
     const sales = groupJobsIntoSales([
       job('j1', '2026-06-01T00:00:00Z'),
       job('j2', '2026-06-16T00:00:00Z'),
       job('j3', '2026-07-01T00:00:00Z'),
     ], 20);
-    assert.equal(sales.length, 2, 'chaining from the previous job would give 1');
+    assert.equal(sales.length, 1, 'anchoring on the first job would give 2');
+    assert.deepEqual(sales[0].jobIds, ['j1', 'j2', 'j3']);
+    // The anchor is still the FIRST job, so a sale cannot drift between timeframes.
+    assert.equal(sales[0].anchorAt.toISOString(), '2026-06-01T00:00:00.000Z');
+    assert.equal(sales[0].lastEventAt.toISOString(), '2026-07-01T00:00:00.000Z');
+  });
+
+  it('[RED] ⚠ 21 days after the PREVIOUS job is a new sale, even inside the first job\'s window', async () => {
+    // The paired negative, and it is the one that fails if the chain is measured from the
+    // anchor: day 0, day 12, day 33. 33 is 21 days after 12 — a new sale — while an
+    // anchored 20-day window would also split it, so the DISCRIMINATING half is the
+    // second sale carrying j3 ALONE and the first carrying two.
+    const sales = groupJobsIntoSales([
+      job('j1', '2026-06-01T00:00:00Z'),
+      job('j2', '2026-06-13T00:00:00Z'),
+      job('j3', '2026-07-04T00:00:00Z'),
+    ], 20);
+    assert.equal(sales.length, 2);
     assert.deepEqual(sales.map((s) => s.jobIds), [['j1', 'j2'], ['j3']]);
   });
 
@@ -224,5 +251,150 @@ describe('Canvass-stage — THE MONEY FENCE: evaluateReferral is untouched', () 
          JOIN pg_class t ON t.oid = c.conrelid
         WHERE t.relname = 'referral_conversions' AND c.contype = 'u'`);
     assert.ok(rows[0].n >= 1, 'referral_conversions must keep a UNIQUE constraint');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Chained regroup — rewriting sales written under the ANCHORED rule (2026-09-22)', () => {
+  const regroup = require('../jobs/saleRegroupBackfill');
+  const axios = require('axios');
+
+  // Writes the rows the OLD anchored rule would have produced, without going through the
+  // grouping primitive — which now chains, and so could never produce them again.
+  // ⚠ THAT IS THE POINT: the fixture must be the PRE-CHANGE state, not today's output.
+  async function seedAnchoredSales(clientId, groups) {
+    for (const g of groups) {
+      const { rows } = await pool.query(
+        `INSERT INTO client_sales (contractor_id, jobber_client_id, anchor_at, last_event_at)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [TENANT, clientId, g.anchor, g.last]);
+      for (const jobId of g.jobIds) {
+        await pool.query(
+          `INSERT INTO client_sale_jobs (sale_id, contractor_id, jobber_job_id) VALUES ($1, $2, $3)`,
+          [rows[0].id, TENANT, jobId]);
+      }
+    }
+  }
+  const salesOf = async (clientId) => (await pool.query(
+    `SELECT cs.anchor_at, cs.last_event_at,
+            (SELECT COUNT(*)::int FROM client_sale_jobs j WHERE j.sale_id = cs.id) AS jobs
+       FROM client_sales cs WHERE cs.contractor_id = $1 AND cs.jobber_client_id = $2
+      ORDER BY cs.anchor_at`, [TENANT, clientId])).rows;
+
+  it('[RED] ⚠ merges the day 0 / 15 / 30 split into ONE sale, keeping every job', async () => {
+    // The anchored rule wrote {0,15} and {30}; chained-20 is one sale. This is the
+    // production state on Accent, where 14 sales opened within 20 days of the previous
+    // sale's last job.
+    await seedAnchoredSales('c1', [
+      { anchor: '2026-06-01T00:00:00Z', last: '2026-06-16T00:00:00Z', jobIds: ['j1', 'j2'] },
+      { anchor: '2026-07-01T00:00:00Z', last: '2026-07-01T00:00:00Z', jobIds: ['j3'] },
+    ]);
+    const totals = await regroup.regroupContractor(pool, { contractorId: TENANT });
+    assert.deepEqual({ clients: totals.clients, merged: totals.merged, failed: totals.failed },
+      { clients: 1, merged: 1, failed: 0 });
+    const rows = await salesOf('c1');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].jobs, 3, '⚠ the absorbed sale\'s jobs MOVED — the cascade did not eat them');
+    assert.equal(rows[0].anchor_at.toISOString(), '2026-06-01T00:00:00.000Z', 'the earlier anchor survives');
+    assert.equal(rows[0].last_event_at.toISOString(), '2026-07-01T00:00:00.000Z', 'and the later last_event');
+  });
+
+  it('[RED] ⚠ a REAL gap is left alone, and the run makes NO Jobber call', async () => {
+    // The paired negative. 21 days after the previous sale's last job stays two sales —
+    // without it, "merged everything" would pass the case above just as well.
+    const realPost = axios.post;
+    let jobberCalls = 0;
+    axios.post = async (...args) => { jobberCalls += 1; return realPost(...args); };
+    try {
+      await seedAnchoredSales('c2', [
+        { anchor: '2026-06-01T00:00:00Z', last: '2026-06-13T00:00:00Z', jobIds: ['k1', 'k2'] },
+        { anchor: '2026-07-04T00:00:00Z', last: '2026-07-04T00:00:00Z', jobIds: ['k3'] },
+      ]);
+      const totals = await regroup.regroupContractor(pool, { contractorId: TENANT });
+      assert.deepEqual({ clients: totals.clients, merged: totals.merged }, { clients: 0, merged: 0 });
+      assert.deepEqual((await salesOf('c2')).map((r) => r.jobs), [2, 1]);
+    } finally {
+      axios.post = realPost;
+    }
+    assert.equal(jobberCalls, 0, 'the regroup reads stored sales only');
+  });
+
+  it('[RED] ⚠ a THREE-sale chain collapses to one — merging is transitive', async () => {
+    // Each sale opens within 20 days of the previous one's last job, so the whole chain
+    // is one project. A pairwise pass that did not carry the growing end forward would
+    // leave two.
+    await seedAnchoredSales('c3', [
+      { anchor: '2026-06-01T00:00:00Z', last: '2026-06-05T00:00:00Z', jobIds: ['m1'] },
+      { anchor: '2026-06-20T00:00:00Z', last: '2026-06-24T00:00:00Z', jobIds: ['m2'] },
+      { anchor: '2026-07-10T00:00:00Z', last: '2026-07-10T00:00:00Z', jobIds: ['m3'] },
+    ]);
+    await regroup.regroupContractor(pool, { contractorId: TENANT });
+    const rows = await salesOf('c3');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].jobs, 3);
+    assert.equal(rows[0].last_event_at.toISOString(), '2026-07-10T00:00:00.000Z');
+  });
+
+  it('[RED] ⚠ IDEMPOTENT — a second run finds nothing, which is what makes it safe at every boot', async () => {
+    await seedAnchoredSales('c4', [
+      { anchor: '2026-06-01T00:00:00Z', last: '2026-06-16T00:00:00Z', jobIds: ['n1', 'n2'] },
+      { anchor: '2026-07-01T00:00:00Z', last: '2026-07-01T00:00:00Z', jobIds: ['n3'] },
+    ]);
+    const first = await regroup.regroupContractor(pool, { contractorId: TENANT });
+    const second = await regroup.regroupContractor(pool, { contractorId: TENANT });
+    assert.equal(first.merged, 1);
+    assert.deepEqual({ clients: second.clients, merged: second.merged }, { clients: 0, merged: 0 });
+    assert.equal((await salesOf('c4')).length, 1, 'and the merged sale is not merged again');
+  });
+
+  it('[RED] ⚠ MIXED GAPS — the near pair merges and the far sale is LEFT, on one client', async () => {
+    // ⚠ THE CASE THAT FOUND A VACUOUS NEGATIVE, AND IT IS WHY IT EXISTS. The "a REAL gap
+    // is left alone" case above is decided ENTIRELY by the pre-filter query: that client
+    // has no mergeable pair, so it is never selected and the per-sale condition never
+    // runs. Making that condition merge unconditionally left the whole file GREEN.
+    // Here the client IS selected (the first pair is near), so the per-sale condition has
+    // to decide the third sale on its own — and merging everything fails here.
+    await seedAnchoredSales('c7', [
+      { anchor: '2026-06-01T00:00:00Z', last: '2026-06-06T00:00:00Z', jobIds: ['r1'] },
+      { anchor: '2026-06-20T00:00:00Z', last: '2026-06-24T00:00:00Z', jobIds: ['r2'] },
+      { anchor: '2026-09-01T00:00:00Z', last: '2026-09-01T00:00:00Z', jobIds: ['r3'] },
+    ]);
+    const totals = await regroup.regroupContractor(pool, { contractorId: TENANT });
+    assert.equal(totals.merged, 1, 'exactly one merge — not two');
+    const rows = await salesOf('c7');
+    assert.deepEqual(rows.map((r) => r.jobs), [2, 1]);
+    assert.equal(rows[1].anchor_at.toISOString(), '2026-09-01T00:00:00.000Z', 'the far sale kept its own anchor');
+  });
+
+  it('[RED] the contractor\'s own window decides the merge', async () => {
+    // 30 days between the sales: untouched at 20, merged at 45. The only way to prove
+    // the setting is read rather than a constant.
+    await pool.query(
+      `INSERT INTO referral_schedules (contractor_id, name, is_active, payout_model, invoice_window_days)
+       VALUES ($1, 'S', true, 'flat', 45)`, [TENANT]);
+    await seedAnchoredSales('c5', [
+      { anchor: '2026-06-01T00:00:00Z', last: '2026-06-01T00:00:00Z', jobIds: ['p1'] },
+      { anchor: '2026-07-01T00:00:00Z', last: '2026-07-01T00:00:00Z', jobIds: ['p2'] },
+    ]);
+    const totals = await regroup.regroupContractor(pool, { contractorId: TENANT });
+    assert.equal(totals.windowDays, 45);
+    assert.equal((await salesOf('c5')).length, 1, 'one sale at 45 days');
+  });
+
+  it('[RED] ⚠ THE MONEY FENCE — a regroup writes no referral row and touches no cashout', async () => {
+    // The grouping change moves REP numbers only. If a later edit wired the regroup into
+    // the payout path, this is where it shows up.
+    const before = await pool.query(
+      `SELECT (SELECT COUNT(*)::int FROM referral_conversions) AS conv,
+              (SELECT COUNT(*)::int FROM cashout_requests) AS cash`);
+    await seedAnchoredSales('c6', [
+      { anchor: '2026-06-01T00:00:00Z', last: '2026-06-16T00:00:00Z', jobIds: ['q1', 'q2'] },
+      { anchor: '2026-07-01T00:00:00Z', last: '2026-07-01T00:00:00Z', jobIds: ['q3'] },
+    ]);
+    await regroup.regroupContractor(pool, { contractorId: TENANT });
+    const after = await pool.query(
+      `SELECT (SELECT COUNT(*)::int FROM referral_conversions) AS conv,
+              (SELECT COUNT(*)::int FROM cashout_requests) AS cash`);
+    assert.deepEqual(after.rows[0], before.rows[0]);
   });
 });

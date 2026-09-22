@@ -346,13 +346,16 @@ async function groupSales(db, { contractorId, jobsByClient, clientCreatedAt, win
   let clients = 0;
   let paged = 0;
   let failed = 0;
+  // The re-paging cost, which had no logging at all until 2026-09-22 — see
+  // fetchAllClientJobs. It is the baseline Step 2's job `total` will be measured against.
+  const pagingCost = { pages: 0, requested: 0, actual: 0 };
 
   for (const [clientId, windowJobs] of jobsByClient) {
     try {
       const created = clientCreatedAt.get(clientId);
       let jobs = windowJobs;
       if (!created || new Date(created) < windowStart) {
-        jobs = await fetchAllClientJobs(clientId, await getToken());
+        jobs = await fetchAllClientJobs(clientId, await getToken(), { costTotals: pagingCost });
         paged += 1;
       }
       const result = await recomputeClientSales(db, { contractorId, jobberClientId: clientId, jobs, windowDays });
@@ -369,7 +372,7 @@ async function groupSales(db, { contractorId, jobsByClient, clientCreatedAt, win
       });
     }
   }
-  return { clients, sales, paged, failed };
+  return { clients, sales, paged, failed, windowDays, pagingCost };
 }
 
 // ── REP STEP 4 — NAMES (Danny, 2026-09-22) ────────────────────────────────────
@@ -544,7 +547,9 @@ async function runRepScope(db, { contractorId, filterPreference, getToken, onSte
   summary.sales = await groupSales(db, { contractorId, jobsByClient, clientCreatedAt, windowStart, getToken, logError });
   // diagnostic log — intentional
   console.log(`[fullJobberImport] Rep sales complete — ${summary.sales.clients} clients grouped into `
-    + `${summary.sales.sales} sales (${summary.sales.paged} re-paged in full), ${summary.sales.failed} failed`);
+    + `${summary.sales.sales} sales (${summary.sales.paged} re-paged in full), ${summary.sales.failed} failed, `
+    + `window ${summary.sales.windowDays}d chained, re-paging cost ${summary.sales.pagingCost.pages} pages `
+    + `requested=${summary.sales.pagingCost.requested} actual=${summary.sales.pagingCost.actual}`);
 
   // Only now — every rep step has completed — is the window a claim about filled history.
   await recordBookWindow(db, contractorId, windowStart);

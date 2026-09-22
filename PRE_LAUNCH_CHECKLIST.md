@@ -4210,6 +4210,119 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage — the sale rule is CHAINED, and the money phase is filed (2026-09-22)
+
+*Danny's rulings, 2026-09-22. Step 1 BUILT; Step 2 ($0 exclusion) HELD; the sale-value /
+sale-boundary / payout phase FILED and not built.*
+
+- [x] ✅ **CHAINED, 20 DAYS FROM THE MOST RECENT JOB — BUILT.** Ruled: a job created within 20 days of
+      the client's PREVIOUS job is a minor add-on or addendum and belongs to the SAME sale; 21+ days is
+      a separate sale; an add-on to an add-on is still the same project. One expression in
+      `groupJobsIntoSales` (`server/utils/saleGrouping.js`), so both writers — the import's rep sale
+      grouping and the stage webhooks' `refreshClientSales` — changed together. **The sale's anchor is
+      still its FIRST job**, so a sale cannot drift between timeframes.
+      ⚠ **NO CEILING, ACCEPTED KNOWINGLY.** A client with a job every 19 days is one sale indefinitely.
+      Unrealistic for a roofer, and superseded by *completion ends a sale* when that can be built.
+      ⚠ **SO THE 20-DAY WINDOW IS A PROXY FOR COMPLETION, NOT THE INTENDED RULE.** Recorded here and in
+      the source so nobody later mistakes the window for what Danny actually ruled.
+      ⚠ **AND THE EXPECTED FIGURE IS NOT A DEFECT.** Danny's ~213 was CLIENTS WHO BOUGHT; the card
+      counts SALES, repeats included. 184 distinct clients bought in the year, so a figure above 213 is
+      expected.
+- [x] ✅ **EXISTING SALES REGROUPED FROM STORED ROWS — NO JOBBER CALL.**
+      `server/jobs/saleRegroupBackfill.js`, started from `server.js` after `initDB()`. Chaining can only
+      ever MERGE consecutive stored sales (inside an anchored sale, consecutive jobs are at most one
+      window apart), so the whole recompute is: merge a sale into the one before it when the gap from
+      that sale's LAST job to this sale's FIRST job is within the window. Job dates are never needed.
+      ⚠ **NO MARKER COLUMN, AND NONE IS NEEDED — this commit adds no schema.** The merge is idempotent by
+      construction: after it runs, no two consecutive sales are within a window of each other, so a
+      second run finds nothing. That is what makes it safe at every boot; after the first it is one
+      indexed scan and a log line reading zero.
+      ⚠ **JOBS MOVE BEFORE THE ABSORBED SALE IS DELETED.** `client_sale_jobs` is `ON DELETE CASCADE`, so
+      deleting first would take the job rows with it and the merged sale would silently LOSE jobs.
+      Guard-proofed: reversing the two lines takes two cases red.
+      ⚠ **NARROWING THE WINDOW LATER IS NOT THIS TOOL'S JOB, AND IT CANNOT DETECT THE CASE.** A narrower
+      window can SPLIT a stored sale, which needs each job's `createdAt` — only Jobber has those. The
+      window a row was written with is not stored, so there is nothing to compare against; this job only
+      ever merges and would quietly leave over-merged sales. **Narrowing requires a re-page through
+      `fetchAllClientJobs`, and that is NOT BUILT.**
+      **Expected on Accent: "Year" 286 → ~272** (the 14 sales that opened within 20 days of the previous
+      sale's last job). The run logs `[saleRegroupBackfill] <contractor> — chained regroup at 20 days:
+      N clients changed, N sales merged away, N failed`.
+- [x] ✅ **ONE SALE DEFINITION, BOTH SIDES — the separate-setting proposal is WITHDRAWN.** Ruled: a
+      sale's VALUE is the total contract amount across its jobs, and referrer payouts must follow the
+      SAME grouping so a percentage schedule is calculated on the whole project. **One setting stays —
+      `invoice_window_days`. No new column.** The concern that changing it would silently move rep
+      numbers is answered by making the movement INTENDED and SAID: the admin copy now reads —
+      > **Invoice Grouping Window** — *"What counts as one sale. Jobs for the same client that start
+      > within this many days of that client's previous job are grouped into a single sale. This one
+      > setting decides both your reps' conversion numbers and how referral payouts are grouped —
+      > changing it changes both."*
+      ⚠ **DOES THE PAYOUT SIDE ASSUME ANCHORED? NO — IT ASSUMES NOTHING, BECAUSE IT DOES NO GROUPING.**
+      `evaluateReferral()` never reads `invoice_window_days`; its Step 5 comment says the batch IS the
+      single triggered invoice and calls multi-invoice batching a "SCALABLE PATH". ⚠ **But that comment
+      describes grouping INVOICES by "shared job ID + date proximity", while a sale is defined over
+      JOBS** — so the unbuilt payout grouping must be restated in terms of jobs rather than inherited.
+      **The money fence holds in this commit:** nothing wires grouping into `evaluateReferral()`, and the
+      source-text fence plus a referral/cashout row-count fence both assert it.
+- [ ] ⚠ **STEP 2 — $0 EXCLUSION — HELD (Danny, 2026-09-22).** It needs job `total` in BOTH job queries
+      and a re-fetch of ~3,000 clients, and `total` is unverified at our pinned 2026-02-17. Danny's
+      SaleCheck settles the field. ⚠ **Its effect CANNOT be estimated from stored data, and not merely
+      because totals are missing: removing a $0 job can SPLIT a chain** — a real job on day 0, a $0
+      service call on day 40 and a real job on day 80 are ONE sale with the call and TWO without it. So
+      the post-exclusion figure is not bounded by today's number in either direction.
+      ✅ **The cost line asked for is BUILT:** `fetchAllClientJobs` now accumulates
+      `requestedQueryCost` / `actualQueryCost` into an optional `costTotals`, and the import's rep sale
+      grouping logs it — *"re-paging cost N pages requested=… actual=…"* — so Step 2's "before" is
+      observable rather than reconstructed. The webhook path passes nothing and pays nothing.
+
+- [ ] 🔴 **ITS OWN PHASE — SALE VALUE, SALE BOUNDARY AND PAYOUT GROUPING. THE MONEY PATH; NOT BUILT.**
+      **RULED (Danny, 2026-09-22):**
+      · **A sale's VALUE is the CONTRACT AMOUNT of its jobs, never the invoice totals.** An invoice after
+      a job may be only the balance, so no single invoice is the sale's value. The candidate field is the
+      JOB's `total` — the same field the $0 exclusion needs. ⚠ **Unverified at our pinned version, and it
+      now carries MONEY.** SaleCheck settles it, and the phase must establish **what `total` means on a
+      Jobber job** — contract amount, line-item sum, or something else — **and whether a change order
+      updates it.**
+      · ⚠ **COMPLETION ENDS A SALE, AND IT SUPERSEDES THE WINDOW AS THE BOUNDARY.** A job created after
+      the sale's first job has been COMPLETED is a NEW sale, regardless of 20 days: everything belonging
+      to one sale is approved and has its job created before the first job finishes. **This is the real
+      business event rather than a proxy, and it removes the no-ceiling problem.** ⚠ **Not built and not
+      buildable yet — job completion dates are not stored.** It rides with the `total` work, since both
+      widen the same job query.
+      · ⚠ **MEASURE BEFORE BUILDING IT — CONCURRENT JOBS.** If a roof and gutters are both sold and the
+      roof completes before the gutters job is created, this rule makes gutters a separate sale. That may
+      be right or may split a project Danny would call one. **Report, from Jobber data once completion
+      dates are available: for multi-job sales, how many second jobs are created BEFORE versus AFTER the
+      first job's `completedAt`, and by how long. Bring Danny the numbers before the rule ships.**
+      · **PAYOUTS — ONE PAYOUT PER SALE, not one per invoice**, which is what a percentage schedule on
+      the whole project requires. ⚠ Danny's refinement: the first job completing does not mean the other
+      jobs in that sale are finished — that decides WHEN to pay, not what the sale is worth.
+      **THE THREE QUESTIONS THE PHASE MUST ANSWER:**
+      **(a) The payout trigger** — fire when the FIRST job completes, paying on contract amounts (earlier,
+      exposed to jobs not yet done), or when ALL jobs in the sale complete (slower, safer) — **and what
+      happens to a sale that GROWS after a payout has fired.**
+      **(b) ⚠ INVOICE-TO-JOB LINKAGE.** The bulk import links invoices to **CLIENTS, not jobs.** Even with
+      contract amounts as the value, the PAID test still needs invoices tied to jobs. The phase must say
+      what data exists at each writer and what the import would have to fetch.
+      **(c) ⚠ CAN A PAYOUT ON CONTRACT AMOUNT FIRE BEFORE THE CLIENT HAS PAID IN FULL, and is that
+      acceptable** — the contractor paying a referrer out of money not yet received. **Report, do not
+      decide.**
+      `client_sales.revenue_total` was designed for exactly this and stays NULL until then. ⚠ **The
+      unbuilt "Invoice Grouping Window" defect recorded elsewhere in this file is THE SAME WORK** —
+      building payout grouping is what finally makes that setting do what its name says.
+
+- [ ] **FILED, NOT BUILT — worth building before a second contractor onboards.**
+      · **The attributable-toggle warning:** on turning Attributable on for a mapped member, show how
+      many clients' stored assessments list them beside an attributable rep, and require an explicit
+      confirm above a threshold. One query over `crm_request_facts`; nothing warns today.
+      · **The "People on your Jobber visits" panel** in Team Settings — every Jobber user on stored
+      assessments or quotes, with name, status, membership, attributable, and two counts. It replaces the
+      two naming queries in the section below and makes no Jobber call.
+      · ⚠ **AND A TOOLING RULE: avoid `VALUES … v(n)` in any SQL handed to Danny.** The 4c-2 query that
+      failed on Railway with *"syntax error near AS"* is the only one that used it, and the construct is
+      never necessary — `COUNT(*) FILTER (…)` columns say the same thing. **The cause is still not
+      reproduced** (the same text parses on PostgreSQL 16.14), so this is avoidance, not a diagnosis.
+
 ### Canvass-stage — Danny's query results, the people on his visits, and the conversion rule (2026-09-22)
 
 *REPORTED, NOTHING BUILT. Results run by Danny on Railway, `accent-roofing-dev`, 2026-09-22.*

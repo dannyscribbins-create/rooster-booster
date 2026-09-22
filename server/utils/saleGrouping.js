@@ -16,12 +16,27 @@
 // reads only "a quote is not archived", which approval does not change. A handler
 // for it would fire on an event that can change nothing.
 //
-// ⚠ AND THE WINDOW IS MEASURED FROM THE GROUP'S ANCHOR, NEVER FROM THE PREVIOUS JOB.
-// This is the whole difference between "a sale" and "a chain". Measuring from the
-// previous member lets a job every 19 days extend one sale forever, so a client who
-// buys steadily for a year would show ONE conversion. Measuring from the anchor
-// closes the group a fixed distance after it opened, which is what "jobs within the
-// window of that first job" means and is how the ruling is worded.
+// ⚠ THE WINDOW IS MEASURED FROM THE GROUP'S MOST RECENT JOB — CHAINED, RULED BY DANNY
+// 2026-09-22, REVERSING THE ANCHORED RULE THIS FILE SHIPPED WITH.
+// A job created within the window of the PREVIOUS job is a minor add-on or addendum to
+// the same project; a job 21+ days after the previous one is separate work. An add-on to
+// an add-on is still the same project, which is exactly what chaining expresses.
+// ⚠ THE ANCHORED RULE'S OWN OBJECTION IS RECORDED RATHER THAN DELETED, BECAUSE IT IS
+// STILL TRUE: chaining has NO CEILING — a client with a job every 19 days is one sale
+// indefinitely. Danny accepted that as unrealistic for a roofer and therefore tolerable.
+// ⚠ AND THE WINDOW IS A PROXY FOR THE RULE ACTUALLY WANTED: **COMPLETION ENDS A SALE** —
+// a job created after the sale's first job has been COMPLETED is new work by definition.
+// That cannot be built yet (job completion dates are not stored), it rides with the job
+// `total` work, and it removes the no-ceiling problem when it lands. See
+// PRE_LAUNCH_CHECKLIST.md, "Sale value, sale boundary and payout grouping".
+// ⚠ THE ANCHOR OF A SALE IS STILL ITS FIRST JOB. Only the test for ADMISSION changed; a
+// group dated by its newest member would drift forward every time a job joined it, and a
+// sale could move between timeframe windows after the fact.
+//
+// ⚠ ONE WINDOW, BOTH SIDES (Danny, 2026-09-22): `invoice_window_days` defines what counts
+// as one sale for reps' conversions AND — when payout grouping is built — for referrer
+// payouts, so a percentage schedule is calculated on the whole project. Changing it moves
+// both, deliberately; the admin control says so in its own copy.
 //
 // ⚠ IT IS A PURE FUNCTION ON PURPOSE. The grouping decision is the part most likely
 // to be argued about and re-ruled, so it takes jobs and a number and returns groups —
@@ -58,7 +73,9 @@ function groupJobsIntoSales(jobs, windowDays) {
   const groups = [];
   for (const job of dated) {
     const current = groups[groups.length - 1];
-    if (current && job.ms - current.anchorMs <= effectiveMs) {
+    // ⚠ lastEventMs, NOT anchorMs — the chained rule. `dated` is ascending, so
+    // lastEventMs is always the most recent job admitted to the open group.
+    if (current && job.ms - current.lastEventMs <= effectiveMs) {
       current.jobIds.push(job.id);
       current.lastEventMs = job.ms;   // dated is ascending, so this is always the max
     } else {

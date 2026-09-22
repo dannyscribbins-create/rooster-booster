@@ -68,7 +68,7 @@ function _resetTestOverrides() {
  * arbitrary middle — the newest sales are missing, which is recoverable, instead of
  * the anchors being wrong, which is not.
  */
-async function fetchAllClientJobs(jobberClientId, token) {
+async function fetchAllClientJobs(jobberClientId, token, { costTotals = null } = {}) {
   const jobs = [];
   let after = null;
   let hasNextPage = true;
@@ -101,6 +101,19 @@ async function fetchAllClientJobs(jobberClientId, token) {
     const gqlErrors = response.data?.errors;
     if (gqlErrors?.length > 0) {
       throw new Error(`Jobber GraphQL error paging jobs for ${jobberClientId}: ${gqlErrors.map((e) => e.message).join('; ')}`);
+    }
+
+    // ⚠ COST IS ACCUMULATED RATHER THAN LOGGED PER CLIENT (Danny, 2026-09-22). This runs
+    // once per re-paged client — 1,143 of them on Accent's first import — so a line each
+    // would bury the step summary it belongs in. A caller that wants the number passes an
+    // object and logs its own total; a caller that does not pays nothing. ⚠ THE POINT OF
+    // IT IS STEP 2: adding job `total` to this query changes this cost, and "before" has
+    // to be observable BEFORE the change, not reconstructed after it.
+    const cost = response.data?.extensions?.cost;
+    if (costTotals && cost) {
+      costTotals.pages = (costTotals.pages || 0) + 1;
+      costTotals.requested = (costTotals.requested || 0) + (Number(cost.requestedQueryCost) || 0);
+      costTotals.actual = (costTotals.actual || 0) + (Number(cost.actualQueryCost) || 0);
     }
 
     const connection = response.data?.data?.client?.jobs;

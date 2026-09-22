@@ -295,8 +295,21 @@ function Step3({ form, setForm }) {
 
       <div>
         <FieldLabel>Invoice Grouping Window</FieldLabel>
+        {/* ⚠ ONE SALE DEFINITION, BOTH SIDES (Danny, 2026-09-22). This control is the only
+            grouping window, and it now says so: it decides what counts as ONE SALE for
+            reps' conversion numbers AND for referral payouts, so a percentage schedule is
+            calculated on a whole project rather than one invoice. Changing it moves both,
+            which is intended — what must not happen is it moving them silently.
+            ⚠ The rule it feeds is CHAINED: a job counts into the same sale when it starts
+            within this many days of that client's PREVIOUS job. The payout half is not
+            built yet (see PRE_LAUNCH_CHECKLIST.md, "Sale value, sale boundary and payout
+            grouping"); the copy describes the setting's meaning, which is already true of
+            the rep half, rather than promising a behaviour that exists today. */}
         <p style={{ margin: '0 0 12px', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>
-          How many days of invoices are grouped together to determine the total job value.
+          What counts as one sale. Jobs for the same client that start within this many days
+          of that client&apos;s previous job are grouped into a single sale. This one setting
+          decides both your reps&apos; conversion numbers and how referral payouts are
+          grouped — changing it changes both.
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
           {WINDOW_OPTIONS.map(days => {

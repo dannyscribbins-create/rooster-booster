@@ -370,7 +370,23 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1657 server tests across 278 suites, and 1331 React tests across 79 files** (measured 2026-09-22 by the names-backfill commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1657 · suites 278 · pass 1657 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1665 server tests across 279 suites, and 1331 React tests across 79 files** (measured 2026-09-22 by the chained-grouping commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1665 · suites 279 · pass 1665 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CHAINED-GROUPING COMMIT ITSELF, BECAUSE IT SHIPS TESTS.** Server
+  1657 → 1665 is **+8 = 1 + 7**: one new case in the EXISTING grouping describe (the paired negative for
+  the chained rule) and seven in a new describe for the regroup; suites 278 → 279 is that one describe.
+  React did not move — the only `src/` edit is copy inside an EXISTING file — and was re-measured.
+  ⚠ **THE PREDICTION WAS 7 AND THE FILE SHIPPED 8, AND THE EXTRA CASE IS THE POINT.** A guard-proof
+  found a VACUOUS NEGATIVE: the "a real gap is left alone" case is decided entirely by the pre-filter
+  query that selects clients with a mergeable pair, so making the per-sale condition merge
+  unconditionally left the whole file GREEN. The repair adds a MIXED-GAP client — selected by the
+  filter, so the per-sale condition has to decide the far sale on its own — and that injection is
+  now red. **The count moved because the coverage did**, and it was re-counted from the file.
+  ⚠ **AND ONE INJECTION WAS INVALID AND WAS DISCARDED RATHER THAN READ.** Widening the pre-filter to
+  `WHERE true` left `$2` unused and took 7 red with *"bind message supplies 2 parameters"* — it broke
+  the query rather than reintroducing a defect, which is the "a different spelling" failure with the
+  sign flipped. **7 red from a 1-line injection is a tell, not a result.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE NAMES-BACKFILL COMMIT ITSELF.* It read
+  **1657 / 278 / 1331 / 79**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE NAMES-BACKFILL COMMIT ITSELF, BECAUSE IT SHIPS TESTS.** Server
   1654 → 1657 is **+3**, one new describe appended to `repImportScope.test.js`; suites 277 → 278 is
   that describe. React did not move — no `src/` file was touched — and was re-measured rather than
