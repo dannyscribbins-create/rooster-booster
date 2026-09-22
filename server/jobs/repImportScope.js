@@ -8,7 +8,8 @@
 //   · jobber_clients.pipeline_stage          (fill-only, UPDATE-only — see below)
 //   · jobber_clients rows WITH full identity  (Rep Step 4, only for clients with none;
 //                                              rep_scope_only, no tags — repScopeRows.js)
-//   · contractor_crm_settings.rep_window_start (where the rep's book starts)
+//   · contractor_crm_settings.rep_window_start (where the rep's book starts) and
+//     rep_names_checked_at (Step 4 ran — see repNamesBackfill.js)
 //   · client_sales / client_sale_jobs        (via the existing recomputeClientSales)
 //
 // ⚠ WHY THESE ARE SEPARATE STEPS AND NOT A FILTER ON CAMPAIGN STEPS C/D/E — RULING 2.
@@ -452,12 +453,15 @@ async function nameMissingClients(db, { contractorId, missing, getToken, logErro
  * year of the book. Postgres LEAST ignores NULL, so the first run simply sets it.
  * Written only after the rep scope has completed, so a failed run never claims a window
  * it did not fill.
+ * ⚠ It also stamps rep_names_checked_at: Step 4 has just run inline, so the standalone
+ * boot backfill (repNamesBackfill.js) has nothing to do for this contractor.
  */
 async function recordBookWindow(db, contractorId, windowStart) {
   await db.query(
-    `INSERT INTO contractor_crm_settings (contractor_id, rep_window_start) VALUES ($1, $2)
+    `INSERT INTO contractor_crm_settings (contractor_id, rep_window_start, rep_names_checked_at) VALUES ($1, $2, NOW())
      ON CONFLICT (contractor_id) DO UPDATE
-       SET rep_window_start = LEAST(contractor_crm_settings.rep_window_start, EXCLUDED.rep_window_start)`,
+       SET rep_window_start = LEAST(contractor_crm_settings.rep_window_start, EXCLUDED.rep_window_start),
+           rep_names_checked_at = NOW()`,
     [contractorId, windowStart]
   );
 }

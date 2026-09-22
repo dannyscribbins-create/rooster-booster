@@ -35,7 +35,7 @@ SELECT * FROM your_table_name;
 
 ## Check a Specific Contractor's CRM Settings
 SELECT * FROM contractor_crm_settings 
-WHERE contractor_id = 'accent-roofing';
+WHERE contractor_id = 'accent-roofing-dev';
 
 ---
 

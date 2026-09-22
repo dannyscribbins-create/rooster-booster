@@ -830,3 +830,78 @@ describe('Rep Step 4 — names, and the book window (Danny, 2026-09-22)', () => 
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Rep Step 4, standalone — the boot backfill names an older import\'s rowless clients', () => {
+  const backfill = require('../jobs/repNamesBackfill');
+  const ident = (id) => ({ id, firstName: 'N', lastName: id, isCompany: false, isLead: false, isArchived: false,
+    emails: [{ address: `${id}@example.com`, primary: true }], phones: [] });
+  const IDS = { 'gh-req': ident('gh-req'), 'gh-quote': ident('gh-quote'), 'gh-job': ident('gh-job'), 'gh-old': ident('gh-old') };
+
+  // The state Accent's first import left behind: facts and sales stored, window recorded,
+  // Step 4 never run (rep_names_checked_at NULL). up-1 already has a row (see reset).
+  async function seedStoredScope() {
+    await pool.query(`INSERT INTO contractor_crm_settings (contractor_id, rep_window_start) VALUES ($1, $2)`, [TENANT, ago(365)]);
+    await pool.query(
+      `INSERT INTO crm_request_facts (contractor_id, jobber_request_id, jobber_client_id, created_at) VALUES
+         ($1, 'r-a', 'gh-req', $2), ($1, 'r-b', 'up-1', $2)`, [TENANT, ago(20)]);
+    await pool.query(
+      `INSERT INTO crm_quote_facts (contractor_id, jobber_quote_id, jobber_client_id, quote_status, created_at)
+       VALUES ($1, 'q-a', 'gh-quote', 'approved', $2)`, [TENANT, ago(30)]);
+    // gh-job: a sale whose last job is INSIDE the window. gh-old: one that ENDED before it —
+    // history re-paged for grouping, not rep scope, and must not be fetched.
+    for (const [cid, jobId, days] of [['gh-job', 'j-gh', 10], ['gh-old', 'j-old', 500]]) {
+      const { rows } = await pool.query(
+        `INSERT INTO client_sales (contractor_id, jobber_client_id, anchor_at, last_event_at)
+         VALUES ($1, $2, $3, $3) RETURNING id`, [TENANT, cid, ago(days)]);
+      await pool.query(`INSERT INTO client_sale_jobs (sale_id, contractor_id, jobber_job_id) VALUES ($1, $2, $3)`,
+        [rows[0].id, TENANT, jobId]);
+    }
+  }
+  const run = () => backfill.startRepNamesBackfill(pool, { getToken: async () => 'tok' });
+
+  it('names ONLY the rowless rep-scope clients, from stored facts, behind the Step 4 fence', async () => {
+    installJobber({ identities: IDS });
+    await seedStoredScope();
+    const [result] = await run();
+    assert.equal(calls.byOp.RepClientIdentity, 3, 'gh-req, gh-quote, gh-job — not up-1 (has a row), not gh-old');
+    assert.equal(result.rowless, 3);
+    assert.equal(result.named, 3);
+    const { rows } = await pool.query(
+      `SELECT jobber_client_id, last_name, pipeline_stage, rep_scope_only FROM jobber_clients
+        WHERE contractor_id = $1 AND jobber_client_id LIKE 'gh-%' ORDER BY 1`, [TENANT]);
+    assert.deepEqual(rows, [
+      { jobber_client_id: 'gh-job', last_name: 'gh-job', pipeline_stage: 'sold', rep_scope_only: true },
+      { jobber_client_id: 'gh-quote', last_name: 'gh-quote', pipeline_stage: 'inspection', rep_scope_only: true },
+      { jobber_client_id: 'gh-req', last_name: 'gh-req', pipeline_stage: 'lead', rep_scope_only: true },
+    ]);
+    assert.equal(await count('contact_tags'), 0, 'no tags — the rows join no campaign audience');
+    assert.equal(calls.outbound.length, 0);
+  });
+
+  it('is ONE-OFF — a second boot claims nothing and calls Jobber for nobody', async () => {
+    installJobber({ identities: {} }); // every client "not found" — so nothing gets a row
+    await seedStoredScope();
+    const first = await run();
+    assert.equal(first.length, 1);
+    assert.equal(first[0].notFound, 3, 'counted, and never written blank');
+    const before = calls.byOp.RepClientIdentity;
+    assert.deepEqual(await run(), [], 'the claim holds even though all three are still rowless');
+    assert.equal(calls.byOp.RepClientIdentity, before);
+  });
+
+  it('a COMPLETED import stamps the check, so the boot job never re-runs its Step 4', async () => {
+    installJobber({ campaign: CAMPAIGN, rep: REP, clientJobs: CLIENT_JOBS });
+    // ⚠ A SETTINGS ROW ALREADY EXISTS, as it does in production. Guard-proofed: without it
+    // the INSERT branch stamps, the ON CONFLICT branch is never reached, and dropping the
+    // stamp from that branch left this case green.
+    await pool.query(`INSERT INTO contractor_crm_settings (contractor_id) VALUES ($1)`, [TENANT]);
+    await importJob.runFullJobberImport(TENANT, { mode: 'recommended' });
+    const { rows } = await pool.query(
+      `SELECT rep_names_checked_at FROM contractor_crm_settings WHERE contractor_id = $1`, [TENANT]);
+    assert.ok(rows[0].rep_names_checked_at instanceof Date, 'stamped by recordBookWindow');
+    const before = calls.byOp.RepClientIdentity;
+    assert.deepEqual(await run(), []);
+    assert.equal(calls.byOp.RepClientIdentity, before);
+  });
+});

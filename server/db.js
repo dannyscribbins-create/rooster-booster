@@ -2507,6 +2507,14 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // before — the default is what makes the new predicate a no-op on today's data.
   await pool.query(`ALTER TABLE jobber_clients ADD COLUMN IF NOT EXISTS rep_scope_only BOOLEAN NOT NULL DEFAULT false`);
 
+  // rep_names_checked_at — when this contractor's rowless rep-scope clients were last
+  // looked up by name (Rep Step 4). Set by every completed rep scope, and CLAIMED by the
+  // standalone backfill (server/jobs/repNamesBackfill.js) before it makes a call.
+  // ⚠ NO BACKFILL, AND THAT IS THE POINT: NULL on a contractor with rep facts means its
+  // import ran before Step 4 existed (Accent, 2026-09-21), which is exactly the set the
+  // boot job names. Setting it here would switch the job off before it ran.
+  await pool.query(`ALTER TABLE contractor_crm_settings ADD COLUMN IF NOT EXISTS rep_names_checked_at TIMESTAMPTZ`);
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed

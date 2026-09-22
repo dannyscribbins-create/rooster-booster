@@ -2,6 +2,7 @@ require('dotenv').config();
 const { initDB } = require('./server/db');
 const { createApp } = require('./server/app');
 const { startCronJobs } = require('./server/cron/index');
+const { startRepNamesBackfill } = require('./server/jobs/repNamesBackfill');
 const { runBackup } = require('./server/utils/backup');
 const cron = require('node-cron');
 
@@ -25,6 +26,9 @@ const app = createApp();
   try {
     await initDB();
     startCronJobs();
+    // One-off: names rep-scope clients left rowless by an import that predates Rep Step 4.
+    // Fire-and-forget, never throws; a no-op once claimed. See server/jobs/repNamesBackfill.js.
+    startRepNamesBackfill();
   } catch (err) {
     console.error('[server] initDB() failed — cron jobs will NOT start:', err);
     const { logError } = require('./server/middleware/errorLogger');

@@ -4210,6 +4210,181 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage — after c337612: the names run, mapping order, and the conversion count (2026-09-22)
+
+- [x] ⚠ **A LOCAL-SEED CONTRACTOR ID WAS WRITTEN INTO SQL HANDED TO DANNY FOR PRODUCTION.** Every
+      query c337612 filed in the section below read `'accent-roofing'`. Production's only contractor is
+      **`'accent-roofing-dev'`**; `'accent-roofing'` exists as a `contractors` row only in `initDB()`'s
+      local seed, so the queries returned nothing as written. **Corrected in place below**, and
+      `DB_QUERIES.md`'s CRM-settings snippet carried the same phantom and is corrected too.
+      **The rule from here: SQL for Danny to run on Railway names `'accent-roofing-dev'`.**
+      ⚠ **THE MIGRATION WAS NOT AFFECTED, AND WHY.** The `rep_window_start` backfill in `initDB()`
+      names no contractor: it joins `contractor_crm_settings` to `jobber_import_progress` ON
+      `contractor_id`, gated on rep facts existing for that contractor. Danny read back
+      `accent-roofing-dev = 2025-09-22T02:15:09.494Z` against the log's `window starts
+      2025-09-22T02:15:10.042Z` — **0.548 s earlier.** The cause: the backfill anchors on
+      `completed_at`, which Postgres stamps with `NOW()` when Step H+I finishes; the log's value is
+      Node's `new Date()` inside `runRepScope`, which starts only after the Phase 2 contact matching
+      pass and the import-complete notification. **The half-second is most plausibly that pass**
+      (not timed separately, so not proven), plus any skew between the two clocks. The derived window is the WIDER of the two, which is the safe direction
+      (LEAST would keep it anyway), and no sale has an anchor inside it that could plausibly matter.
+      **No correction is needed.**
+      ⚠ **OTHER `'accent-roofing'` IN NON-TEST CODE, 2026-09-22:** unchanged from the 27-across-8-files
+      inventory in `CLAUDE_REGISTRY.md` — c337612 and this commit added none. **In documents, two more
+      Railway-facing queries carry it:** the `DB_QUERIES.md` one (fixed here), and the
+      `referral_schedules` query in the two-writers entry near the top of this file. ⚠ **Probably the
+      phantom too, and left alone rather than guessed at:** the schedule seed wrote the literal, but
+      `initDB()`'s seed comment says the live rows took the new id at the rename. The conversion
+      entry's query (3) below lists every schedule row with its contractor id, which settles it.
+- [x] ✅ **THE 148 ARE NAMED WITHOUT AN IMPORT — a one-off boot job (ruled by Danny 2026-09-22).**
+      `server/jobs/repNamesBackfill.js`, started from `server.js` after `initDB()`. It rebuilds the
+      rowless rep-scope set from STORED data (request and quote facts, plus clients with a sale whose
+      last job is inside `rep_window_start`), computes each stage the way Rep Step 4 does, and hands
+      the list to Step 4's own `nameMissingClients()` — **same fence**: identity before any write,
+      `rep_scope_only`, no `contact_tags`, `ON CONFLICT DO NOTHING`. **One-off by a claim:**
+      `contractor_crm_settings.rep_names_checked_at` is claimed before the first call, and every
+      completed import stamps it, so the job runs only for an import that predates Step 4 — Accent's —
+      and only once. **Danny runs it by deploying this commit.** Watch the Railway log for
+      *"Rep names backfill — accent-roofing-dev — N rowless rep-scope clients"* then *"Rep Step 4 — names
+      complete — …"*. ⚠ If a deploy kills it mid-run the claim stays set; to re-run,
+      `UPDATE contractor_crm_settings SET rep_names_checked_at = NULL WHERE contractor_id = 'accent-roofing-dev';`
+      and restart — a re-run names only what is still rowless. ⚠ **N may differ slightly from 148**:
+      the import counted from its sweeps, this counts from what was stored, and webhooks have created
+      rows since.
+
+- [ ] 🔴 **NEEDS DANNY BEFORE A SECOND REP IS MAPPED — MAPPING ORDER CHANGES OWNERSHIP.** Verified from
+      source (`attributionReplay.js`, `attributionEngine.js`). Mapping a rep replays every client whose
+      stored history names that rep's Jobber user — **including clients already assigned to Danny.**
+      What the replay then does depends on the assignment:
+      · **PROVISIONAL (203 of Danny's 411): re-examined — and the flag is raised, but Danny KEEPS the
+      client.** On a shared assessment, Mode A now finds two attributable reps and writes a
+      `rep_co_assignment` flag (Flagged queue, no bell — ruling 7). But the flag write **does not clear
+      the provisional**, and the rep book is sticky-or-provisional only — so the client stays in Danny's
+      book with a flagged badge, and appears in nobody else's. **Mapped the other way round** — both
+      reps mapped before the first replay — a client whose only request is that shared visit would
+      have a flag and **no provisional at all.** So the order leaves Danny a provisional he would never
+      have been given. A later request naming only the other rep DOES move the provisional (the
+      provisional write is last-writer-wins), so that case is order-independent.
+      · **STICKY (208): not re-examined.** The engine returns before doing anything when a sticky
+      exists (existing-wins). ⚠ **AND THE STICKY CASE IS WIDER THAN SHARED ASSESSMENTS.** When Danny's
+      replay reached a sold client whose approved quote's salesperson was an UNMAPPED colleague, the
+      quote step found no attributable salesperson and fell through — to promoting Danny's provisional,
+      or to Mode A on an assessment that listed him. Mapped first, that colleague would have taken the
+      sticky as `quote_salesperson`. **A sticky cannot be corrected by any later mapping**; only an
+      admin's manual reassign moves it.
+      **(b) How many of Danny's clients are exposed** — Railway, read-only:
+      ```sql
+      WITH rep AS (SELECT id, jobber_user_id FROM team_members
+                    WHERE contractor_id = 'accent-roofing-dev' AND is_attributable AND jobber_user_id IS NOT NULL),
+      book AS (SELECT jobber_client_id, CASE WHEN sticky_rep_id IS NOT NULL THEN 'sticky' ELSE 'provisional' END AS kind
+                 FROM client_rep_assignments
+                WHERE contractor_id = 'accent-roofing-dev'
+                  AND COALESCE(sticky_rep_id, provisional_rep_id) = (SELECT id FROM rep)),
+      shared AS (SELECT DISTINCT jobber_client_id FROM crm_request_facts
+                  WHERE contractor_id = 'accent-roofing-dev'
+                    AND jsonb_array_length(assigned_jobber_user_ids) > 1
+                    AND assigned_jobber_user_ids @> jsonb_build_array((SELECT jobber_user_id FROM rep))),
+      other_quote AS (SELECT DISTINCT jobber_client_id FROM crm_quote_facts
+                       WHERE contractor_id = 'accent-roofing-dev' AND approved_at IS NOT NULL
+                         AND quote_status IS DISTINCT FROM 'archived'
+                         AND salesperson_jobber_user_id IS NOT NULL
+                         AND salesperson_jobber_user_id <> (SELECT jobber_user_id FROM rep))
+      SELECT COALESCE(b.kind, 'ALL') AS kind, COUNT(*) AS clients,
+             COUNT(*) FILTER (WHERE b.jobber_client_id IN (SELECT jobber_client_id FROM shared))      AS shared_assessment,
+             COUNT(*) FILTER (WHERE b.jobber_client_id IN (SELECT jobber_client_id FROM other_quote)) AS someone_elses_approved_quote
+        FROM book b GROUP BY ROLLUP (b.kind) ORDER BY 1;
+      ```
+      And **who** is sitting on those visits — the Jobber users to map, most-shared first:
+      ```sql
+      -- same rep / book CTEs, then:
+      SELECT u.jobber_user_id, tm.id AS team_member_id, tm.is_attributable,
+             COUNT(DISTINCT f.jobber_client_id) AS dannys_clients_shared
+        FROM crm_request_facts f
+        JOIN book b ON b.jobber_client_id = f.jobber_client_id
+        CROSS JOIN LATERAL jsonb_array_elements_text(f.assigned_jobber_user_ids) AS u(jobber_user_id)
+        LEFT JOIN team_members tm ON tm.contractor_id = f.contractor_id AND tm.jobber_user_id = u.jobber_user_id
+       WHERE f.contractor_id = 'accent-roofing-dev'
+         AND f.assigned_jobber_user_ids @> jsonb_build_array((SELECT jobber_user_id FROM rep))
+         AND u.jobber_user_id <> (SELECT jobber_user_id FROM rep)
+       GROUP BY 1, 2, 3 ORDER BY 4 DESC;
+      ```
+      **(c) The options, not ruled:** (1) map every rep who should hold a book **in one sitting**, then
+      rebuild — the replay only re-runs the engine, so the rebuild has to clear the replay-written
+      assignments first (`provisional_source = 'mode_a'`, sticky sources `quote_salesperson` /
+      `promoted_provisional` / `mode_a_at_close` set by the replay), never `manual` ones; (2) map others
+      and let the flags surface the provisional cases, then fix the stickies by hand from the query
+      above; (3) change the engine so a co-assignment flag also CLEARS a replay-written provisional —
+      order-independent for provisionals, and it still leaves the stickies. **Nothing is changed until
+      Danny rules.** ⚠ **The rebuild in (1) has no code yet** — it needs a way to tell a
+      replay-written assignment from a live one (both write the same sources today).
+
+- [ ] 🔴 **THE CONVERSION COUNT — DANNY'S DIAGNOSTIC RAN (2026-09-22), AND THE FIX WAITS ON SaleCheck.**
+      Year: **286 sales across 184 distinct clients.** 184 of 411 is 45%, close to Danny's ~52% close
+      rate — **attribution and client-level conversion are right.** The open question is the **102
+      extra sales** (≈1.55 per converting client). REPORTED, NOT BUILT:
+      **(a) Cost of storing job `total` (and `jobStatus`).** From the cost logging: Rep Step 3 logged
+      **requested 31,310 over 62 pages — exactly 505 a page** — against the explorer's 406 for
+      `id createdAt client { id }`. Production's query adds one scalar, `client { createdAt }`, so
+      **+99 a page came with one added field** — ⚠ **but two variables changed** (the field, and the
+      explorer's 2026-05-12 versus our pinned 2026-02-17), so ~1 point per scalar per node at
+      `first: 100` is an upper-bound reading, not a measurement. The per-client full-history query
+      (`fetchAllClientJobs`, 1,143 clients re-paged) requests **8** for `first: 50` — scalars there look
+      nearly free. **Estimate: `total` alone ≤ +100 a page, ≤ +6,200 requested on Accent's run; both
+      fields ≤ +12,400**, which at Jobber's restore rate is seconds of pacing inside a 12-minute step.
+      **To confirm before building:** in GraphiQL, run the Rep Step 3 selection with and without
+      `total jobStatus` and read `extensions.cost.requestedQueryCost`; after building, the Rep Step 3
+      log line prints requested/actual and 31,310 / 30,860 is the baseline. ⚠ **`total` must be added
+      in BOTH job queries** — Rep Step 3 and `fetchAllClientJobs` (which also serves the stage
+      webhooks' `refreshClientSales`) — or a re-paged client would group on a different definition.
+      **(b) The definition.** Exclude a job before grouping when `total` is exactly 0, so a warranty,
+      service or inspection job can neither open a sale nor count as one. ⚠ **A `total` that is NULL
+      or absent should COUNT** (today's behaviour) rather than vanish, so an unverified field fails open
+      to the known number. ⚠ **A job created before its line items reads 0** until it is edited; the
+      next sales refresh corrects it, but a sale can be missing for that interval. **Unscheduled jobs
+      are COUNTED**: Danny ruled cancellations are struck by hand, not detected, so `jobStatus` would
+      not change the definition at all — its only use would be a hint list (unscheduled, no invoice,
+      N days) for the strike-from-record phase. **So the definition needs `total` only.**
+      **(c) The grouping window.** ⚠ **FROM SOURCE, THE WINDOW IS ANCHORED, NOT CHAINED:**
+      `groupJobsIntoSales` adds a job to a sale only if it is within `invoice_window_days` of the sale's
+      FIRST job. Jobs on days 0, 15 and 30 make TWO sales even though no gap exceeds 15 days. So "is 20
+      too short?" is partly "is anchored the right rule?". The stored data answers the chained version
+      EXACTLY — within a sale no gap exceeds the window, so the gap from a sale's last job to the next
+      sale's first job is the only gap a chained rule would judge. Read-only, Railway:
+      ```sql
+      WITH rep AS (SELECT id FROM team_members
+                    WHERE contractor_id = 'accent-roofing-dev' AND is_attributable AND jobber_user_id IS NOT NULL),
+      book AS (SELECT jobber_client_id FROM client_rep_assignments
+                WHERE contractor_id = 'accent-roofing-dev'
+                  AND COALESCE(sticky_rep_id, provisional_rep_id) = (SELECT id FROM rep)),
+      s AS (SELECT cs.jobber_client_id, cs.anchor_at, cs.last_event_at,
+                   (SELECT COUNT(*) FROM client_sale_jobs j WHERE j.sale_id = cs.id) AS jobs,
+                   LAG(cs.last_event_at) OVER (PARTITION BY cs.jobber_client_id ORDER BY cs.anchor_at) AS prev_last
+              FROM client_sales cs JOIN book b ON b.jobber_client_id = cs.jobber_client_id
+             WHERE cs.contractor_id = 'accent-roofing-dev'),
+      yr AS (SELECT *, EXTRACT(EPOCH FROM anchor_at - prev_last) / 86400 AS gap_days
+               FROM s WHERE anchor_at >= NOW() - INTERVAL '365 days')
+      -- (1) the distribution of gaps between a client's consecutive sales:
+      SELECT CASE WHEN gap_days IS NULL THEN '0 first sale'
+                  WHEN gap_days <= 20 THEN '1 <=20d'   WHEN gap_days <= 30 THEN '2 21-30d'
+                  WHEN gap_days <= 45 THEN '3 31-45d'  WHEN gap_days <= 60 THEN '4 46-60d'
+                  WHEN gap_days <= 90 THEN '5 61-90d'  WHEN gap_days <= 180 THEN '6 91-180d'
+                  ELSE '7 >180d' END AS gap_after_previous_sales_last_job,
+             COUNT(*) AS sales, COUNT(*) FILTER (WHERE jobs = 1) AS single_job_sales
+        FROM yr GROUP BY 1 ORDER BY 1;
+      -- (2) what Year would read under a CHAINED rule — exact, from the same rows:
+      SELECT n AS chained_days, COUNT(*) FILTER (WHERE gap_days IS NULL OR gap_days > n) AS sales
+        FROM yr CROSS JOIN (VALUES (20), (30), (45), (60), (90)) v(n) GROUP BY n ORDER BY n;
+      -- (3) the window the grouping actually used (it reads the ACTIVE schedules' MAX):
+      SELECT contractor_id, is_active, invoice_window_days FROM referral_schedules ORDER BY 1;
+      ```
+      ⚠ **A gap of ≤ 20 days in (1) is impossible under a chained 20-day rule and common under the
+      anchored one** — that bucket is the anchored rule's own cost. ⚠ **The ANCHORED rule at 30/45/60
+      cannot be computed from stored data**: `client_sale_jobs` holds no job dates. ⚠ **And (3) matters:**
+      `windowDaysFor` reads `referral_schedules` under `'accent-roofing-dev'`; if Accent's active rows sat
+      under the seed's `'accent-roofing'`, the grouping used the **fallback 20**, not Accent's setting —
+      the same number today, a different number the day Accent changes it.
+      **Do not change the definition until Danny has brought SaleCheck back.**
+
 ### Canvass-stage backfill — the first production run, and three follow-ups (2026-09-22)
 
 - [x] **✅ THE FIRST REAL RUN, RECORDED AS MEASURED (Accent, 2026-09-21, Recommended).** Rep Step 1
@@ -4238,6 +4413,9 @@ may legitimately change several of these subjects.*
       counted and never written blank. Logged as *"Rep Step 4 — names complete — N clients with no
       row, N named, N not found, N failed, cost …"*. Supersedes the 🔴 rowless-client item in the
       section below.
+      ⚠ **CORRECTED 2026-09-22: THIS HEADLINE OVERCLAIMED.** Step 4 names clients DURING an import, and
+      Accent's import ran before it existed — so the 148 were still rowless in production. The
+      standalone boot job in the section above is what names them.
       ⚠ **THE FENCE NEEDED MORE THAN "WRITE NO TAGS", AND THAT IS WHY A PREDICATE EXISTS.**
       `evaluateAudience()`'s no-tag branch selects **every** `jobber_clients` row, and the contact
       matching pass links any matching row and then **writes a `tier_2` tag on it**. So the rows
@@ -4257,19 +4435,20 @@ may legitimately change several of these subjects.*
       a referral-credit question, and a referrer who really is a past Accent client should be
       findable. **NEEDS DANNY if that is wrong.**
 
-- [ ] 🔴 **NEEDS DANNY — THE CONVERSION COUNT, DIAGNOSED BEFORE ANY CHANGE.** Danny: 286 on Year
+- [ ] 🔴 **NEEDS DANNY — THE CONVERSION COUNT, DIAGNOSED BEFORE ANY CHANGE.** ⚠ **Danny ran (a) on
+      2026-09-22: 286 sales, 184 clients — continued in the section above.** Danny: 286 on Year
       against an expected ~213 (411 × his 52% close rate). **His 52% is a CLIENT rate; the card
       counts SALES**, so repeat sales per client are the first explanation to test. Read-only SQL,
       for Railway (Danny is the only mapped attributable rep, so `rep` resolves to him; the scalar
       subqueries **error** if that stops being true, rather than silently mixing two books):
       ```sql
       WITH rep AS (SELECT id, jobber_user_id FROM team_members
-                    WHERE contractor_id = 'accent-roofing' AND is_attributable AND jobber_user_id IS NOT NULL),
+                    WHERE contractor_id = 'accent-roofing-dev' AND is_attributable AND jobber_user_id IS NOT NULL),
       book AS (SELECT jobber_client_id FROM client_rep_assignments
-                WHERE contractor_id = 'accent-roofing'
+                WHERE contractor_id = 'accent-roofing-dev'
                   AND COALESCE(sticky_rep_id, provisional_rep_id) = (SELECT id FROM rep)),
       yr AS (SELECT cs.* FROM client_sales cs JOIN book b USING (jobber_client_id)
-              WHERE cs.contractor_id = 'accent-roofing' AND cs.anchor_at >= NOW() - INTERVAL '365 days'),
+              WHERE cs.contractor_id = 'accent-roofing-dev' AND cs.anchor_at >= NOW() - INTERVAL '365 days'),
       per AS (SELECT jobber_client_id, COUNT(*) AS n FROM yr GROUP BY 1)
       -- (a) sales vs distinct clients, and (b) the distribution:
       SELECT 'total' AS bucket, (SELECT COUNT(*) FROM yr) AS sales, (SELECT COUNT(*) FROM per) AS clients
@@ -4314,7 +4493,8 @@ may legitimately change several of these subjects.*
       `unscheduled` with no invoice (how Accent leaves a cancellation), and two jobs a few weeks
       apart that are really one project. **Do not change the definition until Danny has seen the
       numbers.**
-- [ ] ⚠ **THE 9 REFERRAL CONVERSIONS — "is it because I'm the only mapped rep?" PARTLY, AND ONLY IN
+- [ ] ⚠ **(The general form of this — mapping order — is the 🔴 entry in the section above.)**
+      **THE 9 REFERRAL CONVERSIONS — "is it because I'm the only mapped rep?" PARTLY, AND ONLY IN
       ONE CASE.** Verified from source: only three things write an assignment — the engine's
       provisional write, its sticky write (both match a rep by `jobber_user_id` among
       `is_attributable` members), and an admin's manual assign from the Flagged queue. **Nothing
@@ -4335,7 +4515,7 @@ may legitimately change several of these subjects.*
         FROM client_sales cs
         JOIN client_rep_assignments cra USING (contractor_id, jobber_client_id)
         LEFT JOIN crm_request_facts f ON f.contractor_id = cs.contractor_id AND f.jobber_client_id = cs.jobber_client_id
-       WHERE cs.contractor_id = 'accent-roofing'
+       WHERE cs.contractor_id = 'accent-roofing-dev'
          AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = (SELECT id FROM rep)
          AND (EXISTS (SELECT 1 FROM pipeline_cache pc WHERE pc.contractor_id = cs.contractor_id AND pc.jobber_client_id = cs.jobber_client_id)
            OR EXISTS (SELECT 1 FROM users u WHERE u.contractor_id = cs.contractor_id AND u.jobber_client_id = cs.jobber_client_id AND u.invited_by_user_id IS NOT NULL))
