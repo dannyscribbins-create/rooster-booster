@@ -351,6 +351,14 @@ then say what was not checked.
 
 **`server/migrations/add_payout_columns.js` — superseded by initDB(). DO NOT RUN AGAIN.**
 
+⚠ **ONE ENVIRONMENT VARIABLE IS A DESTRUCTIVE OPERATOR TOOL, NOT CONFIGURATION.**
+`REP_ASSIGNMENT_REBUILD=<contractor id>` makes the next boot **delete that contractor's
+engine-written rep assignments** and re-derive them from stored facts. It is for support, it is
+irreversible, and **leaving the variable set re-runs it on every restart.** The procedure —
+precondition, steps, what survives, how to verify, and the backup that must be taken first —
+is `REP_ASSIGNMENT_REBUILD_SOP.md` in the repo root. **Read it before setting the variable, and
+never set it to "see what happens".**
+
 > Vercel's manual-redeploy procedure, the Jobber API version header, `DB_QUERIES.md` and the migration inventory moved to `docs/ARCHITECTURE.md` in ABR 6A commit 2 — see **Deployment** there. (The version header stays resident where it is a rule: *Never Break → Jobber API*.)
 
 ### Environment Variables (Railway)
