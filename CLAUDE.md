@@ -359,6 +359,13 @@ precondition, steps, what survives, how to verify, and the backup that must be t
 is `REP_ASSIGNMENT_REBUILD_SOP.md` in the repo root. **Read it before setting the variable, and
 never set it to "see what happens".**
 
+⚠ **THE ATTRIBUTION RULINGS AND THE REASONING BEHIND THEM ARE IN
+`RoofMiles_Decisions_Record_Canvass_Attribution.md`** (repo root). It holds what the code cannot:
+the options that were REJECTED, the corrections made along the way, and why each ruling came out
+the way it did. **Read it before re-opening any attribution, sale-definition or rep-surface
+decision** — several rulings were reached by rejecting a plausible alternative, and the
+alternative looks attractive again to anyone who sees only the outcome.
+
 > Vercel's manual-redeploy procedure, the Jobber API version header, `DB_QUERIES.md` and the migration inventory moved to `docs/ARCHITECTURE.md` in ABR 6A commit 2 — see **Deployment** there. (The version header stays resident where it is a rule: *Never Break → Jobber API*.)
 
 ### Environment Variables (Railway)
