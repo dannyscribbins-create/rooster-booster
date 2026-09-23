@@ -3,6 +3,7 @@ const { withLock } = require('../withLock');
 const { pool } = require('../../db');
 const { logError } = require('../../middleware/errorLogger');
 const { campaignVisibleClient } = require('../../utils/repScopeRows'); // rep-scope rows join no audience
+const { isAttributionTag } = require('../../utils/attributionTags'); // attribution tags are not audience tags
 
 // Explicit overrides for system tag values that don't round-trip cleanly through title-case.
 // 'sms_opted_out' title-cases to 'Sms Opted Out' — must map to the stored value 'SMS Opted Out'.
@@ -40,6 +41,22 @@ async function evaluateAudience(pool, audienceId) {
   const tags = filters.tags || [];
   const mode = filters.mode || 'AND';
   const resolvedTags = tags.map(resolveTagValue);
+
+  // ⚠ AN AUDIENCE THAT NAMES AN ATTRIBUTION TAG SELECTS NOBODY (Danny, 2026-09-22).
+  // Those tags mark who USED to hold a client — "everyone Tom used to have" — and a
+  // campaign built from one would mail people on the strength of an internal attribution
+  // record. The catalogue hides them, and this is the half that does not depend on a UI.
+  // ⚠ EMPTY RATHER THAN IGNORED, because dropping the tag from an AND filter WIDENS the
+  // audience: `attribution:x AND paid-customer` would become `paid-customer`, a bigger
+  // send than anyone asked for. See server/utils/attributionTags.js.
+  if (resolvedTags.some(isAttributionTag)) {
+    await pool.query('DELETE FROM dynamic_audience_members WHERE audience_id = $1', [audienceId]);
+    await pool.query(
+      'UPDATE dynamic_audiences SET member_count = 0, last_evaluated_at = NOW() WHERE id = $1',
+      [audienceId]
+    );
+    return { memberCount: 0, refused: 'attribution_tag' };
+  }
 
   let unionQuery;
   let queryParams = [contractorId];

@@ -142,7 +142,13 @@ describe('admin route enforcement coverage', () => {
   // GET /api/admin/team/book-status (ruling 5 — what the admin sees while a rep's
   // book is replayed), gated on `team` like its GET /api/admin/team sibling. The walk
   // reported exactly 139 before this line changed; no route was removed.
-  const EXPECTED_ADMIN_ROUTE_COUNT = 139; // measured 2026-09-21, Canvass-stage backfill
+  // ⚠ 139 → 140 ON 2026-09-22, DELIBERATELY. One route was ADDED:
+  // PATCH /api/admin/team/client-assignment/:jobberClientId — the correction path, so an
+  // admin can reassign or clear a client's rep from the client's own record rather than
+  // only from the Flagged queue. Gated on `rep_assignment`, like its flagged sibling,
+  // which is unchanged. The walk reported exactly 140 before this line changed; no route
+  // was removed.
+  const EXPECTED_ADMIN_ROUTE_COUNT = 140; // measured 2026-09-22, the correction path
   it('router walk: /api/admin/* route count matches the recorded number exactly', () => {
     assert.equal(
       adminRoutes.length,

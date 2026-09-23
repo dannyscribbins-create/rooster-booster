@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { AD, TAG_COLORS } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { TagPill } from './TagCloudFilter';
+import AssignedRepCard from './AssignedRepCard';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -511,6 +512,16 @@ export default function AdminContactDetailDrawer({ contactId, jobberClientId, on
                 <InfoRow icon="ph-phone"           label="Phone"       value={jcData.phone || 'Not on file'} valueMuted={!jcData.phone} />
                 <InfoRow icon="ph-buildings"       label="Type"        value={jcData.is_company ? 'Company' : 'Residential'} />
                 <InfoRow icon="ph-arrows-clockwise" label="Last Synced" value={jcData.last_synced_at ? new Date(jcData.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'} />
+                {/* The correction path, on the client's own record (Danny, 2026-09-22).
+                    Unassigned renders plainly — it is the common case, not a fault. */}
+                <AssignedRepCard
+                  assignment={jcData.assignment || null}
+                  jobberClientId={jobberClientId}
+                  token={token}
+                  onChanged={(next) => {
+                    setJcCache(prev => ({ ...prev, [jobberClientId]: { ...prev[jobberClientId], assignment: next } }));
+                  }}
+                />
               </SectionCard>
 
               {jcData.tags && jcData.tags.length > 0 && (
@@ -578,6 +589,28 @@ export default function AdminContactDetailDrawer({ contactId, jobberClientId, on
                   </div>
                 </div>
               </SectionCard>
+
+              {/* The correction path, for a contact linked to a Jobber client. A contact
+                  with no Jobber client has no assignment to show — the engine attributes
+                  CRM clients, so there is nothing to render rather than an empty card. */}
+              {contact?.jobber_client_id && (
+                <SectionCard title="Attribution">
+                  <AssignedRepCard
+                    assignment={contact.assignment || null}
+                    jobberClientId={contact.jobber_client_id}
+                    token={token}
+                    onChanged={(next) => {
+                      setCache(prev => ({
+                        ...prev,
+                        [contactId]: {
+                          ...prev[contactId],
+                          contact: { ...prev[contactId]?.contact, assignment: next },
+                        },
+                      }));
+                    }}
+                  />
+                </SectionCard>
+              )}
 
               {/* Tags section */}
               <SectionCard title="Tags">

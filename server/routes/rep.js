@@ -411,6 +411,14 @@ router.get('/api/rep/clients', async (req, res) => {
     // `sticky_rep_id IS NOT NULL` and `IS NULL` partition the rows. A flagged row is
     // one of the two, not a third state — which is a second, structural reason the
     // FLAGGED card could not have belonged in this pair even had it not been ruled out.
+    // ⚠ THE PROVISIONAL SIDE GREW ON PURPOSE ON 2026-09-22, AND NO COPY MAY READ IT AS A
+    // WARNING. Danny's confidence ruling leaves a client PROVISIONAL when an approved
+    // quote names someone mapped to no team member, rather than freezing it to the
+    // second-best match — so a rep whose contractor has not mapped everyone will see a
+    // larger provisional number, honestly. **LOCKED vs PROVISIONAL IS CONFIDENCE, NEVER
+    // OWNERSHIP OR SAFETY:** both halves are equally in the rep's book (OWN_BOOK_PREDICATE
+    // is COALESCE(sticky, provisional)). Copy implying "locked = definitely mine" would be
+    // wrong about the client the rep is most likely to ask about.
     const { rows: countRows } = await pool.query(
       `SELECT
          COUNT(*)::int                                              AS total,

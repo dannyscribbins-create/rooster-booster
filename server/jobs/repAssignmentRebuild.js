@@ -52,8 +52,13 @@ const ENGINE_PROVISIONAL_SOURCES = ['mode_a', 'mode_b'];
  */
 async function unmappedAttributableReps(db, contractorId) {
   const { rows } = await db.query(
+    // ⚠ ACTIVE ONLY (Danny, 2026-09-22). A DEACTIVATED member is not "a rep waiting to be
+    // mapped" — they have left, their clients are history, and nothing about them can be
+    // fixed by mapping. Counting them would let one departed colleague block the rebuild
+    // permanently, which is a refusal nobody can clear.
     `SELECT id, email, full_name FROM team_members
-      WHERE contractor_id = $1 AND is_attributable = true AND jobber_user_id IS NULL
+      WHERE contractor_id = $1 AND is_attributable = true AND active = true
+        AND jobber_user_id IS NULL
       ORDER BY id`,
     [contractorId]
   );

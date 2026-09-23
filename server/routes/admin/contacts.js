@@ -5,6 +5,8 @@ const { verifyAdminSession } = require('../../middleware/auth');
 const { requirePermission } = require('../../middleware/permissions');
 const { logError } = require('../../middleware/errorLogger');
 const { deriveOptOutType } = require('../../utils/adminHelpers');
+const { getClientAssignment } = require('../../utils/clientAssignment');
+const { ATTRIBUTION_TAG_SQL_EXCLUSION } = require('../../utils/attributionTags');
 const { applyTag, removeTag } = require('../../utils/tags');
 const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility');
 
@@ -29,6 +31,7 @@ router.get('/api/admin/contacts/tags/suggestions', requirePermission('contacts')
     const result = await pool.query(
       `SELECT DISTINCT tag FROM contact_tags
        WHERE contractor_id = $1 AND source = 'admin'
+         AND ${ATTRIBUTION_TAG_SQL_EXCLUSION}
          AND tag ILIKE $2
        ORDER BY tag LIMIT 10`,
       [contractorId, `%${q}%`]
@@ -402,6 +405,9 @@ router.get('/api/admin/contacts/:contactId', requirePermission('contacts'), asyn
       opt_out_sms:       !!row.opt_out_sms,
       opt_out_all:       !!row.opt_out_all,
       referral_only:     !!row.referral_only,
+      // Who holds this client (via the linked Jobber client), for the drawer's Assigned
+      // rep card. null when unlinked or unassigned — the common case, not an error.
+      assignment:        await getClientAssignment(pool, contractorId, row.jobber_client_id),
     };
 
     // ── 2. Send history ───────────────────────────────────────────────────────
@@ -722,6 +728,7 @@ router.get('/api/admin/jobber-client-tag-summary', requirePermission('contacts')
            AND source = 'jobber_crm'
            AND jobber_client_id IS NOT NULL
            AND tag LIKE '%:%'
+           AND ${ATTRIBUTION_TAG_SQL_EXCLUSION}
          GROUP BY SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1)
          ORDER BY SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1)`,
         [contractorId]
@@ -732,6 +739,7 @@ router.get('/api/admin/jobber-client-tag-summary', requirePermission('contacts')
          WHERE contractor_id = $1
            AND source = 'system'
            AND tag NOT LIKE '%:%'
+           AND ${ATTRIBUTION_TAG_SQL_EXCLUSION}
          ORDER BY tag`,
         [contractorId]
       ),
@@ -1018,6 +1026,9 @@ router.get('/api/admin/jobber-clients/:jobberClientId', requirePermission('conta
       last_synced_at:   client.last_synced_at || null,
       source_badge:     link ? 'both' : 'jobber',
       tags:             tagsResult.rows.map(t => ({ tag: t.tag, source: t.source, applied_at: t.applied_at })),
+      // Who holds this client, for the drawer's Assigned rep card. null = unassigned,
+      // which is the common case and is rendered as such rather than as a warning.
+      assignment:       await getClientAssignment(pool, contractorId, jobberClientId),
       linked_contact:   link ? {
         contact_id:       link.contact_id,
         name:             link.name          || null,

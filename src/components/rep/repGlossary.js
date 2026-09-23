@@ -90,9 +90,21 @@ export const REP_GLOSSARY = Object.freeze({
 
   // ⚠ SAYS WHAT HAPPENS NEXT RATHER THAN ONLY WHAT IS TRUE NOW, because the useful
   // question a rep has about a provisional client is "do I need to do something".
+  // ⚠ CORRECTED 2026-09-22, AND THE OLD WORDING WAS A PROMISE THE ENGINE STOPPED KEEPING.
+  // It read *"It locks once the job reaches a stage that confirms it"*, which was true
+  // until Danny's confidence ruling: when an approved quote names someone who is not
+  // mapped to a team member, the client is now left PROVISIONAL rather than being frozen
+  // to the second-best match. Those clients do not lock when the job is created, and a
+  // rep reading the old sentence would have waited for something that never happens.
+  // ⚠ AND THE GENERAL RULE FOR EVERY REP-FACING STRING ABOUT THIS PAIR: the split is
+  // CONFIDENCE, never ownership or safety. A provisional client is fully in the rep's
+  // book — the book predicate is COALESCE(sticky, provisional) — so copy that implies
+  // "locked = really mine" or "provisional = might be taken away" is wrong in a way that
+  // costs trust. The provisional population grew on purpose; see
+  // PRE_LAUNCH_CHECKLIST.md, the confidence-rule entry.
   provisional: Object.freeze({
     term: 'Provisional',
-    body: 'You are matched to this client for now, but it is not settled. It locks once the job reaches a stage that confirms it.',
+    body: 'You are matched to this client for now. It locks when your CRM confirms who closed the job — some clients stay provisional, and they are still yours.',
   }),
 
   // ⚠ DANNY'S OWN WORDING, VERBATIM, AND NOT TO BE EDITED WITHOUT HIM. It is the one

@@ -370,7 +370,28 @@ then say what was not checked.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1683 server tests across 280 suites, and 1331 React tests across 79 files** (measured 2026-09-22 by the confidence-rule commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1683 · suites 280 · pass 1683 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1696 server tests across 282 suites, and 1342 React tests across 80 files** (measured 2026-09-22 by the correction-path commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1696 · suites 282 · pass 1696 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CORRECTION-PATH COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1683 → 1696 is **+13**, one new file (`clientAssignmentCorrection.test.js`); suites 280 →
+  282 is that file's **two** top-level describes. React 1331 → 1342 is **+11 = 10 + 1 PHANTOM**, and
+  files 79 → 80 is `AssignedRepCard.test.jsx`.
+  ⚠ **THE PHANTOM WAS PREDICTED BEFORE THE RUN, NOT RECONCILED AFTER IT.** This commit adds
+  `src/components/admin/AssignedRepCard.jsx`, and `src/components/admin` is one of the four roots
+  `adminBranding.test.jsx` walks, emitting one case per swept NON-TEST file. **All four numbers
+  matched the prediction.**
+  ⚠ **AN UNRELATED TEST FAILED ONCE UNDER FULL-SUITE LOAD AND PASSED ALONE AND ON RE-RUN.**
+  `stageWebhooks.test.js`'s *"a LATER update of the same quote is NOT swallowed"* read
+  `jobber_webhook_events` **3 against 2**. The counter is tenant-scoped and the hook clears the
+  table, so a THIRD delivery landed for that tenant — consistent with an earlier case's
+  fire-and-forget handler completing AFTER the reset. **Recorded as an observed flake with a
+  mechanism, not as fixed**, and it is not this commit's: nothing here is reachable from a webhook
+  path, and the gate before these edits was green on the same code.
+  ⚠ **AND A BACKTICK INSIDE A SQL COMMENT INSIDE A TEMPLATE LITERAL CLOSED THE STRING** — the exact
+  defect this file's backtick rule describes, committed by the session that had read the rule. It
+  surfaced as `SyntaxError: missing ) after argument list` and `tests 1 · pass 0` — the loud
+  variant, caught immediately. Reworded, not escaped.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CONFIDENCE-RULE COMMIT ITSELF.* It
+  read **1683 / 280 / 1331 / 79**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CONFIDENCE-RULE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.** Server
   1665 → 1683 is **+18 = 8 + 10**: eight appended to the EXISTING describe in
   `attributionEngine.test.js` and ten in one new file (`repAssignmentRebuild.test.js`); suites 279 →

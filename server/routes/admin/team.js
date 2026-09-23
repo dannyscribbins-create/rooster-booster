@@ -6,6 +6,8 @@ const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
 const { requirePermission } = require('../../middleware/permissions');
 const { logError } = require('../../middleware/errorLogger');
+const { getClientAssignment } = require('../../utils/clientAssignment');
+const { formerRepTag } = require('../../utils/attributionTags');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../../utils/retryHelpers');
 const { Resend } = require('resend');
@@ -589,11 +591,48 @@ router.patch('/api/admin/team/:id/deactivate', requirePermission('team.manage'),
     // and server/routes/referrer.js:2026-2038 — checked-out client, explicit
     // BEGIN/COMMIT/ROLLBACK, released in finally. The rethrow hands the error to
     // this route's existing catch so it is logged exactly once.
+    // ── DEPARTURE IS HISTORY, NOT HANDOVER (Danny, 2026-09-22) ───────────────
+    // ⚠ THE ASSIGNMENTS ARE NOT TOUCHED, AND THAT IS THE RULING. A LOCKED assignment
+    // records that this person SOLD that client — a true historical fact that the
+    // conversion and payout history depends on. Deactivation marks the clients so a
+    // contractor can SEE whose they were; it moves nothing.
+    // ⚠ NOTHING NEEDS TO HAND THEM OVER EITHER. A departed rep's clients are not a book
+    // waiting for an owner; they are history that needs one only when something new
+    // happens — and when it does, the CRM already answers it: a new request or quote
+    // names whoever actually picked the client up and the engine assigns them normally,
+    // with the tag left behind as the record. An admin can pull one out early with
+    // PATCH /api/admin/team/client-assignment/:jobberClientId.
+    // ⚠ THE TAG IS IN A RESERVED NAMESPACE THAT CAMPAIGN AUDIENCES CANNOT SELECT —
+    // otherwise "everyone Tom used to have" becomes one click from an email list. See
+    // server/utils/attributionTags.js.
+    const { rows: [target2] } = await pool.query(
+      `SELECT full_name, email FROM team_members WHERE id = $1`, [targetId]
+    );
+    const tag = formerRepTag(target2?.full_name || target2?.email);
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       await client.query(`DELETE FROM sessions WHERE team_member_id = $1`, [targetId]);
       await client.query(`UPDATE team_members SET active = false WHERE id = $1`, [targetId]);
+      // Every client this member holds, by either half of the assignment.
+      await client.query(
+        `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
+         SELECT cra.jobber_client_id, $1, $2, 'system', NOW()
+           FROM client_rep_assignments cra
+          WHERE cra.contractor_id = $1
+            AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = $3
+         -- ⚠ THE INDEX IS PARTIAL (it carries a WHERE jobber_client_id IS NOT NULL
+         -- predicate), so that predicate has to be repeated here or Postgres cannot match
+         -- it and raises "no unique or exclusion constraint matching the ON CONFLICT
+         -- specification". Caught by a test, which is the only reason it is not shipped.
+         ON CONFLICT (jobber_client_id, contractor_id, tag) WHERE jobber_client_id IS NOT NULL DO NOTHING`,
+        [contractorId, tag, targetId]
+      );
+      await client.query(
+        `INSERT INTO activity_log (event_type, detail, category) VALUES ('admin', $1, 'admin_action')`,
+        [`Team member #${targetId} deactivated; their clients tagged "${tag}" (by team_member #${teamMemberId})`]
+      );
       await client.query('COMMIT');
     } catch (txErr) {
       await client.query('ROLLBACK');
@@ -661,7 +700,9 @@ router.patch('/api/admin/team/:id/reactivate', requirePermission('team.manage'),
       // lookup. An inactive row is the only kind this route has any business
       // reading; inheriting that predicate would make the route 404 on precisely
       // the members it exists to serve.
-      pool.query('SELECT tier, contractor_id, active FROM team_members WHERE id = $1', [targetId]),
+      // full_name / email are read for the former-rep tag this handler removes — see the
+      // DELETE in the transaction below.
+      pool.query('SELECT tier, contractor_id, active, full_name, email FROM team_members WHERE id = $1', [targetId]),
     ]);
 
     if (!requesterResult.rows.length) return res.status(403).json({ error: 'Access denied' });
@@ -708,6 +749,14 @@ router.patch('/api/admin/team/:id/reactivate', requirePermission('team.manage'),
         contractorId,
         key: TEAM_ACCESS_REVOKED_SEEN_PREF_KEY,
       });
+      // ⚠ THE FORMER-REP TAG IS A RECORD OF A DEPARTURE, SO COMING BACK REMOVES IT.
+      // Leaving it would mark a working rep's clients as somebody's history, and the
+      // contractor reading that record would be told something false. The ASSIGNMENTS
+      // were never touched on the way out, so nothing has to be restored.
+      await client.query(
+        `DELETE FROM contact_tags WHERE contractor_id = $1 AND tag = $2`,
+        [contractorId, formerRepTag(target.full_name || target.email)]
+      );
       await client.query('COMMIT');
     } catch (txErr) {
       await client.query('ROLLBACK');
@@ -1450,6 +1499,115 @@ router.get('/api/admin/team/book-status', requirePermission('team'), async (req,
   } catch (err) {
     await logError({ req, error: err, source: 'GET /api/admin/team/book-status' });
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ⚠ APPENDED AT THE END ON PURPOSE, FOR CITATION REASONS. Dozens of documents cite this
+// file by line; a ~100-line block inserted mid-file moved 67 of them (measured with
+// citecheck --changed-files on the first placement). Route ORDER is not at stake — this
+// path has two segments after /team, so it cannot shadow PATCH /api/admin/team/:id.
+// ── PATCH /api/admin/team/client-assignment/:jobberClientId ───────────────────
+// THE CORRECTION PATH (Danny, 2026-09-22). Reassign or CLEAR one client's rep, from the
+// client's own record — the thing a contractor could not do until now.
+//
+// ⚠ WHY A SECOND ROUTE RATHER THAN A WIDER FLAGGED ONE. The flagged route is keyed to a
+// FLAG id: it claims the flag, resolves it and assigns, all in one statement whose WHERE
+// clause IS the tenant and state boundary. A client with no flag has no id to claim, and
+// widening that route would have meant making the flag optional — turning the one
+// predicate that proves tenancy into a branch. This is its sibling, keyed to the client,
+// with the same transaction shape: sticky write, activity_log row, one COMMIT.
+// ⚠ THE FLAGGED PATH IS UNCHANGED. Both write sticky_source='manual' because both ARE an
+// admin's decision (A36.3), and both are equally beyond the engine's reach afterwards.
+//
+// BODY: { rep_id: <id> } assigns. { rep_id: null } CLEARS.
+// ⚠ WHAT CLEARING WRITES: it DELETES the assignment row — both halves — so the client is
+// genuinely unassigned rather than being assigned to nobody-in-particular. It does NOT
+// write a tombstone, and that is the ruling: a later replay or a new request CAN attribute
+// the client again, because the CRM is what says who is working it. Clearing says "this
+// is wrong", not "nobody may ever have this client". An admin who wants it to stick
+// assigns it to the right person instead.
+router.patch('/api/admin/team/client-assignment/:jobberClientId', requirePermission('rep_assignment'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId, teamMemberId } = adminSession;
+  const jobberClientId = req.params.jobberClientId;
+  const { rep_id } = req.body || {};
+
+  if (rep_id !== null && !Number.isInteger(rep_id)) {
+    return res.status(422).json({ error: 'rep_id must be a team member id, or null to clear' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // The client must belong to this contractor. ⚠ THE TENANT BOUNDARY IS THIS READ:
+    // without it, an id from another account would be written into this account's
+    // assignments and the row would look perfectly ordinary afterwards.
+    const { rows: clientRows } = await client.query(
+      `SELECT 1 FROM jobber_clients WHERE jobber_client_id = $1 AND contractor_id = $2`,
+      [jobberClientId, contractorId]
+    );
+    if (clientRows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    if (rep_id === null) {
+      await client.query(
+        `DELETE FROM client_rep_assignments WHERE contractor_id = $1 AND jobber_client_id = $2`,
+        [contractorId, jobberClientId]
+      );
+    } else {
+      // Same validation as the flagged path: the target must be an ATTRIBUTABLE, ACTIVE
+      // member of this contractor. A deactivated member can hold history but must not be
+      // handed new work by hand — see the deactivation protocol in this file.
+      const { rows: repRows } = await client.query(
+        `SELECT 1 FROM team_members
+          WHERE id = $1 AND contractor_id = $2 AND is_attributable = true AND active = true`,
+        [rep_id, contractorId]
+      );
+      if (repRows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(422).json({ error: 'rep_id is not a valid attributable rep for this contractor' });
+      }
+      // No `WHERE sticky_rep_id IS NULL` guard, exactly as the flagged path: a manual
+      // assignment always supersedes whatever the engine decided.
+      await client.query(
+        `INSERT INTO client_rep_assignments
+           (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, written_by)
+         VALUES ($1, $2, $3, 'manual', NOW(), NOW(), 'manual')
+         ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
+           sticky_rep_id = EXCLUDED.sticky_rep_id,
+           sticky_source = EXCLUDED.sticky_source,
+           sticky_set_at = EXCLUDED.sticky_set_at,
+           updated_at    = EXCLUDED.updated_at,
+           written_by    = EXCLUDED.written_by`,
+        [contractorId, jobberClientId, rep_id]
+      );
+      // An open flag on this client is answered by the decision just made.
+      await client.query(
+        `UPDATE flagged_assignments SET status = 'resolved', resolved_by = $3, resolved_at = NOW()
+          WHERE contractor_id = $1 AND jobber_client_id = $2 AND status = 'open'`,
+        [contractorId, jobberClientId, teamMemberId]
+      );
+    }
+
+    await client.query(
+      `INSERT INTO activity_log (event_type, detail, category) VALUES ('admin', $1, 'admin_action')`,
+      [rep_id === null
+        ? `Client ${jobberClientId} assignment cleared (by team_member #${teamMemberId})`
+        : `Client ${jobberClientId} assigned to rep ${rep_id} (by team_member #${teamMemberId})`]
+    );
+
+    await client.query('COMMIT');
+    res.json({ jobber_client_id: jobberClientId, assignment: await getClientAssignment(pool, contractorId, jobberClientId) });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    await logError({ req, error: err, source: 'PATCH /api/admin/team/client-assignment/:jobberClientId' });
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
 

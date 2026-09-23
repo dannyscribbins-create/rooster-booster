@@ -4210,6 +4210,125 @@ may legitimately change several of these subjects.*
       ROUTE ARRIVES (3c builds rep surfaces), this becomes shared middleware."* **3-B is the phase
       that brings the second rep-gated route.** → `CANVASS_0_REPORT.md` §9
 
+### Canvass-stage — the correction path, and departure as HISTORY (2026-09-22)
+
+*Danny: 3b IS THE WORK. A contractor whose attribution goes wrong had no recourse inside the
+product; that is what this builds.*
+
+- [x] ✅ **PART 1a — THE ASSIGNED REP IS ON THE CLIENT'S RECORD.** The admin contact drawer now
+      carries an **Assigned rep** card (`src/components/admin/AssignedRepCard.jsx`) in BOTH modes —
+      a contact linked to a Jobber client, and a Jobber-only client. It shows who holds the client,
+      **locked or provisional**, the source **in plain language** (`Set by an admin`, `Named on the
+      approved quote`, `On the assessment when the job was created`, …) and the date. Served by
+      `getClientAssignment()` (`server/utils/clientAssignment.js`) from both detail endpoints.
+      ⚠ **WHAT AN UNASSIGNED CLIENT SHOWS, AND WHY IT IS NOT A WARNING.** 1,990 of Accent's clients
+      are unassigned and correctly so. The card reads *"Not assigned to a rep. A rep is assigned
+      automatically when a request, quote or job in your CRM names one of your mapped team members."*
+      — plain text, no danger colour, and a test asserts the empty state carries neither.
+- [x] ✅ **PART 1b — REASSIGN AND CLEAR, FROM THERE.**
+      `PATCH /api/admin/team/client-assignment/:jobberClientId`, gated on `rep_assignment` like its
+      flagged sibling, which is **unchanged**. Same transaction shape: sticky write,
+      `sticky_source='manual'`, `written_by='manual'`, any open flag on that client resolved, and an
+      `activity_log` row — one COMMIT. The admin route count moves **139 → 140** for this one route,
+      deliberately.
+      ⚠ **WHY A SIBLING RATHER THAN A WIDER FLAGGED ROUTE:** the flagged route is keyed to a FLAG id
+      and claims it in one statement whose WHERE clause IS the tenant and state boundary. A client
+      with no flag has no id to claim, so widening it would have turned the one predicate that proves
+      tenancy into a branch.
+      ⚠ **WHAT CLEARING WRITES — RULED: IT DELETES THE ROW**, both halves, so the client is genuinely
+      unassigned rather than assigned to nobody-in-particular. **A later replay CAN attribute the
+      client again**, and that is the ruling rather than an oversight: the CRM is what says who is
+      working a client, so clearing means *"this is wrong"*, not *"nobody may ever hold this client"*.
+      An admin who wants it to stick assigns the right person instead. **Tested in both directions.**
+- [x] ✅ **PART 1c — THE TESTS, AND EACH IS GUARD-PROOFED.** A member without `rep_assignment` gets
+      403 and nothing is written; a manual assignment SURVIVES a replay (existing-wins, A36.3); a
+      cleared client is re-attributable; the activity log records who and what for assign AND clear;
+      an unassigned client reads as `null`, and a provisional one as provisional; a cross-tenant
+      client is a 404 with no write. **Five injections, each landed, each red** — the audience fence
+      removed, the deactivation tag not written, deactivation CLEARING assignments (the handover
+      design Danny rejected), the manual write losing `sticky_source='manual'`, and the rebuild
+      counting deactivated reps again.
+
+- [x] ✅ **PART 2 — DEPARTURE IS HISTORY, NOT HANDOVER. THIS REPLACES THE BULK-REASSIGNMENT PLAN.**
+      Danny's reasoning, filed because it is the part worth keeping: a departed rep's clients are not
+      a book to hand over, they are **history that needs an owner only when something new happens** —
+      and when it does, the CRM already answers it. A new request or quote names whoever actually
+      picked the client up, and the engine follows. ⚠ **Every hard question the handover design raised
+      disappears:** no inherited clients, so no question of whether they count toward a new rep's
+      stats; no marker that has to fade; no stats-versus-list mismatch; and no bulk move to reverse.
+      **The flow:** deactivate → their clients are tagged → someone new works one → the CRM records
+      it → the engine assigns them normally → the tag stays as the record. An admin may pull one out
+      early, one at a time, with Part 1b.
+- [x] ✅ **PART 2a — IT LIVES ON THE CLIENT RECORD AS A TAG, IN A NAMESPACE CAMPAIGNS CANNOT SELECT.**
+      The tag is **`attribution:former-rep:<Rep Name>`** — it names the person, so a contractor
+      reading the client's record understands why they are marked. It is an ordinary `contact_tags`
+      row, so the existing search and filter machinery works. **No separate per-rep pool**, per the
+      ruling.
+      ⚠ **HOW AUDIENCES SELECT TAGS, AND THEREFORE WHAT THE FENCE HAD TO BE.** `evaluateAudience`
+      reads `filter_json.tags` and matches **by NAME** (`ct.tag = $n`) against `contact_tags` — so a
+      rule written against the `source` column would never be consulted by the query that matters.
+      The separation is a **reserved prefix**, enforced twice, failing in opposite directions:
+      **(1)** the three tag CATALOGUE queries exclude it, so nobody can pick one; **(2)** ⚠
+      **`evaluateAudience` FAILS CLOSED on one anyway — an audience naming an attribution tag
+      resolves to ZERO members**, because a catalogue exclusion is a UI convention and a `filter_json`
+      row can be written by an import, a fixture or a future editor.
+      ⚠ **EMPTY RATHER THAN IGNORED, AND THAT IS THE SHARP PART:** dropping the tag from an AND filter
+      would WIDEN the audience — `attribution:x AND job_type:roof` would become `job_type:roof`, a
+      bigger send than anyone asked for. **Tested with a real audience as the positive control**: the
+      control still selects the client, the attribution audience selects nobody and writes no members,
+      and a mixed AND audience is empty too.
+- [x] ✅ **PART 2b — WHAT DEACTIVATION DID, AND WHAT IT DOES NOW.** ⚠ **REPORTED FIRST, AS ASKED, AND
+      IT DID LESS THAN EXPECTED:** `PATCH /api/admin/team/:id/deactivate` deleted the member's
+      sessions and set `active = false`, in one transaction — **nothing else.** No activity log, no
+      assignment handling, no tagging.
+      **What this ADDS:** the member's clients (by either half of the assignment) are tagged, and an
+      `activity_log` row records the deactivation and the tag. ⚠ **WHAT IT LEAVES ALONE — THE RULING:
+      the assignments are NOT touched.** A LOCKED assignment records that this person SOLD that
+      client, which is a true historical fact the conversion and payout history depends on. **So the
+      client DOES still appear in the deactivated rep's book** — they cannot log in, but an admin
+      viewing that rep sees it, and the rep's historical numbers stay intact.
+      ✅ **Reactivation removes the tag**, because it records a departure that did not last; the
+      assignments were never moved, so nothing has to be restored.
+- [x] ✅ **PART 2c — THE REBUILD NO LONGER COUNTS A DEACTIVATED REP AS UNMAPPED.** Danny's ruling.
+      One clause (`AND active = true`); without it a single departed colleague could block the
+      rebuild permanently, which is a refusal nobody can clear. Tested with its paired positive: an
+      ACTIVE unmapped rep still blocks.
+
+- [x] ✅ **THE "LOCKED" WARNING IS NOW WHERE REP-SURFACE WORK WILL HIT IT** — `server/routes/rep.js`
+      beside the locked/provisional counts, and `src/components/rep/repGlossary.js`.
+      ⚠ **AND IT FOUND A REP-FACING STRING THAT THE CONFIDENCE RULE HAD MADE FALSE.** The glossary's
+      Provisional entry read *"It locks once the job reaches a stage that confirms it"* — true until
+      an unmapped quote author started leaving clients provisional at exactly that moment. A rep
+      would have been waiting for something that never happens. Corrected to *"It locks when your CRM
+      confirms who closed the job — some clients stay provisional, and they are still yours."*
+      ⚠ **Danny should look at this one**: it is rep-facing copy changed in the course of a fix
+      rather than by a copy ruling.
+
+- [ ] ⚠ **CITATION DRIFT FROM THIS COMMIT — 103 FLAGGED `LIKELY ROTTED`, RECORDED RATHER THAN
+      REPAIRED BY DELTA.** Most point into `server/routes/admin/team.js`, and the cause is the
+      deactivate handler gaining its tagging block — a mid-file edit that shifts every citation
+      below it. ⚠ **THE MITIGATION WAS APPLIED AND DID NOT HELP, WHICH IS WORTH RECORDING:** the new
+      route was moved to the END of the file per the convention, and the count did not move at all
+      (103 → 103), because the handler edit dominates. **The convention is still right** — the route
+      block will not move anyone's citations in future — but it cannot undo an edit that must live
+      where the handler lives. Per the procedure, none was repaired by adding the delta: an
+      already-rotted citation reports identically to a freshly-moved one.
+- [ ] **FILED, NOT BUILT — MULTI-SELECT BULK REASSIGNMENT** on the admin clients list: checkboxes, a
+      selected count, a "Reassign selected" action. **Post-launch, by Danny's ruling.** It is for the
+      AD-HOC case — a handful that went to the wrong person, one neighbourhood, one week's leads —
+      and it needs selection state the list does not have today. ⚠ **It is NOT the departure case**,
+      which Part 2 now handles; recording that here is the point, so nobody rebuilds the handover
+      design under a different name. Cost: selection state in the list, a bulk endpoint (or N calls
+      to the route built above), and a confirm step naming the count.
+- [ ] **FILED, NOT BUILT — THE THIRD FLAG REASON:** *"an eligible approved quote names someone other
+      than the assigned rep"* — exactly the shape of Danny's 10, and measurable from stored facts with
+      no Jobber call. **It needed Part 1b to exist first**, and now it does. Cost: a new
+      `flag_reason` value, a writer (the engine at gate time, or a sweep over
+      `crm_quote_facts` + `client_rep_assignments`), a label in the Flagged queue's reason map, and a
+      decision about whether it rings the bell. ⚠ **Its natural home is the engine's sticky gate,
+      where the mismatch is already computed** — the `quoteAuthorUnmapped` branch knows the quote's
+      author and the rep it is about to write.
+
 ### Canvass-stage — the confidence rule, the marker, and the rebuild as a support tool (2026-09-22)
 
 *Danny ruled: NO REBUILD NOW — fix the RULE instead. His 10 wrong stickies cost nothing in a
